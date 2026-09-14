@@ -625,6 +625,21 @@ class AutomationEngineTest extends TestCase
         // whatever actually broke.
         $this->assertNotNull($automation->disabled_at);
         $this->assertStringContainsString('consecutive failures', $automation->disabled_reason);
+
+        // THE REASON IS READ BY A CUSTOMER, so it must not carry the thrown text.
+        // automations_screen.dart:370 renders this string on the automation card;
+        // both callers used to pass $e->getMessage() straight into it. The
+        // assertion above cannot see that - it was green while the leak existed.
+        $error = $this->inTenant(fn () => AutomationRun::where('automation_id', $automation->id)
+            ->where('status', AutomationRun::FAILED)
+            ->first()?->error);
+
+        $this->assertNotNull($error, 'no failed run was recorded, so this proves nothing');
+        $this->assertStringContainsString('internal address', $error,
+            'the thrown text must still be kept SOMEWHERE - if this fails, dropping it '
+            .'from disabled_reason lost it rather than moved it');
+        $this->assertStringNotContainsString('internal address', $automation->disabled_reason);
+        $this->assertStringContainsString('run log', $automation->disabled_reason);
     }
 
     /**
