@@ -8,7 +8,9 @@ use App\Models\SavedReport;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventScope;
+use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
+use App\Support\Mail\MailStatus;
 use RuntimeException;
 
 /**
@@ -68,15 +70,19 @@ final class SendSavedReport
     public function __construct(
         private readonly ReportRunner $runner,
         private readonly MailDispatcher $mail,
+        private readonly MailStatus $transport,
         private readonly AuditLogger $audit,
     ) {}
 
     /**
      * @param  list<string>  $recipients
      *
-     * @throws RuntimeException when the rule's scope does not cover the report
+     * @throws RuntimeException when the rule's scope does not cover the report,
+     *                          when it names nobody, or when NOTHING left the
+     *                          building
+     * @throws CannotSendMail when this tenant has no sending identity at all
      */
-    public function send(SavedReport $report, array $recipients, Automation $rule, User $as): void
+    public function send(SavedReport $report, array $recipients, Automation $rule, User $as): SentReport
     {
         $this->refuseIfOutOfScope($report, $rule);
 
@@ -85,26 +91,87 @@ final class SendSavedReport
         }
 
         $result = $this->runner->run($report->definition, $as);
+        $scope = $report->franchise ?? $report->company ?? $as->organization;
 
-        $this->mail->asTenant(
-            $report->franchise ?? $report->company ?? $as->organization,
-            new SavedReportMail($report, $result),
-            $recipients,
+        $sent = [];
+        $refused = [];
+
+        /*
+         * ONE ADDRESS AT A TIME, and that is the Automations ruling rather than
+         * a preference: a rule mailing five people where ONE address is
+         * malformed must report ok and name the refused one. Handing the whole
+         * list to the transport in a single call makes one bad address fail all
+         * five — and five consecutive failures auto-disable the rule, so a
+         * report that works for four people would switch itself off.
+         *
+         * The cost is one transport call per recipient, and a recipient list is
+         * a handful of addresses rather than a mailing.
+         */
+        foreach ($recipients as $address) {
+            /*
+             * Syntax checked HERE rather than left to the transport, and not
+             * only so the loop has something to refuse. A malformed address
+             * handed to SES comes back as a rejection, and rejections land on
+             * the metric AWS reads - the same metric that cost this project a
+             * denied production-access appeal in August. Garbage should not
+             * reach the transport at all.
+             */
+            if (filter_var($address, FILTER_VALIDATE_EMAIL) === false) {
+                $refused[$address] = 'not an email address';
+
+                continue;
+            }
+
+            try {
+                $this->mail->asTenant($scope, new SavedReportMail($report, $result), $address);
+                $sent[] = $address;
+            } catch (CannotSendMail $e) {
+                // NOT a per-address problem: the tenant has no verified sending
+                // identity, so no address would work. Let it out, so the run
+                // fails and the engine's consecutive-failure count does its job
+                // — that is a persistent configuration fault, which is exactly
+                // what auto-disable is for.
+                throw $e;
+            } catch (\Throwable $e) {
+                $refused[$address] = $e->getMessage();
+            }
+        }
+
+        $outcome = new SentReport(
+            sent: $sent,
+            refused: $refused,
+            rowCount: $result->count,
+            capped: $result->capped,
+            transportDelivers: $this->transport->delivers(),
         );
 
         /*
-         * Written down BEFORE anything can go wrong with the delivery, and
-         * separately from the run: a mailed report leaves the building, and the
-         * question afterwards is always who sent what to whom. The row names the
-         * recipients because that is the part no other record holds.
+         * Audited whatever happened, including a send where everything was
+         * refused: a mailed report leaves the building, and the question
+         * afterwards is always who sent what to whom. The row names the
+         * recipients AND the refusals because that is the part no other record
+         * holds — and because "why did they not get it" is the question that
+         * follows.
          */
         $this->audit->log('report.sent', $report, [], [
             'name'       => $report->name,
             'row_count'  => $result->count,
             'capped'     => $result->capped,
-            'recipients' => $recipients,
+            'recipients' => $sent,
+            'refused'    => $refused,
+            'delivers'   => $outcome->transportDelivers,
             'rule'       => $rule->getKey(),
         ]);
+
+        if (! $outcome->ok()) {
+            // Nothing left the building, so the run failed - ok:false is for
+            // exactly this and for nothing less.
+            throw new RuntimeException(
+                'Could not send "'.$report->name.'" to anybody. '.$outcome->summary()
+            );
+        }
+
+        return $outcome;
     }
 
     /**

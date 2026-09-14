@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Mail\SavedReportMail;
+use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -168,7 +169,7 @@ class SendSavedReportTest extends TestCase
 
         // A mailed report leaves the building, and the question afterwards is
         // always who sent what to whom.
-        $row = $this->inTenant($tenant['org'], fn () => \App\Models\AuditEvent::query()
+        $row = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
             ->where('action', 'report.sent')->latest('occurred_at')->first());
 
         $this->assertNotNull($row, 'a send wrote no audit row');
@@ -182,6 +183,110 @@ class SendSavedReportTest extends TestCase
         $this->assertSame(['owner@example.test'], $row->metadata['recipients'] ?? null);
         $this->assertSame('Open jobs', $row->metadata['name'] ?? null);
         $this->assertSame(1, $row->metadata['row_count'] ?? null);
+    }
+
+    // ── partial failure, which is the ruling that matters ────────
+
+    /**
+     * THE AUTOMATIONS RULING: five recipients, one malformed, must report OK and
+     * name the refused address.
+     *
+     * Failing the whole action for one bad address in five is how you
+     * auto-disable a rule that is working for four people — `FAILURE_LIMIT` is
+     * 5 consecutive, so a weekly report with one permanently-bad address in its
+     * list would switch itself off after five weeks while four people were
+     * receiving it fine.
+     */
+    public function test_one_bad_address_does_not_fail_the_others(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['good@example.test', 'not-an-address', 'also-good@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $this->assertTrue($outcome->ok(), 'one bad address failed the whole send');
+        $this->assertSame(['good@example.test', 'also-good@example.test'], $outcome->sent);
+        $this->assertArrayHasKey('not-an-address', $outcome->refused);
+
+        // And the refusal is NAMED rather than counted: "one address failed" is
+        // not something anybody can act on.
+        $this->assertStringContainsString('not-an-address', $outcome->summary());
+    }
+
+    /** ok:false only when NOTHING left the building. */
+    public function test_a_send_where_every_address_is_refused_fails(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['not-an-address', 'also-not-one'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+    }
+
+    /** The refusals are audited too: "why did they not get it" is the next question. */
+    public function test_refused_addresses_are_recorded(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['good@example.test', 'not-an-address'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $row = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+            ->where('action', 'report.sent')->latest('occurred_at')->first());
+
+        $this->assertSame(['good@example.test'], $row->metadata['recipients'] ?? null);
+        $this->assertArrayHasKey('not-an-address', $row->metadata['refused'] ?? []);
+    }
+
+    /**
+     * NOTHING HERE CLAIMS ARRIVAL, and that is the whole vocabulary decision.
+     *
+     * EzBizi ingests no SES events — no SNS route, no bounce handler — so
+     * delivered, bounced and opened are not facts it holds. A word that claims
+     * arrival would be the "reported success, delivered nothing" failure wearing
+     * a different hat.
+     */
+    public function test_the_outcome_never_claims_delivery(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        foreach (['delivered', 'arrived', 'received', 'read'] as $word) {
+            $this->assertStringNotContainsStringIgnoringCase(
+                $word,
+                $outcome->summary(),
+                'the summary claims something this application cannot observe',
+            );
+        }
     }
 
     // ── the CSV ──────────────────────────────────────────────────
