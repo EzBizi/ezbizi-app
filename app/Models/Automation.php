@@ -149,8 +149,13 @@ class Automation extends Model implements CarriesAutomationScope
             // AutomationEngine already stores the same text in automation_runs.error
             // on both paths (the throw at :176 and the action failure at :260), which
             // is where somebody debugging should be looking anyway.
+            //
+            // "Run history" is the label on the menu item that opens it
+            // (automations_screen.dart:301). Naming it anything else - "run log",
+            // "the logs" - sends somebody looking for a control that is not there.
+            // If that menu item is renamed, rename it here in the same commit.
             $this->disabled_reason = "Disabled after {$this->consecutive_failures} "
-                .'consecutive failures. Open the run log to see what failed.';
+                .'consecutive failures. Open Run history to see what failed.';
         }
 
         $this->save();

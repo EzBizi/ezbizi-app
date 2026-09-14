@@ -56,6 +56,43 @@ void main() {
   /// Leads is a module of its own that the app draws inside Marketing, and the
   /// builder groups its events where somebody just navigated to them — rather
   /// than under a heading for a tab that no longer exists on its own.
+  /// Every fixture in this file sets `disabled_reason: null`, so until this test
+  /// nothing had ever RENDERED the auto-disabled branch — the one a customer only
+  /// sees on the day their automation breaks. It carries a formatStamp call that
+  /// would throw on a screen with no display formats, and nothing would have
+  /// caught that but the customer.
+  testWidgets('a disabled automation says when it stopped, not just that it did', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(list: const [
+      {
+        'id': 'a-1',
+        'name': 'Chase completions',
+        'description': null,
+        'trigger_key': 'job.status_changed',
+        'is_active': true,
+        'is_live': false,
+        'disabled_at': '2026-09-14T15:40:00+00:00',
+        'disabled_reason':
+            'Disabled after 5 consecutive failures. Open Run history to see what failed.',
+        'runs_count': 7,
+        'version': 2,
+      },
+    ]));
+
+    expect(find.text('Auto-disabled'), findsOneWidget);
+
+    // The WHEN is the half that was missing: the field was on the wire and
+    // rendered nowhere. Asserting the year rather than a full stamp, because the
+    // organization chooses the date format and this test must not pin it.
+    expect(find.textContaining('2026'), findsWidgets);
+    expect(find.textContaining('Open Run history'), findsOneWidget);
+
+    // The fallback means disabled_at did not parse — a green test that showed
+    // this would be asserting the failure path.
+    expect(find.textContaining('At an unknown time'), findsNothing);
+  });
+
   testWidgets('a module drawn inside another is grouped under it', (
     tester,
   ) async {

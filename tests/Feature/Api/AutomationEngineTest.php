@@ -639,7 +639,9 @@ class AutomationEngineTest extends TestCase
             'the thrown text must still be kept SOMEWHERE - if this fails, dropping it '
             .'from disabled_reason lost it rather than moved it');
         $this->assertStringNotContainsString('internal address', $automation->disabled_reason);
-        $this->assertStringContainsString('run log', $automation->disabled_reason);
+        $this->assertStringContainsString('Run history', $automation->disabled_reason,
+            'the reason must name the control the user can actually see - the menu item '
+            .'at automations_screen.dart:301 is labelled "Run history"');
     }
 
     /**
