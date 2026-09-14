@@ -417,6 +417,27 @@ class HrInvitationsController extends Controller
      * The panel used to assert "nothing has been emailed" unconditionally, which
      * was true while nothing could send and became a lie the day something could.
      */
+    /**
+     * WHY THIS SEND IS HARDCODED, when Jose has ruled that email belongs in
+     * automations — "it should be an option to be enabled on automations, never
+     * hardcoded" (2026-09-14, relayed by Training).
+     *
+     * Because the ruling is about notifications ABOUT an event, and this is not
+     * one. The link IS the invitation: it is the only way in, and there is no
+     * other channel that produces the same act. An invitation that sends
+     * nothing until somebody first builds a rule is a broken feature rather
+     * than a configurable one, and the person who would report it is the person
+     * who cannot get in.
+     *
+     * The line, and it is worth keeping in one piece: everything ABOUT an event
+     * is automations' to configure; the thing that CONSTITUTES the act is not.
+     * The same boundary protects PasswordResetLink and EmailVerificationLink,
+     * which are the only other notification classes in the app and are both the
+     * mechanism kind. A welcome message on acceptance is on the other side of
+     * it and HR deliberately does not send one: `invitation.accepted` is
+     * declared and raised, so a company builds that rule itself the day an
+     * email action exists.
+     */
     private function deliver(Invitation $invitation, string $token): bool
     {
         // A handoff can SUCCEED while nothing leaves the building. `log`,
