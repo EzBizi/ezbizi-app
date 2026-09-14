@@ -122,6 +122,23 @@ class StaffSuggestionsController extends Controller
      * out deliberately and permanently — so an organization's notification
      * toggles cannot suppress it. That is consistent with the rest of this
      * module: the organization does not control this channel.
+     *
+     * ── IF YOU ARE ADDING EMAIL TO THE DISPATCHER, READ THIS ────────
+     *
+     * This bypass costs nothing today because the dispatcher writes a row and
+     * nothing else. The day it also sends mail, **every module gains email
+     * except this one**, silently — no error, no failing test, just an author
+     * who is told on the bell and never by post. Nothing here would fail; the
+     * row is still written and the bell still lights.
+     *
+     * The reason for the bypass does not go away (a staff request has no tenant
+     * for `idOrFail` to find), so the fix is not to route this through the
+     * dispatcher. It is to give the dispatcher a path that takes an explicit
+     * organization, and move this call onto it.
+     *
+     * Written here rather than in a document because this is the file you will
+     * have open. Recorded 2026-09-14, the day SES production access landed and
+     * made "somebody adds email" a question of when.
      */
     private function tell(Suggestion $row): void
     {
