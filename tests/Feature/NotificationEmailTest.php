@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Assignment;
 use App\Models\Notification;
 use App\Models\User;
 use App\Notifications\NotificationNotice;
@@ -46,6 +47,40 @@ class NotificationEmailTest extends TestCase
     private function set(array $tenant, string $key, mixed $value): void
     {
         $this->inTenant($tenant['org'], fn () => app(SettingsResolver::class)->set($key, $tenant['org'], $value));
+    }
+
+    /**
+     * N more people who stand at the organization, for the ceiling tests.
+     *
+     * The ASSIGNMENT is the part that matters and the part I got wrong first
+     * time. Creating active users with a role and no assignment produced an
+     * audience of one: standing at the organization is a row in `assignments`
+     * with `assigned_organization_id`, not the absence of a franchise. Without
+     * it these tests pass for a reason that has nothing to do with the ceiling.
+     *
+     * They share the admin's role rather than getting one each — fifty roles
+     * would be fifty facts the ceiling does not depend on.
+     */
+    private function orgLevelStaff(array $tenant, int $count, string $domain): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $count, $domain): void {
+            for ($i = 0; $i < $count; $i++) {
+                $user = User::create([
+                    'organization_id' => $tenant['org']->id,
+                    'role_id' => $tenant['admin']->role_id,
+                    'name' => "Person {$i}",
+                    'email' => "person{$i}@{$domain}.test",
+                    'password' => 'a-real-password',
+                    'is_active' => true,
+                ]);
+
+                Assignment::create([
+                    'organization_id' => $tenant['org']->id,
+                    'user_id' => $user->id,
+                    'assigned_organization_id' => $tenant['org']->id,
+                ]);
+            }
+        });
     }
 
     public function test_the_people_the_bell_told_are_the_people_who_are_emailed(): void
@@ -199,6 +234,67 @@ class NotificationEmailTest extends TestCase
         // row count here would report "Told 0 people" to a rule author whose
         // colleagues had just been emailed.
         $this->assertGreaterThan(0, $told);
+        NotificationFacade::assertSentTo($tenant['admin'], NotificationNotice::class);
+    }
+
+    /**
+     * The email ceiling, which I shipped in 94ab82a2 without a test.
+     *
+     * MAX_EMAIL_RECIPIENTS is 50 against the row ceiling's 200, because the two
+     * media fail differently: a bell nobody wanted is dismissed, and a mailshot
+     * nobody wanted is a complaint against a sending reputation shared by every
+     * organization on the platform. Above it, NOTHING is emailed rather than the
+     * first fifty — an arbitrary subset chosen by collection order makes "why
+     * did Bob get this and I did not" a question with no answer.
+     *
+     * Worth a test precisely because it is a guard that produces SILENCE. If it
+     * ever stopped firing, the only symptom would be mail going out, which is
+     * what the code looks like it should do anyway.
+     */
+    public function test_an_audience_above_the_email_ceiling_gets_the_bell_and_no_mail(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant('Theta');
+
+        // Fifty more, so the audience is fifty-one — one over. No franchise
+        // assignment, so each stands at the organization and has reach over it,
+        // the same branch the admin comes down.
+        $this->orgLevelStaff($tenant, 50, 'theta');
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+        ));
+
+        // The bell told all of them — the ceiling is the EMAIL ceiling, and the
+        // row ceiling of 200 is nowhere near.
+        $this->assertSame(51, $told);
+        $this->assertSame(51, $this->inTenant($tenant['org'], fn () => Notification::query()->count()));
+
+        // And not one of them was emailed.
+        NotificationFacade::assertNothingSent();
+    }
+
+    public function test_an_audience_at_the_ceiling_is_still_emailed(): void
+    {
+        NotificationFacade::fake();
+
+        // The control for the test above. Without it, that one passes just as
+        // well if email were broken outright, or if the ceiling were off by one
+        // in the other direction and silencing ordinary audiences.
+        $tenant = $this->provisionTenant('Iota');
+
+        $this->orgLevelStaff($tenant, 49, 'iota');
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+        ));
+
+        $this->assertSame(50, $told, 'exactly at the ceiling');
         NotificationFacade::assertSentTo($tenant['admin'], NotificationNotice::class);
     }
 
