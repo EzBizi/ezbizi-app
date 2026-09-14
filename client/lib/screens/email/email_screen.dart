@@ -100,6 +100,11 @@ class _EmailScreenState extends State<EmailScreen> {
 
   bool _loadingMailboxes = true;
   String? _mailboxesError;
+
+  /// The server's word for WHY the inbox list is empty, when it is.
+  /// null until the first load answers, which is why the fallback arm of
+  /// [_emptyTitle] is the old scope wording rather than a blank.
+  String? _emptyBecause;
   List<Mailbox> _mailboxes = const [];
   Mailbox? _selected;
 
@@ -193,6 +198,11 @@ class _EmailScreenState extends State<EmailScreen> {
         _mailboxesError = response.message;
         return;
       }
+
+      final meta = response.body['meta'];
+      _emptyBecause = meta is Map && meta['empty_because'] is String
+          ? meta['empty_because'] as String
+          : null;
 
       final data = response.data;
 
@@ -931,16 +941,13 @@ class _EmailScreenState extends State<EmailScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'No inbox belongs to this part of the business yet.',
+              _emptyTitle,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 6),
             Text(
-              'An inbox added on another company stays there — switch to that '
-              'company, or to the organization, to see it. Settings is where '
-              'one is added, and each role is then given the ones it should '
-              'be able to read.',
+              _emptyDetail,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
@@ -949,6 +956,33 @@ class _EmailScreenState extends State<EmailScreen> {
       ),
     ),
   );
+
+  /// Which empty this is, in the server's words. See `empty_because` in
+  /// MailboxesController::index — the screen used to guess and got it wrong
+  /// for everybody whose role simply held no grant.
+  String get _emptyTitle => switch (_emptyBecause) {
+        'none_granted' => 'Your role has not been given an inbox yet.',
+        'none_connected' => 'No inbox has been connected yet.',
+        _ => 'No inbox belongs to this part of the business yet.',
+      };
+
+  String get _emptyDetail => switch (_emptyBecause) {
+        // Do NOT send this person hunting through companies. The inboxes are
+        // here and in their view; the only thing missing is a grant, and only
+        // somebody who manages mailboxes can give it.
+        'none_granted' =>
+          'Inboxes have been set up, but none of them has been given to your '
+              'role yet. Somebody who manages mailboxes can do that in '
+              'Settings — until then there is nothing here to read.',
+        'none_connected' =>
+          'Nobody has added a shared inbox to this business yet. Settings is '
+              'where the first one is added, and each role is then given the '
+              'ones it should be able to read.',
+        _ => 'An inbox added on another company stays there — switch to that '
+            'company, or to the organization, to see it. Settings is where '
+            'one is added, and each role is then given the ones it should '
+            'be able to read.',
+      };
 
   Widget _panes(bool wide) {
     final openMailbox = _mailboxForOpen();

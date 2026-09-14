@@ -353,6 +353,90 @@ class MailboxesApiTest extends TestCase
         $this->signedInAs($insider)->getJson(self::ENDPOINT)->assertOk();
     }
 
+    /**
+     * An empty inbox list says WHICH empty it is, and the three differ.
+     *
+     * On 2026-09-14 eight people across two roles were being told "An inbox
+     * added on another company stays there -- switch to that company", and
+     * `mailbox_grants` was empty organization-wide. The inboxes were in their
+     * view and in front of them; nothing they could do in any company would
+     * have helped. The screen had guessed scope, which is the module's own bug
+     * family: it succeeded, it displayed, and it answered a question nobody
+     * had asked.
+     *
+     * All three arms are asserted in one test on purpose. Any one alone passes
+     * against a method that returns that string unconditionally, which is
+     * exactly the plausible-looking default this would decay into.
+     */
+    public function test_an_empty_inbox_list_says_which_empty_it_is(): void
+    {
+        $t      = $this->provisionTenant('A1-Group');
+        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view'], 'dispatch@a1.test');
+
+        // 1. NOTHING CONNECTED. No mailbox exists in the organization at all.
+        $this->signedInAs($reader)->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonPath('meta.empty_because', 'none_connected');
+
+        // 2. IN VIEW BUT NOT GRANTED. An organization-scoped inbox reaches
+        //    everybody, so this person can see that it exists and still holds
+        //    no grant for it -- the eight-people case.
+        $this->inbox($t, 'info@a-1chimney.com');
+
+        $this->signedInAs($reader)->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonPath('meta.empty_because', 'none_granted');
+
+        // 3. NOT EMPTY AT ALL. The administrator holds every inbox, so the
+        //    same request on the same data must publish no reason -- this is
+        //    what fails if the field is computed regardless of emptiness.
+        $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonPath('meta.empty_because', null)
+            ->assertJsonCount(1, 'data');
+    }
+
+    /**
+     * The third arm: an inbox that exists but is out of this person's view.
+     *
+     * Separated from the other two because it needs the mailbox to be the ONLY
+     * one and franchise-scoped, and because an untested fallback arm is how a
+     * three-way answer quietly becomes a one-way one -- the default is the
+     * wording everybody already gets, so a broken match would look unchanged.
+     */
+    public function test_an_inbox_out_of_view_is_reported_as_out_of_view(): void
+    {
+        $t      = $this->provisionTenant('A1-Group');
+        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view'], 'dispatch@a1.test');
+
+        // Organization-scoped, then LOOKED AT from a single franchise. Reach
+        // and current view are two different rules: this person reaches the
+        // whole organization, and `inView` still says no because they are
+        // standing in one franchise. That is the case the old wording was
+        // written for, and the only one it was ever right about.
+        $this->inbox($t, 'head-office@a-1chimney.com');
+
+        // THE CONTROL FIRST, and the order is not stylistic. `withHeader` sets
+        // a DEFAULT on the test case, so it survives into every later request
+        // in the same test -- a control placed after the franchise call still
+        // carries the franchise view and agrees with it for the wrong reason.
+        // Cost twenty minutes; written down so it costs nobody else any.
+        $this->signedInAs($reader)->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonPath('meta.empty_because', 'none_granted');
+
+        // Same person, same inbox, one header different. Reach and current
+        // view are two rules: this person reaches the whole organization, and
+        // `inView` still says no because they are standing in one franchise.
+        // That is the case the old wording was written for, and the only one
+        // it was ever right about.
+        $this->signedInAs($reader)
+            ->withHeader('X-EzBizi-View', 'franchise:'.$t['franchise']->id)
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->assertJsonPath('meta.empty_because', 'none_in_view');
+    }
+
     /** The control for the metadata test above: a public mail host connects. */
     public function test_a_mailbox_on_a_real_mail_host_connects(): void
     {
