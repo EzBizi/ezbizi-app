@@ -1839,6 +1839,22 @@ Route::prefix('v1')
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
 
+                    // This address has not been confirmed, so RequireVerifiedEmail
+                    // refuses every write (TODO #22). Carried here for exactly the
+                    // reason two_factor_enrolment_required above is: a refresh
+                    // restores the session from a stored token and never sees a
+                    // login body, so without it the app returns with every save
+                    // answering 403 and nothing on screen saying why.
+                    //
+                    // A boolean rather than the timestamp, following has_avatar:
+                    // the client's question is whether to show the banner, and a
+                    // date would make it derive that itself in a second place.
+                    //
+                    // Staff are never gated - the middleware exempts anything that
+                    // is not a User - so this is false for them and the banner
+                    // cannot appear on a staff session that could not act on it.
+                    'email_confirmation_required' => $user->email_verified_at === null,
+
                     // SECURITY exemption (Monitoring): the Lead Developer's own
                     // device is never screen-captured, live-viewed or
                     // remote-controlled. The desktop agent reads this to skip

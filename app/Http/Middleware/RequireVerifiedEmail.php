@@ -67,9 +67,22 @@ class RequireVerifiedEmail
         return response()->json([
             'message' => 'Confirm your email address before adding anything.',
             'code'    => 'email_unverified',
-            'detail'  => 'We sent a confirmation link when you signed up. You can view '
-                        .'everything here in the meantime, and ask for another link if '
-                        .'it did not arrive.',
+            // Says only what a reader can actually do, and that is a claim
+            // about the CLIENT rather than about this file.
+            //
+            // It briefly said less than this. The original wording told people
+            // to ask for another link while nothing in the Flutter client
+            // called POST auth/verify/resend - a sentence naming a control on
+            // no screen, which is worse than a shorter one because the reader
+            // believes there is a way out and goes looking for it. The
+            // endpoint existing was never the point; being reachable was.
+            //
+            // The chip is in the chrome now, wide and narrow both, and it
+            // calls that endpoint. If it is ever removed, shorten this back:
+            // the sentence is only true while the button is there.
+            'detail'  => 'We sent a confirmation link to your address when you signed '
+                        .'up. You can view everything here in the meantime, and the '
+                        .'"Confirm your email" button at the top will send another.',
         ], Response::HTTP_FORBIDDEN);
     }
 
