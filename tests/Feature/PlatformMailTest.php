@@ -571,10 +571,18 @@ class PlatformMailTest extends TestCase
     public function test_a_mail_server_pointing_back_into_our_network_is_refused(): void
     {
         /*
-         * The SSRF boundary, asserted HERE as well as in TenantSmtpHostTest,
-         * because that suite proves the guard works and this one proves the
-         * dispatcher actually calls it. A guard nothing invokes has a green
-         * suite of its own.
+         * THE SSRF BOUNDARY, and the guard behind it is the EMAIL MODULE'S.
+         *
+         * I wrote my own for this and deleted it: RemoteHostGuard already
+         * existed, already guarded this exact question on this exact kind of
+         * host, and does three things mine did not — allow-lists the port,
+         * carries an explicit metadata-address list, and resolves ONCE so the
+         * list that is judged is the list that is returned.
+         *
+         * The test stays HERE rather than moving to their suite, because what it
+         * pins is not that the guard works — theirs does that — but that this
+         * dispatcher CALLS it. A guard nothing invokes has a green suite of its
+         * own.
          */
         $this->tenantSmtp(['host' => '169.254.169.254']);
 
@@ -592,12 +600,38 @@ class PlatformMailTest extends TestCase
          * Pinned to the HOST refusal specifically. "Some CannotSendMail was
          * thrown" would be satisfied by the missing-field loop above it, or by
          * the not-connected branch, so this test would keep passing with the
-         * guard call deleted — which is the whole thing it exists to catch.
+         * approve() call deleted — which is the whole thing it exists to catch.
+         *
+         * Asserted on the SUBSTANCE, not the sentence. The wording belongs to
+         * the Email module now and a test of mine pinning their copy word for
+         * word goes red on a rewrite that keeps the meaning — a mistake already
+         * made once in this file today, on the settings card's note.
          */
-        $this->assertStringContainsString('is not a mail server EzBizi can send through', $refused->getMessage());
+        $this->assertStringContainsString('metadata', mb_strtolower($refused->getMessage()));
+        $this->assertStringContainsString('mail server name your provider gave you', $refused->getMessage());
+    }
 
-        // And it does not tell whoever typed it what they just found.
-        $this->assertStringNotContainsString('internal', mb_strtolower($refused->getMessage()));
+    public function test_a_port_no_mail_server_answers_on_is_refused(): void
+    {
+        /*
+         * MINE ACCEPTED ANY PORT, which is what made replacing my guard worth
+         * doing rather than merely tidy. A publicly routable host on port 22 is
+         * not a mail server, and a form that dials whatever port a tenant types
+         * is a network scanner with a text box — the host being public does not
+         * make the port harmless.
+         */
+        $this->tenantSmtp(['host' => 'smtp.gmail.com', 'port' => 22]);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A tenant could have dialled port 22 on a host of their choosing.');
+        $this->assertStringContainsString('22', $refused->getMessage());
     }
 }
 

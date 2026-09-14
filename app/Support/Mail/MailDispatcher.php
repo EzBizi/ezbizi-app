@@ -4,6 +4,8 @@ namespace App\Support\Mail;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
+use App\Support\Email\CannotReachHost;
+use App\Support\Email\RemoteHostGuard;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -43,6 +45,7 @@ class MailDispatcher
     public function __construct(
         private readonly PlatformIdentity $platform,
         private readonly SendingIdentityResolver $resolver,
+        private readonly RemoteHostGuard $hosts,
     ) {}
 
     /**
@@ -132,8 +135,9 @@ class MailDispatcher
      * anything — that sentence tells them what to do. A row whose credentials
      * are missing is a DIFFERENT fault: something was connected and the
      * password did not survive, which is not the tenant's mistake to fix by
-     * filling the same form in again. And {@see TenantSmtpHost} refuses a host
-     * that points back into our own network before anything dials it.
+     * filling the same form in again. And {@see \App\Support\Email\RemoteHostGuard}
+     * refuses a host that points back into our own network, or a port that is
+     * not one a mail server answers on, before anything dials it.
      *
      * @param  \App\Models\Organization|\App\Models\Company|\App\Models\Franchise  $scope
      * @param  string|array  $to
@@ -219,19 +223,72 @@ class MailDispatcher
             }
         }
 
-        TenantSmtpHost::guard((string) $credentials['host']);
+        $port = (int) ($credentials['port'] ?? 587);
+
+        /*
+         * THE GUARD IS THE EMAIL MODULE'S, NOT ONE OF MINE.
+         *
+         * I shipped a TenantSmtpHost for this in 79b5e142 and it was a worse
+         * copy of a control this project already had - on the very path it was
+         * written for, since ImapMailboxReader::reply() calls approve() one line
+         * before it sends. Deleted rather than kept beside it: two security
+         * guards for one question drift, and nothing tells the next reader which
+         * is authoritative.
+         *
+         * What it does that mine did not: allow-lists the PORT (mine accepted
+         * anything a tenant typed, which is a network scanner with a text box),
+         * carries an explicit metadata-address list, handles a host with two A
+         * records where only one is private, and resolves ONCE so the list that
+         * is judged is the list that is returned.
+         *
+         * CannotReachHost is translated, because a caller of this class catches
+         * CannotSendMail and should not have to know the Email module's
+         * exceptions to report a refusal.
+         */
+        try {
+            $approved = $this->hosts->approve(
+                (string) $credentials['host'],
+                $port,
+                RemoteHostGuard::SMTP_PORTS,
+            );
+        } catch (CannotReachHost $e) {
+            throw new CannotSendMail($e->getMessage(), $identity);
+        }
 
         return [
             'transport'  => 'smtp',
-            'host'       => (string) $credentials['host'],
-            'port'       => (int) ($credentials['port'] ?? 587),
+
+            /*
+             * THE NAME, NOT $approved->address, AND THIS IS THE ONE PLACE THIS
+             * PATH IS WEAKER THAN THE EMAIL MODULE'S.
+             *
+             * ImapSocket dials $approved->socketTarget() - the IP that was
+             * actually checked - and passes the hostname as OpenSSL's peer_name
+             * so the certificate is still verified against the name. That closes
+             * DNS rebinding outright, which I had wrongly told the deploy desk
+             * was impossible in PHP.
+             *
+             * Mail::build() hands the host to Symfony's EsmtpTransport, which
+             * resolves it AGAIN when it dials, and Laravel's array config has no
+             * way to pass an address and a separate peer_name. So a record with
+             * a one-second TTL can still answer publicly for approve() and
+             * privately for the connection. Everything approve() checks holds;
+             * the re-resolution is the gap.
+             *
+             * The real fix is to send through the Email module's hardened socket
+             * rather than Mail::build, and that decision belongs with the screen
+             * that will first write these credentials - nothing can write them
+             * today, so nothing reaches this line.
+             */
+            'host'       => $approved->host,
+            'port'       => $approved->port,
             'username'   => (string) $credentials['username'],
             'password'   => (string) $credentials['password'],
             'encryption' => $credentials['encryption'] ?? 'tls',
 
             // Bounded, because the host is a stranger's machine. Without it a
             // queue worker blocks on a black-holed port until PHP's own limit.
-            'timeout'    => 15,
+            'timeout'    => RemoteHostGuard::CONNECT_TIMEOUT_SECONDS,
         ];
     }
 
