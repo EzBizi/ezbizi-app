@@ -19,10 +19,10 @@ return [
         // JWT flow, server-side app. Created 2026-09-14 on the A-1 Chimney
         // account as "EzBizi Reports": private, production, scope Read Call Log
         // ONLY. Values in H:/Development/Credentials/, never in git.
-        'server'        => env('RINGCENTRAL_SERVER', 'https://platform.ringcentral.com'),
-        'client_id'     => env('RINGCENTRAL_CLIENT_ID'),
+        'server' => env('RINGCENTRAL_SERVER', 'https://platform.ringcentral.com'),
+        'client_id' => env('RINGCENTRAL_CLIENT_ID'),
         'client_secret' => env('RINGCENTRAL_CLIENT_SECRET'),
-        'jwt'           => env('RINGCENTRAL_JWT'),
+        'jwt' => env('RINGCENTRAL_JWT'),
     ],
 
     /*
@@ -39,10 +39,16 @@ return [
      * eight states are missing with nothing saying so. That is the "too small
      * to notice" failure this module keeps meeting.
      *
-     * UNTESTED AND WORTH TESTING FIRST: whether the Nationwide key returns
-     * sub-account data. If it does, one entry here is enough. If it does not,
-     * every state needs its own key. One call answers it, and it should be
-     * answered before anybody reads a number off this report.
+     * MEASURED 2026-09-14, and the answer is the bad one: THE ACCOUNTS ARE
+     * DISJOINT. Asked with the NJ sub-account's own v1 token against the
+     * Nationwide one, both directions, `job/get/{uuid}` answers 204 No Content
+     * for the other account's job — while NJ answering 200 for its OWN job is
+     * the control that makes those 204s readable as "not in this account"
+     * rather than "this token reads nothing". The two books share zero UUIDs.
+     *
+     * So Nationwide is not a parent view; it is a tenth book. One entry here
+     * covers one account and NINE ARE MISSING, which is exactly the partial
+     * answer that looks complete. Hence `accounts()` returning names.
      *
      * Shape: `WORKIZ_API_TOKENS="Nationwide=abc|CT=def|NJ=ghi"`. One entry is
      * valid. An env var cannot hold an array, and a map keyed by the account's
@@ -59,9 +65,9 @@ return [
      * Clients, …) each defaulting to **No access**.
      *
      * So the key this report uses should grant **Jobs, read only**, and nothing
-     * else. That is all `WorkizJobs` touches: `job/all`, a GET. "Existing
-     * client" is derived from job history rather than from a client lookup, so
-     * even Clients is unnecessary.
+     * else. That is all `WorkizJobs` touches: `job/all`, a GET. New-versus-
+     * existing comes off the RingCentral queue the caller chose, so Clients is
+     * unnecessary too.
      *
      * The lesson is the one this module keeps relearning: a page's own summary
      * of what it does is a claim, not a reading. I quoted it as a measurement.
