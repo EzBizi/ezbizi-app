@@ -314,4 +314,31 @@ void main() {
       it.heartbeat.dispose();
     });
   });
+
+  testWidgets('a listener that throws cannot break the beat or a module switch',
+      (tester) async {
+    // `onBeat` belongs to Phone (commit 09641747) and is called at the end of
+    // `_post`, which `enter()` AWAITS. So an exception from that callback used
+    // to propagate out of "the person switched module" — a presence fetch
+    // failing would have taken the nav rail down with it, in a module that has
+    // nothing to do with either.
+    final h = harness();
+    h.heartbeat.onBeat = () => throw StateError('the listener is broken');
+
+    // Must not throw. This is the assertion; the rest is control.
+    await h.heartbeat.enter('jobs');
+
+    // Control 1: the beat still went out, so surviving the throw is the guard
+    // working rather than `_post` having bailed before it posted.
+    expect(h.posted, hasLength(1));
+    expect(h.posted.single['current_module'], 'jobs');
+
+    // Control 2: a SECOND switch still beats. A guard that swallowed the error
+    // but left the object wedged would pass the line above and fail here.
+    await h.heartbeat.enter('customers');
+    expect(h.posted, hasLength(2));
+    expect(h.posted.last['current_module'], 'customers');
+
+    h.heartbeat.dispose();
+  });
 }
