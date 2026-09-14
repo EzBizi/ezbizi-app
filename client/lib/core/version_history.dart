@@ -12,7 +12,7 @@ class VersionHistory {
       date: '14 Sep 2026',
       items: [
         'The notice that tells somebody their screen is being controlled now appears in the app itself, not only as a Windows tray message. It could previously only appear while the EzBizi window was closed to the tray, so anyone sitting in front of the open app was not told. It is still off unless your organisation turns it on.',
-        'Reports has a first Experimental report: how many calls each person took, per day. It needs somebody who can build reports, not only view them, and the tab is hidden from everybody else rather than refusing them after they tap it. Until your organisation connects RingCentral and Workiz it says so in plain words instead of showing a zero.',
+        'Reports has a first Experimental report: how many calls each person took, per day. It needs somebody who can build reports, not only view them, and the tab is hidden from everybody else rather than refusing them after they tap it. Where your organisation has not connected RingCentral or Workiz it says so in plain words instead of leaving you to read a blank.',
         'The report builder no longer offers Current tab as a column. It is overwritten every few seconds, so an exported report showed a value that was true only at the moment of export, and it printed an internal name where the rest of the app shows a proper one.',
       ],
     ),
