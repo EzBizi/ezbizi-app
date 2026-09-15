@@ -384,7 +384,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                       ],
                     ],
                   ),
-                  subtitle: Text('${a['customer_id']}'),
+                  // A manager's row says what the click actually does. It
+                  // reads every account beneath it - one Google query each -
+                  // which is the same fan-out that was just taken OFF page
+                  // load, and the only thing that makes it correct here is
+                  // that somebody chose it knowing what it was.
+                  subtitle: Text(
+                    a['is_manager'] == true
+                        ? '${a['customer_id']} - reads every account beneath it'
+                        : '${a['customer_id']}',
+                  ),
                   onTap: () {
                     setState(() => _selected = id);
                     _loadReport();

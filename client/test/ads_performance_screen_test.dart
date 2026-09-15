@@ -465,6 +465,16 @@ void main() {
       },
     );
 
+    // Before the click, the row says what the click costs - this is the one
+    // fan-out left on the screen and the only thing that makes it correct is
+    // that somebody chose it knowing what it was.
+    expect(
+      find.textContaining('reads every account beneath it'),
+      findsOneWidget,
+      reason: 'a manager row that looks like any other row makes the fan-out a '
+          'surprise rather than a choice',
+    );
+
     await tester.tap(find.byKey(const ValueKey('ads-account-m1')));
     await tester.pumpAndSettle();
 
