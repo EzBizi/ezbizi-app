@@ -848,12 +848,22 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
+  /// Every area's week at once.
+  ///
+  /// Jose asked for this directly, and it replaces three cards that were each
+  /// answering a smaller question: the slot pattern, an Add button the rail
+  /// already has, and a list of which areas differ from the pattern. The last
+  /// one is the interesting deletion — a table showing every area's days SHOWS
+  /// the differences, so a card naming them was a worse version of the same
+  /// answer. "It is normal for them not to be the same" was the reason given,
+  /// and a screen that treats difference as an exception to be listed argues
+  /// the opposite.
+  ///
+  /// A closed day is a dash, not a zero. `week[weekday]` is null when the area
+  /// has no rows for that day, and the storage cannot express "open and takes
+  /// nothing" — see the class docblock.
   Widget _overview() {
     final theme = Theme.of(context);
-    final differing =
-        _areas.where((a) => a['follows_pattern'] == false).toList();
-    final slots =
-        (_pattern?['slots'] as List? ?? const []).cast<Map<String, dynamic>>();
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
@@ -861,8 +871,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         Text('Capacity', style: theme.textTheme.titleMedium),
         const SizedBox(height: 2),
         Text(
-          'Most franchises run one pattern everywhere. Set it here, then open '
-          'an area on the left to give it different numbers.',
+          'Jobs each service area can take per day. Open one on the left to '
+          'change its hours.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -872,115 +882,95 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ErrorNote(_paneError!),
           const SizedBox(height: 12),
         ],
-        _card(
-          theme,
-          title: 'Your slot pattern',
-          badge: _pattern == null
-              ? 'nothing set up yet'
-              : 'followed by ${_pattern!['followed_by']} of ${_pattern!['of']} areas',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (slots.isEmpty)
-                Text(
-                  'No area has slots yet. Open one and set its week.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                )
-              else
-                Text(
-                  _describePattern(slots),
-                  style: theme.textTheme.bodyMedium,
-                ),
-            ],
-          ),
-        ),
-        // The design's third card, and the one whose absence made this screen
-        // a dead end: with no areas and no way to add one, nothing else on it
-        // could ever be reached.
-        _card(
-          theme,
-          title: 'Service areas and zip codes',
-          badge: _areas.isEmpty
-              ? 'none yet'
-              : '${_areas.length} ${_areas.length == 1 ? 'area' : 'areas'} · '
-                    '${_areas.fold<int>(0, (n, a) => n + ((a['zip_count'] as int?) ?? 0))} zips',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _areas.isEmpty
-                    ? 'Add the places this business works — Dallas, Houston — '
-                          'then give each one its zip codes and its week.'
-                    : 'A zip belongs to exactly one area, so a search by zip is '
-                          'never ambiguous.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  onPressed: _startCreate,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add service area'),
-                ),
-              ),
-            ],
-          ),
-        ),
-        _card(
-          theme,
-          title: 'Areas that differ',
-          badge: '${differing.length}',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (differing.isEmpty)
-                // "in this view", because the rail is franchiseIds()-scoped.
-                //
-                // An ALL-CLEAR is worse to get wrong than an empty state. An
-                // empty state that overclaims sends somebody to look and they
-                // find out; this one tells them nothing needs their attention,
-                // so they do not look at all. At a franchise view an
-                // off-pattern area in a sibling franchise is invisible here,
-                // and "every area follows the pattern" would have said the
-                // company was consistent when it was not.
-                //
-                // Depends on the rail staying scoped; pinned in
-                // scheduling_capacity_test.dart rather than left to this
-                // comment, because a comment is not a gate.
-                Text(
-                  'Every area in this view follows the pattern.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                )
-              else
-                for (final area in differing)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(area['name'] as String? ?? ''),
-                    trailing: const Icon(Icons.chevron_right, size: 18),
-                    onTap: () => _openArea_(area['id'] as String),
-                  ),
-              const SizedBox(height: 4),
-              Text(
-                'Listed so an exception cannot be forgotten. An area appears '
-                'here only once somebody edits it directly, which is the only '
-                'way to differ.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
+        if (_areas.isEmpty)
+          Text(
+            'No service areas in this view. Add one with + above the list to '
+            'say where this business works.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else
+          _allAreasWeek(theme),
       ],
     );
+  }
+
+  /// Areas down, weekdays across — scrolling sideways rather than wrapping.
+  ///
+  /// Seven columns plus a name does not fit a phone, and the module's own rule
+  /// is that a week grid must never force a horizontal drag on the page. Here
+  /// it is the TABLE that scrolls, inside its own viewport, so the page itself
+  /// still does not — the compromise the 375px layouts already make elsewhere.
+  Widget _allAreasWeek(ThemeData theme) {
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: EzBiziTheme.edge(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columnSpacing: 22,
+              horizontalMargin: 16,
+              headingRowHeight: 38,
+              dataRowMinHeight: 38,
+              dataRowMaxHeight: 44,
+              columns: [
+                const DataColumn(label: Text('Area')),
+                for (final (_, label) in _week)
+                  DataColumn(label: Text(label), numeric: true),
+              ],
+              rows: [
+                for (final area in _areas)
+                  DataRow(
+                    // The row is the way in, so the table does the rail's job
+                    // for somebody already reading it.
+                    onSelectChanged: (_) => _openArea_(area['id'] as String),
+                    cells: [
+                      DataCell(Text(area['name'] as String? ?? '')),
+                      for (final (weekday, _) in _week)
+                        DataCell(_weekCell(theme, area, weekday)),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Text('A dash is a day that area is closed.', style: muted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weekCell(ThemeData theme, Map<String, dynamic> area, int weekday) {
+    final week = area['week'] as Map<String, dynamic>?;
+
+    // String keys: PHP's int-keyed array arrives as a JSON object, and JSON
+    // object keys are always strings.
+    final jobs = week?['$weekday'];
+
+    if (jobs == null) {
+      return Text(
+        '—',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Text('$jobs', style: theme.textTheme.bodyMedium);
   }
 
   Widget _areaPane({required bool showBack}) {
@@ -1315,82 +1305,100 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
+  /// One ROW per day, not one card.
+  ///
+  /// Seven cards with their own padding, borders and a full-height button each
+  /// filled the screen for twenty-one numbers. Jose's words: "the days are
+  /// massive for no reason and cover most of the screen". A day is a label, its
+  /// hours, a number and a switch — a row's worth of information given a card's
+  /// worth of space.
+  ///
+  /// A closed day collapses to a single line, because a closed day has nothing
+  /// to edit and should not cost the same height as one that does.
   Widget _dayEditor(ThemeData theme, int weekday, String label) {
     final slots = _grid[weekday];
     final closed = slots == null || slots.isEmpty;
+    final muted = theme.colorScheme.onSurfaceVariant;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: EzBiziTheme.edge(context)),
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: EzBiziTheme.edge(context)),
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 8, 8, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(label, style: theme.textTheme.titleSmall),
-                ),
-                if (closed)
-                  TextButton(
-                    onPressed: () => _openDay(weekday),
-                    child: const Text('Open'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 46,
+            child: Text(label, style: theme.textTheme.titleSmall),
+          ),
+          Expanded(
+            child: closed
+                ? Text(
+                    'Closed',
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
                   )
-                else
-                  TextButton(
-                    onPressed: () => _closeDay(weekday),
-                    child: const Text('Close'),
-                  ),
-              ],
-            ),
-            if (closed)
-              Text(
-                'Closed',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              )
-            else
-              for (var i = 0; i < slots.length; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          '${slots[i]['start_time']} – ${slots[i]['end_time']}',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                      SizedBox(
-                        width: 64,
-                        child: TextFormField(
-                          key: ValueKey('slot-$weekday-$i-${slots[i]['start_time']}'),
-                          initialValue: '${slots[i]['max_jobs']}',
-                          textAlign: TextAlign.center,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: OutlineInputBorder(),
+                      for (var i = 0; i < slots.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${slots[i]['start_time']} – ${slots[i]['end_time']}',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 56,
+                                child: TextFormField(
+                                  key: ValueKey(
+                                    'slot-$weekday-$i-${slots[i]['start_time']}',
+                                  ),
+                                  initialValue: '${slots[i]['max_jobs']}',
+                                  textAlign: TextAlign.center,
+                                  keyboardType: TextInputType.number,
+                                  style: theme.textTheme.bodyMedium,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 6,
+                                    ),
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  onChanged: (value) {
+                                    final n = int.tryParse(value);
+                                    // Zero is not storable and the server
+                                    // refuses it. Closing a day is the Close
+                                    // button, not a zero.
+                                    if (n != null && n > 0) {
+                                      slots[i]['max_jobs'] = n;
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
-                          onChanged: (value) {
-                            final n = int.tryParse(value);
-                            // Zero is not storable and the server refuses it.
-                            // Closing a day is the Close button, not a zero.
-                            if (n != null && n > 0) slots[i]['max_jobs'] = n;
-                          },
                         ),
-                      ),
                     ],
                   ),
-                ),
-          ],
-        ),
+          ),
+          TextButton(
+            onPressed: () => closed ? _openDay(weekday) : _closeDay(weekday),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(56, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              visualDensity: VisualDensity.compact,
+            ),
+            child: Text(closed ? 'Open' : 'Close'),
+          ),
+        ],
       ),
     );
   }
@@ -1432,23 +1440,5 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         ),
       ),
     );
-  }
-
-  /// "Three windows a day, two jobs each" from the rows themselves.
-  String _describePattern(List<Map<String, dynamic>> slots) {
-    final days = slots.map((s) => s['weekday']).toSet().length;
-    final windows = slots
-        .map((s) => '${s['start_time']}–${s['end_time']}')
-        .toSet()
-        .toList()
-      ..sort();
-    final jobs = slots.map((s) => s['max_jobs']).toSet();
-
-    final capacity = jobs.length == 1
-        ? '${jobs.first} job${jobs.first == 1 ? '' : 's'} each'
-        : 'varying capacity';
-
-    return '${windows.join(', ')} — $capacity, across $days '
-        '${days == 1 ? 'day' : 'days'}.';
   }
 }
