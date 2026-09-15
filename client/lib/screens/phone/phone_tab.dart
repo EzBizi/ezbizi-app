@@ -40,6 +40,21 @@ class _PhoneTabState extends State<PhoneTab> {
   /// staleness the switch used to avoid by rebuilding.
   int _visits = 0;
 
+  /// ORDER IS LOAD-BEARING: `_section` is an INDEX into this list.
+  ///
+  /// Not a key, an index — so inserting an entry in the middle silently
+  /// renumbers every pane after it, and the chips keep drawing correctly while
+  /// pointing at the wrong screens. Nothing fails; it just stops being the
+  /// thing you clicked.
+  ///
+  /// UI/UX hit exactly this in the Settings pane list on 2026-09-15, slotting
+  /// a new entry beside a related one and turning thirteen tests red — and
+  /// that was the lucky outcome, because tests happened to name the panes.
+  /// Here the IndexedStack below maps indexes by hand (`_section <= 1 ? 0 :
+  /// _section - 1`), so an insert breaks that arithmetic too.
+  ///
+  /// APPEND. If a new section genuinely belongs in the middle, move the
+  /// IndexedStack to named sections first.
   static const _sections = <(String, IconData)>[
     ('Dial', Icons.dialpad_outlined),
     ('Team', Icons.groups_outlined),
