@@ -396,9 +396,28 @@ class SettingsApiTest extends TestCase
      * rather than an argument, and the last one is the control: without it,
      * "still 403" would equally describe an endpoint nobody can reach.
      *
-     * The property is the one the sweep was actually about — somebody let go
-     * stops being able to write — and nothing pinned it at the API level.
-     * Deactivation is the control you reach for at the worst possible moment.
+     * WHAT IT DOES NOT PIN, because the sweep that prompted it was retracted
+     * the next hour and the retraction is the more useful half.
+     *
+     * "Somebody let go stops being able to write" is NOT held up by this test,
+     * and a reader who thinks it is would be trusting the thinnest of the three
+     * mechanisms. The product refuses them twice over before anything here is
+     * reached, and I read all three rather than taking the correction:
+     *
+     *   AuthenticateUser:93    a deactivated account fails the password path
+     *   AuthenticateUser:209   and the second-step path after it
+     *   HrPeopleController:386 deactivating through HR DELETES their tokens
+     *
+     * So the ordinary path leaves them unable to sign in and holding nothing to
+     * sign in with. What this test covers is the residual: a session already
+     * open when somebody is deactivated by a DIRECT DATABASE WRITE, outside the
+     * HR flow, whose tokens therefore survive. `Sanctum::actingAs` is that
+     * shape exactly — it mints reach without going near the login the real
+     * account would have failed.
+     *
+     * Narrow, real, and worth one test. Stated at its true size because a test
+     * believed to guard more than it does is how the guard that actually
+     * matters stops being checked.
      *
      * The read is the control. Without it this passes against a suspended
      * account that cannot reach the endpoint at all, or a scope id that was
