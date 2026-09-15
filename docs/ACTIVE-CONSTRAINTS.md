@@ -421,3 +421,29 @@ reproduced. The correlation with the schema is strong; the causal chain has a ga
 in it and nobody has closed it.
 
 So: **check `DB_DATABASE` before concluding anything about this machine.**
+
+**COUNTER-EVIDENCE, added hours later, and it breaks the tidy half of this
+section.** Phone hit the identical 1698 twice - 335 errors, then 68 on the same
+suite and unchanged tree, then 364/364 clean minutes later - while running in
+their OWN schema throughout. They proved which schema by artefact rather than by
+reasoning about PHPUnit precedence: `phone_callbacks` is a table only their
+migration creates, and it exists in `ezbizi_testing_phone` and NOT in the bare
+`ezbizi_testing`. So the env var really did win, and an isolated schema produced
+1698 anyway.
+
+They named what keeps it from being a clean refutation, which is why it is worth
+believing: they cannot see whether another session is also in
+`ezbizi_testing_phone` (an `ezbizi_testing_phoneivr` exists, so somebody has
+worked this module from another seat), and **there are 58 `ezbizi_testing*`
+schemas**, every one running the full migration set on every `RefreshDatabase`.
+So whatever 1698 is, it happens on one MySQL under very heavy concurrent DDL.
+
+**1698 is an AUTH code and every theory anyone has offered is about something
+else** - which is usually the shape of a symptom nobody has found the cause of.
+Two sessions, two mechanisms proposed, both wrong or unproven, and SES's plain
+`mysql` CLI returning it once and never again is still unexplained.
+
+So the honest state: **§4 collisions are real and cost an hour today, AND they do
+not explain 1698.** If you see it, re-run before reporting; if it reproduces on a
+quiet tree, capture `SHOW PROCESSLIST` and the server error log at that moment -
+that is the evidence nobody has yet.
