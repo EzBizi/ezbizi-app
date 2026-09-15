@@ -23,9 +23,12 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
@@ -87,7 +90,7 @@ class LeadsController extends Controller
         // organization; this narrows to the places this person can act on, so
         // a branch manager sees their branch's enquiries and not the group's.
         $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-        $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+        $companyIds = $user->reachableCompanies()->pluck('id')->all();
 
         if (! $user->canActOnOrganization($user->organization)) {
             $query->where(function ($q) use ($companyIds, $franchiseIds) {
@@ -226,11 +229,11 @@ class LeadsController extends Controller
         return response()->json([
             'data' => array_map(fn (Lead $l) => $this->present($l), $leads->items()),
             'meta' => [
-                'total'        => $leads->total(),
-                'per_page'     => $leads->perPage(),
+                'total' => $leads->total(),
+                'per_page' => $leads->perPage(),
                 'current_page' => $leads->currentPage(),
-                'last_page'    => $leads->lastPage(),
-                'connections'  => $this->connectionState(),
+                'last_page' => $leads->lastPage(),
+                'connections' => $this->connectionState(),
             ],
         ]);
     }
@@ -271,8 +274,8 @@ class LeadsController extends Controller
         return response()->json(['data' => $data]);
     }
 
-    /** @return \Illuminate\Support\Collection<int, Customer> */
-    private function customerMatches(Lead $lead): \Illuminate\Support\Collection
+    /** @return Collection<int, Customer> */
+    private function customerMatches(Lead $lead): Collection
     {
         $digits = $lead->phone_digits;
 
@@ -320,20 +323,20 @@ class LeadsController extends Controller
         $input = $request->validate([
             // A lead placed in a franchise prefills this; one at company level
             // has none, and the person picks.
-            'franchise_id'  => ['sometimes', 'uuid', $this->existsInTenant('franchises')],
-            'customer_id'   => ['nullable', 'uuid', $this->existsInTenant('customers')],
-            'customer'      => ['sometimes', 'array'],
+            'franchise_id' => ['sometimes', 'uuid', $this->existsInTenant('franchises')],
+            'customer_id' => ['nullable', 'uuid', $this->existsInTenant('customers')],
+            'customer' => ['sometimes', 'array'],
             'customer.name' => ['nullable', 'string', 'max:200'],
-            'customer.phone'=> ['nullable', 'string', 'max:40'],
-            'customer.email'=> ['nullable', 'email', 'max:200'],
+            'customer.phone' => ['nullable', 'string', 'max:40'],
+            'customer.email' => ['nullable', 'email', 'max:200'],
             'customer.address_line1' => ['nullable', 'string', 'max:200'],
             'customer.address_line2' => ['nullable', 'string', 'max:200'],
-            'customer.city'          => ['nullable', 'string', 'max:100'],
-            'customer.state'         => ['nullable', 'string', 'size:2'],
-            'customer.postal_code'   => ['nullable', 'string', 'max:20'],
-            'title'         => ['required', 'string', 'max:200'],
-            'status'        => ['required', 'string', 'max:60'],
-            'description'   => ['nullable', 'string', 'max:10000'],
+            'customer.city' => ['nullable', 'string', 'max:100'],
+            'customer.state' => ['nullable', 'string', 'size:2'],
+            'customer.postal_code' => ['nullable', 'string', 'max:20'],
+            'title' => ['required', 'string', 'max:200'],
+            'status' => ['required', 'string', 'max:60'],
+            'description' => ['nullable', 'string', 'max:10000'],
             'scheduled_for' => ['nullable', 'date'],
         ]);
 
@@ -368,27 +371,27 @@ class LeadsController extends Controller
 
         $result = DB::transaction(function () use ($lead, $input, $franchise, $existing, $user) {
             $customer = $existing;
-            $created  = false;
+            $created = false;
 
             if ($customer === null) {
                 $details = (array) ($input['customer'] ?? []);
 
                 $customer = Customer::create([
                     'owning_franchise_id' => $franchise->getKey(),
-                    'number'              => $this->numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
-                    'name'                => trim((string) ($details['name'] ?? '')) ?: ($lead->contact_name ?: ($lead->phone ?: 'Enquirer')),
-                    'phone'               => trim((string) ($details['phone'] ?? '')) ?: $lead->phone,
-                    'email'               => trim((string) ($details['email'] ?? '')) ?: $lead->email,
-                    'address_line1'       => $details['address_line1'] ?? null,
-                    'address_line2'       => $details['address_line2'] ?? null,
-                    'city'                => $details['city'] ?? null,
-                    'state'               => isset($details['state']) ? strtoupper($details['state']) : null,
-                    'postal_code'         => $details['postal_code'] ?? null,
+                    'number' => $this->numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
+                    'name' => trim((string) ($details['name'] ?? '')) ?: ($lead->contact_name ?: ($lead->phone ?: 'Enquirer')),
+                    'phone' => trim((string) ($details['phone'] ?? '')) ?: $lead->phone,
+                    'email' => trim((string) ($details['email'] ?? '')) ?: $lead->email,
+                    'address_line1' => $details['address_line1'] ?? null,
+                    'address_line2' => $details['address_line2'] ?? null,
+                    'city' => $details['city'] ?? null,
+                    'state' => isset($details['state']) ? strtoupper($details['state']) : null,
+                    'postal_code' => $details['postal_code'] ?? null,
                 ]);
                 $created = true;
 
                 $this->audit->log('customer.created', $customer, [
-                    'number'    => $customer->number,
+                    'number' => $customer->number,
                     'from_lead' => $lead->getKey(),
                 ], actor: $user);
 
@@ -398,20 +401,20 @@ class LeadsController extends Controller
             }
 
             $job = Job::create([
-                'franchise_id'  => $franchise->getKey(),
-                'customer_id'   => $customer->getKey(),
-                'number'        => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
-                'title'         => $input['title'],
-                'status'        => $input['status'],
-                'description'   => $input['description'] ?? null,
+                'franchise_id' => $franchise->getKey(),
+                'customer_id' => $customer->getKey(),
+                'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                'title' => $input['title'],
+                'status' => $input['status'],
+                'description' => $input['description'] ?? null,
                 'scheduled_for' => $input['scheduled_for'] ?? null,
-                'currency'      => strtoupper($franchise->currency ?: 'USD'),
+                'currency' => strtoupper($franchise->currency ?: 'USD'),
             ]);
 
             $this->audit->log('job.created', $job, [
                 'franchise' => $franchise->name,
-                'customer'  => $customer->name,
-                'number'    => $job->number,
+                'customer' => $customer->name,
+                'number' => $job->number,
                 'from_lead' => $lead->getKey(),
                 'customer_owned_by_other_franchise' => $customer->owning_franchise_id !== $franchise->getKey(),
             ], actor: $user);
@@ -434,10 +437,10 @@ class LeadsController extends Controller
 
             $this->events->emit('lead.converted', $lead, [
                 'before' => ['status' => $before],
-                'after'  => [
-                    'status'      => $lead->status,
-                    'source'      => $lead->source,
-                    'job_id'      => $job->getKey(),
+                'after' => [
+                    'status' => $lead->status,
+                    'source' => $lead->source,
+                    'job_id' => $job->getKey(),
                     'customer_id' => $customer->getKey(),
                 ],
             ]);
@@ -447,10 +450,10 @@ class LeadsController extends Controller
 
         return response()->json([
             'data' => [
-                'lead'             => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name'])),
-                'customer'         => $result['customer']->only(['id', 'number', 'name', 'phone', 'email']),
+                'lead' => $this->present($lead->fresh()->load(['company:id,name', 'franchise:id,name', 'job', 'noteBy:id,name'])),
+                'customer' => $result['customer']->only(['id', 'number', 'name', 'phone', 'email']),
                 'customer_created' => $result['customer_created'],
-                'job'              => $this->presentJob($result['job']),
+                'job' => $this->presentJob($result['job']),
             ],
         ], Response::HTTP_CREATED);
     }
@@ -459,15 +462,15 @@ class LeadsController extends Controller
     private function presentJob(Job $job): array
     {
         return [
-            'id'            => $job->id,
-            'number'        => $job->number,
-            'title'         => $job->title,
-            'status'        => $job->status,
+            'id' => $job->id,
+            'number' => $job->number,
+            'title' => $job->title,
+            'status' => $job->status,
             'scheduled_for' => $job->scheduled_for?->toIso8601String(),
         ];
     }
 
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')->where('organization_id', $this->tenant->idOrFail());
     }
@@ -476,13 +479,13 @@ class LeadsController extends Controller
     private function presentConversation(LeadConversation $c): array
     {
         return [
-            'id'            => $c->id,
-            'channel'       => $c->channel,
-            'from'          => $c->participant,
-            'occurred_at'   => $c->occurred_at?->toIso8601String(),
-            'duration_ms'   => $c->duration_ms,
-            'text'          => $c->text,
-            'attachments'   => $c->attachments ?? [],
+            'id' => $c->id,
+            'channel' => $c->channel,
+            'from' => $c->participant,
+            'occurred_at' => $c->occurred_at?->toIso8601String(),
+            'duration_ms' => $c->duration_ms,
+            'text' => $c->text,
+            'attachments' => $c->attachments ?? [],
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,
@@ -555,7 +558,7 @@ class LeadsController extends Controller
 
         $this->audit->log('lead.replied', $lead, [
             'conversation_id' => $row->id,
-            'characters'      => mb_strlen($text),
+            'characters' => mb_strlen($text),
         ], actor: $request->user());
 
         return response()->json(['data' => $this->presentConversation($row)], Response::HTTP_CREATED);
@@ -605,12 +608,12 @@ class LeadsController extends Controller
 
         $this->audit->log('lead.recording_played', $lead, [
             'conversation_id' => $row->id,
-            'occurred_at'     => $row->occurred_at?->toIso8601String(),
-            'duration_ms'     => $row->duration_ms,
+            'occurred_at' => $row->occurred_at?->toIso8601String(),
+            'duration_ms' => $row->duration_ms,
         ], actor: $request->user());
 
         return response($audio->body(), Response::HTTP_OK, [
-            'Content-Type'  => $audio->header('Content-Type') ?: 'audio/mpeg',
+            'Content-Type' => $audio->header('Content-Type') ?: 'audio/mpeg',
             'Cache-Control' => 'private, no-store',
         ]);
     }
@@ -627,9 +630,9 @@ class LeadsController extends Controller
         $this->authorize('update', $lead);
 
         $input = $request->validate([
-            'status'  => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
+            'status' => ['sometimes', 'string', Rule::in(Lead::STATUSES)],
             'starred' => ['sometimes', 'boolean'],
-            'note'    => ['sometimes', 'nullable', 'string', 'max:4000'],
+            'note' => ['sometimes', 'nullable', 'string', 'max:4000'],
         ]);
 
         // Star and note are marks, not decisions: no event, one audit row
@@ -642,14 +645,14 @@ class LeadsController extends Controller
             $note = trim((string) $input['note']) ?: null;
 
             if ($note !== $lead->note) {
-                $lead->note            = $note;
+                $lead->note = $note;
                 $lead->note_by_user_id = $note === null ? null : $request->user()->getKey();
                 $lead->note_updated_at = $note === null ? null : now();
             }
         }
 
         $statusChanges = array_key_exists('status', $input) && $input['status'] !== $lead->status;
-        $before        = $lead->status;
+        $before = $lead->status;
 
         if (! $statusChanges && ! $lead->isDirty()) {
             // The same load as the other return path. Without it, starring a
@@ -671,7 +674,7 @@ class LeadsController extends Controller
             if ($statusChanges) {
                 $this->events->emit('lead.status_changed', $lead, [
                     'before' => ['status' => $before],
-                    'after'  => ['status' => $lead->status],
+                    'after' => ['status' => $lead->status],
                 ]);
             }
         });
@@ -708,14 +711,14 @@ class LeadsController extends Controller
     {
         $this->authorize('viewAny', Lead::class);
 
-        $user  = $request->user();
-        $now   = now();
+        $user = $request->user();
+        $now = now();
         $count = 0;
 
         $ids = Lead::query()->select('id');
 
         $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
-        $companyIds   = $user->reachableCompanies()->pluck('id')->all();
+        $companyIds = $user->reachableCompanies()->pluck('id')->all();
 
         if (! $user->canActOnOrganization($user->organization)) {
             $ids->where(function ($q) use ($companyIds, $franchiseIds) {
@@ -793,7 +796,7 @@ class LeadsController extends Controller
                 // fetched successfully. Both halves are reported.
                 $failures[] = [
                     'connection' => $connection->display_name,
-                    'because'    => $e->getMessage(),
+                    'because' => $e->getMessage(),
                 ];
             }
         }
@@ -900,25 +903,25 @@ class LeadsController extends Controller
                 // The id is what lets the tab that owns this connection
                 // remove it. Without it the only disconnect was in
                 // Marketing, a module these providers are kept out of.
-                'id'                   => $c->getKey(),
-                'provider'             => $c->provider,
-                'display_name'         => $c->display_name,
+                'id' => $c->getKey(),
+                'provider' => $c->provider,
+                'display_name' => $c->display_name,
                 // The provider's own id, for the one case display_name cannot
                 // settle: twelve Thumbtack businesses all called "A1 Chimney"
                 // (API Integrations, 2026-09-08). Google's digits are unique,
                 // its names are unique; Thumbtack's names are not.
-                'remote_id'            => $c->remote_id,
+                'remote_id' => $c->remote_id,
 
                 // What a person called it, or null. The screen shows this when
                 // set and display_name when not — twenty-two numbers are not
                 // something anybody remembers the meaning of.
-                'label'                => $c->label,
-                'status'               => $c->status,
-                'leads_franchise_id'   => $c->leads_franchise_id,
+                'label' => $c->label,
+                'status' => $c->status,
+                'leads_franchise_id' => $c->leads_franchise_id,
                 'leads_franchise_name' => $c->leads_franchise_id === null
                     ? null
                     : $reachable->get($c->leads_franchise_id),
-                'leads_count'          => (int) ($counts[$c->getKey()] ?? 0),
+                'leads_count' => (int) ($counts[$c->getKey()] ?? 0),
             ])
             ->values()
             ->all();
@@ -928,58 +931,79 @@ class LeadsController extends Controller
     private function present(Lead $lead): array
     {
         return [
-            'id'            => $lead->id,
-            'source'        => $lead->source,
+            'id' => $lead->id,
+            'source' => $lead->source,
 
             // A specimen from `ezbizi:thumbtack-test-lead`. It stays in the
             // list — seeing it is how somebody knows the pipe works — and the
             // row says what it is rather than reading as the first customer.
-            'is_test'       => (bool) $lead->is_test,
-            'contact_name'  => $lead->contact_name,
-            'phone'         => $lead->phone,
-            'email'         => $lead->email,
-            'lead_type'     => $lead->lead_type,
-            'category'      => $lead->category,
-            'service'       => $lead->service,
-            'locale'        => $lead->locale,
-            'summary'       => $lead->summary,
-            'status'        => $lead->status,
+            'is_test' => (bool) $lead->is_test,
+            'contact_name' => $lead->contact_name,
+            'phone' => $lead->phone,
+            'email' => $lead->email,
+            'lead_type' => $lead->lead_type,
+            'category' => $lead->category,
+            'service' => $lead->service,
+            'locale' => $lead->locale,
+            'summary' => $lead->summary,
+            'status' => $lead->status,
 
             // What the lead LOOKS LIKE (BOOK / SUPPORT / ARCHIVE, read by a
             // model), beside what somebody DECIDED (status). Null until the
             // enquirer has said something in words, or while the model is off.
             'classification' => $lead->classification,
-            'classified_at'  => $lead->classified_at?->toIso8601String(),
-            'starred'       => $lead->starred_at !== null,
-            'note'          => $lead->note,
-            'note_by'       => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')
+            'classified_at' => $lead->classified_at?->toIso8601String(),
+            'starred' => $lead->starred_at !== null,
+            'note' => $lead->note,
+            'note_by' => $lead->note_by_user_id !== null && $lead->relationLoaded('noteBy')
                 ? $lead->noteBy?->only(['id', 'name'])
                 : null,
             'note_updated_at' => $lead->note_updated_at?->toIso8601String(),
 
             // Only known on the list, where the reader's mark was joined in.
             // Null on a single-lead read means "not asked", not "read".
-            'is_unread'     => ! array_key_exists('read_by_me_at', $lead->getAttributes())
+            'is_unread' => ! array_key_exists('read_by_me_at', $lead->getAttributes())
                 ? null
                 : ($lead->read_by_me_at === null
-                    || ($lead->last_contact_at ?? $lead->received_at) > \Illuminate\Support\Carbon::parse($lead->read_by_me_at)),
+                    || ($lead->last_contact_at ?? $lead->received_at) > Carbon::parse($lead->read_by_me_at)),
             'source_status' => $lead->source_status,
             'charge_status' => $lead->charge_status,
-            'received_at'   => $lead->received_at?->toIso8601String(),
+            'received_at' => $lead->received_at?->toIso8601String(),
 
             // The preview line: the newest call or message, who it was from,
             // and one line of it. `last_contact_from` = CONSUMER with nothing
             // after it is what "unreplied" means.
-            'last_contact_at'      => $lead->last_contact_at?->toIso8601String(),
+            'last_contact_at' => $lead->last_contact_at?->toIso8601String(),
             'last_contact_channel' => $lead->last_contact_channel,
-            'last_contact_from'    => $lead->last_contact_from,
+            'last_contact_from' => $lead->last_contact_from,
             'last_contact_preview' => $lead->last_contact_preview,
-            'company'       => $lead->company?->only(['id', 'name']),
-            'franchise'     => $lead->franchise?->only(['id', 'name']),
+
+            /*
+             * Whether a reply is possible AT ALL, which is not whether one is
+             * owed.
+             *
+             * The list needs it because "waiting for a reply" is meaningless on
+             * a row nobody can reply to. Most Local Services enquiries are
+             * CALLS, and a call has no reply box - marking one unreplied
+             * describes a duty that does not exist and buries the text
+             * enquiries that genuinely are waiting.
+             *
+             * Asked of the CHANNEL rather than recomputed here. LocalServices
+             * answers on lead_type and connection, Thumbtack on connection,
+             * is_test and remote_id, and a source with no channel answers
+             * false. Restating any of that here would be a second copy that
+             * goes quietly wrong the day a channel changes its mind - which is
+             * the defect LeadReplies was extracted to end.
+             *
+             * No N+1: every rule reads columns already on the row.
+             */
+            'can_reply' => $this->replies->canReply($lead),
+            'company' => $lead->company?->only(['id', 'name']),
+            'franchise' => $lead->franchise?->only(['id', 'name']),
 
             // The job it became, once booked. Loaded lazily here: the list
             // is not the place this shows, the thread header is.
-            'job'           => $lead->job_id !== null && $lead->relationLoaded('job') && $lead->job !== null
+            'job' => $lead->job_id !== null && $lead->relationLoaded('job') && $lead->job !== null
                 ? $this->presentJob($lead->job)
                 : null,
         ];

@@ -1071,16 +1071,33 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }) {
     final id = lead['id'];
     final from = lead['last_contact_from'] as String?;
-    final unreplied = from == 'CONSUMER';
+
+    // ADVERTISER means the business spoke last, which is what "replied" means.
+    // Anything else - CONSUMER, or null because the conversation read has not
+    // landed yet - is still awaiting one. `unreplied` as a separate local is
+    // gone: the dot no longer asks that question, and the badge asks it the
+    // other way round.
     final mine = from == 'ADVERTISER';
     final channel = lead['last_contact_channel'] as String?;
     final source = lead['source'] as String?;
     final preview = lead['last_contact_preview'] as String?;
-    // Approved triage layout 1 / 4 (18012c74): unread is WEIGHT, not a badge
-    // and not a tint. The name and the preview go bold; the dot stays
-    // unreplied; the star is the third mark. Three facts, three channels, so
-    // all eight combinations read, and bold survives the selected row's fill
-    // where a tint would not.
+    /*
+     * THE DOT IS UNREAD. Jose's ruling, 2026-09-15.
+     *
+     * It used to be unreplied, and that was the confusion: the strongest mark
+     * on the row answered a question most rows cannot be asked. A Local
+     * Services CALL has no reply box, so a dot meaning "unreplied" was lit on
+     * enquiries nobody could ever reply to - and the text enquiries that really
+     * were waiting looked exactly the same.
+     *
+     * So: the dot and the bold weight both say UNREAD, which is the fact that
+     * applies to every row whatever its source. Replied-or-not moved to a badge
+     * that is drawn ONLY when `can_reply` says a reply is possible at all.
+     *
+     * Bold stays alongside the dot rather than being replaced by it (approved
+     * triage layout 1/4, 18012c74): the dot is a scan target, the weight is
+     * what survives the selected row's fill.
+     */
     final unread = lead['is_unread'] == true;
     final starred = lead['starred'] == true;
     final muted = theme.textTheme.bodySmall?.copyWith(
@@ -1106,9 +1123,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
               child: SizedBox(
                 width: 8,
                 height: 8,
-                child: unreplied
+                child: unread
                     ? DecoratedBox(
-                        key: ValueKey('unreplied-$id'),
+                        key: ValueKey('unread-$id'),
                         decoration: BoxDecoration(
                           color: theme.colorScheme.primary,
                           shape: BoxShape.circle,
@@ -1154,7 +1171,23 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           call: channel == 'PHONE_CALL',
                         ),
                       ],
-                      // The source, the fourth mark on the row, in the neutral
+                      // Replied or not, and ONLY where a reply is possible.
+                      //
+                      // `can_reply` is the channel's own answer, not a guess
+                      // from lead_type here: a call cannot be replied to, a
+                      // Thumbtack specimen cannot, and a lead whose account was
+                      // disconnected cannot. On all of those the badge is
+                      // absent entirely rather than reading "Replied", because
+                      // "no reply is owed" and "a reply was sent" are different
+                      // things and one must not be dressed as the other.
+                      if (lead['can_reply'] == true) ...[
+                        const SizedBox(width: 8),
+                        _Badge(
+                          mine ? 'Replied' : 'Awaiting reply',
+                          key: ValueKey('reply-badge-$id'),
+                        ),
+                      ],
+                      // The source, the last mark on the row, in the neutral
                       // container so it never competes with Call and Text.
                       const SizedBox(width: 6),
                       _SourceBadge(
