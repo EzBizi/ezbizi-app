@@ -144,6 +144,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -370,6 +371,29 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
 | list negotiations at all, so an outage here loses enquiries permanently.
 | Throttled generously for that reason: refusing a real event costs a lead.
 */
+/*
+| WhatsApp - Meta telling us a message arrived, or what became of one we sent.
+|
+| Two routes, and the GET is a handshake rather than a read: Meta calls it once
+| when somebody saves the callback URL and expects `hub.challenge` echoed back
+| as PLAIN TEXT. A JSON envelope fails it and the URL cannot be saved.
+|
+| The POST is authenticated by an HMAC of the RAW body in X-Hub-Signature-256,
+| so unlike Thumbtack's the body does carry proof of origin. It is still
+| unauthenticated in the session sense - Meta calls it, there is no user.
+|
+| Throttled generously for the same reason as Thumbtack: refusing a real
+| delivery loses a customer's message, and Meta disables a subscription that
+| keeps failing.
+*/
+Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify'])
+    ->middleware('throttle:60,1')
+    ->name('social.whatsapp.verify');
+
+Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('social.whatsapp.webhook');
+
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.thumbtack.webhook');
