@@ -2542,6 +2542,29 @@ because a pronoun resolved against whatever the reader was holding is how yester
 > for that screen to start lying: a row that has been tried, and failed, will go on saying
 > nobody has tried it. Flagged to SES to leave the guard where the next person looks and to tell
 > Email, since Email owns the event that invalidates it.
+>
+> **RESOLVED 2026-09-15, and better than what I asked for — `970d416d`, verified.** SES did not
+> add a guard, they removed the need for one: `last_attempted_at`, nullable, written by
+> `noteAttempt()` on **every** attempt *before* the outcome is known (recording only successes
+> would leave a row that has failed ten times still reporting nobody has tried it — the same lie
+> with extra steps). The sentence is now **derived rather than described**, so it stops being
+> true on its own the first time anything sends. Nobody has to remember, and Email does not need
+> to know that shipping their socket changes the meaning of a string on somebody else's screen.
+>
+> **Two failures found inside the derivation, and both are ones my own advice walks people into.**
+> A missing column reads as null, so `never_tried` answers true whether or not the migration ran
+> — the honest-looking assertion passes against a build with **no column at all**; the test that
+> can distinguish is the one that records an attempt and requires the answer to *change*. It then
+> went red for a different reason: the resolver cached rows and invalidated only on writes **it**
+> made, so a read after `noteAttempt()` served the pre-attempt row — `never_tried` true for a
+> server that had been tried, one layer above the column that exists to prevent exactly that.
+> **A derived sentence is only as fresh as the read under it.**
+>
+> **Copy agreed**, carried until the three failure states land and removed when they do:
+> *"This screen shows what is set up and when it was last tried — not whether it worked. A failed
+> send is not reported here yet."* Its removal condition is mechanical rather than a promise: the
+> same column that makes the sentence stop lying is the one that makes the failure states
+> renderable.
 
 `docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
 with no destination. The fork landed: SES and Email settled that **a report must not go out
