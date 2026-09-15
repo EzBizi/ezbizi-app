@@ -1,0 +1,373 @@
+<!doctype html><meta charset="utf-8">
+<title>Call flow, as a chart &mdash; layouts</title>
+<style>
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --bad:#BA1A1A;--warn:#8A5A00;--ok:#1B6B4A;--paper:#fff;--ground:#f4f6f7;
+      --fill:rgba(6,8,8,.04);--wire:#9AA6B2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:8px 0 0;max-width:860px}
+.sub b{color:var(--ink)}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:14px 24px 16px}
+button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.win{width:760px;background:var(--paper);border:1px solid var(--line);
+     border-radius:14px;overflow:hidden}
+.phone{width:340px;background:var(--paper);border:1px solid var(--line);
+       border-radius:24px;overflow:hidden}
+.top{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;
+     align-items:center;gap:10px;font-weight:700;font-size:14px}
+.pick{margin-left:auto;font-weight:600;font-size:12.5px;border:1px solid var(--line);
+      border-radius:8px;padding:5px 10px;color:var(--muted)}
+.sum{display:flex;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);
+     font-size:12.5px;background:var(--fill)}
+.sum span{display:flex;align-items:center;gap:6px}
+.pipbad{width:9px;height:9px;border-radius:2px;background:var(--bad)}
+.pipskip{width:9px;height:9px;border-radius:2px;
+         background:repeating-linear-gradient(45deg,var(--warn),var(--warn) 2px,
+         transparent 2px,transparent 4px);border:1px solid var(--warn)}
+.canvas{position:relative;height:330px;overflow:hidden;background:
+  radial-gradient(circle, rgba(6,8,8,.07) 1px, transparent 1px) 0 0/16px 16px}
+.phone .canvas{height:300px}
+.nd{position:absolute;width:132px;border:1px solid var(--line);border-radius:9px;
+    background:var(--paper);padding:7px 9px;font-size:11px;line-height:1.35;z-index:2}
+.nd .t{font-weight:700;font-size:11.5px}
+.nd .d{color:var(--muted);font-size:10.5px;margin-top:2px}
+.nd.caller{border-color:var(--primary);background:rgba(0,112,143,.06)}
+.nd.dead{border-color:var(--bad);background:rgba(186,26,26,.05)}
+.nd.skip{border-color:var(--warn);background:rgba(138,90,0,.05);
+         border-style:dashed}
+.nd .flag{display:inline-block;margin-top:4px;font-size:9.5px;font-weight:700;
+          padding:1px 5px;border-radius:999px}
+.nd.dead .flag{background:rgba(186,26,26,.12);color:var(--bad)}
+.nd.skip .flag{background:rgba(138,90,0,.12);color:var(--warn)}
+svg{position:absolute;inset:0;width:100%;height:100%;z-index:1}
+.elab{font:9.5px -apple-system,Segoe UI,sans-serif;fill:var(--muted)}
+/* outline */
+.out{padding:10px 4px 14px}
+.row{display:flex;align-items:flex-start;gap:8px;padding:5px 12px;font-size:12.5px}
+.row .gut{color:var(--wire);font:12px ui-monospace,Consolas,monospace;white-space:pre}
+.row .bx{flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+.row .bx.dead{border-color:var(--bad);background:rgba(186,26,26,.05)}
+.row .bx.skip{border-color:var(--warn);border-style:dashed;background:rgba(138,90,0,.05)}
+.row .bx .t{font-weight:700;font-size:12px}
+.row .bx .d{color:var(--muted);font-size:11px;margin-top:1px}
+.row .lab{font-size:10.5px;color:var(--muted);font-weight:700;padding-top:8px;
+          width:74px;text-align:right;flex:none}
+/* stepper */
+.crumb{padding:9px 14px;font-size:11.5px;color:var(--muted);
+       border-bottom:1px solid var(--line)}
+.crumb b{color:var(--ink)}
+.stepnode{margin:14px;border:1px solid var(--line);border-radius:12px;padding:13px}
+.stepnode.dead{border-color:var(--bad);background:rgba(186,26,26,.05)}
+.stepnode .t{font-weight:700}
+.stepnode .d{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.5}
+.next{margin:0 14px}
+.next .nh{font-size:11.5px;color:var(--muted);margin-bottom:6px}
+.next .opt{display:flex;align-items:center;gap:9px;border:1px solid var(--line);
+           border-radius:9px;padding:9px 11px;margin-bottom:7px;font-size:12.5px}
+.next .opt.dead{border-color:rgba(186,26,26,.45)}
+.next .opt .k{font-weight:700;width:76px;flex:none;font-size:11.5px}
+.next .opt .g{flex:1}
+.next .opt .c{color:var(--muted)}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);
+      border-radius:10px;font-size:13px;background:var(--paper);max-width:760px;
+      line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>Call flow, as a chart &mdash; pick one desktop and one mobile</h1>
+  <p class="sub">Jose: <i>&ldquo;more graphic / Call Flowchart / a graphic view, where
+  it shows the current state and separates into nodes like n8n / from left to right or
+  up to down / and begins with Caller ---- (what happens)&rdquo;</i>. A new tab under
+  Communication &rsaquo; Settings, beside the existing Call Flow pane rather than
+  replacing it. <b>Read-only</b> &mdash; he said <i>shows me</i>, and an editable
+  canvas is a different and much larger thing.</p>
+  <p class="sub" style="margin-top:10px"><b>The picture is not what earns this screen.
+  The two states are.</b> Phone built the data and named them, and they are the whole
+  argument: <b><code>dead</code></b> — a caller <i>can</i> reach it and nothing useful
+  happens, an option pointing at a number nobody set, a ring group with nobody in it.
+  <b><code>skipped</code></b> — configured and <i>never reached at all</i>: callers
+  sail past and hear nothing, <b>nobody complains because the caller does not know
+  they missed a menu and the owner does not know theirs is skipped.</b> A flowchart
+  that draws a dead branch identically to a live one is prettier than the list and
+  less useful, so <b>every option below is judged on whether you can see those two
+  without reading node by node</b> — which is why each carries a count at the top.</p>
+  <p class="sub" style="margin-top:10px"><b>Facts the layout may rely on, measured
+  rather than assumed</b> (<code>TwimlRenderer::graph()</code>, and a test that
+  sabotage-checks): exactly one entry node, always <code>caller</code>; every node
+  reachable from it and no edge dangling, so no defensive drawing for orphans;
+  <b>and it CAN cycle</b> — <code>queue &rarr; answer &rarr; queue</code> and a
+  &ldquo;play the menu again&rdquo; key are real, so a naive walk loops and a layered
+  layout needs a back-edge that is drawn rather than followed. Six nodes without a
+  menu, about eleven with a four-option one: <b>small enough that nothing here needs
+  virtualising.</b> One graph per line, and a company can have thirteen, so every
+  option carries the line picker the existing pane already uses.</p>
+</header>
+<div id="nums"></div>
+<div id="stage"></div>
+<script>
+/* A realistic graph, shaped like TwimlRenderer::graph() output. */
+var N = {
+  caller:{t:'Caller',d:'Somebody dials +1 860 555 0142.',s:'ok',k:'caller'},
+  arrival:{t:'Arrival',d:'Rings for 20 seconds.',s:'ok'},
+  hours:{t:'Opening hours',d:'Open now — Mon–Fri 8–5.',s:'ok'},
+  menu:{t:'Menu',d:'“Press 1 for sales, 2 for service, 3 for accounts.”',s:'ok'},
+  sales:{t:'Sales team',d:'Rings 3 people.',s:'ok'},
+  service:{t:'Service team',d:'Nobody is in this group.',s:'dead'},
+  accounts:{t:'Forward',d:'No number was ever set.',s:'dead'},
+  vm:{t:'Voicemail',d:'Takes a message.',s:'ok'},
+  queue:{t:'Queue',d:'Holds the caller and tries again.',s:'ok'},
+  closed:{t:'Forward',d:'After hours → 860 555 0199.',s:'ok'},
+  greet:{t:'Greeting',d:'A recorded welcome message.',s:'skipped'}
+};
+var COUNTS = {dead:2, skipped:1};
+
+function sum(){
+  return '<div class="sum">' +
+    '<span><span class="pipbad"></span><b>' + COUNTS.dead + ' dead ends</b> ' +
+    '&mdash; a caller reaches these and nothing happens</span>' +
+    '<span><span class="pipskip"></span><b>' + COUNTS.skipped + ' never reached' +
+    '</b> &mdash; configured, no caller ever gets there</span></div>';
+}
+function top(){
+  return '<div class="top">Call flow<span class="pick">Main line · +1 860 555 0142 ▾' +
+    '</span></div>';
+}
+function cls(s){ return s === 'dead' ? ' dead' : s === 'skip' || s === 'skipped'
+  ? ' skip' : ''; }
+function node(id, x, y, w){
+  var n = N[id];
+  return '<div class="nd' + (n.k === 'caller' ? ' caller' : '') + cls(n.s) +
+    '" style="left:' + x + 'px;top:' + y + 'px' + (w ? ';width:' + w + 'px' : '') +
+    '"><div class="t">' + n.t + '</div><div class="d">' + n.d + '</div>' +
+    (n.s === 'dead' ? '<span class="flag">Dead end</span>' : '') +
+    (n.s === 'skipped' ? '<span class="flag">Never reached</span>' : '') +
+    '</div>';
+}
+function wire(pts, label, lx, ly, dash){
+  return '<path d="' + pts + '" fill="none" stroke="var(--wire)" stroke-width="1.4"' +
+    (dash ? ' stroke-dasharray="4 3"' : '') + '/>' +
+    (label ? '<text class="elab" x="' + lx + '" y="' + ly + '">' + label + '</text>'
+           : '');
+}
+
+/* ── 1 — left to right, layered ───────────────────────────────── */
+function D1(){
+  return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+    '<svg>' +
+      wire('M138 46 H168', '', 0, 0) +
+      wire('M306 46 H336', '', 0, 0) +
+      wire('M474 46 C500 46 500 22 524 22', 'Open', 486, 34) +
+      wire('M474 52 C500 52 500 250 524 250', 'Closed', 486, 150) +
+      wire('M660 22 C684 22 684 58 700 58', 'Press 1', 662, 14) +
+      wire('M660 28 C684 28 684 112 700 112', 'Press 2', 662, 74) +
+      wire('M660 34 C684 34 684 166 700 166', 'Press 3', 662, 128) +
+      wire('M660 40 C684 40 684 220 700 220', 'No key', 662, 186) +
+      wire('M700 128 C676 150 676 96 700 74', 'Everyone busy', 560, 148, true) +
+    '</svg>' +
+    node('caller', 6, 26) + node('arrival', 174, 26) + node('hours', 342, 26) +
+    node('menu', 524, 2) + node('closed', 524, 230) +
+    node('sales', 706, 40, 120) + node('service', 706, 94, 120) +
+    node('accounts', 706, 148, 120) + node('vm', 706, 202, 120) +
+    '</div></div>' +
+    '<div class="note"><b>What he described, literally: Caller on the left, and the ' +
+    'call moving right.</b> Branch labels sit on the wires, so &ldquo;Press 2&rdquo; ' +
+    'is on the line rather than inside the box &mdash; which is what makes a menu ' +
+    'readable at a glance rather than a list of four boxes you have to match up.' +
+    '<br><br><b>The cycle is drawn and not followed:</b> the dashed return from the ' +
+    'queue back to the ring group is a back-edge, labelled, and deliberately not ' +
+    'laid out as another column &mdash; otherwise the chart grows forever.<br><br>' +
+    '<b>The cost:</b> a four-option menu is four rows tall and the chart is already ' +
+    '760px wide at eleven nodes. A five-option menu with an after-hours branch needs ' +
+    'pan, and pan on a settings tab is a thing people lose themselves in.</div>';
+}
+
+/* ── 2 — top to bottom, spine with branches ──────────────────── */
+function D2(){
+  return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+    '<svg>' +
+      wire('M74 42 V64', '', 0, 0) +
+      wire('M74 106 V128', '', 0, 0) +
+      wire('M74 170 C74 190 74 190 74 200', 'Open', 80, 190) +
+      wire('M140 152 C300 152 300 40 380 40', 'Closed', 250, 146) +
+      wire('M140 224 C240 224 240 42 300 42', 'Press 1', 176, 218) +
+      wire('M140 230 C240 230 240 104 300 104', 'Press 2', 176, 256) +
+      wire('M140 236 C240 236 240 166 300 166', 'Press 3', 250, 232) +
+      wire('M140 242 C240 242 240 228 300 228', 'No key', 250, 268) +
+      wire('M300 60 C272 82 272 60 300 86', 'Busy', 236, 78, true) +
+    '</svg>' +
+    node('caller', 8, 16) + node('arrival', 8, 80) + node('hours', 8, 142) +
+    node('menu', 8, 206) +
+    node('sales', 306, 24, 120) + node('service', 306, 86, 120) +
+    node('accounts', 306, 148, 120) + node('vm', 306, 210, 120) +
+    node('closed', 386, 22, 120) +
+    '</div></div>' +
+    '<div class="note"><b>The spine runs down and only branches go sideways</b>, so ' +
+    'the thing you read first is the ordinary path a caller takes &mdash; which is ' +
+    'the question somebody opens this tab with. Adding a menu option lengthens the ' +
+    'branch column rather than widening the chart.<br><br><b>It also matches the ' +
+    'phone.</b> Pair it with 5 and the two surfaces are the same drawing at two ' +
+    'widths, which is one shape to learn rather than two.<br><br><b>The cost:</b> ' +
+    'the after-hours branch and the menu branches both go right, from different ' +
+    'depths, so two unrelated things share a column. <b>This is the one I would ' +
+    'build</b> &mdash; it grows in the direction a settings pane has room in.</div>';
+}
+
+/* ── 3 — an outline that is still a graph ────────────────────── */
+function D3(){
+  function r(gut, id, lab){
+    var n = N[id];
+    return '<div class="row">' + (lab !== undefined
+      ? '<span class="lab">' + lab + '</span>' : '<span class="lab"></span>') +
+      '<span class="gut">' + gut + '</span><span class="bx' + cls(n.s) + '">' +
+      '<span class="t">' + n.t + '</span><span class="d">' + n.d + '</span>' +
+      (n.s === 'dead' ? ' <span class="flag" style="background:rgba(186,26,26,.12);' +
+        'color:var(--bad);font-size:9.5px;font-weight:700;padding:1px 5px;' +
+        'border-radius:999px">Dead end</span>' : '') +
+      (n.s === 'skipped' ? ' <span class="flag" style="background:rgba(138,90,0,.12);' +
+        'color:var(--warn);font-size:9.5px;font-weight:700;padding:1px 5px;' +
+        'border-radius:999px">Never reached</span>' : '') +
+      '</span></div>';
+  }
+  return '<div class="win">' + top() + sum() + '<div class="out">' +
+    r('', 'caller') + r('└─', 'arrival') + r('  └─', 'hours') +
+    r('    ├─', 'menu', 'Open') +
+    r('    │ ├─', 'sales', 'Press 1') +
+    r('    │ ├─', 'service', 'Press 2') +
+    r('    │ ├─', 'accounts', 'Press 3') +
+    r('    │ └─', 'vm', 'No key') +
+    r('    └─', 'closed', 'Closed') +
+    '<div class="row"><span class="lab">Busy</span><span class="gut">    │ ↩ </span>' +
+    '<span class="bx" style="border-style:dashed;color:var(--muted)">' +
+    '<span class="d">back to <b>Sales team</b> — the queue tries again</span>' +
+    '</span></div>' +
+    r('', 'greet') +
+    '</div></div>' +
+    '<div class="note"><b>Not what he asked for, and here because one of the three ' +
+    'should be the version that cannot go wrong.</b> No pan, no zoom, no layout ' +
+    'engine; it reads identically at 760px and at 340px, prints, and a menu with ' +
+    'nine options is nine rows rather than a chart nobody can fit on screen. The ' +
+    'cycle is a labelled <code>↩</code> row rather than a curve.<br><br>' +
+    '<b>And it is the only option where a NEVER-REACHED node has an obvious ' +
+    'home</b> — at the bottom, outside the tree, because that is exactly what it ' +
+    'is: configured and connected to nothing a caller walks. On a canvas it has to ' +
+    'float somewhere and look like a mistake in the drawing.<br><br><b>The cost is ' +
+    'the brief:</b> he asked for graphic and n8n and this is an indented list with ' +
+    'good manners.</div>';
+}
+
+/* ── 4 — mobile: the canvas, panned ──────────────────────────── */
+function M4(){
+  return '<div class="phone">' + top() + sum() +
+    '<div class="canvas"><svg>' +
+      wire('M74 42 V64','',0,0) + wire('M74 106 V128','',0,0) +
+      wire('M74 170 V200','Open',80,190) +
+      wire('M140 224 C200 224 200 42 250 42','1',176,218) +
+      wire('M140 230 C200 230 200 104 250 104','2',176,254) +
+    '</svg>' +
+    node('caller',8,16,120) + node('arrival',8,80,120) + node('hours',8,142,120) +
+    node('menu',8,206,120) +
+    node('sales',256,24,116) + node('service',256,86,116) +
+    '</div></div>' +
+    '<div class="note">The same chart, pinched and panned. <b>Honest about being ' +
+    'the same thing</b> — and on a 340px screen you see three nodes of eleven, so ' +
+    'the answer to &ldquo;where does a caller end up&rdquo; is behind a gesture. ' +
+    '<b>Drawn so it is rejected on purpose:</b> a canvas that needs panning to ' +
+    'answer its own question is a canvas that will be opened once.</div>';
+}
+
+/* ── 5 — mobile: the spine, branches collapsed ───────────────── */
+function M5(){
+  function s(id, lab){
+    var n = N[id];
+    return (lab ? '<div style="font-size:10.5px;color:var(--muted);' +
+      'padding:0 14px 2px;font-weight:700">' + lab + '</div>' : '') +
+      '<div style="margin:0 14px 8px;border:1px solid ' +
+      (n.s === 'dead' ? 'var(--bad)' : n.s === 'skipped' ? 'var(--warn)' : 'var(--line)') +
+      ';border-radius:10px;padding:9px 11px;font-size:12.5px' +
+      (n.s === 'dead' ? ';background:rgba(186,26,26,.05)' : '') +
+      (n.s === 'skipped' ? ';background:rgba(138,90,0,.05);border-style:dashed' : '') +
+      '"><b>' + n.t + '</b><div style="color:var(--muted);font-size:11.5px;' +
+      'margin-top:2px">' + n.d + '</div></div>';
+  }
+  return '<div class="phone">' + top() + sum() +
+    '<div style="padding:12px 0 14px">' +
+    s('caller') + s('arrival') + s('hours') + s('menu', 'OPEN') +
+    '<div style="margin:0 14px;border:1px solid var(--line);border-radius:10px;' +
+    'padding:10px 11px;font-size:12.5px;background:var(--fill)">' +
+    '<b>4 options</b> — 1 sales, 2 service, 3 accounts, no key' +
+    '<div style="color:var(--bad);font-size:11.5px;margin-top:4px;font-weight:600">' +
+    '2 of them are dead ends</div>' +
+    '<div style="color:var(--primary);font-weight:700;font-size:12px;' +
+    'margin-top:6px">Open them &rsaquo;</div></div>' +
+    '<div style="font-size:10.5px;color:var(--muted);padding:12px 14px 2px;' +
+    'font-weight:700">CLOSED</div>' + s('closed') +
+    '</div></div>' +
+    '<div class="note"><b>The spine down the screen, and a branch point as one row ' +
+    'that says how many and how many are broken.</b> The ordinary path fits without ' +
+    'scrolling and the fan-out is a tap &mdash; which on a phone is the right trade, ' +
+    'because &ldquo;what normally happens&rdquo; is the question and the four ' +
+    'options are the detail.<br><br><b>The count on the collapsed row is what stops ' +
+    'this hiding the thing the screen is for</b>: a branch you have not opened still ' +
+    'tells you two of its options go nowhere. <b>Pairs with desktop 2</b> — same ' +
+    'drawing, two widths.</div>';
+}
+
+/* ── 6 — mobile: walk it as the caller ───────────────────────── */
+function M6(){
+  return '<div class="phone">' + top() + sum() +
+    '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; Opening hours &rsaquo; ' +
+    '<b>Menu</b></div>' +
+    '<div class="stepnode"><div class="t">Menu</div>' +
+    '<div class="d">“Press 1 for sales, 2 for service, 3 for accounts.”</div></div>' +
+    '<div class="next"><div class="nh">What can happen next</div>' +
+    '<div class="opt"><span class="k">Press 1</span><span class="g">Sales team' +
+    '</span><span class="c">&rsaquo;</span></div>' +
+    '<div class="opt dead"><span class="k">Press 2</span><span class="g">Service ' +
+    'team<div style="color:var(--bad);font-size:11px;font-weight:600">Nobody is in ' +
+    'this group</div></span><span class="c">&rsaquo;</span></div>' +
+    '<div class="opt dead"><span class="k">Press 3</span><span class="g">Forward' +
+    '<div style="color:var(--bad);font-size:11px;font-weight:600">No number was ' +
+    'ever set</div></span><span class="c">&rsaquo;</span></div>' +
+    '<div class="opt"><span class="k">No key</span><span class="g">Voicemail' +
+    '</span><span class="c">&rsaquo;</span></div></div></div>' +
+    '<div class="note"><b>You walk it the way a caller does</b>, one node at a time, ' +
+    'with the breadcrumb showing how you got here and every branch named with what ' +
+    'it leads to. It is the most literal reading of <i>&ldquo;begins with Caller ' +
+    '---- (what happens)&rdquo;</i>, and the only option where a dead end is ' +
+    'explained in place rather than flagged and left.<br><br><b>The cost, and it is ' +
+    'real:</b> you never see the whole shape. Somebody asking &ldquo;is any of this ' +
+    'broken?&rdquo; is answered by the count at the top and then has to walk to find ' +
+    'it. <b>Strongest for somebody checking one path, weakest for somebody auditing ' +
+    'the line</b>, and this tab exists mostly for the second.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; left to right, layered like n8n', D1],
+  2:['2 &middot; Desktop &mdash; top to bottom, spine with branches', D2],
+  3:['3 &middot; Desktop &mdash; an outline that is still a graph', D3],
+  4:['4 &middot; Mobile &mdash; the same canvas, panned', M4],
+  5:['5 &middot; Mobile &mdash; the spine, branches collapsed with counts', M5],
+  6:['6 &middot; Mobile &mdash; walk it as the caller does', M6]
+};
+var nums=document.getElementById('nums'), stage=document.getElementById('stage');
+function show(k){
+  stage.innerHTML='<p class="cap">'+OPT[k][0]+'</p>'+OPT[k][1]();
+  Array.prototype.forEach.call(nums.children,function(b){
+    b.setAttribute('aria-current', b.dataset.k===String(k));});
+}
+Object.keys(OPT).forEach(function(k){
+  var b=document.createElement('button');
+  b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
+  b.onclick=function(){show(+k);}; nums.appendChild(b);});
+show(1);
+</script>

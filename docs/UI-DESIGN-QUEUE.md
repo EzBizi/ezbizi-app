@@ -2676,3 +2676,48 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 18 · Communication · Call flow as a chart — **DRAWN, awaiting Jose**
+
+`docs/previews/call-flow-chart-layouts.html`. Jose, 2026-09-15: *"a new tab on Settings that
+shows me the Call Flow… more graphic / Call Flowchart / a graphic view, where it shows the
+current state and separates into nodes like n8n / from left to right or up to down / and begins
+with Caller ---- (what happens)"*. A NEW visual pattern, so it came through design rather than
+being built directly. Beside the existing Call Flow pane, not replacing it. **Read-only** — he
+said *shows me*, and an editable canvas is a different and much larger thing.
+
+**Phone built the data first, so these are drawn against the real shape.** `GET /phone/call-flow`
+carries `graph: {nodes, edges}` additively per line; `TwimlRenderer::graph()` builds it.
+
+> **THE PICTURE IS NOT WHAT EARNS THE SCREEN. THE TWO STATES ARE.**
+> - **`dead`** — a caller *can* reach it and nothing useful happens: an option pointing at a
+>   number nobody set, a ring group with nobody in it.
+> - **`skipped`** — configured and **never reached at all**. Phone's sentence, and it is the
+>   argument for the whole tab: *"callers sail past and hear nothing, and nobody complains because
+>   the caller does not know they missed a menu and the owner does not know theirs is skipped."*
+>
+> **A flowchart that draws a dead branch identically to a live one is prettier than the list and
+> less useful.** So every option is judged on whether those two are visible *without reading node
+> by node*, which is why each carries a count at the top rather than relying on the drawing.
+
+**Facts the layout may rely on, measured rather than assumed.** Exactly one entry node, always
+`caller` — which makes his "Caller ---- (what happens)" literal. Every node reachable and no edge
+dangling, pinned by a sabotage-checked test, so no defensive drawing for orphans. **It can
+cycle** — `queue → answer → queue` and a "play the menu again" key are real, so a naive walk loops
+and a layered layout needs a back-edge *drawn rather than followed*. Six nodes without a menu,
+about eleven with a four-option one: **nothing here needs virtualising.** Thirteen lines possible,
+so every option carries the line picker the existing pane already uses.
+
+**Recommendation: 2 and 5.** The spine runs down and only branches go sideways, so the first
+thing read is the ordinary path — which is the question somebody opens the tab with — and adding
+a menu option lengthens a column rather than widening the chart, which is the direction a
+settings pane has room in. **5 is the same drawing at phone width**, so it is one shape to learn
+rather than two; its collapsed branch row carries *"2 of them are dead ends"* so a branch nobody
+opened still reports the thing the screen exists for.
+
+**3 is drawn to be the version that cannot go wrong** — no pan, no zoom, no layout engine,
+identical at 760px and 340px, and **the only option where a never-reached node has an obvious
+home**: at the bottom, outside the tree, because that is exactly what it is. Its cost is the
+brief; he asked for graphic and it is an indented list with good manners. **4 is drawn to be
+rejected on purpose**: a canvas that needs panning to answer its own question is a canvas that
+gets opened once.
+
