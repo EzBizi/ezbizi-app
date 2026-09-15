@@ -683,6 +683,9 @@ Route::prefix('v1')
         // two levels Google's Reporting Minimum Functionality is answered for.
         // Adding an ad group, ad or keyword level here is not a route change,
         // it is five more mandatory fields per level and a fresh submission.
+        // The connected accounts, from our own rows. Instant, and asks
+        // Google nothing - the screen lists these and loads ONE on demand.
+        Route::get('ads/accounts', [AdsPerformanceController::class, 'accounts']);
         Route::get('ads/performance', [AdsPerformanceController::class, 'index']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);

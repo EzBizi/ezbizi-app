@@ -9,26 +9,52 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// The required fields have to be ON SCREEN, not merely in the response.
+/// The Google Ads report: what it costs to OPEN, and what it must show.
 ///
-/// Google's Reporting Minimum Functionality is about a reporting INTERFACE:
-/// R.10 and R.20 require clicks, cost, impressions, conversions and all
-/// conversions to be shown for each level displayed. An endpoint that returns
-/// all five while the widget draws three satisfies nothing, and the API test
-/// next door cannot see the difference — it never builds a widget.
+/// Two separate obligations live here and they pull in opposite directions.
 ///
-/// So this is the half of the compliance claim that only a widget test covers.
+/// Google's Reporting Minimum Functionality requires clicks, cost, impressions,
+/// conversions and all conversions to be ON SCREEN for each level displayed —
+/// an endpoint returning all five while the widget draws three satisfies
+/// nothing, and the API test next door cannot see the difference because it
+/// never builds a widget.
+///
+/// And opening the screen must cost Google nothing. It used to load all 53
+/// connected accounts at once: 106 operations of a 15,000/day ceiling and 47
+/// seconds of spinner, spent before anybody asked for a figure.
 void main() {
-  Future<void> pump(WidgetTester tester, Map<String, dynamic> body) async {
-    tester.view.physicalSize = const Size(1400, 1000);
+  /// Every request the screen makes, in order, so a test can assert on what
+  /// was NOT asked for as well as what was.
+  late List<String> calls;
+
+  Future<void> pump(
+    WidgetTester tester, {
+    required List<Map<String, dynamic>> accounts,
+    Map<String, dynamic>? report,
+  }) async {
+    tester.view.physicalSize = const Size(1400, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    calls = [];
+
     final api = ApiClient(
       client: MockClient((request) async {
+        calls.add(request.url.path);
+
+        if (request.url.path.contains('/ads/accounts')) {
+          return http.Response(
+            jsonEncode({'data': accounts}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
         if (request.url.path.contains('/ads/performance')) {
           return http.Response(
-            jsonEncode(body),
+            jsonEncode({
+              'data': report == null ? [] : [report],
+              'refused': report?['_refused'] ?? [],
+            }),
             200,
             headers: {'content-type': 'application/json'},
           );
@@ -41,54 +67,114 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
-        home: Scaffold(body: AdsPerformanceScreen(api: api, session: Session(api))),
+        home: Scaffold(
+          body: AdsPerformanceScreen(api: api, session: Session(api)),
+        ),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  Map<String, dynamic> payload() => {
-        'data': [
-          {
-            'connection_id': 'c1',
-            'account': {
-              'id': '4051729356',
-              'name': 'A1 Chimney - Cleveland',
-              'clicks': 412,
-              'impressions': 10500,
-              'conversions': 31.5,
-              'all_conversions': 44.25,
-              'cost': 1234.56,
-              'currency': 'USD',
-            },
-            'campaigns': [
-              {
-                'id': '111',
-                'name': 'Chimney - Cleveland - Search',
-                'status': 'ENABLED',
-                'clicks': 300,
-                'impressions': 8000,
-                'conversions': 20,
-                'all_conversions': 28,
-                // A whole figure crosses JSON as an int, not a double. This is
-                // the value that would crash an `as double` cast, so it is
-                // deliberately round.
-                'cost': 900,
-                'currency': 'USD',
-              },
-            ],
-            'currency': 'USD',
-            'from': '2026-08-16',
-            'to': '2026-09-14',
-          }
-        ],
-        'refused': <Map<String, dynamic>>[],
-        'from': '2026-08-16',
-        'to': '2026-09-14',
-      };
+  List<Map<String, dynamic>> twoAccounts() => [
+    {
+      'connection_id': 'c1',
+      'customer_id': '4051729356',
+      'name': 'A1 Chimney - Cleveland',
+    },
+    {
+      'connection_id': 'c2',
+      'customer_id': '8865675621',
+      'name': 'A1 Chimney - Atlanta',
+    },
+  ];
 
-  testWidgets('the account level draws all five required fields', (tester) async {
-    await pump(tester, payload());
+  Map<String, dynamic> report() => {
+    'connection_id': 'c1',
+    'currency': 'USD',
+    'account': {
+      'id': '4051729356',
+      'name': 'A1 Chimney - Cleveland',
+      'clicks': 412,
+      'impressions': 10500,
+      'conversions': 31.5,
+      'all_conversions': 44.25,
+      'cost': 1234.56,
+      'currency': 'USD',
+    },
+    'series': [
+      {
+        'label': 'Cost',
+        'key': 'cost',
+        'points': [
+          {'at': '2026-09-01', 'value': 1},
+          {'at': '2026-09-02', 'value': 2.5},
+        ],
+      },
+      {'label': 'Clicks', 'key': 'clicks', 'points': []},
+      {'label': 'Conversions', 'key': 'conversions', 'points': []},
+    ],
+    'campaigns': [
+      {
+        'id': '111',
+        'name': 'Chimney - Cleveland - Search',
+        'status': 'ENABLED',
+        'clicks': 300,
+        'impressions': 8000,
+        'conversions': 20,
+        'all_conversions': 28,
+        // A round figure: this is the value that would crash `as double`.
+        'cost': 900,
+      },
+      {
+        'id': '222',
+        'name': 'Chimney - Cleveland - Display',
+        'status': 'PAUSED',
+        'clicks': 0,
+        'impressions': 0,
+        'conversions': 0,
+        'all_conversions': 0,
+        'cost': 0,
+      },
+    ],
+  };
+
+  testWidgets('opening the screen asks Google for nothing', (tester) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+
+    // The account list is there, and NO report has been fetched. This is the
+    // whole point of the redesign: the expensive call waits for a choice.
+    expect(find.byKey(const ValueKey('ads-accounts')), findsOneWidget);
+    expect(find.text('A1 Chimney - Cleveland'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ads-pick-one')), findsOneWidget);
+
+    expect(
+      calls.where((c) => c.contains('/ads/performance')),
+      isEmpty,
+      reason: 'a screen that reports on open spends the quota of whoever opens it',
+    );
+  });
+
+  testWidgets('picking an account loads that one, and only then', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    expect(calls.where((c) => c.contains('/ads/performance')), hasLength(1));
+    expect(find.byKey(const ValueKey('ads-pick-one')), findsNothing);
+    expect(find.text('Account 4051729356'), findsOneWidget);
+  });
+
+  testWidgets('the account level draws all five required fields', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('ads-account-figures'));
 
     for (final label in [
       'Cost',
@@ -97,42 +183,34 @@ void main() {
       'Conversions',
       'All conversions',
     ]) {
-      // Scoped to the account card. `find.text(label)` alone passes on the
-      // campaign table's column header of the same name, so deleting a figure
-      // from the account level would leave this green - which it did, until a
-      // sabotage caught it.
+      // Scoped INSIDE the account card. `find.text(label)` alone is satisfied
+      // by the campaign table's column header of the same name, so a deleted
+      // figure would leave this green — which it did, until a sabotage caught it.
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('ads-account-figures')),
-          matching: find.text(label),
-        ),
+        find.descendant(of: card, matching: find.text(label)),
         findsOneWidget,
-        reason: 'R.10 requires $label at the Account level, and requires it on screen',
+        reason: 'R.10 requires $label at the Account level, on screen',
       );
     }
 
     expect(find.text('1234.56 USD'), findsOneWidget);
-    expect(find.text('412'), findsWidgets);
-    expect(find.text('10500'), findsWidgets);
   });
 
   testWidgets('the campaign level draws all five, plus status', (tester) async {
-    await pump(tester, payload());
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
 
     final table = find.byKey(const ValueKey('ads-campaigns'));
     expect(table, findsOneWidget);
-    expect(find.text('Chimney - Cleveland - Search'), findsOneWidget);
 
-    // The five, as column headers INSIDE the table. This test was named "draws
-    // all five" while asserting none of them, and a sabotage that deleted the
-    // All conversions column left it green - a label is a claim, and the output
-    // is the finding.
     for (final column in [
       'Cost',
       'Clicks',
       'Impressions',
       'Conversions',
       'All conversions',
+      'Status',
     ]) {
       expect(
         find.descendant(of: table, matching: find.text(column)),
@@ -141,50 +219,74 @@ void main() {
       );
     }
 
-    // Required by R.20 because paused campaigns are shown.
-    expect(find.text('ENABLED'), findsOneWidget);
-
-    // A round number rendered as money. If the widget cast this to double it
-    // would have thrown before reaching here, and the screen would be an
-    // exception rather than a wrong figure.
+    // A round number rendered as money. Had the widget cast it to double it
+    // would have thrown before reaching here.
     expect(find.text('900.00 USD'), findsOneWidget);
   });
 
-  testWidgets('a refused account is named rather than dropped', (tester) async {
-    final body = payload();
-    body['data'] = <Map<String, dynamic>>[];
-    body['refused'] = [
-      {
-        'connection_id': 'c9',
-        'account': '993-282-9592',
-        'because': "The customer account can't be accessed because it is not yet "
-            'enabled or has been deactivated.',
-      }
-    ];
+  testWidgets('the status filter hides rows and never the column', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
 
-    await pump(tester, body);
+    expect(find.text('Chimney - Cleveland - Search'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ads-status-PAUSED')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+    expect(
+      find.text('Chimney - Cleveland - Search'),
+      findsNothing,
+      reason: 'filtering to Paused must actually drop the active campaign',
+    );
+
+    // The obligation the filter must not break: hiding ROWS is a user's choice,
+    // dropping a required FIELD is a policy breach.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('ads-campaigns')),
+        matching: find.text('All conversions'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a refused account is named rather than dropped', (tester) async {
+    await pump(
+      tester,
+      accounts: twoAccounts(),
+      report: {
+        ...report(),
+        '_refused': [
+          {
+            'connection_id': 'c1',
+            'account': '993-282-9592',
+            'because': "The customer account can't be accessed because it is "
+                'not yet enabled or has been deactivated.',
+          },
+        ],
+      },
+    );
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const ValueKey('ads-refused')), findsOneWidget);
-    expect(find.textContaining('993-282-9592'), findsOneWidget);
     expect(
       find.textContaining('deactivated'),
       findsOneWidget,
-      reason: 'leaving it out entirely would read as "this account spent nothing", '
-          'which is a different and wrong statement',
+      reason: 'dropping it would read as "this account spent nothing", which is '
+          'a different and wrong statement',
     );
-
-    // And the empty state must NOT also appear - there is something to say.
-    expect(find.byKey(const ValueKey('ads-empty')), findsNothing);
   });
 
   testWidgets('with nothing connected it names the way in', (tester) async {
-    await pump(tester, {
-      'data': <Map<String, dynamic>>[],
-      'refused': <Map<String, dynamic>>[],
-    });
+    await pump(tester, accounts: const []);
 
-    final empty = find.byKey(const ValueKey('ads-empty'));
-    expect(empty, findsOneWidget);
+    expect(find.byKey(const ValueKey('ads-empty')), findsOneWidget);
     expect(
       find.textContaining('Connected sources'),
       findsOneWidget,

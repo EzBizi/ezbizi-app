@@ -72,6 +72,10 @@ class CampaignPerformanceTest extends TestCase
     private function customerRow(): array
     {
         return [
+            // Segmented by day: the account totals are SUMMED from this rather
+            // than fetched separately, so a row without segments.date would be
+            // dropped from the series and silently absent from the totals.
+            'segments' => ['date' => '2026-09-01'],
             'customer' => [
                 'id' => '4051729356',
                 'descriptiveName' => 'A1 Chimney - Cleveland',
@@ -91,11 +95,11 @@ class CampaignPerformanceTest extends TestCase
     public function test_the_account_level_carries_every_field_r10_requires(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->connected($t);
+        $row = $this->connected($t);
         $this->fakeGoogle($this->customerRow(), []);
 
         $account = $this->signedInAs($t['admin']->fresh())
-            ->getJson('/api/v1/ads/performance')
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk()
             ->json('data.0.account');
 
@@ -124,7 +128,7 @@ class CampaignPerformanceTest extends TestCase
     public function test_the_campaign_level_carries_every_field_r20_requires(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->connected($t);
+        $row = $this->connected($t);
 
         $this->fakeGoogle($this->customerRow(), [
             [
@@ -155,7 +159,7 @@ class CampaignPerformanceTest extends TestCase
         ]);
 
         $campaigns = $this->signedInAs($t['admin']->fresh())
-            ->getJson('/api/v1/ads/performance')
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk()
             ->json('data.0.campaigns');
 
@@ -205,10 +209,10 @@ class CampaignPerformanceTest extends TestCase
     public function test_both_queries_actually_request_all_five_metrics(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->connected($t);
+        $row = $this->connected($t);
         $this->fakeGoogle($this->customerRow(), []);
 
-        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance')->assertOk();
+        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())->assertOk();
 
         $queries = [];
 
@@ -250,10 +254,10 @@ class CampaignPerformanceTest extends TestCase
     public function test_it_asks_google_for_no_level_below_campaign(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->connected($t);
+        $row = $this->connected($t);
         $this->fakeGoogle($this->customerRow(), []);
 
-        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance')->assertOk();
+        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())->assertOk();
 
         // The scope IS the compliance position. Showing an ad group, ad or
         // keyword makes R.40, R.50, R.70, R.100 and R.130 apply, each with its
@@ -282,7 +286,7 @@ class CampaignPerformanceTest extends TestCase
     public function test_one_refusing_account_does_not_blank_the_report(): void
     {
         $t = $this->provisionTenant('A1-Group');
-        $this->connected($t);
+        $row = $this->connected($t);
 
         config([
             'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
@@ -299,7 +303,7 @@ class CampaignPerformanceTest extends TestCase
         ]);
 
         $body = $this->signedInAs($t['admin']->fresh())
-            ->getJson('/api/v1/ads/performance')
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk()
             ->json();
 
@@ -313,10 +317,126 @@ class CampaignPerformanceTest extends TestCase
         );
     }
 
-    public function test_reading_spend_needs_more_than_reading_enquiries(): void
+    /**
+     * Opening the screen must cost Google NOTHING.
+     *
+     * This is the whole point of the account list existing. The screen used to
+     * load every connected account at once: 53 accounts x 2 queries = 106
+     * operations of a 15,000/day ceiling, spent before anybody had asked for a
+     * single figure, and 47 seconds of spinner. A peer was about to make those
+     * calls concurrent, which would have made it fast and cost exactly the same
+     * quota.
+     *
+     * So the assertion is not "it is quicker". It is that nothing reaches
+     * Google at all.
+     */
+    public function test_listing_the_accounts_asks_google_nothing(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/accounts')
+            ->assertOk()
+            ->json();
+
+        $this->assertCount(1, $body['data']);
+        $this->assertSame('A1 Chimney - Cleveland', $body['data'][0]['name']);
+        $this->assertSame('4051729356', $body['data'][0]['customer_id']);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * And the report refuses to fan out even if somebody asks it to.
+     *
+     * `connection_id` used to be optional and meant "all of them". An optional
+     * fan-out is the kind of default that spends a tenant's whole daily quota
+     * because a tab was left open, so its absence is a 422 rather than a
+     * helpful default.
+     */
+    public function test_the_report_will_not_run_without_naming_one_account(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertStatus(422);
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * The chart's data, and the totals summed from the same rows.
+     *
+     * One query serves both deliberately. A separate unsegmented query for the
+     * totals would cost a third of the quota to produce a number these rows
+     * already contain, and the two can disagree - so a header contradicting its
+     * own chart would be possible. Here it is not.
+     */
+    public function test_the_series_is_daily_and_the_totals_are_its_sum(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+
+        $day = fn (string $date, string $cost, string $clicks) => [
+            'segments' => ['date' => $date],
+            'customer' => ['id' => '4051729356', 'currencyCode' => 'USD'],
+            'metrics' => [
+                'costMicros' => $cost, 'clicks' => $clicks,
+                'impressions' => '100', 'conversions' => 1.0, 'allConversions' => 1.0,
+            ],
+        ];
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at'], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                ->push(['results' => [
+                    $day('2026-09-01', '1000000', '10'),
+                    $day('2026-09-02', '2500000', '20'),
+                ]], 200)
+                ->push(['results' => []], 200)
+                ->whenEmpty(Http::response(['results' => []], 200)),
+        ]);
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0');
+
+        $cost = collect($body['series'])->firstWhere('key', 'cost');
+
+        $this->assertSame('Cost', $cost['label']);
+        // assertEquals, not assertSame, and it is the same wire fact as the cost
+        // column: round(1.0, 2) is a float in PHP, crosses JSON as `1`, and
+        // decodes as an int. A strict comparison here would be pinning a
+        // guarantee the wire cannot make - and the CLIENT has to read these as
+        // `as num` for exactly that reason.
+        $this->assertEquals(
+            [['at' => '2026-09-01', 'value' => 1.0], ['at' => '2026-09-02', 'value' => 2.5]],
+            $cost['points'],
+            'one point per day, in order, in the account currency',
+        );
+
+        // 1.00 + 2.50. If the totals came from a second query this could differ.
+        $this->assertEquals(3.5, $body['account']['cost']);
+        $this->assertSame(30, $body['account']['clicks']);
+    }
+
+    public function test_reading_spend_needs_more_than_reading_enquiries(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
         $this->fakeGoogle($this->customerRow(), []);
 
         // Dispatcher holds leads.view and not ads_performance.view. Somebody
@@ -325,12 +445,12 @@ class CampaignPerformanceTest extends TestCase
         $dispatcher = $this->userWithRole($t, 'Dispatcher', ['leads.view']);
 
         $this->signedInAs($dispatcher->fresh())
-            ->getJson('/api/v1/ads/performance')
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertForbidden();
 
         // Positive control: the same request, by somebody who does hold it.
         $this->signedInAs($t['admin']->fresh())
-            ->getJson('/api/v1/ads/performance')
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
             ->assertOk();
     }
 }
