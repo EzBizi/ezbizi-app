@@ -268,10 +268,20 @@ function ezbizi_chat_shortcode($atts) {
 
     $anchor = '';
 
+    /*
+     * 88px up, not 20.
+     *
+     * Jose photographed the launcher sitting in a-1chimney.com's yellow call
+     * bar. A sticky strip along the bottom — a phone number, a cookie notice,
+     * a book-now bar — is ordinary on the sites this plugin is installed on,
+     * and the one place a bottom-anchored bubble is guaranteed to collide with
+     * something is the bottom. Clearing a typical bar costs a little empty
+     * space on sites that have none.
+     */
     if ($position === 'bottom-right') {
-        $anchor = 'position:fixed;right:20px;bottom:20px;z-index:2147483000';
+        $anchor = 'position:fixed;right:20px;bottom:88px;z-index:2147483000';
     } elseif ($position === 'bottom-left') {
-        $anchor = 'position:fixed;left:20px;bottom:20px;z-index:2147483000';
+        $anchor = 'position:fixed;left:20px;bottom:88px;z-index:2147483000';
     }
 
     $title = ezbizi_widget_text($config, 'title', 'Chat with us');
