@@ -2738,6 +2738,20 @@ settings pane has room in. **5 is the same drawing at phone width**, so it is on
 rather than two; its collapsed branch row carries *"2 of them are dead ends"* so a branch nobody
 opened still reports the thing the screen exists for.
 
+> **WHY THE COUNTS SIT ABOVE THE DRAWING, AND NOT IN IT.** Phone, 2026-09-15, after the
+> correction below — the sharpest thing either of us said about this feature, and recorded
+> here because the next person to propose folding the counts into the chart will not have
+> been in that conversation:
+>
+> **`skipped` is the only state a picture cannot show by colouring a node, because the node
+> works.** It is the flow *through* it that is empty. `dead` colours fine — the caller
+> arrives and stops, so the box is where the fault is. A silent step is a working box on a
+> working wire between two working boxes, and the whole line draws clean.
+>
+> The third gallery case demonstrates it: **no red anywhere on that screen.** If the counts
+> move into the drawing, that state becomes invisible again — which is the state the tab was
+> built for. Anybody wanting to move them has to answer this first.
+
 **A third gallery case, added 2026-09-15 at Phone's request** — *a step that does nothing*,
 drawn on options 1 and 6 only, since those are the two built. Zero production lines have one
 today, so there is nothing real to look at, and waiting for one means waiting for the day
