@@ -1,5 +1,14 @@
 # UI/UX — the queue, and what has been settled
 
+> **REPORTING RULE, Jose 2026-09-15 (`CLAUDE.md` `0c90472e`, verified): replies to him are 3
+> bullets max** — final result, anything broken, anything he must do, a real question. His named
+> complaint is *"endless summaries replicated on all sessions"*. Peer messages, layout
+> measurements and these entries stay full-length; the constraint is only on what reaches him.
+>
+> **Scheduling reshaped the capacity settings screen** on his direct instruction and notified
+> UI/UX rather than queueing it — the approval flow working as written. Rides 0.0.0214. Not drawn
+> here; recorded so this queue does not read as if that screen is unchanged.
+
 Companion to `docs/MODULE-OWNERS.md`, written for the same reason and after the same
 failure: in ninety minutes on 2026-08-31 the Phone, Fleet, Customers and rules-desk
 sessions all ended, and four design briefs existed only in one session's context.
