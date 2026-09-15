@@ -40,6 +40,68 @@ void main() {
     expect(find.text('Never reached'), findsOneWidget);
   });
 
+  /// The entry node is outlined in the brand colour so the eye starts where
+  /// the caller does — Jose's "begins with Caller".
+  ///
+  /// Pinned because the styling was keyed off `kind` rather than `id` until
+  /// Phone read it: two namespaces that coincide on exactly one node, so a
+  /// rename on either side would have removed the outline and nothing would
+  /// have gone red. A missing outline reads as a design choice.
+  testWidgets('the caller is outlined differently from every other node', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100);
+
+    Color? borderOf(String title) {
+      final box = tester.widget<Container>(
+        find
+            .ancestor(of: find.text(title), matching: find.byType(Container))
+            .first,
+      );
+
+      return ((box.decoration as BoxDecoration?)?.border as Border?)?.top.color;
+    }
+
+    final scheme = EzBiziTheme.light().colorScheme;
+
+    expect(borderOf('Caller'), scheme.primary);
+    expect(
+      borderOf('Sales team'),
+      isNot(scheme.primary),
+      reason: 'An ordinary node must not borrow the entry treatment.',
+    );
+  });
+
+  /// Phone's measurement of their own contract: the SMALLEST graph is two
+  /// nodes, not four. A number that was imported and never pointed at EzBizi
+  /// returns `caller -> arrival` and stops. Neither the gallery nor the first
+  /// round of these tests had it.
+  testWidgets('a line pointed nowhere is two nodes and still draws', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100, graph: {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'arrival', 'kind': 'arrival', 'title': 'Arrival',
+          'detail': 'Not pointed at EzBizi.', 'state': 'dead'},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'arrival', 'label': ''},
+      ],
+    });
+
+    expect(tester.takeException(), isNull);
+
+    // Named because they are the only assertions here that DISTINGUISH this
+    // graph from the default fixture: 'Caller' and '1 dead end' are both true
+    // of the six-node one, so a test built on those alone would stay green if
+    // the graph argument were ignored and prove nothing.
+    expect(find.text('Arrival'), findsOneWidget);
+    expect(find.text('Menu'), findsNothing);
+    expect(find.text('1 dead end'), findsOneWidget);
+  });
+
   testWidgets('the counts are on screen before anything is read', (
     tester,
   ) async {
@@ -166,7 +228,11 @@ Map<String, dynamic> _graph() => {
   ],
 };
 
-Future<void> _pump(WidgetTester tester, {required double width}) async {
+Future<void> _pump(
+  WidgetTester tester, {
+  required double width,
+  Map<String, dynamic>? graph,
+}) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
@@ -181,7 +247,7 @@ Future<void> _pump(WidgetTester tester, {required double width}) async {
                 'id': 'n-1',
                 'e164': '+18605550142',
                 'label': 'Main line',
-                'graph': _graph(),
+                'graph': graph ?? _graph(),
               },
             ],
           }),

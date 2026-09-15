@@ -357,7 +357,13 @@ class _NodeCard extends StatelessWidget {
         ? scheme.error
         : node.isSkipped
         ? scheme.onSurfaceVariant
-        : node.kind == CallFlowGraph.entryId
+        // `id`, not `kind`. They are different namespaces that happen to
+        // coincide on exactly one node — the renderer builds the entry as
+        // `$add('caller', 'caller', …)`, id first and kind second — so a
+        // kind comparison works today and goes silent the moment either side
+        // is renamed. The outline would simply vanish and read as a design
+        // choice. Found by Phone reading this against their own contract.
+        : node.id == CallFlowGraph.entryId
         ? scheme.primary
         : scheme.outlineVariant;
 
