@@ -102,6 +102,7 @@ use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
+use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
@@ -1323,6 +1324,11 @@ Route::prefix('v1')
         Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
         Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);
 
+        // Pickup: what is ringing elsewhere, and taking one. {call} last, so
+        // the literal paths above cannot be swallowed by the parameter.
+        Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+        Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 
@@ -1746,6 +1752,27 @@ Route::prefix('v1')
         Route::get('settings', [SettingsController::class, 'index']);
         Route::patch('settings/{key}', [SettingsController::class, 'update']);
         Route::delete('settings/{key}', [SettingsController::class, 'destroy']);
+
+        /*
+        | The mail server a business sends its OWN mail through.
+        |
+        | Singular and scope-addressed, with NO {identity} segment: there is at
+        | most one per scope, enforced by a unique key, so there is no id for a
+        | caller to guess and no route binding that could resolve one belonging
+        | to a scope they cannot reach. The scope arrives as query parameters the
+        | same way /settings takes it, because it is the same cascade.
+        |
+        | PUT rather than PATCH because the body is the whole connection — five
+        | fields that only make sense together. A partial update of an SMTP
+        | connection is a connection that cannot be dialled.
+        |
+        | This is NOT the sending-identity screen Jose deleted on 2026-09-14.
+        | That one asked a business to prove a domain so EzBizi's SES would sign
+        | as them; this asks for their own server, with our SES not in the path.
+        */
+        Route::get('mail/sending-server', [SendingServersController::class, 'show']);
+        Route::put('mail/sending-server', [SendingServersController::class, 'connect']);
+        Route::delete('mail/sending-server', [SendingServersController::class, 'disconnect']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)

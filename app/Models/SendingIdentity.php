@@ -35,9 +35,15 @@ use Illuminate\Database\Eloquent\Model;
  * ── And it does not decide its own verification state ────────────
  *
  * `state` was written by the domain-verification flow, which was deleted on
- * 2026-09-14. NOTHING writes it now, and no API route sets it — the
- * whole reason this is not a registry setting is that a registry value IS
- * settable by anybody with `organizations.edit` and a PATCH.
+ * 2026-09-14. Exactly ONE thing writes it now — {@see connectServer}, which sets
+ * Verified because a tenant's own SMTP has nothing to prove to us — and no
+ * request body can reach it: it is absent from $fillable, so a PATCH cannot
+ * touch it whatever it is sent. That is the whole reason this is not a registry
+ * setting, where any value IS settable by anybody with `organizations.edit`.
+ *
+ * (This paragraph said "NOTHING writes it now" until connectServer was added
+ * minutes later in the same session. A comment goes stale from the change made
+ * four lines below it, by the person who wrote both.)
  */
 class SendingIdentity extends Model implements HoldsSensitiveValues, StatesRetention
 {
@@ -158,6 +164,53 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
             'verified_at'     => 'datetime',
             'last_checked_at' => 'datetime',
         ];
+    }
+
+    /**
+     * THE ONLY METHOD THAT ASSIGNS TO `credentials`. One writer, one field.
+     *
+     * `forceFill` because `credentials` is deliberately not fillable, so no
+     * request body can reach it through `update()` whatever it is sent — the
+     * same shape {@see \App\Models\Mailbox::connect()} uses, for the same
+     * reason and deliberately not a second dialect of it.
+     *
+     * The values are COPIED in, never referenced. When they came from a mailbox
+     * the copy is its own from this moment: deleting that inbox takes nothing
+     * with it, and changing its password does not change this. That is the whole
+     * argument for copying rather than pointing, and the screen has to say so —
+     * see the note on the cast above.
+     *
+     * @param  array{host:string,port:int,username:string,password:string,encryption:string}  $server
+     */
+    public function connectServer(array $server): void
+    {
+        $this->forceFill([
+            'transport'   => MailTransport::Smtp->value,
+            'credentials' => [
+                'host'       => $server['host'],
+                'port'       => $server['port'],
+                'username'   => $server['username'],
+                'password'   => $server['password'],
+                'encryption' => $server['encryption'],
+            ],
+
+            /*
+             * Verified, and it is not a lie by omission. `state` exists for the
+             * retired domain-verification flow, where EzBizi had to prove a
+             * claim about a domain before sending. Nothing is claimed here: the
+             * tenant's own server authenticates the send with the password they
+             * gave it, so MailTransport::Smtp->requiresDomainProof() is false
+             * and canSend() never consults this column for these rows.
+             *
+             * Set rather than left null because it is NOT NULL, and because a
+             * row sitting at a state that reads as "awaiting proof" would send
+             * the next reader looking for a proof step that does not exist.
+             */
+            'state'           => SendingState::Verified->value,
+            'state_reason'    => null,
+            'verified_at'     => now(),
+            'last_checked_at' => null,
+        ]);
     }
 
     // ── the identity ─────────────────────────────────────────────
