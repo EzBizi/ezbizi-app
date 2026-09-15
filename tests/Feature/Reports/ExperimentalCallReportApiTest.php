@@ -237,6 +237,69 @@ class ExperimentalCallReportApiTest extends TestCase
         );
     }
 
+    /**
+     * ROUNDS, not one-account-at-a-time, and a short page is what drops out.
+     *
+     * `all()` fans out concurrently now: every still-hungry branch asks for its
+     * next page in one round, and a branch returning fewer than PAGE rows stops
+     * being asked. Nine live branches over ~840 rows settle in two rounds
+     * instead of seventeen sequential requests (measured 9.2s in series).
+     *
+     * The loop is the part worth pinning. A branch with a FULL first page must
+     * be asked again, and one with a short page must not - get that wrong and
+     * the report either loses rows silently or loops forever against an API
+     * that ignores the offset.
+     */
+    public function test_a_branch_with_a_full_page_is_asked_for_the_next_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        config([
+            'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
+            'experimental_reports.ringcentral.client_id' => 'id',
+            'experimental_reports.ringcentral.client_secret' => 'secret',
+            'experimental_reports.ringcentral.jwt' => 'jwt',
+        ]);
+
+        $this->workizBranch($tenant, 'Nationwide', 'nat');
+        $this->workizBranch($tenant, 'New Jersey', 'nj');
+
+        // Nationwide: a FULL page, then a short one. New Jersey: short at once.
+        $full = array_fill(0, 100, [
+            'Phone' => '2125551212',
+            'CreatedBy' => 'Trey Brannan',
+            'CreatedDate' => '2026-09-14 09:00:00',
+        ]);
+
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/call-log*' => Http::response(['paging' => ['totalPages' => 1], 'records' => []]),
+
+            'api.workiz.com/api/v1/nat/*' => Http::sequence()
+                ->push(['flag' => true, 'data' => $full])
+                ->push(['flag' => true, 'data' => [[
+                    'Phone' => '2125559999',
+                    'CreatedBy' => 'Trey Brannan',
+                    'CreatedDate' => '2026-09-14 10:00:00',
+                ]]]),
+
+            'api.workiz.com/api/v1/nj/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json();
+
+        // 100 + 1. The second page is only fetched if the first being full put
+        // Nationwide back into the next round.
+        $this->assertSame(101, $body['totals']['jobs']);
+
+        // And New Jersey, short on its first page, was not asked twice - which
+        // a sequence with nothing left to push would have turned into a failure.
+        $this->assertSame([], (array) $body['workiz_failed']);
+    }
+
     // ── fixtures ─────────────────────────────────────────────────
 
     private function notConnected(): void
