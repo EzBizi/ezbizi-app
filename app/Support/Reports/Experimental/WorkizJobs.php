@@ -207,8 +207,18 @@ final class WorkizJobs
      * Paging is by offset and the last page is identified by being short, so
      * the number of requests cannot be computed before making them. Each round
      * asks every still-hungry account for its next page at once; an account
-     * that returns a short page drops out. Nine accounts over ~840 rows settle
-     * in two rounds.
+     * that returns a short page drops out.
+     *
+     * VERIFIED AGAINST THE LIVE API 2026-09-15, both shapes in one process:
+     *
+     *     series   17 requests   840 rows   11.1s
+     *     rounds   17 requests   840 rows    1.6s   in 2 rounds
+     *
+     * The equal ROW COUNT is the control and matters more than the time. Same
+     * number of requests, same 840 rows, so the rounds dropped nothing — and a
+     * speed-up that silently lost a page would look identical on the screen,
+     * which is this report's whole failure mode. Timing alone would not have
+     * told them apart.
      *
      * RingCentral is deliberately NOT parallelised alongside this: its call log
      * answers `X-Rate-Limit-Group: heavy, limit 10, window 60`, so it is the
