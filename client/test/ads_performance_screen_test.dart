@@ -27,20 +27,35 @@ void main() {
   /// was NOT asked for as well as what was.
   late List<String> calls;
 
+  /// The same requests with their query strings, for the tests that care WHICH
+  /// dates were asked for rather than which endpoint.
+  late List<Uri> urls;
+
   Future<void> pump(
     WidgetTester tester, {
     required List<Map<String, dynamic>> accounts,
     Map<String, dynamic>? report,
+    Map<String, dynamic>? rollup,
   }) async {
     tester.view.physicalSize = const Size(1400, 1200);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     calls = [];
+    urls = [];
 
     final api = ApiClient(
       client: MockClient((request) async {
         calls.add(request.url.path);
+        urls.add(request.url);
+
+        if (request.url.path.contains('/ads/rollup')) {
+          return http.Response(
+            jsonEncode(rollup ?? {'data': [], 'children_total': 0, 'not_connected': 0}),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
 
         if (request.url.path.contains('/ads/accounts')) {
           return http.Response(
@@ -291,6 +306,203 @@ void main() {
       find.textContaining('Connected sources'),
       findsOneWidget,
       reason: 'an empty state that does not name the way in leaves somebody stuck',
+    );
+  });
+
+  testWidgets('the default range is yesterday, not thirty days', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final asked = urls.firstWhere((u) => u.path.contains('/ads/performance'));
+
+    expect(
+      asked.queryParameters['from'],
+      asked.queryParameters['to'],
+      reason: 'Jose asked for a one-day default; a 30-day one costs thirty times '
+          'the rows to answer a question about yesterday',
+    );
+
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    expect(
+      asked.queryParameters['to'],
+      '${yesterday.year.toString().padLeft(4, '0')}-'
+      '${yesterday.month.toString().padLeft(2, '0')}-'
+      '${yesterday.day.toString().padLeft(2, '0')}',
+      reason: 'never today: Google restates the current day as late conversions '
+          'are attributed, so it is the one figure guaranteed to change after '
+          'somebody has read it',
+    );
+  });
+
+  testWidgets('searching the sidebar narrows it and keeps the rest reachable', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+
+    await tester.enterText(
+      find.byKey(const ValueKey('ads-account-search')),
+      'atlanta',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('ads-account-c2')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('ads-account-c1')),
+      findsNothing,
+      reason: 'a search that leaves every row on screen is a decoration',
+    );
+
+    // And it filters on the customer id too, because that is the other half of
+    // how somebody names an account.
+    await tester.enterText(
+      find.byKey(const ValueKey('ads-account-search')),
+      '4051729356',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('ads-account-c1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ads-account-c2')), findsNothing);
+  });
+
+  testWidgets('searching campaigns narrows the table, not the account', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('ads-campaign-search')),
+      'display',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Search'), findsNothing);
+
+    // The account figures above the table are the whole account and must not
+    // move when the table below is filtered - a total that tracks the filter is
+    // a different and wrong statement.
+    expect(find.text('1234.56 USD'), findsOneWidget);
+  });
+
+  testWidgets('the table reorders on the column that was clicked', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    double y(String label) => tester.getTopLeft(find.text(label)).dy;
+
+    // Cost, descending, by default: 900 above 0.
+    expect(
+      y('Chimney - Cleveland - Search'),
+      lessThan(y('Chimney - Cleveland - Display')),
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey('ads-campaigns')),
+        matching: find.text('Campaign'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Alphabetical now, which is the opposite order - so a dropped sort cannot
+    // satisfy this by leaving the rows as the API returned them.
+    expect(
+      y('Chimney - Cleveland - Display'),
+      lessThan(y('Chimney - Cleveland - Search')),
+    );
+  });
+
+  testWidgets('a manager rolls up instead of reporting on itself', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      accounts: [
+        {
+          'connection_id': 'm1',
+          'customer_id': '9998887776',
+          'name': 'A1 Chimney - Ads Manager',
+          'is_manager': true,
+        },
+        ...twoAccounts(),
+      ],
+      report: report(),
+      rollup: {
+        'children_total': 3,
+        'not_connected': 1,
+        'data': [
+          {
+            'connection_id': 'c1',
+            'id': '4051729356',
+            'name': 'A1 Chimney - Cleveland',
+            'clicks': 412,
+            'impressions': 10500,
+            'conversions': 31.5,
+            'all_conversions': 44.25,
+            'cost': 1234.56,
+            'currency': 'USD',
+          },
+          {
+            'connection_id': 'c2',
+            'id': '8865675621',
+            'name': 'A1 Chimney - Atlanta',
+            'clicks': 88,
+            'impressions': 900,
+            'conversions': 4,
+            'all_conversions': 6,
+            'cost': 65.44,
+            'currency': 'USD',
+          },
+        ],
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ads-account-m1')));
+    await tester.pumpAndSettle();
+
+    expect(calls.where((c) => c.contains('/ads/rollup')), hasLength(1));
+    expect(
+      calls.where((c) => c.contains('/ads/performance')),
+      isEmpty,
+      reason: 'a manager holds no spend of its own, so the per-account report on '
+          'one is a screen of zeroes',
+    );
+
+    // Summed across the children.
+    final figures = find.byKey(const ValueKey('ads-rollup-figures'));
+    expect(
+      find.descendant(of: figures, matching: find.text('1300.00 USD')),
+      findsOneWidget,
+    );
+
+    for (final label in [
+      'Cost',
+      'Clicks',
+      'Impressions',
+      'Conversions',
+      'All conversions',
+    ]) {
+      expect(
+        find.descendant(of: figures, matching: find.text(label)),
+        findsOneWidget,
+        reason: 'R.10 applies to every account level displayed, roll-up included',
+      );
+    }
+
+    // And it says what the total does NOT cover. A figure quietly covering two
+    // of three accounts reads as a complete one.
+    expect(
+      find.textContaining('not connected'),
+      findsOneWidget,
+      reason: 'the reader cannot ask about an omission nothing tells them about',
     );
   });
 }

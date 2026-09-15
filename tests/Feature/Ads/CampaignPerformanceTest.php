@@ -48,6 +48,24 @@ class CampaignPerformanceTest extends TestCase
         });
     }
 
+    private function manager(array $t): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t) {
+            $row = SocialConnection::create([
+                'organization_id' => $t['org']->id,
+                'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'provider' => SocialProvider::GoogleAds->value,
+                'remote_id' => '9998887776',
+                'display_name' => 'A1 Chimney - Ads Manager',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
     private function fakeGoogle(array $customerRow, array $campaignRows): void
     {
         config([
@@ -377,6 +395,172 @@ class CampaignPerformanceTest extends TestCase
      * already contain, and the two can disagree - so a header contradicting its
      * own chart would be possible. Here it is not.
      */
+    /**
+     * The account list says which rows are managers.
+     *
+     * The whole roll-up hangs off this one boolean: the screen decides which
+     * endpoint to call from it, so a list that always says false would quietly
+     * show a manager as a screen of zeroes and nobody would see an error.
+     *
+     * Worked out from the rows themselves - an account is a manager if another
+     * connected account was reached THROUGH it - because asking Google would
+     * put a network call back into the one screen that must make none.
+     */
+    public function test_the_account_list_marks_the_managers(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $child = $this->connected($t);
+        $manager = $this->manager($t);
+
+        $this->inTenant($t['org'], function () use ($child, $manager) {
+            $child->forceFill(['login_customer_id' => $manager->remote_id])->save();
+        });
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/accounts')
+            ->assertOk()
+            ->json();
+
+        $rows = collect($body['data'])->keyBy('customer_id');
+
+        $this->assertTrue($rows['9998887776']['is_manager']);
+        $this->assertFalse(
+            $rows['4051729356']['is_manager'],
+            'an account offered a roll-up of itself asks Google for a tree it is not the root of',
+        );
+
+        Http::assertNothingSent();
+    }
+
+    /**
+     * A manager account is an overview of everything beneath it.
+     *
+     * Jose, 2026-09-15: "the manager accounts like Angi Sweep MCC and A1
+     * Chimney - Ads Manager should work as the overview for all the accounts
+     * under it". A manager holds no spend of its own, so the per-account
+     * report on one is a screen of zeroes.
+     *
+     * The assertion that matters is the LAST one. Google's tree holds accounts
+     * we have no token for, and a total that quietly covers three of five
+     * accounts is a smaller number wearing the clothes of a complete one.
+     */
+    public function test_a_manager_rolls_up_the_accounts_beneath_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $child = $this->connected($t);
+        $manager = $this->manager($t);
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                // The tree: the manager itself, one account we hold a token
+                // for, one we do not, and a nested manager.
+                ->push(['results' => [
+                    ['customerClient' => ['id' => '9998887776', 'descriptiveName' => 'A1 Chimney - Ads Manager', 'manager' => true]],
+                    ['customerClient' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Cleveland']],
+                    ['customerClient' => ['id' => '1112223334', 'descriptiveName' => 'Somebody Else']],
+                    ['customerClient' => ['id' => '5556667778', 'descriptiveName' => 'Nested MCC', 'manager' => true]],
+                ]], 200)
+                ->push(['results' => [$this->customerRow()]], 200),
+        ]);
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/rollup?connection_id='.$manager->getKey())
+            ->assertOk()
+            ->json();
+
+        $this->assertCount(1, $body['data']);
+        $this->assertSame($child->getKey(), $body['data'][0]['connection_id']);
+        $this->assertEquals(412, $body['data'][0]['clicks']);
+
+        foreach (self::REQUIRED as $field) {
+            $this->assertArrayHasKey(
+                $field,
+                $body['data'][0],
+                "R.10 applies to every account row the roll-up displays, and $field is one of the five",
+            );
+        }
+
+        // Two children, one readable. The manager's own row and the nested
+        // manager are not children - counting them would inflate both numbers
+        // and imply spend that is already counted underneath.
+        $this->assertSame(2, $body['children_total']);
+        $this->assertSame(
+            1,
+            $body['not_connected'],
+            'a roll-up that silently omits accounts reads as a complete total',
+        );
+    }
+
+    /**
+     * And the roll-up does not ask for campaigns.
+     *
+     * One query per child, not two. A manager with forty accounts is forty
+     * operations of a 15,000/day ceiling; asking each of them for its campaign
+     * breakdown as well would double that to produce rows nothing on the
+     * overview draws.
+     */
+    public function test_the_rollup_costs_one_query_per_child(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $manager = $this->manager($t);
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                ->push(['results' => [
+                    ['customerClient' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Cleveland']],
+                ]], 200)
+                ->push(['results' => [$this->customerRow()]], 200)
+                // A third query must be ANSWERED rather than thrown on. An
+                // exhausted sequence throws before the request is sent, so the
+                // extra call would never be recorded and this test would pass
+                // on exactly the fan-out it exists to forbid. It did.
+                ->whenEmpty(Http::response(['results' => []], 200)),
+        ]);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/rollup?connection_id='.$manager->getKey())
+            ->assertOk();
+
+        $queries = [];
+
+        Http::assertSent(function ($request) use (&$queries) {
+            if (str_contains($request->url(), 'googleads.googleapis.com')) {
+                $queries[] = (string) ($request->data()['query'] ?? '');
+            }
+
+            return true;
+        });
+
+        $this->assertCount(2, $queries, 'one tree query, then one per child - nothing else');
+        $this->assertStringContainsString('FROM customer_client', $queries[0]);
+        $this->assertStringContainsString('FROM customer ', $queries[1]);
+
+        foreach ($queries as $query) {
+            $this->assertStringNotContainsString(
+                'FROM campaign',
+                $query,
+                'the overview draws no campaign rows, so asking for them spends quota on nothing',
+            );
+        }
+    }
+
     public function test_the_series_is_daily_and_the_totals_are_its_sum(): void
     {
         $t = $this->provisionTenant('A1-Group');

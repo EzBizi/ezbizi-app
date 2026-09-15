@@ -76,8 +76,12 @@ class CampaignPerformance
      *     to: string,
      * }
      */
-    public function forConnection(SocialConnection $connection, Carbon $from, Carbon $to): array
-    {
+    public function forConnection(
+        SocialConnection $connection,
+        Carbon $from,
+        Carbon $to,
+        bool $withCampaigns = true,
+    ): array {
         $token = GoogleToken::forConnection($connection, 'google_ads');
 
         // Dates are the ACCOUNT's, not the server's. segments.date is evaluated
@@ -101,12 +105,18 @@ class CampaignPerformance
          */
         $account = $this->search($connection, $token, sprintf(
             'SELECT segments.date, customer.id, customer.descriptive_name, '
-            .'customer.currency_code, customer.time_zone, %s FROM customer WHERE %s',
+            .'customer.currency_code, customer.time_zone, customer.manager, %s FROM customer WHERE %s',
             self::REQUIRED_METRICS,
             $window,
         ));
 
-        $campaigns = $this->search($connection, $token, sprintf(
+        /*
+         * The manager roll-up asks for account totals only, and skipping the
+         * campaign query HALVES what a forty-account roll-up costs. It is the
+         * difference between eighty operations and forty on a 15,000/day
+         * ceiling that the lead sync also draws on.
+         */
+        $campaigns = ! $withCampaigns ? [] : $this->search($connection, $token, sprintf(
             'SELECT campaign.id, campaign.name, campaign.status, '
             .'campaign.advertising_channel_type, %s FROM campaign WHERE %s',
             self::REQUIRED_METRICS,
@@ -132,6 +142,7 @@ class CampaignPerformance
                 $campaigns,
             ),
             'currency' => $currency,
+            'is_manager' => ($account[0]['customer']['manager'] ?? false) === true,
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
         ];
@@ -170,6 +181,55 @@ class CampaignPerformance
             'cost' => round($sum('costMicros') / 1_000_000, 2),
             'currency' => $currency,
         ];
+    }
+
+    /**
+     * The accounts beneath a manager, as GOOGLE understands them.
+     *
+     * Not from our own `login_customer_id` column, and the difference matters.
+     * That column records the manager an account was reached THROUGH when it
+     * was connected, so an account connected directly has it null even when it
+     * really does sit under a manager. Rolling up from our rows would silently
+     * omit those and produce a total that is wrong rather than partial - and a
+     * wrong total on a spend report is worse than no total.
+     *
+     * `customer_client` is one query and is authoritative. What we then report
+     * on is the intersection with the accounts we actually hold a token for,
+     * which is a smaller set and is stated on screen rather than implied.
+     *
+     * @return list<array{id: string, name: string}>
+     */
+    public function childrenOf(SocialConnection $connection): array
+    {
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+
+        $rows = $this->search($connection, $token,
+            'SELECT customer_client.client_customer, customer_client.id, '
+            .'customer_client.descriptive_name, customer_client.manager, '
+            .'customer_client.status FROM customer_client WHERE customer_client.level <= 2'
+        );
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            $client = $row['customerClient'] ?? [];
+            $id = (string) ($client['id'] ?? '');
+
+            // Skip the manager's own row - customer_client includes SELF at
+            // level 0 - and skip other managers, which hold no spend of their
+            // own and would double-count everything beneath them.
+            if ($id === '' || $id === preg_replace('/\D/', '', (string) $connection->remote_id)) {
+                continue;
+            }
+
+            if (($client['manager'] ?? false) === true) {
+                continue;
+            }
+
+            $out[] = ['id' => $id, 'name' => (string) ($client['descriptiveName'] ?? $id)];
+        }
+
+        return $out;
     }
 
     /**

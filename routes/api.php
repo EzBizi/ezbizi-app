@@ -687,6 +687,9 @@ Route::prefix('v1')
         // Google nothing - the screen lists these and loads ONE on demand.
         Route::get('ads/accounts', [AdsPerformanceController::class, 'accounts']);
         Route::get('ads/performance', [AdsPerformanceController::class, 'index']);
+        // A manager account: what everything beneath it spent. The one place a
+        // fan-out is still the answer, and it costs nothing until asked for.
+        Route::get('ads/rollup', [AdsPerformanceController::class, 'rollup']);
 
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
