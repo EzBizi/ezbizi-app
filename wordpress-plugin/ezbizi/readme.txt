@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.5.0
+Stable tag: 1.7.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -194,6 +194,27 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.7.1 =
+* The chat bubble sits higher, so it no longer lands on a sticky bar along the
+  bottom of the page.
+
+= 1.7.0 =
+* The live chat has been rebuilt. It now opens a proper panel with a coloured
+  header and a close button, and asks the visitor for a name and a phone or
+  email before the conversation starts, so a chat you miss is still somebody
+  you can call back.
+* Fixes the chat borrowing your theme's styling — the launcher and the message
+  box were taking their colours and shape from the page around them.
+* All of its wording is set in EzBizi, under Web Management, Marketing,
+  Widgets.
+
+= 1.6.0 =
+* The live chat bubble now appears on every page on its own. It floats in the
+  corner, so it was never something to paste onto each page by hand. Set its
+  position to "inline" if you would rather place it yourself with the shortcode
+  or the Elementor widget.
+* The contact form is unchanged: it appears where you put it.
 
 = 1.5.0 =
 * The live chat and contact form are now Elementor widgets. Search "EzBizi" in

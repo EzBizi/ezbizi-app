@@ -50,10 +50,24 @@ final class WidgetDefaults
     {
         return [
             'title' => 'Chat with us',
-            'intro' => 'Ask us anything — we will reply here.',
+            'intro' => 'We are online and ready to help.',
             'button' => 'Chat',
             'placeholder' => 'Type a message',
             'send' => 'Send',
+            /*
+             * Asked before the conversation rather than after it.
+             *
+             * A chat that opens straight into a message box produces a Lead
+             * with nobody's name on it: the visitor types, closes the tab, and
+             * the only way to answer is to hope they come back. Three answers,
+             * asked once, make every chat somebody who can be called back.
+             */
+            'lead_in' => 'Quick details first, so we can get back to you if we are disconnected.',
+            'name_label' => 'Your name',
+            'contact_label' => 'Phone or email',
+            'message_label' => 'How can we help?',
+            'start' => 'Start chat',
+            'error' => 'Sorry — that did not send. Please try again.',
             'away' => 'We are not at the desk right now, but leave a message and we will come back to you.',
             'position' => 'bottom-right',
         ];
@@ -157,6 +171,12 @@ final class WidgetDefaults
                 'placeholder' => self::text($chat['placeholder'] ?? '', 80),
                 'send' => self::text($chat['send'] ?? '', 40),
                 'away' => self::text($chat['away'] ?? '', 300),
+                'lead_in' => self::text($chat['lead_in'] ?? '', 200),
+                'name_label' => self::text($chat['name_label'] ?? '', 40),
+                'contact_label' => self::text($chat['contact_label'] ?? '', 40),
+                'message_label' => self::text($chat['message_label'] ?? '', 60),
+                'start' => self::text($chat['start'] ?? '', 40),
+                'error' => self::text($chat['error'] ?? '', 200),
                 'position' => in_array($chat['position'] ?? '', ['bottom-right', 'bottom-left', 'inline'], true)
                     ? $chat['position']
                     : 'bottom-right',

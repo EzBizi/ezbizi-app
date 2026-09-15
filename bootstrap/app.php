@@ -73,6 +73,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         /*
+         * Global, and ahead of HandleCors, because a preflight never reaches
+         * the api group.
+         *
+         * An OPTIONS request matches no route of ours, so HandleCors answers
+         * it out of config/cors.php and nothing further runs. That config is
+         * one origin list for every api/* route and correctly does not carry
+         * `*`, so the widgets on customers' own websites were being refused
+         * before their request was ever sent. This one claims four paths by
+         * name; every other route still answers to the shared list.
+         */
+        $middleware->prepend([
+            App\Http\Middleware\AllowWidgetOrigins::class,
+        ]);
+
+        /*
          * Tenancy is established BEFORE route model binding.
          *
          * Listing middleware in a route's ->middleware([...]) does not decide the
