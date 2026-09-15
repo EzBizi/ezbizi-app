@@ -484,6 +484,44 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertNull($day['totals']['avg_talk_seconds']);
     }
 
+    /**
+     * BOOKING NOTHING TODAY IS NOT THE SAME AS BEING UNKNOWN TO WORKIZ.
+     *
+     * The marker used to be computed off the DAY's jobs, so somebody who
+     * answered calls and happened to book nothing that morning was flagged as
+     * though Workiz had never heard of them - which reads as a name spelled
+     * differently in the two systems and invites a "fix" to a pair that was
+     * never broken. Three people on the first live day.
+     *
+     * The roster is the 30-day window the report already fetches.
+     */
+    public function test_somebody_in_the_window_but_not_todays_jobs_is_not_flagged(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Jared Prescott', 'Call connected']])]);
+
+        // In Workiz, but the job is from last week rather than today.
+        $day = $this->reconcile([
+            ['account' => 'NJ', 'created_by' => 'Jared Prescott', 'created_at' => '2026-09-07 11:00:00'],
+        ]);
+
+        $person = $this->person($day, 'Jared Prescott');
+
+        $this->assertSame(0, $person['jobs'], "last week's job counted toward today");
+        $this->assertTrue($person['in_jobs'], 'Workiz knows this name and the report said otherwise');
+    }
+
+    /** Somebody Workiz has never seen at all IS worth flagging. */
+    public function test_somebody_absent_from_the_whole_window_is_flagged(): void
+    {
+        $this->fakeCallLog([$this->inbound(rang: [['Chaim Perez', 'Call connected']])]);
+
+        $day = $this->reconcile([
+            ['account' => 'NJ', 'created_by' => 'Trey Brannan', 'created_at' => '2026-09-14 11:00:00'],
+        ]);
+
+        $this->assertFalse($this->person($day, 'Chaim Perez')['in_jobs']);
+    }
+
     private function inbound(array $rang, ?string $queue = null, int $talkSeconds = 148, int $recordSeconds = 197): array
     {
         $legs = [[

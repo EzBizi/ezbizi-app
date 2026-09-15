@@ -154,6 +154,35 @@ final class CallReconciliation
             $made[$person] = ($made[$person] ?? 0) + 1;
         }
 
+        /*
+         * ── THE ROSTER IS THE WINDOW, NOT THE DAY ───────────────────
+         *
+         * `$jobs` is a 30-day window of Workiz jobs; `$booked` is the day's
+         * slice of it. "Does Workiz know this name" must be asked of the
+         * WINDOW. Asked of the day it answers "did they book anything today",
+         * which is a different question with the same shape.
+         *
+         * That mislabelled three people on the first live day. Jared Prescott,
+         * Jovanni Martin and Ranya Lara all answered calls, booked nothing that
+         * day, and were marked as though Workiz had never heard of them -
+         * which reads as a name spelled differently in the two systems, and
+         * invites somebody to go and "fix" a pair that was never broken.
+         *
+         * Measured 2026-09-15: of the 9 people RingCentral saw in 14 days, 8
+         * appear in Workiz spelled IDENTICALLY. The systems agree on names
+         * almost perfectly, so a marker firing six times in one day was never
+         * reporting what it claimed to.
+         */
+        $workizRoster = [];
+
+        foreach ($jobs as $job) {
+            $name = $this->canonical($job['created_by'] ?? null);
+
+            if ($name !== null) {
+                $workizRoster[$name] = true;
+            }
+        }
+
         $names = array_values(array_unique(array_merge(
             array_keys($rang),
             array_keys($answered),
@@ -180,11 +209,16 @@ final class CallReconciliation
                     ? (int) round($talkSeconds[$name] / $talkCalls[$name])
                     : null,
 
-                // Which system knows this name. A person present on one side
-                // only is the signal that the two systems spell them
-                // differently, and the screen says so instead of guessing.
+                // Whether WORKIZ HAS EVER HEARD OF THEM, over the whole
+                // window - not whether they booked today.
+                //
+                // Only this direction is asserted. The reverse ("Workiz knows
+                // them, RingCentral does not") would need a roster of callers
+                // and all this holds is one day of calls, so somebody who books
+                // jobs without answering phones - a normal way to work - must
+                // not be flagged as a mismatch.
                 'in_calls' => isset($rang[$name]) || isset($answered[$name]),
-                'in_jobs' => isset($made[$name]),
+                'in_jobs' => isset($workizRoster[$name]),
             ];
         }
 
