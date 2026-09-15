@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers_screen.dart';
 import '../screens/dashboard_screen.dart';
@@ -148,6 +149,13 @@ final Map<String, ModuleScreen> moduleScreens = {
   'business_profile': ModuleScreen(
     Icons.storefront_outlined,
     (api, session) => BusinessProfileScreen(api: api, session: session),
+  ),
+  // A chart line, not a coin or a wallet. The tab is about what the advertising
+  // DID over a range - spend beside clicks, conversions and impressions - and a
+  // currency symbol would say "billing", which is Google's screen, not this one.
+  'ads_performance': ModuleScreen(
+    Icons.show_chart_outlined,
+    (api, session) => AdsPerformanceScreen(api: api, session: session),
   ),
   'leads': ModuleScreen(
     Icons.call_received_outlined,

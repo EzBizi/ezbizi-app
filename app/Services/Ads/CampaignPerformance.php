@@ -1,0 +1,216 @@
+<?php
+
+namespace App\Services\Ads;
+
+use App\Models\SocialConnection;
+use App\Support\Social\GoogleAdsOAuth;
+use App\Support\Social\GoogleToken;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+
+/**
+ * What a connected Google Ads account spent, and what it got for it.
+ *
+ * ── Two levels, on purpose ───────────────────────────────────────
+ *
+ * Google's Reporting Minimum Functionality is conditional on WHICH levels of
+ * the hierarchy a tool displays: "a Reporting-only Google Ads API Client must
+ * show Reporting Functionality for each of the levels of the Google Ads
+ * hierarchy displayed in its reporting interface", where a level is one of
+ * Account, Campaign, Ad Group, Ad or Keyword.
+ *
+ * This shows Account and Campaign and nothing below. That is a deliberate
+ * scope, not an omission: it makes R.10 and R.20 apply and leaves R.40 (Ad
+ * Group Ad), R.50 (Keyword View), R.70 (Search Term View), R.100 (DSA Search
+ * Term View) and R.130 (Bidding Strategy) genuinely not applicable. Adding an
+ * ad group column later is not a column - it is five more mandatory fields and
+ * a fresh submission to Google.
+ *
+ * ── The five fields are not ours to choose ───────────────────────
+ *
+ * R.10 and R.20 both require clicks, cost_micros, impressions, conversions and
+ * all_conversions. All five are selected below and all five must reach the
+ * screen. `campaign.status` is required whenever paused or removed campaigns
+ * are shown, and this shows them, so it is selected too.
+ *
+ * ── Currency is part of the number ───────────────────────────────
+ *
+ * `cost_micros` is millionths of the ACCOUNT's currency, not of anything
+ * global. A figure rendered without `customer.currency_code` is a number with
+ * no unit, and A-1's accounts are not guaranteed to agree with each other. The
+ * same trap as the Local Services timestamps, which are account-local and were
+ * read as UTC until somebody noticed the hours were wrong.
+ *
+ * ── Read live, never stored ──────────────────────────────────────
+ *
+ * The opposite decision from LocalServicesLeads, and for the reason stated
+ * there: a lead is acted on over days, gets a status only this organization
+ * knows, and must survive the account being disconnected. A spend figure is
+ * none of those things. It is true of a date range at the moment it is asked
+ * for, it is restated by Google whenever conversions are attributed late, and a
+ * stored copy would go quietly wrong rather than visibly missing.
+ */
+class CampaignPerformance
+{
+    private const TIMEOUT = 20;
+
+    /**
+     * The five R.10 / R.20 metrics, named once.
+     *
+     * Kept as a constant rather than inlined in both queries because the
+     * requirement is that the SAME set appears at both levels, and two inlined
+     * lists are two chances to drift apart - at which point one level silently
+     * stops meeting the policy we told Google we meet.
+     */
+    private const REQUIRED_METRICS = 'metrics.clicks, metrics.cost_micros, metrics.impressions, '
+        .'metrics.conversions, metrics.all_conversions';
+
+    /**
+     * @return array{
+     *     account: array<string, mixed>,
+     *     campaigns: list<array<string, mixed>>,
+     *     currency: ?string,
+     *     from: string,
+     *     to: string,
+     * }
+     */
+    public function forConnection(SocialConnection $connection, Carbon $from, Carbon $to): array
+    {
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+
+        // Dates are the ACCOUNT's, not the server's. segments.date is evaluated
+        // in the customer's own time zone, so a range built from a UTC "today"
+        // silently asks for a different day than the one the user picked.
+        $window = sprintf(
+            "segments.date BETWEEN '%s' AND '%s'",
+            $from->format('Y-m-d'),
+            $to->format('Y-m-d'),
+        );
+
+        $account = $this->search($connection, $token, sprintf(
+            'SELECT customer.id, customer.descriptive_name, customer.currency_code, '
+            .'customer.time_zone, %s FROM customer WHERE %s',
+            self::REQUIRED_METRICS,
+            $window,
+        ));
+
+        $campaigns = $this->search($connection, $token, sprintf(
+            'SELECT campaign.id, campaign.name, campaign.status, '
+            .'campaign.advertising_channel_type, %s FROM campaign WHERE %s',
+            self::REQUIRED_METRICS,
+            $window,
+        ));
+
+        $currency = $account[0]['customer']['currencyCode'] ?? null;
+
+        return [
+            'account' => $this->totals($account, $currency, [
+                'id' => $account[0]['customer']['id'] ?? $connection->remote_id,
+                'name' => $account[0]['customer']['descriptiveName'] ?? $connection->display_name,
+                'time_zone' => $account[0]['customer']['timeZone'] ?? null,
+            ]),
+            'campaigns' => array_map(
+                fn (array $row) => $this->totals([$row], $currency, [
+                    'id' => $row['campaign']['id'] ?? null,
+                    'name' => $row['campaign']['name'] ?? null,
+                    'status' => $row['campaign']['status'] ?? null,
+                    'channel' => $row['campaign']['advertisingChannelType'] ?? null,
+                ]),
+                $campaigns,
+            ),
+            'currency' => $currency,
+            'from' => $from->format('Y-m-d'),
+            'to' => $to->format('Y-m-d'),
+        ];
+    }
+
+    /**
+     * One row's five required metrics, plus whatever identifies it.
+     *
+     * `cost_micros` is divided here rather than on the client because the
+     * divisor is a fact about the API (a million) and not a display choice, and
+     * because a client that forgot it would render a plausible number a
+     * thousand times too large - the kind of wrong that looks like a real
+     * figure.
+     *
+     * Every metric defaults to 0 rather than null. Google omits a metric for a
+     * row with no activity, and a missing "clicks" on screen is indistinguishable
+     * from a broken fetch; zero says what actually happened.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $identity
+     * @return array<string, mixed>
+     */
+    private function totals(array $rows, ?string $currency, array $identity): array
+    {
+        $sum = fn (string $field) => array_sum(array_map(
+            fn (array $r) => (float) ($r['metrics'][$field] ?? 0),
+            $rows,
+        ));
+
+        return [
+            ...$identity,
+            'clicks' => (int) $sum('clicks'),
+            'impressions' => (int) $sum('impressions'),
+            'conversions' => round($sum('conversions'), 2),
+            'all_conversions' => round($sum('allConversions'), 2),
+            'cost' => round($sum('costMicros') / 1_000_000, 2),
+            'currency' => $currency,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     *
+     * @throws RuntimeException
+     */
+    private function search(SocialConnection $connection, string $token, string $query): array
+    {
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        /*
+         * ponytail: a second, smaller copy of the transport in
+         * LocalServicesLeads::search(), deliberately not extracted yet.
+         *
+         * The two facts that copy paid for are carried, not re-derived:
+         * `login-customer-id` is the connection's own account rather than an
+         * installation-wide id, and NO pageSize - googleAds:search answers
+         * PAGE_SIZE_NOT_SUPPORTED and a 400 looks like every other failure on
+         * screen. What is NOT carried is paging, because this asks for one
+         * account and its campaigns rather than a lead history.
+         *
+         * Extract both into one place if a third caller appears. Refactoring a
+         * 900-line live file to save twenty lines, in the same change that adds
+         * a feature, is how a working path gets broken for tidiness.
+         */
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders([
+                    'developer-token' => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(
+                    GoogleAdsOAuth::endpoint().'/customers/'.$customerId.'/googleAds:search',
+                    ['query' => $query],
+                );
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer while reading this account\'s performance.');
+        }
+
+        if ($response->failed()) {
+            // Google's own sentence, not a status code. "Not enabled or
+            // deactivated" and "quota exhausted" are different problems for
+            // whoever is looking at the screen, and both arrive as 403.
+            throw new RuntimeException(
+                (string) ($response->json('error.details.0.errors.0.message')
+                    ?? $response->json('error.message')
+                    ?? 'Google refused the performance request (HTTP '.$response->status().').')
+            );
+        }
+
+        return array_values((array) $response->json('results', []));
+    }
+}

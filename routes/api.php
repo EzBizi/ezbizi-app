@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
+use App\Http\Controllers\Api\AdsPerformanceController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
@@ -100,10 +101,10 @@ use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
+use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
-use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
@@ -653,6 +654,12 @@ Route::prefix('v1')
         // permissions: one writes text nobody outside can see, the other speaks
         // in public under the organization's name. No `store` — every review is
         // fetched from Google, and one somebody typed in would be a fake.
+        // Google Ads spend and performance. Account and Campaign only - the
+        // two levels Google's Reporting Minimum Functionality is answered for.
+        // Adding an ad group, ad or keyword level here is not a route change,
+        // it is five more mandatory fields per level and a fresh submission.
+        Route::get('ads/performance', [AdsPerformanceController::class, 'index']);
+
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);

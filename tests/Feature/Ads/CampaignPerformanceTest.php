@@ -1,0 +1,336 @@
+<?php
+
+namespace Tests\Feature\Ads;
+
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Spend and performance, and the five fields Google requires with them.
+ *
+ * R.10 (Customer) and R.20 (Campaign) each mandate clicks, cost_micros,
+ * impressions, conversions and all_conversions. They are not a design choice
+ * and they are not ours to trim: showing the Campaign level at all is what
+ * makes R.20 apply, and a level displayed without its required fields is a
+ * policy breach rather than a missing feature.
+ *
+ * So the assertions below are about the CONTRACT with Google, not about
+ * arithmetic. If somebody later drops a column because it looked redundant on
+ * screen, this goes red and names the requirement it broke.
+ */
+class CampaignPerformanceTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    /** The five, exactly as the policy lists them. */
+    private const REQUIRED = ['clicks', 'impressions', 'conversions', 'all_conversions', 'cost'];
+
+    private function connected(array $t): SocialConnection
+    {
+        return $this->inTenant($t['org'], function () use ($t) {
+            $row = SocialConnection::create([
+                'organization_id' => $t['org']->id,
+                'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'provider' => SocialProvider::GoogleAds->value,
+                'remote_id' => '4051729356',
+                'display_name' => 'A1 Chimney - Cleveland',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
+    private function fakeGoogle(array $customerRow, array $campaignRows): void
+    {
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        // One fake, sequenced: the service asks for the account first and the
+        // campaigns second. A second Http::fake() would be ignored - it stacks
+        // rather than replaces - and both calls would get the account payload.
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                ->push(['results' => [$customerRow]], 200)
+                ->push(['results' => $campaignRows], 200)
+                ->whenEmpty(Http::response(['results' => []], 200)),
+        ]);
+    }
+
+    private function customerRow(): array
+    {
+        return [
+            'customer' => [
+                'id' => '4051729356',
+                'descriptiveName' => 'A1 Chimney - Cleveland',
+                'currencyCode' => 'USD',
+                'timeZone' => 'America/New_York',
+            ],
+            'metrics' => [
+                'clicks' => '412',
+                'impressions' => '10500',
+                'conversions' => 31.5,
+                'allConversions' => 44.25,
+                'costMicros' => '1234560000',
+            ],
+        ];
+    }
+
+    public function test_the_account_level_carries_every_field_r10_requires(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertOk()
+            ->json('data.0.account');
+
+        foreach (self::REQUIRED as $field) {
+            $this->assertArrayHasKey(
+                $field,
+                $account,
+                'R.10 requires '.$field.' at the Account level; a level shown without its '
+                .'required fields is a policy breach, not a missing column.',
+            );
+        }
+
+        $this->assertSame(412, $account['clicks']);
+        $this->assertSame(10500, $account['impressions']);
+        $this->assertSame(31.5, $account['conversions']);
+        $this->assertSame(44.25, $account['all_conversions']);
+
+        // 1,234,560,000 micros is 1,234.56 - not 1,234,560,000, and not 1.23.
+        // A client that forgot the divisor would render a plausible number a
+        // thousand times too large, which is the kind of wrong that reads as a
+        // real figure.
+        $this->assertSame(1234.56, $account['cost']);
+        $this->assertSame('USD', $account['currency']);
+    }
+
+    public function test_the_campaign_level_carries_every_field_r20_requires(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+
+        $this->fakeGoogle($this->customerRow(), [
+            [
+                'campaign' => [
+                    'id' => '111',
+                    'name' => 'Chimney - Cleveland - Search',
+                    'status' => 'ENABLED',
+                    'advertisingChannelType' => 'SEARCH',
+                ],
+                'metrics' => [
+                    'clicks' => '300', 'impressions' => '8000',
+                    'conversions' => 20.0, 'allConversions' => 28.0,
+                    'costMicros' => '900000000',
+                ],
+            ],
+            [
+                // A paused campaign with no activity at all. Google omits the
+                // metrics block entirely for these, and a missing "clicks" on
+                // screen cannot be told apart from a broken fetch - so the
+                // service must render zero rather than null.
+                'campaign' => [
+                    'id' => '222',
+                    'name' => 'Chimney - Cleveland - Display',
+                    'status' => 'PAUSED',
+                    'advertisingChannelType' => 'DISPLAY',
+                ],
+            ],
+        ]);
+
+        $campaigns = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertOk()
+            ->json('data.0.campaigns');
+
+        $this->assertCount(2, $campaigns);
+
+        foreach ($campaigns as $campaign) {
+            foreach (self::REQUIRED as $field) {
+                $this->assertArrayHasKey(
+                    $field,
+                    $campaign,
+                    'R.20 requires '.$field.' at the Campaign level.',
+                );
+            }
+
+            // Required by R.20 whenever paused or removed campaigns are shown,
+            // and this shows them.
+            $this->assertArrayHasKey('status', $campaign);
+        }
+
+        // assertEquals, not assertSame, and the reason is a live client trap:
+        // a whole-number float goes through JSON as `900`, not `900.0`, so the
+        // decoded type is int for round figures and float otherwise. Dart's
+        // `as double` throws on an int, so the client must read money as
+        // `(json['cost'] as num).toDouble()` - asserting the strict type here
+        // would pin a guarantee the wire cannot make.
+        $this->assertEquals(900.0, $campaigns[0]['cost']);
+        $this->assertIsNumeric($campaigns[0]['cost']);
+
+        $this->assertSame(0, $campaigns[1]['clicks'], 'a campaign with no activity reports zero, not null');
+        $this->assertEquals(0, $campaigns[1]['cost']);
+        $this->assertSame('PAUSED', $campaigns[1]['status']);
+    }
+
+    /**
+     * The five must be ASKED FOR, not just rendered.
+     *
+     * The field assertions above cannot catch this on their own, and that is
+     * worth stating rather than discovering: `totals()` defaults every metric
+     * to 0 so that a campaign with no activity shows zero instead of a blank.
+     * That default also manufactures the key for a metric the query never
+     * requested - so dropping `conversions` from the GAQL would leave both
+     * tests green and put a permanent, plausible 0 on screen.
+     *
+     * A zero we never asked Google for is worse than a missing column: it is a
+     * number somebody will act on.
+     */
+    public function test_both_queries_actually_request_all_five_metrics(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance')->assertOk();
+
+        $queries = [];
+
+        Http::assertSent(function ($request) use (&$queries) {
+            if (str_contains($request->url(), 'googleAds:search')) {
+                $queries[] = $request->data()['query'] ?? '';
+            }
+
+            return true;
+        });
+
+        $this->assertCount(2, $queries, 'one query for the Account level, one for the Campaign level');
+
+        foreach ($queries as $query) {
+            foreach ([
+                'metrics.clicks',
+                'metrics.cost_micros',
+                'metrics.impressions',
+                'metrics.conversions',
+                'metrics.all_conversions',
+            ] as $metric) {
+                $this->assertStringContainsString(
+                    $metric,
+                    $query,
+                    $metric.' is mandatory at every level we display. Without it in the query the '
+                    .'screen still shows a 0, which is a fabricated figure rather than a gap.',
+                );
+            }
+        }
+
+        // The account currency, because cost_micros without it is a number with
+        // no unit.
+        $this->assertStringContainsString('customer.currency_code', $queries[0]);
+
+        // campaign.status, required by R.20 because paused campaigns are shown.
+        $this->assertStringContainsString('campaign.status', $queries[1]);
+    }
+
+    public function test_it_asks_google_for_no_level_below_campaign(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $this->signedInAs($t['admin']->fresh())->getJson('/api/v1/ads/performance')->assertOk();
+
+        // The scope IS the compliance position. Showing an ad group, ad or
+        // keyword makes R.40, R.50, R.70, R.100 and R.130 apply, each with its
+        // own mandatory fields, and obliges two weeks' notice to Google before
+        // the change takes effect. A query that quietly reaches one level lower
+        // is how that happens without anybody deciding it.
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'googleAds:search')) {
+                return true;
+            }
+
+            $query = $request->data()['query'] ?? '';
+
+            foreach (['ad_group', 'ad_group_ad', 'keyword_view', 'search_term_view', 'bidding_strategy'] as $lower) {
+                $this->assertStringNotContainsString(
+                    'FROM '.$lower,
+                    $query,
+                    'reading '.$lower.' puts a level on screen we have told Google we do not show',
+                );
+            }
+
+            return true;
+        });
+    }
+
+    public function test_one_refusing_account_does_not_blank_the_report(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => ['details' => [['errors' => [['message' => "The customer account can't be accessed because it is not yet enabled or has been deactivated."]]]]],
+            ], 403),
+        ]);
+
+        $body = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame([], $body['data']);
+        $this->assertCount(1, $body['refused']);
+        $this->assertStringContainsString(
+            'deactivated',
+            $body['refused'][0]['because'],
+            "Google's own sentence, not a status code - A-1 holds accounts Google itself "
+            .'calls deactivated and the reader needs to know which problem this is',
+        );
+    }
+
+    public function test_reading_spend_needs_more_than_reading_enquiries(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        // Dispatcher holds leads.view and not ads_performance.view. Somebody
+        // who may read an enquiry and reply to it may not see what the business
+        // pays to receive it.
+        $dispatcher = $this->userWithRole($t, 'Dispatcher', ['leads.view']);
+
+        $this->signedInAs($dispatcher->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertForbidden();
+
+        // Positive control: the same request, by somebody who does hold it.
+        $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance')
+            ->assertOk();
+    }
+}
