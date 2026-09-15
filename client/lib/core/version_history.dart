@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0221',
+      date: '15 Sep 2026',
+      items: [
+        'Page every handset on a team at once from the Call tab. One person talks, the team hears it, and the announcement ends when the speaker hangs up. Anybody already on a call is skipped and named back to whoever paged, so you know who missed it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0220',
       date: '15 Sep 2026',
       items: [
