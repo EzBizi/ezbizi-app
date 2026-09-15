@@ -2803,6 +2803,53 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 18b · Communication · Call flow, after Jose saw it live — **2 OPEN, AWAITING HIS CHOICE**
+
+Jose, 2026-09-15, on the running chart: *"looks amazing"*, with five asks. Two were Phone's data
+and are fixed (): **one node per GROUP rather than per key**, so a second key reaching a
+team is a second arrow into one box; and **a queue per queueing group**, which answers his actual
+question — *"the everyone busy line seems to be coming out of last 5th button but in reality it
+applies to the entire group"*. It is per group, and the chart now says so.
+
+**SHIPPED ():** *"should be white on white mode, dark on dark mode"*. The canvas was
+fixed-dark on purpose — n8n is dark in both and a canvas is a drawing rather than a page — and he
+ruled the other way after seeing it.
+
+> **A consequence of Phone's fix that neither of us flagged.** One node per group means two keys
+> to one team are two edges with **identical endpoints**: two wires on the same curve, two labels
+> at the same point. That is the label collision from his first screenshot arriving from the
+> opposite cause. Parallel edges are now **one wire carrying both keys** (), which is also the truer sentence. Phone: *"my one box per team fix moved the collision
+> rather than removing it"*.
+>
+> **No group container, and the reason is the new data.** With one node per group and one queue
+> each, a box around  restates the only pair of edges between them. If a group ever
+> owns more than its queue it earns one then.
+
+**THE TWO OPEN ASKS, and he should pick ONE.** They are the largest things on the list by a
+distance and half of each is the worst outcome.
+
+**A · Live calls on the chart** — *"see Live Calls flowing through the Node as well"*. Phone
+measured Twilio rather than reasoning:  on a queue is an exact live count of waiting
+callers and  comes free, and the queue name maps one-to-one onto the new
+ nodes. So: **exact counts on queue nodes, a ringing/connected count for the
+line, and deliberately nothing anywhere else** — a call in the menu, ringing a group, and holding
+are all  on the row, and Phone declined to add a per-step column because the
+existing status already goes stale when a final callback never arrives. *"A tile reading 2 calls
+here about a call that ended on Tuesday is worse than a tile reading nothing."* A queue resource
+only exists once used, so **absent means zero rather than unknown** — the tile reads 0, never
+dashes. My shape: a count on the tile and a brighter pulse on the wires out of it. **Not** a dot
+travelling a wire, which would imply we know the transit when we only know the state.
+
+**B · Editing from the chart** — *"it would also be nice to be able to change things from here,
+like clicking one of the nodes gives you the available options"*. **This reverses the read-only
+scope he set with "shows me"**, so it is a scope decision rather than a feature request, and
+"click a node and change which group answers" and "click a node and edit the IVR prompt" are very
+different amounts of work. It needs its own design round and its own gallery.
+
+**Recommendation: A.** Small, exact where it matters, invents nothing, and it makes the chart
+answer a question the list cannot — *is anybody waiting right now*. B is a bigger thing that
+deserves to be designed rather than bolted onto a viewer.
+
 ### 18 · Communication · Call flow as a chart — **SHIPPED. Jose: 1 and 6**
 
 `docs/previews/call-flow-chart-layouts.html`. Jose, 2026-09-15: *"a new tab on Settings that
