@@ -387,3 +387,47 @@ class EzBiziTheme {
     Color(0xFF12B5CB),
   ];
 }
+
+/// The call-flow canvas, and the one place in the app that does NOT read its
+/// colours from the organization's theme.
+///
+/// Deliberate, and narrow. Jose asked for the n8n look for this chart —
+/// "more modern, with icons, arrows, and even a energy flow animation" — and a
+/// graph canvas is a drawing rather than a page: it reads as one surface in
+/// both light and dark, the way an editor canvas does, instead of inverting
+/// with the rest of the app.
+///
+/// It lives here rather than in the screen because `theme_conventions_test`
+/// is right that a screen accumulating colour literals is how a palette stops
+/// being one. Fixed does not mean scattered.
+///
+/// Nothing outside the call-flow chart may use these. A second screen wanting
+/// "the dark one" is the moment this stops being a canvas and starts being an
+/// unmanaged second theme.
+class FlowCanvas {
+  const FlowCanvas._();
+
+  /// The ground the graph is drawn on.
+  static const Color ink = Color(0xFF1D2025);
+
+  /// A node tile, and its outline when the node is ordinary.
+  static const Color tile = Color(0xFF2B2F36);
+  static const Color tileLine = Color(0xFF3A414A);
+
+  static const Color text = Color(0xFFE8EDF2);
+  static const Color muted = Color(0xFF9AA6B2);
+
+  /// The entry node, and the energy travelling a live wire.
+  static const Color accent = Color(0xFF5EEAD4);
+
+  /// A wire at rest.
+  static const Color wire = Color(0xFF4D5661);
+
+  /// A return: the queue going back to the group it came from, and a step that
+  /// does nothing. Amber rather than red on purpose — neither is a call
+  /// failing.
+  static const Color amber = Color(0xFFD9A441);
+
+  /// The dot grid. Barely there by design; it says "canvas" and nothing else.
+  static const Color grid = Color(0x14FFFFFF);
+}

@@ -59,22 +59,20 @@ void main() {
   ) async {
     await _pump(tester, width: 1100);
 
-    Color? borderOf(String title) {
-      final box = tester.widget<Container>(
-        find
-            .ancestor(of: find.text(title), matching: find.byType(Container))
-            .first,
-      );
+    // The tile carries the treatment now, and the icon carries the tile's
+    // colour -- the title sits beneath the tile rather than inside it, so
+    // there is no Container ancestor of the text to read a border from.
+    // .first because the fixture has three ring groups; they share one
+    // treatment, so any of them answers the question.
+    Color? tintOf(IconData icon) =>
+        tester.widget<Icon>(find.byIcon(icon).first).color;
 
-      return ((box.decoration as BoxDecoration?)?.border as Border?)?.top.color;
-    }
+    final caller = tintOf(Icons.call_outlined);
 
-    final scheme = EzBiziTheme.light().colorScheme;
-
-    expect(borderOf('Caller'), scheme.primary);
+    expect(caller, isNotNull);
     expect(
-      borderOf('Sales team'),
-      isNot(scheme.primary),
+      tintOf(Icons.groups_outlined),
+      isNot(caller),
       reason: 'An ordinary node must not borrow the entry treatment.',
     );
   });
@@ -156,57 +154,90 @@ void main() {
   });
 
   /// The one that matters on a phone.
-  testWidgets('narrow: the counts are visible before a single step is taken', (
+  ///
+  /// The counts sit above the flow rather than in it, which is the whole
+  /// argument for having them: a `skipped` step is the one state a picture
+  /// cannot show by colouring a node, because the node works -- it is the flow
+  /// THROUGH it that is empty. Phone's sentence, and the reason this assertion
+  /// is at phone width rather than only where it is easy to see.
+  testWidgets('narrow: the counts are on screen above the flow', (
     tester,
   ) async {
     await _pump(tester, width: 400);
 
-    // The walk starts at the caller, so the dead end is two taps away and
-    // invisible. Without this line the screen would say nothing is wrong.
-    expect(find.text('Sales team'), findsNothing);
     expect(find.text('1 dead end'), findsOneWidget);
     expect(find.text('1 step does nothing'), findsOneWidget);
   });
 
-  testWidgets('narrow: walking follows the branch that was tapped', (
+  /// Jose picked mobile 4 over the walk that shipped, and this is the whole
+  /// difference between them: the walk showed one node at a time, so anything
+  /// you had not walked to was invisible.
+  testWidgets('narrow: the whole flow is on one page, not one node at a time', (
     tester,
   ) async {
     await _pump(tester, width: 400);
 
     expect(find.text('Caller'), findsOneWidget);
-    expect(find.text('What can happen next'), findsOneWidget);
+    expect(find.text('Menu'), findsWidgets);
+    expect(
+      find.text('Sales team'),
+      findsWidgets,
+      reason:
+          'The walk this replaced put Sales team two taps away. If it is '
+          'absent here the ribbon is rendering a path rather than the flow.',
+    );
+  });
 
-    await tester.tap(find.text('Menu'));
-    await tester.pumpAndSettle();
+  testWidgets('narrow: a branching step lists where each key goes', (
+    tester,
+  ) async {
+    await _pump(tester, width: 400);
 
-    // The menu's own options, labelled with the key that reaches them.
     expect(find.text('Press 1'), findsOneWidget);
     expect(find.text('Press 2'), findsOneWidget);
     expect(
-      find.text('Nobody is in this group'),
-      findsOneWidget,
-      reason:
-          'A dead end is explained where the choice is made, not flagged and '
-          'left for somebody to open.',
+      find.text('Service team'),
+      findsWidgets,
+      reason: 'A dead branch is named where the choice is made.',
     );
   });
 
-  testWidgets('narrow: the breadcrumb goes back', (tester) async {
-    await _pump(tester, width: 400);
+  /// Jose, 2026-09-15, looking at the built chart: "have it begin in the
+  /// middle left, so you can expand up and down when nodes branch".
+  ///
+  /// The old layout stacked every column from the TOP, so a five-way menu hung
+  /// downwards and the spine he actually reads drifted off the bottom. Each
+  /// column is now centred on the canvas midline, which is the whole of what
+  /// he asked for -- so it is asserted rather than left to look right.
+  testWidgets('a branch expands above AND below the caller, not downwards', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100);
 
-    await tester.tap(find.text('Menu'));
-    await tester.pumpAndSettle();
-    expect(find.text('Press 1'), findsOneWidget);
+    final caller = tester.getCenter(find.byIcon(Icons.call_outlined)).dy;
+    final branches = tester
+        .widgetList<Icon>(find.byIcon(Icons.groups_outlined))
+        .toList();
 
-    await tester.tap(find.text('Caller').first);
-    await tester.pumpAndSettle();
+    expect(branches.length, greaterThan(1), reason: 'Needs a fan to judge.');
+
+    final ys = find.byIcon(Icons.groups_outlined).evaluate().map((e) {
+      return tester.getCenter(find.byWidget(e.widget as Icon)).dy;
+    }).toList();
 
     expect(
-      find.text('Press 1'),
-      findsNothing,
-      reason: 'Back to the start, so the menu keys are no longer on offer.',
+      ys.any((y) => y < caller),
+      isTrue,
+      reason: 'Nothing sits above the caller, so the fan still hangs down.',
+    );
+    expect(
+      ys.any((y) => y > caller),
+      isTrue,
+      reason: 'Nothing sits below the caller either.',
     );
   });
+
+  _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires
   /// under today's boxes.
@@ -243,6 +274,153 @@ void main() {
   });
 }
 
+/// The number picker (Jose: picker 8, 2026-09-15 — "we also want a search bar
+/// for the number picker").
+///
+/// The search field is the ask; the GROUPING is what makes it worth building
+/// rather than bolting a field onto the dropdown. Thirteen lines and the
+/// question is usually "which one is broken", so a line with a fault is the
+/// first row before anything is typed.
+///
+/// These counts need no server work, which I got wrong when I first put this
+/// option to Jose: I told him it was blocked on Phone sending a per-line
+/// summary. `/phone/call-flow` already answers with every line and its whole
+/// graph. I had read the brief rather than the payload.
+void _pickerGroup() {
+  List<Map<String, dynamic>> twoLines() => [
+    {
+      'id': 'ok-1',
+      'e164': '+18605550100',
+      'label': 'Accounts',
+      'graph': {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'vm',
+            'kind': 'voicemail',
+            'title': 'Voicemail',
+            'detail': 'Takes a message.',
+            'state': 'ok',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'vm', 'label': ''},
+        ],
+      },
+    },
+    {
+      'id': 'bad-1',
+      'e164': '+18605550199',
+      'label': 'Service',
+      'graph': {
+        'nodes': [
+          {
+            'id': 'caller',
+            'kind': 'caller',
+            'title': 'Caller',
+            'detail': 'Somebody dials.',
+            'state': 'ok',
+          },
+          {
+            'id': 'nobody',
+            'kind': 'ring_group',
+            'title': 'Service team',
+            'detail': 'Nobody is in this group.',
+            'state': 'dead',
+          },
+        ],
+        'edges': [
+          {'from': 'caller', 'to': 'nobody', 'label': ''},
+        ],
+      },
+    },
+  ];
+
+  testWidgets('the picker leads with the line that has a fault', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100, lines: twoLines());
+
+    await tester.tap(find.byType(TextButton).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('NEEDS ATTENTION — 1'), findsOneWidget);
+    expect(find.text('1 dead end'), findsWidgets);
+
+    // The order is the feature, not the grouping header. Accounts is healthy
+    // and must sit below Service however the list is built.
+    // Scoped to the dialog: the button BEHIND it also shows a line name, so
+    // an unscoped finder reads the header and answers about the wrong widget.
+    Finder inDialog(String text) => find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.textContaining(text),
+    );
+
+    final faulty = tester.getTopLeft(inDialog('Service').first).dy;
+    final healthy = tester.getTopLeft(inDialog('Accounts').first).dy;
+
+    expect(
+      faulty,
+      lessThan(healthy),
+      reason:
+          'A healthy line above a broken one is the dropdown this replaced.',
+    );
+  });
+
+  testWidgets('the picker searches digits, punctuation and all', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100, lines: twoLines());
+
+    await tester.tap(find.byType(TextButton).first);
+    await tester.pumpAndSettle();
+
+    // Nobody types the punctuation, and half the time you know the number
+    // rather than the name.
+    await tester.enterText(find.byType(TextField), '0199');
+    await tester.pumpAndSettle();
+
+    Finder inDialog(String text) => find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.textContaining(text),
+    );
+
+    expect(inDialog('Service'), findsWidgets);
+    expect(
+      inDialog('Accounts'),
+      findsNothing,
+      reason: 'A filter that keeps the non-matching row is not a filter.',
+    );
+  });
+
+  testWidgets('a line with no faults is not given a needs-attention group', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      width: 1100,
+      lines: [twoLines().first],
+    );
+
+    await tester.tap(find.byType(TextButton).first);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('NEEDS ATTENTION'),
+      findsNothing,
+      reason:
+          'The control that distinguishes: if the group were unconditional '
+          'the test above would pass on a build that always draws it.',
+    );
+  });
+}
+
 // ── harness ────────────────────────────────────────────────────────
 
 /// One line, shaped like `TwimlRenderer::graph()` output: a menu whose second
@@ -276,6 +454,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required double width,
   Map<String, dynamic>? graph,
+  List<Map<String, dynamic>>? lines,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -286,14 +465,16 @@ Future<void> _pump(
       if (request.url.path.endsWith('/phone/call-flow')) {
         return http.Response(
           jsonEncode({
-            'data': [
-              {
-                'id': 'n-1',
-                'e164': '+18605550142',
-                'label': 'Main line',
-                'graph': graph ?? _graph(),
-              },
-            ],
+            'data':
+                lines ??
+                [
+                  {
+                    'id': 'n-1',
+                    'e164': '+18605550142',
+                    'label': 'Main line',
+                    'graph': graph ?? _graph(),
+                  },
+                ],
           }),
           200,
           headers: {'content-type': 'application/json'},
@@ -308,6 +489,18 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
+      // REDUCE MOTION, and not only for tidiness. The energy flow Jose asked
+      // for is an AnimationController on repeat, and a repeating controller
+      // schedules frames forever -- `pumpAndSettle` never returns and every
+      // test here times out rather than failing on anything real. The chart
+      // honours the flag because somebody with vestibular trouble should not
+      // be given a pulsing canvas either; the harness gets determinism as a
+      // side effect of the accessibility behaviour rather than a switch of
+      // its own.
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: child!,
+      ),
       home: Scaffold(body: CallFlowChartPane(api: api)),
     ),
   );
