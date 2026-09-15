@@ -155,6 +155,7 @@ final class RingCentralCallLog
         $rang = [];
         $answeredBy = null;
         $queue = null;
+        $talkSeconds = null;
 
         foreach ($record['legs'] ?? [] as $leg) {
             $name = $leg['to']['name'] ?? null;
@@ -185,6 +186,19 @@ final class RingCentralCallLog
 
             if (($leg['result'] ?? null) === 'Call connected' && $answeredBy === null) {
                 $answeredBy = $person;
+
+                /*
+                 * THE LEG'S DURATION, NOT THE RECORD'S, and they are not close.
+                 *
+                 * Measured against the live API 2026-09-15 on one call: the
+                 * record says 197 seconds and the connected leg says 148. The
+                 * record's duration starts when the caller reaches the switch-
+                 * board, so it carries the IVR and the queue wait — time
+                 * nobody was on the phone. 25% out on that call.
+                 *
+                 * "How long was that person on the phone" is the leg.
+                 */
+                $talkSeconds = (int) ($leg['duration'] ?? 0);
             }
         }
 
@@ -206,6 +220,10 @@ final class RingCentralCallLog
             // rather than being dropped - 81 of 280 on the measured day.
             'rang' => $rang,
             'answered_by' => $answeredBy,
+
+            // Null when nobody picked up. Null rather than 0, because a zero
+            // would average in as a real short call and pull every mean down.
+            'talk_seconds' => $talkSeconds,
         ];
     }
 
