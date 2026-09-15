@@ -273,6 +273,14 @@ function reset_site() {
     $_SERVER['REQUEST_URI'] = '/';
 }
 
+/** The same payload with the chat placed inline rather than floating. */
+function widget_payload_at($position) {
+    $p = json_decode(widget_payload(), true);
+    $p['widgets']['chat']['position'] = $position;
+
+    return json_encode($p);
+}
+
 function widget_payload($enabled = true) {
     $base = json_decode(payload_json(['phone' => '555-0100']), true);
     $base['public_key'] = 'pk_testkey';
@@ -679,6 +687,65 @@ $GLOBALS['is_admin'] = false;
 check('the form renders empty', $GLOBALS['sc']['ezbizi_form']([]), '');
 check('and so does the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 
+
+echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
+/*
+ * Found by the deploy desk: after the switches came off it fetched
+ * a-1chimney.com and there was no EzBizi markup on the page at all, because
+ * nothing hooked wp_footer and a bubble had to be pasted onto each page by
+ * hand. `position:fixed` and the separate `inline` option say what was
+ * intended; this is the half of Jose's complaint the switch removal did not
+ * reach.
+ */
+$footer = static function () {
+    unset($GLOBALS['ezbizi_chat_drawn']);
+    ob_start();
+    do_action('wp_footer');
+
+    return ob_get_clean();
+};
+
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+check('a visitor gets the bubble without anybody placing it', str_contains($footer(), 'Talk to A-1'), true);
+check('floating, not in the flow', str_contains($footer(), 'position:fixed'), true);
+
+// Placed already: the shortcode ran, so the footer must keep out. Two bubbles
+// on one page is two conversations, and the visitor picks one at random.
+unset($GLOBALS['ezbizi_chat_drawn']);
+// The shortcode RETURNS its markup; only the footer echoes. Counting the
+// buffer alone said 0 and passed for the wrong reason — it would have passed
+// just as well if the shortcode had drawn nothing at all.
+$placed = $GLOBALS['sc']['ezbizi_chat']([]);
+ob_start();
+do_action('wp_footer');
+$both = $placed . ob_get_clean();
+check('the placed one drew', substr_count($placed, 'id="ezbizi-chat-') >= 1, true);
+check('and the footer added no second', substr_count($both, 'id="ezbizi-chat-'), 1);
+
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload_at('inline')];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('inline means the site says where, so the footer keeps out', $footer(), '');
+
+// The control. Without it the two absences above would also pass on a plugin
+// whose footer hook was never registered at all.
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('the hook exists to be silent', str_contains($footer(), 'ezbizi-chat-'), true);
+
+echo PHP_EOL . "An unpaired site puts nothing in anybody's footer" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('no key, no bubble', $footer(), '');
 
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*

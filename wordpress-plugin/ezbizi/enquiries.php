@@ -256,6 +256,13 @@ function ezbizi_chat_shortcode($atts) {
         );
     }
 
+    /*
+     * Drawn once per page however it was asked for. The footer below renders
+     * the bubble on every page; a shortcode or an Elementor widget may ask for
+     * it too, and two chat bubbles on one page is two conversations.
+     */
+    $GLOBALS['ezbizi_chat_drawn'] = true;
+
     $id = 'ezbizi-chat-' . wp_rand(1000, 9999);
     $position = ezbizi_widget_text($config, 'position', 'bottom-right');
 
@@ -349,3 +356,46 @@ add_action('init', function () {
     add_shortcode('ezbizi_form', 'ezbizi_form_shortcode');
     add_shortcode('ezbizi_chat', 'ezbizi_chat_shortcode');
 });
+
+/**
+ * The chat bubble, on every page, because that is what a bubble is.
+ *
+ * ── Why the footer and not placement ──
+ *
+ * The bubble draws itself `position:fixed; bottom:20px; right:20px` — it floats
+ * over the page rather than sitting in it. A thing that floats over every page
+ * but has to be pasted onto each one individually appears on the pages somebody
+ * remembered and nowhere else, which is indistinguishable from broken. The
+ * deploy desk asked whether chat was meant to be site-wide, having found it on
+ * no page at all after the switches came off; `position:fixed` and the separate
+ * `inline` option are the answer, and they were in the design from the start.
+ *
+ * The contact form is NOT here on purpose. A form belongs in the page it
+ * belongs in — under the services it asks about, at the end of the article —
+ * and there is no sensible place a footer could put it for everybody.
+ *
+ * ── The three ways this declines to draw ──
+ *
+ * `inline` means the site has said where it goes, so the shortcode or the
+ * Elementor widget places it and the footer keeps out. A page that already drew
+ * one does not get a second. And an unpaired site has no key, so the shortcode
+ * returns nothing and this costs a function call.
+ */
+add_action('wp_footer', function () {
+    if (! empty($GLOBALS['ezbizi_chat_drawn'])) {
+        return;
+    }
+
+    $config = ezbizi_widget_config('chat');
+
+    if (empty($config)) {
+        return;
+    }
+
+    if (ezbizi_widget_text($config, 'position', 'bottom-right') === 'inline') {
+        return;
+    }
+
+    // Escaped by the shortcode, which is the only thing that builds this markup.
+    echo ezbizi_chat_shortcode(array());
+}, 20);
