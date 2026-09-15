@@ -512,12 +512,20 @@ function stepRow(id, last, extra){
     '<div class="bd">'+n.d+'</div>'+(extra||'')+'</div></div>';
 }
 function branchRows(){
-  var fan=[['Press 1','Ring Appointment'],['Press 2','Ring Existing Client'],
-           ['Press 3','Ring Testing'],['Press #','Voicemail'],
-           ['No key','Ring Existing Client']];
+  // Each row carries the icon of what it REACHES, not a generic bullet: at a
+  // glance the shape of the menu is "three groups, one voicemail" without
+  // reading a word of it. Jose asked for icons and the first draft of these
+  // two phone options had them only on the spine.
+  var fan=[['Press 1','Ring Appointment','users'],
+           ['Press 2','Ring Existing Client','users'],
+           ['Press 3','Ring Testing','users'],
+           ['Press #','Voicemail','vm'],
+           ['No key','Ring Existing Client','users']];
   var h='<div class="branch">';
   for (var i=0;i<fan.length;i++){
     h+='<div class="brow"><span class="k">'+fan[i][0]+'</span>' +
+       '<span class="dot" style="width:20px;height:20px;border-radius:6px">' +
+       ico(fan[i][2])+'</span>' +
        '<span class="g">'+fan[i][1]+'</span><span class="c">&rsaquo;</span></div>';
   }
   return h+'</div>';
