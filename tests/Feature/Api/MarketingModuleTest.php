@@ -185,13 +185,8 @@ class MarketingModuleTest extends TestCase
         // its own until `send` had to be grantable separately from `edit` —
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
-        // Ads Performance joined on 2026-09-15, appended rather than inserted so
-        // the existing strip order is untouched. It shows Google Ads spend at
-        // the Account and Campaign levels and no lower, which is a compliance
-        // scope rather than a backlog: each hierarchy level displayed brings its
-        // own mandatory reporting fields under Google's policy.
         $this->assertSame(
-            ['newsletter', 'web_management', 'reviews', 'business_profile', 'ads_performance'],
+            ['newsletter', 'web_management', 'reviews', 'business_profile'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );

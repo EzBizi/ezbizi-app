@@ -2036,33 +2036,6 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * ── Ads Performance: what the advertising costs ─────
-             *
-             * Google Ads spend, at the Account and Campaign levels and no
-             * lower. The scope is a compliance position rather than a backlog:
-             * Google's Reporting Minimum Functionality applies to each level of
-             * the hierarchy a tool DISPLAYS, so showing an ad group, ad or
-             * keyword here would make R.40, R.50, R.70, R.100 and R.130 apply,
-             * each with its own mandatory fields, and oblige two weeks' notice
-             * to Google before the change takes effect.
-             *
-             * `view` alone. There is nothing to create, edit or delete - the
-             * figures are Google's and are read live rather than stored, so the
-             * usual four actions would offer three that cannot exist.
-             *
-             * Its own permission rather than borrowing `reports.view`: what the
-             * business spends on advertising is a different grant from what it
-             * measures internally, and an organization that wants one without
-             * the other should not have to choose.
-             */
-            new ModuleDefinition(
-                key: 'ads_performance',
-                label: 'Ads Performance',
-                parent: 'marketing',
-                actions: ['view'],
-            ),
-
-            /*
              * ── Email: shared team inboxes ───────────────────────
              *
              * The owner: *"In this module the client will be able to add his
@@ -2809,6 +2782,39 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 rolesGroup: ModuleDefinition::ROLES_TAB,
+            ),
+
+            /*
+             * ── Google Ads: what the advertising costs ──────────
+             *
+             * A tab inside Reports, not Marketing. Jose's call, 2026-09-15:
+             * "It is clearly not supposed to be in Marketing." Marketing is
+             * what the business SAYS about itself - its listing, its reviews,
+             * its posts. This is a measurement of what that cost, which is the
+             * same kind of thing as every other report.
+             *
+             * Account and Campaign levels, and nothing lower. The scope is a
+             * compliance position rather than a backlog: Google's Reporting
+             * Minimum Functionality applies to each level of the hierarchy a
+             * tool DISPLAYS, so adding an ad group, ad or keyword here would
+             * make R.40, R.50, R.70, R.100 and R.130 apply, each with its own
+             * mandatory fields, and oblige two weeks' notice to Google before
+             * the change takes effect.
+             *
+             * `view` alone. The figures are Google's and are read live rather
+             * than stored, so the usual four actions would offer three that
+             * cannot exist.
+             *
+             * Its own permission rather than borrowing `reports.view`: what the
+             * business spends on advertising is a different grant from what it
+             * measures internally, and an organization that wants one without
+             * the other should not have to choose.
+             */
+            new ModuleDefinition(
+                key: 'ads_performance',
+                label: 'Google Ads',
+                parent: 'reports',
+                actions: ['view'],
             ),
         ];
     }
