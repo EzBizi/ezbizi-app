@@ -2676,7 +2676,7 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
-### 18 · Communication · Call flow as a chart — **DRAWN, awaiting Jose**
+### 18 · Communication · Call flow as a chart — **SHIPPED. Jose: 1 and 6**
 
 `docs/previews/call-flow-chart-layouts.html`. Jose, 2026-09-15: *"a new tab on Settings that
 shows me the Call Flow… more graphic / Call Flowchart / a graphic view, where it shows the
@@ -2732,6 +2732,23 @@ a menu option lengthens a column rather than widening the chart, which is the di
 settings pane has room in. **5 is the same drawing at phone width**, so it is one shape to learn
 rather than two; its collapsed branch row carries *"2 of them are dead ends"* so a branch nobody
 opened still reports the thing the screen exists for.
+
+**Built and committed 2026-09-15** — `b13319ac`, `client/lib/screens/phone/call_flow_chart{,_pane}.dart`,
+as a section appended to Settings (appended, not inserted: `_section` is an index, and inserting
+in the middle broke thirteen tests in `phone_screen_test.dart` before the comment now in that
+file existed to say so).
+
+> **One defect, found by Phone reading the built code against their own contract — not by a
+> test, and no test could have found it.** The caller's brand outline was keyed off
+> `node.kind == entryId`, comparing a **kind** against an **id**: two namespaces that coincide on
+> exactly one node because their renderer writes `$add('caller', 'caller', …)`, id first and kind
+> second. Correct output today; a rename on either side removes the outline and **nothing goes
+> red**, and a missing outline reads as a design choice rather than a fault. Fixed and pinned
+> both directions in `faebf2df`.
+>
+> Phone also named a graph neither the gallery nor the first tests had: **the smallest real
+> output is two nodes, not four** — `caller → arrival` for a number somebody imported and never
+> pointed at EzBizi. Now covered.
 
 **3 is drawn to be the version that cannot go wrong** — no pan, no zoom, no layout engine,
 identical at 760px and 340px, and **the only option where a never-reached node has an obvious
