@@ -1309,6 +1309,11 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  /// Settable so a test can be a handset, where the OS rings and EzBizi must
+  /// not. Defaults to false, which is the desk case.
+  @override
+  bool ringsItself = false;
+
   // Android's Telecom account. Settable so a test can put the desk into the
   // one state a retry cannot fix, rather than only the happy one.
   @override

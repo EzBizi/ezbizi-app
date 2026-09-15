@@ -20,6 +20,33 @@ abstract class VoiceDevice {
   /// platform fact. Somebody reads that and goes to look at their firewall.
   bool get supported;
 
+  /// Does this platform ring for an incoming call by itself?
+  ///
+  /// ── ONE RING PER CALL, EVERYWHERE ───────────────────────────────
+  ///
+  /// Jose, after weeks of this: "1 ring for incoming, 1 for outgoing, it
+  /// should be simple, and the same type for all of them."
+  ///
+  /// Three platforms were producing two sounds each and they were fixed one at
+  /// a time, which is why it kept coming back. The rule is now one sentence:
+  ///
+  ///   INCOMING — exactly one, and EzBizi plays it wherever EzBizi owns the
+  ///   audio. On a handset the OS owns it: CallKit and the Android
+  ///   ConnectionService ring the phone's own ringtone before a line of our
+  ///   code runs, and a phone that rings with an app's tone instead of its
+  ///   own is a phone behaving wrongly. So on mobile this is true and
+  ///   [CallAlerts] stays quiet.
+  ///
+  ///   OUTGOING — exactly one, and it is Twilio's `<Dial ringTone>`. That is
+  ///   generated on the server, so it is literally identical on every
+  ///   platform rather than merely similar. Every client-side outgoing tone
+  ///   is silenced.
+  ///
+  /// False here does not mean silent — it means WE ring, which is the common
+  /// case. True means stay out of the way.
+  bool get ringsItself;
+
+
   /// Register with an access token from POST /phone/tokens.
   /// Build whatever the screen must MOUNT, before [setup] registers.
   ///

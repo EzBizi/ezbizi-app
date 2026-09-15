@@ -310,6 +310,11 @@ class _FakeDevice implements VoiceDevice {
   @override
   void Function()? onEnded;
 
+  /// Settable so a test can be a handset, where the OS rings and EzBizi
+  /// must not. Defaults to false, which is the desk case.
+  @override
+  bool ringsItself = false;
+
   @override
   bool get supported => true;
 

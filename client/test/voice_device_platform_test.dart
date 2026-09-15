@@ -86,10 +86,34 @@ void main() {
 /// underneath it, and only in a browser, which is the only place that SDK
 /// runs.
 ///
-/// The second assertion is the one worth having. Turning the OUTGOING tone off
-/// as well is the obvious tidy-up, and outbound ringback on a browser leg was
-/// silent until `<Dial ringTone>` was added for it — so that tidy-up risks
-/// restoring a bug somebody already reported, in a place no test can hear.
+/// ── The outgoing tone: this guard said the opposite until 2026-09-15 ──
+///
+/// It used to forbid silencing the OUTGOING tone, on the grounds that
+/// outbound ringback on a browser leg was silent until `<Dial ringTone>` was
+/// added, so switching the SDK tone off might restore a reported bug in a
+/// place no test can hear. That was the right instinct and the wrong
+/// conclusion, and it took measuring two things to settle rather than
+/// arguing:
+///
+///   1. The silence being feared happened WHILE the SDK tone was present. If
+///      that tone had been the audible ringback, outbound would not have been
+///      silent — so it was never what `<Dial ringTone>` replaced, and
+///      silencing it cannot bring the silence back.
+///
+///   2. Both clients really do play it. The desktop host page carries a CSP
+///      with `media-src`, which is why its sounds are vendored beside it; the
+///      web page carries no CSP at all, so the SDK loads its default tone
+///      from Twilio's CDN. Neither is blocked, so both were playing a local
+///      tone on top of the server's ringback.
+///
+/// So it is two sounds for one outgoing call, which is what Jose reported
+/// after weeks of this: "1 ring for incoming, 1 for outgoing... the same type
+/// for all of them." The one that survives is `<Dial ringTone>`, because
+/// Twilio generates it on the server and it is therefore identical on every
+/// platform by construction rather than by four clients agreeing.
+///
+/// A guard going red on the correct fix is the expected cost of pinning a
+/// duplication. What it is owed is evidence rather than a better argument.
 void _webRingContract() {
   final source = _code('lib/screens/phone/voice_device_web.dart');
 
@@ -107,12 +131,13 @@ void _webRingContract() {
     );
   });
 
-  test('and the outgoing tone is left alone', () {
+  test('and the outgoing tone is silenced too', () {
     expect(
       RegExp(r'outgoing\(\s*false').hasMatch(source),
-      isFalse,
-      reason: 'silencing the outgoing tone may be what restores the silent '
-          'outbound ringback — that path has no test that can hear it',
+      isTrue,
+      reason: 'the browser plays the SDK outgoing tone on top of the server '
+          'ringback from <Dial ringTone>, which is two sounds for one '
+          'outgoing call',
     );
   });
 }

@@ -109,6 +109,10 @@ class TwilioVoiceDevice implements VoiceDevice {
   @override
   bool get supported => true;
 
+  /// A browser has no call UI of its own, so EzBizi rings.
+  @override
+  bool get ringsItself => false;
+
   @override
   bool get registered => _registered;
 
@@ -251,6 +255,20 @@ class TwilioVoiceDevice implements VoiceDevice {
   void _silenceOwnRing(_JsDevice device) {
     try {
       device.audio?.incoming(false.toJS);
+
+      // AND THE OUTGOING TONE, which used to be left alone.
+      //
+      // The note here said the SDK's outgoing sound was "either inaudible on
+      // that path or the thing making it work, and I have measured neither".
+      // It is the first: outbound ringback on a browser leg comes from
+      // `<Dial ringTone="us">`, which Twilio generates on the server and
+      // plays into the caller's leg. That is why adding it fixed a silent
+      // outbound call — the SDK tone was already there and was not enough.
+      //
+      // So this is the duplicate, and silencing it leaves exactly one
+      // outbound ring: the server's, which is identical on every platform
+      // because no client produces it.
+      device.audio?.outgoing(false.toJS);
     } catch (_) {
       // A tone too many is survivable. Not registering is not.
     }
@@ -282,6 +300,10 @@ extension type _JsAudio._(JSObject _) implements JSObject {
   /// argument it reports the current setting, which is why the bool is
   /// explicit here rather than defaulted.
   external void incoming(JSBoolean on);
+
+  /// The tone played while an outgoing call is ringing. Off, because
+  /// `<Dial ringTone>` is the one outbound ring — see [setup].
+  external void outgoing(JSBoolean on);
 }
 
 @JS()

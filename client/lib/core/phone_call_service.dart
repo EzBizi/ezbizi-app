@@ -121,6 +121,11 @@ class PhoneCallService extends ChangeNotifier {
     _incomingFrom = from;
     notifyListeners();
 
+    // ONE RING PER CALL. On a handset the OS has already started ringing —
+    // see [VoiceDevice.ringsItself] for the whole rule and why it is one
+    // sentence rather than a fix per platform.
+    if (_device?.ringsItself ?? false) return;
+
     _alerts.incoming(from);
   }
 
