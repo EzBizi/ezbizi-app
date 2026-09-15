@@ -5,9 +5,9 @@ namespace Tests\Feature;
 use App\Models\Company;
 use App\Models\Invitation;
 use App\Models\Organization;
-use App\Notifications\InvitationLink;
 use App\Models\SendingIdentity;
 use App\Models\User;
+use App\Notifications\InvitationLink;
 use App\Notifications\PasswordResetLink;
 use App\Services\Hr\Invitations;
 use App\Services\Organizations\ProvisionOrganization;
@@ -19,6 +19,7 @@ use App\Support\Mail\SendingState;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
@@ -67,16 +68,16 @@ class PlatformMailTest extends TestCase
         $provisioned = app(ProvisionOrganization::class)(
             organizationName: 'A1-Group',
             administrator: ['name' => 'Owner', 'email' => 'owner@a1group.test', 'password' => 'a-real-password'],
-            companyName:   'A-1 Chimney',
+            companyName: 'A-1 Chimney',
             franchiseName: 'Connecticut',
         );
 
-        $this->org     = $provisioned['organization'];
+        $this->org = $provisioned['organization'];
         $this->company = $provisioned['company'];
 
         config([
-            'mail.from.address'    => 'noreply@ezbizi.test',
-            'mail.from.name'       => 'EzBizi',
+            'mail.from.address' => 'noreply@ezbizi.test',
+            'mail.from.name' => 'EzBizi',
             'mail.reply_to.address' => null,
             'ezbizi.hosts.customer' => 'https://app.ezbizi.test',
         ]);
@@ -93,15 +94,15 @@ class PlatformMailTest extends TestCase
         return $this->inTenant(function () use ($state) {
             $identity = new SendingIdentity([
                 'organization_id' => $this->org->id,
-                'scope_type'      => SendingIdentity::SCOPE_COMPANY,
-                'scope_id'        => $this->company->getKey(),
-                'from_address'    => 'info@a-1chimney.com',
-                'from_name'       => 'A-1 Chimney',
-                'transport'       => MailTransport::VerifiedDomain->value,
+                'scope_type' => SendingIdentity::SCOPE_COMPANY,
+                'scope_id' => $this->company->getKey(),
+                'from_address' => 'info@a-1chimney.com',
+                'from_name' => 'A-1 Chimney',
+                'transport' => MailTransport::VerifiedDomain->value,
             ]);
 
             $identity->forceFill([
-                'state'       => $state->value,
+                'state' => $state->value,
                 'verified_at' => $state === SendingState::Verified ? now() : null,
             ])->save();
 
@@ -110,7 +111,7 @@ class PlatformMailTest extends TestCase
     }
 
     /** Whatever the array transport has been handed, freshly. */
-    private function transport(): \Illuminate\Mail\Transport\ArrayTransport
+    private function transport(): ArrayTransport
     {
         return Mail::mailer(config('mail.default'))->getSymfonyTransport();
     }
@@ -265,7 +266,6 @@ class PlatformMailTest extends TestCase
 
     // ── (4) tenant mail is refused until the domain is proved ────
 
-
     public function test_tenant_authored_mail_is_refused_in_every_identity_state(): void
     {
         /*
@@ -303,9 +303,9 @@ class PlatformMailTest extends TestCase
          */
         $states = [
             'nothing configured at any level' => null,
-            'an identity awaiting proof'      => SendingState::Pending,
-            'an identity that failed proof'   => SendingState::Failed,
-            'a fully verified identity'       => SendingState::Verified,
+            'an identity awaiting proof' => SendingState::Pending,
+            'an identity that failed proof' => SendingState::Failed,
+            'a fully verified identity' => SendingState::Verified,
         ];
 
         foreach ($states as $description => $state) {
@@ -344,9 +344,6 @@ class PlatformMailTest extends TestCase
             Mail::assertNothingSent();
         }
     }
-
-
-
 
     public function test_the_refusal_does_not_touch_mail_that_is_the_mechanism(): void
     {
@@ -410,10 +407,10 @@ class PlatformMailTest extends TestCase
         // assembled myself would be asserting against my own fixture rather than
         // against an invitation.
         $issued = $this->inTenant(fn () => app(Invitations::class)->issue([
-            'organization_id'     => $this->org->id,
+            'organization_id' => $this->org->id,
             'assigned_company_id' => $this->company->getKey(),
-            'email'               => 'newstarter@example.test',
-            'first_name'          => 'Marta',
+            'email' => 'newstarter@example.test',
+            'first_name' => 'Marta',
         ]));
 
         $invitation = $issued['invitation'];
@@ -465,18 +462,18 @@ class PlatformMailTest extends TestCase
 
             $identity = new SendingIdentity([
                 'organization_id' => $this->org->id,
-                'scope_type'      => SendingIdentity::SCOPE_COMPANY,
-                'scope_id'        => $this->company->getKey(),
-                'from_address'    => 'info@a-1chimney.com',
-                'from_name'       => 'A-1 Chimney',
-                'transport'       => MailTransport::Smtp->value,
+                'scope_type' => SendingIdentity::SCOPE_COMPANY,
+                'scope_id' => $this->company->getKey(),
+                'from_address' => 'info@a-1chimney.com',
+                'from_name' => 'A-1 Chimney',
+                'transport' => MailTransport::Smtp->value,
             ]);
 
             $identity->forceFill([
-                'state'       => SendingState::Verified->value,
+                'state' => SendingState::Verified->value,
                 'credentials' => array_merge([
-                    'host'     => 'smtp.gmail.com',
-                    'port'     => 465,
+                    'host' => 'smtp.gmail.com',
+                    'port' => 465,
                     'username' => 'info@a-1chimney.com',
                     'password' => 'not-a-real-password',
                 ], $credentials),
@@ -498,8 +495,10 @@ class PlatformMailTest extends TestCase
 
         $config = $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
 
-        $this->assertSame('smtp.gmail.com', $config['host']);
-        $this->assertSame(465, $config['port']);
+        $approved = $config['approved'];
+
+        $this->assertSame('smtp.gmail.com', $approved->host);
+        $this->assertSame(465, $approved->port);
         $this->assertSame('info@a-1chimney.com', $config['username']);
         $this->assertSame('not-a-real-password', $config['password']);
 
@@ -508,11 +507,65 @@ class PlatformMailTest extends TestCase
         // leaving on our reputation and our quota again.
         $this->assertNotSame(
             config('mail.mailers.'.app(PlatformIdentity::class)->mailerName().'.host'),
-            $config['host'],
+            $approved->host,
             'A tenant send was configured against EzBizi\'s own transport.',
         );
 
-        $this->assertArrayHasKey('timeout', $config, 'A stranger\'s mail server needs a bounded wait.');
+        /*
+         * The APPROVED ADDRESS travels with it, not just a verdict. That is what
+         * lets the socket dial the IP that was actually judged and pass the name
+         * as OpenSSL peer_name — one lookup rather than two, which is the whole
+         * difference between checking a host and checking the host you dial.
+         *
+         * Asserted as a RESOLVED ADDRESS rather than merely present, because
+         * `approved` handing the hostname back would satisfy a null check and
+         * reintroduce the second resolution silently.
+         */
+        $this->assertNotFalse(
+            filter_var($approved->address, FILTER_VALIDATE_IP),
+            'The approved host came back with no resolved address, so the socket would have '
+            .'to look it up again — which is the rebinding gap this is supposed to close.',
+        );
+    }
+
+    public function test_a_report_too_large_to_email_is_refused_before_anything_is_dialled(): void
+    {
+        /*
+         * The one guard in the send path I can actually exercise, and it is
+         * worth exercising because it is the case that WILL happen:
+         * ReportRunner::ROW_CAP is 5000 rows and base64 adds about a third, so a
+         * wide report reaches this.
+         *
+         * No socket is opened. The size check sits after the host is approved
+         * (DNS only) and before the message is handed to the transport, so this
+         * test asserts the refusal without needing a mail server to exist.
+         *
+         * The sentence has to be THIS file's, not the transport's — the Email
+         * module's 3MB ceiling is the backstop and their docblock asks that a
+         * person read the caller's words instead: "a scheduled report failing
+         * into ImapFailure::unreachable would be the transport answering a
+         * product question."
+         */
+        $this->tenantSmtp();
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->throughTenantProvider(
+                $this->company,
+                new OversizeNotice,
+                'customer@example.test',
+            ));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A message over the ceiling was handed to the transport.');
+        $this->assertStringContainsString('too large to email', $refused->getMessage());
+
+        // Names the size, because "too large" alone gives somebody nothing to
+        // aim at when they go to narrow the report.
+        $this->assertMatchesRegularExpression('/\d+\.\dMB/', $refused->getMessage());
     }
 
     public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void
@@ -647,5 +700,23 @@ class PlatformNotice extends Mailable
     public function build(): self
     {
         return $this->subject('A notice from EzBizi')->html('<p>Nothing to see.</p>');
+    }
+}
+
+/**
+ * A message deliberately over the ceiling, for the size refusal.
+ *
+ * 4MB of attachment: comfortably past this file's 3,000,000-byte limit even
+ * before base64 adds a third, so the test cannot start passing because the
+ * margin moved.
+ */
+class OversizeNotice extends Mailable
+{
+    public function build(): self
+    {
+        return $this->subject('A large report')
+            ->html('<p>Attached.</p>')
+            ->attachData(str_repeat('a,b,c,d
+', 500_000), 'report.csv', ['mime' => 'text/csv']);
     }
 }
