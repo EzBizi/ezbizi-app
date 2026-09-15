@@ -1376,6 +1376,7 @@ Route::prefix('v1')
         // one up is not a route: the desk dials 'park:<queue>' like any other
         // destination, and the voice webhook bridges it.
         Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
+        Route::post('phone/page', [PhoneCallsController::class, 'page']);
         Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);
 
         // Pickup: what is ringing elsewhere, and taking one. {call} last, so

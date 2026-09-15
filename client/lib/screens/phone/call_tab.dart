@@ -288,6 +288,7 @@ class _CallTabState extends State<CallTab> {
     await _loadDesk();
     await _loadParked();
     await _loadRinging();
+    await _loadGroups();
   }
 
   /// The rules this company set for its own phone system.
@@ -461,6 +462,87 @@ class _CallTabState extends State<CallTab> {
     await _loadParked();
   }
 
+  /// Teams that can be paged, for every line this person can reach.
+  ///
+  /// Loaded once with the rest of the desk rather than when the menu opens:
+  /// a list fetched on press is a press that does nothing for a moment, and
+  /// the thing being pressed is an announcement somebody is waiting to make.
+  Future<void> _loadGroups() async {
+    final response = await widget.api.get('/phone/ring-groups');
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _groups = [
+        for (final row in (response.data as List? ?? const []))
+          if (row is Map<String, dynamic>) _Group.fromJson(row),
+      ];
+    });
+  }
+
+  /// Speak to a whole team's handsets at once.
+  ///
+  /// The server connects the LISTENERS and hands back a destination; dialling
+  /// it is what puts this person's microphone into the announcement. Same
+  /// shape as picking up a parked call, and for the same reason: the audio has
+  /// to come from the desk, and the desk is what owns the microphone.
+  Future<void> _page(_Group group) async {
+    final number = _selected;
+    if (number == null) return;
+
+    final response = await widget.api.post('/phone/page', {
+      'ring_group_id': group.id,
+    });
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _bridgeNote = response.reason);
+
+      return;
+    }
+
+    final data = response.data as Map<String, dynamic>? ?? const {};
+    final speakTo = data['speak_to'] as String? ?? '';
+    if (speakTo.isEmpty) return;
+
+    await _service.connect(to: speakTo, callerId: number.e164);
+
+    // WHO DID NOT GET IT IS THE HALF WORTH SAYING.
+    //
+    // A page that reached nine of twelve handsets looks identical to one that
+    // reached all twelve, from the speaking end — you talk, and then you stop.
+    // Somebody mid-call is skipped deliberately, and being told who lets the
+    // person paging go and find them rather than assume the room heard.
+    final missed = <String>[
+      for (final row in (data['skipped'] as List? ?? const []))
+        if (row is Map<String, dynamic> && (row['name'] as String? ?? '') != '')
+          row['name'] as String,
+    ];
+
+    if (!mounted) return;
+    setState(() {
+      _bridgeNote = missed.isEmpty
+          ? 'Paging ${group.name} — ${data['devices']} handsets.'
+          : 'Paging ${group.name} — ${data['devices']} handsets. '
+                '${missed.join(', ')} did not get it: on a call, or not '
+                'available.';
+    });
+  }
+
+  /// Teams on the account behind the chosen line.
+  ///
+  /// A page is a conference on ONE Twilio account, so a group belonging to a
+  /// different company is not something this line can reach — offering it
+  /// would be a button that fails after the announcement has been started.
+  List<_Group> get _pageable {
+    final number = _selected;
+    if (number == null) return const [];
+
+    return [
+      for (final group in _groups)
+        if (group.connectionId == number.connectionId) group,
+    ];
+  }
+
   /// The desk never registered, so it cannot take a call.
   ///
   /// Read from the service rather than sampled here. It used to be a field set
@@ -486,6 +568,9 @@ class _CallTabState extends State<CallTab> {
   /// a group you are not in — the whole point of pickup, and the reason the
   /// list is not filtered by who the call is ringing.
   List<_Ringing> _ringing = const [];
+
+  /// Teams this person could page. See [_pageable] for the ones this line can.
+  List<_Group> _groups = const [];
 
   /// Callers somebody has set down, waiting for anybody to pick them up.
   ///
@@ -1389,6 +1474,27 @@ class _CallTabState extends State<CallTab> {
                       : () => _placeCall(internal: false),
                   child: Text(_bridging ? 'Ringing you…' : 'Call'),
                 ),
+
+              // Hidden rather than disabled when there is no team to page. An
+              // account with no ring groups has nobody to announce anything
+              // to, and a permanently greyed button teaches people the
+              // feature is broken rather than absent.
+              if (!_onCall && _pageable.isNotEmpty)
+                MenuAnchor(
+                  builder: (context, controller, _) => OutlinedButton(
+                    onPressed: () => controller.isOpen
+                        ? controller.close()
+                        : controller.open(),
+                    child: const Text('Page'),
+                  ),
+                  menuChildren: [
+                    for (final group in _pageable)
+                      MenuItemButton(
+                        onPressed: () => _page(group),
+                        child: Text(group.name),
+                      ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -1826,6 +1932,25 @@ class _Parked {
     fromE164: json['from_e164'] as String? ?? '',
     parkedByName: json['parked_by_name'] as String?,
     pickUp: json['pick_up'] as String? ?? '',
+  );
+}
+
+/// A team, for the one thing this screen does with one: page it.
+class _Group {
+  const _Group({
+    required this.id,
+    required this.connectionId,
+    required this.name,
+  });
+
+  final String id;
+  final String connectionId;
+  final String name;
+
+  factory _Group.fromJson(Map<String, dynamic> json) => _Group(
+    id: json['id'] as String? ?? '',
+    connectionId: json['connection_id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
   );
 }
 

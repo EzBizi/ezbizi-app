@@ -883,6 +883,40 @@ final class TwimlRenderer
         return (string) $response;
     }
 
+    /**
+     * What a paged handset does: join, muted, and wait to be spoken to.
+     *
+     * ── Why muted, and why the conference does not start ────────────
+     *
+     * A page is one direction. Unmuted, twelve phones in an office would page
+     * each other's room noise back at everybody, which is not a feature and is
+     * very hard to diagnose from the receiving end.
+     *
+     * `startConferenceOnEnter` false means the listeners' arrival does not
+     * begin anything — the page starts when the person SPEAKING joins, so
+     * whoever is called first does not sit in a live conference listening to
+     * the others being connected one at a time.
+     *
+     * An empty `waitUrl` is the difference between silence and Twilio's hold
+     * music. A handset that starts playing hold music because somebody is
+     * about to make an announcement is worse than one that stays quiet.
+     */
+    public function pageListener(string $conference): string
+    {
+        $response = new VoiceResponse;
+
+        $dial = $response->dial(null, ['timeLimit' => 300]);
+        $dial->conference($conference, [
+            'muted' => true,
+            'beep' => 'false',
+            'startConferenceOnEnter' => false,
+            'endConferenceOnExit' => false,
+            'waitUrl' => '',
+        ]);
+
+        return (string) $response;
+    }
+
     private function enqueue(
         VoiceResponse $response,
         PhoneNumber $number,
@@ -937,6 +971,26 @@ final class TwimlRenderer
         $attributes['ringTone'] = 'us';
 
         $dial = $response->dial(null, $attributes);
+
+        // ── SPEAKING A PAGE ─────────────────────────────────────────
+        //
+        // The pager joins the conference their own announcement is being made
+        // into. Same prefix trick as `park:` below, and for the same reason:
+        // the desk already knows how to place an outbound call, so a page is a
+        // destination rather than a second mechanism.
+        //
+        // `endConferenceOnExit` is what makes a page END. Hanging up is how
+        // somebody finishes speaking, and without this every phone that was
+        // paged would sit in a silent conference until Twilio timed it out.
+        if (str_starts_with($to, 'page:')) {
+            $dial->conference(substr($to, strlen('page:')), [
+                'beep' => 'false',
+                'startConferenceOnEnter' => true,
+                'endConferenceOnExit' => true,
+            ]);
+
+            return;
+        }
 
         // ── PICKING UP A PARKED CALL ────────────────────────────────
         //

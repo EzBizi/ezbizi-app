@@ -7,8 +7,11 @@ use App\Models\Customer;
 use App\Models\PhoneCall;
 use App\Models\PhoneConnection;
 use App\Models\PhoneDeviceRegistration;
-use App\Support\Phone\ClientIdentity;
+use App\Models\PhoneNumber;
+use App\Models\PhoneRingGroup;
 use App\Models\User;
+use App\Support\Phone\ClientIdentity;
+use App\Support\Phone\DialPlan;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwimlRenderer;
@@ -16,7 +19,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\Response as Status;
-use App\Models\PhoneNumber;
 use Twilio\TwiML\VoiceResponse;
 
 /**
@@ -716,6 +718,130 @@ class CallsController extends Controller
     }
 
     /**
+     * POST /api/v1/phone/page
+     *
+     * Speak to a whole team's handsets at once.
+     *
+     * ── What a page is, and what it is not ───────────────────────────
+     *
+     * One person talks, everybody in the group hears it, nobody answers
+     * anything. It is the intercom, not a conference call: the listeners are
+     * muted, and the announcement ends when the speaker hangs up.
+     *
+     * ── Why this returns a destination rather than placing the call ──
+     *
+     * The speaker's own audio has to come from their desk, and the desk is
+     * what owns the microphone. So this connects the LISTENERS and hands back
+     * the destination for the speaker to dial — the same shape as picking up a
+     * parked call. A server that tried to originate the speaker's leg too
+     * would be calling somebody to tell them to start talking.
+     *
+     * ── Why a page cannot reach somebody on a call ───────────────────
+     *
+     * Because it would be played into their ear mid-conversation, and the
+     * customer would hear half of it. Anybody on a call is skipped and named
+     * in the response, so the person paging knows who did not get it rather
+     * than assuming the room heard them.
+     */
+    public function page(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        $input = $request->validate([
+            'ring_group_id' => ['required', 'string', 'max:191'],
+        ]);
+
+        $user = $request->user();
+
+        $group = PhoneRingGroup::query()->find($input['ring_group_id']);
+        if ($group === null) {
+            return response()->json(['message' => 'No such group.'], Status::HTTP_NOT_FOUND);
+        }
+
+        $connection = $group->connection;
+        if ($connection === null || ! $this->access->hasLineOn($user, $connection)) {
+            return response()->json([
+                'message' => 'That group is not on a line you can use.',
+            ], Status::HTTP_FORBIDDEN);
+        }
+
+        $line = $this->access->readable($user)
+            ->first(fn (PhoneNumber $number) => $number->connection_id === $connection->id);
+
+        if ($line === null) {
+            return response()->json([
+                'message' => 'You have no line on that account to page from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Named after the group and the moment. Two pages to one team at the
+        // same second would otherwise be one conference with two people
+        // talking over each other, which is the failure this is for avoiding.
+        $conference = 'ezbizi-page-'.$group->id.'-'.now()->timestamp;
+
+        $reached = 0;
+        $skipped = [];
+
+        // `roster()` rather than `reachableUserIds()`: both know who is
+        // unavailable, and only the roster says WHY. Somebody who missed an
+        // announcement because they were mid-call is the thing the person
+        // paging most needs to be told — silently dropping them leaves them
+        // assuming the room heard it.
+        foreach (DialPlan::roster($group, $connection) as $row) {
+            $memberId = (string) $row['user_id'];
+
+            // Never yourself: paging a room you are standing in plays your own
+            // voice back at you a half-second late, which is unusable.
+            if ($memberId === (string) $user->id) {
+                continue;
+            }
+
+            // On a call, or not taking them. Do Not Disturb is skipped as well
+            // as on_call, deliberately — a page is a disturbance, and somebody
+            // who has said they are not available has said it about noise
+            // coming out of their phone as much as about calls.
+            if (! $row['reachable']) {
+                $skipped[] = ['name' => $row['name'], 'state' => $row['state']];
+
+                continue;
+            }
+
+            foreach (PhoneDeviceRegistration::liveFor((string) $connection->id, [$memberId]) as $device) {
+                try {
+                    $this->twilio->createCall(
+                        $connection,
+                        (string) $line->e164,
+                        'client:'.ClientIdentity::of(
+                            User::query()->find($memberId),
+                            (string) $device->device_id,
+                        ),
+                        $this->renderer->pageListener($conference),
+                    );
+
+                    $reached++;
+                } catch (\Throwable) {
+                    // One handset that could not be reached is not a reason to
+                    // abandon the announcement to everybody else.
+                }
+            }
+        }
+
+        if ($reached === 0) {
+            return response()->json([
+                'message' => 'Nobody in that group has a device to page right now.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        return response()->json(['data' => [
+            'devices' => $reached,
+            'skipped' => $skipped,
+
+            // What the desk dials to start speaking.
+            'speak_to' => 'page:'.$conference,
+        ]]);
+    }
+
+    /**
      * Every live device this person has except the one asking.
      *
      * @return list<string> Voice identities
@@ -804,6 +930,7 @@ class CallsController extends Controller
      * really is an identity — a page of ordinary calls asks nothing extra.
      *
      * @param  \Illuminate\Support\Collection<int, PhoneCall>  $calls
+     *
      * Keyed by BOTH forms a person can be named in a call row: the hyphen-less
      * identity a client leg carries, and the plain id in `answered_by`. One
      * pass over the page, one lookup, and the caller does not have to know
