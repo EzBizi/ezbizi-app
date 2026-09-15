@@ -1344,6 +1344,19 @@ class AutomationsController extends Controller
                 // organization; the organization setting stays the ceiling, so
                 // this can only ever narrow. Semantics agreed with Notifications
                 // and Settings; the dispatcher honours it at 27527d2f.
+                //
+                // AND IT IS SAVED EXPLICITLY, even when untouched. Every notify
+                // action carries `in_app_only: false` rather than omitting the
+                // key, and that is deliberate - do not trim it to narrow the
+                // payload. An omitted key is an absence with two causes nothing
+                // can tell apart: "authored before this parameter existed" and
+                // "authored after, and left alone". Those are the same thing
+                // only while the default never moves. The day unchecked is
+                // decided to mean something else, rules carrying an explicit
+                // false keep doing what their author chose and rules carrying
+                // nothing silently change meaning. `actions` is a record of what
+                // a rule does, not only an instruction, so it should say what
+                // was chosen. Notifications' argument, 2026-09-15.
                 $parameter('in_app_only', 'In-app only, do not email', 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
