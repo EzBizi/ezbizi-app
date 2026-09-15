@@ -281,6 +281,105 @@ void main() {
     });
   });
 
+  /// HIS ACTUAL LINE, after Phone's `5c033dda` — and the first time this
+  /// widget has been asked to draw that shape.
+  ///
+  /// One node per group and a queue EACH means +1 239 456-0829 went from one
+  /// queue to three, and from nine nodes to eleven. Every test above uses a
+  /// six-node fixture with a single queue, which is the shape the layout was
+  /// tuned for and no longer the shape he opens.
+  ///
+  /// Asserted at a real pane width rather than an infinite one: a chart that
+  /// lays out correctly and overflows its box is still a chart he cannot read,
+  /// and `RenderFlex overflowed` is a test failure rather than a warning here.
+  testWidgets('his real line draws: eleven nodes, three queues, no overflow', (
+    tester,
+  ) async {
+    Map<String, dynamic> node(String id, String kind, String title,
+        [String state = 'ok']) {
+      return {
+        'id': id,
+        'kind': kind,
+        'title': title,
+        'detail': 'Whoever is on duty in that group is dialled.',
+        'state': state,
+      };
+    }
+
+    await _pump(tester, width: 1100, graph: {
+      'nodes': [
+        node('caller', 'caller', 'Caller'),
+        node('arrival', 'arrival', 'Arrives on General'),
+        node('menu', 'menu', 'Menu plays'),
+        node('g-appt', 'ring_group', 'Ring Appointment'),
+        node('g-exist', 'ring_group', 'Ring Existing Client'),
+        node('g-test', 'ring_group', 'Ring Testing'),
+        node('vm-hash', 'voicemail', 'Voicemail'),
+        node('queue-g-appt', 'queue', 'Hold for Appointment'),
+        node('queue-g-exist', 'queue', 'Hold for Existing Client'),
+        node('queue-g-test', 'queue', 'Hold for Testing'),
+        node('vm-end', 'voicemail', 'Voicemail'),
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'arrival', 'label': ''},
+        {'from': 'arrival', 'to': 'menu', 'label': ''},
+        {'from': 'menu', 'to': 'g-appt', 'label': 'Press 1'},
+        {'from': 'menu', 'to': 'g-exist', 'label': 'Press 2'},
+        {'from': 'menu', 'to': 'g-test', 'label': 'Press 3'},
+        {'from': 'menu', 'to': 'vm-hash', 'label': 'Press #'},
+        // The second route into one box, which is what his question was about.
+        {'from': 'menu', 'to': 'g-exist', 'label': 'No key pressed'},
+        {'from': 'g-appt', 'to': 'queue-g-appt', 'label': 'Everyone busy'},
+        {'from': 'g-exist', 'to': 'queue-g-exist', 'label': 'Everyone busy'},
+        {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
+        {'from': 'queue-g-appt', 'to': 'g-appt', 'label': 'try again'},
+        {'from': 'queue-g-exist', 'to': 'g-exist', 'label': 'try again'},
+        {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
+        {'from': 'queue-g-test', 'to': 'vm-end', 'label': 'Waited too long'},
+      ],
+    });
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'An overflow or a layout assertion counts here: he cannot read a '
+          'chart that renders past its box.',
+    );
+
+    // Distinguishes this fixture from the default six-node one, which has one
+    // queue and no repeated team.
+    expect(find.text('Hold for Appointment'), findsOneWidget);
+    expect(find.text('Hold for Testing'), findsOneWidget);
+    expect(
+      find.text('Ring Existing Client'),
+      findsOneWidget,
+      reason: 'Two keys reach this team and it is ONE box. Two would be the '
+          'drawing Jose read as wrong.',
+    );
+  });
+
+  testWidgets('his real line fits a phone too', (tester) async {
+    await _pump(tester, width: 400, graph: {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'g-test', 'kind': 'ring_group', 'title': 'Ring Testing',
+          'detail': 'Whoever is on duty is dialled.', 'state': 'ok'},
+        {'id': 'queue-g-test', 'kind': 'queue', 'title': 'Hold for Testing',
+          'detail': 'Callers wait and are told their place in line.',
+          'state': 'ok'},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'g-test', 'label': ''},
+        {'from': 'g-test', 'to': 'queue-g-test', 'label': 'Everyone busy'},
+        {'from': 'queue-g-test', 'to': 'g-test', 'label': 'try again'},
+      ],
+    });
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Hold for Testing'), findsOneWidget);
+  });
+
   _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires
