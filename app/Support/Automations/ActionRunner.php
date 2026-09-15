@@ -361,10 +361,25 @@ class ActionRunner
      *
      * ── Every refusal is a run-log line, not an exception ───────
      *
-     * `asTenant` throws only when the resolved identity's TRANSPORT REQUIRES
-     * domain proof and the domain is unproven — NOT whenever a domain is
-     * unproven, which is what this paragraph used to say and what three
-     * sessions separately believed on 2026-09-14.
+     * STALE TWICE, NOW CORRECT AS OF 2026-09-15. `asTenant` THROWS
+     * UNCONDITIONALLY — a bare `throw new CannotSendMail(...)` with no branch
+     * above it, under Jose's ruling that EzBizi's own mail carries signing in,
+     * password resets and joining messages and nothing else.
+     *
+     * The two dead readings, kept because each was believed by several sessions
+     * and each is reachable from the method NAME: it does not throw "whenever a
+     * domain is unproven" (the original text), and it does not throw "only when
+     * the transport REQUIRES domain proof" (the first correction, true for one
+     * day). Read the method, never this paragraph — including this version of
+     * it. Mail is another module's and the answer has changed twice in as many
+     * days.
+     *
+     * WHY THE PLATFORM CHECK BELOW STAYS ANYWAY. It is redundant while the
+     * throw is unconditional, and it is what refuses if that policy is ever
+     * relaxed — which it may be, now that a business can connect its own mail
+     * server (fe37ad4a, d2a256e1). A guard deleted as redundant under a policy
+     * is armed to be missing when the policy moves. The rest of this paragraph
+     * describes the world it was written for and is why it must not go:
      *
      * The gap is the resolver, not the check. `SendingIdentityResolver::for()`
      * walks the cascade and, finding no row at any link, ends
