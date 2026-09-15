@@ -2815,6 +2815,15 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Google Ads',
                 parent: 'reports',
                 actions: ['view'],
+                automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
+                    .'trigger to fire on: the figures are read from Google when somebody opens '
+                    .'the screen and are never stored, so no row is created, changed or removed. '
+                    .'And an action would have to WRITE to the Google Ads API - change a budget, '
+                    .'pause a campaign - which is exactly what we have told Google this product '
+                    .'cannot do, in the Standard Access answer and in the OAuth justification. '
+                    .'This stops being true the day spend is stored or watched: an alert on a '
+                    .'campaign passing a threshold is a real trigger, and it needs this line '
+                    .'removed rather than reworded.',
             ),
         ];
     }
