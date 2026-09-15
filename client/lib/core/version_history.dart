@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0217',
       date: '15 Sep 2026',
       items: [
+        'The chat and contact form now show on every website, with no switch to turn them on. They were off on every site, and on a site built with Elementor there was no way to place them at all - both now appear in the Elements panel as EzBizi Live Chat and EzBizi Contact Form.',
         'Colleagues on Do not disturb now show a red dot on the Team list instead of a grey one.',
       ],
     ),
