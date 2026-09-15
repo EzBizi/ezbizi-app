@@ -2565,6 +2565,36 @@ because a pronoun resolved against whatever the reader was holding is how yester
 > send is not reported here yet."* Its removal condition is mechanical rather than a promise: the
 > same column that makes the sentence stop lying is the one that makes the failure states
 > renderable.
+>
+> **NARROWED AGAIN, 2026-09-15: four states, not seven — and the copy flow is parked.** SES read
+> the drawing against their own storage rather than against my description of it, which is the
+> instruction I gave them, and found three states that cannot be drawn truthfully:
+> `copied`, `inherited-and-copied`, `copied-then-that-mailbox-changed`. Building:
+> `nothing connected · set here, typed · inherited · saved, never tried`.
+>
+> Three reasons, stacking. **The facts are not stored** — `connectServer` writes host, port,
+> username, password, encryption and nothing else; I verified that in the source rather than
+> taking it, and the copy line would have to invent a mailbox, a date and an actor. **The
+> stale-copy line is not a missing column but a missing relationship** — comparing a credential
+> against the mailbox it came from needs a recorded source, and with none there is nothing to
+> compare against, so it cannot be derived at any cost. **And there is nothing to copy from:** a
+> deploy-desk measurement SES relays says 6 production mailboxes, 0 with a mail server, 0 with
+> credentials, all `gmail_workspace`, which carries no SMTP host — so the affordance would open
+> onto an empty list for every business that exists. *(That last figure is relayed through two
+> sessions and I did not measure it.)*
+>
+> **My own note argued the opposite and I reversed it.** It said the second fact row earns its
+> rent because the common state costs one line of *"Typed here"* while the rare state fails
+> silently. **That argument assumed the row sometimes says something else.** With copying parked
+> it cannot — and nothing records that a value was *typed* either, so a constant "Typed here"
+> is an assumption rendered as a fact on every identity forever, which is precisely what a
+> derived sentence exists to replace. **The row is now conditional rather than constant**
+> (`31086edf`) and renders nowhere today; switching the gallery to a copied state shows it
+> return. Verified by exercising it: two rows in the typed state, three in the copied one, in
+> both picked layouts.
+>
+> The two-labelled-facts shape itself is unchanged and is what gets built. It stops paying rent
+> while it has nothing to say.
 
 `docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
 with no destination. The fork landed: SES and Email settled that **a report must not go out
