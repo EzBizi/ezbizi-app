@@ -2803,7 +2803,7 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
-### 18b · Communication · Call flow, after Jose saw it live — **1 OPEN, AWAITING HIS CHOICE**
+### 18b · Communication · Call flow, after Jose saw it live — **A CHOSEN, B PARKED**
 
 Jose, 2026-09-15, on the running chart: *"looks amazing"*, with five asks. Two were Phone's data
 and are fixed in `5c033dda`: **one node per GROUP rather than per key**, so a second key reaching a
@@ -2860,6 +2860,26 @@ its own design round and its own gallery rather than being bolted onto a viewer.
 **Recommendation: A.** Small, exact where it matters, invents nothing, and it makes the chart
 answer a question the list cannot — *is anybody waiting right now*. B deserves to be designed
 rather than appended.
+
+> **DECIDED 2026-09-15: A is being built. B is parked and goes back to Jose as its own round.**
+>
+> He is away for the day and his standing word covers it — `docs/ACTIVE-CONSTRAINTS.md` §11,
+> relayed by the deploy desk: *decide as you would recommend, finish end to end, a question
+> addressed to him is not a reason to stop*. Only third-party sign-ins, spending money, and
+> what-the-business-wants questions actually need him. **B is arguably one of those** — it changes
+> what the screen is FOR — which is the reason it is parked rather than started, not deferred out
+> of caution.
+>
+> **A correction I made to my own ask before Phone built it.** I had said "one API call per line"
+> as though that were free. Thirteen lines polled every ten seconds is thirteen Twilio calls every
+> ten seconds, forever, for a pane that shows **one line at a time**. The endpoint takes the line:
+> `GET /phone/call-flow/live?line=<id>`, returning `on_line` plus a map of queue-node ids to
+> `waiting` and `average_wait_seconds`. A node absent from the map renders **0**, never dashes,
+> because a Twilio queue resource exists only once it has been used.
+>
+> **The one thing I asked Phone for rather than assumed:** what the payload says when Twilio is
+> slow or down. *"No queue is holding anybody"* and *"we could not ask"* are different facts, and
+> the tile must not draw the second as the first.
 
 ### 18 · Communication · Call flow as a chart — **SHIPPED. Jose: 1 and 6**
 
