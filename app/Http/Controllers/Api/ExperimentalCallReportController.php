@@ -48,6 +48,33 @@ class ExperimentalCallReportController extends Controller
      */
     public const LOOKBACK_DAYS = 30;
 
+    /**
+     * Books that exist, are missing from every total, and always will be.
+     *
+     * Jose, 2026-09-15, asked why Massachusetts' Workiz Developer page refuses
+     * him: **"we dont pay the api access there"**. Workiz sells API access per
+     * account and A-1 does not buy it for MA. So there is no token because
+     * there is no subscription — not a wound-down account, not an access
+     * problem somebody will get round to.
+     *
+     * THAT MAKES THE UNDERCOUNT PERMANENT AND STRUCTURAL. MA has a book, nobody
+     * disputes it exists, and this report will never read it. The same people
+     * book into every account, so the missing rows do not merely omit a region
+     * — they make individual people's numbers LOW, by an unknown amount,
+     * forever, with nothing on the screen saying so unless this says it.
+     *
+     * Which is why it is named rather than simply absent. "Not connected" reads
+     * as a task; "no API subscription" retires the question.
+     *
+     * @var list<array{name: string, reason: string}>
+     */
+    public const UNREACHABLE = [
+        [
+            'name' => 'Massachusetts',
+            'reason' => 'Workiz API access is not paid for on that account, so it has no token and never will under the current subscription.',
+        ],
+    ];
+
     public function show(Request $request, RingCentralCallLog $calls, WorkizJobs $workiz, CallReconciliation $reconcile): JsonResponse
     {
         // Organization-wide by nature: it names everyone and belongs to no
@@ -94,7 +121,12 @@ class ExperimentalCallReportController extends Controller
                 // Every account refused. The calls are still worth showing, and
                 // the jobs column being blank must not read as "nobody booked
                 // anything" — `workiz_failed` is what the screen says instead.
-                $failed = array_fill_keys($accounts, $e->getMessage());
+                // array_column, because accounts() carries {id, name} maps
+                // since the disconnect chips needed the id - and array_fill_keys
+                // with array keys is a TypeError, not a wrong answer. This arm
+                // only runs when EVERY account refuses, which is why nothing
+                // caught it: the one test here refuses a single account.
+                $failed = array_fill_keys(array_column($accounts, 'name'), $e->getMessage());
             }
         }
 
@@ -108,6 +140,11 @@ class ExperimentalCallReportController extends Controller
             // than merely missing a region.
             'workiz_accounts' => $accounts,
             'workiz_failed' => (object) $failed,
+
+            // Named, because "not connected" invites somebody to go and connect
+            // it and spend an afternoon learning what Jose answered in nine
+            // words. See UNREACHABLE.
+            'workiz_unreachable' => self::UNREACHABLE,
 
             ...$reconcile->forDay($legs, $jobs, $day->toDateString()),
         ]);
