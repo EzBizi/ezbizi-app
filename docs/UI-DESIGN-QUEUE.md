@@ -2699,6 +2699,25 @@ carries `graph: {nodes, edges}` additively per line; `TwimlRenderer::graph()` bu
 > less useful.** So every option is judged on whether those two are visible *without reading node
 > by node*, which is why each carries a count at the top rather than relying on the drawing.
 
+> **REDRAWN THE SAME DAY AGAINST THE THIRTEEN REAL LINES.** Phone did not trust their own
+> fixtures — *"my tests build their own fixtures, which only ever prove self-agreement"* — and
+> read production instead. Two findings changed what the options optimise for:
+>
+> - **Not one line has an opening-hours schedule.** Supported, renders, and absent everywhere. My
+>   first three drawings leaned on `hours` as the early branch that establishes the rhythm, so
+>   every one of them opened with a column that is empty on every line Jose will actually click.
+>   **The first branch he sees is the menu**, and that is what is drawn now.
+> - **The cycle is the common case, not the edge case.** Eleven of thirteen lines have
+>   `overflow = queue`, so `queue ⇄ ring group` is what the tab looks like *normally*. My note
+>   that the back-edge is "drawn and not followed" was written as a defensive detail; at 85% it
+>   is load-bearing, and the options are now judged **with** it rather than without.
+>
+> **Both sizes are switchable in the gallery**, because the other two lines are four nodes — and
+> a chart that looks broken at four nodes is reporting the truth, while one that only reads well
+> at eleven is tuned for a line that does not exist. The bare pair are spare numbers with **zero
+> inbound calls ever**, which Phone checked before reporting them as a fault; they are the
+> minimum graph rather than a problem.
+
 **Facts the layout may rely on, measured rather than assumed.** Exactly one entry node, always
 `caller` — which makes his "Caller ---- (what happens)" literal. Every node reachable and no edge
 dangling, pinned by a sabotage-checked test, so no defensive drawing for orphans. **It can

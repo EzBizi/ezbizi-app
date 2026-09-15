@@ -101,6 +101,21 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   that draws a dead branch identically to a live one is prettier than the list and
   less useful, so <b>every option below is judged on whether you can see those two
   without reading node by node</b> — which is why each carries a count at the top.</p>
+  <p class="sub" style="margin-top:10px"><b>&#9888; REDRAWN 2026-09-15 against the
+  THIRTEEN REAL LINES rather than fixtures.</b> Phone read production instead of
+  trusting their own test data, and two things in it change what these optimise for.
+  <b>Not one line has an opening-hours schedule.</b> It is supported and it renders,
+  but a layout leaning on hours as the early branch that sets the rhythm has an empty
+  column on every line Jose will actually open &mdash; <b>the first branch he sees is
+  the menu</b>, so that is what is drawn. And <b>the cycle is the common case, not the
+  edge case</b>: eleven of thirteen lines have <code>overflow = queue</code>, so the
+  <code>queue &#8646; ring group</code> back-edge is what the tab looks like
+  <i>normally</i>. <b>Judge the options with it rather than without.</b> The typical
+  line is <i>caller &rarr; arrives &rarr; menu (4 keys + no key) &rarr; ring group
+  &rarr; queue &#8646; ring group &rarr; voicemail</i>; the other two lines are four
+  nodes, one of them dead. <b>Switch between them below</b> &mdash; a chart that looks
+  broken at four nodes is reporting the truth, and one that only reads well at eleven
+  is tuned for a line that does not exist.</p>
   <p class="sub" style="margin-top:10px"><b>Facts the layout may rely on, measured
   rather than assumed</b> (<code>TwimlRenderer::graph()</code>, and a test that
   sabotage-checks): exactly one entry node, always <code>caller</code>; every node
@@ -113,13 +128,20 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   option carries the line picker the existing pane already uses.</p>
 </header>
 <div id="nums"></div>
+<div id="ctl" style="display:flex;gap:8px;padding:0 24px 16px;align-items:center;
+  font-size:13px"><b style="font-weight:700">Line:</b></div>
 <div id="stage"></div>
 <script>
 /* A realistic graph, shaped like TwimlRenderer::graph() output. */
+var CASE = 'typical';
+/* The typical line, measured: 11 of 13. No hours node — not one production line
+   has a schedule — so the menu is the first branch. The queue back-edge is on
+   85% of lines, which makes it the normal appearance rather than a flourish. */
 var N = {
   caller:{t:'Caller',d:'Somebody dials +1 860 555 0142.',s:'ok',k:'caller'},
   arrival:{t:'Arrival',d:'Rings for 20 seconds.',s:'ok'},
-  hours:{t:'Opening hours',d:'Open now — Mon–Fri 8–5.',s:'ok'},
+  hours:{t:'Opening hours',d:'Supported. No line has one set.',s:'ok'},
+  nobody:{t:'Nobody is rung',d:'No ring group on this line.',s:'dead'},
   menu:{t:'Menu',d:'“Press 1 for sales, 2 for service, 3 for accounts.”',s:'ok'},
   sales:{t:'Sales team',d:'Rings 3 people.',s:'ok'},
   service:{t:'Service team',d:'Nobody is in this group.',s:'dead'},
@@ -130,16 +152,23 @@ var N = {
   greet:{t:'Greeting',d:'A recorded welcome message.',s:'skipped'}
 };
 var COUNTS = {dead:2, skipped:1};
+var BARE = {dead:1, skipped:0};
+function C(){ return CASE === 'bare' ? BARE : COUNTS; }
+function bare(){ return CASE === 'bare'; }
 
 function sum(){
   return '<div class="sum">' +
-    '<span><span class="pipbad"></span><b>' + COUNTS.dead + ' dead ends</b> ' +
-    '&mdash; a caller reaches these and nothing happens</span>' +
-    '<span><span class="pipskip"></span><b>' + COUNTS.skipped + ' never reached' +
-    '</b> &mdash; configured, no caller ever gets there</span></div>';
+    '<span><span class="pipbad"></span><b>' + C().dead +
+    (C().dead === 1 ? ' dead end</b> ' : ' dead ends</b> ') +
+    '&mdash; a caller reaches ' + (C().dead === 1 ? 'this' : 'these') +
+    ' and nothing happens</span>' +
+    (C().skipped ? '<span><span class="pipskip"></span><b>' + C().skipped +
+      ' never reached</b> &mdash; configured, no caller ever gets there</span>'
+    : '') + '</div>';
 }
 function top(){
-  return '<div class="top">Call flow<span class="pick">Main line · +1 860 555 0142 ▾' +
+  return '<div class="top">Call flow<span class="pick">' +
+    (bare() ? 'General · +1 786 408-6862 ▾' : 'Main line · +1 860 555 0142 ▾') +
     '</span></div>';
 }
 function cls(s){ return s === 'dead' ? ' dead' : s === 'skip' || s === 'skipped'
@@ -160,195 +189,260 @@ function wire(pts, label, lx, ly, dash){
            : '');
 }
 
-/* ── 1 — left to right, layered ───────────────────────────────── */
+/* Typical line, measured structure: no hours (no production line has one), the
+   menu is the first branch, and the ring group overflows to a QUEUE that comes
+   back -- on 11 of 13 lines, so the back-edge is the normal appearance rather
+   than a flourish. The two faults are ILLUSTRATIVE: the eleven live lines are
+   clean today, and the one real fault is on the bare line. */
+
+/* -- 1 -- left to right, layered -------------------------------- */
 function D1(){
+  if (bare()) return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+    '<svg>' + wire('M138 140 H168','',0,0) + wire('M306 140 H336','',0,0) +
+    wire('M474 140 H504','',0,0) + '</svg>' +
+    node('caller',6,120) + node('arrival',174,120) + node('nobody',342,120) +
+    node('vm',510,120) + '</div></div>' +
+    '<div class="note"><b>Four nodes, and the chart looks thin because the line ' +
+    'IS thin.</b> That is the layout reporting the truth rather than failing: two ' +
+    'spare numbers with no ring group, so every call goes straight to voicemail. ' +
+    'Worth checking every option at this size &mdash; two thirds of a 760px canvas ' +
+    'is empty here, and a chart tuned to look good at eleven nodes is tuned for a ' +
+    'line that is not the common one either.</div>';
   return '<div class="win">' + top() + sum() + '<div class="canvas">' +
     '<svg>' +
-      wire('M138 46 H168', '', 0, 0) +
-      wire('M306 46 H336', '', 0, 0) +
-      wire('M474 46 C500 46 500 22 524 22', 'Open', 486, 34) +
-      wire('M474 52 C500 52 500 250 524 250', 'Closed', 486, 150) +
-      wire('M660 22 C684 22 684 58 700 58', 'Press 1', 662, 14) +
-      wire('M660 28 C684 28 684 112 700 112', 'Press 2', 662, 74) +
-      wire('M660 34 C684 34 684 166 700 166', 'Press 3', 662, 128) +
-      wire('M660 40 C684 40 684 220 700 220', 'No key', 662, 186) +
-      wire('M700 128 C676 150 676 96 700 74', 'Everyone busy', 560, 148, true) +
+      wire('M138 34 H168','',0,0) +
+      wire('M306 22 C330 22 330 40 356 40','Press 1',310,16) +
+      wire('M306 28 C330 28 330 96 356 96','Press 2',310,68) +
+      wire('M306 34 C330 34 330 152 356 152','Press 3',310,124) +
+      wire('M306 40 C330 40 330 248 356 248','No key',310,198) +
+      wire('M482 56 H526','Everyone busy',420,50) +
+      wire('M526 80 C498 112 498 70 482 88','back to the group',500,126,true) +
+      wire('M482 168 C540 168 540 248 560 248','No answer',492,214) +
     '</svg>' +
-    node('caller', 6, 26) + node('arrival', 174, 26) + node('hours', 342, 26) +
-    node('menu', 524, 2) + node('closed', 524, 230) +
-    node('sales', 706, 40, 120) + node('service', 706, 94, 120) +
-    node('accounts', 706, 148, 120) + node('vm', 706, 202, 120) +
+    node('caller',6,14) +
+    '<div class="nd" style="left:174px;top:14px"><div class="t">Menu</div>' +
+    '<div class="d">&ldquo;Press 1 sales, 2 service, 3 accounts.&rdquo;</div></div>' +
+    node('sales',362,22,120) + node('service',362,78,120) +
+    node('accounts',362,134,120) +
+    node('queue',532,60,120) + node('vm',566,228,120) +
     '</div></div>' +
-    '<div class="note"><b>What he described, literally: Caller on the left, and the ' +
-    'call moving right.</b> Branch labels sit on the wires, so &ldquo;Press 2&rdquo; ' +
-    'is on the line rather than inside the box &mdash; which is what makes a menu ' +
-    'readable at a glance rather than a list of four boxes you have to match up.' +
-    '<br><br><b>The cycle is drawn and not followed:</b> the dashed return from the ' +
-    'queue back to the ring group is a back-edge, labelled, and deliberately not ' +
-    'laid out as another column &mdash; otherwise the chart grows forever.<br><br>' +
-    '<b>The cost:</b> a four-option menu is four rows tall and the chart is already ' +
-    '760px wide at eleven nodes. A five-option menu with an after-hours branch needs ' +
-    'pan, and pan on a settings tab is a thing people lose themselves in.</div>';
+    '<div class="note"><b>What he described, literally: Caller on the left, the ' +
+    'call moving right.</b> Branch labels ride the wires, so &ldquo;Press 2&rdquo; ' +
+    'is on the line rather than inside a box you have to match up.<br><br>' +
+    '<b>The back-edge is the thing to judge, because it is on 85% of lines.</b> ' +
+    'The queue returns to the group it came from &mdash; dashed, labelled, and ' +
+    'deliberately NOT laid out as another column, or the chart would grow a column ' +
+    'per retry forever. It is drawn, not followed.<br><br><b>The cost:</b> a ' +
+    'four-option menu is four rows tall and this is already 760px wide at nine ' +
+    'nodes. Add an hours branch &mdash; supported, though no line has one today ' +
+    '&mdash; and it needs pan, and pan on a settings tab is a thing people lose ' +
+    'themselves in.</div>';
 }
 
-/* ── 2 — top to bottom, spine with branches ──────────────────── */
+/* -- 2 -- top to bottom, spine with branches --------------------- */
 function D2(){
+  if (bare()) return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+    '<svg>' + wire('M74 42 V64','',0,0) + wire('M74 106 V128','',0,0) +
+    wire('M74 176 V198','',0,0) + '</svg>' +
+    node('caller',8,16,120) + node('arrival',8,80,120) + node('nobody',8,144,120) +
+    node('vm',8,206,120) + '</div></div>' +
+    '<div class="note"><b>Four nodes in a straight line, and nothing about the ' +
+    'layout strains.</b> The spine is the whole chart when the line is bare, which ' +
+    'is the shape two of thirteen are in. Compare desktop 1 at this size: the same ' +
+    'four nodes leave most of the canvas empty.</div>';
   return '<div class="win">' + top() + sum() + '<div class="canvas">' +
     '<svg>' +
-      wire('M74 42 V64', '', 0, 0) +
-      wire('M74 106 V128', '', 0, 0) +
-      wire('M74 170 C74 190 74 190 74 200', 'Open', 80, 190) +
-      wire('M140 152 C300 152 300 40 380 40', 'Closed', 250, 146) +
-      wire('M140 224 C240 224 240 42 300 42', 'Press 1', 176, 218) +
-      wire('M140 230 C240 230 240 104 300 104', 'Press 2', 176, 256) +
-      wire('M140 236 C240 236 240 166 300 166', 'Press 3', 250, 232) +
-      wire('M140 242 C240 242 240 228 300 228', 'No key', 250, 268) +
-      wire('M300 60 C272 82 272 60 300 86', 'Busy', 236, 78, true) +
+      wire('M68 42 V64','',0,0) +
+      wire('M134 96 C200 96 200 30 254 30','Press 1',142,90) +
+      wire('M134 102 C200 102 200 92 254 92','Press 2',142,128) +
+      wire('M134 108 C200 108 200 154 254 154','Press 3',206,132) +
+      wire('M134 114 C200 114 200 250 254 250','No key',206,208) +
+      wire('M380 44 C416 44 416 100 442 100','Everyone busy',360,38) +
+      wire('M442 122 C416 148 416 80 442 96','back',420,150,true) +
+      wire('M380 172 C410 172 410 250 320 250','No answer',384,216) +
     '</svg>' +
-    node('caller', 8, 16) + node('arrival', 8, 80) + node('hours', 8, 142) +
-    node('menu', 8, 206) +
-    node('sales', 306, 24, 120) + node('service', 306, 86, 120) +
-    node('accounts', 306, 148, 120) + node('vm', 306, 210, 120) +
-    node('closed', 386, 22, 120) +
+    node('caller',8,16,120) +
+    '<div class="nd" style="left:8px;top:80px;width:120px"><div class="t">Menu' +
+    '</div><div class="d">&ldquo;Press 1 sales, 2 service, 3 accounts.&rdquo;' +
     '</div></div>' +
-    '<div class="note"><b>The spine runs down and only branches go sideways</b>, so ' +
-    'the thing you read first is the ordinary path a caller takes &mdash; which is ' +
-    'the question somebody opens this tab with. Adding a menu option lengthens the ' +
-    'branch column rather than widening the chart.<br><br><b>It also matches the ' +
-    'phone.</b> Pair it with 5 and the two surfaces are the same drawing at two ' +
-    'widths, which is one shape to learn rather than two.<br><br><b>The cost:</b> ' +
-    'the after-hours branch and the menu branches both go right, from different ' +
-    'depths, so two unrelated things share a column. <b>This is the one I would ' +
-    'build</b> &mdash; it grows in the direction a settings pane has room in.</div>';
+    node('sales',260,14,120) + node('service',260,76,120) +
+    node('accounts',260,138,120) + node('vm',260,232,120) +
+    node('queue',448,82,120) +
+    '</div></div>' +
+    '<div class="note"><b>The spine runs down and only branches go sideways</b>, ' +
+    'so the first thing read is the ordinary path a caller takes &mdash; which is ' +
+    'the question somebody opens this tab with. Adding a menu option lengthens a ' +
+    'column rather than widening the chart, <b>which is the direction a settings ' +
+    'pane has room in</b>.<br><br><b>And with the back-edge on 85% of lines it ' +
+    'stays local:</b> the queue sits beside the group it returns to, so the return ' +
+    'is a short hop rather than a wire crossing the whole chart.<br><br>It also ' +
+    'matches the phone: pair with 5 and the two surfaces are one drawing at two ' +
+    'widths. <b>This is the one I would build.</b></div>';
 }
 
-/* ── 3 — an outline that is still a graph ────────────────────── */
+/* -- 3 -- an outline that is still a graph ----------------------- */
 function D3(){
   function r(gut, id, lab){
     var n = N[id];
-    return '<div class="row">' + (lab !== undefined
-      ? '<span class="lab">' + lab + '</span>' : '<span class="lab"></span>') +
+    return '<div class="row"><span class="lab">' + (lab || '') + '</span>' +
       '<span class="gut">' + gut + '</span><span class="bx' + cls(n.s) + '">' +
       '<span class="t">' + n.t + '</span><span class="d">' + n.d + '</span>' +
-      (n.s === 'dead' ? ' <span class="flag" style="background:rgba(186,26,26,.12);' +
+      (n.s === 'dead' ? ' <span style="background:rgba(186,26,26,.12);' +
         'color:var(--bad);font-size:9.5px;font-weight:700;padding:1px 5px;' +
         'border-radius:999px">Dead end</span>' : '') +
-      (n.s === 'skipped' ? ' <span class="flag" style="background:rgba(138,90,0,.12);' +
+      (n.s === 'skipped' ? ' <span style="background:rgba(138,90,0,.12);' +
         'color:var(--warn);font-size:9.5px;font-weight:700;padding:1px 5px;' +
         'border-radius:999px">Never reached</span>' : '') +
       '</span></div>';
   }
+  if (bare()) return '<div class="win">' + top() + sum() + '<div class="out">' +
+    r('', 'caller') + r('&#9492;&#9472;', 'arrival') +
+    r('&nbsp;&nbsp;&#9492;&#9472;', 'nobody') +
+    r('&nbsp;&nbsp;&nbsp;&nbsp;&#9492;&#9472;', 'vm') + '</div></div>' +
+    '<div class="note">Four rows. <b>The outline is the only option whose ' +
+    'proportions do not change between a four-node line and an eleven-node one' +
+    '</b> &mdash; it is the same list, shorter.</div>';
   return '<div class="win">' + top() + sum() + '<div class="out">' +
-    r('', 'caller') + r('└─', 'arrival') + r('  └─', 'hours') +
-    r('    ├─', 'menu', 'Open') +
-    r('    │ ├─', 'sales', 'Press 1') +
-    r('    │ ├─', 'service', 'Press 2') +
-    r('    │ ├─', 'accounts', 'Press 3') +
-    r('    │ └─', 'vm', 'No key') +
-    r('    └─', 'closed', 'Closed') +
-    '<div class="row"><span class="lab">Busy</span><span class="gut">    │ ↩ </span>' +
-    '<span class="bx" style="border-style:dashed;color:var(--muted)">' +
-    '<span class="d">back to <b>Sales team</b> — the queue tries again</span>' +
-    '</span></div>' +
+    r('', 'caller') + r('&#9492;&#9472;', 'arrival') +
+    '<div class="row"><span class="lab"></span>' +
+    '<span class="gut">&nbsp;&nbsp;&#9492;&#9472;</span>' +
+    '<span class="bx"><span class="t">Menu</span><span class="d">&ldquo;Press 1 ' +
+    'sales, 2 service, 3 accounts.&rdquo;</span></span></div>' +
+    r('&nbsp;&nbsp;&nbsp;&nbsp;&#9500;&#9472;', 'sales', 'Press 1') +
+    '<div class="row"><span class="lab">Everyone busy</span>' +
+    '<span class="gut">&nbsp;&nbsp;&nbsp;&nbsp;&#9474;&nbsp;&#9500;&#9472;</span>' +
+    '<span class="bx"><span class="t">Queue</span><span class="d">Holds the ' +
+    'caller and tries again.</span></span></div>' +
+    '<div class="row"><span class="lab">then</span>' +
+    '<span class="gut">&nbsp;&nbsp;&nbsp;&nbsp;&#9474;&nbsp;&#9474;&nbsp;&#8617;' +
+    '</span><span class="bx" style="border-style:dashed;color:var(--muted)">' +
+    '<span class="d">back to <b>Sales team</b></span></span></div>' +
+    r('&nbsp;&nbsp;&nbsp;&nbsp;&#9500;&#9472;', 'service', 'Press 2') +
+    r('&nbsp;&nbsp;&nbsp;&nbsp;&#9500;&#9472;', 'accounts', 'Press 3') +
+    r('&nbsp;&nbsp;&nbsp;&nbsp;&#9492;&#9472;', 'vm', 'No key') +
     r('', 'greet') +
     '</div></div>' +
-    '<div class="note"><b>Not what he asked for, and here because one of the three ' +
-    'should be the version that cannot go wrong.</b> No pan, no zoom, no layout ' +
-    'engine; it reads identically at 760px and at 340px, prints, and a menu with ' +
-    'nine options is nine rows rather than a chart nobody can fit on screen. The ' +
-    'cycle is a labelled <code>↩</code> row rather than a curve.<br><br>' +
-    '<b>And it is the only option where a NEVER-REACHED node has an obvious ' +
-    'home</b> — at the bottom, outside the tree, because that is exactly what it ' +
-    'is: configured and connected to nothing a caller walks. On a canvas it has to ' +
-    'float somewhere and look like a mistake in the drawing.<br><br><b>The cost is ' +
-    'the brief:</b> he asked for graphic and n8n and this is an indented list with ' +
+    '<div class="note"><b>Not what he asked for, and here because one of the ' +
+    'three should be the version that cannot go wrong.</b> No pan, no zoom, no ' +
+    'layout engine; identical at 760px and at 340px, prints, and a nine-option ' +
+    'menu is nine rows rather than a chart nobody can fit on screen. <b>The cycle ' +
+    'is a labelled return row</b> rather than a curve, and on 85% of lines that ' +
+    'row is always there.<br><br><b>And it is the only option where a ' +
+    'NEVER-REACHED node has an obvious home</b> &mdash; at the bottom, outside the ' +
+    'tree, because that is exactly what it is. On a canvas it has to float ' +
+    'somewhere and look like a mistake in the drawing. <b>No line has one today, ' +
+    'which is the point:</b> it is the state that produces no complaint, so it ' +
+    'turns up the day somebody edits a flow badly.<br><br><b>The cost is the ' +
+    'brief:</b> he asked for graphic and n8n, and this is an indented list with ' +
     'good manners.</div>';
 }
 
-/* ── 4 — mobile: the canvas, panned ──────────────────────────── */
+/* -- 4 -- mobile: the canvas, panned ----------------------------- */
 function M4(){
   return '<div class="phone">' + top() + sum() +
     '<div class="canvas"><svg>' +
-      wire('M74 42 V64','',0,0) + wire('M74 106 V128','',0,0) +
-      wire('M74 170 V200','Open',80,190) +
-      wire('M140 224 C200 224 200 42 250 42','1',176,218) +
-      wire('M140 230 C200 230 200 104 250 104','2',176,254) +
+      wire('M68 42 V64','',0,0) +
+      wire('M134 96 C186 96 186 30 232 30','1',142,90) +
+      wire('M134 102 C186 102 186 92 232 92','2',142,128) +
     '</svg>' +
-    node('caller',8,16,120) + node('arrival',8,80,120) + node('hours',8,142,120) +
-    node('menu',8,206,120) +
-    node('sales',256,24,116) + node('service',256,86,116) +
+    node('caller',8,16,120) +
+    '<div class="nd" style="left:8px;top:80px;width:120px"><div class="t">Menu' +
+    '</div><div class="d">&ldquo;Press 1 sales, 2 service&hellip;&rdquo;</div></div>' +
+    node('sales',238,14,116) + node('service',238,76,116) +
     '</div></div>' +
     '<div class="note">The same chart, pinched and panned. <b>Honest about being ' +
-    'the same thing</b> — and on a 340px screen you see three nodes of eleven, so ' +
-    'the answer to &ldquo;where does a caller end up&rdquo; is behind a gesture. ' +
-    '<b>Drawn so it is rejected on purpose:</b> a canvas that needs panning to ' +
-    'answer its own question is a canvas that will be opened once.</div>';
+    'the same thing</b> &mdash; and on a 340px screen you see three nodes of nine, ' +
+    'with the queue and the voicemail off the right edge entirely. <b>Drawn to be ' +
+    'rejected on purpose:</b> a canvas that needs panning to answer its own ' +
+    'question is a canvas that gets opened once.</div>';
 }
 
-/* ── 5 — mobile: the spine, branches collapsed ───────────────── */
+/* -- 5 -- mobile: the spine, branches collapsed ------------------ */
 function M5(){
-  function s(id, lab){
+  function s2(id, lab){
     var n = N[id];
     return (lab ? '<div style="font-size:10.5px;color:var(--muted);' +
       'padding:0 14px 2px;font-weight:700">' + lab + '</div>' : '') +
       '<div style="margin:0 14px 8px;border:1px solid ' +
-      (n.s === 'dead' ? 'var(--bad)' : n.s === 'skipped' ? 'var(--warn)' : 'var(--line)') +
+      (n.s === 'dead' ? 'var(--bad)' : 'var(--line)') +
       ';border-radius:10px;padding:9px 11px;font-size:12.5px' +
       (n.s === 'dead' ? ';background:rgba(186,26,26,.05)' : '') +
-      (n.s === 'skipped' ? ';background:rgba(138,90,0,.05);border-style:dashed' : '') +
       '"><b>' + n.t + '</b><div style="color:var(--muted);font-size:11.5px;' +
       'margin-top:2px">' + n.d + '</div></div>';
   }
+  if (bare()) return '<div class="phone">' + top() + sum() +
+    '<div style="padding:12px 0 14px">' + s2('caller') + s2('arrival') +
+    s2('nobody') + s2('vm') + '</div></div>' +
+    '<div class="note">Four cards, no branch row, nothing collapsed. <b>The bare ' +
+    'line needs no interaction at all</b> &mdash; which is the right behaviour for ' +
+    'a layout whose collapsing exists to manage a fan that is not there.</div>';
   return '<div class="phone">' + top() + sum() +
-    '<div style="padding:12px 0 14px">' +
-    s('caller') + s('arrival') + s('hours') + s('menu', 'OPEN') +
+    '<div style="padding:12px 0 14px">' + s2('caller') + s2('arrival') +
     '<div style="margin:0 14px;border:1px solid var(--line);border-radius:10px;' +
-    'padding:10px 11px;font-size:12.5px;background:var(--fill)">' +
-    '<b>4 options</b> — 1 sales, 2 service, 3 accounts, no key' +
+    'padding:10px 11px;font-size:12.5px"><b>Menu</b><div style="color:' +
+    'var(--muted);font-size:11.5px;margin-top:2px">&ldquo;Press 1 sales, 2 ' +
+    'service, 3 accounts.&rdquo;</div></div>' +
+    '<div style="margin:8px 14px 0;border:1px solid var(--line);border-radius:' +
+    '10px;padding:10px 11px;font-size:12.5px;background:var(--fill)">' +
+    '<b>4 options</b> &mdash; 1 sales, 2 service, 3 accounts, no key' +
     '<div style="color:var(--bad);font-size:11.5px;margin-top:4px;font-weight:600">' +
     '2 of them are dead ends</div>' +
     '<div style="color:var(--primary);font-weight:700;font-size:12px;' +
     'margin-top:6px">Open them &rsaquo;</div></div>' +
-    '<div style="font-size:10.5px;color:var(--muted);padding:12px 14px 2px;' +
-    'font-weight:700">CLOSED</div>' + s('closed') +
+    '<div style="margin:10px 14px 0;font-size:11.5px;color:var(--muted);' +
+    'border-left:2px dashed var(--wire);padding-left:10px">Sales team overflows ' +
+    'to a <b>queue</b>, which comes back to it. Then voicemail.</div>' +
     '</div></div>' +
-    '<div class="note"><b>The spine down the screen, and a branch point as one row ' +
-    'that says how many and how many are broken.</b> The ordinary path fits without ' +
-    'scrolling and the fan-out is a tap &mdash; which on a phone is the right trade, ' +
-    'because &ldquo;what normally happens&rdquo; is the question and the four ' +
-    'options are the detail.<br><br><b>The count on the collapsed row is what stops ' +
-    'this hiding the thing the screen is for</b>: a branch you have not opened still ' +
-    'tells you two of its options go nowhere. <b>Pairs with desktop 2</b> — same ' +
-    'drawing, two widths.</div>';
+    '<div class="note"><b>The spine down the screen, and a branch point as one ' +
+    'row that says how many and how many are broken.</b> The ordinary path fits ' +
+    'without scrolling and the fan-out is a tap &mdash; on a phone that is the ' +
+    'right trade, because &ldquo;what normally happens&rdquo; is the question and ' +
+    'the four options are the detail.<br><br><b>The count on the collapsed row is ' +
+    'what stops this hiding the thing the screen is for:</b> a branch you have not ' +
+    'opened still tells you two of its options go nowhere. <b>And the cycle is a ' +
+    'sentence rather than a wire</b>, which is the only honest way to draw a ' +
+    'back-edge in a single column. <b>Pairs with desktop 2.</b></div>';
 }
 
-/* ── 6 — mobile: walk it as the caller ───────────────────────── */
+/* -- 6 -- mobile: walk it as the caller -------------------------- */
 function M6(){
+  if (bare()) return '<div class="phone">' + top() + sum() +
+    '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Nobody is rung</b></div>' +
+    '<div class="stepnode dead"><div class="t">Nobody is rung</div>' +
+    '<div class="d">No ring group is set on this line, so the call is not offered ' +
+    'to anybody.</div></div>' +
+    '<div class="next"><div class="nh">What can happen next</div>' +
+    '<div class="opt"><span class="k">Always</span><span class="g">Voicemail' +
+    '</span><span class="c">&rsaquo;</span></div></div></div>' +
+    '<div class="note"><b>Two taps to reach the fault on a four-node line.</b> The ' +
+    'count at the top said &ldquo;1 dead end&rdquo; immediately; the walk is what ' +
+    'tells you which. On a bare line that is a lot of walking for one fact.</div>';
   return '<div class="phone">' + top() + sum() +
-    '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; Opening hours &rsaquo; ' +
-    '<b>Menu</b></div>' +
+    '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Menu</b></div>' +
     '<div class="stepnode"><div class="t">Menu</div>' +
-    '<div class="d">“Press 1 for sales, 2 for service, 3 for accounts.”</div></div>' +
+    '<div class="d">&ldquo;Press 1 for sales, 2 for service, 3 for ' +
+    'accounts.&rdquo;</div></div>' +
     '<div class="next"><div class="nh">What can happen next</div>' +
     '<div class="opt"><span class="k">Press 1</span><span class="g">Sales team' +
-    '</span><span class="c">&rsaquo;</span></div>' +
+    '<div style="color:var(--muted);font-size:11px">then a queue that comes back' +
+    '</div></span><span class="c">&rsaquo;</span></div>' +
     '<div class="opt dead"><span class="k">Press 2</span><span class="g">Service ' +
-    'team<div style="color:var(--bad);font-size:11px;font-weight:600">Nobody is in ' +
-    'this group</div></span><span class="c">&rsaquo;</span></div>' +
+    'team<div style="color:var(--bad);font-size:11px;font-weight:600">Nobody is ' +
+    'in this group</div></span><span class="c">&rsaquo;</span></div>' +
     '<div class="opt dead"><span class="k">Press 3</span><span class="g">Forward' +
     '<div style="color:var(--bad);font-size:11px;font-weight:600">No number was ' +
     'ever set</div></span><span class="c">&rsaquo;</span></div>' +
     '<div class="opt"><span class="k">No key</span><span class="g">Voicemail' +
     '</span><span class="c">&rsaquo;</span></div></div></div>' +
-    '<div class="note"><b>You walk it the way a caller does</b>, one node at a time, ' +
-    'with the breadcrumb showing how you got here and every branch named with what ' +
-    'it leads to. It is the most literal reading of <i>&ldquo;begins with Caller ' +
-    '---- (what happens)&rdquo;</i>, and the only option where a dead end is ' +
-    'explained in place rather than flagged and left.<br><br><b>The cost, and it is ' +
-    'real:</b> you never see the whole shape. Somebody asking &ldquo;is any of this ' +
-    'broken?&rdquo; is answered by the count at the top and then has to walk to find ' +
-    'it. <b>Strongest for somebody checking one path, weakest for somebody auditing ' +
-    'the line</b>, and this tab exists mostly for the second.</div>';
+    '<div class="note"><b>You walk it the way a caller does</b>, one node at a ' +
+    'time, breadcrumb showing how you got here, every branch named with what it ' +
+    'leads to. The most literal reading of <i>&ldquo;begins with Caller ---- (what ' +
+    'happens)&rdquo;</i>, and the only option where a dead end is explained in ' +
+    'place rather than flagged and left.<br><br><b>The cost is real:</b> you never ' +
+    'see the whole shape, and the cycle can only be described rather than shown. ' +
+    'Somebody asking &ldquo;is any of this broken?&rdquo; gets the count and then ' +
+    'has to walk to find it. <b>Strongest for checking one path, weakest for ' +
+    'auditing the line</b> &mdash; and this tab exists mostly for the second.</div>';
 }
 
 var OPT = {
@@ -360,7 +454,9 @@ var OPT = {
   6:['6 &middot; Mobile &mdash; walk it as the caller does', M6]
 };
 var nums=document.getElementById('nums'), stage=document.getElementById('stage');
+var cur=1;
 function show(k){
+  cur=k;
   stage.innerHTML='<p class="cap">'+OPT[k][0]+'</p>'+OPT[k][1]();
   Array.prototype.forEach.call(nums.children,function(b){
     b.setAttribute('aria-current', b.dataset.k===String(k));});
@@ -369,5 +465,20 @@ Object.keys(OPT).forEach(function(k){
   var b=document.createElement('button');
   b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
   b.onclick=function(){show(+k);}; nums.appendChild(b);});
+var ctl=document.getElementById('ctl');
+[['typical','Typical — 11 of 13'],['bare','Bare — 2 of 13, four nodes']]
+  .forEach(function(c){
+    var b=document.createElement('button');
+    b.textContent=c[1]; b.dataset.c=c[0];
+    b.style.borderRadius='8px'; b.style.padding='5px 10px';
+    b.onclick=function(){
+      CASE=c[0];
+      Array.prototype.forEach.call(ctl.querySelectorAll('button'),function(x){
+        x.style.background = x.dataset.c===CASE ? 'var(--ink)' : 'var(--paper)';
+        x.style.color = x.dataset.c===CASE ? '#fff' : 'var(--ink)';});
+      show(cur);};
+    ctl.appendChild(b);});
+ctl.querySelector('button').style.background='var(--ink)';
+ctl.querySelector('button').style.color='#fff';
 show(1);
 </script>
