@@ -190,41 +190,112 @@ void main() {
       expect(find.text('smtp.a-1chimney.test : 587'), findsOneWidget);
     });
 
-    testWidgets('no failure state is drawn, because none can be produced', (
+    testWidgets('the card never says "EzBizi default" about its own setting', (
       tester,
     ) async {
       /*
-       * The gallery carries refused / unreachable / not-ready. Nothing sends
-       * from this screen and nothing records an outcome, so a card rendering
-       * them would be showing states the system cannot reach.
+       * UI/UX found this in their own drawing and it IS a false friend: for
+       * every other setting "EzBizi default" means A VALUE APPLIES AND IT IS
+       * OURS, and for this one it would mean NO VALUE CAN APPLY AT ALL, because
+       * asTenant is retired and throughTenantProvider refuses without a
+       * provider. Same words, opposite operational meaning — and the misreading
+       * it invites is the one Jose has corrected four times: that EzBizi sends
+       * a business's reports by default.
        *
-       * This test exists so that adding one is a DECISION rather than an
-       * oversight: it goes red the day somebody draws a failure sentence, and
-       * whoever does should be able to say what produces it.
+       * It is UNREACHABLE in this build rather than fixed, which is a weaker
+       * guarantee than it sounds and is why this test exists: the empty state
+       * draws no provenance row at all, and every path that DOES draw one has a
+       * source to name. Both shapes are fed a null source_name here so that the
+       * day somebody adds a provenance row to the empty state, this goes red
+       * rather than the sentence quietly appearing above "Nothing is connected,
+       * so these are not going out" and contradicting it.
        */
+      await _pump(tester, connectedHere: null, inEffect: _platform());
+
+      expect(find.textContaining('EzBizi default'), findsNothing);
+
       await _pump(
         tester,
-        connectedHere: _connected(neverTried: false),
-        inEffect: _setHere(),
+        connectedHere: _connected(),
+        inEffect: {..._setHere(), 'source_name': null},
       );
 
-      final texts = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((t) => (t.data ?? '').toLowerCase())
-          .join(' ');
+      expect(find.textContaining('EzBizi default'), findsNothing);
+    });
 
-      for (final claim in [
-        'refused the user name',
-        'could not reach',
-        'not ready',
-        'failing since',
-      ]) {
+    testWidgets('every state carries the admission, whatever else it says', (
+      tester,
+    ) async {
+      /*
+       * REPLACES a scan for four failure sentences, which UI/UX was right to
+       * call prose-aimed: it went red if somebody wrote one of those four
+       * wordings and stayed green for any other wording of the same state,
+       * which is the failure it was meant to catch.
+       *
+       * Their handle — feed a state this build has never heard of and require
+       * it not to render as settled — is better, and it does not transfer: the
+       * precedent they cite asserts on a PARSED MODEL (CallFlowGraph), and this
+       * card has none. It reads the payload in build(). Introducing a state
+       * model now, for states nothing can produce, is the speculative
+       * half-build we have both refused twice.
+       *
+       * So this asserts the load-bearing honesty instead, and it is behavioural
+       * rather than textual: whatever the card says, it says alongside "not
+       * whether it worked". A future failure state cannot defeat it by being
+       * worded differently — it can only defeat it by REMOVING the admission,
+       * which is exactly the decision that should be hard to make by accident.
+       */
+      final shapes = <String, List<dynamic>>{
+        // Each carries a WITNESS — text only that state renders. Without it a
+        // loop of pumps proves nothing: Flutter reuses the State for the same
+        // widget in the same position, so initState does not re-run and every
+        // pass after the first can render the FIRST answer while the admission
+        // assertion passes happily. That is the trap this file already records
+        // one test above, and a loop is the shape most likely to walk into it.
+        'nothing connected': [
+          null,
+          _platform(),
+          SendingServerPanel.nothingConnected,
+        ],
+        'connected, untried': [
+          _connected(neverTried: true),
+          _setHere(),
+          'Nothing has been sent',
+        ],
+        'connected, tried': [
+          _connected(neverTried: false),
+          _setHere(),
+          'has been attempted',
+        ],
+        'inherited': [
+          null,
+          {..._setHere(), 'source_name': 'A-1 Chimney', 'inherited': true},
+          'Inherited from A-1 Chimney',
+        ],
+      };
+
+      for (final entry in shapes.entries) {
+        await _pump(
+          tester,
+          connectedHere: entry.value[0] as Map<String, dynamic>?,
+          inEffect: entry.value[1] as Map<String, dynamic>,
+          key: ValueKey(entry.key),
+        );
+
         expect(
-          texts,
-          isNot(contains(claim)),
+          find.textContaining(entry.value[2] as String),
+          findsOneWidget,
           reason:
-              'The card drew "$claim", which nothing in the product can '
-              'currently produce. If a signal now exists, say what it is.',
+              'The "${entry.key}" shape did not render — so the admission '
+              'assertion below it would have been about a different state.',
+        );
+
+        expect(
+          find.text(SendingServerPanel.notReportedYet),
+          findsOneWidget,
+          reason:
+              'The "${entry.key}" state dropped the admission that this screen '
+              'does not report whether sending worked.',
         );
       }
     });
@@ -266,6 +337,11 @@ Future<void> _pump(
   required Map<String, dynamic>? connectedHere,
   required Map<String, dynamic> inEffect,
   bool mayEdit = true,
+
+  /// Distinct per shape when a test pumps more than once, so Flutter builds a
+  /// NEW State and initState fetches again. Without it the second pump reuses
+  /// the first answer — silently, and the test reads as if it covered both.
+  Key? key,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {
@@ -298,7 +374,7 @@ Future<void> _pump(
       theme: EzBiziTheme.light(),
       home: Scaffold(
         body: SingleChildScrollView(
-          child: SendingServerPanel(api: api, session: session),
+          child: SendingServerPanel(key: key, api: api, session: session),
         ),
       ),
     ),
