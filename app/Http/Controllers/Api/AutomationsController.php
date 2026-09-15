@@ -1325,7 +1325,18 @@ class AutomationsController extends Controller
             $type('update_field', 'Update a field'),
             $type('change_status', 'Change the status'),
             $type('webhook', 'Call a webhook'),
-            $type('notify', 'Send a notification'),
+            // DECLARED, not bespoke. The builder drew a hand-written Message box
+            // for this one action and posted {type, message} from a separate
+            // controller. That worked and it was a trap: `_payload()` switches to
+            // the generic branch the moment an action declares its first
+            // parameter, and the generic branch reads the parameter controllers -
+            // so declaring anything here without moving the form would have
+            // dropped the message the author had just typed and failed the save
+            // against a box they had filled in. Both halves are in one commit for
+            // that reason; do not split them.
+            $type('notify', 'Send a notification', false, [
+                $parameter('message', 'Message', 'rich_text'),
+            ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
             $type('message.mark_dealt', 'Mark an email dealt with'),

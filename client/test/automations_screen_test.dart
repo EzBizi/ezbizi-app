@@ -1715,7 +1715,23 @@ const _catalogue = {
   'action_types': [
     {'key': 'update_field', 'label': 'Update a field'},
     {'key': 'webhook', 'label': 'Call a webhook'},
-    {'key': 'notify', 'label': 'Send a notification'},
+    // Mirrors AutomationsController::actionTypes(): notify DECLARES its message
+    // now rather than the builder drawing a bespoke box for it. Kept in step
+    // because the form is built from this, so a fixture still saying
+    // "no parameters" draws no field and the rule cannot be written at all.
+    {
+      'key': 'notify',
+      'label': 'Send a notification',
+      'parameters': [
+        {
+          'key': 'message',
+          'label': 'Message',
+          'kind': 'rich_text',
+          'required': true,
+          'nullable': false,
+        },
+      ],
+    },
   ],
   'timezones': [
     {'id': 'America/New_York', 'label': 'Eastern — New York'},
