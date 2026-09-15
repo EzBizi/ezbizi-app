@@ -83,6 +83,23 @@ class SendingServersController extends Controller
     public function show(Request $request): JsonResponse
     {
         $scope = $this->resolveScope($request);
+
+        /*
+         * Read fresh, because the resolver's cache has NO invalidation for
+         * writes made outside this controller — and there is now exactly such a
+         * write: SendingIdentity::noteAttempt(), which the sending path will
+         * call on every send. A resolver that has already answered rowAt() for
+         * this scope keeps answering with the row as it was BEFORE the attempt,
+         * so `never_tried` would go on saying true for a server that has been
+         * tried — the sentence this column exists to stop being a lie,
+         * reintroduced one layer up.
+         *
+         * A no-op on a normal web request, where the container is new and the
+         * cache is empty. It earns its place wherever one resolver instance
+         * serves reads across a write: a queue worker, and this file's tests.
+         */
+        $this->resolver->flush();
+
         $row = $this->resolver->rowAt($scope);
         $user = $request->user();
 
@@ -225,6 +242,15 @@ class SendingServersController extends Controller
             // The screen needs to distinguish "connected" from "half filled in";
             // it never needs the value.
             'has_password' => ($server['password'] ?? '') !== '',
+
+            /*
+             * DERIVED from last_attempted_at, not asserted. UI/UX's rule: a
+             * state is available when the server can distinguish it. Without the
+             * column, "nobody has tried" and "somebody tried and it failed" are
+             * the same thing from here, and the screen was not entitled to say
+             * either.
+             */
+            'never_tried' => $row->neverTried(),
         ];
     }
 

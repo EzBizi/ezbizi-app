@@ -162,7 +162,8 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
              */
             'credentials'     => 'encrypted:array',
             'verified_at'     => 'datetime',
-            'last_checked_at' => 'datetime',
+            'last_checked_at'   => 'datetime',
+            'last_attempted_at' => 'datetime',
         ];
     }
 
@@ -211,6 +212,38 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
             'verified_at'     => now(),
             'last_checked_at' => null,
         ]);
+    }
+
+    /**
+     * Has anything ever been sent through this server?
+     *
+     * DERIVED, never asserted. The screen used to be going to say "saved, never
+     * tried" as a fact about every row, which was true only because no sending
+     * path existed — and the event that would falsify it lives in another
+     * module. Reading the column means the sentence stops being true by itself
+     * the first time a send records an attempt, with nobody having to remember.
+     *
+     * The inverse is NOT "it works". It says only that something has been tried,
+     * which is why the screen carries its own admission that it cannot yet
+     * report whether sending succeeds.
+     */
+    public function neverTried(): bool
+    {
+        return $this->last_attempted_at === null;
+    }
+
+    /**
+     * Record that a send was attempted through this server, whatever came back.
+     *
+     * Called by the sending path on EVERY attempt, before the outcome is known,
+     * so that a send which throws still counts as tried. An attempt recorded
+     * only on success would leave a row that has failed ten times still saying
+     * nobody has tried it, which is the exact sentence this column exists to
+     * stop being a lie.
+     */
+    public function noteAttempt(): void
+    {
+        $this->forceFill(['last_attempted_at' => now()])->save();
     }
 
     // ── the identity ─────────────────────────────────────────────

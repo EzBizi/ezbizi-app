@@ -244,4 +244,82 @@ class SendingServersApiTest extends TestCase
             ->assertJsonPath('in_effect.source_name', null)
             ->assertJsonPath('in_effect.inherited', false);
     }
+
+    public function test_never_tried_is_derived_from_a_recorded_attempt(): void
+    {
+        /*
+         * THE test that can tell the column exists. `never_tried` reads
+         * last_attempted_at, and a MISSING column reads as null too — so
+         * asserting only the true case passes against a build where the
+         * migration never ran. The second half is what distinguishes them: it
+         * records an attempt and requires the answer to CHANGE.
+         *
+         * UI/UX drew "Saved, never tried" and named it the trap in this screen:
+         * it is true of every row today, it goes false when the first send
+         * happens in ANOTHER module, and nothing here would have to change for
+         * the sentence to start lying. Deriving it means it stops being true on
+         * its own rather than when somebody remembers.
+         */
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $this->userWithRole($tenant, 'Owner', ['organizations.edit']);
+        $query = '?'.http_build_query($this->scope($tenant));
+
+        $this->signedInAs($admin)->putJson(self::PATH.$query, $this->body())->assertOk();
+
+        $this->signedInAs($admin)->getJson(self::PATH.$query)
+            ->assertOk()
+            ->assertJsonPath('connected_here.never_tried', true);
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            SendingIdentity::query()
+                ->where('scope_id', $tenant['company']->getKey())
+                ->first()
+                ->noteAttempt();
+        });
+
+        // Goes false, and this is the assertion a missing column cannot satisfy.
+        $this->signedInAs($admin)->getJson(self::PATH.$query)
+            ->assertOk()
+            ->assertJsonPath('connected_here.never_tried', false);
+    }
+
+    public function test_an_attempt_is_recorded_whatever_the_outcome(): void
+    {
+        /*
+         * noteAttempt() takes no outcome on purpose. An attempt recorded only on
+         * SUCCESS would leave a row that has failed ten times still reporting
+         * that nobody has tried it — which is the precise sentence the column
+         * exists to stop being a lie, reintroduced by the obvious convenience.
+         *
+         * Pinned here because the sending path does not exist yet: whoever
+         * builds it will be looking for where to call this, and this says what
+         * calling it must NOT be conditional on.
+         */
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $row = new SendingIdentity([
+                'organization_id' => $tenant['org']->id,
+                'scope_type' => SendingIdentity::SCOPE_COMPANY,
+                'scope_id' => $tenant['company']->getKey(),
+                'from_address' => 'info@a-1chimney.test',
+                'from_name' => 'A-1 Chimney',
+            ]);
+
+            $row->connectServer([
+                'host' => 'smtp.example.test', 'port' => 587,
+                'username' => 'u', 'password' => 'p', 'encryption' => 'tls',
+            ]);
+            $row->save();
+
+            $this->assertTrue($row->neverTried(), 'A freshly saved server was not "never tried".');
+
+            $row->noteAttempt();
+
+            $this->assertFalse(
+                $row->fresh()->neverTried(),
+                'noteAttempt() did not persist, so a tried server still reports untried.',
+            );
+        });
+    }
 }
