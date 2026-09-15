@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0213',
+      date: '15 Sep 2026',
+      items: [
+        'Take a call that is ringing somebody else. A call ringing a group you are not in now appears on the Dial tab with a Pick up button, instead of going to voicemail while you watch it ring.',
+        'The Call Flowchart now shows a skipped step as passed through rather than never reached, and outlines the caller box correctly. Both were drawn from the wrong thing: a step every caller walks was being reported as one nobody reaches.',
+        'The experimental call report now says which Workiz accounts its numbers cover, and names Massachusetts as permanently excluded because that account has no API subscription. A total that is quietly missing a branch is worse than one that says what it is missing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0212',
       date: '15 Sep 2026',
       items: [
