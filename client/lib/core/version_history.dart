@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0212',
+      date: '15 Sep 2026',
+      items: [
+        'Park a live call and anybody sharing that line can pick it up, instead of hanging up on a caller who needs somebody who is not at their desk. There is a Park button beside Hang up, and the desk shows who is holding.',
+        'Communication, then Settings, now has a Call Flowchart: what happens to a caller drawn as a diagram, rather than described as a list of sentences.',
+        'The dashboard now says when an automation has stopped itself and is still off. A failure was a notification you could miss; being stopped is a condition, so it now shows where somebody is already looking.',
+        'An automation that fails no longer prints the raw technical error on its card. The internal message from a failed request was being shown to whoever opened it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0211',
       date: '14 Sep 2026',
       items: [
