@@ -9,6 +9,8 @@ use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\User;
+use App\Models\Notification;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\ConditionEvaluator;
@@ -606,6 +608,44 @@ class AutomationEngineTest extends TestCase
     }
 
     // ── operability (§5.5) ───────────────────────────────────────
+
+    /**
+     * The people who could fix it are told, and only them.
+     *
+     * The reason this sat unbuilt is the assertion at the end: a null subject
+     * makes audienceFor() fall through to EVERY ACTIVE USER, so one branch's
+     * broken rule would notify a whole business. Passing the automation is what
+     * prevents that, and nothing else in this file would catch it going away.
+     */
+    public function test_switching_itself_off_tells_the_people_who_could_fix_it(): void
+    {
+        $automation = $this->automation('job.status_changed', null,
+            [['type' => 'webhook', 'url' => 'https://127.0.0.1/nope']]);
+
+        [, $job] = $this->makeJob();
+
+        foreach (['in_progress', 'completed', 'cancelled', 'scheduled', 'in_progress'] as $status) {
+            $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => $status])->assertOk();
+            $this->drain();
+        }
+
+        $rows = $this->inTenant(fn () => Notification::where('automation_id', $automation->id)->get());
+
+        $this->assertCount(1, $rows, 'once on the transition - not once per failing event while it sits off');
+        $this->assertStringContainsString($automation->name, (string) $rows->first()->title);
+
+        $this->assertNotNull($rows->first()->user_id, 'a notification with no recipient is not a notification');
+
+        // WHAT THIS TEST DOES NOT PROVE, said out loud so nobody reads it as
+        // cover it does not give: the rule here is ORGANISATION-scoped, so the
+        // people with reach over it and "every active user" are the same set.
+        // The scoping that matters - a FRANCHISE rule not reaching the whole
+        // business - needs a franchise-scoped automation and a user posted
+        // somewhere else, and this fixture has neither. An assertion comparing
+        // these two counts would pass either way and would only look like proof.
+        // The guard that does hold is announceDisabled() passing the automation
+        // as subject; delete that argument and audienceFor() broadcasts.
+    }
 
     public function test_an_automation_that_keeps_failing_disables_itself(): void
     {
