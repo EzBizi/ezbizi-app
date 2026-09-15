@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0220',
+      date: '15 Sep 2026',
+      items: [
+        'Live calls on the call flow chart: a queue node shows how many callers are holding on it and how long they have waited, and the header shows how many calls are on the line right now. Nodes that are not queues show no number rather than a guess, because a call in the menu, one ringing a group and one holding all look the same on the record.',
+        'An automation that switches itself off after repeated failure now notifies the people who can fix it, instead of only marking a card nobody was looking at.',
+        'The message on a notification step is now an ordinary field like every other action rather than the one hand-written box in the builder, and a step can be set to in-app only, so one rule can stop emailing without the business turning email off everywhere.',
+        'Tapping a slice of a pie chart shows what share it is, on phones and tablets as well as with a mouse.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0219',
       date: '15 Sep 2026',
       items: [
