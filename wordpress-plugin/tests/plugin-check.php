@@ -119,7 +119,14 @@ function admin_url($p = '') { return 'https://example.test/wp-admin/'.$p; }
 function get_current_screen() { return $GLOBALS['screen'] ?? null; }
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
-function add_options_page() {}
+/*
+ * Records instead of discarding, because the menu is the thing being asserted.
+ * `add_options_page` is gone with the page that used it: a stub for a function
+ * the plugin no longer calls is a check that can never fail.
+ */
+function add_menu_page($page_title, $menu_title, $cap, $slug, $cb = '', $icon = '', $pos = null) {
+    $GLOBALS['menu'][] = compact('page_title', 'menu_title', 'cap', 'slug', 'cb', 'icon', 'pos');
+}
 function current_user_can() { return $GLOBALS['is_admin'] ?? true; }
 function settings_fields() {}
 function submit_button() {}
@@ -389,6 +396,33 @@ delete_transient(EZBIZI_CACHE_KEY);
 ezbizi_payload(true);
 check('the page being viewed is never sent', str_contains($GLOBALS['last_url'], 'a-visitor-page'), false);
 
+echo "\nIt has its own place in the sidebar\n";
+/*
+ * Jose asked for this after installing the plugin and not finding it: A1 Tools
+ * is a sidebar item, so the sidebar is where he looked. Nothing here fired
+ * `admin_menu` before, which is how the page could sit in one menu while the
+ * links and the notice assumed another, with every check still green.
+ */
+do_action('admin_menu');
+
+// $item, not $menu: this file runs at global scope, where $menu IS
+// $GLOBALS['menu'] — the obvious name silently overwrote the recording.
+$item = $GLOBALS['menu'][0] ?? [];
+
+check('one item, in the sidebar', count($GLOBALS['menu'] ?? []), 1);
+check('under the slug everything links to', $item['slug'] ?? '', 'ezbizi');
+check('only for somebody who could use it', $item['cap'] ?? '', 'manage_options');
+check('drawing the settings form', $item['cb'] ?? '', 'ezbizi_settings_page');
+check('with an icon, not a blank square', str_starts_with($item['icon'] ?? '', 'dashicons-'), true);
+
+/*
+ * WordPress names a screen after WHERE its menu item is, so the id the notice
+ * stands down on is derived from the item registered above rather than typed
+ * out again. Moving the page a second time now fails this file instead of
+ * quietly nagging people who are standing on the form.
+ */
+$GLOBALS['own_screen'] = 'toplevel_page_' . ($item['slug'] ?? '');
+
 echo "\nAn installed plugin that is doing nothing says so\n";
 /*
  * Both halves of a real report: the plugin was installed on a-1chimney.com, no
@@ -407,7 +441,7 @@ do_action('admin_notices');
 $notice = ob_get_clean();
 
 check('an unconnected site is told so', str_contains($notice, 'not connected yet'), true);
-check('and given the way there', str_contains($notice, 'page=ezbizi'), true);
+check('and given the way there', str_contains($notice, 'admin.php?page=ezbizi'), true);
 
 reset_site();
 $GLOBALS['screen'] = null;
@@ -416,7 +450,8 @@ do_action('admin_notices');
 check('a connected site is not nagged', ob_get_clean(), '');
 
 $GLOBALS['opt']['ezbizi_token'] = '';
-$GLOBALS['screen'] = (object) ['id' => 'settings_page_ezbizi'];
+// The screen this plugin's own menu item creates, taken from that item.
+$GLOBALS['screen'] = (object) ['id' => $GLOBALS['own_screen']];
 ob_start();
 do_action('admin_notices');
 check('nor is somebody already on the form', ob_get_clean(), '');
@@ -427,7 +462,7 @@ $links = apply_filters(
     'plugin_action_links_ezbizi/ezbizi.php',
     ['<a href="#">Deactivate</a>']
 );
-check('a Settings link is added first', str_contains($links[0], 'page=ezbizi'), true);
+check('a Settings link is added first', str_contains($links[0], 'admin.php?page=ezbizi'), true);
 check('and Deactivate survives', count($links), 2);
 
 echo "\nA blank token field keeps the saved token\n";

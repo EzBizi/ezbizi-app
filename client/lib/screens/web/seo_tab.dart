@@ -1529,7 +1529,7 @@ class _SiteDetailState extends State<_SiteDetail> {
           '2. In WordPress, open Plugins › Add New › Upload Plugin, choose '
           'the file, and activate it.',
         ),
-        const Text('3. Open Settings › EzBizi.'),
+        const Text('3. Click EzBizi in the WordPress sidebar.'),
         const Text('4. Paste the token this site was given and save.'),
         const Text('5. Use the shortcodes beside each field anywhere on the site.'),
         const SizedBox(height: 12),

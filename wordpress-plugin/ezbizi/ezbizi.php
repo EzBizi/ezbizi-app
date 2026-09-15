@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.3.0';
+const EZBIZI_VERSION = '1.4.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -270,17 +270,36 @@ add_action('init', function () {
 // ── Settings ────────────────────────────────────────────────────────
 
 /*
- * Under Settings rather than a top-level menu, which is the directory's own
- * guidance for a plugin whose whole interface is one screen. The cost is that
- * it is not where somebody looks: A1 Tools puts itself in the sidebar, so the
- * first person to install this one went to the sidebar, found nothing, and
- * concluded the plugin had not worked.
+ * Its own item in the sidebar, next to A1 Tools. Jose, 2026-09-15.
  *
- * Being in the right place is worth nothing if it cannot be found, so the two
- * additions below carry the weight instead of moving the page.
+ * ── This reverses the previous decision, and the reason is worth keeping ──
+ *
+ * It used to sit under Settings, which is the directory's guidance for a plugin
+ * whose whole interface is one screen. The comment that lived here recorded the
+ * cost honestly and then declined to pay it: "the first person to install this
+ * one went to the sidebar, found nothing, and concluded the plugin had not
+ * worked." That person was the customer. A Settings link on the plugin row and
+ * an admin notice were added instead, and they were not enough — the evidence
+ * that they were not enough is that the same person asked for this again.
+ *
+ * The guidance is guidance rather than a rule, and it is aimed at sidebars
+ * crowded by plugins that each claim a row. This one is how a business connects
+ * its website to the system that runs it; the sibling it sits beside does the
+ * same job for the same people.
  */
 add_action('admin_menu', function () {
-    add_options_page('EzBizi', 'EzBizi', 'manage_options', 'ezbizi', 'ezbizi_settings_page');
+    add_menu_page(
+        'EzBizi',
+        'EzBizi',
+        'manage_options',
+        'ezbizi',
+        'ezbizi_settings_page',
+        // A globe, matching the Web Management tab this screen pairs with.
+        'dashicons-admin-site-alt3',
+        // Just below Settings, which is 80 — the neighbourhood somebody is in
+        // when they go looking for it, and where A1 Tools already sits.
+        81
+    );
 });
 
 /**
@@ -294,7 +313,7 @@ add_action('admin_menu', function () {
 add_filter('plugin_action_links_'.plugin_basename(__FILE__), function ($links) {
     array_unshift($links, sprintf(
         '<a href="%s">%s</a>',
-        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_url(admin_url('admin.php?page=ezbizi')),
         esc_html__('Settings', 'ezbizi')
     ));
 
@@ -316,8 +335,16 @@ add_action('admin_notices', function () {
 
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
 
-    // Not on its own settings page — the form is right there.
-    if ($screen && $screen->id === 'settings_page_ezbizi') {
+    /*
+     * Not on its own page — the form is right there.
+     *
+     * `toplevel_page_` and not `settings_page_`: WordPress names the screen
+     * after WHERE the menu item is, so moving the page out of Settings renamed
+     * its screen, and this guard went on matching a screen that no longer
+     * exists — nagging people while they stood on the form it was sending them
+     * to. Nothing in the harness fired admin_menu, so nothing saw it.
+     */
+    if ($screen && $screen->id === 'toplevel_page_ezbizi') {
         return;
     }
 
@@ -333,7 +360,7 @@ add_action('admin_notices', function () {
             'EzBizi is active but not connected yet, so its shortcodes render nothing. Paste the site token from Web Management to finish.',
             'ezbizi'
         ),
-        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_url(admin_url('admin.php?page=ezbizi')),
         esc_html__('Open EzBizi settings', 'ezbizi')
     );
 });
