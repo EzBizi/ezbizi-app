@@ -426,6 +426,122 @@ void main() {
     expect(find.text('Thursday morning still good?'), findsOneWidget);
   });
 
+  /// Every message says who said it.
+  ///
+  /// The panel drew each one as the same box in a column, told apart only by
+  /// a tint at half opacity, and Jose reported it as not being able to see
+  /// who a message was sent to. Both directions have to be on screen for this
+  /// to mean anything — a test with one inbound message passes whether or not
+  /// the app can tell the two apart.
+  /// Nobody waiting draws nothing at all.
+  ///
+  /// The empty state is the one this strip is in almost always, and a
+  /// permanent "Parked calls" panel with nothing in it is a box people learn
+  /// to stop reading — which costs exactly the thing it exists for, being
+  /// noticed on the rare day somebody IS holding.
+  testWidgets('no parked callers means no strip', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    expect(find.textContaining('is waiting'), findsNothing);
+    expect(find.text('Pick up'), findsNothing);
+  });
+
+  /// And somebody waiting is named, with the colleague who set them down.
+  ///
+  /// Named rather than counted: "2 parked calls" is a fact you then have to
+  /// open something to act on, and the number they are holding for is what
+  /// decides whether this one is yours.
+  testWidgets('a parked caller is named, with who parked them', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      parked: const [
+        {
+          'id': 'pk-1',
+          'from_e164': '+13055550100',
+          'parked_by_name': 'Bruno Vega',
+          'pick_up': 'park:ezbizi-park-pk-1',
+        },
+      ],
+    );
+
+    expect(find.textContaining('+1 (305) 555-0100 is waiting'), findsOneWidget);
+    expect(find.textContaining('parked by Bruno Vega'), findsOneWidget);
+    expect(find.text('Pick up'), findsOneWidget);
+  });
+
+  /// A call ringing somewhere else names the LINE as well as the caller.
+  ///
+  /// "+1 305… is ringing" says a stranger is calling somebody. "+1 305… is
+  /// ringing +1 203…" says whether it is any of your business — which is the
+  /// decision somebody is making when they look at this row, since the whole
+  /// point of pickup is calls that are NOT ringing them.
+  testWidgets('a call ringing elsewhere names the line it is ringing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      ringing: const [
+        {
+          'id': 'rg-1',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+        },
+      ],
+    );
+
+    expect(
+      find.textContaining('+1 (305) 555-0100 is ringing +1 (203) 555-0142'),
+      findsOneWidget,
+    );
+    expect(find.text('Pick up'), findsOneWidget);
+  });
+
+  /// Both kinds share one strip, and both are reachable in it.
+  ///
+  /// The control for folding them together: a bug that rendered only the
+  /// first list would pass every single-kind test above.
+  testWidgets('a ringing call and a parked one both appear', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      ringing: const [
+        {'id': 'rg-1', 'from_e164': '+13055550100', 'to_e164': '+12035550142'},
+      ],
+      parked: const [
+        {
+          'id': 'pk-1',
+          'from_e164': '+17865550111',
+          'parked_by_name': 'Bruno Vega',
+          'pick_up': 'park:ezbizi-park-pk-1',
+        },
+      ],
+    );
+
+    expect(find.textContaining('is ringing'), findsOneWidget);
+    expect(find.textContaining('is waiting'), findsOneWidget);
+    expect(find.text('Pick up'), findsNWidgets(2));
+  });
+
+  testWidgets('a message names who sent it', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Number'),
+      '+12035550199',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Thursday morning still good?'), findsOneWidget);
+    expect(find.text('Yes, nine works.'), findsOneWidget);
+
+    // Ours is labelled, theirs carries their number, and the panel heading is
+    // not what is being found: that shows the raw '+12035550199'.
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('+1 (203) 555-0199'), findsOneWidget);
+  });
+
   testWidgets('pad digits load the thread as E.164', (tester) async {
     final seen = <http.Request>[];
     await _pump(tester, size: const Size(900, 800), seen: seen);
@@ -648,6 +764,62 @@ void main() {
 
     expect(find.textContaining('the network is blocking'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
+  });
+
+  /// Android's calling account is the one failure a retry cannot fix.
+  ///
+  /// ── Why the banner needed a second control ───────────────────────
+  ///
+  /// Telecom will not let the app place or accept a call until the user has
+  /// switched EzBizi on under Android's Calling accounts. Pressing Try again
+  /// cannot reach that screen, so on its own it is a control that can only
+  /// fail — the same rule the desktop branch already follows, applied to the
+  /// opposite case: offer the control that CAN succeed.
+  testWidgets('a phone with no calling account is offered the way out', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false
+      ..needsCallingAccount = true
+      ..registrationError =
+          'Android has not been given permission for this app to make and '
+          'take calls. Open Calling accounts and switch EzBizi on.';
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Open settings'), findsOneWidget);
+    expect(
+      find.textContaining('Calling accounts'),
+      findsOneWidget,
+      reason: 'the banner does not say what is wrong, only that something is',
+    );
+
+    // The BUTTON, not the flag. A control that appears and is wired to
+    // nothing looks exactly like one that works, and is how a fix ships
+    // having never been exercised.
+    await tester.tap(find.text('Open settings'));
+    await tester.pump();
+
+    expect(device.openedCallingSettings, 1);
+  });
+
+  /// And it is not offered to anybody else.
+  ///
+  /// The control. Without it, a banner that always drew the button would pass
+  /// the test above — and would send a Windows user, or a phone that is
+  /// working, to a settings screen that has nothing to do with them.
+  testWidgets('an ordinary failure is not sent to the settings screen', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..supported = true
+      ..registered = false;
+
+    await _pump(tester, device: device);
+
+    expect(find.text('Try again'), findsOneWidget);
+    expect(find.text('Open settings'), findsNothing);
   });
 
   /// The bug that made outbound calling fail for weeks.
@@ -1137,6 +1309,16 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  // Android's Telecom account. Settable so a test can put the desk into the
+  // one state a retry cannot fix, rather than only the happy one.
+  @override
+  bool needsCallingAccount = false;
+
+  var openedCallingSettings = 0;
+
+  @override
+  Future<void> openCallingSettings() async => openedCallingSettings++;
+
   @override
   void Function()? onAnswered;
 
@@ -1234,6 +1416,8 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Future<void> _pump(
   WidgetTester tester, {
+  List<Map<String, dynamic>> parked = const [],
+  List<Map<String, dynamic>> ringing = const [],
   CallView view = CallView.dial,
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
@@ -1250,6 +1434,8 @@ Future<void> _pump(
     numbers: numbers ?? const [_number],
     requireCallTag: requireCallTag,
     preferences: preferences,
+    parked: parked,
+    ringing: ringing,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1287,6 +1473,8 @@ MockClientHandler _handler({
   required List<Map<String, Object?>> numbers,
   bool requireCallTag = false,
   Map<String, Object?> preferences = const {},
+  List<Map<String, dynamic>> parked = const [],
+  List<Map<String, dynamic>> ringing = const [],
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1345,6 +1533,14 @@ MockClientHandler _handler({
       return _json({'data': numbers});
     }
 
+    if (path.endsWith('/phone/calls/parked') && request.method == 'GET') {
+      return _json({'data': parked});
+    }
+
+    if (path.endsWith('/phone/calls/ringing') && request.method == 'GET') {
+      return _json({'data': ringing});
+    }
+
     if (path.endsWith('/phone/presence') && request.method == 'GET') {
       return _json({
         'data': [
@@ -1396,6 +1592,17 @@ MockClientHandler _handler({
             'body': 'Thursday morning still good?',
             'customer_id': 'c-1',
             'created_at': '2026-08-23T16:02:00+00:00',
+          },
+          {
+            'id': 'm-2',
+            'number_id': 'n-1',
+            'connection_id': 'pc-1',
+            'direction': 'outbound',
+            'from_e164': '+12035550142',
+            'to_e164': '+12035550199',
+            'body': 'Yes, nine works.',
+            'customer_id': 'c-1',
+            'created_at': '2026-08-23T16:09:00+00:00',
           },
         ],
       });

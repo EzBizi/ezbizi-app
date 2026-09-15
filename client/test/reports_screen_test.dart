@@ -228,7 +228,332 @@ void main() {
 
     expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
     expect(find.byType(Dialog), findsNothing);
-    expect(find.byTooltip('All reports'), findsOneWidget);
+
+    // The back arrow used to exist to LEAVE the builder; the Reports chip does
+    // that now, so it appears only when a report is open. Changed deliberately
+    // with the sub tabs rather than keeping two ways out of the same place.
+    expect(find.byTooltip('All reports'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+  });
+
+  testWidgets('the three sub tabs are Reports, Builder and Experimental', (
+    tester,
+  ) async {
+    await _pumpReports(tester, reports: [_report]);
+
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsOneWidget);
+  });
+
+  testWidgets('the Builder tab opens the builder', (tester) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({'data': _fieldsStub});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Builder'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
+  });
+
+  testWidgets('the Experimental tab shows the day per person', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Trey Brannan'), findsOneWidget);
+    expect(find.text('183'), findsOneWidget);
+  });
+
+  testWidgets('a person only one system knows is marked, never merged', (
+    tester,
+  ) async {
+    // RingCentral's "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline
+    // Pierrelouis" and nothing joins them. A near-match rule would credit one
+    // person's work to another, so the screen SAYS which side knows them.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('calls only'), findsOneWidget);
+  });
+
+  testWidgets('the Workiz accounts the jobs column covers are named', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    // The accounts are disjoint and the same people book into all of them, so
+    // a count that silently covers fewer is wrong rather than partial.
+    expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
+  });
+
+  testWidgets('a connected branch can be taken back from this screen', (
+    tester,
+  ) async {
+    // Workiz is a data source, and the shared connections list excludes those
+    // on purpose. So this screen is the only place the id is published, and
+    // without this chip a credential that can act on A-1's jobs could be
+    // connected and never removed.
+    String? deleted;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE' &&
+            request.url.path.contains('/social/connections/')) {
+          deleted = request.url.path.split('/').last;
+          return _json({
+            'data': {'id': deleted, 'problems': []},
+          });
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay());
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(InputChip, 'Nationwide'),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(deleted, 'id-Nationwide');
+  });
+
+  testWidgets('an account with no API subscription says so, permanently', (
+    tester,
+  ) async {
+    // Jose, 2026-09-15: "we dont pay the api access there". The undercount is
+    // structural, so the screen names it rather than leaving it absent -
+    // "not connected" would read as a task somebody should go and do.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Massachusetts is never included'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a refused Workiz account is named, not folded away', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(failed: const ['NJ']))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Did not answer: NJ'), findsOneWidget);
+  });
+
+  testWidgets('a missing vendor reads as not connected, not as no calls', (
+    tester,
+  ) async {
+    // An empty report and a missing connection look identical and mean
+    // opposite things.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(connected: false))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RingCentral is not connected.'), findsOneWidget);
+    expect(find.text('Trey Brannan'), findsNothing);
+  });
+
+  testWidgets('the Experimental tab offers a way to connect the first account', (
+    tester,
+  ) async {
+    // THE ENTRY POINT. A screen that only ever renders stubbed rows never shows
+    // that there is no way to create the first one, which is how a dead end
+    // ships looking finished.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay(accounts: const []))
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect a Workiz account'), findsOneWidget);
+
+    await tester.tap(find.text('Connect a Workiz account'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Workiz API Token'), findsOneWidget);
+  });
+
+  testWidgets('the server sentence is what explains a refused connect', (
+    tester,
+  ) async {
+    // The branch-view rule lives on the server and its refusal says so. The
+    // screen does not duplicate the rule - one place deciding beats two places
+    // agreeing, and a second copy is the one that goes stale.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.contains('experimental/workiz')) {
+          return _json({
+            'message': 'Switch to the branch this Workiz account belongs to.',
+            'errors': {
+              'api_token': ['Switch to the branch this Workiz account belongs to.'],
+            },
+          }, 422);
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay(accounts: const []));
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Connect a Workiz account'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Workiz API Token'),
+      'api_whatever',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Connect'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Switch to the branch'),
+      findsWidgets,
+    );
+  });
+
+  testWidgets('without reports.build there is no Builder tab at all', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const ['reports.view'],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+    // Absent, not disabled - a chip leading to a refusal tells somebody the
+    // app is for other people.
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
+    // Experimental goes too, and for the same reason: its endpoint is gated on
+    // `reports.build` because the report names every member of staff and how
+    // many calls they took. It used to be shown to everyone, which was right
+    // while the pane was an empty placeholder and became wrong the moment it
+    // had contents.
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+  });
+
+  testWidgets('Experimental is still reachable when Builder is absent', (
+    tester,
+  ) async {
+    // The chips SHIFT when Builder is missing, so an index remembered from the
+    // three-chip layout would land on the wrong destination. Resolved by name.
+    //
+    // Builder is dropped by WIDTH here rather than by permission, because
+    // Experimental needs `reports.build` too - dropping the permission would
+    // drop both chips and leave this test with nothing to shift.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      width: 375,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    // Reached the Experimental pane, not the Builder that used to sit at this
+    // index when all three chips were present. The day bar is the pane's own
+    // furniture and renders whether or not the request succeeds.
+    expect(find.byIcon(Icons.chevron_left), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Name this report'), findsNothing);
+  });
+
+  testWidgets('New report jumps to the Builder tab', (tester) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/reports/fields')) {
+          return _json({'data': _fieldsStub});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('New report'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'Name this report'), findsOneWidget);
   });
 
   testWidgets('a narrow screen says reports are built on a computer', (
@@ -298,6 +623,16 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   headers: const {'content-type': 'application/json'},
 );
 
+const _fieldsStub = {
+  'jobs': {
+    'label': 'Jobs',
+    'columns': {
+      'title': {'label': 'Title', 'type': 'string'},
+    },
+    'relations': <dynamic>[],
+  },
+};
+
 const _report = {
   'id': 'rep-1',
   'name': 'Open jobs',
@@ -333,3 +668,61 @@ const _me = {
     'path': ['Everdoors'],
   },
 };
+
+/// The Experimental endpoint's payload, shaped from the live one.
+Map<String, dynamic> _callDay({
+  bool connected = true,
+  List<String> failed = const [],
+  List<String> accounts = const ['Nationwide', 'NJ'],
+}) => connected
+    ? {
+        'connected': true,
+        'timezone': 'America/New_York',
+        'day': '2026-09-14',
+        'workiz_accounts': [
+          for (final a in accounts) {'id': 'id-$a', 'name': a},
+        ],
+        'workiz_failed': {for (final a in failed) a: 'refused'},
+        'workiz_unreachable': [
+          {
+            'name': 'Massachusetts',
+            'reason': 'Workiz API access is not paid for on that account.',
+          },
+        ],
+        'totals': {
+          'calls': 280,
+          'answered': 183,
+          'reached_nobody': 81,
+          'new_client': 135,
+          'existing_client': 66,
+          'jobs': 66,
+        },
+        'people': [
+          {
+            'person': 'Trey Brannan',
+            'rang': 55,
+            'answered': 51,
+            'new_client': 35,
+            'existing_client': 14,
+            'jobs': 16,
+            'in_calls': true,
+            'in_jobs': true,
+          },
+          {
+            'person': 'Ranya Lara',
+            'rang': 3,
+            'answered': 2,
+            'new_client': 0,
+            'existing_client': 1,
+            'jobs': 0,
+            'in_calls': true,
+            'in_jobs': false,
+          },
+        ],
+      }
+    : {
+        'connected': false,
+        'missing': 'RingCentral',
+        'day': '2026-09-14',
+        'timezone': 'America/New_York',
+      };

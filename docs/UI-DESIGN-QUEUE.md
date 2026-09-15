@@ -1211,7 +1211,7 @@ on main may have moved on.
 | ✅ | **Phone · Caller Identity & Trust** | **SHIPPED `cb27c68`.** Layout 1, built from the `d66bcef` pin. Merged with the existing Trust section as *Trust & caller identity*, absorbing Number quality, rail 14 → 13. This row read "being built, held by `ezbizi-0b`" for hours after it shipped, because the holder named in it stopped existing at a restart and a 🔨 cannot tell that from work in progress — the failure this table warns about, in the table. |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
-| ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. **22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. ~~**22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match.~~ **STRUCK 2026-09-15 — re-measured, and this is fixed.** `_connectionFor` is gone from that file (it survives only in a past-tense comment at `leads_screen.dart:266`, which records the same one-row failure hitting Thumbtack: one connect produced twelve businesses, eleven invisible, and disconnecting the visible one redrew the next — Jose reported the button as broken and had removed eight before anyone understood why). `_googleAdsAccounts` now returns every match and the whole list is passed through at line 792, so all 22 render. **The design question survives and is now sharper, not weaker:** twenty-two rows all render, so "which of these matter" is the whole problem rather than a refinement of it. I re-read the gallery against the current screen before this goes to Jose — six layouts drawn against "one shown" may be answering a question nobody has any more. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
 | ✅ **REVERSED BY JOSE, 2026-09-09** | **Leads · four sources** | Desktop **3** + mobile **6**, the hybrid — `docs/previews/leads-sources-layouts.html`. He asked for *"a new sub tab in Leads"*; I shipped **1 / 4** (one list, source as a filter) in his absence and flagged it as one word to reverse. The word came: **3 and 6**, tabs with All in front. Built `4a0e0f2` — the source moved out of the filter row into a strip of its own, and nothing else changed: same row, same badges, same sources band, still ONE list. **The drawing was wrong about one thing and the build is not:** mobile option 6 had Thumbtack pushed off the end, because the HTML mock could not scroll. `TabBarLike` does, so every source has a tab at 352px. Losing a live source to a mock's limitation would have been a real gap, not a compromise he chose. **Two Alls now, deliberately** — the strip's tab and the filter row's chip, both meaning the unfiltered list; clearing the filters moves the strip too, or a tab stays lit describing something no longer on screen. Tested, and the test was sabotaged to prove it fails without it. |
 | ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
@@ -1388,7 +1388,7 @@ finished and cannot. That was wrong — it keys off `connected_at != null`, whet
 plugin has ever read the site, which the module answers exactly. The tier decision
 rests on the opposite-facts argument alone, which is sufficient on its own.*
 
-### 9 · Sidebar · rearranging and dividers — **DRAWN, with Jose**
+### 9 · Sidebar · rearranging and dividers — **BUILT** (desktop 3 + mobile 4)
 
 `docs/previews/sidebar-rearrange-layouts.html`. Three desktop, three mobile, with the sidebar
 search filter on a toggle because that is the case that breaks it silently.
@@ -1405,6 +1405,27 @@ a rail and natural exactly where it is a list.**
 **Dividers carry NO name** (Jose, 2026-09-11: *"just be dividers basically"*). That makes a user
 divider literally the `Divider` already shipping between the rails — no new visual, no copy,
 nothing to localise, and no question about how a label truncates at 86px.
+
+**Jose picked desktop 3 and mobile 4, 2026-09-11.** Built the same day.
+
+The two rules below are enforced in ONE place — `client/lib/core/sidebar_order.dart`, which
+turns a saved order plus the modules somebody actually has into rows and rule positions, and
+back again. Everything downstream indexes the ordered list, so the shell, the rail, the drawer
+and the arranger never learn that an order exists.
+
+**The divider is what makes the rail dangerous again.** A `NavigationRail` cannot draw a rule
+between its own items, so a divider cuts the module rail into more than one rail — the shape
+the pinned and staff groups already had. A rail reports the index of the row tapped *within
+itself*, so every group below the first hands back a number meaning something else. That is the
+module-filter defect a second time, and it is pinned by
+`client/test/sidebar_arrange_test.dart::tapping a row below a divider opens THAT row`, which was
+measured red on a deliberate `onSelected(i)`.
+
+*The rule test was aimed one case beside its mechanism and passed a sabotage.* Filtering away
+what is **above** a rule never builds a trailing group, so the drop-empty-groups line was never
+exercised; the case that fails is filtering away what is **below** it. Both directions are now
+asserted. A green test proves nothing about the line it was written for until that line has been
+broken under it.
 
 > **Two rules follow, and they are not the same rule.** A divider needs something on **both
 > sides**, and **two dividers cannot touch**. Filtering produces both: the first when a filter
@@ -1915,3 +1936,904 @@ shape of process. Reopening either is his call, not design's.
   unconnected and below once connected. Shipped in 0.0.0118. The last two generalise
   and are worth stealing: a value whose only purpose is to be pasted gets a copy
   button, and position can carry "is this what you should be doing right now".
+
+### 10 · Dashboard charts · where the colours come from — **SETTLED, shipped `d212d2dd`**
+
+`docs/previews/dashboard-chart-palette-layouts.html` @ `b4bfb612`. Three desktop, three
+mobile, with a **slice-count slider and a light/dark toggle** — the toggle because the worst
+defect exists only on light, and an option looked at in one theme hides half the problem.
+
+Dashboard (`local_0417a3f0`) reported the cycling: `_palette` returns six swatches,
+`dashboard_chart.dart` indexes them `colors[i % 6]` in the wedge painter (`:309`, `:345`),
+the series painter (`:395`) and the legend (`:124`), and nothing caps slice count.
+`jobs.statuses` is a `TYPE_LIST` setting with **no maximum**, so a seventh status repeats the
+first status's colour. All true. They deliberately did not fix it, because fixing it means
+choosing colours — correct, and the colour-literal ratchet is exactly why.
+
+**Measured the six before drawing anything, and the report understates it by five slices.**
+
+| | light | dark |
+|---|---|---|
+| primary | `#00708F` | `#00AEEF` |
+| secondary | **`#00708F`** | `#0093CA` |
+| tertiary | `#41627A` | `#6E8CA0` |
+| primaryContainer | `#C6E7FF` | `#004C6B` |
+| secondaryContainer | `#D2E5F4` | `#374955` |
+| tertiaryContainer | **`#E8DDFF`** | `#4A4263` |
+
+**On light, swatch 1 and swatch 2 are the same colour.** `theme.dart` pins `secondary` to
+`_cyanDeep` on purpose, so a widget reaching for it gets something in the brand's range —
+which is right for every widget in the product except this one. The chart is the only place
+that reads the six roles as six *different* colours. The default `jobs.statuses` is four, so
+**every light-theme jobs pie on every dashboard today draws Scheduled and In progress
+identically.** Not an edge case at seven; the shipped state at two.
+
+**And swatch six is the violet.** `#E8DDFF` is the hue `theme.dart`'s own docblock says was
+banished after the owner called it *"the mark of AI did this"*. The `copyWith` there pins
+`secondary` and `tertiary` but not their **containers**, so the generated hue survives in the
+container. `leads_screen.dart:1293` refuses it by name — *"tertiaryContainer is off limits: it
+would be the first purple in the app"* — and the chart palette reaches for it at six slices.
+Measured: those are the **only two** references to `tertiaryContainer` in `client/lib`, so the
+rule was known, written down, and leaked in exactly one place.
+
+> **The ratchet was pointed at hex literals in widget files. This one arrived through a scheme
+> role**, which passes every check a hex literal fails. A colour the app never chose can enter
+> through a name the app did choose.
+
+**Every option must answer what RUNNING OUT looks like** — Dashboard's framing and the better
+half of the report. *"A seventh slice drawn in a repeat colour looks exactly like a correct
+chart"*: the cycling is not the defect, the **silence** is. Same shape as the empty box that
+showed one sentence of three for three weeks.
+
+**Three findings, three reaches — Dashboard asked that they not be flattened, and they are
+right.** The duplicate cyan is **live now** at two slices on the four-status default. The violet
+is swatch index 5, so it needs a **sixth** slice to draw at all — latent on Jobs, ordinary on
+Inspection (a bar per definition name) and Email (one per mailbox). The cycling needs a
+**seventh**. One alarm covering all three is how the live one stayed invisible.
+
+> **A constraint any option must respect, measured by Dashboard and recorded here because a
+> future gallery will want to break it.** `presentation` is the glance's contract *and the
+> reader's choice within it*: the glance declares `PRESENTATIONS` and `DEFAULT_PRESENTATION`,
+> the menu offers exactly `allowed_presentations`, the server validates on read
+> (`DashboardController:64`) and on write (`:286`), and the header icon is drawn from the
+> **stored** value. **So the client may not substitute a chart kind.** A phone quietly drawing a
+> pie as bars yields a pie icon, "Pie" ticked in the menu, and bars in the body — the defect
+> Dashboard removed in `c4254b03`, where the menu offered a kind the server refused. Option 4
+> was drawn that way first and now shows the selection instead. Two honest routes if Jose picks
+> it: the glance declares `bar` in its allowed set, or the client changes the *selection* on a
+> narrow viewport and saves it. **Whether a saved choice should follow the window is a product
+> question and goes to Jose, not into a gallery note.**
+
+That is also the trap inside the most obvious answer. **Option 1, a wider brand ramp, is the
+one that looks finished and is not** — it raises the ceiling to ten and says nothing at eleven.
+The gallery says so underneath it rather than letting it read as the safe pick. Options 2, 3, 4
+and 6 each make running out into something on the screen: a named and counted wedge, one
+neutral for the tail, or a chart type that needs no palette at all.
+
+**Jose answered in a DIRECTION, not a number (2026-09-11):** *"a more diverse palette with
+colors that dont blend into one another like, red blue green yellow, high contrast types."*
+Dashboard shipped it the same minute — eight categorical hues per mode (blue, orange, aqua,
+yellow, magenta, green, violet, red), **validated rather than picked**: lightness, chroma, CVD
+separation, normal-vision floor and contrast against this app's real surfaces, on the adjacent
+pairlist. Worst adjacent CVD ΔE 9.1 light / 8.4 dark under protanopia and deuteranopia at
+severity 1.0 — red beside green is the classic failure and these clear it, which matters because
+his four named colours are exactly the pairing that usually breaks.
+
+**My three desktop options are history and he was right to overrule the shape of them.** All
+three kept series identity inside *brand* identity — a ramp of cyans and slates. Those are two
+different jobs, and conflating them is what produced the bug in the first place. The record is
+kept in the gallery rather than deleted, because what was chosen over what is the useful part.
+
+**Two things that outlived the decision.**
+
+> **The legend is now load-bearing for accessibility, not decoration.** Three light steps sit
+> below 3:1 on white, which the standard permits only with *relief*: identity must not be colour
+> alone. The relief is a labelled dot per slice plus a semantics label naming every slice with
+> its total. **Mobile 6 is therefore withdrawn as drawn** — it hid rows to save space. Any future
+> chart layout may collapse the COLOUR of a tail and never its naming.
+
+> **Running out has a standard now, not a taste call: a ninth series is never a generated hue.**
+> Past the eighth slot the tail is a neutral derived from the scheme. I have raised one finding
+> against it — at ten slices that produces *two* grey wedges and two identically-coloured legend
+> dots against two different labels, which is verbatim the defect that opened this item. A grey
+> wedge honestly says "not an identity"; a legend ROW still promises a mapping it cannot keep.
+> My call: one wedge and one row labelled with its count, or keep the wedges and collapse the
+> legend to a single row. Both separate is the one option that is not available. With Dashboard.
+
+### 11 · Email states · one vocabulary for two modules — **RULE SET, no screens yet**
+
+SES production access granted 2026-09-14, so Automations and HR are both about to wire sending.
+Two modules building email screens at the same time is how a product ends up with two words for
+one idea, so the vocabulary is decided before either draws anything. Sent to both sessions
+verbatim; **no screens are queued and none are drawn.**
+
+**Measured 2026-09-14, not assumed: EzBizi cannot observe email delivery.** No SNS route in
+`routes/api.php`, no bounce or complaint handler, and the `delivered_at` columns a grep turns up
+are the audit outbox (`create_audit_events_table`) and the workflow event bus
+(`create_workflow_tables:133`) — neither is email. The two observable facts are **handed to SES**
+and **SES refused it at handoff**.
+
+> **Never print a claim the app cannot observe.** "Delivered" is a sentence nothing in the
+> codebase can support. If SES event destinations are ever wired this changes — and it must
+> change *visibly*, by a screen gaining a state, not by a word quietly becoming true.
+
+The words:
+
+- **"Sent"** — the handoff. True, plain, and never paired with a promise of arrival.
+- **"Couldn't send"** — refused at handoff, and it must say WHICH: not an address, unverified
+  sending identity, rate limit. That is the half somebody can act on.
+- **Nothing** between them. A "Pending" for a handoff that already completed is a spinner that
+  never resolves.
+
+**Automations has one extra state and HR does not.** An automation action can be *queued* long
+before it is attempted, and that IS observable — its own event bus carries `available_at`,
+`attempts` and `failed_at`. Worth drawing, and it must be named for what it is: **waiting to
+run, not waiting to arrive.** The two look identical on screen and mean opposite things to
+somebody working out why a customer never heard from them.
+
+**A FOURTH STATE, found by Automations verifying the rule rather than taking it.** `MailStatus`
+knows whether this installation delivers **at all** — `NON_DELIVERING = ['log','array','null']`,
+and `missing()` names the credential when the transport is `ses` with an empty key. Its own
+docblock is the argument: *"`MAIL_MAILER=log` accepts every message and returns success... which
+is how somebody ends up waiting for a password reset that was never going anywhere."*
+
+So a handoff can succeed while nothing leaves the building, and **"Sent" would then be a
+confident sentence naming the wrong outcome** — this rule finding its own fourth case rather than
+an exception to it. Rare in production, routine on a demo or staging box, which is exactly where
+somebody tests a rule, reads "Sent", and concludes the feature works.
+
+> **Two different things, and they do not go in the same place.** *Did this message leave* is
+> per-message and belongs on the row. *This installation is not sending mail* is ONE fact about
+> the box, and printing it per row is repeating it N times.
+
+**~~HR has already solved the per-message half~~ — I wrote that here, and it was wrong. HR caught
+it and gave the praise back.** Left visible rather than edited away, because how it was wrong is
+the useful part.
+
+`HrInvitationsController::deliver()` **only caught transports that THROW.** `log`, `array` and
+`null` throw nothing, so it returned `true` and the panel said *"The invitation has been emailed
+to them"* on exactly the demo and staging boxes where somebody tests invitations and concludes
+the flow works. `ses` with a blank credential is the same shape. Fixed on main at `8a0ef426`:
+`MailStatus::delivers()` is asked **after** the handoff, so the message still reaches whatever
+transport is configured — observable to a `log` reader and to `Notification::fake` — and only the
+CLAIM depends on whether that transport goes anywhere. No new state on screen: a non-delivering
+box lands in "Couldn't send", which was already the right wording for it.
+
+> **How I got it wrong is this entry's own rule, turned on me. I read the docblock and reported
+> it as behaviour.** That method's comment is genuinely excellent and states the right rule — it
+> simply overclaimed about the present. **A docblock is a DESCRIBER**, and entry 11 exists
+> because a describer reads from a different source than the thing it describes: the code's
+> source is the code, and a comment's source is what its author believed while writing it.
+> I spent this week telling two sessions to check the icon against the drawing, then took a
+> comment as evidence about a method.
+
+**And the belief was written down twice, which is why nothing caught it.** HR's own test asserted
+`emailed: true` under phpunit's `array` mailer, with the comment *"so this one genuinely sends"*.
+A test carrying the same wrong premise as the code cannot fail on it.
+
+**The line I praised is still worth the praise, and is still true.** *"The panel used to assert
+'nothing has been emailed' unconditionally, which was true while nothing could send and became a
+lie the day something could."* **That is this entry's rule having already gone wrong once, in the
+opposite direction.** A sentence does not have to be edited to become false; the world can edit
+it — and the method underneath that sentence had quietly become false the same way.
+
+**~~The gap, measured: the installation-level fact reaches EzBizi staff and nobody else.~~
+CLOSED by Jose, 2026-09-14, and his answer was a question: *"why would an installation not send
+mail im confused"*.**
+
+He was right to be confused, and the confusion is the answer. **It is not a customer state.**
+`MailStatus::delivers()` is false for a `log`, `array` or `null` mailer, or `ses` with a blank
+credential — every one of which is a development or staging box. EzBizi is one production
+installation with SES configured, so **no administrator will ever see this**, and an
+administrator-facing surface for it would be chrome built for a state that cannot occur.
+
+**What it was worth is entirely internal, and that half stays.** The reason it surfaced at all
+is that *we* test invitations on exactly those boxes, and were being told "Sent" when nothing
+left — the defect HR fixed at `8a0ef426`. The per-message truth matters; the banner does not.
+`screens/staff/health_screen.dart:261` remains the right and only home for the installation-level
+fact, because staff are the only people who can be on such a box.
+
+> **The generalisable half: a state reachable only in development is worth a TRUTHFUL message and
+> never a designed surface.** Drawing chrome for it spends product space on a condition no
+> customer can reach, and — worse — makes the next person believe it is a thing that happens.
+
+**The precedent, from Email the same day.** An empty state read *"an inbox added on another
+company stays there, switch to that company"* — a correct sentence about the wrong problem. The
+eight people who saw it had a permission problem, the inboxes were already in their view, and
+the only person who could fix it never sees that screen. **A confident sentence naming the wrong
+cause is worse than a vague one**, because it sends somebody hunting. Email's fix was to publish
+which of three reasons applies rather than assuming one, and that is the shape every failure
+state here should take.
+
+### 12 · HR · the invitation panel, and the two failures that read the same — **PICKED: 2 and 5**
+
+`docs/previews/invitation-sent-states-layouts.html`. Three desktop, three mobile, with a **state
+switcher** — the two failures are the whole reason it is drawn, and an option looked at only in
+its success state hides the problem.
+
+HR brought states rather than a layout, which is the ask working. The panel is
+`client/lib/screens/hr/invitations_tab.dart:495`, shown the one moment the raw token exists,
+switching on a server `emailed` bool.
+
+> **REVISED 2026-09-14, and the revision removes a state I drew.** HR measured what the server
+> can actually prove and answered the question I asked them — are there more than two remedies?
+> **Two are knowable, and the third is not knowable at handoff at all.**
+> `MailStatus::delivers()` is reliable: it answers before anything is attempted and `missing()`
+> names the credential. A thrown handoff is reliable *that it failed* and that is where
+> reliability stops. **The invitation is a PLATFORM send** — `Notification::route`
+> (`HrInvitationsController:446`) rather than `MailDispatcher::asTenant` — so it never produces
+> `CannotSendMail`, the class carrying a human sentence, which is referenced only by
+> `MailDispatcher`. What it gets is a raw Symfony transport exception, and splitting "address
+> refused" from "transport down" means **string-matching a vendor's error text**.
+>
+> **So "address refused" is no longer drawn as a send state.** The failure mode of guessing wrong
+> is telling somebody to fix a perfectly good address — a confident sentence naming the wrong
+> cause, which is the defect this entry exists to avoid. I drew it anyway, and HR caught it.
+>
+> **The design answer is better than the state was.** The address is now correctable in EVERY
+> state, including success, because HR's other correction stands regardless of diagnosis: the
+> invitation keeps that address on record, so the next invite goes to the same typo. An
+> always-available fix does not depend on knowing why anything failed. *"This address is wrong"*
+> gets said once there is a typed bounce event to say it with — which is what makes option 2
+> stronger rather than weaker: the strip carries three states today and gains `bounced` later,
+> and the one state whose evidence was fragile is never drawn at all.
+
+**The gap as I first stated it — that the REMEDY differs and the sentence does not — was right
+about the problem and wrong about the split:** Today a failure reads *"The email could not be sent, so nothing has reached them. Copy the
+link and get it to them yourself."*
+
+- **Transport down** — copy the link, hand it over, and the invitation is perfectly good.
+- **Address refused** — handing the link over still works, *and* the invitation now carries a
+  typo nobody has corrected, so the same person is invited to the same wrong address next week.
+
+Same sentence today, two different actions — **but only one of the two causes is provable.** The
+first is, and gets its own state. The second is not, and gets an always-available fix instead of
+a diagnosis. The response still needs more than a bool, so this remains a server change of HR's
+as well as a screen; it just carries *which of the provable states*, never a parsed cause.
+
+> **In every failing case the address IS the problem, and today it is the panel SUBTITLE** — the
+> one thing on screen that cannot be acted on. That observation is what separates the three
+> desktop options: fold the reason into the sentence (1), put it in a status strip (2), or
+> promote the address to the subject of the panel (3).
+
+> **And the fix is a REISSUE, not a field edit — which changes the label, not the layout.**
+> HR measured the surface: four routes (`routes/api.php:927-933` — index, store, resend, destroy)
+> and **no PATCH**, so correcting an address is new server work whichever option wins. The shape
+> matters more than the cost. **If the typo'd address belongs to a real person, that person is
+> holding a working invitation to somebody else's organization.** Repointing the row at the
+> corrected address leaves their link alive while the screen says the problem is fixed — and that
+> is worst in the SUCCESS state, which is exactly where an always-available correction is most
+> useful. The semantics already exist and are tested: `resend` mints a new token and kills the
+> old one (`hr_screen_test`: *"resending mints a new link, and says the old one is dead"*).
+>
+> So the control is labelled **"Re-invite at a different address"** with *"The current link stops
+> working"* under it, in all six options, from one definition. **"Fix the address" was a label
+> describing a field edit attached to an act that revokes and reissues** — a describer
+> contradicting the described, which is the rule I spent this week giving other people.
+
+**Designed knowing a state is coming.** HR measured that SES event ingestion is being built —
+the SNS subscription is currently EMAIL protocol to a human mailbox, so events reach a person and
+not the app, and HTTPS ingestion into a table keyed by recipient and message id is in progress.
+So **delivered and bounced become knowable soon**, and per entry 11's own rule that must arrive
+as a screen gaining a state rather than a word quietly becoming true. Every option is drawn with
+a place to put `bounced`; option 2's is the cleanest seam, because the strip changes and the body
+does not.
+
+**One asymmetry worth knowing before reading the options.** The account suppression list means
+the FIRST send to a typo bounces silently and a SECOND send to the same address is refused at
+handoff. So a resend already produces "Couldn't send" correctly today — **only the first send is
+blind**, which is exactly the send where somebody is standing in front of this panel.
+
+**Two judgements HR asked for, given here so they are not re-litigated:**
+
+- **The `null` state survives the rule.** *"Copy the link and get it to them yourself if you are
+  not certain the email reached them."* It is a server older than the field, it claims neither
+  outcome, and it says what to do. That is the rule obeyed, not bent — and it is deliberately not
+  drawn in red.
+- **"Has been emailed to them" should become "Sent to them."** HR flagged it themselves. It is a
+  handoff claim wearing arrival's clothes, and it is the sentence entry 11 exists to prevent.
+
+### 13 · Developer · switch between desktop and mobile view — **BUILT: 1 and 4** (`4b6ee87b`)
+
+`docs/previews/mobile-view-switch-layouts.html`. Jose, 2026-09-14: *"can we add a developer only
+icon on the top bar next to the phone icon, that let's u switch between desktop view and mobile
+view?"*
+
+Three desktop (how you get in) and three mobile (how you know you are in it and get back out).
+Placement is settled by the ask — after `AvailabilityButton` in the bar's `actions:`
+(`main.dart:1019`), which is the phone icon he means. Gate is `me.development != null`, the same
+one the Development rail uses (§4.2).
+
+> **The work is not the icon. It is that the app decides its shape in nine places.**
+> `main.dart:692` is `width >= 900` and is read a dozen times — but **nine reads of the viewport
+> width live across five files at three breakpoints**: 900 in the shell, the staff shell and Web
+> widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel` clamping itself to the
+> window. A switch that flips the shell's own boolean produces **a narrow shell with desktop
+> screens inside it** — wrong in exactly the places somebody would be using it to check.
+> **Override the VIEWPORT, not the flag**, and all nine follow for free with no screen knowing
+> this control exists.
+
+**The design problem is not "how do I get to mobile view", it is "how do I know I am in it".** A
+developer who forgets reports a layout defect that is not one. So every option is judged on how
+unmistakable the state is, and each one borrows something different to say it:
+
+- **Desktop 1** borrows nothing and says the least — mobile view is indistinguishable from a
+  narrow window, with a filled icon as the only tell.
+- **Desktop 2** is unmistakable, and is the only option where the viewport is a *known* size, so
+  "it breaks at 390" reproduces between two people.
+- **Desktop 3** shows both layouts live, which is what checking a change actually wants — at the
+  price of two live copies of the app, two sets of screen state, two `initState` fetches, and any
+  timer or socket a screen holds running twice. **Cheap to look at, expensive to be correct.**
+- **Mobile 4** spends bar room that was bought deliberately: that bar overflowed by **266px**
+  (measured 2026-09-10) with both conditional chips showing, which is why the brand is dropped,
+  the punch control is icon-only and the theme cycle is gone on a phone. And it costs it *only
+  for staff* — the hardest overflow to notice, because the people who see it are not the people
+  who report it.
+- **Mobile 5** reuses the bar's existing `bottom:` strip (`_BarStates`, `main.dart:1578`) where
+  states that are not controls already live — at the price of shortening the viewport somebody is
+  using to check whether content fits.
+- **Mobile 6** borrows nothing from the app and renders the product at its true size, which is
+  the argument for it; it covers content, which is the argument against.
+
+**Session state, not a preference.** It is a mode you are in for a minute, and saving it to an
+account would mean signing in on a desktop to a mobile layout with no memory of asking for one.
+
+> **What it is NOT, in the words of the session that owns the real device problems.** Phone
+> (`local_d95f72da`), on taking it up: *"I will not treat it as a device — Android's Telecom
+> behaviour, CallKit, and push are none of them a viewport question, and the bug I shipped this
+> afternoon was invisible at every width. For layout it saves me a resize; for anything about
+> being a phone it proves nothing."*
+>
+> Recorded here rather than in a code comment because **the risk with this control is somebody
+> treating a 390px column as a device and concluding from it** — and that warning carries more
+> from the session that owns Telecom and push than from the one that built the column.
+
+### 14 · Where the version lives — **BUILT** (mobile 1 + desktop 5)
+
+`docs/previews/version-on-a-phone-layouts.html`. Jose, 2026-09-14: *"on phone i noticed there's
+nowhere you can see the current version"*. He is right, measured.
+
+`BuildStamp` has **two** call sites: `main.dart:2384`, the foot of the sidebar, and
+`auth_shell.dart` (271, 332), the sign-in screen. A phone has no sidebar and you are signed in,
+so neither is reachable. **Its own docblock says it sits in *"the two places somebody already is
+when they wonder whether the app has updated"*** — true when written, false the day the phone
+layout shipped. The fourth true-when-written sentence this week, and the first one Jose found
+before any of us did.
+
+**A second gap, found looking for the first.** The stamp is drawn `if (expanded)`, so a
+**collapsed desktop sidebar** has nowhere either. That is why 4, 5 and 6 exist; without it this
+would be a phone-only question and the "three desktop options" half of the standing rule would be
+padding.
+
+> **The existing comment is the strongest argument in the file and options 4 and 5 disagree about
+> it.** *"At 80px it would truncate, and half a build id is worse than none — it invites people to
+> compare the wrong characters and conclude they are up to date when they are not."* 4 respects
+> it and does nothing. 5 argues that `201` is not *half* of `0.0.0201` — it is the only part that
+> ever changes and the only part anybody compares. That is the whole judgement, and it is his.
+
+**What separates the three mobile options is where the cost falls, not where the number goes.**
+
+- **1** puts it at the foot of the drawer — the same widget in the same conceptual place, one
+  line — and the drawer is a scrolling list of up to twenty-one modules plus two groups, so the
+  foot is *below all of them*. On desktop the sidebar is as tall as the window and the stamp is
+  free; in a drawer it is a place you only arrive at deliberately.
+- **2** puts it under the wordmark, visible the instant the drawer opens. On a phone the brand is
+  dropped from the top bar (Jose, 2026-09-10), so the drawer header is the only place the product
+  names itself — and a version belongs with the name. It is also in the way of the thing the
+  drawer was opened for, every time, for a fact wanted twice a month.
+- **3** puts it in Your account, following **his own precedent**: the theme cycle was removed from
+  the phone bar and left to Your account, so *"things about the app rather than about the work
+  live in Your account on a phone"* is an established rule rather than one I invented. It is the
+  only option with room for the long form and for *"What's been built"* as a named row rather
+  than a tap-target nobody knows is tappable — **a stamp in a drawer looks like a label.**
+
+**If 6 is picked, keep the sidebar stamp too.** A version is a fact rather than a control, and two
+places showing one fact is only a problem when they can disagree.
+
+**Jose picked 1 and 5, and moved something while he was there (2026-09-14):** *"i dont like the
+rearrange being on the top, perhaps move it next to the version number instead."* Both built the
+same day.
+
+**Desktop 5 turned out not to need the truncation it was drawn with.** I drew `201` — the last
+segment — against the existing objection that *"half a build id is worse than none."* Measured:
+`BuildInfo.short` is `v0.0.0201 · a1b2c3d`, and it is the **hash** that will not fit. The version
+alone is eight characters and fits at 80px with room. So nothing is truncated: **a whole field is
+dropped rather than the end of one**, and the field dropped is the one nobody compares by eye.
+The objection is answered rather than argued with.
+
+> **And "next to the version" is stacked rather than side by side, because measured it could not
+> be a row.** `BuildStamp` is **160px** wide on a desktop platform — the version plus the update
+> control — and this sidebar drags down to 180. A `Row` gives its non-flex children unbounded
+> width, so the two overflowed by **86px at the default 220**, not at some extreme. I tried
+> `Flexible` first and it still overflowed; I tried an icon-only button and it still overflowed.
+> Only then did I measure the widget instead of estimating it, which is the step that should have
+> come first and would have saved two wrong fixes.
+>
+> Stacked, the control keeps its **word** — which an icon squeezed beside a 160px stamp could
+> not have — and fits at every width from 180 to 420.
+
+**The drawer's Rearrange moved too**, from an icon in the header to the labelled control at the
+foot beside the version. He complained about the sidebar, but the drawer's was equally "on the
+top", and after mobile 1 there is a version at the foot of both to sit next to. Applied to both
+surfaces deliberately; if he meant desktop only, that is one line back.
+
+### 15 · Mail health for an administrator — **DESKTOP 2 + MOBILE 5, one state still blocked**
+
+`docs/previews/mail-health-for-an-administrator-layouts.html`. Jose said yes to the question
+raised in entry 11: *"1 - yes add a health status"*. HR brought states rather than a layout, which
+is the ask working, and named the thing the design turns on.
+
+**Two facts that must not become one sentence.** (A) the platform transport is not sending —
+nothing reaches anybody, and the administrator **cannot** fix it. (B) this organization has no
+verified sending identity — their own authored mail refuses while EzBizi's invitations and resets
+keep working, and the remedy **is theirs**. One sentence covering both sends somebody to fix the
+wrong thing, which is entry 11's own finding.
+
+> **⚠ THE BLOCK BELOW IS A DATED RECORD, NOT A DESCRIPTION OF THE PRESENT (marked 2026-09-14).**
+> Every measurement in it was true when taken and **none of it is true now.** Jose: *"I HAVE
+> ANSWERED 4 TIMES ALREADY, SO PLEASE TALK TO EACH OTHER, GET RID OF IT."* The card, the panel and
+> its 21 tests went in `b32fc797`; the four routes, the controller, `DomainVerification`,
+> `DnsVerifier` and the `mail.verification` config block went in `474fd1e6`. Re-measured here
+> rather than taken from the relay: the panel file is gone, `mail/sending-identity` matches zero
+> lines in `routes/api.php`, and `MailStatus::summary()` no longer returns `tenant_domains` — with
+> a control on `delivers` to prove the grep fires.
+>
+> **Kept rather than rewritten.** A block recording what was measured and when is worth more than
+> one silently updated, and SES deliberately did not edit it. What it now records is that a design
+> brief can be correct, cited, agreed by two sessions, and describe nothing, within six hours.
+>
+> **What survives is the FINDING, which was never about the card:** two facts that must not become
+> one sentence. What is gone is the surface B was going to hang on. See the note after this entry
+> for where that leaves it.
+
+> **MEASURED BEFORE DRAWING, AND IT CHANGED THE BRIEF: B already has a home.**
+> `client/lib/widgets/sending_identity_panel.dart` is a card in the Settings screen today, with
+> the whole verification flow behind it and four routes live under `mail/sending-identity`. Its
+> own copy already draws HR's line — **in its second sentence. Its first sentence is false**, and
+> HR found that by measuring the very quote I had offered as evidence.
+>
+> The card says *"Newsletters and anything else your own people write go out from this address"*,
+> and **a newsletter never touches the sending identity at all**: `NewsletterSenders::for()` has
+> one arm, Mailchimp, and that client uses the tenant's own API key, so the from address is
+> whatever their Mailchimp account sends as. Measured callers of `asTenant`: `ActionRunner:473`,
+> `SendSavedReport:171`, `InspectionReportMail`.
+>
+> **So the card's headline example is the one thing verifying a domain does not change.** Somebody
+> does DNS work to fix their newsletters and nothing about their newsletters changes — a remedy
+> that does not remedy, arriving through an EXAMPLE rather than through the state sentence. It is
+> the shape this whole entry is about, one layer below where either of us was looking, and it was
+> found because a quote used as evidence got checked rather than repeated.
+>
+> So this is **not a new four-state panel**. B is a STATE that card gains; anywhere else gives
+> one fact two voices that can disagree. **A is the gap**, and the options differ on where it
+> goes — because "EzBizi is not delivering anything" is not a setting, and does not belong in a
+> settings card about your own address.
+
+**I nearly reported the opposite, twice.** My first grep used `sending-identities` (plural) and
+found no routes; my second searched the client for the class name and found no screen. Both were
+my search term, not the codebase — the route is `mail/sending-identity`, singular. **Both were
+caught by running a positive control** on a term I knew was present. Had either gone out, HR and
+SES would have been told to build a screen and an API that already exist.
+
+**Nothing in any option shows `missing`.** `MailStatus::summary()` carries it and it is a list of
+environment variable names — `AWS_ACCESS_KEY_ID`. Right for staff, wrong for a customer: EzBizi's
+infrastructure, a wire name on screen, and useless to somebody who cannot act on it. HR flagged
+it; it is the constraint that rules out "the staff panel behind a different permission".
+
+**Option 3 is drawn to be rejected, deliberately rather than never.** One card with one badge is
+the obvious design and the fastest to scan — and its badge has to say one word about two facts
+with two owners and two remedies. "Not sending" covers both and names neither. That is the merge
+this entry exists to avoid, arriving through the badge rather than through the sentence.
+
+> **DECIDED 2026-09-14: desktop 2, mobile 5** — Jose, against a numbered list: *"1 - as you
+> recommend"*. A rides above the screen, where somebody wondering why a password reset never
+> arrived will meet it; B is a state of the sending-identity card, which already owns who your
+> mail comes from. Build is SES's (`MODULE-OWNERS:151` gives them Mail), not HR's.
+>
+> **Desktop 3 was drawn in order to be rejected and he rejected it.** Worth recording that the
+> tactic worked: the obvious design got looked at and turned down deliberately, rather than
+> arriving in six months as somebody's simplification.
+
+> **AND ONE STATE IS NOT YET WRITEABLE. The layout is approved; B's SENTENCE is not.**
+> SES put a question to Jose that he has not answered — whether his ruling is about the FROM
+> LINE or about what EzBizi's mail service may be used for at all. It decides which sentence B
+> carries:
+>
+> - **From line:** their authored mail goes out through EzBizi's service showing EzBizi as the
+>   sender until a domain is verified. B's remedy is *"verify a domain"*, and the card is exactly
+>   where it belongs.
+> - **Use at all:** a tenant may not send authored mail through EzBizi's service, verified or
+>   not. Then B is not a setting with a remedy — it is *"this cannot send yet, and it is not
+>   something you can turn on"*, and a **"Verify a domain ›" link on that card would be a remedy
+>   that does not remedy**, which is the exact defect this entry already corrected once.
+>
+> **ANSWERED the same day, and it is the second option: use at all.** Jose, plainly and with
+> visible impatience at being asked again: *"Email should not be sent as EzBizi, EZBIZI EMAIL IS
+> ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."*
+>
+> So **"verify a domain" is not B's remedy** — verifying one does not make a tenant's own mail
+> EzBizi's to carry. A `Verify a domain ›` link on that card would be **a remedy that does not
+> remedy: the same defect this entry corrected in the same card's note three hours earlier.** It
+> came that close to shipping twice in one afternoon, through two different doors.
+>
+> B is now drawn as informational, with the tenant's own provider as the way out. **And B may not
+> be a health state at all** — a rule about what a service is *for* is not a fault, and a status
+> panel is the wrong shape for it. Left drawn rather than deleted because Jose approved a layout
+> containing it; whether it survives is the mail owner's call.
+>
+> **The consequence that outlives this entry, measured and handed over:** `asTenant` is called by
+> `ActionRunner:473`, `SendSavedReport:171` and `InspectionReportMail` — three paths sending
+> tenant-authored mail through EzBizi's transport, on the wrong side of the ruling. That is
+> `MODULE-OWNERS:151`'s to settle, not something to redesign around quietly. See
+> `ezbizi-never-sends-newsletters-itself`, now the whole-category rule rather than a newsletter
+> one.
+
+> **WHERE B STANDS NOW, 2026-09-14 evening.** The remedy sentence is no longer "verify a domain"
+> — that flow is retired — and is not "connect a provider" either. `79b5e142` replaced it with
+> **the tenant's own SMTP**, so it is *"this business needs its own mail server connected"*.
+>
+> **And I have not established what that sentence points AT, so the gallery does not claim one.**
+> `79b5e142` is server-only — `MailDispatcher`, `MailTransport`, `TenantSmtpHost` and two test
+> files, no client. `TenantSmtpHost` is an SSRF guard whose own docblock says it exists to stop
+> somebody mapping the private network *"from a settings form"*, so a form is intended; the Email
+> module already has one for mailbox SMTP (`screens/email/mailbox_panels.dart`). **Whether B
+> points at that or at a form not yet built is SES's to answer**, and inferring it from a class
+> name is the exact mistake recorded in `a-docblock-is-a-describer` — a method name is a describer
+> too.
+>
+> **A is unaffected by any of this** and is still desktop 2 / mobile 5. Build A; B waits on one
+> sentence from the mail owner, not on a drawing.
+>
+> **Correction to a measurement offered while answering that question, recorded because acting on
+> it could break something.** SES reported that the mailbox form's SMTP fields are never used —
+> *"NOTHING SENDS THROUGH IT... no outbound path in that module at all."* Measured: there is one.
+> `app/Support/Email/ImapReplySender.php` speaks SMTP with a host, user name and password
+> (`EHLO`, `AUTH`), its own docblock names the SMTP host as *"a second field the tenant types"*,
+> and it is reached from `ImapMailboxReader`, which `MailboxesController` uses. The Email module
+> also draws `compose_panel.dart`, `reply_panel.dart` and *"Reply as {address}"*. `smtp_host`
+> appears in **three** files — the controller and two client files — and **not** in the `Mailbox`
+> model, with a control confirming the grep fires.
+>
+> **Their CONCLUSION still stands and the gallery does not change**: B points at no screen. But
+> *"nothing sends through it"* would justify treating those credentials as dead, and deleting or
+> ignoring them breaks replying from an IMAP mailbox. The fork they named is if anything sharper —
+> the credentials are per-mailbox and already spoken for, so *"which mailbox sends the report"* is
+> a real question rather than a naming one.
+>
+> **One thing spotted while re-measuring, and handed over rather than fixed:**
+> `client/lib/screens/settings_screen.dart:90` still points at the deleted file — *"These three
+> lived in sending_identity_panel.dart, whose own docblock called…"* — citing a docblock nobody
+> can now read. Past tense, so arguably a deliberate history note; but it sends a reader to a file
+> that does not exist, which is [[the-stale-comment-sits-above-the-rewrite]] in its clearest form.
+> Not my file.
+
+**Day one is state B for everybody.** The desk measured production at 2 organizations and 0
+sending identities (relayed through HR, not measured by me). If that holds, the day the refusal
+ships every organization is in B with a perfectly healthy platform — so a design treating B as the
+unusual case is wrong for everyone at once.
+
+### 16 · A mail server for sending — **PICKED: desktop 2, mobile 5. SES building.**
+
+Relayed by the SES session 2026-09-15, verbatim, with the question it answered:
+
+> **SES:** *"Layout numbers — `docs/previews/sending-server-layouts.html`, UI/UX recommends 2
+> and 5. Now the only thing between this and a screen people can use."*
+> **Jose:** *"1 - was you recommend"*
+
+Read as *"as you recommend"*. It resolves to **2 and 5** under either parse, because the
+question named the numbers and SES's own sentence offered to build to the recommendation
+anyway — so there is no reading that lands somewhere else. Recorded rather than paraphrased,
+because a pronoun resolved against whatever the reader was holding is how yesterday went.
+
+> **SCOPE, AGREED 2026-09-15: seven states now, three later, and the drawing already said so.**
+> SES is building `nothing connected · set here, typed · set here, copied · inherited ·
+> inherited-and-that-one-was-copied · copied-then-that-mailbox-changed · saved, never tried`,
+> and **not** `refused (5xx) · unreachable · not ready (4xx)`. Nothing sends yet
+> (`throughTenantProvider` is still on `Mail::build`; the move to the Email module's socket is
+> with Email), so there is no reply code to sort and those three would be **the painted half of
+> a feature, green against fixtures nobody could produce.** That is the same boundary the
+> gallery header already draws — *"drawn so the screen is honest once there is something to be
+> honest about; it is not evidence that anybody will ever be told."* Agreeing costs nothing it
+> did not already cost.
+>
+> **The trap in a half-built state list is not the missing states — it is `saved, never tried`.**
+> It is true of every row today and becomes **false the moment the first send happens**, and the
+> change that makes it false is **in another module**. Nothing in SES's code has to be touched
+> for that screen to start lying: a row that has been tried, and failed, will go on saying
+> nobody has tried it. Flagged to SES to leave the guard where the next person looks and to tell
+> Email, since Email owns the event that invalidates it.
+>
+> **RESOLVED 2026-09-15, and better than what I asked for — `970d416d`, verified.** SES did not
+> add a guard, they removed the need for one: `last_attempted_at`, nullable, written by
+> `noteAttempt()` on **every** attempt *before* the outcome is known (recording only successes
+> would leave a row that has failed ten times still reporting nobody has tried it — the same lie
+> with extra steps). The sentence is now **derived rather than described**, so it stops being
+> true on its own the first time anything sends. Nobody has to remember, and Email does not need
+> to know that shipping their socket changes the meaning of a string on somebody else's screen.
+>
+> **Two failures found inside the derivation, and both are ones my own advice walks people into.**
+> A missing column reads as null, so `never_tried` answers true whether or not the migration ran
+> — the honest-looking assertion passes against a build with **no column at all**; the test that
+> can distinguish is the one that records an attempt and requires the answer to *change*. It then
+> went red for a different reason: the resolver cached rows and invalidated only on writes **it**
+> made, so a read after `noteAttempt()` served the pre-attempt row — `never_tried` true for a
+> server that had been tried, one layer above the column that exists to prevent exactly that.
+> **A derived sentence is only as fresh as the read under it.**
+>
+> **Copy agreed**, carried until the three failure states land and removed when they do:
+> *"This screen shows what is set up and when it was last tried — not whether it worked. A failed
+> send is not reported here yet."* Its removal condition is mechanical rather than a promise: the
+> same column that makes the sentence stop lying is the one that makes the failure states
+> renderable.
+
+`docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
+with no destination. The fork landed: SES and Email settled that **a report must not go out
+through a mailbox's reply credentials**, so the sending identity keeps its own.
+
+**Shape, from SES:** a business connects its own server — host, port, username, password,
+encryption — stored on the sending identity, scoped organization / company / franchise. The
+convenience is an **explicit** "use the same server as info@" that **copies** the values and says
+so. **Never an implicit fallback**, and their reason is a UI reason as much as a technical one:
+with a fallback nobody can tell by looking which credential is in use.
+
+> **TWO FACTS, INDEPENDENT, AND THAT IS THE WHOLE DESIGN PROBLEM.**
+>
+> - **Whose value is this** — the cascade's question, which this screen **already has words for**
+>   and which I took rather than reinvented: `Set here`, `Inherited from {name}`, `EzBizi
+>   default`. `settings_screen.dart:105` warns that *"the third is not a rounding of the second"*,
+>   and its own comment records why the wording is central: *"a card saying 'inherited'
+>   differently from the rows beside it is the confusion this screen exists to prevent."*
+> - **Where did these values come from** — typed, or copied from a mailbox.
+>
+> **A franchise can inherit a value that was copied**, so one status line cannot carry both
+> without merging them — the defect entries 11, 12 and 15 were each about. The three desktop
+> options differ only in how they keep the two apart.
+
+**The state to switch to first is "copied, then that mailbox changed".** A copy does not follow
+its source — that is the point of copying rather than linking — so the screen has to say so
+rather than implying a live connection. It is also the state a tap can hide, which is why mobile
+6 promotes it out of the tap and says in its own note that this is an admission the pattern does
+not hold for the one case that needs it.
+
+> **⚠ OPEN, AND NAMED SO THE DRAWING DOES NOT IMPLY IT IS CLOSED.** SES flagged that the sixth
+> state is a functional problem wearing display clothes. A copied password that no longer
+> authenticates does not degrade — **the send FAILS, on a schedule, to somebody expecting a
+> report.** The screen saying *"still sending on September's password"* is necessary and not
+> sufficient: **something has to notice, and nothing does today.**
+>
+> They asked for it to sit here as an open thing rather than be implied fixed by the state
+> existing, and that is the right instinct — **a state drawn for a condition nothing detects is a
+> screen that will be honest the day somebody makes it possible, and silent until then.**
+> Detection is theirs. **Where a noticed failure surfaces is mine, and I will draw it when there
+> is a signal to draw against** rather than inventing states the server cannot prove — the
+> discipline entry 12 arrived at the hard way.
+>
+> It is also entry 15's state A one layer down: a message that reaches nobody, with nobody told.
+
+> **SIGNAL ARRIVED, AND FOUR STATES ADDED THAT ARE MEASURED RATHER THAN INVENTED.** I asked SES
+> what the server can *prove* before drawing any failure state — the discipline entry 12 reached
+> the hard way. The answer carried a condition that settled their transport choice:
+> `Mail::build()` surfaces one `TransportException` with the SMTP code inside its **message**, so
+> classifying it means parsing an error string; the Email module's own socket reads the numeric
+> reply codes and already sorts them. They are building on the socket. (Their other reason:
+> Symfony re-resolves the hostname, so that path carries a DNS-rebinding gap the socket does not.)
+>
+> **Four, not the three I asked about, and the split that earns its place is 4xx against 5xx.**
+> A 5xx will not change and sends somebody to the account; **a 4xx is "not now" and must not** —
+> a temporary refusal that tells you to check your password is the confident-wrong-cause defect
+> this queue keeps circling, and Email's socket already split them for that reason. "Never tried"
+> is a timestamp with no inference in it and is the state every row is in the moment it is saved.
+>
+> **A precedent Email owns, that SES asked to be held to, and that I am recording so it survives
+> both of us.** Their enum refuses to invent `PasswordRejected` for IMAP, because on that path
+> there is no authentication attempt to classify — *"a wrong password and a mail server that has
+> moved are, from here, identical."* **A state is available when the server can distinguish it,
+> not when the screen would like it.**
+>
+> **Still not drawn: where a failing scheduled report gets NOTICED.** This screen tells somebody
+> already looking, and nobody looks at it. That is a separate surface and it is not being stacked
+> on top of an unpicked gallery.
+>
+> **AND IT PARTLY SHIPPED ALREADY, AS A PRECEDENT TO AVOID.** SES measured it rather than
+> accepting my "not yet built", and they were right to — verified here end to end:
+> `AutomationEngine:177` passes `$e->getMessage()` into `Automation::noteFailure()`, which
+> counts consecutive failures and at the limit writes `disabled_at` + `disabled_reason`; the
+> controller returns that field; `automations_screen.dart:243` reads it and **`:370` draws it in
+> an `ErrorNote` on a customer's card**.
+>
+> **So a raw PHP exception message is shipped, today, to a customer** — the thing `MailboxFault`'s
+> docblock forbids by name: *"the provider's own text is not a cause and must never be what
+> somebody reads."* Automations owns the file and has been told by SES; the replacement shape is
+> mine and is in their inbox: **our sentence for what happened, when, and what to do — with the
+> exception kept where staff can read it.**
+>
+> **And `noteFailure()` notifies nobody.** It sets a flag, saves, and the card is the only place
+> it surfaces. So *"this screen tells somebody already looking at it, and nobody looks at it"* is
+> not a hypothesis about an unbuilt surface — **it is the shipped behaviour of a built one**, and
+> the automation is already stopped by the time the card says so.
+
+> **ONE RULE FOR WHOEVER DRAWS A STATUS SURFACE NEXT, because both of us got it wrong in the same
+> direction.** *"Never tried"* is a timestamp, not a health state. I would have drawn it red; SES
+> would have shipped it as a state the server computes. **Treating an absence as a finding** is
+> the same move as a `null` cascade source rendered as a value somebody chose — and
+> `settings_screen.dart` already warns about that one: *"the third is not a rounding of the
+> second."* Nothing has happened yet is not a verdict.
+
+**Recommendation: 2 and 5.** The common state is one server typed once and never touched again,
+and it costs a row saying "Typed here"; the rare state is the one that goes wrong silently.
+
+**Not blocked by, and must not wait for:** which identity a recipient should SEE a report come
+from is still with Jose via the deploy desk. That decides copy on the report side, not this
+screen. SES promises no date — the screen is theirs and next.
+
+### 17 · An automation stopped itself, and nobody was told — **DESKTOP 2 BUILT (`832709d2`); 5 came free**
+
+`docs/previews/automation-stopped-itself-layouts.html`. Automations asked for these after their
+own fix to entry 16's note: `noteFailure()` counts consecutive failures, disables the rule, **and
+notifies nobody**. The card is the only place it surfaces, and it is a card somebody opens only
+if they already suspect. A thing a business relies on stops, and the way they find out is that a
+customer did not get something.
+
+> **THE SPINE: a notification is a MOMENT, a stopped automation is a CONDITION.** A bell row is
+> read once and cleared; the rule is still off. Anything that only announces is the wrong shape
+> for something that persists until somebody acts. So the question each option answers
+> differently is **what stays on screen for as long as the rule is off** — and the "Turned back
+> on" state is the one to check, because a condition display has to *clear itself* rather than be
+> dismissed.
+
+**MEASURED, and it bounds what each option may claim.** Automations: `automation_runs` keeps the
+thrown text and a status per run, but `consecutive_failures` is a **live counter, not a history**.
+So *"it failed 5 times in a row"* is provable **at the moment of disabling** and cannot be
+reconstructed afterwards. A sentence composed later may honestly say *when* it stopped and *what
+the last error was*, and may not mention the run — unless it was written at disable time and
+stored. **Each option says only what its own moment can support**, which is why the bell row is
+the wordiest and the glance the quietest.
+
+> **AND THE AUDIENCE QUESTION IS NOT INDEPENDENT OF THE SURFACE, which is worth knowing while it
+> sits with Jose.** A bell notification is **per person** and cannot be written until somebody
+> decides who — owner, franchise admins, or whoever last edited the rule — and
+> `NotificationDispatcher::audienceFor(null)` falling through to every active user makes a wrong
+> answer worse than the gap. **A glance and a badge are per SCOPE and need no addressee at all.**
+> So **2 and 3 are buildable today and 1 is not**, and Automations are not blocked unless they
+> pick 1.
+
+> **BUILT, and mobile 5 needed no build at all — measured after the fact rather than assumed.**
+> Automations shipped desktop 2 at `832709d2`. I then checked whether the phone needed its own
+> version: `dashboard_screen.dart` lays glances out in a `Wrap` with **no width branch and no
+> `MediaQuery` read anywhere in the file**. So the same glance reflows to one column on a phone.
+> **Mobile 5 was never a second build — it is the same payload at a narrower width**, and the
+> sentence they wrote is already the short one the drawing called for, because the glance carries
+> no date (the organization's date format lives in the client, so a stamp composed in PHP would
+> be written in the wrong one).
+>
+> **The split is what unblocked it, and it was two questions wearing one coat.** *Who hears it* is
+> per person and still with Jose; *where the condition lives* is per scope and needed no
+> addressee. Automations verified the per-scope half rather than taking it — `AutomationsGlance`
+> is organization-scoped with no franchise filter, stated in the `Glance` interface docblock.
+> **They had been treating the audience problem as blocking the surface, and it only blocks one
+> surface.**
+>
+> **The "Turned back on" state is why the sentence is derived rather than stored.**
+> `AutomationsController:741` nulls `disabled_at` on re-enable, so a sentence computed from that
+> column lasts exactly as long as the condition and clears itself. **Had that column not been
+> cleared, the same sentence would have been a permanent false alarm on the dashboard** — the
+> opposite of what it was drawn for. There is a test asserting the clause disappears.
+>
+> **Still open:** the bell notification (blocked on Jose's audience answer) and desktop 3's
+> sidebar count, which pairs with 2 rather than competing.
+
+**Why 2 was the recommendation.** The dashboard is the one screen people open without being sent
+there, a glance persists exactly as long as the condition and clears itself, and it needs nobody
+to have decided the audience first. **3 pairs well with 2** — the glance is where you find out,
+the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
+than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
+
+### 18 · Communication · Call flow as a chart — **SHIPPED. Jose: 1 and 6**
+
+`docs/previews/call-flow-chart-layouts.html`. Jose, 2026-09-15: *"a new tab on Settings that
+shows me the Call Flow… more graphic / Call Flowchart / a graphic view, where it shows the
+current state and separates into nodes like n8n / from left to right or up to down / and begins
+with Caller ---- (what happens)"*. A NEW visual pattern, so it came through design rather than
+being built directly. Beside the existing Call Flow pane, not replacing it. **Read-only** — he
+said *shows me*, and an editable canvas is a different and much larger thing.
+
+**Phone built the data first, so these are drawn against the real shape.** `GET /phone/call-flow`
+carries `graph: {nodes, edges}` additively per line; `TwimlRenderer::graph()` builds it.
+
+> **THE PICTURE IS NOT WHAT EARNS THE SCREEN. THE TWO STATES ARE.**
+> - **`dead`** — a caller *can* reach it and nothing useful happens: an option pointing at a
+>   number nobody set, a ring group with nobody in it.
+> - **`skipped`** — ~~configured and **never reached at all**~~ **a step the caller passes
+>   straight THROUGH, which plays nothing.** Struck 2026-09-15: Phone gave me that sentence,
+>   then read their own renderer and found it emits the opposite — the node is linked in as
+>   `arrival → menu → answer`, so a caller does traverse it. Left visible rather than deleted
+>   because I built a test fixture to the struck version, and an orphan is a graph their
+>   contract cannot produce. The rest of their sentence stands and is still the argument for
+>   the tab: *"callers sail past and hear nothing, and nobody complains because the caller does
+>   not know they missed a menu and the owner does not know theirs is skipped."*
+>
+> **A flowchart that draws a dead branch identically to a live one is prettier than the list and
+> less useful.** So every option is judged on whether those two are visible *without reading node
+> by node*, which is why each carries a count at the top rather than relying on the drawing.
+
+> **REDRAWN THE SAME DAY AGAINST THE THIRTEEN REAL LINES.** Phone did not trust their own
+> fixtures — *"my tests build their own fixtures, which only ever prove self-agreement"* — and
+> read production instead. Two findings changed what the options optimise for:
+>
+> - **Not one line has an opening-hours schedule.** Supported, renders, and absent everywhere. My
+>   first three drawings leaned on `hours` as the early branch that establishes the rhythm, so
+>   every one of them opened with a column that is empty on every line Jose will actually click.
+>   **The first branch he sees is the menu**, and that is what is drawn now.
+> - **The cycle is the common case, not the edge case.** Eleven of thirteen lines have
+>   `overflow = queue`, so `queue ⇄ ring group` is what the tab looks like *normally*. My note
+>   that the back-edge is "drawn and not followed" was written as a defensive detail; at 85% it
+>   is load-bearing, and the options are now judged **with** it rather than without.
+>
+> **Both sizes are switchable in the gallery**, because the other two lines are four nodes — and
+> a chart that looks broken at four nodes is reporting the truth, while one that only reads well
+> at eleven is tuned for a line that does not exist. The bare pair are spare numbers with **zero
+> inbound calls ever**, which Phone checked before reporting them as a fault; they are the
+> minimum graph rather than a problem.
+
+**Facts the layout may rely on, measured rather than assumed.** Exactly one entry node, always
+`caller` — which makes his "Caller ---- (what happens)" literal. Every node reachable and no edge
+dangling, pinned by a sabotage-checked test, so no defensive drawing for orphans. **It can
+cycle** — `queue → answer → queue` and a "play the menu again" key are real, so a naive walk loops
+and a layered layout needs a back-edge *drawn rather than followed*. Six nodes without a menu,
+about eleven with a four-option one: **nothing here needs virtualising.** Thirteen lines possible,
+so every option carries the line picker the existing pane already uses.
+
+**Recommendation: 2 and 5.** The spine runs down and only branches go sideways, so the first
+thing read is the ordinary path — which is the question somebody opens the tab with — and adding
+a menu option lengthens a column rather than widening the chart, which is the direction a
+settings pane has room in. **5 is the same drawing at phone width**, so it is one shape to learn
+rather than two; its collapsed branch row carries *"2 of them are dead ends"* so a branch nobody
+opened still reports the thing the screen exists for.
+
+> **WHY THE COUNTS SIT ABOVE THE DRAWING, AND NOT IN IT.** Phone, 2026-09-15, after the
+> correction below — the sharpest thing either of us said about this feature, and recorded
+> here because the next person to propose folding the counts into the chart will not have
+> been in that conversation:
+>
+> **`skipped` is the only state a picture cannot show by colouring a node, because the node
+> works.** It is the flow *through* it that is empty. `dead` colours fine — the caller
+> arrives and stops, so the box is where the fault is. A silent step is a working box on a
+> working wire between two working boxes, and the whole line draws clean.
+>
+> The third gallery case demonstrates it: **no red anywhere on that screen.** If the counts
+> move into the drawing, that state becomes invisible again — which is the state the tab was
+> built for. Anybody wanting to move them has to answer this first.
+
+**A third gallery case, added 2026-09-15 at Phone's request** — *a step that does nothing*,
+drawn on options 1 and 6 only, since those are the two built. Zero production lines have one
+today, so there is nothing real to look at, and waiting for one means waiting for the day
+somebody edits a flow badly — which is exactly the day nobody is watching, because the state
+produces no complaint. The gallery is therefore the only place it can be seen before it matters.
+**It draws in the chain, third of five**, between Arrival and the ring group. Note what that
+case looks like: **no red anywhere**, every branch working, and the count at the top is the only
+thing on screen saying anything is wrong.
+
+**Built and committed 2026-09-15** — `b13319ac`, `client/lib/screens/phone/call_flow_chart{,_pane}.dart`,
+as a section appended to Settings (appended, not inserted: `_section` is an index, and inserting
+in the middle broke thirteen tests in `phone_screen_test.dart` before the comment now in that
+file existed to say so).
+
+> **One defect, found by Phone reading the built code against their own contract — not by a
+> test, and no test could have found it.** The caller's brand outline was keyed off
+> `node.kind == entryId`, comparing a **kind** against an **id**: two namespaces that coincide on
+> exactly one node because their renderer writes `$add('caller', 'caller', …)`, id first and kind
+> second. Correct output today; a rename on either side removes the outline and **nothing goes
+> red**, and a missing outline reads as a design choice rather than a fault. Fixed and pinned
+> both directions in `faebf2df`.
+>
+> Phone also named a graph neither the gallery nor the first tests had: **the smallest real
+> output is two nodes, not four** — `caller → arrival` for a number somebody imported and never
+> pointed at EzBizi. Now covered.
+
+**3 is drawn to be the version that cannot go wrong** — no pan, no zoom, no layout engine,
+identical at 760px and 340px, and **the only option where a never-reached node has an obvious
+home**: at the bottom, outside the tree, because that is exactly what it is. Its cost is the
+brief; he asked for graphic and it is an indented list with good manners. **4 is drawn to be
+rejected on purpose**: a canvas that needs panning to answer its own question is a canvas that
+gets opened once.
+

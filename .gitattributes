@@ -1,2 +1,28 @@
-deploy/*.sh text eol=lf
-deploy/post-receive text eol=lf
+# Everything in deploy/ is installed on a Linux box and parsed by something
+# that treats a carriage return as content: systemd, nginx, named, logrotate,
+# and sh itself. A CRLF checkout on Windows therefore ships a file that the
+# target silently refuses rather than reports.
+#
+# Measured 2026-09-11: /etc/logrotate.d/ezbizi had 67 CR lines and had NEVER
+# rotated -- no entry in /var/lib/logrotate/status, zero .gz, a 108MB
+# laravel.log against a 50M maxsize. logrotate stopped at line 37, a bare ^M,
+# and being unparseable it was skipped in silence. The committed file was
+# clean; the copy somebody ran sudo cp from was not.
+#
+# This was two lines covering *.sh and post-receive, which is the subset that
+# happened to have been noticed. The rest of the directory had the same hazard
+# and no rule, so the scope is now the whole directory rather than a list that
+# grows one incident at a time.
+# Every .sh in this repo is run by bash on macOS or Linux -- the release
+# scripts on the relay Mac, the deploy scripts on the box. A CRLF shell
+# script does not misbehave subtly, it dies at the shebang with
+# "bad interpreter: /bin/bash^M". Added 11 Sep 2026 on staging a new
+# scripts/mac/ file and watching git announce it was about to do exactly
+# that: deploy/ had just been covered and scripts/ had the same hazard and
+# no rule, which is the per-directory list this is meant to stop being.
+#
+# .ps1 is deliberately NOT here. PowerShell is Windows-side and CRLF is
+# correct for it.
+*.sh text eol=lf
+
+deploy/** text eol=lf

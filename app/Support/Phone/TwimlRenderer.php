@@ -2,6 +2,7 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneCall;
 use App\Models\PhoneDeviceRegistration;
 use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
@@ -791,6 +792,20 @@ final class TwimlRenderer
         string $language,
         array $context,
     ): void {
+        // HOLD THEM, rather than send them to a machine.
+        //
+        // Jose asked for what RingCentral calls a call queue: "if everyone is
+        // on calls, it leaves callers waiting on a queue, so they don't go
+        // straight to voicemail". This is that answer, and it can only be
+        // reached once — `queued` is set on the way out of the queue, so a
+        // caller released to a ring that then fails takes the next answer down
+        // rather than rejoining the line they just left.
+        if ($group->overflow === 'queue' && ! ($context['queued'] ?? false)) {
+            $this->enqueue($response, $number, $group);
+
+            return;
+        }
+
         if ($group->overflow === 'forward' && is_string($group->overflow_number)
             && $group->overflow_number !== '') {
             $dial = $response->dial(null, $this->dialAttributes(
@@ -820,6 +835,73 @@ final class TwimlRenderer
         }
 
         $this->noneUsable($response, $number, $language, $context);
+    }
+
+    /**
+     * Put the caller in a line and let them hear where they are in it.
+     *
+     * ── Why a queue is two URLs and no background job ────────────
+     *
+     * `waitUrl` is re-requested by Twilio every time the document it returns
+     * runs out of verbs, which makes it a clock somebody else winds. So the
+     * wait document is where the decision lives: it is asked, every loop,
+     * whether anybody has become free, and it answers `<Leave>` when somebody
+     * has. Leaving fires `action`, which is the ordinary voice webhook, and
+     * the ring happens through the same code path as every other call.
+     *
+     * The alternative — originating a call to an agent and bridging them in
+     * with `<Dial><Queue>` — needs something watching presence and placing
+     * calls, which is a worker, a failure mode and a bill. This needs none of
+     * the three, because the caller's own hold loop is the thing that asks.
+     *
+     * `action` carries `queued=1`. Without it, a caller released to a ring
+     * that nobody answers reaches overflow again and rejoins the queue at the
+     * back, for ever, billed per loop.
+     */
+    /**
+     * Set a live call down somewhere anybody can pick it up again.
+     *
+     * Rendered for the CUSTOMER's leg and handed to Twilio as a redirect, the
+     * same way [transfer] is — this device knows its own leg, not theirs, and
+     * theirs is the one that has to go on holding.
+     *
+     * No `waitUrl`: with none, Twilio plays its own hold music, which is
+     * exactly what is wanted here. The ring-group queue needs one because it
+     * announces a position; a parked call has no position to announce, and an
+     * endpoint whose whole job would be to play the default is an endpoint to
+     * keep working for nothing.
+     *
+     * No `action` either. A parked call leaves the queue exactly one way — a
+     * colleague dialling into it, which bridges the two legs — and Twilio does
+     * not come back to us for that.
+     */
+    public function park(PhoneCall $call): string
+    {
+        $response = new VoiceResponse;
+        $response->enqueue($call->parkQueueName());
+
+        return (string) $response;
+    }
+
+    private function enqueue(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        PhoneRingGroup $group,
+    ): void {
+        $response->enqueue($group->queueName(), [
+            'waitUrl' => route('phone.queue.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+                'number' => $number->id,
+                'group' => $group->id,
+            ]),
+            'waitUrlMethod' => 'POST',
+            'action' => route('phone.voice.webhook', [
+                'organization' => $number->organization_id,
+                'connection' => $number->connection_id,
+            ]).'?queued=1',
+            'method' => 'POST',
+        ]);
     }
 
     /**
@@ -855,6 +937,24 @@ final class TwimlRenderer
         $attributes['ringTone'] = 'us';
 
         $dial = $response->dial(null, $attributes);
+
+        // ── PICKING UP A PARKED CALL ────────────────────────────────
+        //
+        // Same shape as `client:` above, and for the same reason: the desk
+        // already knows how to place an outbound call, so retrieval is a
+        // destination rather than a second mechanism. `<Dial><Queue>` bridges
+        // whoever is waiting in that queue to the person dialling it, which is
+        // Twilio's own answer for this and needs nothing of ours in between.
+        //
+        // The queue is named after the parked call, so there are no slots to
+        // allocate, run out of, or collide on. A desk phone needs numbered
+        // park slots because it has buttons; a screen can list the calls.
+        if (str_starts_with($to, 'park:')) {
+            $dial->queue(substr($to, strlen('park:')));
+
+            return;
+        }
+
         if (str_starts_with($to, 'client:')) {
             // A colleague's browser. Both ends are ours and both are already
             // looking at a screen that says the call is recorded, so there is
@@ -991,7 +1091,7 @@ final class TwimlRenderer
         // down a live call, and a different switch on the line — `transcribe`
         // starts a real-time stream on the conversation and never touches the
         // recording somebody leaves after everyone has hung up.
-        if ($number->voicemail_transcribe || $box?->transcribe) {
+        if ($number->resolvedFlag('voicemail_transcribe') || $box?->transcribe) {
             $attributes['transcribe'] = true;
 
             if (is_string($context['transcription_status_callback'] ?? null)
@@ -1001,6 +1101,302 @@ final class TwimlRenderer
         }
 
         $response->record($attributes);
+    }
+
+    /**
+     * The same answer as [describe], drawn as a graph instead of a list.
+     *
+     * ── Why a second shape and not a richer list ─────────────────────
+     *
+     * `describe()` is a LINE: arrival, hours, menu, answer. That is the truth
+     * for a call that takes the default path and a lie about every line with a
+     * menu on it, because a menu is the point where one call becomes five
+     * possible calls. Jose asked for the n8n shape — "Caller ---- (what
+     * happens)" — and the reason it reads better is not decoration: a branch
+     * drawn as a branch shows you the option you configured and forgot, which
+     * a list renders as one more sentence in a column.
+     *
+     * ── Why it lives here, beside describe() ─────────────────────────
+     *
+     * Same reason describe() does, and its docblock gives it: the only honest
+     * answer to "what happens when somebody rings this number" is the one from
+     * the thing that answers the phone. This branches on the SAME predicates
+     * `inbound()` uses — closed(), menuPrompt(), menuNodeOf(),
+     * DialPlan::batches() — so a screen drawn from it cannot disagree with what
+     * a caller hears. A graph derived in a controller would be a third opinion,
+     * and this module has already paid for the second one.
+     *
+     * `state` is 'ok', 'dead' or 'skipped'.
+     *
+     * **dead** — a caller can get here and nothing useful happens: an option
+     * pointing at a number nobody set, a group with nobody in it.
+     *
+     * **skipped** — a caller passes THROUGH this step and hears nothing. It is
+     * configured, it is on the walk, and it does nothing. That is the failure
+     * nobody reports, because the caller does not know they missed a menu and
+     * the owner does not know theirs is silent.
+     *
+     * This sentence used to say "configured and never reached at all", which
+     * is false about the graph below: the skipped menu is linked
+     * `arrival → menu → answer`, so every caller walks it. UI/UX built the
+     * chart to that sentence rather than to the data — a layout rule for
+     * unreachable nodes, a test whose fixture had no edges, and a label on
+     * Jose's screen reading "Never reached" about a step every caller passes
+     * through. The code was right the whole time and the description was not,
+     * which is the harder kind to notice: nothing fails, and the next person
+     * builds on the sentence.
+     *
+     * So: describing your own output is a claim, not recall. The lines below
+     * are the measurement.
+     *
+     * Read-only, like describe(). It is called to draw a screen.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    public function graph(PhoneNumber $number, array $context = []): array
+    {
+        $nodes = [];
+        $edges = [];
+
+        $add = function (
+            string $id,
+            string $kind,
+            string $title,
+            string $detail,
+            string $state = 'ok',
+        ) use (&$nodes): string {
+            $nodes[] = [
+                'id' => $id,
+                'kind' => $kind,
+                'title' => $title,
+                'detail' => $detail,
+                'state' => $state,
+            ];
+
+            return $id;
+        };
+
+        $link = function (string $from, string $to, string $label = '') use (&$edges): void {
+            $edges[] = ['from' => $from, 'to' => $to, 'label' => $label];
+        };
+
+        // Where every call starts, and the only node that is not configuration.
+        $add('caller', 'caller', 'Caller', 'Somebody dials '.$number->e164.'.');
+
+        $pointed = filled($number->twilio_sid);
+        $add(
+            'arrival',
+            'arrival',
+            $pointed ? 'Arrives on '.($number->label ?: $number->e164) : 'Never reaches EzBizi',
+            $pointed
+                ? 'Twilio hands the call to EzBizi.'
+                : 'This line is not pointed at EzBizi, so nothing below runs.',
+            $pointed ? 'ok' : 'dead',
+        );
+        $link('caller', 'arrival');
+
+        if (! $pointed) {
+            return ['nodes' => $nodes, 'edges' => $edges];
+        }
+
+        $connection = $number->connection;
+        $tail = 'arrival';
+
+        // ── Hours, the first real branch ────────────────────────────
+        $schedule = $number->resolved('hours_schedule_id') === null
+            ? null
+            : PhoneHoursSchedule::query()->find($number->resolved('hours_schedule_id'));
+
+        if ($schedule !== null) {
+            $closed = $this->closed($number, $context);
+            $add('hours', 'hours', $schedule->name, 'Opening hours decide what happens next.');
+            $link($tail, 'hours');
+
+            // Which of the three ways a closed call ends is a setting somebody
+            // chose, so it gets a node rather than being folded into a label.
+            $after = (string) ($number->resolved('after_hours') ?: 'voicemail');
+            $forwardTo = trim((string) $number->resolved('after_hours_number'));
+
+            if ($after === 'forward') {
+                $add(
+                    'after-hours',
+                    'forward',
+                    $forwardTo !== '' ? 'Forward to '.$forwardTo : 'Forward — no number set',
+                    $forwardTo !== ''
+                        ? 'Out of hours the call is sent to this number.'
+                        : 'Out of hours this forwards, but no number is set, so the call ends.',
+                    $forwardTo !== '' ? 'ok' : 'dead',
+                );
+            } elseif ($after === 'closed') {
+                $add('after-hours', 'hangup', 'Say we are closed', 'The caller hears a message and the call ends.');
+            } else {
+                $add('after-hours', 'voicemail', 'Voicemail', 'Out of hours, callers go straight to voicemail.');
+            }
+
+            $link('hours', 'after-hours', 'Closed');
+
+            // A junction, not a step: it carries the "Open" label so the branch
+            // reads, and says which side is live as somebody looks at it.
+            $add(
+                'open',
+                'junction',
+                'Open',
+                $closed ? 'This line is CLOSED right now.' : 'This line is OPEN right now.',
+            );
+            $link('hours', 'open', 'Open');
+            $tail = 'open';
+        }
+
+        // The default destination: what a caller gets having pressed nothing.
+        $group = $number->resolved('ring_group_id') === null
+            ? null
+            : PhoneRingGroup::query()->find($number->resolved('ring_group_id'));
+
+        $reaches = $group !== null
+            && $connection !== null
+            && DialPlan::batches($group, $connection) !== [];
+
+        $add(
+            'answer',
+            'ring_group',
+            $group === null ? 'Nobody is rung' : 'Ring '.$group->name,
+            match (true) {
+                $group === null => 'No ring group is set, so every call goes to voicemail.',
+                $connection === null => 'This line has no phone account, so nobody can be dialled.',
+                ! $reaches => $group->name.' has nobody available, so every call goes to voicemail.',
+                default => 'Whoever is on duty in that group is dialled.',
+            },
+            $reaches ? 'ok' : 'dead',
+        );
+
+        // ── The menu, where one call becomes several ────────────────
+        $prompt = $this->menuPrompt($number);
+        $flowId = $number->resolved('flow_id');
+
+        if ($prompt === null) {
+            // CONFIGURED AND NEVER PLAYED, the case describe() also calls out.
+            // Its own node, because a menu nobody hears is exactly what a
+            // picture of the call is for.
+            if ($flowId !== null) {
+                $add(
+                    'menu',
+                    'menu',
+                    'Menu — never played',
+                    'A flow is attached but has no menu step, so callers go straight past it.',
+                    'skipped',
+                );
+                $link($tail, 'menu');
+                $link('menu', 'answer');
+            } else {
+                $link($tail, 'answer');
+            }
+        } else {
+            $add('menu', 'menu', 'Menu plays', $prompt);
+            $link($tail, 'menu');
+
+            $flow = PhoneFlow::query()->find($flowId);
+            $menu = $flow === null ? null : self::menuNodeOf($flow);
+            $options = is_array($menu['options'] ?? null) ? $menu['options'] : [];
+            $seen = [];
+
+            foreach ($options as $option) {
+                if (! is_array($option)) {
+                    continue;
+                }
+
+                $digit = (string) ($option['digit'] ?? '');
+
+                // A duplicate key is unreachable: menuOption() returns the
+                // FIRST match, so the second is configuration nobody can hear.
+                if ($digit === '' || isset($seen[$digit])) {
+                    continue;
+                }
+                $seen[$digit] = true;
+
+                $id = 'key-'.$digit;
+                $label = 'Press '.$digit;
+                $action = (string) ($option['action'] ?? 'ring_group');
+
+                if ($action === 'voicemail') {
+                    $add($id, 'voicemail', 'Voicemail', 'The caller leaves a message.');
+                } elseif ($action === 'hangup') {
+                    $say = trim((string) ($option['say'] ?? ''));
+                    $add($id, 'hangup', 'Message, then end', $say !== '' ? $say : 'The call ends here.');
+                } elseif ($action === 'repeat') {
+                    $add($id, 'menu', 'Play the menu again', 'The caller hears the options a second time.');
+                } elseif ($action === 'forward') {
+                    $to = trim((string) ($option['number'] ?? ''));
+                    $add(
+                        $id,
+                        'forward',
+                        $to !== '' ? 'Forward to '.$to : 'Forward — no number set',
+                        $to !== '' ? 'The call leaves EzBizi for this number.' : 'This option forwards, but no number is set.',
+                        $to !== '' ? 'ok' : 'dead',
+                    );
+                } elseif ($action === 'extension') {
+                    $ext = trim((string) ($option['extension'] ?? ''));
+                    $add(
+                        $id,
+                        'extension',
+                        $ext !== '' ? 'Extension '.$ext : 'Extension — none set',
+                        $ext !== '' ? 'Rings whoever holds that extension.' : 'This option dials an extension, but none is set.',
+                        $ext !== '' ? 'ok' : 'dead',
+                    );
+                } else {
+                    $optionGroupId = (string) ($option['ring_group_id'] ?? '');
+
+                    // An option with no group of its own falls through to the
+                    // line's group. Same destination, so the same node —
+                    // drawing a second one would invent a branch.
+                    if ($optionGroupId === '') {
+                        $link('menu', 'answer', $label);
+
+                        continue;
+                    }
+
+                    $optionGroup = PhoneRingGroup::query()->find($optionGroupId);
+                    $usable = $optionGroup !== null
+                        && $connection !== null
+                        && DialPlan::batches($optionGroup, $connection) !== [];
+
+                    $add(
+                        $id,
+                        'ring_group',
+                        $optionGroup === null ? 'Ring group — missing' : 'Ring '.$optionGroup->name,
+                        $optionGroup === null
+                            ? 'This option points at a ring group that no longer exists.'
+                            : ($usable ? 'Whoever is on duty in that group is dialled.' : 'Nobody in that group is available.'),
+                        $usable ? 'ok' : 'dead',
+                    );
+                }
+
+                $link('menu', $id, $label);
+            }
+
+            // Pressing nothing is an option too, and it is the commonest one.
+            $link('menu', 'answer', 'No key pressed');
+        }
+
+        // ── What happens when nobody picks up ───────────────────────
+        $add('voicemail', 'voicemail', 'Voicemail', 'The caller leaves a message.');
+
+        $fallback = trim((string) $number->resolved('fallback_number'));
+
+        if ($fallback !== '') {
+            $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
+            $link('answer', 'fallback', 'No answer');
+            $link('fallback', 'voicemail', 'No answer');
+        } elseif ($group !== null && $group->overflow === 'queue') {
+            $add('queue', 'queue', 'Hold in a queue', 'Callers wait and are told their place in line.');
+            $link('answer', 'queue', 'Everyone busy');
+            $link('queue', 'answer', 'Somebody free');
+            $link('queue', 'voicemail', 'Waited too long');
+        } else {
+            $link('answer', 'voicemail', 'No answer');
+        }
+
+        return ['nodes' => $nodes, 'edges' => $edges];
     }
 
     /**

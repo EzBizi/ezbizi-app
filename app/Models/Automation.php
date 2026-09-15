@@ -133,14 +133,29 @@ class Automation extends Model implements CarriesAutomationScope
      * an automation calling a webhook that has started returning 500 will
      * otherwise retry on every event forever, and the noise buries what broke.
      */
-    public function noteFailure(string $reason): void
+    public function noteFailure(): void
     {
         $this->consecutive_failures++;
 
         if ($this->consecutive_failures >= self::FAILURE_LIMIT) {
             $this->disabled_at = now();
+
+            // NO EXCEPTION TEXT HERE. This string is rendered to the customer by
+            // automations_screen.dart:370. Both callers used to pass raw
+            // $e->getMessage() - a Symfony TransportException, a Guzzle
+            // ConnectionException, a PDO error - which is written in the vocabulary
+            // of whoever wrote the library, changes without notice, and tells the
+            // reader nothing they can act on. Nothing is lost by dropping it:
+            // AutomationEngine already stores the same text in automation_runs.error
+            // on both paths (the throw at :176 and the action failure at :260), which
+            // is where somebody debugging should be looking anyway.
+            //
+            // "Run history" is the label on the menu item that opens it
+            // (automations_screen.dart:301). Naming it anything else - "run log",
+            // "the logs" - sends somebody looking for a control that is not there.
+            // If that menu item is renamed, rename it here in the same commit.
             $this->disabled_reason = "Disabled after {$this->consecutive_failures} "
-                ."consecutive failures. Last error: {$reason}";
+                .'consecutive failures. Open Run history to see what failed.';
         }
 
         $this->save();

@@ -8,16 +8,21 @@
 #include <iphlpapi.h>
 // clang-format on
 #include <dwmapi.h>
+#include <pdh.h>
+// PDH_MORE_DATA and the PDH_CSTATUS_* values live here, not in pdh.h.
+#include <pdhmsg.h>
 #include <psapi.h>
 #include <uiautomation.h>
 #include <wrl/client.h>
 #include <winternl.h>
 #include <wlanapi.h>
+#include <wscapi.h>
 
 #include "monitoring_specs.h"
 
 #include <algorithm>
 #include <atomic>
+#include <cwctype>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -390,6 +395,161 @@ BOOL CALLBACK CollectWindow(HWND hwnd, LPARAM param) {
 // heartbeats, and walking several hundred registry keys every minute on the
 // platform thread to re-learn the same answer would be the expensive kind of
 // thorough.
+// ── GPU load ──────────────────────────────────────────────────────
+//
+// There is no Win32 call for "how busy is the graphics card". Task Manager
+// reads the same performance counters this does: `\GPU Engine(*)\Utilization
+// Percentage`, one instance per process per engine, with names shaped like
+//
+//   pid_9312_luid_0x00000000_0x0000C7C1_phys_0_eng_0_engtype_3D
+//
+// Only the 3D engines are summed. A machine decoding video or running a
+// display-compositing engine is not "using the GPU" in the sense somebody
+// scanning a roster means, and summing every engine type double-counts work
+// that overlaps — which is how a idle machine ends up reading 140%.
+//
+// Same two-sample shape as CpuPercentSinceLastCall and for the same reason:
+// these are rate counters, so the FIRST call after launch establishes a
+// baseline and reports nothing. An absent key renders as "—"; a zero would
+// claim the card is idle when the truth is that nobody has asked it yet.
+bool GpuPercentSinceLastCall(int64_t* out) {
+  static bool tried = false;
+  static PDH_HQUERY query = nullptr;
+  static PDH_HCOUNTER counter = nullptr;
+  static bool have_baseline = false;
+
+  if (!tried) {
+    tried = true;
+    if (::PdhOpenQueryW(nullptr, 0, &query) != ERROR_SUCCESS) {
+      query = nullptr;
+    } else if (::PdhAddEnglishCounterW(
+                   query, L"\\GPU Engine(*)\\Utilization Percentage", 0,
+                   &counter) != ERROR_SUCCESS) {
+      ::PdhCloseQuery(query);
+      query = nullptr;
+    }
+  }
+
+  if (query == nullptr) return false;
+  if (::PdhCollectQueryData(query) != ERROR_SUCCESS) return false;
+
+  if (!have_baseline) {
+    have_baseline = true;
+    return false;
+  }
+
+  DWORD size = 0;
+  DWORD count = 0;
+  if (::PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &size, &count,
+                                     nullptr) != PDH_MORE_DATA) {
+    return false;
+  }
+
+  std::vector<uint8_t> buffer(size);
+  auto* items =
+      reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data());
+  if (::PdhGetFormattedCounterArrayW(counter, PDH_FMT_DOUBLE, &size, &count,
+                                     items) != ERROR_SUCCESS) {
+    return false;
+  }
+
+  double total = 0;
+  int matched = 0;
+  for (DWORD i = 0; i < count; ++i) {
+    if (items[i].szName == nullptr) continue;
+
+    // Case-folded, because the counter says "engtype_3d" in lower case on a
+    // real machine and a case-sensitive match on "3D" finds NOTHING — which
+    // reads exactly like a machine with no 3D engine, so the meter would have
+    // shown "—" for ever with nothing to debug. Windows does not promise the
+    // casing of an instance name either way; measured on this box, not
+    // assumed from the documentation, which writes it "engtype_3D".
+    std::wstring instance(items[i].szName);
+    std::transform(instance.begin(), instance.end(), instance.begin(),
+                   ::towlower);
+    if (instance.find(L"engtype_3d") == std::wstring::npos) continue;
+
+    if (items[i].FmtValue.CStatus != PDH_CSTATUS_VALID_DATA &&
+        items[i].FmtValue.CStatus != PDH_CSTATUS_NEW_DATA) {
+      continue;
+    }
+    total += items[i].FmtValue.doubleValue;
+    ++matched;
+  }
+
+  // NOT the same as a reading of zero: a machine whose counters name no 3D
+  // engine has told us nothing, and reporting 0% would say its card is idle.
+  if (matched == 0) return false;
+
+  if (total < 0) total = 0;
+  if (total > 100) total = 100;
+  *out = static_cast<int64_t>(total + 0.5);
+  return true;
+}
+
+void AddGpuLoad(EncodableMap& m) {
+  int64_t percent = 0;
+  if (GpuPercentSinceLastCall(&percent)) {
+    m[EncodableValue("gpu_percent")] = EncodableValue(percent);
+  }
+}
+
+// ── Security posture ──────────────────────────────────────────────
+//
+// What Windows' own Security Center says about this machine: antivirus,
+// firewall, and whether updates are being installed. Read through WSC rather
+// than by poking at Defender's registry keys or services, because WSC is the
+// thing that knows about OTHER antivirus products too — a machine running
+// Bitdefender with Defender correctly stood down is HEALTHY, and a check
+// written against Defender's own state would report it as unprotected.
+//
+// Returns nullptr for a health value we do not recognise rather than guessing
+// a word for it: an unknown state reported as "good" is the one failure here
+// that actually matters.
+const char* SecurityHealthWord(WSC_SECURITY_PROVIDER provider) {
+  WSC_SECURITY_PROVIDER_HEALTH health =
+      WSC_SECURITY_PROVIDER_HEALTH_NOTMONITORED;
+
+  if (FAILED(::WscGetSecurityProviderHealth(provider, &health))) {
+    return nullptr;
+  }
+
+  switch (health) {
+    case WSC_SECURITY_PROVIDER_HEALTH_GOOD:
+      return "good";
+    case WSC_SECURITY_PROVIDER_HEALTH_NOTMONITORED:
+      return "not_monitored";
+    case WSC_SECURITY_PROVIDER_HEALTH_POOR:
+      return "poor";
+    case WSC_SECURITY_PROVIDER_HEALTH_SNOOZE:
+      return "snoozed";
+  }
+
+  return nullptr;
+}
+
+void AddSecurity(EncodableMap& m) {
+  EncodableMap security;
+
+  auto put = [&security](const char* key, WSC_SECURITY_PROVIDER provider) {
+    const char* word = SecurityHealthWord(provider);
+    if (word != nullptr) {
+      security[EncodableValue(key)] = EncodableValue(std::string(word));
+    }
+  };
+
+  put("antivirus", WSC_SECURITY_PROVIDER_ANTIVIRUS);
+  put("firewall", WSC_SECURITY_PROVIDER_FIREWALL);
+  put("updates", WSC_SECURITY_PROVIDER_AUTOUPDATE_SETTINGS);
+
+  // Absent rather than empty: WSC is a client-SKU API and is not there at all
+  // on Windows Server, where reporting an empty security block would read as
+  // "we looked and found nothing configured".
+  if (!security.empty()) {
+    m[EncodableValue("security")] = EncodableValue(security);
+  }
+}
+
 void AddInstalledPrograms(EncodableMap& m) {
   static bool read = false;
   static std::vector<std::string> cached;
@@ -784,6 +944,8 @@ EncodableMap ReadSpecs() {
   AddOsVersion(m);
   AddNetwork(m);
   AddActivity(m);
+  AddGpuLoad(m);
+  AddSecurity(m);
   AddInstalledPrograms(m);
   AddConnections(m);
   AddBrowserTabs(m);

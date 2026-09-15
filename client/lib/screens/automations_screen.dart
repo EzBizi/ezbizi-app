@@ -367,7 +367,16 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             // repeated failure has to say so where somebody will see it.
             if (disabledReason != null) ...[
               const SizedBox(height: 10),
-              ErrorNote(disabledReason),
+              // WHEN it stopped, leading. `disabled_at` has been served by the
+              // controller all along and rendered nowhere, so the card could not
+              // tell "this broke this morning" from "this has been off a
+              // fortnight" - which is the difference that decides what somebody
+              // does next. formatStamp so it reads in the organization's own
+              // date and time format rather than the browser's.
+              ErrorNote(
+                '${formatStamp(automation['disabled_at'], 'At an unknown time', formats: _formats)}'
+                ' — $disabledReason',
+              ),
             ],
           ],
         ),

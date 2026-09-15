@@ -226,6 +226,18 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // The icon goes up as soon as the window exists, not on the way into
+  // hiding. Two things need it there for the whole run: a person can see
+  // EzBizi is running at all, and SetControlledNotice has an icon to modify
+  // while the window is OPEN - which is precisely when somebody is sitting
+  // at the machine to be told their screen is being controlled. Added only
+  // at WM_CLOSE, that notice could never appear except while hidden.
+  //
+  // window_handle_ is already set: WM_NCCREATE assigned it inside the
+  // CreateWindow call above, so AddTrayIcon's !window_handle_ guard cannot
+  // silently skip the one call that matters.
+  AddTrayIcon();
+
   return OnCreate();
 }
 
@@ -469,7 +481,18 @@ void Win32Window::SetControlledNotice(bool active) {
   // headless/service run never added one, and Explorer may not have created
   // the notification area yet): guard and no-op so this can never crash there.
   if (!tray_added_ || !window_handle_) {
-    controlled_notice_shown_ = active;
+    // The flag is deliberately LEFT ALONE here. It records "the balloon has
+    // already been shown for this control session", and nothing was shown —
+    // so writing `active` into it would claim a notice this branch just
+    // declined to give. The next call that finds a real icon would then see
+    // `controlled_notice_shown_ == true`, skip the balloon as a repeat, and
+    // the person would be told nothing at all.
+    //
+    // That is exactly how this failed before 06dc4c81: the icon existed only
+    // while the window was hidden, so every call during an open window landed
+    // here, set the flag, and silently disarmed the one balloon that mattered.
+    // Fixing where the icon is added closes half of it; a flag that lies about
+    // what it did closes the other half.
     return;
   }
 

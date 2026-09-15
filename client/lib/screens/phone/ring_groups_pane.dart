@@ -117,6 +117,10 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
         overflow: 'voicemail',
         overflowNumber: '',
         overflowGroupId: null,
+        queueMaxSeconds: 300,
+        queueAnnouncePosition: true,
+        queueAnnounceWait: false,
+        queueHoldMusicUrl: '',
       );
     });
   }
@@ -134,6 +138,10 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
         overflow: group.overflow,
         overflowNumber: group.overflowNumber ?? '',
         overflowGroupId: group.overflowGroupId,
+        queueMaxSeconds: group.queueMaxSeconds,
+        queueAnnouncePosition: group.queueAnnouncePosition,
+        queueAnnounceWait: group.queueAnnounceWait,
+        queueHoldMusicUrl: group.queueHoldMusicUrl ?? '',
       );
     });
   }
@@ -165,6 +173,19 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
       'overflow': draft.overflow,
       'overflow_number': draft.overflow == 'forward' ? draft.overflowNumber.trim() : null,
       'overflow_group_id': draft.overflow == 'group' ? draft.overflowGroupId : null,
+
+      // Sent only when they are the settings in play. A hold time left over
+      // from the ten seconds somebody spent looking at the queue option is not
+      // a decision, and writing it back on every save makes the column read as
+      // one.
+      if (draft.overflow == 'queue') ...{
+        'queue_max_seconds': draft.queueMaxSeconds,
+        'queue_announce_position': draft.queueAnnouncePosition,
+        'queue_announce_wait': draft.queueAnnounceWait,
+        'queue_hold_music_url': draft.queueHoldMusicUrl.trim().isEmpty
+            ? null
+            : draft.queueHoldMusicUrl.trim(),
+      },
     };
 
     final response = draft.id.isEmpty
@@ -484,14 +505,44 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               groupValue: draft.mode,
               // ignore: deprecated_member_use
               onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
-              title: const Text('One at a time'),
+              title: const Text('One at a time, in order'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            ),
+
+            // ── FAIRNESS, which a fixed order does not give you ──
+            //
+            // RingCentral calls this "longest idle" and A1 Chimney's own
+            // queues are set to it. A fixed list means the first person
+            // answers most of the calls and the last answers almost none —
+            // a rota nobody agreed to, and one that only shows up months
+            // later in somebody's numbers.
+            //
+            // Read from the call log rather than a counter, so it is the same
+            // fact the reports are built from.
+            RadioListTile<String>(
+              value: 'longest_idle',
+              // ignore: deprecated_member_use
+              groupValue: draft.mode,
+              // ignore: deprecated_member_use
+              onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
+              title: const Text('One at a time, whoever is least busy'),
+              subtitle: const Text(
+                'Starts with whoever has gone longest without answering.',
+              ),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
 
             const SizedBox(height: 8),
             Text(
-              'Ring for ${draft.timeoutSeconds} seconds',
+              // Said differently when the wait is per person, because the
+              // same number means a very different hold: thirty seconds each
+              // across five people is a caller holding for two and a half
+              // minutes, and nothing on this screen used to say so.
+              draft.mode == 'simultaneous'
+                  ? 'Ring for ${draft.timeoutSeconds} seconds'
+                  : 'Ring each person for ${draft.timeoutSeconds} seconds',
               style: theme.textTheme.labelLarge,
             ),
             Slider(
@@ -590,6 +641,7 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             Text('If nobody answers', style: theme.textTheme.labelLarge),
             for (final option in const [
               ('voicemail', 'Take a voicemail'),
+              ('queue', 'Hold the caller in a queue'),
               ('forward', 'Forward to another number'),
               ('group', 'Ring another group'),
             ])
@@ -605,6 +657,84 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                 contentPadding: EdgeInsets.zero,
                 dense: true,
               ),
+
+            // ── THE QUEUE, and what a caller hears while they stand in it ──
+            //
+            // Asked for by name: "RingCentral has Positioning available... so
+            // if everyone is on calls, it leaves callers waiting on a quee, so
+            // they don't go straight to voicemail".
+            //
+            // Four settings and no more. RingCentral's own queue screen has
+            // six collapsible sections and roughly thirty controls, and most
+            // of them describe things this app answers elsewhere — hours,
+            // blocked callers, who is in the group, where voicemail goes. What
+            // is genuinely new is the waiting: how long, what is said, and what
+            // plays in between.
+            if (draft.overflow == 'queue') ...[
+              const SizedBox(height: 8),
+              Text(
+                'Hold for ${draft.queueMaxSeconds ~/ 60} '
+                '${draft.queueMaxSeconds ~/ 60 == 1 ? 'minute' : 'minutes'} '
+                'before taking a voicemail',
+                style: theme.textTheme.bodySmall,
+              ),
+              Slider(
+                value: draft.queueMaxSeconds.toDouble(),
+                min: 60,
+                max: 1800,
+                divisions: 29,
+                label: '${draft.queueMaxSeconds ~/ 60} min',
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(
+                        () => draft.queueMaxSeconds = (v ~/ 60) * 60,
+                      ),
+              ),
+              SwitchListTile(
+                value: draft.queueAnnouncePosition,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() => draft.queueAnnouncePosition = v),
+                title: const Text('Say their place in the line'),
+                subtitle: const Text(
+                  'Between each round of music: "you are third in line".',
+                ),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+              SwitchListTile(
+                value: draft.queueAnnounceWait,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() => draft.queueAnnounceWait = v),
+                title: const Text('Say how long the wait is likely to be'),
+                // Off by default, and the reason is worth the sentence: the
+                // estimate comes from how long the people currently waiting
+                // have waited, which on a short queue is a guess made from two
+                // callers. Somebody told two minutes who waits six hangs up
+                // angrier than somebody told nothing.
+                subtitle: const Text(
+                  'An estimate from how long callers ahead of them have '
+                  'waited. On a short queue that is a guess.',
+                ),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
+              TextFormField(
+                key: ValueKey('ring-group-hold-music-${draft.id}'),
+                initialValue: draft.queueHoldMusicUrl,
+                decoration: const InputDecoration(
+                  labelText: 'Hold music',
+                  hintText: 'Leave empty for the default',
+                  helperText: 'A direct link to an MP3 or WAV file. Its '
+                      'length is the gap between announcements.',
+                  helperMaxLines: 2,
+                ),
+                enabled: !_saving,
+                onChanged: (value) => draft.queueHoldMusicUrl = value,
+              ),
+              const SizedBox(height: 8),
+            ],
 
             if (draft.overflow == 'forward')
               TextFormField(
@@ -699,6 +829,10 @@ class _Draft {
     required this.overflow,
     required this.overflowNumber,
     required this.overflowGroupId,
+    required this.queueMaxSeconds,
+    required this.queueAnnouncePosition,
+    required this.queueAnnounceWait,
+    required this.queueHoldMusicUrl,
   });
 
   final String id;
@@ -710,6 +844,10 @@ class _Draft {
   String overflow;
   String overflowNumber;
   String? overflowGroupId;
+  int queueMaxSeconds;
+  bool queueAnnouncePosition;
+  bool queueAnnounceWait;
+  String queueHoldMusicUrl;
 }
 
 /// One person in a ring group, and whether a call would reach them.
@@ -759,6 +897,10 @@ class _Group {
     required this.measuredAt,
     this.overflowGroupId,
     this.overflowNumber,
+    this.queueMaxSeconds = 300,
+    this.queueAnnouncePosition = true,
+    this.queueAnnounceWait = false,
+    this.queueHoldMusicUrl,
   });
 
   final String id;
@@ -780,6 +922,11 @@ class _Group {
   final String? overflowGroupId;
   final String? overflowNumber;
 
+  final int queueMaxSeconds;
+  final bool queueAnnouncePosition;
+  final bool queueAnnounceWait;
+  final String? queueHoldMusicUrl;
+
   int get reachableCount => members.where((m) => m.reachable).length;
 
   factory _Group.fromJson(Map<String, dynamic> json) => _Group(
@@ -799,6 +946,10 @@ class _Group {
     measuredAt: json['members_measured_at'] as String? ?? '',
     overflowGroupId: json['overflow_group_id'] as String?,
     overflowNumber: json['overflow_number'] as String?,
+    queueMaxSeconds: (json['queue_max_seconds'] as num?)?.toInt() ?? 300,
+    queueAnnouncePosition: json['queue_announce_position'] != false,
+    queueAnnounceWait: json['queue_announce_wait'] == true,
+    queueHoldMusicUrl: json['queue_hold_music_url'] as String?,
   );
 }
 

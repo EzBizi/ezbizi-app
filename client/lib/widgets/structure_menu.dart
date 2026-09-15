@@ -40,6 +40,7 @@ class CompanyActionsMenu extends StatelessWidget {
     required this.onToggleActive,
     required this.onAddFranchise,
     required this.onAddSubCompany,
+    required this.onMove,
   });
 
   /// The server's own map for this company, untouched — the §4 booleans are
@@ -54,6 +55,14 @@ class CompanyActionsMenu extends StatelessWidget {
   /// from not being allowed to add one.
   final VoidCallback? onAddSubCompany;
 
+  /// Make it a sub company, or make it a company again (Jose, 2026-09-14).
+  ///
+  /// Not nullable, unlike [onAddSubCompany]: this act EXISTS at every position
+  /// — a sub company can always be promoted and a company can always be
+  /// demoted somewhere — so when it is unavailable there is a rule to explain,
+  /// and `may_reparent_reason` explains it.
+  final VoidCallback onMove;
+
   @override
   Widget build(BuildContext context) {
     final name = company['name'] as String? ?? '';
@@ -66,6 +75,12 @@ class CompanyActionsMenu extends StatelessWidget {
         : company['may_add_franchise_reason'] as String? ??
               'Adding a place to $name is not yours to do.';
 
+    final mayMove = company['may_reparent'] as bool? ?? false;
+    final noMove = mayMove
+        ? null
+        : company['may_reparent_reason'] as String? ??
+              'Moving $name is not yours to do.';
+
     final mayAddSub = company['may_add_sub_company'] as bool? ?? false;
     final noAddSub = mayAddSub
         ? null
@@ -77,7 +92,7 @@ class CompanyActionsMenu extends StatelessWidget {
     // not rename the company is how a control that exists becomes one nobody
     // can find; keeping an empty one is a button that opens a menu of four
     // sentences saying no, which is worse than the absence.
-    if (!mayEdit && !mayAddFranchise && !mayAddSub) {
+    if (!mayEdit && !mayAddFranchise && !mayAddSub && !mayMove) {
       return const SizedBox.shrink();
     }
 
@@ -106,6 +121,33 @@ class CompanyActionsMenu extends StatelessWidget {
             label: 'Add a sub company',
             reason: noAddSub,
           ),
+        // One entry rather than two. Which direction it goes is the picker's
+        // question, and a menu offering "Make it a sub company" beside "Make it
+        // a company again" would have one of the two greyed out on every
+        // company in the business, permanently, explaining a rule about where
+        // it already is.
+        //
+        // NOT "Move it", which was the first wording and collided with a verb
+        // this product has already spent. This menu is drawn on the canvas as
+        // well as the list, and `structure_canvas.dart` spends THREE of its
+        // numbered points -- 4, 5 and 6 -- establishing that dragging a box
+        // changes the picture and not the business: overlap means nothing and
+        // never reads as "it went inside", the connector never detaches
+        // because it is derived from the tree, and the cursor is `move`
+        // because "`grab` is 'pick this up and carry it somewhere'; `move` is
+        // 'reposition this'". So "Move it" would have named, three inches
+        // away, the exact operation those three points exist to say a drag is
+        // NOT.
+        //
+        // Raised by UI/UX, who read that file before saying so -- and who
+        // corrected this comment's own count from two points to three, by
+        // reading it again rather than repeating mine.
+        refusedMenuItem(
+          context,
+          value: 'move',
+          label: 'Change what it sits under',
+          reason: noMove,
+        ),
         refusedMenuItem(
           context,
           value: 'active',
@@ -120,6 +162,7 @@ class CompanyActionsMenu extends StatelessWidget {
         'edit' => onEdit(),
         'franchise' => onAddFranchise(),
         'sub' => onAddSubCompany?.call(),
+        'move' => onMove(),
         _ => onToggleActive(),
       },
     );

@@ -137,6 +137,74 @@ void main() {
           'before the release landed and never asked again',
     );
   });
+
+/// Another device changed it, and this one finds out when you look.
+///
+/// ── The report ───────────────────────────────────────────────────
+///
+/// Jose set Do Not Disturb on the web and the desktop app went on showing a
+/// green dot — then a call arrived while the two disagreed. Availability
+/// belongs to the PERSON; this button belongs to one app, read the server once
+/// at startup, and after that only heard about changes its own app made.
+///
+/// Refreshing when the app comes forward rather than on a timer: the moment
+/// the answer matters is the moment somebody looks, and switching windows is
+/// what the report describes — two apps side by side, clicking between them.
+  testWidgets('coming back to the app picks up another device\'s change', (
+    tester,
+  ) async {
+    final server = _PresenceServer();
+
+    await _pump(tester, server: server);
+    expect(find.byTooltip('Taking calls — tap to stop'), findsOneWidget);
+
+    final readsAtStart = server.reads;
+
+    // The other device sets it. Nothing tells this app.
+    server.state = 'dnd';
+    await tester.pump();
+    expect(
+      find.byTooltip('Taking calls — tap to stop'),
+      findsOneWidget,
+      reason: 'it changed without anybody looking, which is not the behaviour '
+          'under test',
+    );
+
+    // Somebody clicks back into this window.
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(
+      server.reads,
+      greaterThan(readsAtStart),
+      reason: 'the app came forward and never asked',
+    );
+    expect(find.byTooltip('Not taking calls — tap to start again'), findsOneWidget);
+  });
+
+  /// And it does not ask on every lifecycle event.
+  ///
+  /// The control. A refresh wired to every state change would also pass the
+  /// test above while asking the server each time the app is backgrounded,
+  /// hidden or paused — on every desk in the company, all day.
+  testWidgets('being backgrounded does not ask', (tester) async {
+    final server = _PresenceServer();
+
+    await _pump(tester, server: server);
+    final readsAtStart = server.reads;
+
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.paused,
+      AppLifecycleState.detached,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+      await tester.pump();
+    }
+
+    expect(server.reads, readsAtStart);
+  });
+
 }
 
 /// A presence endpoint that remembers, because the bug is about ordering.
@@ -217,6 +285,16 @@ Future<void> _pump(
 }
 
 class _FakeDevice implements VoiceDevice {
+  // Android's Telecom account. Settable so a test can put the desk into the
+  // one state a retry cannot fix, rather than only the happy one.
+  @override
+  bool needsCallingAccount = false;
+
+  var openedCallingSettings = 0;
+
+  @override
+  Future<void> openCallingSettings() async => openedCallingSettings++;
+
   @override
   void Function()? onAnswered;
 

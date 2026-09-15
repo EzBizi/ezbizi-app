@@ -148,6 +148,7 @@ sessions either. The SHA is the only handle that survives a rename.
 > inherits without choosing it — harmless while Play only needs it to rise, and
 > confusing at exactly the wrong moment because it is invisible from either side.
 | **Deploy** | `scripts/deploy.sh` · `scripts/sandbox.sh` · the production symlink and SSH path · the release rows in `EZBIZI-STATUS.md` | `ezbizi-a1` |
+| **Mail — cross-cutting** | `app/Support/Mail/` (MailDispatcher, SendingIdentityResolver, MailTransport, PlatformIdentity, MailIdentity, SendingState, MailStatus, TenantSmtpHost) · `app/Models/SendingIdentity.php`. **Owns the transport and who a message is FROM, not what any module sends.** Added 2026-09-14 because this had no row and the gap bit twice in one day. **Reshaped later the same day by Jose's two rulings.** EzBizi's own transport now carries only EzBizi's own messages — signing in, password resets, joining — so `MailDispatcher::asTenant` throws unconditionally and the domain-verification flow is DELETED: no `SendingIdentitiesController`, no `DomainVerification`/`DnsVerifier`, no `mail/sending-identity` routes, no Settings card, no `mail.verification` config (`474fd1e6`, `b32fc797`). What replaces it is `throughTenantProvider` — the tenant's OWN SMTP, credentials on the existing row, host guarded by `TenantSmtpHost` against SSRF (`79b5e142`). **Nothing in `app/` writes a `SendingIdentity` any more**; the screen that will is not built. The `sending_identities` table is deliberately NOT dropped and holds 0 rows. | `ezbizi-ses` |
 | **UI/UX — cross-cutting** | `client/lib/core/theme.dart` · `module_screens.dart` · `dashboard_panels.dart` · `ui_strings.dart` (all four verified present). **Owns the decision, not the module:** general layout, module screens, dashboard panels and glances, navigation, and any new or changed UI. Ping before touching the four files above. Process: ask → three HTML mockups → Jose picks one → the module session implements it (`StartUp.md` §6; worked examples in `docs/previews/`) | `ezbizi-ea` |
 
 > **The carve-out, so a defect fix is not stuck behind a design round trip.**
@@ -203,6 +204,20 @@ Name these rather than assuming a module covers them.
   single point of failure an earlier version of this file called it. Recorded because
   the absence of a backup is unprovable from inside the repo — the next reader would
   otherwise re-derive the same alarm from the same evidence.
+
+- **`client/windows/runner/` is split per file, not per directory.** Monitoring owns
+  `monitoring_specs.cpp`, `monitoring_screenshot.cpp`, `monitoring_input.cpp` and
+  `monitoring_screenshot.h` — confirmed by them against their own commits, 2026-09-14.
+  **`win32_window.cpp` and `main.cpp` are deliberately owned by NOBODY.** They are the
+  generic Flutter shell every module's native behaviour passes through, and Monitoring
+  declined them on the reasoning that is worth keeping: making them Monitoring's would
+  mean needing their permission to fix a tray icon. It decides things no Dart test can
+  see — the single-instance mutex, close-to-tray instead of quit, and the tray icon the
+  "your screen is being controlled" notice was drawn on. Until `06dc4c81` that icon was
+  added only at `WM_CLOSE`, so the notice could not appear while the window was open;
+  `ee22c3a8` then gave it an in-app banner, because a tray balloon is a courtesy the OS
+  may decline while reporting success. Two sessions edited this file in one afternoon.
+  If you touch it, say so.
 
 ## Contested files, edited in regions
 

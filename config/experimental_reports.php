@@ -1,0 +1,54 @@
+<?php
+
+/*
+ * TEMPORARY. This whole file goes when the Experimental report does.
+ *
+ * Its own file rather than a block in `config/services.php` for two reasons:
+ * that file is contested and edited one provider block per module, and this
+ * one is meant to be deletable in a single `rm` when EzBizi's own Phone module
+ * answers the question RingCentral is being asked here.
+ *
+ * Nothing is defaulted to a working value. An absent credential must read as
+ * "not connected" on the screen rather than as an empty report, because an
+ * empty report and a missing connection look identical and mean opposite
+ * things — the same failure the Leads module was built to avoid.
+ */
+return [
+
+    'ringcentral' => [
+        // JWT flow, server-side app. Created 2026-09-14 on the A-1 Chimney
+        // account as "EzBizi Reports": private, production, scope Read Call Log
+        // ONLY. Values in H:/Development/Credentials/, never in git.
+        'server' => env('RINGCENTRAL_SERVER', 'https://platform.ringcentral.com'),
+        'client_id' => env('RINGCENTRAL_CLIENT_ID'),
+        'client_secret' => env('RINGCENTRAL_CLIENT_SECRET'),
+        'jwt' => env('RINGCENTRAL_JWT'),
+    ],
+
+    /*
+     * ── WORKIZ IS NOT HERE ANY MORE, AND THAT IS THE POINT ──────────
+     *
+     * It used to be `WORKIZ_API_TOKENS="Nationwide=abc|CT=def"`. Jose ruled it
+     * out: "connect them to each of their designated franchises." A label in an
+     * env string cannot say which branch a token belongs to, so the report
+     * could only ever be organization-wide while the tokens lived here.
+     *
+     * They are now `social_connections` rows with `scope_type = franchise`,
+     * connected per branch through `WorkizConnectController` and read by
+     * `WorkizJobs`. Same store Google Ads and GBP use. Deliberately NOT
+     * `leads_franchise_id` — that answers where a connection's ENQUIRIES get
+     * assigned, which a read-only jobs report never asks.
+     *
+     * Nothing is left behind as a fallback ON PURPOSE. An env token and a
+     * connected branch would be two sources of truth for one question, and the
+     * one that wins would be whichever the code happened to check first.
+     *
+     * What this leaves in the world, for whoever removes the report: ten Workiz
+     * v1 account tokens in encrypted `credentials` columns. They cannot be
+     * scoped read-only — measured, the per-resource permissions wizard belongs
+     * to Workiz's v2 system, whose key is refused by the v1 endpoint this uses —
+     * so each of them can delete that branch's jobs. Disconnect them when the
+     * report goes.
+     */
+
+];

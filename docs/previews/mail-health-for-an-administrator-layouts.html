@@ -1,0 +1,320 @@
+<!doctype html><meta charset="utf-8">
+<title>Mail health for an administrator &mdash; layouts</title>
+<style>
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --bad:#BA1A1A;--warn:#8A5A00;--ok:#1B6B4A;--paper:#fff;--ground:#f4f6f7;
+      --fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:8px 0 0;max-width:820px}
+.sub b{color:var(--ink)}
+#nums,#ctl{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 0}
+#ctl{padding-bottom:16px;align-items:center;font-size:13px}
+button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#ctl button{border-radius:8px;padding:5px 10px}
+#ctl button[aria-current=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.win{width:620px;background:var(--paper);border:1px solid var(--line);
+     border-radius:14px;overflow:hidden}
+.phone{width:340px;background:var(--paper);border:1px solid var(--line);
+       border-radius:24px;overflow:hidden}
+.top{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700}
+.bd{padding:16px 18px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.card .h{font-weight:700;margin-bottom:4px}
+.card .n{font-size:12.5px;color:var(--muted);line-height:1.5}
+.addr{margin-top:10px;font-weight:600}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;
+     border-radius:999px;margin-left:8px;vertical-align:middle}
+.tag.ok{background:rgba(27,107,74,.1);color:var(--ok)}
+.tag.bad{background:rgba(186,26,26,.1);color:var(--bad)}
+.strip{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;
+       border-radius:10px;font-size:13px;line-height:1.5;margin-bottom:14px}
+.s-bad{background:rgba(186,26,26,.06);border:1px solid rgba(186,26,26,.3)}
+.s-unk{background:var(--fill);border:1px solid var(--line)}
+.strip .ic{font-size:15px}
+.strip b{display:block;margin-bottom:2px}
+.strip .t{flex:1}
+.banner{padding:11px 18px;font-size:13px;display:flex;gap:10px;align-items:center;
+        border-bottom:1px solid rgba(186,26,26,.3);background:rgba(186,26,26,.07);
+        color:var(--bad);font-weight:600}
+.row{display:flex;align-items:center;gap:10px;padding:11px 0;
+     border-top:1px solid var(--line);font-size:13.5px}
+.row .g{flex:1}
+.row .v{color:var(--muted);font-size:12.5px}
+.ln{height:9px;background:var(--fill);border-radius:4px;margin:8px 0}
+.ln.s{width:50%}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);
+      border-radius:10px;font-size:13px;background:var(--paper);max-width:680px;
+      line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>Mail health for an administrator &mdash; pick one desktop and one mobile</h1>
+  <p class="sub"><b>Measured first, and it changes what is being drawn.</b> HR named
+  two facts that must not become one sentence: <b>(A)</b> the platform transport is
+  not sending, which an administrator <i>cannot</i> fix, and <b>(B)</b> this
+  organization has no verified sending identity, which they can.
+  <b>B had a home when this was drawn, and no longer does.</b>
+  <code>sending_identity_panel.dart</code>, its card, its 21 tests, four routes and
+  the DNS machinery behind them were <b>deleted the same evening</b> &mdash; Jose:
+  <i>&ldquo;I HAVE ANSWERED 4 TIMES ALREADY, SO PLEASE TALK TO EACH OTHER, GET RID
+  OF IT.&rdquo;</i> Re-measured rather than taken on the relay: the file is gone,
+  <code>mail/sending-identity</code> matches nothing in the routes, and
+  <code>tenant_domains</code> is out of <code>MailStatus::summary()</code>.</p>
+  <p class="sub" style="margin-top:10px"><b>The paragraphs below are kept as the
+  record of a brief that was correct, cited, agreed by two sessions, and describing
+  nothing, within six hours.</b> The FINDING survives intact and was never about the
+  card &mdash; two facts that must not become one sentence. <b>A is unaffected and
+  still buildable: desktop 2, mobile 5.</b> <b>B's remedy is now &ldquo;this
+  business needs its own mail server connected&rdquo;</b> (<code>79b5e142</code>,
+  the tenant's own SMTP) &mdash; and <b>which screen that points at is not drawn
+  here, because I have not established it and the mail owner has.</b> That commit is
+  server-only; <code>TenantSmtpHost</code> is an SSRF guard whose docblock says a
+  settings form is intended, and the Email module already has an SMTP form for
+  mailboxes. Inferring which from a class name is the mistake this gallery already
+  made once today.</p>
+  <p class="sub" style="margin-top:10px"><b>And its first sentence is false, which
+  HR found by measuring the quote I had cited as evidence.</b> The card says
+  <i>&ldquo;Newsletters and anything else your own people write go out from this
+  address&rdquo;</i>, and <b>a newsletter never touches the sending identity at
+  all</b>: <code>NewsletterSenders::for()</code> has one arm, Mailchimp, and that
+  client uses the tenant&rsquo;s own API key, so the from address is whatever their
+  Mailchimp account sends as. Measured callers of <code>asTenant</code>:
+  <code>ActionRunner:473</code>, <code>SendSavedReport:171</code> and
+  <code>InspectionReportMail</code>. <b>So the card&rsquo;s headline example is the
+  one thing verifying a domain does not change</b> &mdash; somebody does DNS work
+  to fix their newsletters and nothing about their newsletters changes. A remedy
+  that does not remedy, arriving through an <i>example</i> rather than through the
+  state sentence. The copy below is corrected; the note belongs to SES, so this is
+  a proposal rather than a change.</p>
+  <p class="sub" style="margin-top:10px">So this is not a new four-state panel.
+  <b>B is a STATE the card gains</b> &mdash; putting it anywhere else gives one fact
+  two voices that can disagree. <b>A is the gap</b>, and the three options differ on
+  where it goes, because &ldquo;EzBizi is not delivering anything&rdquo; is not a
+  setting and does not belong in a settings card about your own address.
+  <b>Nothing here shows <code>missing</code></b> &mdash; that is
+  <code>AWS_ACCESS_KEY_ID</code> and belongs to staff.</p>
+  <p class="sub" style="margin-top:10px"><b>STATE B ANSWERED, 2026-09-14, and it
+  is not a from-line question.</b> Jose: <i>&ldquo;Email should not be sent as
+  EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY,
+  PASSWORD, RESET, VERIFICATIONS, ETC.&rdquo;</i> So EzBizi&rsquo;s mail service
+  carries EzBizi&rsquo;s own transactional messages and nothing else, and
+  <b>&ldquo;verify a domain&rdquo; is not the remedy</b> &mdash; verifying one
+  would not make a tenant&rsquo;s own mail EzBizi&rsquo;s to carry. A
+  <code>Verify a domain &rsaquo;</code> link on that card would be a remedy that
+  does not remedy: <b>the same defect this gallery corrected in the same
+  card&rsquo;s note three hours earlier</b>, which is how close it came to
+  shipping twice.<br><br><b>Drawn as an informational state with the
+  tenant&rsquo;s own provider as the way out</b>, and flagged rather than
+  settled: whether the sending-identity card still has a job under this ruling,
+  and what happens to the three measured <code>asTenant</code> callers, belongs
+  to the mail owner. <b>B may not be a health state at all</b> &mdash; a rule
+  about what a service is for is not a fault.</p>
+</header>
+<div id="nums"></div>
+<div id="ctl"><b style="font-weight:700">State:</b></div>
+<div id="stage"></div>
+<script>
+var S = 'B';
+var STATES = {
+  fine:{l:'Fine'}, A:{l:'A · platform not sending'},
+  B:{l:'B · no verified identity'}, AB:{l:'A and B together'},
+  D:{l:'D · could not be checked'}
+};
+function isA(){ return S === 'A' || S === 'AB'; }
+function isB(){ return S === 'B' || S === 'AB'; }
+function isD(){ return S === 'D'; }
+
+/* The card that already exists. B is a state of THIS, in every option. */
+function card(){
+  var bad = isB();
+  return '<div class="card"><div class="h">Email from this business' +
+    (bad ? '<span class="tag bad">Not verified</span>'
+         : '<span class="tag ok">Verified</span>') + '</div>' +
+    '<div class="n">Saved reports, inspection reports and automations that ' +
+    'email somebody go out from this address. Signing in, password resets and ' +
+    'joining messages always come from EzBizi, whatever is set here. ' +
+    'Newsletters go out through your own provider and are not affected by ' +
+    'this.</div>' +
+    (bad
+      ? '<div class="n" style="color:var(--bad);margin-top:9px"><b>Your own ' +
+        'mail has nowhere to go from here.</b> Reports, inspection reports and ' +
+        'automation emails need your own email provider connected. ' +
+        'EzBizi&rsquo;s mail carries signing in, password resets and joining ' +
+        'messages, and only those.</div>' +
+        '<div class="addr" style="color:var(--primary)">Connect a provider ' +
+        '&rsaquo;</div>'
+      : '<div class="addr">hello@everdoors.com</div>') +
+    '</div>';
+}
+function aStrip(short){
+  if (isD()) {
+    return '<div class="strip s-unk"><span class="ic">?</span><span class="t">' +
+      '<b>We could not check whether mail is going out.</b>' +
+      'Nothing is known to be wrong. Try again in a few minutes.</span></div>';
+  }
+  if (!isA()) return '';
+  return '<div class="strip s-bad"><span class="ic">!</span><span class="t">' +
+    '<b>EzBizi is not sending email right now.</b>' +
+    (short ? 'Nothing is reaching anybody &mdash; invitations, password resets, ' +
+             'or your own messages. This is ours to fix and we are on it; ' +
+             'nothing here will help.'
+           : 'Nothing is reaching anybody &mdash; invitations, password resets, ' +
+             'or anything your people write. <b>This is not something you can ' +
+             'change here.</b> It is ours to fix. If it is still saying this in ' +
+             'an hour, tell us.') +
+    '</span></div>';
+}
+function settingsTop(){
+  return '<div class="top">Settings &rsaquo; Business</div>';
+}
+function filler(){
+  return '<div class="row"><span class="g">Time zone</span>' +
+    '<span class="v">America/New_York</span></div>' +
+    '<div class="row"><span class="g">Week starts</span>' +
+    '<span class="v">Monday</span></div>';
+}
+
+/* 1 — A sits with the mail topic, under the card. */
+function D1(){
+  return '<div class="win">' + settingsTop() +
+    '<div class="bd">' + card() + aStrip() + filler() + '</div></div>' +
+    '<div class="note"><b>One place for everything about mail.</b> Somebody who ' +
+    'came to Settings wondering about email finds both facts together, in the ' +
+    'order they matter: your own address first, then whether the platform ' +
+    'underneath it is up.<br><br><b>The cost, and it is the real one:</b> A is ' +
+    'not a setting. It affects password resets for people who will never open ' +
+    'Settings, and putting it here means it is found only by somebody already ' +
+    'looking at the one screen that has nothing to do with the failure.</div>';
+}
+
+/* 2 — A is a banner above everything; B stays on the card. */
+function D2(){
+  return '<div class="win">' + (isA() || isD() ? '' : '') +
+    (isA() ? '<div class="banner">! EzBizi is not sending email right now &mdash; ' +
+             'ours to fix, nothing you can change.</div>' : '') +
+    settingsTop() + '<div class="bd">' + card() + filler() + '</div></div>' +
+    '<div class="note"><b>The two facts get the two shapes they deserve.</b> B is ' +
+    'a state of the thing you configure, so it lives on that card. A is not a ' +
+    'setting at all &mdash; it is an outage &mdash; so it rides above the screen ' +
+    'and can ride above every screen, where somebody wondering why a password ' +
+    'reset never arrived will actually meet it.<br><br><b>The cost:</b> a banner ' +
+    'is the loudest thing this app can do, and A is rare. It has to be right ' +
+    'about being rare, or it becomes the notice everybody scrolls past.</div>';
+}
+
+/* 3 — both on the card, one voice. */
+function D3(){
+  var bad = isA() || isB();
+  return '<div class="win">' + settingsTop() + '<div class="bd">' +
+    '<div class="card"><div class="h">Email from this business' +
+      (bad ? '<span class="tag bad">Not sending</span>'
+           : '<span class="tag ok">Sending</span>') + '</div>' +
+      '<div class="n">Saved reports, inspection reports and automations that ' +
+      'email somebody go out from this address. Signing in, password resets ' +
+      'and joining messages always come from EzBizi. Newsletters go out ' +
+      'through your own provider.</div>' +
+      (isA()
+        ? '<div class="n" style="color:var(--bad);margin-top:9px">EzBizi is not ' +
+          'sending email right now. Ours to fix.</div>' : '') +
+      (isB()
+        ? '<div class="n" style="color:var(--bad);margin-top:9px">No domain is ' +
+          'verified, so your own mail is refused.</div>' : '') +
+      (bad ? '' : '<div class="addr">hello@everdoors.com</div>') +
+    '</div>' + filler() + '</div></div>' +
+    '<div class="note"><b>One card, one badge, both reasons under it.</b> The ' +
+    'fewest moving parts, and the version somebody scanning the screen reads ' +
+    'fastest.<br><br><b>And it is the one I would argue against.</b> The badge ' +
+    'has to say one word about two facts with two owners and two remedies &mdash; ' +
+    '&ldquo;Not sending&rdquo; covers both and tells you nothing about which. ' +
+    'That is the merge HR asked for this to avoid, arriving through the badge ' +
+    'rather than through the sentence. Shown because it is the obvious design ' +
+    'and it should be rejected deliberately rather than never drawn.</div>';
+}
+
+/* 4 — mobile: card and strip stacked. */
+function M4(){
+  return '<div class="phone">' + settingsTop() +
+    '<div class="bd">' + card() + aStrip(true) + '</div></div>' +
+    '<div class="note">Desktop 1 on a phone. The card first because it is the ' +
+    'half with something to do, then A underneath.<br><br><b>Same cost, ' +
+    'sharper:</b> a phone screen shows about one card, so A is below the fold ' +
+    'on the screen it is least likely to be read on.</div>';
+}
+
+/* 5 — mobile: A above the bar, B on the card. */
+function M5(){
+  return '<div class="phone">' +
+    (isA() ? '<div class="banner">! EzBizi is not sending email</div>' : '') +
+    settingsTop() + '<div class="bd">' + card() + '</div></div>' +
+    '<div class="note">Desktop 2 on a phone, and the case for it is stronger ' +
+    'here: a banner is the one thing that survives a small screen without ' +
+    'scrolling.<br><br>Wording is shortened to one line because a phone banner ' +
+    'that wraps to four lines is a banner people dismiss. <b>The detail moves ' +
+    'into the tap</b>, and the one-line version still names the owner &mdash; ' +
+    '&ldquo;EzBizi is not sending&rdquo; rather than &ldquo;email is not ' +
+    'sending&rdquo;, so nobody goes hunting through their own settings.</div>';
+}
+
+/* 6 — mobile: A only where it bites. */
+function M6(){
+  return '<div class="phone">' + '<div class="top">People &rsaquo; Invite</div>' +
+    '<div class="bd">' +
+    (isA()
+      ? '<div class="strip s-bad"><span class="ic">!</span><span class="t">' +
+        '<b>EzBizi is not sending email right now.</b>They will not get a ' +
+        'message. Copy the link and hand it over yourself.</span></div>'
+      : '<div class="strip s-unk"><span class="ic">✓</span><span class="t">' +
+        '<b>Ready to invite.</b>They will get a joining message.</span></div>') +
+    '<div class="ln"></div><div class="ln s"></div>' +
+    '</div></div>' +
+    '<div class="note"><b>Not in Settings at all.</b> A is told to somebody at ' +
+    'the moment it costs them something &mdash; about to invite, about to send ' +
+    '&mdash; with the remedy that actually works right then, which is the link ' +
+    'in their hand rather than a fix they cannot make.<br><br><b>The cost:</b> ' +
+    'it is many places rather than one, every one of them somebody else&rsquo;s ' +
+    'screen, and an administrator who wants to know &ldquo;is mail working?&rdquo; ' +
+    'without doing anything has nowhere to look. <b>Best paired with 2</b> rather ' +
+    'than chosen instead of it.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; A under the card, one place for mail', D1],
+  2:['2 &middot; Desktop &mdash; A as a banner, B on the card', D2],
+  3:['3 &middot; Desktop &mdash; both on one card, one badge', D3],
+  4:['4 &middot; Mobile &mdash; card then A, stacked', M4],
+  5:['5 &middot; Mobile &mdash; A above the bar, B on the card', M5],
+  6:['6 &middot; Mobile &mdash; A only where it bites', M6]
+};
+var nums=document.getElementById('nums'), stage=document.getElementById('stage'),
+    ctl=document.getElementById('ctl'), cur=1;
+function show(k){
+  cur=k;
+  stage.innerHTML='<p class="cap">'+OPT[k][0]+'</p>'+OPT[k][1]();
+  Array.prototype.forEach.call(nums.children,function(b){
+    b.setAttribute('aria-current', b.dataset.k===String(k));});
+}
+Object.keys(OPT).forEach(function(k){
+  var b=document.createElement('button');
+  b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
+  b.onclick=function(){show(+k);}; nums.appendChild(b);});
+Object.keys(STATES).forEach(function(s){
+  var b=document.createElement('button');
+  b.textContent=STATES[s].l; b.dataset.s=s;
+  b.onclick=function(){S=s;
+    Array.prototype.forEach.call(ctl.querySelectorAll('button'),function(x){
+      x.setAttribute('aria-current',x.dataset.s===s);});
+    show(cur);};
+  ctl.appendChild(b);});
+ctl.querySelectorAll('button')[2].setAttribute('aria-current','true');
+show(1);
+</script>

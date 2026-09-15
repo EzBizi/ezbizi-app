@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/widgets/controlled_banner.dart';
+import 'package:flutter/foundation.dart';
 import 'package:ezbizi_client/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -98,6 +100,159 @@ void main() {
       );
     },
   );
+
+  /// And the beat is what gives the availability icon a minute hand.
+  ///
+  /// ── The report ───────────────────────────────────────────────────
+  ///
+  /// Jose: "the status now syncs across devices, which is good, but only
+  /// displays the change once you change tabs." Do Not Disturb set on the web
+  /// reached the desktop's server state immediately; the desktop's ICON found
+  /// out only when something else made it look.
+  ///
+  /// The hook that was supposed to cover it watches
+  /// `AppLifecycleState.resumed`, which tracks whether the app is VISIBLE —
+  /// and two windows side by side are both visible the whole time, so it never
+  /// fired in the arrangement the report was about.
+  ///
+  /// ── Why this test lives here ─────────────────────────────────────
+  ///
+  /// The fix adds no timer: the shell hands the availability icon the beat
+  /// this file already exists to prove happens. That makes the wiring the
+  /// fragile part — one assignment in `_HomeShellState.initState` — and a test
+  /// of either piece alone would pass with that line deleted.
+  testWidgets('a beat makes the availability icon re-read the server', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var presenceReads = 0;
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/phone/presence/me')) {
+          presenceReads++;
+          return _json({
+            'data': {'state': 'registered', 'has_line': false},
+          });
+        }
+        if (request.url.path.endsWith('/me')) return _json({'data': _me});
+        if (request.url.path.endsWith('/monitoring/heartbeat')) {
+          return http.Response('', 204);
+        }
+
+        return _json({'message': 'Nothing stubbed for this screen.'}, 500);
+      }),
+    );
+
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: HomeShell(api: api, session: session, address: null),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final beforeTheBeat = presenceReads;
+    expect(
+      beforeTheBeat,
+      greaterThan(0),
+      reason: 'the icon never read presence at all, so this test cannot tell '
+          'a second read from a first',
+    );
+
+    // Nothing touched. Only a minute passing.
+    await tester.pump(const Duration(seconds: 60));
+    await tester.pumpAndSettle();
+
+    expect(
+      presenceReads,
+      greaterThan(beforeTheBeat),
+      reason: 'a minute passed and nothing asked the server what this person '
+          "is — so a colleague's change to their availability would sit "
+          'unshown until they happened to change tabs',
+    );
+  });
+
+  testWidgets(
+    'the app itself says so while somebody is driving the machine',
+    (tester) async {
+      // The CALLER test for the controlled banner. remote_control_service_test
+      // proves the published flag follows the native notice, and the banner is
+      // a widget that renders a sentence — neither proves the SHELL ever joins
+      // them, which is one `if (_remoteControl != null)` in its build method.
+      //
+      // It matters more than usual here. The native tray notice could only
+      // ever appear while the window was HIDDEN, because win32_window.cpp
+      // added its icon at WM_CLOSE — so for the whole time remote control has
+      // shipped, somebody sitting in front of the OPEN app was told nothing
+      // while being driven. This banner is the surface that does not depend on
+      // the OS agreeing to show a balloon, and a test that it is actually
+      // wired is the difference between a consent notice and an intention.
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // RemoteControlService is only constructed where capture is supported,
+      // and `flutter test` reports android whatever the host really is.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+
+      final api = ApiClient(
+        client: MockClient((request) async {
+          if (request.url.path.endsWith('/me')) return _json({'data': _me});
+          if (request.url.path.endsWith('/monitoring/heartbeat')) {
+            return http.Response('', 204);
+          }
+          if (request.url.path.endsWith('/monitoring/input-pending')) {
+            // Being driven AND opted in — both, because either alone must
+            // stay silent, which remote_control_service_test pins separately.
+            return _json({
+              'events': const <dynamic>[],
+              'control_wanted': true,
+              'indicator': true,
+            });
+          }
+          return _json({'message': 'Nothing stubbed for this screen.'}, 500);
+        }),
+      );
+
+      final session = Session(api);
+      await tester.runAsync(() => session.adopt('tok'));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light(),
+          home: HomeShell(api: api, session: session, address: null),
+        ),
+      );
+      await tester.pump();
+
+      // Cleared as soon as the shell has mounted — the override is only needed
+      // for the constructor's capability gate, and testWidgets asserts every
+      // foundation debug variable is back to null before the body ends, which
+      // addTearDown is too late to satisfy.
+      debugDefaultTargetPlatformOverride = null;
+
+      expect(find.text(ControlledBanner.message), findsNothing,
+          reason: 'Nothing is claimed before the first poll has answered.');
+
+      // Let the control poll run and answer.
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(seconds: 5));
+      }
+
+      expect(find.text(ControlledBanner.message), findsOneWidget,
+          reason: 'The shell never rendered the banner. The service knows the '
+              'machine is being controlled and nothing on screen says so — '
+              'which is exactly the state the tray notice was already in.');
+    },
+  );
+
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(

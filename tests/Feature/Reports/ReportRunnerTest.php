@@ -5,6 +5,12 @@ namespace Tests\Feature\Reports;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\MonitoredDevice;
+use App\Models\Service;
+use App\Models\User;
+use App\Support\Access\ScopeReach;
+use App\Support\Scoping\ViewScope;
+use App\Support\Services\ServiceVisibility;
 use App\Support\Reports\ReportRunner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -332,6 +338,240 @@ class ReportRunnerTest extends TestCase
         $this->assertCount(2, $result->rows, 'one row per job, not one per customer');
         $this->assertContains('First', $titles);
         $this->assertContains('Second', $titles);
+    }
+
+    /**
+     * THE CATALOGUE PLACE RULE MUST AGREE WITH THE MODULE'S OWN LIST.
+     *
+     * Services, Inventory, Fleet, Training and Leads have a nullable company
+     * AND a nullable franchise, so a row can sit on the organization, on a
+     * company as General, or on one branch. The runner delegates that to
+     * InventoryVisibility rather than re-deriving it — and this asserts the two
+     * actually return the same set, so a report and the Services tab cannot
+     * drift apart silently. Delegation without this test is just a longer way
+     * of writing a second copy.
+     */
+    public function test_a_catalogue_report_returns_what_the_modules_own_list_returns(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $this->inTenant($tenant['org'], function () use ($tenant, $other) {
+            Service::factory()->create(['name' => 'Group wide']);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'Company general',
+            ]);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => 'Mine',
+            ]);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $other->id,
+                'name' => 'Not mine',
+            ]);
+        });
+
+        $limited = $this->userWithRole(
+            $tenant,
+            'One Franchise',
+            ['reports.view', 'services.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $reported = array_column(
+            $this->runReport([
+                'root' => 'services',
+                'columns' => [['resource' => 'services', 'column' => 'name']],
+                'filters' => [],
+            ], $limited)->rows,
+            'services.name',
+        );
+
+        $fromTheTab = $this->inTenant($tenant['org'], fn () => ServiceVisibility::constrain(
+            Service::query(),
+            $limited,
+            ViewScope::forUser($limited),
+        )->pluck('name')->all());
+
+        sort($reported);
+        sort($fromTheTab);
+
+        // The control: without it, two empty lists would satisfy both
+        // assertions below and the test would prove nothing at all.
+        $this->assertContains('Mine', $reported, 'the report returned nothing, so this test is vacuous');
+
+        $this->assertSame($fromTheTab, $reported, 'a report disagrees with the Services tab');
+        $this->assertNotContains('Not mine', $reported, "another branch's service was reported");
+    }
+
+    /**
+     * The half a plain `franchise_id IN (...)` would have got wrong, quietly.
+     * The column is nullable, so rows filed above a branch have NULL and a
+     * whereIn drops them — a report that is too SMALL, which nobody reports
+     * because they cannot see what is missing.
+     */
+    public function test_rows_filed_above_a_branch_are_still_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            Service::factory()->create(['name' => 'Group wide']);
+            Service::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'name' => 'Company general',
+            ]);
+        });
+
+        $limited = $this->userWithRole(
+            $tenant,
+            'One Franchise',
+            ['reports.view', 'services.view'],
+            onlyAt: $tenant['franchise'],
+        );
+
+        $reported = array_column(
+            $this->runReport([
+                'root' => 'services',
+                'columns' => [['resource' => 'services', 'column' => 'name']],
+                'filters' => [],
+            ], $limited)->rows,
+            'services.name',
+        );
+
+        $this->assertContains('Group wide', $reported);
+        $this->assertContains('Company general', $reported);
+    }
+
+    /**
+     * THE DISCLOSURE DEFECT THIS FIXES, pinned so it cannot come back.
+     *
+     * People were mapped organization-wide with a written justification that
+     * they carry no company or franchise column. The column half was true; the
+     * conclusion was wrong. HR's own list narrows people by REACH through their
+     * assignments, so a report returned every user in the tenant while the
+     * Human Resources tab showed fewer — a one-branch reader could read the
+     * name, email and phone of somebody they have no authority over. Shipped in
+     * 0.0.0192.
+     */
+    public function test_a_person_outside_this_readers_reach_is_not_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $mine = $this->userWithRole(
+            $tenant, 'Mine', ['hr.view'], email: 'mine@alpha.test', onlyAt: $tenant['franchise'],
+        );
+        $theirs = $this->userWithRole(
+            $tenant, 'Theirs', ['hr.view'], email: 'theirs@alpha.test', onlyAt: $other,
+        );
+
+        $reader = $this->userWithRole(
+            $tenant, 'Reader', ['reports.view', 'hr.view'], onlyAt: $tenant['franchise'],
+        );
+
+        $names = array_column(
+            $this->runReport([
+                'root' => 'users',
+                'columns' => [['resource' => 'users', 'column' => 'name']],
+                'filters' => [],
+            ], $reader)->rows,
+            'users.name',
+        );
+
+        // The control: the reader must see SOMEBODY, or the assertion below
+        // would be satisfied by a report that returned nothing at all.
+        $this->assertContains($reader->name, $names, 'the reader cannot even see themselves');
+
+        $this->assertContains($mine->name, $names, 'somebody in reach was missing');
+        $this->assertNotContains(
+            $theirs->name,
+            $names,
+            'a person outside this reader\'s reach was reported',
+        );
+    }
+
+    /**
+     * A report and the Human Resources tab must answer with the same set.
+     * Delegating to the shared predicate without asserting this is a longer way
+     * of writing a second copy.
+     */
+    public function test_a_people_report_agrees_with_hrs_own_list(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $this->userWithRole($tenant, 'Mine', ['hr.view'], email: 'm@alpha.test', onlyAt: $tenant['franchise']);
+        $this->userWithRole($tenant, 'Theirs', ['hr.view'], email: 't@alpha.test', onlyAt: $other);
+
+        $reader = $this->userWithRole(
+            $tenant, 'Reader', ['reports.view', 'hr.view'], onlyAt: $tenant['franchise'],
+        );
+
+        $reported = array_column(
+            $this->runReport([
+                'root' => 'users',
+                'columns' => [['resource' => 'users', 'column' => 'name']],
+                'filters' => [],
+            ], $reader)->rows,
+            'users.name',
+        );
+
+        $fromTheTab = $this->inTenant($tenant['org'], fn () => User::query()
+            ->where(fn ($q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $reader))
+            ->pluck('name')->all());
+
+        sort($reported);
+        sort($fromTheTab);
+
+        $this->assertNotEmpty($reported, 'the report returned nothing, so this proves nothing');
+        $this->assertSame($fromTheTab, $reported);
+    }
+
+    /**
+     * A DEVICE BELONGS TO A PERSON, NOT TO A BRANCH — which is why Monitoring
+     * needed no migration. Reach is checked against the device's owner, one hop
+     * away, exactly as Monitoring's own controller does it.
+     */
+    public function test_a_device_belonging_to_someone_out_of_reach_is_not_reported(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha F2');
+
+        $mine = $this->userWithRole($tenant, 'Mine', ['hr.view'], email: 'dm@alpha.test', onlyAt: $tenant['franchise']);
+        $theirs = $this->userWithRole($tenant, 'Theirs', ['hr.view'], email: 'dt@alpha.test', onlyAt: $other);
+
+        $this->inTenant($tenant['org'], function () use ($mine, $theirs) {
+            foreach ([[$mine, 'Mine laptop'], [$theirs, 'Their laptop']] as [$person, $label]) {
+                MonitoredDevice::query()->create([
+                    'organization_id' => $person->organization_id,
+                    'user_id' => $person->id,
+                    'device_key' => 'k-'.$person->id,
+                    'label' => $label,
+                    'platform' => 'windows',
+                    // NOT NULL with no default; found by the insert refusing.
+                    'capabilities' => [],
+                ]);
+            }
+        });
+
+        $reader = $this->userWithRole(
+            $tenant, 'Reader', ['reports.view', 'monitoring.view'], onlyAt: $tenant['franchise'],
+        );
+
+        $labels = array_column(
+            $this->runReport([
+                'root' => 'monitored_devices',
+                'columns' => [['resource' => 'monitored_devices', 'column' => 'label']],
+                'filters' => [],
+            ], $reader)->rows,
+            'monitored_devices.label',
+        );
+
+        $this->assertContains('Mine laptop', $labels, 'a device in reach was missing');
+        $this->assertNotContains('Their laptop', $labels, "another branch's device was reported");
     }
 
     public function test_it_refuses_a_resource_that_is_not_in_the_map(): void

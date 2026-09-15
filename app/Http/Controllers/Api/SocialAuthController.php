@@ -42,7 +42,7 @@ class SocialAuthController extends Controller
     public function start(Request $request, string $network): JsonResponse
     {
         $oauth = $this->driverOrAbort($network);
-        $user  = $request->user();
+        $user = $request->user();
 
         // The permission follows the module that USES the connection, not this
         // controller. A Google Ads account is connected by whoever runs Leads.
@@ -71,22 +71,22 @@ class SocialAuthController extends Controller
         }
 
         $this->audit->log('social.sign_in_started', $user->organization, [
-            'provider'   => $oauth->provider()->value,
+            'provider' => $oauth->provider()->value,
             'scope_type' => $scopeType,
         ]);
 
         return response()->json(['data' => [
             'authorization_url' => $begun['url'],
-            'flow'              => $begun['flow'],
-            'expires_at'        => $begun['expires_at']->toIso8601String(),
-            'scopes'            => $oauth->scopes(),
+            'flow' => $begun['flow'],
+            'expires_at' => $begun['expires_at']->toIso8601String(),
+            'scopes' => $oauth->scopes(),
         ]]);
     }
 
     public function status(Request $request, string $network): JsonResponse
     {
         $oauth = $this->driverOrAbort($network);
-        $user  = $request->user();
+        $user = $request->user();
 
         abort_unless(
             $user->hasPermission($oauth->provider()->connectPermission()),
@@ -103,9 +103,9 @@ class SocialAuthController extends Controller
 
     public function callback(Request $request, string $network): Response
     {
-        $oauth  = $this->driverOrAbort($network);
-        $label  = $oauth->provider()->label();
-        $state  = (string) $request->query('state', '');
+        $oauth = $this->driverOrAbort($network);
+        $label = $oauth->provider()->label();
+        $state = (string) $request->query('state', '');
         $signIn = null;
 
         try {
@@ -141,7 +141,7 @@ class SocialAuthController extends Controller
     private function finish(SocialOAuth $oauth, SocialSignIn $signIn, string $code): Response
     {
         $organization = $signIn->organization;
-        $label        = $oauth->provider()->label();
+        $label = $oauth->provider()->label();
 
         if ($organization === null) {
             throw SocialOAuthRefused::noLongerPermitted(
@@ -166,7 +166,7 @@ class SocialAuthController extends Controller
                 ));
             }
 
-            $grant    = $oauth->exchange($code, $signIn->code_verifier);
+            $grant = $oauth->exchange($code, $signIn->code_verifier);
             $accounts = $oauth->identify($grant);
 
             if ($oauth->requiresRefreshToken() && ($grant->refreshToken === null || $grant->refreshToken === '')) {
@@ -174,20 +174,16 @@ class SocialAuthController extends Controller
             }
 
             $connections = $this->store($user, $signIn, $oauth->provider(), $grant, $accounts);
-            $first       = $connections[0];
-            $said        = count($connections) === 1
-                ? sprintf(
-                    '%s is connected to EzBizi as a %s account. You can close this window and '
-                    .'compose from Social Media Management.',
-                    $first->display_name,
-                    $label,
-                )
-                : sprintf(
-                    '%d %s Pages are connected to EzBizi. You can close this window and compose '
-                    .'from Social Media Management.',
-                    count($connections),
-                    $label,
-                );
+            $first = $connections[0];
+
+            // The provider says what it just connected and where it lands. This
+            // was two sprintf() calls here, saying "Pages" and "Social Media
+            // Management" whoever had connected — which announced 37 Google Ads
+            // "Pages" and sent somebody to a module those enquiries never reach.
+            $said = $oauth->provider()->connectedSentence(
+                count($connections),
+                (string) $first->display_name,
+            );
 
             $this->signIns->record($signIn, SocialOAuthSignIns::CONNECTED, $said);
 
@@ -222,16 +218,16 @@ class SocialAuthController extends Controller
                         $connection = new SocialConnection;
                         $connection->forceFill([
                             'organization_id' => $signIn->organization_id,
-                            'scope_type'      => $signIn->scope_type,
-                            'scope_id'        => $signIn->scope_id,
-                            'provider'        => $provider->value,
-                            'remote_id'       => $account->remoteId,
+                            'scope_type' => $signIn->scope_type,
+                            'scope_id' => $signIn->scope_id,
+                            'provider' => $provider->value,
+                            'remote_id' => $account->remoteId,
                         ]);
                     }
 
                     $connection->forceFill([
                         'display_name' => $account->displayName,
-                        'handle'       => $account->handle,
+                        'handle' => $account->handle,
                         // Google Ads: the manager this account is read through,
                         // null when the grant reaches it directly. Written on
                         // every connect so a row that gained a direct route
@@ -250,8 +246,8 @@ class SocialAuthController extends Controller
 
                     $tokens = [
                         'refresh_token' => $account->refreshToken ?? $grant->refreshToken,
-                        'access_token'  => $account->accessToken ?? $grant->accessToken,
-                        'scopes'        => $grant->scopes,
+                        'access_token' => $account->accessToken ?? $grant->accessToken,
+                        'scopes' => $grant->scopes,
                     ];
 
                     if ($grant->expiresIn !== null) {
@@ -282,10 +278,10 @@ class SocialAuthController extends Controller
                     }
 
                     $this->audit->log('social.connected', $connection, [
-                        'provider'     => $provider->value,
+                        'provider' => $provider->value,
                         'display_name' => $connection->display_name,
-                        'handle'       => $connection->handle,
-                        'scope_type'   => $connection->scope_type,
+                        'handle' => $connection->handle,
+                        'scope_type' => $connection->scope_type,
                     ], actor: $user);
 
                     $saved[] = $connection;
@@ -334,7 +330,7 @@ class SocialAuthController extends Controller
         // goes red — the picture says the same thing the sentence does, which
         // is the whole point of having a picture.
         $reach = $ok ? '100%' : '46%';
-        $wire  = $ok ? 'var(--cyan)' : '#C2412D';
+        $wire = $ok ? 'var(--cyan)' : '#C2412D';
 
         // The palette is the client's, transcribed. This page cannot read
         // EzBiziTheme — it is server-rendered HTML in a popup, outside Flutter
@@ -465,7 +461,7 @@ class SocialAuthController extends Controller
             return '';
         }
 
-        $cold  = $ok ? '' : ' cold';
+        $cold = $ok ? '' : ' cold';
         $pulse = $ok ? '<b></b>' : '';
 
         return <<<HTML

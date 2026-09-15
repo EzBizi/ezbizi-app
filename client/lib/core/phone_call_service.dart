@@ -56,7 +56,12 @@ class PhoneCallService extends ChangeNotifier {
   factory PhoneCallService.forTest(
     VoiceDevice device, {
     String callerId = '+12035550142',
-    String connectionId = 'cx-test',
+
+    // Nullable, because "a device that is up with no line recorded" is a real
+    // state and a dangerous one: it is what a desk looks like between stop()
+    // and the start() that follows, and it is the state in which the shell
+    // reaches for a line. A seam that could not express it could not test it.
+    String? connectionId = 'cx-test',
 
     // Without an api the desk cannot RELEASE presence, so every test built on
     // this harness silently skipped the request that clears `on_call` on the
@@ -152,11 +157,29 @@ class PhoneCallService extends ChangeNotifier {
   int get presenceToken => _presenceToken;
   int _presenceToken = 0;
 
+  /// Somebody else may have changed this person's availability.
+  ///
+  /// Availability belongs to the PERSON, and they can be signed in on a
+  /// laptop, a desktop and a phone at once. Every one of those writes the
+  /// server; none of them hears about the others. Whoever is holding a clock
+  /// calls this and anything reading presence goes and asks again.
+  void presenceMayHaveChanged() {
+    _presenceToken++;
+    notifyListeners();
+  }
+
   /// The desk answered Twilio and can take a call.
   bool get registered => _device?.registered ?? false;
 
   /// Twilio's own reason when it did not, or null when it gave none.
   String? get registrationError => _device?.registrationError;
+
+  /// Whether the desk should offer to open the system's calling settings —
+  /// the one registration failure a retry cannot fix on its own.
+  bool get needsCallingAccount => _device?.needsCallingAccount ?? false;
+
+  Future<void> openCallingSettings() async =>
+      _device?.openCallingSettings() ?? Future<void>.value();
 
   /// False on a platform with no Voice SDK at all.
   bool get supported => _device?.supported ?? false;
@@ -164,6 +187,14 @@ class PhoneCallService extends ChangeNotifier {
   /// Whether a line was found for this person. False means there is nothing to
   /// register and no phone to draw anywhere.
   bool get hasLine => _connectionId != null;
+
+  /// The desk is coming up right now.
+  ///
+  /// It is torn down and rebuilt whenever the view changes company, and for
+  /// that second everything below is false. Without this the desk-down banner
+  /// flashes red across the top of the screen on every scope switch, which
+  /// teaches people to ignore the one banner that matters.
+  bool get starting => _starting;
 
   /// The line calls go out on, for a screen that wants to name it.
   String? get callerId => _callerId;
@@ -258,6 +289,15 @@ class PhoneCallService extends ChangeNotifier {
       _starting = false;
     }
   }
+
+  /// A call is in flight on this device, ringing or connected.
+  ///
+  /// The question anything about to tear the device down must ask. Tearing it
+  /// down calls `Device.destroy()`, and destroy REJECTS a pending incoming
+  /// call — so the caller does not hear it stop ringing, they hear the line
+  /// refuse them and land in voicemail while somebody is looking at an Answer
+  /// button.
+  bool get busy => _onCall || _incomingFrom != null;
 
   /// Bring the desk up again after it failed.
   ///

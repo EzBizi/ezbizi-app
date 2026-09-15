@@ -100,6 +100,25 @@ trait BuildsTenants
                 'is_active'       => true,
             ]);
 
+            /*
+             * Fixture people are ESTABLISHED staff, so they arrive verified
+             * (TODO #22). In the product these accounts came in by invitation,
+             * and redeeming an invitation link is itself proof of the mailbox —
+             * InvitationAcceptanceController marks them exactly this way.
+             *
+             * Without this every test that builds a tenant and then writes
+             * anything would meet RequireVerifiedEmail and get a 403, which
+             * would say far more about the fixture than about the feature under
+             * test. A test that specifically wants an unconfirmed account should
+             * sign one up through /auth/signup, which is the only route that
+             * produces one.
+             *
+             * forceFill because `email_verified_at` is deliberately not in the
+             * model's #[Fillable] list — a verification state must never be mass
+             * assignable — so passing it to create() above is silently dropped.
+             */
+            $user->forceFill(['email_verified_at' => now()])->save();
+
             Assignment::create([
                 'organization_id' => $tenant['org']->id,
                 'user_id'         => $user->id,

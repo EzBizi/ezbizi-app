@@ -394,6 +394,8 @@ class _MachineGrid extends StatelessWidget {
       reserveActivityLine: reserveActivityLine,
       cpuPercent: _asInt(map['cpu_percent']),
       ramPercent: _asInt(map['ram_percent']),
+      gpuPercent: _asInt(map['gpu_percent']),
+      needsAttention: securityNeedsAttention(map),
       diskPercent: _diskPercent(map['drives']),
       diskFreeLabel: _diskFree(map),
       activeWindow: screen is Map ? screen['active_window'] as String? : null,

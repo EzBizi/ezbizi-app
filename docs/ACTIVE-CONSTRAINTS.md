@@ -137,23 +137,46 @@ exactly the reflex to suppress this week.
 Production currently has **no minimum set**. Nobody owns that controller; it is
 control plane and appears on no module map.
 
-## 3 · SES is in the sandbox — every recipient must be verified first
+## 3 · SES production access is GRANTED — this constraint is over
 
-**Delete this section when production access is granted.** Appeal case
-`178717006200996`, denied once already for zero sending history.
+**Granted 2026-09-14.** Kept as history, like §1, rather than deleted: the
+correction at the bottom outlived the constraint.
 
-SES delivers **only** to hand-verified identities and rejects everything else with
-**554**. Every rejection lands on the Rejects metric AWS reads while judging the
-pending appeal — so a careless send does not merely fail, it argues against us.
+Measured on the SES Account dashboard rather than relayed: daily quota **50,000
+per 24h** (was 200), send rate **14/second** (was 1), account Healthy, and the
+sandbox banner replaced by a "Request a limit increase" link that only renders in
+production. Both support cases closed.
 
-**Any new mail recipient — an alert address, a notification target, a test send —
-must be a verified identity first.**
+**Mail now reaches any recipient.** There is no longer a list of verified
+identities to add somebody to before you can send them anything.
 
-This has already bitten once: the backup alert pointed at a personal Gmail, which
-was harmless while nothing could send and became a live Reject the hour outbound
-mail started working. It also blocks TODO #22 signup verification, which would
-return 200 on our side and put nothing in a real customer's inbox — the failure is
-invisible from here, which is the shape everything else in this file shares.
+### What this unblocked
+
+TODO #22, signup email verification, which this section named as blocked. It is
+built: signup sends a confirmation, and `RequireVerifiedEmail` refuses WRITES
+(not reads) until the address is confirmed. Invited people arrive already
+confirmed, because redeeming an invitation link is itself proof of the mailbox.
+
+### The correction worth keeping
+
+This section claimed that a sandbox **554 lands on the Rejects metric AWS reads**,
+and therefore that a careless send "argues against us". **That was wrong, and it
+was never measured.** 554s occurred for an unverified Gmail on 26 and 27 August
+and again on 2 September, and the dashboard showed Rejects flat at **0%** across
+that entire window. A 554 is refused during the SMTP transaction, so SES counts it
+as neither a Send nor a Reject — the Rejects metric means a message SES *accepted*
+and then dropped.
+
+The habit that produced it is the one to keep an eye on: a plausible mechanism,
+written down confidently, repeated to two other sessions, and never checked
+against the dashboard that was one click away.
+
+### Still true, and not about SES
+
+**A successful send does not prove much on its own.** The first sign production
+access had landed was one message to an unverified address being accepted instead
+of refused — but verifying that single address would have looked identical. Read
+the account dashboard before telling anyone the state changed.
 
 ## 4 · Never test against the shared `ezbizi_testing` schema
 
@@ -211,3 +234,190 @@ with App Store review. Whoever eventually deletes this file will be following th
 instruction correctly, and durable knowledge must not be sitting in it.
 
 Raised by ezbizi-ea, who noticed the header contradicted the content.
+
+---
+
+## 6 · Configuring a sending identity ARMED a shipped action — CLOSED
+
+**Closed 2026-09-14 by `6e0d7e98`, hours after this section was written.**
+Inspection now refuses `inspection_report.email` unconditionally, and the refusal
+returns ABOVE the Platform check rather than relying on it, so it no longer depends
+on what is in `sending_identities`. Configuring a sending identity is safe again.
+The catalogue entry stays and says SWITCHED OFF, so a rule somebody already saved
+records why on every run - which is the case removing the row would have missed.
+
+**Kept, not deleted, and re-read before you lift that refusal.** The mechanism below
+is what made a correct guard unsafe, and it comes back the moment the refusal goes.
+It is also the general shape: a check that passes because a table is empty is a fact
+about the DATA wearing the clothes of a fact about the CODE.
+
+Jose ruled twice on 2026-09-14, carried by two sessions independently. Via
+Automations: *"no ezbizi SES is to be used only for EZBIZI Related actions like
+notificaitons, account creation, password, resets, etc at least for now."* Via HR, asked a
+third time through a different door and answered in his own capitals:
+
+> *"No - Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY FOR EZBIZI
+> ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESERT, VERIFICAIONS, ETC"*
+
+That is the SERVICE reading, not the from-line reading: verifying a domain does
+not buy the right to send customer content through us. A customer's own mail goes
+through the customer's own provider, as newsletters already do via Mailchimp.
+
+**Citation corrected 2026-09-14.** This section first supported that with a bare
+relayed *"yes"*. Two other sessions then reported that the *"yes"* answered item 1
+of a different numbered list - the mail-health layout - so the ruling was right and
+my evidence for it was not. A one-word answer relayed without its question is not a
+quotation. The block above is his sentence, carried verbatim.
+
+`inspection_report.email` is shipped and selectable, and it mails a finished report
+to the customer through `asTenant()`. It is **latent, not live**, and the reason is
+a coincidence rather than a design:
+
+    the MailTransport::Platform guard sits BEFORE the asTenant call
+    production has 2 organizations and 0 rows in sending_identities
+    so every organisation resolves to Platform, and the guard refuses
+
+**The guard does not fail. Its premise changes.** "Configure a sending identity for
+A-1 Group" is an open item on Jose's list, raised by Inspection themselves. The day
+somebody does it, that action stops refusing and starts sending - silently,
+correctly by its own lights, against a ruling made after it shipped. Nothing
+announces the transition, and the first evidence would be a customer receiving a
+report.
+
+**The lever is Inspection's arm, not the Automations catalogue.** Removing the row
+from `IMPLEMENTED_ACTIONS` is one line and looks like the fix; it is not. That const
+stops NEW rules being written while the arm still runs every rule already saved.
+
+Jose may reasonably distinguish "the customer whose chimney was swept" from "an
+address a rule names". That is his call and it is in front of him. What must not
+happen is the identity work quietly arming the action while nobody is looking at
+both at once.
+
+---
+
+## 7 · `Mail::fake()` does not stop a real socket being opened
+
+**A test that fakes mail and then reaches the dispatch will DIAL whatever host its
+fixture names.** It looks exactly like a faked send, and the only symptom is an
+outbound connection from wherever the suite runs.
+
+Verified in `vendor/` on 2026-09-14, both halves:
+
+    Illuminate\Support\Testing\Fakes\MailFake   has NO build() override
+    Illuminate\Mail\MailManager::build()          exists, line 143
+
+So `Mail::build($config)` - which is how the tenant-SMTP transport makes a mailer
+from an array - forwards straight past the fake to the real manager. `Mail::fake()`
+intercepts `send`, not `build`.
+
+**What to do instead.** Assert against `MailDispatcher::smtpConfigFor()`, which is
+public precisely for this: it throws every refusal and touches no network. Do not
+write a test that gets as far as sending through a tenant provider.
+
+Found by SES while building the transport and confirmed by Reports against their
+own fixture - which, had it carried a plausible hostname rather than an obvious
+one, would have begun dialling it in CI. It is a property of the shared test
+environment, so every future caller of `throughTenantProvider` inherits it.
+
+---
+
+## 8 · A private-index commit leaves a landmine in the SHARED index
+
+**After committing with `GIT_INDEX_FILE` pointed at a private index, clear the same
+paths out of `.git/index` - or the next person to type `git commit` reverts your work.**
+
+The mechanism, worked out by the SES session on 2026-09-14 after it had bitten four
+times in one afternoon: a private-index commit moves HEAD and does **not** touch
+`.git/index`, which still holds the PRE-COMMIT tree. `git status` then compares the
+two and reports your own new files as **staged deletions** and your own edits as
+**staged reverts**. So the discipline that stops you sweeping up a peer's uncommitted
+work creates a landmine aimed squarely at your own.
+
+What it nearly took, all in one afternoon:
+
+    a staged deletion of TenantSmtpHost.php - the tenant mail transport, hours old
+    a staged re-ADD of the sending-identity panel Jose had just asked be removed
+    a staged revert of Phone's inbound-call fix, mid-release
+
+Each was found by staging one file and reading `git diff --cached` BEFORE committing.
+None was found by anybody looking for it.
+
+**The missing step, every time:** after a private-index commit, `git restore --staged`
+the exact paths that commit touched, in a separate call, then confirm the shared index
+reads clean. Index only, never the working tree, and named paths only - anything
+broader clears somebody else's deliberate staging.
+
+`bash scripts/index-landmines.sh` is what makes this readable: it separates **stale**
+(a snapshot of an already-committed tree - safe to clear) from **live** (somebody's
+real work - do not touch). Run it in its own shell call, because a staged line
+outlives the check that did not look for it.
+
+---
+
+## 9 · A commit can carry more than its message says — check before reverting
+
+**`97de664c` is load-bearing for TWO features.** Its subject is *"A business can
+save the mail server its own mail goes through"*, and it also contains **call
+pickup's two routes**:
+
+    git log -S "phone/calls/{call}/pickup" -- routes/api.php   ->  97de664c
+
+Phone had those lines uncommitted in the shared tree when SES committed that path,
+and `git commit -- <path>` takes the whole worktree content of a file. Phone
+noticed because their own commit minutes later reported `routes/api.php`
+unchanged - the absence, not the presence, is what showed it.
+
+**Revert that commit as "just the mail-server change" and call pickup loses its
+routes** while its controller, screen and tests remain. The tests go red, which is
+the good outcome; the feature is gone from a release whose notes never mention the
+phone.
+
+Deliberately NOT re-attributed: the lines are correct and `route:list` resolves
+both. Rewriting a commit already in other people's history to tidy the record is a
+worse trade than a slightly wrong record. Phone's call, and the right one.
+
+**The rule: before reverting anything, `git show <sha> --stat` and ask whether
+every file in it belongs to the subject line.** On a shared worktree a
+path-limited commit is not a promise about scope. §8 is the same mechanism from
+the other side; this is what it costs when nobody notices for an hour.
+
+---
+
+## 10 · Never clear SHARED compiled state to debug your own run
+
+**`php artisan optimize:clear` in the shared tree is a change to every other
+session, not to yours.** It deletes the compiled views, and a dozen sessions then
+race to recompile them:
+
+    rename(storage/framework/views/c981E1D.tmp, .../c98666455c25d14c5cbf7f47159b8b84.php):
+    Access is denied (code: 5)
+
+2026-09-15, SES, reported unprompted. Worse than the burst: **it looked like it
+worked.** One suite went green immediately after, which was almost certainly the
+pause rather than the clear - so the command both broke other people's runs and
+awarded itself the credit.
+
+The same applies to anything else that rewrites state the whole tree shares:
+`config:clear`, `view:clear`, `cache:clear`, `composer dump-autoload`,
+`git stash`, `reset --hard`.
+
+**What the symptom actually was, every time so far: §4.** A session was running
+`RefreshDatabase` inside ANOTHER MODULE'S schema - `ezbizi_testing_email` rather
+than their own - while that module worked in it. Alternating 17/17 then 1-passed,
+same tree, same minute. On their own schema: three consecutive 18/18, then all
+seven suites in ONE batch, 77/77 in 34 seconds.
+
+That last number matters because the collision had produced a second, wrong
+conclusion: *"this machine cannot sustain a multi-suite run"*, which had them
+gating one suite at a time for an hour. **A shared-schema collision does not only
+redden tests - it manufactures theories about the machine.**
+
+**One hole kept deliberately, because the tidy story is what gets quoted.**
+Mid-diagnosis the plain `mysql` CLI over TCP returned the same `1698 Access
+denied` as PHP, which is what convinced them it was server-side: a schema
+collision has no business producing an AUTH error. Three commands later, TCP,
+named pipe and TCP again all succeeded with no intervention, and it never
+reproduced. The correlation with the schema is strong; the causal chain has a gap
+in it and nobody has closed it.
+
+So: **check `DB_DATABASE` before concluding anything about this machine.**

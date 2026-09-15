@@ -212,6 +212,80 @@ class PreferencesTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_a_sidebar_order_keeps_its_order_and_its_dividers(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['customers', '--', 'dashboard'],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(
+            ['customers', '--', 'dashboard'],
+            $this->savedOrder(),
+            'The order is positional data; nothing may re-sort it on the way in.'
+        );
+    }
+
+    public function test_a_module_that_no_longer_exists_is_dropped_not_refused(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['dashboard', 'tasks', 'customers'],
+            ],
+        ])->assertOk();
+
+        // `tasks` was a real module and was deleted. Refusing would leave
+        // anybody who had it in their saved order unable to save their sidebar
+        // ever again, over a module that no longer exists — so it is dropped,
+        // the same way an out-of-range width is clamped rather than rejected.
+        $this->assertSame(['dashboard', 'customers'], $this->savedOrder());
+    }
+
+    public function test_a_duplicate_keeps_its_first_position(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['customers', 'dashboard', 'customers'],
+            ],
+        ])->assertOk();
+
+        // A module cannot be in two places in one list. First wins, because
+        // that is where the person dragged it before the client got confused.
+        $this->assertSame(['customers', 'dashboard'], $this->savedOrder());
+    }
+
+    public function test_dividers_may_repeat_where_modules_may_not(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => [
+                'navigation.order' => ['--', 'dashboard', '--', '--'],
+            ],
+        ])->assertOk();
+
+        // A divider is a POSITION rather than a thing, so the duplicate rule
+        // does not apply to it. Leading and doubled rules are suppressed when
+        // the sidebar DRAWS — it has to be anyway, because the search filter
+        // produces both from an order that was perfectly good when saved.
+        $this->assertSame(['--', 'dashboard', '--', '--'], $this->savedOrder());
+    }
+
+    public function test_something_that_is_not_a_list_saves_as_no_order_at_all(): void
+    {
+        $this->as()->patchJson('/api/v1/me/preferences', [
+            'preferences' => ['navigation.order' => 'dashboard'],
+        ])->assertOk();
+
+        $this->assertSame([], $this->savedOrder());
+    }
+
+    /** The stored order, read back from the row rather than from the response. */
+    private function savedOrder(): array
+    {
+        return User::withoutGlobalScopes()->find($this->alpha['admin']->id)
+            ->preferences['navigation.order'];
+    }
+
     public function test_the_sidebar_width_is_clamped_rather_than_refused(): void
     {
         $this->as()->patchJson('/api/v1/me/preferences', [

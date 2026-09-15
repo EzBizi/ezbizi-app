@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\Auth\AuthenticateUser;
+use App\Services\Auth\EmailVerifications;
 use App\Services\Auth\IssueSession;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Auth\PasswordPolicy;
@@ -46,6 +47,9 @@ class AuthController extends Controller
         // one — signup below, and accepting an invitation. See IssueSession for
         // why the private method this replaced could not stay private.
         private readonly IssueSession $session,
+        // TODO #22. Signup sends the first confirmation; the resend endpoint
+        // sends the rest. Both go through this one object.
+        private readonly EmailVerifications $verifications,
     ) {}
 
     /**
@@ -146,6 +150,13 @@ class AuthController extends Controller
                 ],
                 companyName:   $input['business_name'],
                 franchiseName: $input['first_location'],
+
+                // The ONE caller that passes false (TODO #22). Somebody just
+                // typed an address nobody has checked, which is the entire
+                // difference between this route and every other way an owner
+                // comes into being. RequireVerifiedEmail refuses writes until
+                // the confirmation below is used.
+                administratorVerified: false,
             );
 
             /*
@@ -179,6 +190,23 @@ class AuthController extends Controller
 
             return $tree;
         });
+
+        /*
+         * The confirmation message (TODO #22).
+         *
+         * AFTER the transaction, never inside it: a mail failure must not roll
+         * back an organization that is perfectly good, and the person can ask
+         * for another link. The account exists either way - it simply cannot
+         * write anything until this address is confirmed, which is what
+         * RequireVerifiedEmail enforces.
+         *
+         * The return value is deliberately not surfaced in the response body.
+         * IssueSession builds that body and login and invitation-acceptance
+         * share it, so a key added here would change three responses to say
+         * something only one of them knows. "Check your email" plus a resend
+         * endpoint is the honest shape.
+         */
+        $this->verifications->issueAndSend($tree['administrator'], $request->ip());
 
         // 201, and otherwise the login body key for key — the client is going to
         // treat this response as one. Not byte for byte: the token differs, and

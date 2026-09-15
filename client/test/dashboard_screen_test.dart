@@ -192,6 +192,57 @@ void main() {
 
     expect(find.text('USD 5.00'), findsOneWidget);
   });
+
+  /// Money is recognised by its SHAPE, not by a list of blessed key names.
+  ///
+  /// `_money` read exactly `revenue` and `stock_value` — Jobs' key and
+  /// Inventory's, the two that existed when it was written. Nothing
+  /// documented that and nothing complained: a glance sending a figure under
+  /// any third name drew NOTHING, with no error and no gap on screen. Not
+  /// live, because those were the only two senders, but waiting for the next
+  /// glance that wanted to show money.
+  ///
+  /// This is the same family as the empty box that lost two of three
+  /// sentences for three weeks — producer sends, consumer silently does not
+  /// draw — which is what the deploy desk asked me to sweep for. The fixture
+  /// uses a key no glance sends today on purpose: if the allowlist ever comes
+  /// back, this is what goes red.
+  testWidgets('a money list under an unknown key is still drawn', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        extraGlanceData: {
+          'outstanding_balance': [
+            {'currency': 'CAD', 'amount_minor': 12345},
+          ],
+        },
+      ),
+    );
+
+    expect(find.text('CAD 123.45'), findsOneWidget);
+  });
+
+  /// The control: the sweep must not start drawing things that are not money.
+  /// `slices` and `sentences` are lists on every payload, and neither carries
+  /// an `amount_minor`, so neither may produce a money line.
+  testWidgets('lists that are not money draw no money line', (tester) async {
+    await _pump(
+      tester,
+      _handler(
+        extraGlanceData: {
+          'not_money': [
+            {'label': 'Active', 'total': 3},
+            {'currency': 'CAD'},
+            'a bare string',
+          ],
+        },
+      ),
+    );
+
+    expect(find.textContaining('CAD'), findsNothing);
+  });
 }
 
 class _PushRecorder extends NavigatorObserver {
@@ -232,6 +283,7 @@ Future<void> _pump(
 MockClientHandler _handler({
   List<Map<String, dynamic>>? record,
   List<Map<String, dynamic>>? stockValue,
+  Map<String, dynamic>? extraGlanceData,
 }) {
   final glances = [
     {
@@ -243,6 +295,7 @@ MockClientHandler _handler({
       'coming_soon': false,
       'options': <String, dynamic>{},
       'data': {
+        ...?extraGlanceData,
         'empty': false,
         'slices': [
           {'label': 'Active', 'total': 0},

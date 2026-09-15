@@ -71,6 +71,8 @@ class CompaniesController extends Controller
             $addSub       = $company->parent_company_id === null
                 ? Gate::inspect('create', [Company::class, $company])
                 : null;
+            $move         = Gate::inspect('reparent', $company);
+            $blocking     = $this->subCompaniesBlocking($company);
 
             return [
                 'id'         => $company->id,
@@ -93,6 +95,25 @@ class CompaniesController extends Controller
                 'may_add_sub_company_reason' => ($addSub === null || $addSub->allowed())
                     ? null
                     : $addSub->message(),
+
+                /*
+                 * Can this be moved -- made a sub company, or made a company
+                 * again (Jose, 2026-09-14)?
+                 *
+                 * TWO questions in one answer, because the menu draws one
+                 * control. The policy half is authority; the structural half is
+                 * §3's fixed depth, and it applies only in the demoting
+                 * direction -- a sub company being promoted can never be
+                 * holding sub companies of its own. Asked through the same
+                 * private method the write uses, so a menu cannot offer a move
+                 * the endpoint then refuses.
+                 */
+                'may_reparent' => $move->allowed() && ($blocking === null || $company->isSubCompany()),
+                'may_reparent_reason' => match (true) {
+                    ! $move->allowed() => $move->message(),
+                    $blocking !== null && ! $company->isSubCompany() => $blocking,
+                    default => null,
+                },
 
                 // Whether it has one OF ITS OWN. A company with none renders
                 // the organization's, and the difference matters here: this is
@@ -402,6 +423,131 @@ class CompaniesController extends Controller
         });
 
         return ['id' => $company->id, 'name' => $company->name, 'is_active' => $company->is_active];
+    }
+
+    /**
+     * PATCH /companies/{company}/parent -- make a company a sub company, or
+     * make a sub company a company again.
+     *
+     * ── Why this is not a key on update() ────────────────────────
+     *
+     * `update()` refuses `parent_company_id` outright (`['missing']`), and that
+     * was a deliberate choice rather than an oversight: a field that reshapes
+     * the organization must not travel in the same request as a phone number,
+     * where a stale client or a copied payload could carry it by accident.
+     * Jose asked for the ability on 2026-09-14 -- "the ability to convert a
+     * company into a sub company or viceversa", after making Crestline Home a
+     * company when it should have been a sub company -- so it arrives as its
+     * own act, with its own permission answer and its own route.
+     *
+     * ── What it refuses, and why each one ────────────────────────
+     *
+     * The depth rule is §3's and it is fixed at Org -> Company -> Sub Company ->
+     * Franchise, so two of the four refusals are structural: the destination
+     * cannot itself be a sub company, and a company that HAS sub companies
+     * cannot become one, because either would produce a grandchild. The third
+     * is that nothing may become its own parent. The fourth is the policy's.
+     *
+     * One refusal deliberately absent: "you would leave the organization with no
+     * top-level company". It cannot happen. Demoting X needs a top-level parent
+     * that is not X, so a top-level company always remains -- the constraint
+     * enforces itself, and a check for it would be a branch no test could reach.
+     */
+    public function reparent(Request $request, Company $company): array
+    {
+        $input = $request->validate([
+            'parent_company_id' => [
+                'present', 'nullable', 'uuid',
+                Rule::exists('companies', 'id')
+                    ->where('organization_id', $request->user()->organization_id),
+            ],
+        ]);
+
+        $this->authorize('reparent', $company);
+
+        $parent = $input['parent_company_id'] === null
+            ? null
+            : Company::findOrFail($input['parent_company_id']);
+
+        if ($parent !== null && $parent->is($company)) {
+            throw ValidationException::withMessages([
+                'parent_company_id' => 'A company cannot sit under itself.',
+            ]);
+        }
+
+        if ($parent !== null && $parent->parent_company_id !== null) {
+            // The same sentence store() gives, because it is the same rule and
+            // two wordings for one rule is two things to keep true.
+            throw ValidationException::withMessages([
+                'parent_company_id' => 'A sub company cannot sit under another sub company. '
+                    ."Choose {$parent->name}'s own parent instead.",
+            ]);
+        }
+
+        if ($parent !== null && ($blocked = $this->subCompaniesBlocking($company)) !== null) {
+            throw ValidationException::withMessages(['parent_company_id' => $blocked]);
+        }
+
+        if ($company->parent_company_id === ($parent?->id)) {
+            // Already where it is being put. No row, no audit, no event -- the
+            // same rule the settings screen follows: a save that moved nothing
+            // is not something to react to.
+            return $this->reparented($company);
+        }
+
+        DB::transaction(function () use ($company, $parent) {
+            $company->parent_company_id = $parent?->id;
+
+            $this->audit->logChange('company.updated', $company);
+            $company->save();
+
+            // `company.updated` rather than a new trigger. The registry answers
+            // for the whole catalogue, so adding `company.reparented` would
+            // change what every tenant's builder offers for one act that the
+            // existing trigger already describes -- "somebody changed a
+            // company". The payload names what moved.
+            $this->events->emit('company.updated', $company, ['after' => [
+                'parent_company_id' => $company->parent_company_id,
+            ]]);
+        });
+
+        return $this->reparented($company->refresh());
+    }
+
+    /** What the tree needs to redraw the moved company, in the shape index() uses. */
+    private function reparented(Company $company): array
+    {
+        return [
+            'id'                => $company->id,
+            'name'              => $company->name,
+            'parent_company_id' => $company->parent_company_id,
+            'is_sub_company'    => $company->isSubCompany(),
+        ];
+    }
+
+    /**
+     * Why this company cannot become a sub company, or null when it can.
+     *
+     * ONE METHOD, TWO READERS -- the refusal above and `may_reparent` in the
+     * tree. Computing the structural half separately in index() is how a menu
+     * offers a move the write then refuses, which is the disagreement this
+     * controller already avoids for `may_add_franchise`.
+     */
+    private function subCompaniesBlocking(Company $company): ?string
+    {
+        $count = $company->subCompanies()->count();
+
+        if ($count === 0) {
+            return null;
+        }
+
+        // Named rather than counted alone: somebody looking at a wide tree needs
+        // to know WHICH ones are in the way without opening every branch.
+        $names = $company->subCompanies()->orderBy('name')->pluck('name')->all();
+
+        return "{$company->name} has its own sub companies (".implode(', ', $names).'), and '
+            .'a sub company cannot hold one. Move those out first, or move one of them '
+            .'instead.';
     }
 
     /**

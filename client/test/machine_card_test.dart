@@ -18,6 +18,8 @@ void main() {
     bool reserveActivityLine = false,
     int? cpu,
     int? ram,
+    int? gpu,
+    bool needsAttention = false,
     int? disk,
     String? activeWindow,
     String? sessions,
@@ -30,6 +32,8 @@ void main() {
         reserveActivityLine: reserveActivityLine,
         cpuPercent: cpu,
         ramPercent: ram,
+        gpuPercent: gpu,
+        needsAttention: needsAttention,
         diskPercent: disk,
         activeWindow: activeWindow,
         sessions: sessions,
@@ -37,7 +41,11 @@ void main() {
 
   testWidgets('a reading it does not have renders as a dash, never as zero',
       (tester) async {
-    await tester.pumpWidget(wrap(card(cpu: null, ram: 41, disk: 12)));
+    // gpu supplied so that exactly ONE reading is missing — the assertion
+    // below counts dashes, and it is about the CPU's absence specifically.
+    // Loosening it to "two or more" when the GPU meter arrived would have
+    // quietly stopped it being about anything.
+    await tester.pumpWidget(wrap(card(cpu: null, ram: 41, disk: 12, gpu: 63)));
 
     // The one that matters: 0% is a claim that the machine is idle, and an
     // agent that has not reported has made no claim at all. An older agent
@@ -49,6 +57,60 @@ void main() {
     // the missing value and not a card that renders no numbers at all.
     expect(find.textContaining('41%'), findsOneWidget);
     expect(find.textContaining('12%'), findsOneWidget);
+  });
+
+  testWidgets('the graphics load is its own meter, and absent is not idle',
+      (tester) async {
+    await tester.pumpWidget(wrap(card(cpu: 9, ram: 41, gpu: 63)));
+    expect(find.text('GPU'), findsOneWidget);
+    expect(find.textContaining('63%'), findsOneWidget);
+
+    // The case that will actually happen: a machine whose counters name no 3D
+    // engine, and every machine on its agent's FIRST read. Reporting 0% there
+    // would say the card is idle, which is a claim nobody made.
+    await tester.pumpWidget(wrap(card(cpu: 9, ram: 41, gpu: null)));
+    expect(find.text('GPU'), findsOneWidget);
+    expect(find.textContaining('63%'), findsNothing);
+    expect(find.text('0%'), findsNothing);
+  });
+
+  testWidgets('a machine wanting attention says so on the card, not only inside',
+      (tester) async {
+    await tester.pumpWidget(wrap(card(needsAttention: true)));
+    expect(find.text('Needs attention'), findsOneWidget);
+
+    // Control, and the point of the whole design: the badge appears ONLY when
+    // something is wrong. A badge confirming that nothing is wrong would sit
+    // on forty-one of forty-two cards saying nothing, which is how people
+    // learn to stop reading badges.
+    await tester.pumpWidget(wrap(card(needsAttention: false)));
+    expect(find.text('Needs attention'), findsNothing);
+  });
+
+  testWidgets('both badges fit a narrow card without overflowing',
+      (tester) async {
+    // 180px, not the 300px the grid actually drops to: at 300 this passed
+    // while the real grid was overflowing by 12 pixels, so it was proving
+    // nothing. Sized to genuinely stress the header, and sabotage-checked —
+    // forcing the badge area back to an unbounded flex makes this red.
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 180,
+          child: MachineCard(
+            title: 'DESKTOP-AI4K9IP',
+            person: 'Adeline Pierrelouis-Aghaji',
+            online: true,
+            seenLabel: 'just now',
+            needsAttention: true,
+          ),
+        ),
+      ),
+    ));
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Live'), findsOneWidget);
+    expect(find.text('Needs attention'), findsOneWidget);
   });
 
   testWidgets('the person leads the card and the machine sits under them',

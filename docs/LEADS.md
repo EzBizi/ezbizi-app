@@ -297,6 +297,16 @@ and ticks fail intermittently rather than everything stopping until some hour.
 That is what makes running over sustainable — and it is why the ORDER of the
 fleet matters (see the tick's longest-unread-first ordering, same day).
 
+**A correction on that ordering's evidence.** It was first justified with "0 of
+59 reached in the last tick, 16 in the last half hour, and the same sixteen".
+The counts were measured; **"the same sixteen" was not** — identities were never
+compared, and a wider window contradicts it: 56 of 59 accounts had been reached
+within the hour, the three exceptions being the demo row and two the grant
+cannot see. What was really happening at 13:24 was a total stall affecting all
+59 equally. Longest-unread-first still belongs there, as a fix for a hazard the
+ordering creates by construction — nothing makes a loser eventually a winner —
+rather than for observed starvation.
+
 **What going over costs, and what it does not.** When the day's quota is spent
 every request fails until it resets, at an hour Google does not document. Nothing
 is LOST in that window: the lead read asks for everything since the newest lead
@@ -413,3 +423,38 @@ Still open:
   section said production was still calling the dead URL; it was true when
   written and false by the time it was read, because a release had landed in
   between. A deployment fact has a shelf life.
+
+## The quota run cost three connections, 10-14 September 2026
+
+Proving to Google that Basic Access was too small had a price nobody was
+watching for. `GoogleToken` marked a connection `broken` on any failed response
+from the OAuth token endpoint, and during the deliberate exhaustion run the
+token endpoint rate-limited us. The log shows HTTP 429 immediately before each:
+
+    A1 Chimney - Baltimore   7636036698   silent from 2026-09-10 19:34
+    A1 Chimney - Chicago     7251056558   silent from 2026-09-11 15:09
+    AngiSweep - MD           1994904698   silent from 2026-09-10 20:39
+
+Silent is the operative word. `broken` is not a label, it is a removal: the
+sweep polls `connected` rows, so none of the three was ever asked again.
+
+**None of them was actually broken.** All four distinct refresh tokens across
+the 60 google_ads rows renew, and three of the four accounts read normally. The
+readable part of that probe is the control - rows sharing the *same* refresh
+token that the sweep had reached minutes earlier. A first attempt refused every
+token including those, which was the probe using the wrong OAuth client, not
+Google refusing.
+
+Fixed in a963615f: only `invalid_grant` marks a row. Rows restored by hand, and
+because `since()` derives its watermark from the newest stored lead rather than
+a cursor, the gap back-filled itself - **20 leads recovered**, 13 Baltimore and
+7 Chicago, both now current. A stored cursor would have lost them.
+
+**146-421-7121 (1464217121) is deliberately left broken.** Google answers HTTP
+403 `The customer account can't be accessed because it is not yet enabled or has
+been deactivated.` It has never produced a lead. That row is honest.
+
+**Still open:** a `google_ads` row in the EzBizi Demo organization
+(`01a0582a-f58a-70bf-90d3-36f07cd4cdc4`) has no refresh token and is `connected`,
+so the scheduler retries it every five minutes forever and writes a WARNING each
+time. Seeded demo data, harmless, and it is most of the noise in the log.

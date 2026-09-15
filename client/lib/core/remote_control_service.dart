@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/foundation.dart'
+    show ValueNotifier, debugPrint, kDebugMode;
 
 import 'api_client.dart';
 import 'device_key.dart';
@@ -79,6 +80,24 @@ class RemoteControlService {
   /// AND the organization asked for one.
   bool _indicating = false;
 
+  /// The same fact as [_indicating], published so the app itself can say it.
+  ///
+  /// ── Why the tray alone was not enough ────────────────────────────
+  ///
+  /// The notice existed only as a Shell_NotifyIcon tooltip and a one-off
+  /// balloon. A balloon is a BEST-EFFORT OS notification: Windows suppresses
+  /// it under Focus Assist, a full-screen app, or notification settings the
+  /// person or their IT policy set years ago — and Shell_NotifyIcon returns
+  /// success either way, so nothing can tell that it was swallowed. For a
+  /// consent notice that is the wrong kind of surface: the one case where it
+  /// must not fail silently is the only case it cannot report.
+  ///
+  /// So the app draws its own banner from this, which no OS setting can turn
+  /// off. Both surfaces are driven by the SAME opt-in — this is only ever true
+  /// when the organization enabled the notice AND the machine is genuinely
+  /// being driven, so a business that chose a silent agent still gets one.
+  final ValueNotifier<bool> controlled = ValueNotifier<bool>(false);
+
   /// The cadence the NEXT tick is scheduled at — starts at [_slow], and each
   /// poll may move it (see [_tick]). One field, because the timer is one-shot
   /// and reschedules itself; there is no `Timer.periodic` whose period is
@@ -151,6 +170,7 @@ class RemoteControlService {
   Future<void> _setIndicating(bool active) async {
     if (active == _indicating) return;
     _indicating = active;
+    controlled.value = active;
     await _indicate(active);
   }
 
@@ -177,7 +197,10 @@ class RemoteControlService {
     // throws, and dispose does not await.
     if (_indicating) {
       _indicating = false;
+      controlled.value = false;
       unawaited(_indicate(false));
     }
+
+    controlled.dispose();
   }
 }

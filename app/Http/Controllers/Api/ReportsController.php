@@ -208,6 +208,36 @@ class ReportsController extends Controller
         $data['franchise_id'] ??= null;
         $data['description'] ??= null;
 
+        /*
+         * FILE ON THE CURRENT VIEW WHEN THE CLIENT NAMES NO PLACE.
+         *
+         * Sending neither id used to mean "file on the organization", which
+         * PlaceInView refuses from anywhere but the group view — so standing
+         * in a company, every save came back "File this on the company you are
+         * looking at, not on the group." The builder never sent a place at
+         * all, so reports could only be created from the organization view.
+         *
+         * The view is the right source: the server has already validated the
+         * X-EzBizi-View header, so deriving from it cannot be talked into a
+         * place the caller is not standing in — which sending it from the
+         * client can. An EXPLICIT id is still honoured and still checked, so
+         * this is a default rather than an override.
+         */
+        if (! $request->has('company_id') && ! $request->has('franchise_id')) {
+            $view = ViewScope::forUser($request->user());
+
+            if ($view->type === ViewScope::COMPANY) {
+                $data['company_id'] = $view->id;
+            } elseif ($view->type === ViewScope::FRANCHISE) {
+                $franchise = Franchise::query()->find($view->id);
+
+                // A place belongs to a company, and PlaceInView refuses a
+                // franchise without one.
+                $data['franchise_id'] = $franchise?->getKey();
+                $data['company_id'] = $franchise?->company_id;
+            }
+        }
+
         try {
             $this->runner->run($data['definition'], $request->user());
         } catch (InvalidArgumentException $e) {

@@ -625,6 +625,31 @@ class AutomationEngineTest extends TestCase
         // whatever actually broke.
         $this->assertNotNull($automation->disabled_at);
         $this->assertStringContainsString('consecutive failures', $automation->disabled_reason);
+
+        // THE REASON IS READ BY A CUSTOMER, so it must not carry the thrown text.
+        // automations_screen.dart:370 renders this string on the automation card;
+        // both callers used to pass $e->getMessage() straight into it. The
+        // assertion above cannot see that - it was green while the leak existed.
+        //
+        // MEASURED, not derived. fc4f200f's message called this red derived; it is
+        // not any more. Running the old formula - "Last error: {$reason}" - against
+        // the same text this test finds in automation_runs.error:
+        //     OLD contains 'internal address': true  -> assertStringNotContains FAILS
+        //     NEW contains 'internal address': false -> passes
+        // Done on a copy in a scratchpad rather than by reverting the model, because
+        // a sabotage on this tree is published to every session reading it.
+        $error = $this->inTenant(fn () => AutomationRun::where('automation_id', $automation->id)
+            ->where('status', AutomationRun::FAILED)
+            ->first()?->error);
+
+        $this->assertNotNull($error, 'no failed run was recorded, so this proves nothing');
+        $this->assertStringContainsString('internal address', $error,
+            'the thrown text must still be kept SOMEWHERE - if this fails, dropping it '
+            .'from disabled_reason lost it rather than moved it');
+        $this->assertStringNotContainsString('internal address', $automation->disabled_reason);
+        $this->assertStringContainsString('Run history', $automation->disabled_reason,
+            'the reason must name the control the user can actually see - the menu item '
+            .'at automations_screen.dart:301 is labelled "Run history"');
     }
 
     /**

@@ -1,0 +1,373 @@
+<!doctype html><meta charset="utf-8">
+<title>A mail server for sending &mdash; layouts</title>
+<style>
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --bad:#BA1A1A;--warn:#8A5A00;--ok:#1B6B4A;--paper:#fff;--ground:#f4f6f7;
+      --fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:8px 0 0;max-width:840px}
+.sub b{color:var(--ink)}
+#nums,#ctl{display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 0}
+#ctl{padding-bottom:16px;align-items:center;font-size:13px}
+button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#ctl button{border-radius:8px;padding:5px 10px}
+#ctl button[aria-current=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.win{width:620px;background:var(--paper);border:1px solid var(--line);
+     border-radius:14px;overflow:hidden}
+.phone{width:340px;background:var(--paper);border:1px solid var(--line);
+       border-radius:24px;overflow:hidden}
+.top{padding:14px 18px;border-bottom:1px solid var(--line);font-weight:700}
+.bd{padding:16px 18px}
+.card{border:1px solid var(--line);border-radius:12px;padding:14px}
+.h{font-weight:700;margin-bottom:3px}
+.n{font-size:12.5px;color:var(--muted);line-height:1.5}
+.prov{font-size:12px;color:var(--muted);margin-top:3px}
+.prov.own{color:var(--ink);font-weight:600}
+.facts{margin-top:12px;border-top:1px solid var(--line)}
+.fact{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);
+      font-size:12.5px;align-items:flex-start}
+.fact:last-child{border-bottom:0}
+.fact .k{width:96px;color:var(--muted);flex:none}
+.fact .v{flex:1}
+.fact .v small{display:block;color:var(--muted);margin-top:2px;font-size:11.5px}
+.f{margin-top:10px}
+.f label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:3px}
+.f .in{border:1px solid var(--line);border-radius:8px;padding:8px 10px;
+       font-size:13px;background:var(--paper)}
+.f .in.mut{color:var(--muted)}
+.copy{margin-top:12px;padding:10px 12px;border:1px dashed var(--line);
+      border-radius:9px;font-size:12.5px;color:var(--muted);line-height:1.5}
+.copy b{color:var(--ink)}
+.btn{display:inline-block;margin-top:12px;border:1px solid var(--line);
+     border-radius:9px;padding:9px 14px;font-weight:600;font-size:13px}
+.btn.pri{background:var(--primary);color:#fff;border-color:var(--primary)}
+.warnline{margin-top:10px;font-size:12.5px;color:var(--warn);line-height:1.5}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);
+      border-radius:10px;font-size:13px;background:var(--paper);max-width:700px;
+      line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>A mail server for sending &mdash; pick one desktop and one mobile</h1>
+  <p class="sub">The screen state B has been pointing at with no destination. Shape
+  from SES after the fork landed with Email: <b>a business connects its own server
+  for sending</b> &mdash; host, port, username, password, encryption &mdash; stored
+  on the sending identity and scoped organization / company / franchise. The
+  convenience is an <b>explicit</b> &ldquo;use the same server as info@&rdquo; that
+  <b>copies</b> the values and says so. <b>Never an implicit fallback</b>, because
+  with one nobody can tell by looking which credential is actually in use.</p>
+  <p class="sub" style="margin-top:10px"><b>The whole design problem is that there
+  are TWO facts here and they are independent.</b> <i>Whose value is this</i> &mdash;
+  the cascade&rsquo;s question, which this screen already has words for:
+  <code>Set here</code>, <code>Inherited from {name}</code>,
+  <code>EzBizi default</code>, and its own docblock warns <i>&ldquo;the third is not
+  a rounding of the second&rdquo;</i>. And <i>where did these values come from</i>
+  &mdash; typed, or copied from a mailbox. <b>A franchise can inherit a value that
+  was copied</b>, so one status line cannot carry both without merging them, which
+  is the defect the last three entries have all been about. <b>The three options
+  differ in how they keep the two apart.</b></p>
+  <p class="sub" style="margin-top:10px"><b>The state worth switching to first is
+  &ldquo;copied, then that mailbox changed&rdquo;.</b> A copy does not follow its
+  source &mdash; that is the point of copying rather than linking &mdash; so the
+  screen has to be honest about it rather than implying a live connection.</p>
+  <p class="sub" style="margin-top:10px"><b>&#9888; AND THAT STATE IS DRAWN AGAINST
+  A SIGNAL THAT DOES NOT EXIST YET. Read this before treating it as covered.</b>
+  SES raised it and they are right: a copied password that no longer authenticates
+  is not a display problem with a display fix. <b>The send does not degrade, it
+  FAILS &mdash; on a schedule, to somebody expecting a report.</b> So the sentence
+  on this screen is necessary and nowhere near sufficient: <b>something has to
+  NOTICE</b>, and nothing does today. The state is drawn so the screen is honest
+  once there is something to be honest about; <b>it is not evidence that anybody
+  will ever be told.</b> Detection is SES&rsquo;s, and where a noticed failure
+  SURFACES is a drawing I will make when there is a signal to draw against &mdash;
+  the same way entry 12&rsquo;s states waited for what the server could prove
+  rather than being invented first.</p>
+  <p class="sub" style="margin-top:10px"><b>UPDATE: there is now a signal, and
+  the four failure states below are SES&rsquo;s measurement rather than my
+  invention.</b> I asked what the server can PROVE before drawing anything, and
+  the answer had a condition that settled their transport choice: on
+  <code>Mail::build</code> you get one exception with the SMTP code buried in its
+  message &mdash; <b>classifying that is parsing an error string</b>, which is the
+  thing I drew once this week and will not draw again. On the Email module&rsquo;s
+  own socket the numeric reply codes are read and already sorted. So they are
+  building on that one.<br><br><b>Four, not three, and the split that matters is
+  4xx against 5xx.</b> A <b>5xx</b> will not change and sends somebody to the
+  account; a <b>4xx</b> is &ldquo;not now&rdquo; and must <i>not</i> &mdash; a
+  temporary refusal that tells you to check your password is the confident wrong
+  cause this whole queue keeps circling. And <b>&ldquo;never tried&rdquo; is a
+  timestamp with no inference in it</b>, which is the state every row is in the
+  moment it is saved.<br><br><b>What is still NOT drawn: where a failing
+  scheduled report gets NOTICED.</b> This screen is where somebody already
+  looking will find out. Nobody checks it. That surface is a separate drawing and
+  I am not stacking it on top of an unpicked one.</p>
+</header>
+<div id="nums"></div>
+<div id="ctl"><b style="font-weight:700">State:</b></div>
+<div id="stage"></div>
+<script>
+var S = 'copied';
+var STATES = {
+  none:   {l:'Nothing connected'},
+  typed:  {l:'Set here, typed'},
+  copied: {l:'Set here, copied from info@'},
+  stale:  {l:'Copied, then that mailbox changed'},
+  inh:    {l:'Inherited from A-1 Chimney'},
+  inhcop: {l:'Inherited, and that one was copied'},
+  never:  {l:'Saved, never tried'},
+  refused:{l:'Refused the password (5xx)'},
+  unreach:{l:'Host unreachable'},
+  notnow: {l:'Not ready — try later (4xx)'}
+};
+/* The four below are SES's measurement, not my invention: the Email module's
+   SMTP socket reads numeric reply codes and already sorts them. A 5xx will not
+   change and sends you to the account; a 4xx is "not now" and must NOT. Each
+   comes from a code the server sent, never from parsing its prose. "Never
+   tried" is a timestamp with no inference in it at all, and it is the state
+   every row is in the moment it is saved. */
+function health(){
+  return {never:  ['Saved. Nothing has been sent through it yet.', false],
+          refused:['<b>The server refused the user name or password.</b> ' +
+                   'This will not fix itself — check the account with whoever ' +
+                   'runs that mail server.', true],
+          unreach:['<b>The server could not be reached.</b> Nothing has gone ' +
+                   'out since 2 October.', true],
+          notnow: ['The server said it was not ready and asked us to try ' +
+                   'later. Nothing to do; if it is still saying this ' +
+                   'tomorrow, tell us.', false]}[S];
+}
+function none(){ return S === 'none'; }
+function ownScope(){ return S === 'typed' || S === 'copied' || S === 'stale'
+  || S === 'never' || S === 'refused' || S === 'unreach' || S === 'notnow'; }
+function wasCopied(){ return S === 'copied' || S === 'stale' || S === 'inhcop'; }
+function stale(){ return S === 'stale'; }
+function ownScopeAll(){ return ownScope() || !!health(); }
+
+/* The cascade's own words, taken from settings_screen.dart rather than
+   reinvented: a card saying "inherited" differently from the rows beside it is
+   the confusion that screen exists to prevent. */
+function provenance(){
+  if (none()) return 'EzBizi default';
+  return ownScope() ? 'Set here' : 'Inherited from A-1 Chimney';
+}
+function copyLine(long){
+  if (!wasCopied()) return '';
+  var who = (S === 'inhcop') ? 'A-1 Chimney' : 'this business';
+  return 'Copied from <b>info@a-1chimney.com</b> on 14 September' +
+    (long ? ' by ' + who : '') + '. <b>It is a copy, not a link</b> — changing ' +
+    'that mailbox does not change this. Deleting the inbox does not stop this ' +
+    'sending; changing its password DOES stop it, because the copy keeps the '
+    + 'old one.';
+}
+/* A health sentence, or the stale-copy one, or nothing. Never both invented:
+   each is a different fact with a different source. */
+function healthLine(){
+  var h = health();
+  if (!h) return '';
+  return '<div class="' + (h[1] ? 'warnline' : 'n') +
+    '" style="margin-top:10px">' + h[0] + '</div>';
+}
+function staleLine(){
+  return stale()
+    ? '<div class="warnline"><b>This is no longer sending.</b> The password on info@a-1chimney.com was ' +
+      'changed on 2 October. This server still uses the one copied in ' +
+      'September, and that password no longer works. Reports have been failing '
+      + 'since.</div>'
+    : '';
+}
+function fields(){
+  return '<div class="f"><label>Server</label>' +
+    '<div class="in' + (none() ? ' mut' : '') + '">' +
+    (none() ? 'Not set' : 'smtp.a-1chimney.com : 587') + '</div></div>' +
+    '<div class="f"><label>User name</label>' +
+    '<div class="in' + (none() ? ' mut' : '') + '">' +
+    (none() ? 'Not set'
+            : wasCopied() ? 'info@a-1chimney.com'
+            : 'reports@a-1chimney.com') + '</div></div>';
+}
+function head(){
+  return '<div class="h">Mail server for sending</div>' +
+    '<div class="n">Saved reports, inspection reports and automations that ' +
+    'email somebody go out through this. Signing in, password resets and ' +
+    'joining messages always come from EzBizi.</div>';
+}
+function empty(){
+  return '<div class="n" style="color:var(--bad);margin-top:9px">' +
+    '<b>Nothing is connected, so these are not going out.</b></div>' +
+    '<div class="btn pri">Connect a server</div>' +
+    '<div class="copy" style="margin-top:10px">Or <b>use the same server as ' +
+    'one of your inboxes</b> — the details are copied across and become this ' +
+    'business&rsquo;s own.</div>';
+}
+
+/* 1 — one line, house vocabulary, provenance underneath. */
+function D1(){
+  return '<div class="win"><div class="top">Settings &rsaquo; Business</div>' +
+    '<div class="bd"><div class="card">' + head() +
+    '<div class="prov' + (ownScope() ? ' own' : '') + '">' + provenance() +
+    '</div>' + (none() ? empty() : fields() +
+      (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
+      staleLine() + healthLine()) +
+    '</div></div></div>' +
+    '<div class="note"><b>The smallest change, and it reuses the cascade line ' +
+    'the rows beside it already use</b> — same words, same place, nothing new ' +
+    'to learn.<br><br><b>The cost:</b> the copy note reads as a footnote to ' +
+    'the value rather than as a fact of equal standing. On the ' +
+    '<i>inherited-and-copied</i> state the two stack into a paragraph, and ' +
+    'the reader has to hold "A-1 Chimney set this" and "it came from info@" ' +
+    'at once with nothing separating them.</div>';
+}
+
+/* 2 — two labelled facts. */
+function D2(){
+  return '<div class="win"><div class="top">Settings &rsaquo; Business</div>' +
+    '<div class="bd"><div class="card">' + head() +
+    (none() ? empty() :
+      '<div class="facts">' +
+      '<div class="fact"><span class="k">Used here</span><span class="v">' +
+      provenance() + (ownScope() ? '' : '<small>Change it there, or set ' +
+      'this business&rsquo;s own.</small>') + '</span></div>' +
+      '<div class="fact"><span class="k">These details</span><span class="v">' +
+      (wasCopied() ? copyLine(true) : 'Typed here.') + '</span></div>' +
+      '<div class="fact"><span class="k">Server</span><span class="v">' +
+      'smtp.a-1chimney.com : 587<small>' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</small>' +
+      '</span></div></div>' + staleLine() + healthLine()) +
+    '</div></div></div>' +
+    '<div class="note"><b>The two facts get two rows and two labels</b>, so ' +
+    'neither can be read as a qualifier on the other. <i>Used here</i> answers ' +
+    'the cascade; <i>These details</i> answers where the values came from. The ' +
+    'inherited-and-copied state is the one that proves it: both rows are full, ' +
+    'both are plainly about different things.<br><br><b>The cost:</b> two rows ' +
+    'of chrome on a screen whose common state is one server, typed once, never ' +
+    'touched again. <b>This is the one I would build</b> — the common state ' +
+    'costs a row saying &ldquo;Typed here&rdquo;, and the rare state is the ' +
+    'one that goes wrong silently.</div>';
+}
+
+/* 3 — provenance on the fields themselves. */
+function D3(){
+  return '<div class="win"><div class="top">Settings &rsaquo; Business</div>' +
+    '<div class="bd"><div class="card">' + head() +
+    '<div class="prov' + (ownScope() ? ' own' : '') + '">' + provenance() +
+    '</div>' +
+    (none() ? empty() :
+      '<div class="f"><label>Server' + (wasCopied()
+        ? ' &middot; copied from info@a-1chimney.com' : '') + '</label>' +
+      '<div class="in">smtp.a-1chimney.com : 587</div></div>' +
+      '<div class="f"><label>User name' + (wasCopied()
+        ? ' &middot; copied' : '') + '</label>' +
+      '<div class="in">' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</div></div>' +
+      (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
+      staleLine() + healthLine()) +
+    '</div></div></div>' +
+    '<div class="note"><b>The copy note sits on the fields it is about</b>, ' +
+    'which is where somebody is looking at the moment it matters — about to ' +
+    'edit a value and wondering whether the change travels back.<br><br>' +
+    '<b>The cost:</b> it repeats per field, and it puts a provenance fact in ' +
+    'the one place a form should be about the value. On the inherited states ' +
+    'the labels say &ldquo;copied&rdquo; about values this scope did not ' +
+    'choose and cannot edit, which reads as an invitation.</div>';
+}
+
+/* 4 — mobile: stacked, house line first. */
+function M4(){
+  return '<div class="phone"><div class="top">Mail server</div>' +
+    '<div class="bd"><div class="card">' + head() +
+    '<div class="prov' + (ownScope() ? ' own' : '') + '">' + provenance() +
+    '</div>' + (none() ? empty() : fields() +
+      (wasCopied() ? '<div class="copy">' + copyLine(false) + '</div>' : '') +
+      staleLine() + healthLine()) +
+    '</div></div></div>' +
+    '<div class="note">Desktop 1 on a phone. One column, in the order the ' +
+    'questions arrive: what is this for, whose is it, what is it.<br><br>' +
+    '<b>The cost is worse here than on a desktop:</b> the copy note is a ' +
+    'paragraph on a screen with no room for paragraphs, so on the stale state ' +
+    'it and the warning stack into six lines somebody scrolls past.</div>';
+}
+
+/* 5 — mobile: the two facts as rows. */
+function M5(){
+  return '<div class="phone"><div class="top">Mail server</div>' +
+    '<div class="bd"><div class="card">' + head() +
+    (none() ? empty() :
+      '<div class="facts">' +
+      '<div class="fact"><span class="k">Used here</span><span class="v">' +
+      provenance() + '</span></div>' +
+      '<div class="fact"><span class="k">Details</span><span class="v">' +
+      (wasCopied() ? 'Copied from info@a-1chimney.com<small>A copy, not a ' +
+        'link.</small>' : 'Typed here') + '</span></div>' +
+      '<div class="fact"><span class="k">Server</span><span class="v">' +
+      'smtp.a-1chimney.com : 587</span></div></div>' + staleLine() + healthLine()) +
+    '</div></div></div>' +
+    '<div class="note">Desktop 2 on a phone, and the rows survive the narrow ' +
+    'width better than the paragraph does — a label and a short value per ' +
+    'line, with the long half of the copy sentence moved into the small line ' +
+    'under it.<br><br><b>Pair with 2</b> if you want one vocabulary across ' +
+    'both surfaces; the labels are the same words at both widths.</div>';
+}
+
+/* 6 — mobile: state first, detail behind a tap. */
+function M6(){
+  return '<div class="phone"><div class="top">Mail server</div>' +
+    '<div class="bd"><div class="card">' +
+    '<div class="h">' + (none() ? 'Not connected'
+      : stale() ? 'Not sending'
+      : ownScope() ? 'Sending' : 'Sending, set by A-1 Chimney') + '</div>' +
+    '<div class="n">' + (none()
+      ? 'Saved reports, inspection reports and automation emails have nowhere ' +
+        'to go until a server is connected.'
+      : 'smtp.a-1chimney.com &middot; reports@a-1chimney.com') + '</div>' +
+    (stale() ? staleLine() + healthLine() : '') +
+    (none() ? '<div class="btn pri">Connect a server</div>'
+            : '<div class="btn">Where these came from &rsaquo;</div>') +
+    '</div></div></div>' +
+    '<div class="note"><b>The answer to &ldquo;is this working&rdquo; in the ' +
+    'first line</b>, and everything about provenance behind a tap &mdash; ' +
+    'which is the honest priority on a phone, where somebody is checking ' +
+    'rather than configuring.<br><br><b>The cost, and it is the one that ' +
+    'decides it:</b> the copied-and-stale case is exactly what a tap hides, ' +
+    'and it is the state nobody goes looking for. Drawn with that state ' +
+    'promoted out of the tap, which is an admission that the pattern does not ' +
+    'hold for the one case it most needs to.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; one cascade line, copy note underneath', D1],
+  2:['2 &middot; Desktop &mdash; two labelled facts, two rows', D2],
+  3:['3 &middot; Desktop &mdash; provenance on the fields themselves', D3],
+  4:['4 &middot; Mobile &mdash; stacked, house line first', M4],
+  5:['5 &middot; Mobile &mdash; the two facts as rows', M5],
+  6:['6 &middot; Mobile &mdash; state first, provenance behind a tap', M6]
+};
+var nums=document.getElementById('nums'), stage=document.getElementById('stage'),
+    ctl=document.getElementById('ctl'), cur=1;
+function show(k){
+  cur=k;
+  stage.innerHTML='<p class="cap">'+OPT[k][0]+'</p>'+OPT[k][1]();
+  Array.prototype.forEach.call(nums.children,function(b){
+    b.setAttribute('aria-current', b.dataset.k===String(k));});
+}
+Object.keys(OPT).forEach(function(k){
+  var b=document.createElement('button');
+  b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
+  b.onclick=function(){show(+k);}; nums.appendChild(b);});
+Object.keys(STATES).forEach(function(s){
+  var b=document.createElement('button');
+  b.textContent=STATES[s].l; b.dataset.s=s;
+  b.onclick=function(){S=s;
+    Array.prototype.forEach.call(ctl.querySelectorAll('button'),function(x){
+      x.setAttribute('aria-current',x.dataset.s===s);});
+    show(cur);};
+  ctl.appendChild(b);});
+ctl.querySelectorAll('button')[2].setAttribute('aria-current','true');
+show(1);
+</script>

@@ -395,6 +395,31 @@ void main() {
       // stylesheet, in Dart" — and says why they do not follow the theme.
       'screens/hr/contract_document_page.dart':
           'renders paper and ink for print; already reasoned about at the constants',
+
+      // A CATEGORICAL PALETTE IS NOT A BRAND COLOUR, and this ratchet was
+      // pointed at the wrong end of the problem here.
+      //
+      // The chart drew series from `primary, secondary, tertiary` and their
+      // containers — scheme roles, so it passed this gate cleanly while being
+      // the one file in the tree rendering the banished violet. `theme.dart`
+      // pins primary and secondary to the same deep cyan on light on purpose,
+      // which is right for every widget that wants "something brand-ish" and
+      // wrong for the one place that needs six things to look DIFFERENT:
+      // Scheduled and In progress drew identically on every light jobs pie.
+      //
+      // So a scheme role passes every check a hex literal fails, and a colour
+      // the app never chose can enter through a name the app did choose. That
+      // is the finding worth carrying past this entry.
+      //
+      // These sixteen are a validated set, not choices: eight fixed hues per
+      // mode, passing the lightness, chroma, CVD-separation, normal-vision and
+      // contrast checks against this app's real surfaces in both modes. They
+      // cannot come from the theme, because a theme may legitimately give two
+      // roles the same colour and a series palette may not. Changing one value
+      // means re-running the validator for both modes — a palette is a set,
+      // not sixteen independent choices.
+      'widgets/dashboard_chart.dart':
+          'a validated categorical palette; series identity is not brand identity',
     };
 
     // MEASURED AFTER EXCLUDING THE ABOVE, and the drop is the finding rather

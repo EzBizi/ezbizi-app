@@ -2,14 +2,17 @@
 
 namespace Tests\Feature\Api;
 
+use App\Http\Controllers\Api\AutomationsController;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\ActionRunner;
+use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionClass;
 use Tests\TestCase;
 
 /**
@@ -273,6 +276,202 @@ class AutomationsApiTest extends TestCase
 
         $this->assertContains('job.update_field', $implemented);
         $this->assertContains('customer.update_field', $implemented);
+    }
+
+    /**
+     * Execution types several modules share, and WHY each one is shared.
+     *
+     * `ActionDefinition::type()` derives the execution type as everything after
+     * the first dot, so `customer.update_field` and `job.update_field` both
+     * reduce to `update_field` and route to one arm. That is sometimes the
+     * whole design and sometimes a collision, and the two look identical here.
+     *
+     * A bare allowlist would be worse than nothing: it would grandfather the
+     * dangerous half into invisibility. So each entry says which kind it is.
+     */
+    private const SHARED_EXECUTION_TYPES = [
+        /*
+         * GENERIC BY DESIGN. The arm exists and reads the EVENT'S SUBJECT, so
+         * several modules pointing at it is deliberate — one implementation
+         * applied to many records, which is the thing `type()` strips the
+         * prefix for in the first place.
+         */
+        'update_field' => 'generic: updateField writes to whatever subject the event carries',
+        'change_status' => 'generic: changeStatus routes on the subject, a Job or a Vehicle',
+
+        /*
+         * UNDECIDED, AND THIS IS THE HALF WORTH WATCHING.
+         *
+         * Declared by several modules with NO ARM YET, so nobody has chosen
+         * whether they are one generic implementation or several module-specific
+         * ones — and the first person to write an arm decides for all of them
+         * without being asked. If they write a Customer-shaped `deactivate`,
+         * then `company.deactivate`, `franchise.deactivate` and
+         * `user.deactivate` begin deactivating through it, with no error
+         * anywhere, because routing by a shared key cannot tell the cases apart.
+         *
+         * That is the near-miss Inspection renamed away from in one commit —
+         * `report.email` and `report.send` would have been one module's executor
+         * serving the other's action — except this one will arrive as somebody
+         * implementing their own action rather than as somebody adding a second.
+         *
+         * WHOEVER WRITES THE FIRST ARM FOR ONE OF THESE: either make it generic
+         * over the subject and say so here, or give your declaration an explicit
+         * `executionType` so it stops sharing. Do not simply add the arm.
+         *
+         * Found by the Training session, who swept all 31 declarations after
+         * Inspection's rename rather than checking only their own.
+         */
+        'deactivate' => 'undecided: four modules declare it, no arm has chosen yet',
+        'assign_to_user' => 'undecided: two modules declare it, no arm has chosen yet',
+    ];
+
+    /**
+     * A NEW shared execution type has to be argued for, not discovered later.
+     *
+     * Sharing is legitimate and common here, so this cannot refuse it — a guard
+     * that goes red on correct practice gets weakened and then watches nothing.
+     * It refuses only an UNRECORDED sharing, which costs one line and a sentence
+     * and puts the question in front of whoever created it, at the moment they
+     * can still rename for free.
+     */
+    public function test_a_shared_execution_type_is_one_somebody_argued_for(): void
+    {
+        $byType = [];
+
+        foreach (app(ModuleRegistry::class)->all() as $key => $module) {
+            foreach ($module->automationActions as $action) {
+                $byType[$action->type()][] = "{$key}/{$action->key}";
+            }
+        }
+
+        $shared = array_keys(array_filter($byType, fn (array $owners) => count($owners) > 1));
+        $unrecorded = array_values(array_diff($shared, array_keys(self::SHARED_EXECUTION_TYPES)));
+
+        $detail = implode('; ', array_map(
+            fn (string $t) => "{$t} <- ".implode(', ', $byType[$t]),
+            $unrecorded,
+        ));
+
+        $this->assertSame([], $unrecorded, implode("\n", [
+            'These execution types are claimed by more than one declaration and',
+            'nothing says whether that is deliberate: '.$detail,
+            '',
+            'They route to ONE arm. Either the arm is generic over the event subject —',
+            'record it in SHARED_EXECUTION_TYPES saying so — or give your declaration',
+            'an explicit executionType so it stops sharing. Renaming is free until',
+            'somebody can select the action.',
+        ]));
+    }
+
+    /**
+     * EVERY ARM THE RUNNER HAS IS AN ACTION SOMEBODY CAN CHOOSE.
+     *
+     * `IMPLEMENTED_ACTIONS` and `ActionRunner`'s match are two halves of one
+     * fact, and they drift in two directions with very different volumes.
+     *
+     * The const naming a type with no arm is LOUD: rules save, every run
+     * records FAILED, somebody complains within the week. That direction has
+     * been caught by hand twice.
+     *
+     * An ARM WITH NO CONST ENTRY IS SILENT. No exception, no failed run, no red
+     * test — the catalogue publishes `implemented: false`, the builder draws
+     * "Not built yet" and refuses the tap, and the only symptom is a feature
+     * nobody can switch on. `report.email` shipped that way: a working Mailable
+     * behind an action no customer could reach, and nothing in the suite asked.
+     *
+     * Only this direction is asserted. The reverse is legitimately allowed —
+     * `training.assign` deliberately sat in the const ahead of its arm so the
+     * two would land together — so a bidirectional test would have been red by
+     * design and someone would have loosened it.
+     *
+     * Read from source because a match statement cannot be reflected over.
+     * Anchored on `=> $this->` so a comment mentioning a key cannot be mistaken
+     * for an arm; that is the known weakness of a source-scanning guard and it
+     * is why the pattern is this tight rather than merely quoting the key.
+     */
+    public function test_every_action_the_runner_can_perform_can_also_be_chosen(): void
+    {
+        $source = file_get_contents(app_path('Support/Automations/ActionRunner.php'));
+
+        $match = preg_match('/return match \(\$type\) \{(.*?)\n        \};/s', $source, $m);
+        $this->assertSame(1, $match, 'the runner no longer has one match on $type — this guard needs rewriting, not deleting');
+
+        preg_match_all("/^\s+'([a-z0-9_.]+)' => \\\$this->/m", $m[1], $found);
+        $arms = $found[1];
+
+        $this->assertNotEmpty($arms, 'no arms were found, so this proves nothing about drift');
+
+        // The regex above only sees an arm whose body is `$this->something`. An arm
+        // written any other way vanishes from $arms and this test stays GREEN while the
+        // drift it exists to catch goes unseen. So count every key in the block too and
+        // require the two to agree: a shape this guard cannot read must be loud.
+        preg_match_all("/^\s+'([a-z0-9_.]+)'[^\n]*=>/m", $m[1], $everyKey);
+        $unreadable = array_values(array_diff($everyKey[1], $arms));
+
+        $this->assertSame([], $unreadable, implode("\n", [
+            'These arms exist but do not match the `=> $this->` shape this guard scans',
+            'for, so it cannot check them against IMPLEMENTED_ACTIONS and would pass while',
+            'they drift: '.implode(', ', $unreadable),
+            'Widen the regex above - do not delete this assertion.',
+        ]));
+
+        $implemented = (new ReflectionClass(AutomationsController::class))
+            ->getConstant('IMPLEMENTED_ACTIONS');
+
+        $missing = array_values(array_diff($arms, $implemented));
+
+        $this->assertSame([], $missing, implode("\n", [
+            'These actions have a working arm in ActionRunner and are NOT in',
+            'AutomationsController::IMPLEMENTED_ACTIONS, so the catalogue publishes them',
+            'as not built, the builder refuses to let anybody choose them, and nothing',
+            'anywhere reports it: '.implode(', ', $missing),
+        ]));
+    }
+
+    /**
+     * The warning is IN the sentence, the way an unraised trigger's already is.
+     *
+     * `implemented: false` is the machine-readable half and the builder draws it
+     * — but a description is what a PERSON reads, and an unbuilt action's read
+     * as a live capability. `report.send` promises to email a saved report and
+     * has no arm in the runner; in the week SES production access was granted,
+     * that sentence is what somebody answers "can a rule email me the weekly
+     * report yet?" from.
+     *
+     * Both halves asserted, because only the pair can tell the fix from a
+     * blanket append that would put the warning on everything.
+     */
+    public function test_an_unbuilt_action_says_so_in_its_description_and_a_built_one_does_not(): void
+    {
+        $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
+
+        $actions = collect($data['modules'])->flatMap(fn (array $m) => $m['declared_actions']);
+
+        $unbuilt = $actions->reject(fn (array $a) => $a['implemented']);
+        $built = $actions->filter(fn (array $a) => $a['implemented']);
+
+        $this->assertNotEmpty($unbuilt, 'Nothing is unbuilt, so this proves nothing.');
+        $this->assertNotEmpty($built, 'Nothing is built, so the negative half proves nothing.');
+
+        foreach ($unbuilt as $action) {
+            $this->assertStringContainsString(
+                ActionDefinition::NOT_BUILT_YET,
+                $action['description'],
+                "'{$action['key']}' cannot run and its description does not say so.",
+            );
+        }
+
+        // The half that stops this becoming a blanket append. An action the
+        // engine performs must NOT carry the warning, or the sentence is noise
+        // on every row and nobody reads it on the rows that need it.
+        foreach ($built as $action) {
+            $this->assertStringNotContainsString(
+                ActionDefinition::NOT_BUILT_YET,
+                $action['description'],
+                "'{$action['key']}' runs, but is described as not built.",
+            );
+        }
     }
 
     /**

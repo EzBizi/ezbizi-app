@@ -64,6 +64,22 @@ class VoiceWebhookController extends Controller
 
         $context = $this->context($request, $connection, $outbound, $batch);
 
+        // OUT OF THE QUEUE, and it must not go back in.
+        //
+        // `<Enqueue action>` lands here when a caller leaves the line, whether
+        // because somebody became free or because they held for as long as the
+        // group allows. Both want the same thing: try the ring group now. The
+        // difference is decided a moment later by whether anybody is actually
+        // reachable, which is the same question the hold loop just asked.
+        //
+        // `queued` is what stops it being a circle. Without it a caller
+        // released to a ring that nobody answers reaches overflow again,
+        // rejoins the queue at the back, and holds for ever — billed per loop,
+        // and indistinguishable from hold music working.
+        if ($request->input('QueueResult') !== null) {
+            return $this->continueDial($request, $number, $context, null);
+        }
+
         if ($dialStatus !== null || $batch > 0) {
             return $this->continueDial($request, $number, $context, $dialStatus);
         }
@@ -269,7 +285,23 @@ class VoiceWebhookController extends Controller
             // reads its prompt, accepts a digit, and then does exactly what it
             // would have done for every other digit — which is not a menu.
             'digits' => (string) $request->input('Digits', ''),
-            'dial_action' => $this->voiceAction($connection, $batch + 1, $outbound),
+
+            // THIS CALLER HAS ALREADY BEEN IN THE QUEUE, and the fact has to
+            // outlive the request that learned it.
+            //
+            // Twilio sends `QueueResult` on the hop that leaves the queue, and
+            // on that hop alone. The ring that follows posts its own result to
+            // `dial_action`, which is a URL we build — so unless it is written
+            // into that URL, the next request looks exactly like a first
+            // attempt, reaches overflow, and puts the caller back in the line
+            // they just left. That is the loop, and it bills per pass.
+            'queued' => $this->hasQueued($request),
+            'dial_action' => $this->voiceAction(
+                $connection,
+                $batch + 1,
+                $outbound,
+                $this->hasQueued($request),
+            ),
             'recording_status_callback' => $this->webhookUrl($connection, 'recording'),
             'transcription_status_callback' => $this->webhookUrl($connection, 'transcription'),
         ];
@@ -278,6 +310,23 @@ class VoiceWebhookController extends Controller
             $to = (string) $request->input('To', '');
             if ($to !== '') {
                 $context['dial_to'] = $to;
+            }
+
+            // PICKING UP A PARKED CALL IS WHERE IT STOPS BEING PARKED.
+            //
+            // There is no separate un-park request, deliberately: a screen
+            // that has to tell the server it picked something up is a screen
+            // that leaves the board wrong whenever it crashes, closes, or
+            // loses the network between the two calls. Dialling the queue IS
+            // the retrieval, so this is the only moment that certainly
+            // happened.
+            //
+            // Cleared even when the queue turns out to be empty — a caller who
+            // hung up while on hold is not still parked, and leaving the row
+            // stamped would put a call on the board that nobody can ever pick
+            // up and nothing will ever clear.
+            if (str_starts_with($to, 'park:')) {
+                $this->unpark(substr($to, strlen('park:')));
             }
             // WHICH LINE THIS PERSON CALLS OUT FROM.
             //
@@ -542,10 +591,46 @@ class VoiceWebhookController extends Controller
         PhoneConnection $connection,
         int $batch,
         bool $outbound = false,
+        bool $queued = false,
     ): string {
         $url = $this->webhookUrl($connection, 'voice').'?batch='.$batch;
 
-        return $outbound ? $url.'&direction=outbound' : $url;
+        if ($outbound) {
+            $url .= '&direction=outbound';
+        }
+
+        return $queued ? $url.'&queued=1' : $url;
+    }
+
+    /**
+     * Whether this call has already stood in the queue.
+     *
+     * Twilio's own word on the hop out of the queue, ours on every hop after
+     * it — see the note on `queued` in context().
+     */
+    /**
+     * Clear the park stamp for the call waiting in this queue.
+     *
+     * Takes the QUEUE NAME rather than an id, because that is what the desk
+     * dialled and parsing it in two places is how the two spellings drift.
+     */
+    private function unpark(string $queue): void
+    {
+        $prefix = 'ezbizi-park-';
+        if (! str_starts_with($queue, $prefix)) {
+            return;
+        }
+
+        PhoneCall::query()
+            ->whereKey(substr($queue, strlen($prefix)))
+            ->whereNotNull('parked_at')
+            ->update(['parked_at' => null, 'parked_by' => null]);
+    }
+
+    private function hasQueued(Request $request): bool
+    {
+        return $request->input('QueueResult') !== null
+            || $request->boolean('queued');
     }
 
     private function webhookUrl(PhoneConnection $connection, string $kind): string

@@ -370,6 +370,78 @@ class SettingsApiTest extends TestCase
         )->assertNotFound();
     }
 
+    /**
+     * Deactivation locks the writes, and it is worth pinning at THIS level.
+     *
+     * The deploy desk's sweep on 2026-09-15 found four sites that re-derive
+     * "stands at the organization" by hand and so miss the `is_active` clause
+     * the model method carries. Mine were two of them and both now ask
+     * `canActOnOrganization`.
+     *
+     * WHAT THIS PINS IS THE PROPERTY, NOT EITHER IMPLEMENTATION OF IT, and I
+     * only know that because the first version of this docblock was wrong and
+     * a mutation said so. I had written that neither change was observable,
+     * reasoning that `refusalFor` asks `hasPermission()` before `reaches()` and
+     * that its `is_active` line therefore answers first. Measured instead:
+     *
+     *   both clauses in place                     PATCH -> 403
+     *   hasPermission's is_active removed         PATCH -> 403   (this line's
+     *                                                            new call holds
+     *                                                            it alone)
+     *   canActOnOrganization's removed too        PATCH -> 200   test fails
+     *
+     * So asking the model rather than re-deriving the test made a SECOND
+     * enforcement point where there had been one, which is the whole of what
+     * defence in depth means here and is more than I claimed for it. Three runs
+     * rather than an argument, and the last one is the control: without it,
+     * "still 403" would equally describe an endpoint nobody can reach.
+     *
+     * WHAT IT DOES NOT PIN, because the sweep that prompted it was retracted
+     * the next hour and the retraction is the more useful half.
+     *
+     * "Somebody let go stops being able to write" is NOT held up by this test,
+     * and a reader who thinks it is would be trusting the thinnest of the three
+     * mechanisms. The product refuses them twice over before anything here is
+     * reached, and I read all three rather than taking the correction:
+     *
+     *   AuthenticateUser:93    a deactivated account fails the password path
+     *   AuthenticateUser:209   and the second-step path after it
+     *   HrPeopleController:386 deactivating through HR DELETES their tokens
+     *
+     * So the ordinary path leaves them unable to sign in and holding nothing to
+     * sign in with. What this test covers is the residual: a session already
+     * open when somebody is deactivated by a DIRECT DATABASE WRITE, outside the
+     * HR flow, whose tokens therefore survive. `Sanctum::actingAs` is that
+     * shape exactly — it mints reach without going near the login the real
+     * account would have failed.
+     *
+     * Narrow, real, and worth one test. Stated at its true size because a test
+     * believed to guard more than it does is how the guard that actually
+     * matters stops being checked.
+     *
+     * The read is the control. Without it this passes against a suspended
+     * account that cannot reach the endpoint at all, or a scope id that was
+     * never found, and those are different failures with the same status code.
+     */
+    public function test_a_deactivated_administrator_can_no_longer_write_settings(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson(
+            "/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}",
+            ['value' => 'en']
+        )->assertOk();
+
+        app(TenantContext::class)->run($org, fn () => $admin->forceFill(['is_active' => false])->save());
+
+        $this->patchJson(
+            "/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}",
+            ['value' => 'en']
+        )->assertForbidden();
+    }
+
     // ── reach (§4) ───────────────────────────────────────────────
 
     public function test_a_franchise_user_cannot_configure_another_franchise(): void

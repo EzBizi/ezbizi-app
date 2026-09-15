@@ -166,6 +166,21 @@ class _ActionRow {
       final payload = <String, dynamic>{'type': type};
       for (final field in definition.parameters) {
         final value = parameter(field.key).text.trim();
+
+        // A yes/no answer goes on the wire as a REAL boolean, not as the text
+        // the switch happens to store it in.
+        //
+        // Every parameter shares one map of text controllers, so an off switch
+        // is the empty string — and sending that leaves the server casting a
+        // string to a bool. PHP casts '' to false and 'true' to true, which
+        // looks fine and is one typo from disaster: the string 'false' casts
+        // to TRUE. Typing it here means the server never has to know what the
+        // control stored, and no future writer has to rediscover that rule.
+        if (field.kind == 'boolean') {
+          payload[field.key] = value == 'true';
+          continue;
+        }
+
         if (value.isNotEmpty) {
           payload[field.key] = value;
         } else if (field.required && field.nullable) {
@@ -1886,6 +1901,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     }
 
     for (final field in definition.parameters) {
+      // A BOOLEAN IS NEVER MISSING. Off is an answer, and it is stored as the
+      // empty string — so an emptiness test reads a deliberate "no" as a blank
+      // and refuses to save with "X is required", against a switch that is
+      // plainly sitting there answered. Every other kind is missing when empty;
+      // this one cannot be.
+      if (field.kind == 'boolean') {
+        continue;
+      }
+
       if (field.required &&
           !field.nullable &&
           row.parameter(field.key).text.trim().isEmpty) {
@@ -1933,6 +1957,36 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                       () => row.parameter(definition.parameters[i].key).text =
                           id ?? '',
                     ),
+            )
+          else if (definition.parameters[i].kind == 'boolean')
+            // A yes/no answer, drawn as a switch.
+            //
+            // Without this kind a boolean parameter renders as a TEXT BOX
+            // somebody types "true" into — so a module declaring one would
+            // ship a control that looks broken and stores a string the server
+            // has to guess at. The Settings session hit exactly that wanting a
+            // per-rule "also email this", and the honest options were a bespoke
+            // key outside the parameter mechanism or this. This is smaller and
+            // it is the last time anyone has to choose.
+            //
+            // Stored as the same text the other kinds store — 'true' or '' —
+            // because every parameter travels through one map of controllers
+            // and a second typed store beside it would be a second thing to
+            // keep in step. The server reads it as a boolean; the empty string
+            // is false, which is also what an older client that never drew the
+            // switch sends.
+            SwitchListTile(
+              value:
+                  row.parameter(definition.parameters[i].key).text == 'true',
+              onChanged: _busy
+                  ? null
+                  : (on) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          on ? 'true' : '',
+                    ),
+              title: Text(definition.parameters[i].label),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
             )
           else
             TextField(

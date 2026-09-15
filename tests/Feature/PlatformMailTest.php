@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\Invitation;
 use App\Models\Organization;
 use App\Models\SendingIdentity;
 use App\Models\User;
+use App\Notifications\InvitationLink;
 use App\Notifications\PasswordResetLink;
+use App\Services\Hr\Invitations;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
@@ -16,8 +19,10 @@ use App\Support\Mail\SendingState;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -63,16 +68,16 @@ class PlatformMailTest extends TestCase
         $provisioned = app(ProvisionOrganization::class)(
             organizationName: 'A1-Group',
             administrator: ['name' => 'Owner', 'email' => 'owner@a1group.test', 'password' => 'a-real-password'],
-            companyName:   'A-1 Chimney',
+            companyName: 'A-1 Chimney',
             franchiseName: 'Connecticut',
         );
 
-        $this->org     = $provisioned['organization'];
+        $this->org = $provisioned['organization'];
         $this->company = $provisioned['company'];
 
         config([
-            'mail.from.address'    => 'noreply@ezbizi.test',
-            'mail.from.name'       => 'EzBizi',
+            'mail.from.address' => 'noreply@ezbizi.test',
+            'mail.from.name' => 'EzBizi',
             'mail.reply_to.address' => null,
             'ezbizi.hosts.customer' => 'https://app.ezbizi.test',
         ]);
@@ -89,15 +94,15 @@ class PlatformMailTest extends TestCase
         return $this->inTenant(function () use ($state) {
             $identity = new SendingIdentity([
                 'organization_id' => $this->org->id,
-                'scope_type'      => SendingIdentity::SCOPE_COMPANY,
-                'scope_id'        => $this->company->getKey(),
-                'from_address'    => 'info@a-1chimney.com',
-                'from_name'       => 'A-1 Chimney',
-                'transport'       => MailTransport::VerifiedDomain->value,
+                'scope_type' => SendingIdentity::SCOPE_COMPANY,
+                'scope_id' => $this->company->getKey(),
+                'from_address' => 'info@a-1chimney.com',
+                'from_name' => 'A-1 Chimney',
+                'transport' => MailTransport::VerifiedDomain->value,
             ]);
 
             $identity->forceFill([
-                'state'       => $state->value,
+                'state' => $state->value,
                 'verified_at' => $state === SendingState::Verified ? now() : null,
             ])->save();
 
@@ -106,7 +111,7 @@ class PlatformMailTest extends TestCase
     }
 
     /** Whatever the array transport has been handed, freshly. */
-    private function transport(): \Illuminate\Mail\Transport\ArrayTransport
+    private function transport(): ArrayTransport
     {
         return Mail::mailer(config('mail.default'))->getSymfonyTransport();
     }
@@ -261,85 +266,425 @@ class PlatformMailTest extends TestCase
 
     // ── (4) tenant mail is refused until the domain is proved ────
 
-    public function test_sending_as_a_tenant_is_refused_when_the_identity_is_not_verified(): void
+    public function test_tenant_authored_mail_is_refused_in_every_identity_state(): void
     {
-        $this->tenantIdentity(SendingState::Pending);
+        /*
+         * THE WHOLE RULE IN ONE TEST, and the VERIFIED case is the one that
+         * matters. Jose, 2026-09-14: "EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS
+         * LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC."
+         *
+         * Three of these four states were already refused before the ruling, so
+         * a test covering only those would pass against the OLD code — a guard
+         * keyed on the identity, which refused the unconfigured tenant and let
+         * the configured one through. Verified is the case that distinguishes
+         * the rule from the thing it replaced, and it is the case somebody
+         * re-adding an identity check would turn green again.
+         *
+         * A loop rather than a data provider: the point is that the state is
+         * IRRELEVANT, and four near-identical provider rows would suggest the
+         * opposite — that each deserved its own answer.
+         *
+         * THIS ABSORBED test_an_unverified_tenant_never_quietly_falls_back_to_
+         * the_platform_address, which was deleted rather than kept. It asserted
+         * only that CannotSendMail was thrown, which the unconditional refusal
+         * now satisfies whether or not the fallback behaviour it named still
+         * exists — so it passed for a reason other than the one it asserted.
+         * Automations found that shape in Inspection's hold test, introduced by
+         * this same change; I went looking in my own file on the strength of it
+         * and this was the one. Its Failed case survives as a row above.
+         *
+         * WHICH QUESTION WENT AWAY WITH IT, so restoring the behaviour restores
+         * the test: it asked whether an unverified tenant could QUIETLY FALL
+         * BACK to the platform address. The unconditional refusal makes that
+         * unreachable rather than answered — nothing gets far enough to fall
+         * back. The Failed row below covers the state, NOT the fallback. So if
+         * asTenant is ever relaxed to send again, that question returns and this
+         * loop does not cover it; write the fallback test back before relaxing.
+         */
+        $states = [
+            'nothing configured at any level' => null,
+            'an identity awaiting proof' => SendingState::Pending,
+            'an identity that failed proof' => SendingState::Failed,
+            'a fully verified identity' => SendingState::Verified,
+        ];
 
-        Mail::fake();
+        foreach ($states as $description => $state) {
+            // One row per scope is a unique key, so each state replaces the last
+            // rather than stacking - otherwise the second pass collides and the
+            // test reports a database error where it means to report a refusal.
+            $this->inTenant(fn () => SendingIdentity::query()->delete());
 
-        $refused = null;
+            if ($state !== null) {
+                $this->tenantIdentity($state);
+            }
 
-        try {
-            $this->inTenant(fn () => app(MailDispatcher::class)
-                ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-        } catch (CannotSendMail $e) {
-            $refused = $e;
+            Mail::fake();
+
+            $refused = null;
+
+            try {
+                $this->inTenant(fn () => app(MailDispatcher::class)
+                    ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            } catch (CannotSendMail $e) {
+                $refused = $e;
+            }
+
+            $this->assertNotNull(
+                $refused,
+                "Tenant-authored mail went out with {$description}. EzBizi's SES carries EzBizi's "
+                .'own messages only, and a verified domain does not change whose transport it is.',
+            );
+
+            // The sentence names the way out, which is the tenant's OWN provider
+            // — not a domain to verify, because verifying one would change the
+            // from-address on mail that still is not allowed to travel here.
+            $this->assertStringContainsString('own email provider', $refused->getMessage());
+            $this->assertStringNotContainsString('verify', mb_strtolower($refused->getMessage()));
+
+            Mail::assertNothingSent();
         }
-
-        $this->assertNotNull($refused, 'An unverified identity sent mail.');
-
-        // R8: a sentence saying what to do, with no key and no class name in it.
-        $this->assertStringContainsString('info@a-1chimney.com', $refused->getMessage());
-        $this->assertStringNotContainsString('\\', $refused->getMessage());
-        $this->assertStringNotContainsString('::', $refused->getMessage());
-        $this->assertGreaterThan(15, str_word_count($refused->getMessage()));
-
-        // And nothing was handed over. A refusal that throws after sending
-        // would be the worst of both.
-        Mail::assertNothingSent();
     }
 
-    public function test_an_unverified_tenant_never_quietly_falls_back_to_the_platform_address(): void
+    public function test_the_refusal_does_not_touch_mail_that_is_the_mechanism(): void
     {
-        $this->tenantIdentity(SendingState::Failed);
-
+        /*
+         * THE CASE THAT DISTINGUISHES WHERE THE CHECK LIVES, and the reason the
+         * test above is not enough on its own.
+         *
+         * A check placed in handOver() or in the transport would satisfy every
+         * other assertion in this file and ALSO refuse the invitation, the
+         * password reset and the address confirmation — for every organization
+         * with no sending address, which today is all of them. The person locked
+         * out would be the person unable to ask for a link to get back in.
+         *
+         * So the refusal belongs to tenant-AUTHORED content. Mail that IS the
+         * mechanism is EzBizi's own and is correct as EzBizi (Jose, 2026-09-14:
+         * "invitations should come from ezbizi, password resets, etc").
+         *
+         * Those three never reach MailDispatcher at all — they go through
+         * Notification::route — so they are outside the refusal by construction.
+         * This asserts the property rather than the construction, because the
+         * construction is what a later refactor would quietly change.
+         */
         Mail::fake();
 
-        $this->expectException(CannotSendMail::class);
-
-        // The tempting "fix" is to send it from EzBizi instead. That puts the
-        // customer's newsletter out under our name without anybody deciding to,
-        // which is worse than the send failing.
+        // No identity anywhere: exactly the state that refuses a tenant send.
         $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-    }
-
-    public function test_a_verified_tenant_sends_under_its_own_address(): void
-    {
-        $this->tenantIdentity(SendingState::Verified);
-
-        Mail::fake();
-
-        $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
-
-        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('info@a-1chimney.com', 'A-1 Chimney'));
-    }
-
-    public function test_a_tenant_with_nothing_configured_sends_as_the_platform(): void
-    {
-        Mail::fake();
-
-        // No row anywhere, so the cascade ends at the platform — which CAN
-        // send. Refusing here would mean a business that has never opened the
-        // sending-address screen cannot email anybody.
-        $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            ->platform(new PlatformNotice, 'newstarter@example.test'));
 
         Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'));
     }
 
+    public function test_a_fresh_organization_with_no_sending_identity_can_still_invite_somebody(): void
+    {
+        /*
+         * THE ONE THAT WOULD HAVE CAUGHT THE LAST OUTAGE.
+         *
+         * Production has 2 organizations and 0 sending_identities, so EVERY
+         * organization is in this state right now. A sending-identity check
+         * applied to all outbound mail refuses the invitation too - and the
+         * person who cannot get in is the person who cannot report that they
+         * cannot get in. That is the same shape as the verified-email gate three
+         * releases ago, which refused writes for 23 of 24 accounts because the
+         * population it broke was the one no test constructs.
+         *
+         * The test above uses a bare Mailable through platform(), which proves
+         * the PATH stays open. This asserts the actual artefact: a real
+         * InvitationLink, for a real invitation, on an organization with nothing
+         * configured. A refactor that moved the refusal somewhere more central
+         * would satisfy the proxy and fail this one.
+         */
+        $this->assertSame(
+            0,
+            $this->inTenant(fn () => SendingIdentity::query()->count()),
+            'precondition: this organization has configured nothing',
+        );
+
+        Notification::fake();
+
+        // Built through the service the product uses, not by hand: issue() is
+        // what mints the token and stamps sent_at/expires_at, and a row I
+        // assembled myself would be asserting against my own fixture rather than
+        // against an invitation.
+        $issued = $this->inTenant(fn () => app(Invitations::class)->issue([
+            'organization_id' => $this->org->id,
+            'assigned_company_id' => $this->company->getKey(),
+            'email' => 'newstarter@example.test',
+            'first_name' => 'Marta',
+        ]));
+
+        $invitation = $issued['invitation'];
+
+        $this->inTenant(fn () => Notification::route('mail', $invitation->email)
+            ->notify(new InvitationLink($invitation, 'https://app.ezbizi.test/invitations/accept?token=x')));
+
+        // The second argument is a CALLBACK, not a message - passing a string
+        // here calls it as a function, which is how this first went red.
+        Notification::assertSentOnDemand(
+            InvitationLink::class,
+            fn (InvitationLink $n, array $channels, $notifiable) => $notifiable->routes['mail'] === 'newstarter@example.test',
+        );
+    }
+
     public function test_a_reply_to_travels_with_the_identity(): void
     {
-        $identity = $this->tenantIdentity(SendingState::Verified);
-        $this->inTenant(fn () => $identity->fill(['reply_to' => 'bookings@a-1chimney.com'])->save());
+        /*
+         * Retargeted at platform(), because asTenant can no longer reach
+         * handOver() at all. The reply-to plumbing itself is NOT dead — every
+         * message EzBizi sends goes through it — so deleting this test would
+         * lose coverage of live code because the only caller that used to
+         * exercise it was retired.
+         */
+        config(['mail.reply_to.address' => 'support@ezbizi.test']);
 
         Mail::fake();
 
         $this->inTenant(fn () => app(MailDispatcher::class)
-            ->asTenant($this->company, new PlatformNotice, 'customer@example.test'));
+            ->platform(new PlatformNotice, 'customer@example.test'));
 
-        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasReplyTo('bookings@a-1chimney.com'));
+        Mail::assertSent(PlatformNotice::class, fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'));
+    }
+
+    // ── the tenant's own mail server ─────────────────────────────
+    //
+    // Asserted through smtpConfigFor() rather than by sending, and that is not
+    // a convenience. Mail::build() is not faked — MailFake has no build()
+    // override, so __call forwards it to the real manager — which means a test
+    // that called throughTenantProvider() under Mail::fake() would open a real
+    // socket to whatever host the fixture named. Everything that can be got
+    // wrong lives in the config; the send is Laravel's own code.
+
+    /** A tenant with its own mail server connected. */
+    private function tenantSmtp(array $credentials = []): SendingIdentity
+    {
+        return $this->inTenant(function () use ($credentials) {
+            SendingIdentity::query()->delete();
+
+            $identity = new SendingIdentity([
+                'organization_id' => $this->org->id,
+                'scope_type' => SendingIdentity::SCOPE_COMPANY,
+                'scope_id' => $this->company->getKey(),
+                'from_address' => 'info@a-1chimney.com',
+                'from_name' => 'A-1 Chimney',
+                'transport' => MailTransport::Smtp->value,
+            ]);
+
+            $identity->forceFill([
+                'state' => SendingState::Verified->value,
+                'credentials' => array_merge([
+                    'host' => 'smtp.gmail.com',
+                    'port' => 465,
+                    'username' => 'info@a-1chimney.com',
+                    'password' => 'not-a-real-password',
+                ], $credentials),
+            ])->save();
+
+            return $identity;
+        });
+    }
+
+    public function test_a_connected_tenant_sends_through_its_own_server_and_not_ours(): void
+    {
+        /*
+         * THE test. Everything else in this block is a refusal, and a refusal
+         * test passes against a method that refuses unconditionally — which is
+         * exactly what asTenant now does one door along. This is the case that
+         * can tell the new door from the old one.
+         */
+        $this->tenantSmtp();
+
+        $config = $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+
+        $approved = $config['approved'];
+
+        $this->assertSame('smtp.gmail.com', $approved->host);
+        $this->assertSame(465, $approved->port);
+        $this->assertSame('info@a-1chimney.com', $config['username']);
+        $this->assertSame('not-a-real-password', $config['password']);
+
+        // The point of the whole feature: this is NOT EzBizi's mailer. If the
+        // host ever came back as the platform's, the tenant's report would be
+        // leaving on our reputation and our quota again.
+        $this->assertNotSame(
+            config('mail.mailers.'.app(PlatformIdentity::class)->mailerName().'.host'),
+            $approved->host,
+            'A tenant send was configured against EzBizi\'s own transport.',
+        );
+
+        /*
+         * The APPROVED ADDRESS travels with it, not just a verdict. That is what
+         * lets the socket dial the IP that was actually judged and pass the name
+         * as OpenSSL peer_name — one lookup rather than two, which is the whole
+         * difference between checking a host and checking the host you dial.
+         *
+         * Asserted as a RESOLVED ADDRESS rather than merely present, because
+         * `approved` handing the hostname back would satisfy a null check and
+         * reintroduce the second resolution silently.
+         */
+        $this->assertNotFalse(
+            filter_var($approved->address, FILTER_VALIDATE_IP),
+            'The approved host came back with no resolved address, so the socket would have '
+            .'to look it up again — which is the rebinding gap this is supposed to close.',
+        );
+    }
+
+    public function test_a_report_too_large_to_email_is_refused_before_anything_is_dialled(): void
+    {
+        /*
+         * The one guard in the send path I can actually exercise, and it is
+         * worth exercising because it is the case that WILL happen:
+         * ReportRunner::ROW_CAP is 5000 rows and base64 adds about a third, so a
+         * wide report reaches this.
+         *
+         * No socket is opened. The size check sits after the host is approved
+         * (DNS only) and before the message is handed to the transport, so this
+         * test asserts the refusal without needing a mail server to exist.
+         *
+         * The sentence has to be THIS file's, not the transport's — the Email
+         * module's 3MB ceiling is the backstop and their docblock asks that a
+         * person read the caller's words instead: "a scheduled report failing
+         * into ImapFailure::unreachable would be the transport answering a
+         * product question."
+         */
+        $this->tenantSmtp();
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->throughTenantProvider(
+                $this->company,
+                new OversizeNotice,
+                'customer@example.test',
+            ));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A message over the ceiling was handed to the transport.');
+        $this->assertStringContainsString('too large to email', $refused->getMessage());
+
+        // Names the size, because "too large" alone gives somebody nothing to
+        // aim at when they go to narrow the report.
+        $this->assertMatchesRegularExpression('/\d+\.\dMB/', $refused->getMessage());
+    }
+
+    public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void
+    {
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A tenant with nothing connected got a working mail config.');
+        $this->assertStringContainsString('has not connected its own mail server', $refused->getMessage());
+    }
+
+    public function test_an_identity_on_the_old_transport_does_not_count_as_connected(): void
+    {
+        /*
+         * The row that would slip through. A VerifiedDomain identity is a real,
+         * verified, non-null row — everything a null-check would accept — and it
+         * has no credentials at all, because that transport never had any. If
+         * the check were "is there a row" rather than "is it THIS transport",
+         * this tenant would reach Mail::build() with an empty host.
+         */
+        $this->tenantIdentity(SendingState::Verified);
+
+        $this->expectException(CannotSendMail::class);
+
+        $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+    }
+
+    public function test_a_half_saved_connection_says_what_is_missing_rather_than_reconnect(): void
+    {
+        foreach (['host', 'username', 'password'] as $missing) {
+            $this->tenantSmtp([$missing => '']);
+
+            $refused = null;
+
+            try {
+                $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+            } catch (CannotSendMail $e) {
+                $refused = $e;
+            }
+
+            $this->assertNotNull($refused, "A connection with no {$missing} was treated as usable.");
+
+            // Names the missing field. "Not connected" would describe a state
+            // this tenant is not in — they connected something and part of it
+            // did not survive — and they would refill the same form.
+            $this->assertStringContainsString($missing, $refused->getMessage());
+            $this->assertStringNotContainsString('has not connected', $refused->getMessage());
+        }
+    }
+
+    public function test_a_mail_server_pointing_back_into_our_network_is_refused(): void
+    {
+        /*
+         * THE SSRF BOUNDARY, and the guard behind it is the EMAIL MODULE'S.
+         *
+         * I wrote my own for this and deleted it: RemoteHostGuard already
+         * existed, already guarded this exact question on this exact kind of
+         * host, and does three things mine did not — allow-lists the port,
+         * carries an explicit metadata-address list, and resolves ONCE so the
+         * list that is judged is the list that is returned.
+         *
+         * The test stays HERE rather than moving to their suite, because what it
+         * pins is not that the guard works — theirs does that — but that this
+         * dispatcher CALLS it. A guard nothing invokes has a green suite of its
+         * own.
+         */
+        $this->tenantSmtp(['host' => '169.254.169.254']);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'The cloud metadata endpoint was accepted as a mail server.');
+
+        /*
+         * Pinned to the HOST refusal specifically. "Some CannotSendMail was
+         * thrown" would be satisfied by the missing-field loop above it, or by
+         * the not-connected branch, so this test would keep passing with the
+         * approve() call deleted — which is the whole thing it exists to catch.
+         *
+         * Asserted on the SUBSTANCE, not the sentence. The wording belongs to
+         * the Email module now and a test of mine pinning their copy word for
+         * word goes red on a rewrite that keeps the meaning — a mistake already
+         * made once in this file today, on the settings card's note.
+         */
+        $this->assertStringContainsString('metadata', mb_strtolower($refused->getMessage()));
+        $this->assertStringContainsString('mail server name your provider gave you', $refused->getMessage());
+    }
+
+    public function test_a_port_no_mail_server_answers_on_is_refused(): void
+    {
+        /*
+         * MINE ACCEPTED ANY PORT, which is what made replacing my guard worth
+         * doing rather than merely tidy. A publicly routable host on port 22 is
+         * not a mail server, and a form that dials whatever port a tenant types
+         * is a network scanner with a text box — the host being public does not
+         * make the port harmless.
+         */
+        $this->tenantSmtp(['host' => 'smtp.gmail.com', 'port' => 22]);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->smtpConfigFor($this->company));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'A tenant could have dialled port 22 on a host of their choosing.');
+        $this->assertStringContainsString('22', $refused->getMessage());
     }
 }
 
@@ -355,5 +700,23 @@ class PlatformNotice extends Mailable
     public function build(): self
     {
         return $this->subject('A notice from EzBizi')->html('<p>Nothing to see.</p>');
+    }
+}
+
+/**
+ * A message deliberately over the ceiling, for the size refusal.
+ *
+ * 4MB of attachment: comfortably past this file's 3,000,000-byte limit even
+ * before base64 adds a third, so the test cannot start passing because the
+ * margin moved.
+ */
+class OversizeNotice extends Mailable
+{
+    public function build(): self
+    {
+        return $this->subject('A large report')
+            ->html('<p>Attached.</p>')
+            ->attachData(str_repeat('a,b,c,d
+', 500_000), 'report.csv', ['mime' => 'text/csv']);
     }
 }

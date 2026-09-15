@@ -3,8 +3,11 @@
 namespace App\Support\Reports;
 
 use App\Models\User;
+use App\Support\Access\ScopeReach;
+use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -80,6 +83,9 @@ final class ReportRunner
         'contains' => 'like',
     ];
 
+    /** @var list<string>|null memoised per run; see visiblePeopleIds() */
+    private ?array $visiblePeople = null;
+
     public function __construct(private readonly TenantContext $tenant) {}
 
     /**
@@ -113,9 +119,11 @@ final class ReportRunner
             fn (string $column, string $operator, mixed $value) => $query->where($column, $operator, $value),
             fn (string $column, array $values) => $query->whereIn($column, $values),
             fn (string $column) => $query->whereNull($column),
+            fn (string $sql, array $bindings) => $query->whereRaw($sql, $bindings),
             $rootResource,
             $organizationId,
             $view,
+            $user,
         );
 
         $joined = [$root => true];
@@ -139,7 +147,7 @@ final class ReportRunner
                 $to   = ReportMap::get($hop['to']);
 
                 $query->leftJoin($to['table'], function (JoinClause $join) use (
-                    $from, $to, $hop, $organizationId, $view
+                    $from, $to, $hop, $organizationId, $view, $user
                 ) {
                     // A column per side rather than local/foreign, because an
                     // edge is walked in both directions: the predicate is the
@@ -154,9 +162,11 @@ final class ReportRunner
                         fn (string $c, string $o, mixed $v) => $join->where($c, $o, $v),
                         fn (string $c, array $v) => $join->whereIn($c, $v),
                         fn (string $c) => $join->whereNull($c),
+                        fn (string $sql, array $b) => $join->whereRaw($sql, $b),
                         $to,
                         $organizationId,
                         $view,
+                        $user,
                     );
                 });
 
@@ -229,9 +239,11 @@ final class ReportRunner
         callable $where,
         callable $whereIn,
         callable $whereNull,
+        callable $whereRaw,
         array $resource,
         string $organizationId,
         ViewScope $view,
+        User $user,
     ): void {
         $table = $resource['table'];
 
@@ -245,8 +257,21 @@ final class ReportRunner
         // from the column, because `jobs.franchise_id` and `franchises.id` are
         // both answered by the same list of franchise ids.
         foreach ($resource['scope'] as $column => $source) {
+            if ($source === 'place') {
+                // The CATALOGUE shape: nullable company and franchise, so a row
+                // can be filed at the organization, at a company, or at one
+                // franchise. Delegated to the reviewed engine rather than
+                // re-derived — see placeScope().
+                $this->placeScope($whereRaw, $resource, $user);
+
+                continue;
+            }
+
             $ids = match ($source) {
                 'franchise' => $view->franchiseIds(),
+                // The column says WHICH column holds the user id: `id` on the
+                // people themselves, `user_id` on a row that belongs to one.
+                'people' => $this->visiblePeopleIds($user),
                 default => throw new LogicException(
                     "ReportMap scopes '{$table}.{$column}' by '{$source}', and this runner "
                     .'does not know which view ids resolve that. Teach it here rather than '
@@ -259,6 +284,78 @@ final class ReportRunner
             // legitimate answer of "no rows" rather than "no filter".
             $whereIn($table.'.'.$column, $ids);
         }
+    }
+
+    /**
+     * The catalogue place rule, borrowed rather than rebuilt.
+     *
+     * `InventoryVisibility::constrain` is the reviewed answer for rows with a
+     * nullable company and franchise — organization rows to anyone with reach,
+     * company General rows to anyone who can see that company, franchise rows
+     * only when the franchise is in view. Its own docblock records that the
+     * organization arm must answer with REACH and not with
+     * `ViewScope::companyIds()`, because anybody who has never touched the
+     * switcher arrives claiming an organization view: "Phone shipped exactly
+     * that to production."
+     *
+     * That is too subtle to re-derive here, so this builds the same query
+     * through that class and reuses its WHERE as a subquery predicate. It
+     * costs one extra clause and buys the guarantee that a report and the
+     * module's own list agree — which `ReportRunnerTest` asserts directly, so
+     * the two cannot drift apart silently.
+     */
+    private function placeScope(callable $whereRaw, array $resource, User $user): void
+    {
+        $model = $resource['model'];
+        $scoped = InventoryVisibility::constrain(
+            $model::query(),
+            $user,
+            ViewScope::forUser($user),
+        );
+
+        $sql = $scoped->toBase()->toSql();
+        $wheres = strstr($sql, ' where ');
+
+        if ($wheres === false) {
+            // The engine refused everything (no reach at all). Say no rows
+            // rather than no filter.
+            $whereRaw('0 = 1', []);
+
+            return;
+        }
+
+        $whereRaw(
+            '('.substr($wheres, 7).')',
+            $scoped->toBase()->getBindings(),
+        );
+    }
+
+    /**
+     * The people this caller may see, as ids.
+     *
+     * Delegated to `ScopeReach::constrainToVisiblePeople`, which is the shared
+     * predicate behind HR's own people list AND Monitoring's device list — its
+     * docblock says so in as many words, so that "may you see this person"
+     * cannot drift into two answers. Three arms: yourself always, anybody
+     * assigned to a place your authority covers, and the unassigned only if you
+     * reach the whole organization.
+     *
+     * THIS IS WHY `monitored_devices` NEEDS NO PLACE COLUMN. A device belongs to
+     * a person, not to a branch, and a column would be wrong the moment somebody
+     * transfers. Monitoring's own controller checks reach against the device's
+     * OWNER for exactly that reason; this does the same, one hop away.
+     *
+     * Materialised as ids rather than as a subquery because a tenant's people
+     * are tens, not millions, and the alternative is SQL-string surgery on a
+     * predicate whose correctness is the whole point. Memoised per run: a
+     * report naming both `users` and `monitored_devices` asks twice.
+     */
+    private function visiblePeopleIds(User $user): array
+    {
+        return $this->visiblePeople ??= User::query()
+            ->where(fn (Builder $q) => app(ScopeReach::class)->constrainToVisiblePeople($q, $user))
+            ->pluck('id')
+            ->all();
     }
 
     /** @return list<string> */

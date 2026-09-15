@@ -7,7 +7,6 @@ import '../core/timestamps.dart';
 import '../widgets/address_fields.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
-import '../widgets/sending_identity_panel.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 
@@ -86,6 +85,43 @@ String? _notYetInEffect(Map<String, dynamic> setting) {
   return reason is String && reason.trim().isNotEmpty ? reason : null;
 }
 
+// ── the cascade's vocabulary, back where it started ──────────────
+//
+// These three were defined in the sending-identity panel until 2026-09-14,
+// because that card asked the same question about the same cascade and the
+// wording had to be ONE wording: a card saying "inherited" differently from the
+// rows beside it is the confusion this screen exists to prevent. The card is
+// gone on Jose's ruling ("GET RID OF IT", b32fc797); that reason is not, and
+// every caller of these three was on this screen the whole time anyway.
+//
+// The reason is written out rather than quoted from the old file's docblock,
+// which nobody can open any more.
+
+/// Where a value came from, in words an administrator can act on.
+///
+/// Three states, and the third is not a rounding of the second. A null `source`
+/// means nothing is set anywhere in the cascade and what is on screen is the
+/// platform's — a different fact from inheriting a value somebody in this
+/// organization chose. An admin who cannot tell "this franchise's own value"
+/// from "the company's, showing through" edits what they take to be the
+/// franchise and changes every place under that company.
+String provenanceSentence(Map<String, dynamic>? source) {
+  if (source == null) return 'EzBizi default';
+
+  return source['inherited'] == true
+      ? 'Inherited from ${source['name']}'
+      : 'Set here';
+}
+
+/// True when the value on screen was chosen at the scope being looked at.
+bool sourceIsOwn(Map<String, dynamic>? source) =>
+    source != null && source['inherited'] != true;
+
+/// A value that saves, audits and inherits like any other, and that nothing
+/// reads yet. A setting which silently does nothing is the complaint this area
+/// exists to answer, so the admission gets one phrasing rather than two.
+String notInEffectSentence(String reason) => 'Not in effect yet — $reason';
+
 /// The value on this row was chosen at the scope being looked at.
 ///
 /// Distinct from "has a value" — nearly everything has one. This is the count
@@ -117,18 +153,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// organization's records is not a request that returns instantly, and a
   /// button that looks untouched for six seconds gets pressed again.
   bool _exportingEverything = false;
-
-  /// Which address this part of the business sends its OWN mail from (§6), and
-  /// whether the domain behind it has been proved.
-  ///
-  /// Fetched here rather than by the card, for the reason `_dataAnswers` is: it
-  /// is one request per scope, it must not run again every time somebody types
-  /// in the search box, and the answer outlives the card being filtered out of
-  /// the list and back into it.
-  ///
-  /// Null while the request is in flight, and null if it failed — see
-  /// [_sendingIdentityCard] for why that draws nothing at all.
-  Map<String, dynamic>? _sendingIdentity;
 
   final TextEditingController _addressLine1 = TextEditingController();
   final TextEditingController _addressLine2 = TextEditingController();
@@ -171,32 +195,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _fillBusinessAddress(widget.session.me?.organization);
     _load();
     _loadDataAnswers();
-    _loadSendingIdentity();
-  }
-
-  /// The sending identity in force at this scope, and where it came from.
-  ///
-  /// Asked of its own endpoint rather than read out of the settings list: the
-  /// answer is an address, a display name, a verification state and a set of
-  /// DNS records, which is not the shape a settings row carries. What it DOES
-  /// borrow from the list is the cascade's vocabulary — `source`, `may_edit`,
-  /// `may_edit_reason` — because it is the same cascade and a second dialect of
-  /// "inherited" would be the bug this screen exists to prevent.
-  Future<void> _loadSendingIdentity() async {
-    final response = await widget.api.get(
-      sendingIdentityPath,
-      sendingIdentityScope(widget.session),
-    );
-
-    if (!mounted || !response.ok) return;
-
-    final data = response.data;
-
-    // Anything that is not the object this card understands draws nothing at
-    // all rather than a card full of blanks.
-    if (data is! Map<String, dynamic>) return;
-
-    setState(() => _sendingIdentity = data);
   }
 
   /// Whether this person may take the two whole-organization §9 answers.
@@ -590,9 +588,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     final organizationData = _organizationData(context);
-    final sendingIdentity = _sendingIdentityCard();
 
-    if (groups.isEmpty && organizationData == null && sendingIdentity == null) {
+    if (groups.isEmpty && organizationData == null) {
       return _nothingMatches(context);
     }
 
@@ -640,7 +637,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
         ?_businessAddressCard(context),
-        ?sendingIdentity,
         ?organizationData,
       ],
     );
@@ -779,23 +775,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _emptyToNull(String text) {
     final trimmed = text.trim();
     return trimmed.isEmpty ? null : trimmed;
-  }
-
-  Widget? _sendingIdentityCard() {
-    if (_sendingIdentity == null ||
-        _filter != _Filter.all ||
-        !SendingIdentitySection.matchesSearch(_search.text)) {
-      return null;
-    }
-
-    return SendingIdentitySection(
-      api: widget.api,
-      session: widget.session,
-      identity: _sendingIdentity!,
-      // The panel does the writing, so the card learns the new state from the
-      // answer it already has rather than going back for it.
-      onChanged: (next) => setState(() => _sendingIdentity = next),
-    );
   }
 
   Widget _nothingMatches(BuildContext context) {

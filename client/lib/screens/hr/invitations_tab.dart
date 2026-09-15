@@ -22,13 +22,26 @@ import '../../widgets/tag.dart';
 /// inviter chooses the role and the place when inviting, the link is complete,
 /// and whoever follows it lands somewhere real instead of in limbo.
 ///
-/// ── Why the link is the delivery, and says so ────────────────────
+/// ── Why the link is shown even when the mail goes ────────────────
 ///
-/// Nothing here can send mail — AWS blocks port 25 outbound and SES has no
-/// credential — so an email-only invitation is one nobody receives. The link is
-/// shown with a copy button and a sentence saying no message was sent. That
-/// sentence is load-bearing: without it somebody invites a person, closes the
-/// panel, and waits for an acceptance that was never going to come.
+/// The panel shows the link with a copy button and a strip saying what became
+/// of the message. The strip is load-bearing: without it somebody invites a
+/// person, closes the panel, and waits for an acceptance that was never going
+/// to come.
+///
+/// This paragraph used to say "nothing here can send mail — AWS blocks port 25
+/// outbound and SES has no credential". Mail has sent since SES production
+/// access on 2026-09-14, so the reason changed rather than expired: the link is
+/// here because a send can still go NOWHERE — a box on `log` or `array`, a
+/// blank credential, a refused transport — and the inviter is the only person
+/// who can hand it over when that happens.
+///
+/// It is the third sandbox-era sentence found in HR, and it survived a sweep I
+/// had already run over this very file. Not because the pattern missed it —
+/// "send.*mail" matches it — but because I piped the results through a filter
+/// requiring a quote character, which kept the string literals and dropped
+/// every comment. The stale sentences live in the comments. A filter that
+/// narrows to "user-facing copy" is exactly the wrong instinct here.
 ///
 /// The raw token exists for exactly one response — creating and resending both
 /// answer with it and it is never readable again — so the panel showing it
@@ -376,10 +389,17 @@ class _InvitationsTabState extends State<InvitationsTab> {
     if (mounted) await _load();
   }
 
-  Future<void> _resend(Map<String, dynamic> invitation) async {
+  /// Resend, and — when [email] is given — move it to a different address.
+  ///
+  /// One call, because on the server it is one act: the address rides the
+  /// reissue so the old token dies with it. A PATCH that repointed the row
+  /// would leave the already-sent link alive, and if the mistyped address
+  /// belongs to a real person, that stranger keeps a working invitation into
+  /// this organization while this screen says it is fixed.
+  Future<void> _resend(Map<String, dynamic> invitation, {String? email}) async {
     final response = await widget.api.post(
       '/hr/invitations/${invitation['id']}/resend',
-      const {},
+      email == null ? const {} : {'email': email},
     );
 
     if (!mounted) return;
@@ -447,14 +467,12 @@ class _InvitationsTabState extends State<InvitationsTab> {
     await _load();
   }
 
-  /// The one moment the raw token exists, shown with the reason nobody has been
-  /// emailed.
+  /// The one moment the raw token exists, shown with what became of the send.
   Future<void> _showLink(
     Map<String, dynamic> invitation, {
     required bool resent,
   }) {
     final url = invitation['accept_url'] as String?;
-    final emailed = invitation['emailed'] as bool?;
     final expires = formatStamp(
       invitation['expires_at'],
       'in a week',
@@ -488,22 +506,10 @@ class _InvitationsTabState extends State<InvitationsTab> {
             // nothing to make it fail loudly — the server now answers the
             // question instead of the client assuming it.
             //
-            // Three states, not two. `null` is a server older than the
-            // `emailed` field, and the honest thing there is to claim
-            // neither outcome: say what to do, promise nothing about what
-            // happened.
-            Text(switch (emailed) {
-              true =>
-                'The invitation has been emailed to them. The link below is '
-                    'the same one — you only need it if the message goes astray.',
-              false =>
-                'The email could not be sent, so nothing has reached them. '
-                    'Copy the link and get it to them yourself, or they will be '
-                    'waiting for a message that never arrives.',
-              null =>
-                'Copy the link and get it to them yourself if you are not '
-                    'certain the email reached them.',
-            }, style: Theme.of(context).textTheme.bodyMedium),
+            // What became of the send, in the server's own answer rather than
+            // this end's inference. See _strip for the states and for why an
+            // unreadable answer is not the same as an absent one.
+            _strip(context, invitation),
             const SizedBox(height: 16),
             if (url == null || url.isEmpty)
               const ErrorNote(
@@ -551,6 +557,181 @@ class _InvitationsTabState extends State<InvitationsTab> {
         ),
       ),
     );
+  }
+
+  /// The status strip: one state, its reason, and one action.
+  ///
+  /// Layout is Jose's pick of 2026-09-14 — desktop 2, the strip above the
+  /// sentence; mobile 5, the same strip with the action at the bottom where a
+  /// thumb is. It carries the three states the SERVER can prove and reserves
+  /// room for `bounced`, which arrives when SES's events land as typed data.
+  /// Nothing here names a cause that was guessed: there is no "the address was
+  /// refused", because on this send path a rejected recipient and a dead
+  /// connection are the same exception, and the cost of guessing wrong is
+  /// telling somebody to correct an address that was right.
+  Widget _strip(BuildContext context, Map<String, dynamic> invitation) {
+    final theme = Theme.of(context);
+
+    // Absent means a server older than this release. It claims neither
+    // outcome, and it is deliberately not drawn as a failure: "we do not know"
+    // is not bad news.
+    final state = invitation['sent_state'] as String?;
+
+    final (String sentence, bool bad) = switch (state) {
+      'sent' => ('Sent to them.', false),
+      'not_sent_no_transport' => (
+        'Not sent — this installation is not sending mail at all.',
+        true,
+      ),
+      'not_sent_refused' => (
+        'Not sent — the message was refused when we tried to send it.',
+        true,
+      ),
+
+      // ABSENT and UNREADABLE are two different facts, and collapsing them
+      // into one fallback is how a bad outcome gets a reassuring sentence.
+      //
+      // `null` is a server OLDER than this field. It said nothing, so this
+      // claims nothing, and it is not drawn as a failure because not knowing
+      // is not bad news.
+      null => ('May or may not have been sent.', false),
+
+      // Any other string is a server NEWER than this build — it answered, and
+      // this version cannot read the answer. That must not borrow the
+      // sentence above: an unrecognised state rendering as "may or may not
+      // have been sent" is a plausible, reassuring answer to a question the
+      // server may well have answered badly, and somebody would stop chasing
+      // on the strength of it. Found by UI/UX reading the switch rather than
+      // my description of it, after I told them a state was handled here that
+      // was not.
+      // UI/UX's wording, taken over mine: it names the CAUSE — an unknown
+      // state means this app is behind the server, which is a fact about the
+      // reader's app rather than about their invitation — and then gives the
+      // remedy for that cause rather than only the fallback. "Build" was our
+      // word; nobody thinks in builds.
+      _ => (
+        'This app is older than the server and cannot read what it said about '
+            'this message. Update the app, or hand the link over if you need '
+            'to be sure it arrived.',
+        true,
+      ),
+    };
+
+    final scheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (bad ? scheme.errorContainer : scheme.surfaceContainerHighest)
+            .withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                bad ? Icons.error_outline : Icons.outgoing_mail,
+                size: 18,
+                color: bad ? scheme.error : scheme.outline,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  sentence,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: bad ? scheme.error : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Offered in EVERY state, success included, and that is the point
+          // rather than an oversight: the invitation keeps the address on
+          // record whatever became of the send, so noticing a typo right after
+          // a successful one is exactly when somebody wants this. It does not
+          // depend on knowing why anything failed.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _readdress(invitation),
+              icon: const Icon(Icons.alternate_email, size: 18),
+              label: const Text('Re-invite at a different address'),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 12),
+            child: Text(
+              // On the control rather than behind a confirmation. The dead
+              // link is most of what this does, and a dialog confirming an
+              // address somebody just typed is the kind people learn to
+              // dismiss.
+              'The current link stops working.',
+              style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Ask for the corrected address, then reissue to it.
+  Future<void> _readdress(Map<String, dynamic> invitation) async {
+    final controller = TextEditingController(
+      text: invitation['email'] as String? ?? '',
+    );
+
+    final email = await showSidePanel<String>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Re-invite at a different address',
+        subtitle: invitation['email'] as String?,
+        width: 480,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: const Text('Re-invite'),
+          ),
+        ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'A new link goes to this address and the current one stops '
+              'working. If the address on record was wrong, whoever received '
+              'the old message can no longer use it.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email address',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (email == null || email.isEmpty || !mounted) return;
+
+    // Closes the link panel this was opened from, so the new one is not
+    // stacked behind a panel showing a link that has just been killed.
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+
+    await _resend(invitation, email: email);
   }
 
   void _snack(String message, {bool isError = false}) {

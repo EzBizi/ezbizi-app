@@ -4,6 +4,13 @@ namespace App\Support\Reports;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InventoryItem;
+use App\Models\Lead;
+use App\Models\MonitoredDevice;
+use App\Models\Service;
+use App\Models\ServiceArea;
+use App\Models\TrainingGuide;
+use App\Models\Vehicle;
 use App\Models\Job;
 use App\Models\User;
 
@@ -182,19 +189,272 @@ final class ReportMap
                 'relations' => [],
             ],
 
+
+            /*
+             * THE CATALOGUE SHAPE, five modules of it.
+             *
+             * Services, Inventory, Fleet, Training and Leads all file the same
+             * way: nullable company AND nullable franchise, so a row can sit on
+             * the organization, on a company as General, or on one branch.
+             *
+             * `scope` is therefore ['company_id' => 'place'] - one entry, but
+             * the predicate reads both columns, because the rule is not "match
+             * this column" but "organization rows to anyone with reach, company
+             * General to anyone who can see that company, branch rows only when
+             * that branch is in view". ReportRunner delegates it to
+             * InventoryVisibility rather than re-deriving it: that class carries
+             * the scar tissue, including that the organization arm must answer
+             * with REACH and not with ViewScope::companyIds(), because anybody
+             * who has never touched the switcher arrives claiming an
+             * organization view. Phone shipped exactly that to production.
+             *
+             * A plain `franchise_id IN (...)` here would have been wrong in the
+             * quiet direction: the column is nullable, so every organization-
+             * and company-level row would silently vanish, and nobody reports a
+             * result that is too small when they cannot see what is missing.
+             */
+            'services' => [
+                'model'          => Service::class,
+                'table'          => 'services',
+                'label'          => 'Services',
+                'module'         => 'services',
+                'permission'     => 'services.view',
+                'scope'          => ['company_id' => 'place'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'number'      => ['label' => 'Number',      'type' => 'string'],
+                    'name'        => ['label' => 'Service',     'type' => 'string'],
+                    'description' => ['label' => 'Description', 'type' => 'string'],
+                    'price_minor' => ['label' => 'Price',       'type' => 'money'],
+                    'created_at'  => ['label' => 'Created',     'type' => 'datetime'],
+                ],
+                'relations' => [],
+            ],
+
+            'inventory_items' => [
+                'model'          => InventoryItem::class,
+                'table'          => 'inventory_items',
+                'label'          => 'Inventory',
+                'module'         => 'inventory',
+                'permission'     => 'inventory.view',
+                'scope'          => ['company_id' => 'place'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                /*
+                 * `last_cost_minor` is NOT reportable, and the absence is a
+                 * decision rather than an oversight. Cost is gated on
+                 * `inventory.financials`, which this map cannot express - a
+                 * resource carries ONE permission and the picker is offered
+                 * whole - so publishing it here would hand cost to anybody
+                 * holding inventory.view. Per-column permissions are the day
+                 * that changes.
+                 */
+                'columns'        => [
+                    'number'     => ['label' => 'Number',     'type' => 'string'],
+                    'sku'        => ['label' => 'SKU',        'type' => 'string'],
+                    'name'       => ['label' => 'Item',       'type' => 'string'],
+                    'unit'       => ['label' => 'Unit',       'type' => 'string'],
+                    'status'     => ['label' => 'Status',     'type' => 'string'],
+                    'reorder_at' => ['label' => 'Reorder at', 'type' => 'integer'],
+                    'created_at' => ['label' => 'Created',    'type' => 'datetime'],
+                ],
+                'relations' => [],
+            ],
+
+            'vehicles' => [
+                'model'          => Vehicle::class,
+                'table'          => 'vehicles',
+                'label'          => 'Fleet Management',
+                'module'         => 'fleet_management',
+                'permission'     => 'fleet_management.view',
+                'scope'          => ['company_id' => 'place'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                // `vin` is deliberately absent: it identifies the vehicle to a
+                // third party and nothing on a report needs it.
+                'columns'        => [
+                    'number'                  => ['label' => 'Number',         'type' => 'string'],
+                    'label'                   => ['label' => 'Vehicle',        'type' => 'string'],
+                    'year'                    => ['label' => 'Year',           'type' => 'integer'],
+                    'make'                    => ['label' => 'Make',           'type' => 'string'],
+                    'model'                   => ['label' => 'Model',          'type' => 'string'],
+                    'plate'                   => ['label' => 'Plate',          'type' => 'string'],
+                    'status'                  => ['label' => 'Status',         'type' => 'string'],
+                    'odometer_miles'          => ['label' => 'Odometer',       'type' => 'integer'],
+                    'next_service_on'         => ['label' => 'Service due',    'type' => 'date'],
+                    'registration_expires_on' => ['label' => 'Registration',   'type' => 'date'],
+                    'inspection_expires_on'   => ['label' => 'Inspection due', 'type' => 'date'],
+                    'created_at'              => ['label' => 'Created',        'type' => 'datetime'],
+                ],
+                'relations' => [],
+            ],
+
+            'training_guides' => [
+                'model'          => TrainingGuide::class,
+                'table'          => 'training_guides',
+                'label'          => 'Training',
+                'module'         => 'training',
+                'permission'     => 'training.view',
+                'scope'          => ['company_id' => 'place'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'title'      => ['label' => 'Guide',   'type' => 'string'],
+                    'summary'    => ['label' => 'Summary', 'type' => 'string'],
+                    'status'     => ['label' => 'Status',  'type' => 'string'],
+                    'created_at' => ['label' => 'Created', 'type' => 'datetime'],
+                ],
+                'relations' => [],
+            ],
+
+            /*
+             * Leads is the only one of the five that brings an EDGE: a lead
+             * that became work carries `job_id`, so "which source produced the
+             * jobs we did" is answerable. The others are starting points until
+             * their junction tables are mapped.
+             */
+            'leads' => [
+                'model'          => Lead::class,
+                'table'          => 'leads',
+                'label'          => 'Leads',
+                'module'         => 'leads',
+                'permission'     => 'leads.view',
+                'scope'          => ['company_id' => 'place'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'source'          => ['label' => 'Source',       'type' => 'string'],
+                    'contact_name'    => ['label' => 'Name',         'type' => 'string'],
+                    'phone'           => ['label' => 'Phone',        'type' => 'string'],
+                    'email'           => ['label' => 'Email',        'type' => 'string'],
+                    'lead_type'       => ['label' => 'Type',         'type' => 'string'],
+                    'category'        => ['label' => 'Category',     'type' => 'string'],
+                    'service'         => ['label' => 'Service',      'type' => 'string'],
+                    'status'          => ['label' => 'Status',       'type' => 'string'],
+                    'received_at'     => ['label' => 'Received',     'type' => 'datetime'],
+                    'last_contact_at' => ['label' => 'Last contact', 'type' => 'datetime'],
+                    'created_at'      => ['label' => 'Created',      'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'job' => ['to' => 'jobs', 'local' => 'job_id', 'foreign' => 'id'],
+                ],
+            ],
+
+            /*
+             * Scheduling's service areas. `franchise_id` is NOT NULL here -
+             * a service area belongs to exactly one branch - so this takes the
+             * plain `franchise` source rather than the catalogue `place` rule,
+             * and it brings an edge to Branches with it.
+             */
+            'service_areas' => [
+                'model'          => ServiceArea::class,
+                'table'          => 'service_areas',
+                'label'          => 'Scheduling',
+                'module'         => 'scheduling',
+                'permission'     => 'scheduling.view',
+                'scope'          => ['franchise_id' => 'franchise'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'name'       => ['label' => 'Service area', 'type' => 'string'],
+                    'created_at' => ['label' => 'Created',      'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
+                ],
+            ],
+
+            /*
+             * Monitoring, and NO MIGRATION WAS NEEDED.
+             *
+             * Jose said yes to making this reportable, and the desk framed it as
+             * "it needs a scoping column somebody has to want". It does not. A
+             * device belongs to a PERSON, not to a branch, and a place column
+             * would be wrong the moment somebody transfers between branches —
+             * stale by design, and a second thing for Monitoring to maintain.
+             *
+             * `ScopeReach::constrainToVisiblePeople` is already how Monitoring's
+             * own DevicesController decides who may see a device: reach is
+             * checked against the device's OWNER. This scopes the same way, so a
+             * report and the Monitoring tab answer with the same set and no
+             * column exists to drift.
+             *
+             * Columns are the ones that answer "is this person's machine
+             * working": what it is and when it was last seen.
+             *
+             * `current_module` WAS here and Monitoring ruled it off, for two
+             * reasons better than the privacy one I would have reached for.
+             *
+             * It answers "right now" — every heartbeat overwrites it — so in a
+             * report it is a value that was true at the instant the query ran,
+             * printed into a document somebody reads on Thursday about Tuesday.
+             * "Jonathan · Scheduling" reads as a fact about Tuesday and is a
+             * fact about the export. Nothing goes red and the reader forms a
+             * belief the data never supported.
+             *
+             * And it stores a KEY, not a label: the column holds `jobs`, and the
+             * roster renders it through a per-organization catalogue lookup
+             * (`pc_specs_tab.dart:563`), because a module's label is
+             * configurable per tenant. A report reading the column prints `jobs`
+             * where the app says "Scheduling" — a support question with a wrong
+             * answer built into it.
+             *
+             * The question people actually want — how much time was spent where
+             * — lives in `monitoring_activity` (`module_key`, `dwell_seconds`,
+             * `occurred_at`), which is genuinely historical and survives being
+             * exported. Not mapped, and whoever maps it inherits the same
+             * key-is-not-a-label problem.
+             * `ip_address`, `screen_context`, `specs`, `capture_last_error` and
+             * `capabilities` are deliberately NOT reportable — a report is the
+             * wrong surface for where somebody is sitting and what is on their
+             * screen, and that is a disclosure decision rather than an oversight.
+             */
+            'monitored_devices' => [
+                'model'          => MonitoredDevice::class,
+                'table'          => 'monitored_devices',
+                'label'          => 'Monitoring',
+                'module'         => 'monitoring',
+                'permission'     => 'monitoring.view',
+                'scope'          => ['user_id' => 'people'],
+                'shared_because' => null,
+                'soft_deletes'   => false,
+                'columns'        => [
+                    'label'          => ['label' => 'Device',       'type' => 'string'],
+                    'platform'       => ['label' => 'Platform',     'type' => 'string'],
+                    'last_seen_at'   => ['label' => 'Last seen',    'type' => 'datetime'],
+                    'created_at'     => ['label' => 'First seen',   'type' => 'datetime'],
+                ],
+                'relations' => [
+                    'person' => ['to' => 'users', 'local' => 'user_id', 'foreign' => 'id'],
+                ],
+            ],
+
             'users' => [
                 'model'      => User::class,
                 'table'      => 'users',
                 'label'      => 'Human Resources',
                 'module'     => 'hr',
                 'permission' => 'hr.view',
-                'scope'      => [],
-                'shared_because' => 'A person belongs to the organization and is assigned to '
-                    .'places rather than filed in one, so users carries no company or '
-                    .'franchise column to filter on. Narrowing people to the current view is '
-                    .'a question about assignments, which is a join this map does not yet '
-                    .'declare — so for now People is organization-wide and the permission '
-                    .'(hr.view) is what gates it.',
+                /*
+                 * CORRECTED 2026-09-14. This read `scope => []` with a
+                 * `shared_because` claiming people are organization-wide
+                 * because they carry no place column — and the second half was
+                 * true while the conclusion was wrong. HR's own list narrows
+                 * people by REACH through their assignments
+                 * (`ScopeReach::constrainToVisiblePeople`), so a report was
+                 * returning every user in the tenant while the Human Resources
+                 * tab showed fewer. A reader with one branch could read the
+                 * name, email and phone of somebody they have no authority
+                 * over. Shipped in 0.0.0192 and live until this.
+                 *
+                 * The lesson, since the justification was the dangerous part:
+                 * "this table has no place column" says nothing about whether
+                 * the module scopes it. Read the module's own list query
+                 * before writing a shared_because.
+                 */
+                'scope'          => ['id' => 'people'],
+                'shared_because' => null,
                 'soft_deletes' => false,
                 'columns'      => [
                     'name'       => ['label' => 'Name',    'type' => 'string'],

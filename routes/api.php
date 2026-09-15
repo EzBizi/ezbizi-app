@@ -13,7 +13,9 @@ use App\Http\Controllers\Api\CustomersController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DataController;
 use App\Http\Controllers\Api\DevelopmentUnlockController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\EnrolmentController;
+use App\Http\Controllers\Api\ExperimentalCallReportController;
 use App\Http\Controllers\Api\FranchisesController;
 use App\Http\Controllers\Api\GoogleMailAuthController;
 use App\Http\Controllers\Api\GoogleWorkspaceAuthController;
@@ -62,6 +64,8 @@ use App\Http\Controllers\Api\OrganizationCanvasController;
 use App\Http\Controllers\Api\OrganizationProfileController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\Phone\AddressesController as PhoneAddressesController;
+use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
+use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\CallsController as PhoneCallsController;
 use App\Http\Controllers\Api\Phone\CallTagsController as PhoneCallTagsController;
 use App\Http\Controllers\Api\Phone\ConnectionsController as PhoneConnectionsController;
@@ -73,6 +77,8 @@ use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\QueueCallbackWebhookController as PhoneQueueCallbackWebhookController;
+use App\Http\Controllers\Api\Phone\QueueWaitWebhookController as PhoneQueueWaitWebhookController;
 use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
 use App\Http\Controllers\Api\Phone\ReportsController as PhoneReportsController;
 use App\Http\Controllers\Api\Phone\RingGroupsController as PhoneRingGroupsController;
@@ -82,24 +88,22 @@ use App\Http\Controllers\Api\Phone\StatusWebhookController as PhoneStatusWebhook
 use App\Http\Controllers\Api\Phone\TokensController as PhoneTokensController;
 use App\Http\Controllers\Api\Phone\TranscriptionWebhookController as PhoneTranscriptionWebhookController;
 use App\Http\Controllers\Api\Phone\TrustController as PhoneTrustController;
-use App\Http\Controllers\Api\Phone\BlockedNumbersController as PhoneBlockedNumbersController;
 use App\Http\Controllers\Api\Phone\VoicemailBoxesController as PhoneVoicemailBoxesController;
 use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookController;
-use App\Http\Controllers\Api\Phone\AnsweredWebhookController as PhoneAnsweredWebhookController;
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
-use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
-use App\Http\Controllers\Api\SendingIdentitiesController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
+use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
@@ -138,6 +142,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
 use App\Support\Auth\TwoFactorPolicy;
@@ -207,6 +212,22 @@ Route::prefix('v1/auth')->group(function () {
     // can be used to discover which addresses are registered.
     Route::post('forgot', [PasswordController::class, 'forgot']);
     Route::post('reset', [PasswordController::class, 'reset']);
+
+    /*
+     * Confirming a signup address (TODO #22). Public by necessity: the link is
+     * opened from a mailbox, possibly on another device, by somebody with no
+     * session.
+     *
+     * POST rather than GET, with the token in the BODY. nginx logs the request
+     * line, which is how invitation credentials once ended up in an access log
+     * kept for weeks. The email links the CLIENT at /verify?token=..., and the
+     * client posts it here.
+     *
+     * `verify/resend` is throttled inside the controller, per address AND per
+     * IP, the same shape `forgot` uses.
+     */
+    Route::post('verify', [EmailVerificationController::class, 'verify']);
+    Route::post('verify/resend', [EmailVerificationController::class, 'resend']);
 });
 
 /*
@@ -523,6 +544,34 @@ Route::match(['get', 'post'], 'v1/phone/answered/{organization}/{connection}/{us
     ->middleware('throttle:240,1')
     ->name('phone.answered.webhook');
 
+/*
+| What a caller on hold hears, and where the queue decides to let them go.
+|
+| Twilio re-requests this for as long as somebody is in the queue — every time
+| the document it returns runs out of verbs — so it is requested far more often
+| than any other phone callback and the limit is raised to match: a single
+| caller holding for five minutes with a thirty-second music loop is ten
+| requests on their own.
+|
+| GET as well as POST for the same reason as the whisper: a callback that only
+| answers one verb is one nobody can look at in a browser.
+*/
+Route::match(['get', 'post'], 'v1/phone/queue/{organization}/{connection}/{number}/{group}', PhoneQueueWaitWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('phone.queue.webhook');
+
+/*
+| Where the digit lands when somebody presses 1 rather than keep holding.
+|
+| Same four segments and the same throttle as the wait URL above, because it
+| is the same caller in the same queue — and the controller reconstructs the
+| wait URL from this one by swapping the segment, which only works while the
+| two stay the same shape.
+*/
+Route::match(['get', 'post'], 'v1/phone/callback/{organization}/{connection}/{number}/{group}', PhoneQueueCallbackWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('phone.queue.callback.webhook');
+
 Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
     ->middleware('throttle:120,1')
     ->name('phone.status.webhook');
@@ -544,7 +593,7 @@ Route::get('v1/ui-strings', [UiStringsController::class, 'show'])
 
 // ── Authenticated ────────────────────────────────────────────────
 Route::prefix('v1')
-    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'two-factor', 'idle'])
+    ->middleware(['auth:sanctum', 'tenant', 'subscription', 'verified', 'two-factor', 'idle'])
     ->group(function () {
 
         Route::post('auth/logout', [AuthController::class, 'logout']);
@@ -692,6 +741,14 @@ Route::prefix('v1')
          * after it, `reports/fields` would be swallowed by `reports/{id}` and
          * arrive as a show() for a report called "fields".
          */
+        /*
+         * TEMPORARY, and before `reports/{id}` for the same reason `fields` is:
+         * a literal segment declared after the wildcard is swallowed by it.
+         * Goes when the Experimental report does.
+         */
+        Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
+        Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
+
         Route::get('reports/fields', [ReportsController::class, 'fields']);
         Route::post('reports/{id}/run', [ReportsController::class, 'run']);
         Route::apiResource('reports', ReportsController::class)->parameters(['reports' => 'id']);
@@ -775,6 +832,11 @@ Route::prefix('v1')
         Route::get('companies', [CompaniesController::class, 'index']);
         Route::post('companies', [CompaniesController::class, 'store']);
         Route::patch('companies/{company}', [CompaniesController::class, 'update']);
+
+        // Its own route rather than a key on the PATCH above, which refuses
+        // parent_company_id outright: a field that reshapes the organization
+        // must not ride along with a phone number.
+        Route::patch('companies/{company}/parent', [CompaniesController::class, 'reparent']);
 
         /*
         | ── How the business arranged the PICTURE of that structure ──
@@ -1269,6 +1331,17 @@ Route::prefix('v1')
         */
         Route::post('phone/calls/transfer', [PhoneCallsController::class, 'transfer']);
 
+        // Park sets a live call down; parked lists who is waiting. Picking
+        // one up is not a route: the desk dials 'park:<queue>' like any other
+        // destination, and the voice webhook bridges it.
+        Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
+        Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);
+
+        // Pickup: what is ringing elsewhere, and taking one. {call} last, so
+        // the literal paths above cannot be swallowed by the parameter.
+        Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+        Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 
@@ -1694,35 +1767,25 @@ Route::prefix('v1')
         Route::delete('settings/{key}', [SettingsController::class, 'destroy']);
 
         /*
-        |── The address a tenant's own mail comes from (§6, §2.1) ──
+        | The mail server a business sends its OWN mail through.
         |
-        | Beside settings because it IS one in every sense that matters — it
-        | cascades franchise → company → organization, it is refused at a scope
-        | the caller cannot reach, and it is gated on the same
-        | `organizations.edit` the rest of the settings screen uses, so the
-        | organization decides which of its roles reach it by granting that tab.
-        | It is a table rather than a registry entry for reasons the migration
-        | sets out at length, the first being that a registry value is settable
-        | by PATCH and a verification state must never be.
+        | Singular and scope-addressed, with NO {identity} segment: there is at
+        | most one per scope, enforced by a unique key, so there is no id for a
+        | caller to guess and no route binding that could resolve one belonging
+        | to a scope they cannot reach. The scope arrives as query parameters the
+        | same way /settings takes it, because it is the same cascade.
         |
-        | NO {identity} SEGMENT ANYWHERE. The scope names the row — there is at
-        | most one per scope, enforced by a unique key — so there is no id for a
-        | caller to guess, and no route model binding that could resolve one
-        | belonging to a scope they cannot reach. `check` is a POST because it
-        | writes: it records what DNS said and when it was asked.
+        | PUT rather than PATCH because the body is the whole connection — five
+        | fields that only make sense together. A partial update of an SMTP
+        | connection is a connection that cannot be dialled.
         |
-        | SINGULAR, and PATCH rather than PUT. A scope has one sending identity,
-        | so the path names one thing. The verb is PATCH because the client's
-        | ApiClient carries a query string on `patch` and `delete` and not on
-        | `put` and `post`, and that file belongs to another piece of work — see
-        | client/lib/widgets/sending_identity_panel.dart, which says the same.
-        | It also lands these on the same two verbs `/settings` uses for the
-        | same job at the same scopes, which is the better shape regardless.
+        | This is NOT the sending-identity screen Jose deleted on 2026-09-14.
+        | That one asked a business to prove a domain so EzBizi's SES would sign
+        | as them; this asks for their own server, with our SES not in the path.
         */
-        Route::get('mail/sending-identity', [SendingIdentitiesController::class, 'index']);
-        Route::patch('mail/sending-identity', [SendingIdentitiesController::class, 'update']);
-        Route::delete('mail/sending-identity', [SendingIdentitiesController::class, 'destroy']);
-        Route::post('mail/sending-identity/check', [SendingIdentitiesController::class, 'check']);
+        Route::get('mail/sending-server', [SendingServersController::class, 'show']);
+        Route::put('mail/sending-server', [SendingServersController::class, 'connect']);
+        Route::delete('mail/sending-server', [SendingServersController::class, 'disconnect']);
 
         // Who am I — what the client calls on launch to know what to render.
         // (staff routes are below, deliberately outside this group)
@@ -1816,6 +1879,22 @@ Route::prefix('v1')
                     // would come back with every screen quietly answering 403
                     // and nothing on screen saying why.
                     'two_factor_enrolment_required' => app(TwoFactorPolicy::class)->mustEnrol($user),
+
+                    // This address has not been confirmed, so RequireVerifiedEmail
+                    // refuses every write (TODO #22). Carried here for exactly the
+                    // reason two_factor_enrolment_required above is: a refresh
+                    // restores the session from a stored token and never sees a
+                    // login body, so without it the app returns with every save
+                    // answering 403 and nothing on screen saying why.
+                    //
+                    // A boolean rather than the timestamp, following has_avatar:
+                    // the client's question is whether to show the banner, and a
+                    // date would make it derive that itself in a second place.
+                    //
+                    // Staff are never gated - the middleware exempts anything that
+                    // is not a User - so this is false for them and the banner
+                    // cannot appear on a staff session that could not act on it.
+                    'email_confirmation_required' => $user->email_verified_at === null,
 
                     // SECURITY exemption (Monitoring): the Lead Developer's own
                     // device is never screen-captured, live-viewed or

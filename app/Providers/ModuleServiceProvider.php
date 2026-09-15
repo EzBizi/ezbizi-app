@@ -917,9 +917,17 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
-                automationExemptBecause: 'Nothing is scheduled yet — this module is a shell. '
-                    .'Replace this with real triggers when Availability becomes real; do not '
-                    .'read it as a ruling that scheduling has nothing to automate.',
+                automationExemptBecause: 'Still exempt, but not for the reason this line '
+                    .'used to give. It said "this module is a shell" and told the reader to '
+                    .'add triggers "when Availability becomes real" — Availability and '
+                    .'Settings shipped in 0.0.0174, so the condition it named had already '
+                    .'been met and nothing said so. The real reason: this module holds '
+                    .'CONFIGURATION. A service area changes when somebody deliberately edits '
+                    .'it in Settings, which is not an event another module waits for. The '
+                    .'events worth automating are all about a BOOKING — a slot taken, a slot '
+                    .'filled, capacity run out — and nothing books a slot yet, because Job '
+                    .'has scheduled_for and no link to a service area. They arrive with '
+                    .'Scheduled Jobs, and THAT is the condition to revisit this on.',
             ),
 
             /*
@@ -998,7 +1006,54 @@ class ModuleServiceProvider extends ServiceProvider
                         isRaised: true,
                     ),
                 ],
-                automationActions: [],
+                automationActions: [
+                    /*
+                     * Emailing a finished report to the customer, decided by a
+                     * RULE rather than by a button.
+                     *
+                     * Jose's call, 2026-09-14: "something to be decided in
+                     * automations, not hardcoded". It is the better shape for
+                     * the reason his standing rule gives — every new thing has
+                     * to work with the automations system — but also because
+                     * the three questions a send button would force somebody to
+                     * answer in code (who may send, when, and to whom) are
+                     * exactly the three a rule already answers, per tenant,
+                     * without a deploy.
+                     *
+                     * The execution type is SPELLED OUT rather than derived.
+                     * ActionDefinition's own docblock asks for that whenever an
+                     * action is one implementation of a specific thing rather
+                     * than a generic verb applied to many subjects — this
+                     * renders an inspection report and attaches it, and nothing
+                     * else will ever share it.
+                     *
+                     * Subject-bound: it acts on the report the event is about,
+                     * so it is only meaningful on `inspection.submitted`.
+                     */
+                    new ActionDefinition(
+                        key: 'inspection.report.email',
+                        label: 'Email the report to the customer',
+                        description: 'SWITCHED OFF at the moment, and a rule using it will '
+                            .'record why on every run. It would send the finished inspection '
+                            .'to the customer it was carried out for with the PDF attached, '
+                            .'but mail leaves over the EzBizi mail service whatever sending '
+                            .'address a branch has configured, and that service carries '
+                            .'EzBizi messages only.',
+                        /*
+                         * `inspection_report.email`, NOT the `report.email` this
+                         * key would derive to. Reports declares `report.send`
+                         * and labels it "Email a report" — so a derived
+                         * `report.email` sits one rename away from being the
+                         * same string as somebody else's action, in the
+                         * namespace every module shares, and the collision
+                         * would be a silent mis-route in ActionRunner's match
+                         * rather than an error. Changed before anything could
+                         * select it, which is the only free moment: no tenant
+                         * rule references it yet.
+                         */
+                        executionType: 'inspection_report.email',
+                    ),
+                ],
             ),
 
             /*
@@ -2603,6 +2658,13 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'monitoring.device_offline',
                         label: 'Device went offline',
                         description: 'A device stopped reporting for longer than the allowed gap.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'monitoring.security_needs_attention',
+                        label: 'Device security needs attention',
+                        description: 'Windows reported the antivirus, firewall or '
+                            .'updates on a device as off or paused. Raised once when it '
+                            .'happens, not again until it is fixed and happens again.',
                     ),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),

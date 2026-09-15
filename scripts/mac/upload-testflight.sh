@@ -60,6 +60,52 @@ run_altool() {
       return 1
     fi
   fi
+
+  # AND NOW THE POSITIVE HALF, which is the one that was missing.
+  #
+  # Everything above asks whether altool COMPLAINED. Nothing asked whether it
+  # SUCCEEDED, so the pass and a silent no-op were the same outcome: exit 0,
+  # no ERROR in the output, guard satisfied, release green. Output that is
+  # neither a success banner nor an error -- a truncated stream, a stub, a
+  # future altool that changes its wording -- sailed straight through.
+  #
+  # Found 11 Sep 2026 on 0.0.0195: the macOS leg printed both banners, and I
+  # could not confirm the iOS leg had because the guard never required one.
+  # A release is allowed to fail; it is not allowed to be unverifiable.
+  #
+  # Phase-specific, because the banners differ and requiring the wrong one
+  # would fail every good run: validate says VERIFY SUCCEEDED and never says
+  # UPLOAD SUCCEEDED, which is exactly why the transient branch above pairs
+  # its two signals rather than trusting either alone.
+  case "$phase" in
+    validate)
+      printf "%s" "$out" | grep -q "VERIFY SUCCEEDED" && return 0
+      echo "x altool validate never said VERIFY SUCCEEDED. It did not report an" >&2
+      echo "  error either, so this is not a rejection - it is an unreadable run," >&2
+      echo "  which is worse. Read the output above before shipping anything." >&2
+      return 1
+      ;;
+    upload)
+      if printf "%s" "$out" | grep -q "UPLOAD SUCCEEDED" &&
+         printf "%s" "$out" | grep -q "Delivery UUID:"; then
+        # DELIVERED IS NOT ACCEPTED, and this is the last place anybody
+        # reads before calling the leg shipped. A Delivery UUID means
+        # Apple took the bytes. Processing runs afterwards, can still
+        # fail, and tells nobody but Jose by email. Build 190 sat
+        # unresolved on his list for a day because a green upload was
+        # read as a shipped build and nothing here said otherwise.
+        echo "  delivered (Delivery UUID present). NOT yet accepted -- App" >&2
+        echo "  Store Connect processes it afterwards and processing can" >&2
+        echo "  still fail. Only TestFlight > Build Uploads can say. Do not" >&2
+        echo "  call this leg shipped until somebody has read it there." >&2
+        return 0
+      fi
+      echo "x altool upload never said UPLOAD SUCCEEDED with a Delivery UUID." >&2
+      echo "  No error was reported, so nothing was rejected - but nothing is" >&2
+      echo "  known to have ARRIVED either. Do not call this leg shipped." >&2
+      return 1
+      ;;
+  esac
 }
 
 echo "validating ($TYPE)..."

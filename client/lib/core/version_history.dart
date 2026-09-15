@@ -8,6 +8,188 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0213',
+      date: '15 Sep 2026',
+      items: [
+        'Take a call that is ringing somebody else. A call ringing a group you are not in now appears on the Dial tab with a Pick up button, instead of going to voicemail while you watch it ring.',
+        'The Call Flowchart now shows a skipped step as passed through rather than never reached, and outlines the caller box correctly. Both were drawn from the wrong thing: a step every caller walks was being reported as one nobody reaches.',
+        'The experimental call report now says which Workiz accounts its numbers cover, and names Massachusetts as permanently excluded because that account has no API subscription. A total that is quietly missing a branch is worse than one that says what it is missing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0212',
+      date: '15 Sep 2026',
+      items: [
+        'Park a live call and anybody sharing that line can pick it up, instead of hanging up on a caller who needs somebody who is not at their desk. There is a Park button beside Hang up, and the desk shows who is holding.',
+        'Communication, then Settings, now has a Call Flowchart: what happens to a caller drawn as a diagram, rather than described as a list of sentences.',
+        'The dashboard now says when an automation has stopped itself and is still off. A failure was a notification you could miss; being stopped is a condition, so it now shows where somebody is already looking.',
+        'An automation that fails no longer prints the raw technical error on its card. The internal message from a failed request was being shown to whoever opened it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0211',
+      date: '14 Sep 2026',
+      items: [
+        'Answering a call on the desktop app connects it again, instead of sending the caller to voicemail. Changing company restarts the phone so it picks up that company line, and that restart was tearing down a call that was already ringing.',
+        'The sending address screen has been removed from Settings. It offered to verify a domain so that mail would appear to come from your own business, and that is not how EzBizi sends. EzBizi mail carries EzBizi messages only - signing in, password resets and joining messages - and anything your business writes goes out through your own mail provider.',
+        'In the Experimental call report, two spellings of one name are now counted as one person rather than two.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0210',
+      date: '14 Sep 2026',
+      items: [
+        'Voicemail transcription is now one switch for the whole company instead of one per phone line. It was off on all thirteen numbers and not one voicemail had ever been transcribed - not because anybody decided against it, but because turning it on meant visiting thirteen separate line settings.',
+        'A ring group can now start with whoever has been free the longest, instead of always starting at the top of the list. A fixed order quietly gives the first person most of the calls and the last almost none. Somebody who has never answered a call goes first.',
+        'A Workiz account connects to the branch it belongs to: switch to that branch, paste its token, and it is checked with Workiz before it is saved. Each connected branch shows as a chip you can remove again.',
+        'Reports, inspection reports and automations that email somebody now say plainly that this needs the business to have its own email provider connected. EzBizi mail carries EzBizi messages - signing in, password resets and joining messages - and only those.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0209',
+      date: '14 Sep 2026',
+      items: [
+        'Callers can now wait in a queue instead of going straight to voicemail, and are told their place in the line.',
+        'Ring groups gained a Hold the caller in a queue option, with a hold time, the announcements, and hold music.',
+        'Emailing an inspection report to a customer is switched off, and an automation that uses it now records why on every run rather than failing quietly. EzBizi mail carries EzBizi messages only - sign-ins, password resets and account notices - and a report to a customer would go out over it whatever sending address a branch has set up.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0208',
+      date: '14 Sep 2026',
+      items: [
+        'The notice that tells somebody their screen is being controlled now appears in the app itself, not only as a Windows tray message. It could previously only appear while the EzBizi window was closed to the tray, so anyone sitting in front of the open app was not told. It is still off unless your organisation turns it on.',
+        'Reports has a first Experimental report: how many calls each person took, per day. It needs somebody who can build reports, not only view them, and the tab is hidden from everybody else rather than refusing them after they tap it. Where your organisation has not connected RingCentral or Workiz it says so in plain words instead of leaving you to read a blank.',
+        'The report builder no longer offers Current tab as a column. It is overwritten every few seconds, so an exported report showed a value that was true only at the moment of export, and it printed an internal name where the rest of the app shows a proper one.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0207',
+      date: '14 Sep 2026',
+      items: [
+        'The EzBizi icon now stays in the notification area for as long as the app is running. It was only added at the moment you closed the window to the tray, so while the app was open there was no icon at all. The same gap silenced the notice that tells you your screen is being controlled by your company: that notice is carried on the icon, so it could only ever appear while the window was hidden, and never while somebody was sitting in front of the open app.',
+        'A Confirm your email button now sits at the top of the app, beside the two-factor prompt, for an account whose address has not been confirmed. It sends a fresh link, so the account can clear the condition itself instead of meeting a refusal on every save.',
+        'Every message in the customer panel now says who sent it and when. Each one was the same box in a column, told apart only by a faint tint. The name now sits above it, and the bubble takes the side and the full colour that Records already uses for the same conversation.',
+        'The availability icon now keeps itself up to date within a minute. Do Not Disturb set on the web reached the desktop immediately, but the icon only showed the change once you switched tabs.',
+        'The voicemail list now names the one reason a transcript is missing and says who can turn it on, instead of offering two possible causes and settling neither. Voicemail transcription is off on every number today, it is switched on per number, and the phone network charges for each one. The Records tab shows a different thing: the transcription of the whole call, including the menu the caller listened to before leaving a message.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0206',
+      date: '14 Sep 2026',
+      items: [
+        'A call answered on another device, or by a colleague in the ring group, now stops ringing everywhere else on the web. Only the customer hanging up was being noticed - the two events that mean somebody else took the call were dropped, so a browser went on ringing a call that had already ended.',
+        'Switching company now picks up that company phone line, instead of leaving the phone dead for the rest of the session.',
+        'The phone no longer tells a web browser that it needs a web browser when no line was found.',
+        'The mobile icon now narrows the window itself rather than only the app inside it, and works whether or not the window has been moved.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0205',
+      date: '14 Sep 2026',
+      items: [
+        'Disconnecting and reconnecting a Google Ads account no longer detaches its enquiries. They are re-linked automatically, without re-reading anything from Google. Enquiries detached before this update are re-linked only when Google next returns them, and the oldest may never be.',
+        'A company can be made a sub company, a sub company can be made a company again, and a sub company can be moved to a different parent. It is in a company menu on the Organization screen. It needs somebody who stands at the whole organization, because moving a branch hands the work of its people to a different set of managers.',
+        'An arriving call now sounds like a phone ringing rather than like a call you placed. The alert was the tone a caller hears while waiting - the same one played when you ring out - so both ends of a call sounded identical.',
+        'Fixed: everybody who already had an account was locked out of changing anything. A new check asked whether each person had confirmed their email address, and nobody who signed up before it existed ever had the chance. Accounts that predate the check are now treated as confirmed.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0204',
+      date: '14 Sep 2026',
+      items: [
+        'Reconnecting a Google Ads account now reclaims the enquiries it was disconnected from, instead of leaving them unattached and unanswerable. Each one is picked back up the first time it is seen after this update.',
+        'A Google Ads connection is no longer marked broken when Google is merely busy. A rate limit had silently stopped three live accounts for up to four days.',
+        'The window shown after connecting an account now names what was connected and where it goes - Google Ads and Thumbtack enquiries say Leads, Business Profile says Reviews - and draws the provider mark instead of appearing as bare text.',
+        'An incoming call now rings on Android. Two phone permissions were declared but never actually asked for, so a fresh install could not even check whether Android would let it be a phone. Placing a call and its audio have not been confirmed yet.',
+        'Not taking calls now covers your whole account, and the other apps catch up when you look at them. Setting it on the web left the desktop showing you as available - and a call rang. Opening the app somewhere it had never been opened also quietly put you back on the rota. This is the half that the two previous attempts missed.',
+        'Human Resources: an invitation now says what became of the message - sent, refused, or not attempted because this installation sends no mail - and one whose outcome your version cannot read says so rather than saying it may have arrived.',
+        'Human Resources: a mistyped invitation address can be corrected, and the link that went to the wrong address stops working.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0203',
+      date: '14 Sep 2026',
+      items: [
+        'Android takes two steps towards making calls work, both of which were missing. The app now registers with the calling network, and registers the calling account Android requires before it will carry a call at all - until now it had never asked, so the system refused to place or accept anything and a call failed instantly in both directions with nothing on screen explaining why. Calls are not working yet. On a phone you will need to switch EzBizi on under Android Calling accounts, where it appears as Provides calling services for EzBizi; while it is off the phone icon shows a crossed-out handset rather than claiming to be ready.',
+        'Notifications are sent by email as well as appearing in the app. The settings screen has promised this since August and the code was not there; it is now. It goes to the same people the in-app notification does, up to fifty of them - above that the bell still works and no mail is sent at all, rather than mail going to some of them.',
+        'Turning off in-app notifications no longer silences email as well. It was described as a master switch, which was true of a system with one channel and wrong the moment there were two. Each channel is now its own choice.',
+        'Quiet hours still does nothing, and now says plainly what that costs: a notification raised at three in the morning used to be a silent line you found later, and since this release it can ring a phone.',
+        'A rule can email a finished inspection report to the customer. There is no send button - it is an automation you attach to a report being submitted, so who may send, when, and to whom are answered per company rather than in code. A company that has not set up its own sending address is refused rather than sent from ours.',
+        'Automations can run when Windows reports a computer antivirus, firewall or updates as off or paused, so you can be told about it rather than having to notice. It is raised once when it happens, not again until it is fixed and happens a second time.',
+        'Human Resources: an invitation is only reported as emailed when the installation can actually send. On a setup that quietly delivers nowhere it used to say the invitation had been emailed, which is exactly where somebody tests the flow and concludes it works.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0202',
+      date: '14 Sep 2026',
+      items: [
+        'Fixed: a report on Human Resources listed everyone in the organization, including people outside the branch the reader works in. It now shows the same people the Human Resources tab does. Anybody who ran that report since 10 September could have seen names, email addresses and phone numbers they were not meant to reach. Nobody did: no report of that kind had been saved, and permission to build or run one has not been given to anybody yet.',
+        'A computer whose antivirus, firewall or updates Windows is unhappy about now says so on its card in the machines list, so you can spot it without opening every machine in turn.',
+        'Email now says why there is nothing to read - no inbox connected, none in this part of the business, or none given to your role - instead of always suggesting you look in another company.',
+        'A mailbox the mail service refuses is now retried for about a day before EzBizi asks somebody to reconnect it, instead of being disconnected on the first refusal.',
+        'The home screen says when an inbox has not managed to fetch any mail for a day, even while it still shows as connected.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0201',
+      date: '14 Sep 2026',
+      items: [
+        'A computer reports how hard its graphics are working, alongside processor, memory and disk. The reading starts appearing on each machine once that machine has updated to this version - until then it shows a dash, the same as any reading a computer cannot supply.',
+        'Monitoring shows what Windows itself says about a computer antivirus, firewall and updates, including when another company antivirus is the one protecting it. A machine running Bitdefender with the built-in one correctly stood down reads as protected rather than as at risk.',
+        'Hovering a slice of a pie chart lifts it and shows what share it is.',
+        'A mailbox the mail service refuses is now retried for about a day before EzBizi asks somebody to reconnect it, instead of being disconnected on the first refusal.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0200',
+      date: '11 Sep 2026',
+      items: [
+        'Do Not Disturb now survives a call you place yourself. Setting yourself to Not taking calls and then ringing somebody put you back on the rota the moment you hung up, with nothing touched. The fix in 0.0.0196 said only the availability toggle could change it - that was true of the app reconnecting and not true of placing a call, and this is the other half of it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0199',
+      date: '11 Sep 2026',
+      items: [
+        'A report can start from ten parts of the business now, up from four: Jobs, Customers, Human Resources, Branches, Services, Inventory, Fleet Management, Training, Leads and Scheduling.',
+        'Reports has its own sub tabs: your saved reports, the builder, and a space for things still being tried out.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0198',
+      date: '11 Sep 2026',
+      items: [
+        'A mailbox is no longer disconnected by a network timeout or a mail service that briefly stops answering. The message for that fault always said it usually clears on its own - but recording it as disconnected removed the mailbox from the only check that would have noticed it clear, so one blip needed somebody to press Reconnect.',
+        'A chart with more slices than there are colours now groups the remainder into one row named for its count, instead of drawing two slices the same colour. The release before this one had eight colours and no answer for the ninth.',
+        'A screen reader names every category on a chart, including the ones the picture folds into that one row. What the eye needs grouped and what the ear needs listed are different, and they are now allowed to differ.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0197',
+      date: '11 Sep 2026',
+      items: [
+        'The sidebar can be dragged into your own order, and it is saved to your account rather than to the machine you did it on. Settings, Suggestions and Development stay where they are - they are a different list and cannot be dragged into the module one.',
+        'Dividers: put a nameless rule anywhere between two modules to group them, drag it like any other row, remove it with the x.',
+        'On a computer, Rearrange sits under the module filter and the sidebar widens into a list with handles. On a phone it is the icon beside the wordmark in the drawer. Both go back to normal when you press Done.',
+        'A module added later still appears for people who have already arranged their sidebar. It goes to the end rather than being left out.',
+        'Fixed: a report could only be created while looking at the whole group. Saving one from a company or a branch was refused. It now files on whichever place you are looking at.',
+        'Charts on the home screen draw every slice in its own colour. The palette came from the theme roles, two of which are deliberately the same colour, so on a light screen the first two slices of every pie were identical - Scheduled and In progress looked like one wedge. Eight distinct colours now, picked to stay apart for colour-blind readers, with a separate set for dark mode.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0196',
+      date: '11 Sep 2026',
+      items: [
+        'Not taking calls now stays off until you turn it back on yourself. Opening the app or signing back in told the system a device was attached, and that quietly cancelled it. Only the availability toggle changes it now, because only that is a person deciding. It applies to every company you are signed in to, not just the one on screen.',
+        'A disconnected inbox now says so on the home screen, instead of reporting that it could not be asked for unread mail. The old wording described a permanent disconnection in the words of a momentary one.',
+        'When every inbox is disconnected, all of them are named. Only the first was shown and the rest were dropped - and a card with nothing to show now says everything it has to say rather than just its first sentence, which is the same fault one layer down.',
+        'An inbox knocked out by a fault at the mail service now recovers on its own instead of waiting for somebody to reconnect it. Marking it broken had been removing it from the only check that would have noticed it recover. Mail that arrived while it was disconnected is not backfilled.',
+        'A disconnected inbox is no longer dialled at all, so it costs the home screen nothing.',
+        'Accounts are asked longest-unread first, so when the daily ceiling is reached the shortfall is spread across all of them instead of always falling on the same ones.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0195',
       date: '11 Sep 2026',
       items: [

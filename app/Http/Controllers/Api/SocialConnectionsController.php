@@ -51,15 +51,15 @@ class SocialConnectionsController extends Controller
 
         return response()->json([
             'data' => $rows->map(fn (SocialConnection $c) => [
-                'id'              => $c->getKey(),
-                'provider'        => $c->provider,
-                'provider_label'  => $c->providerLabel(),
-                'display_name'    => $c->display_name,
-                'handle'          => $c->handle,
-                'scope_type'      => $c->scope_type,
-                'scope_id'        => $c->scope_id,
-                'status'          => $c->status,
-                'status_reason'   => $c->status_reason,
+                'id' => $c->getKey(),
+                'provider' => $c->provider,
+                'provider_label' => $c->providerLabel(),
+                'display_name' => $c->display_name,
+                'handle' => $c->handle,
+                'scope_type' => $c->scope_type,
+                'scope_id' => $c->scope_id,
+                'status' => $c->status,
+                'status_reason' => $c->status_reason,
                 'last_reached_at' => $c->last_reached_at?->toIso8601String(),
 
                 /*
@@ -70,7 +70,7 @@ class SocialConnectionsController extends Controller
                  * from the provider key, which would be a second copy of the
                  * publisher map that goes stale the day one is added.
                  */
-                'can_publish'            => Publishers::refusalFor($c->providerEnum()) === null,
+                'can_publish' => Publishers::refusalFor($c->providerEnum()) === null,
                 'cannot_publish_because' => Publishers::refusalFor($c->providerEnum()),
 
                 /*
@@ -78,7 +78,7 @@ class SocialConnectionsController extends Controller
                  * would assume. Null for every network that holds no surprise,
                  * so the screen draws nothing rather than a reassurance.
                  */
-                'posting_note'           => Publishers::postingNoteFor($c->providerEnum()),
+                'posting_note' => Publishers::postingNoteFor($c->providerEnum()),
             ])->all(),
         ]);
     }
@@ -123,7 +123,7 @@ class SocialConnectionsController extends Controller
             'label' => ['present', 'nullable', 'string', 'max:80'],
         ]);
 
-        $label  = trim((string) ($input['label'] ?? '')) ?: null;
+        $label = trim((string) ($input['label'] ?? '')) ?: null;
         $before = $row->label;
 
         if ($before === $label) {
@@ -135,8 +135,8 @@ class SocialConnectionsController extends Controller
 
             $this->audit->log('social.renamed', $row, [
                 'provider' => $row->provider,
-                'before'   => $before,
-                'after'    => $label,
+                'before' => $before,
+                'after' => $label,
             ]);
         });
 
@@ -148,11 +148,16 @@ class SocialConnectionsController extends Controller
      *
      * Which franchise owns the enquiries this account produces.
      *
-     * Separate from `scope_id`, which says who can SEE the connection, and
-     * deliberately so: re-scoping the connection itself would hide it from the
-     * company that just assigned it, because inView() makes a franchise-scoped
-     * connection invisible to the company above. Null puts it back at company
-     * level, which is where every account starts.
+     * Separate from `scope_id`, which says who can SEE and ACT ON the
+     * connection. Null puts it back at company level, which is where every
+     * account starts.
+     *
+     * This used to add "because inView() makes a franchise-scoped connection
+     * invisible to the company above". That was measured on 2026-09-14 and is
+     * false — inView()'s COMPANY branch admits a franchise-scoped connection
+     * whose franchise belongs to the viewer's company, and has since d3f17b70
+     * on 2026-08-21. The migration carries the full correction; this was the
+     * third copy of the same wrong sentence.
      */
     public function placeLeads(Request $request, string $connection): JsonResponse
     {
@@ -237,11 +242,11 @@ class SocialConnectionsController extends Controller
             });
 
         $this->audit->log('social.leads_placed', $row, [
-            'provider'     => $row->provider,
+            'provider' => $row->provider,
             'display_name' => $row->display_name,
-            'before'       => $before,
-            'after'        => $franchiseId,
-            'leads_moved'  => $moved,
+            'before' => $before,
+            'after' => $franchiseId,
+            'leads_moved' => $moved,
         ], actor: $user);
 
         /*
@@ -259,19 +264,19 @@ class SocialConnectionsController extends Controller
     private function placement(SocialConnection $row, ?int $moved = null): array
     {
         return [
-            'id'                 => $row->getKey(),
-            'provider'           => $row->provider,
-            'display_name'       => $row->display_name,
+            'id' => $row->getKey(),
+            'provider' => $row->provider,
+            'display_name' => $row->display_name,
 
             // The chosen name, null when nobody has set one. Kept separate
             // from display_name so the screen can show one and cross-check
             // against the other.
-            'label'              => $row->label,
+            'label' => $row->label,
             'leads_franchise_id' => $row->leads_franchise_id,
 
             // Null when nothing changed, 0 when a placement moved no leads.
             // Those are different answers and the screen says different things.
-            'leads_moved'        => $moved,
+            'leads_moved' => $moved,
         ];
     }
 
@@ -319,7 +324,7 @@ class SocialConnectionsController extends Controller
      */
     public function destroyProvider(Request $request, string $provider): JsonResponse
     {
-        $user     = $request->user();
+        $user = $request->user();
         $provider = SocialProvider::tryFrom($provider);
 
         abort_if($provider === null, Status::HTTP_NOT_FOUND);
@@ -342,9 +347,9 @@ class SocialConnectionsController extends Controller
         }
 
         return response()->json(['data' => [
-            'provider'     => $provider->value,
+            'provider' => $provider->value,
             'disconnected' => $rows->count(),
-            'problems'     => array_values(array_unique($problems)),
+            'problems' => array_values(array_unique($problems)),
         ]]);
     }
 
@@ -411,13 +416,13 @@ class SocialConnectionsController extends Controller
             : [];
 
         $this->audit->log('social.disconnected', $row, [
-            'provider'     => $row->provider,
+            'provider' => $row->provider,
             'display_name' => $row->display_name,
-            'scope_type'   => $row->scope_type,
+            'scope_type' => $row->scope_type,
             // What could NOT be undone, on the record. A tidy-up that half
             // worked is otherwise invisible, and the half that failed is the
             // half somebody has to finish by hand on Thumbtack.
-            'not_tidied'   => $problems === [] ? null : $problems,
+            'not_tidied' => $problems === [] ? null : $problems,
         ], actor: $user);
 
         $row->delete();

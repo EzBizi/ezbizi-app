@@ -7,6 +7,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/tag.dart';
 import 'blocked_numbers_pane.dart';
+import 'call_flow_chart_pane.dart';
 import 'call_flow_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
@@ -155,6 +156,19 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       label: 'Messaging',
       icon: Icons.sms_outlined,
       group: 'Running it',
+    ),
+    // Appended rather than slotted beside "Call flow", deliberately:
+    // `_section` is an INDEX into this list, so inserting in the middle
+    // renumbers every entry after it and any stored index then names a
+    // different pane. Same shape as the NavigationRail bug in the sidebar.
+    // The picture, beside the list. Two panes because they answer different
+    // questions: the list says what every line does, this says what ONE line
+    // does and where a caller falls off it (Jose, 2026-09-15).
+    (
+      id: 'call-flow-chart',
+      label: 'Call flow chart',
+      icon: Icons.schema_outlined,
+      group: 'Connect',
     ),
   ];
 
@@ -440,6 +454,7 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       // and the form comes first because that is the order somebody works in.
       'general' => GeneralPane(api: widget.api, session: widget.session),
       'call-flow' => CallFlowPane(api: widget.api),
+      'call-flow-chart' => CallFlowChartPane(api: widget.api),
       'connection' => _connectionBody(),
       'numbers' => NumbersPane(api: widget.api, session: widget.session),
       'porting' => PortingPane(api: widget.api, session: widget.session),

@@ -174,7 +174,7 @@ class AutomationEngine
                 $verdict = $this->conditions->evaluate($version->conditions, $event, $subject);
             } catch (Throwable $e) {
                 $this->record($automation, $version, $event, AutomationRun::FAILED, $started, error: $e->getMessage());
-                $automation->noteFailure($e->getMessage());
+                $automation->noteFailure();
                 return false;
             }
             if (! $verdict['matched']) {
@@ -261,7 +261,7 @@ class AutomationEngine
             'finished_at' => $pending ? null : now(),
         ])->save();
         if (! $pending) {
-            $failure ? $automation->noteFailure($failure['detail']) : $automation->noteSuccess();
+            $failure ? $automation->noteFailure() : $automation->noteSuccess();
         }
         return true;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Support\Preferences;
 
+use App\Support\Modules\ModuleRegistry;
 use InvalidArgumentException;
 
 /**
@@ -20,6 +21,23 @@ use InvalidArgumentException;
  */
 class PreferenceRegistry
 {
+    /**
+     * The sidebar order is validated against the modules that actually exist,
+     * so the registry needs to know what they are. Injected the way
+     * PermissionCatalogue takes it; nothing constructs this class directly.
+     */
+    public function __construct(private readonly ModuleRegistry $modules) {}
+
+    /**
+     * A divider in a saved sidebar order.
+     *
+     * Dividers carry no name (Jose, 2026-09-11: "just be dividers basically"),
+     * so a sentinel is the whole of what one needs to store. It may repeat --
+     * a divider is a POSITION, not a thing -- which is why the duplicate rule
+     * below applies to module keys only.
+     */
+    public const DIVIDER = '--';
+
     /**
      * @return array<string, array{type: string, default: mixed, options?: array, label: string, help?: string}>
      */
@@ -132,6 +150,29 @@ class PreferenceRegistry
              * Set by clicking the pin, so like the widths it is not something
              * anybody picks from a list.
              */
+            /*
+             * The order somebody dragged their sidebar into, with dividers.
+             *
+             * Per-user by the same reasoning as the pin below: it follows a
+             * person to another machine, needs no migration, and is set by an
+             * interaction rather than picked from a list -- which is why it has
+             * `help` pointing at where it is set rather than an editor here.
+             *
+             * Rail 1 ONLY. Settings, Suggestions and Development are separate
+             * NavigationRails with their own index spaces, so they are not in
+             * this list and cannot be dragged into it. Jose asked for them to
+             * be fixed; the structure already had that.
+             *
+             * Empty means declaration order in `module_screens.dart`, which is
+             * what everybody has until they touch it.
+             */
+            'navigation.order' => [
+                'label' => 'Sidebar order',
+                'type' => 'order',
+                'default' => [],
+                'help' => 'Drag the sidebar into the order you want.',
+            ],
+
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',
@@ -201,6 +242,23 @@ class PreferenceRegistry
      * Refusing loudly rather than storing nonsense: a preference the client
      * cannot render is worse than one that was never saved, because the second
      * tells somebody immediately.
+     *
+     * Two branches below CORRECT instead, and they are not exceptions to that
+     * rule so much as the other half of it. The question is not how wrong the
+     * value is, it is **who is responsible for it**:
+     *
+     *   - A value a PERSON picked is refused. An `enum` outside its options
+     *     means somebody sent a theme this build has no name for, and the only
+     *     honest answer is to say so.
+     *   - A value the SYSTEM outgrew is corrected. `clampInt` clamps a width
+     *     whose bounds we have since tightened; `cleanOrder` drops a module
+     *     key that named a real module until we removed it. Nobody typed
+     *     either one, and refusing would leave somebody looking at an error
+     *     about a decision that was ours -- permanently unable to save their
+     *     own sidebar, over a module they never chose to lose.
+     *
+     * Recorded here because the rule above, read alone, says to tighten both
+     * of them. (Raised by the deploy desk, 2026-09-11.)
      */
     public function cast(string $key, mixed $value): mixed
     {
@@ -218,8 +276,56 @@ class PreferenceRegistry
                     $key,
                     implode(', ', $definition['options']),
                 )),
+            'order' => $this->cleanOrder($value),
             default => (string) $value,
         };
+    }
+
+    /**
+     * A sidebar order: module keys in the order somebody dragged them into,
+     * with [DIVIDER] wherever they put a rule.
+     *
+     * CORRECTED rather than refused, following `clampInt` below. The docblock
+     * above is about nonsense the client cannot render; this is different. A
+     * key that names no module is not something anybody typed -- it is a module
+     * we removed since they saved. Refusing would leave that person unable to
+     * save their sidebar ever again, over a module that no longer exists.
+     *
+     * So: unknown keys are dropped, duplicates keep their first position, and
+     * anything that is not a string goes. What survives is always renderable.
+     *
+     * NOT normalised beyond that. A leading divider, or two in a row, is
+     * suppressed when the sidebar DRAWS -- it has to be anyway, because the
+     * search filter produces both from an order that was fine when saved.
+     * Normalising here as well would be a second rule to keep in step.
+     */
+    private function cleanOrder(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $known = array_keys($this->modules->all());
+        $seen = [];
+        $out = [];
+
+        foreach ($value as $entry) {
+            if (! is_string($entry)) {
+                continue;
+            }
+            if ($entry === self::DIVIDER) {
+                $out[] = $entry;
+
+                continue;
+            }
+            if (! in_array($entry, $known, strict: true) || isset($seen[$entry])) {
+                continue;
+            }
+            $seen[$entry] = true;
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     /**

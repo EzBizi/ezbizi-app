@@ -27,12 +27,37 @@ use Throwable;
  * So a schedule coming round is an event like any other. Everything downstream
  * of it is code that already exists and is already tested.
  *
- * ── Advancing the clock IS the claim ─────────────────────────────
+ * ── Advancing the clock IS the claim, AND IT IS NOT COVERED ──────
  *
  * The advance is a conditional update against the value that was read, inside
- * the transaction that writes the event. Two overlapping sweeps cannot both
- * fire a rule: the second one's update matches no row, so it emits nothing. No
- * lease column and nothing to expire — the row's own next_run_at is the token.
+ * the transaction that writes the event. The intent is that two overlapping
+ * sweeps cannot both fire a rule: the second one's update matches no row, so it
+ * emits nothing. No lease column and nothing to expire — the row's own
+ * next_run_at is the token.
+ *
+ * **NO TEST PROVES THAT, and this paragraph used to claim it as fact.** The
+ * claim was written here, and then repeated to the deploy desk as a property of
+ * the system, on the strength of nothing but this comment.
+ *
+ * An attempt to cover it was VACUOUS and was deleted rather than kept: it ran
+ * the sweep, then replayed the second sweep's claim by hand and asserted it
+ * matched no row. That passes with the `where` REMOVED, because the command
+ * advances the row either way — so the test measured the test's own replica
+ * query, not the guard. It was watched passing before the sabotage check caught
+ * it, which is the only reason it is not in the suite.
+ *
+ * The honest reason it is hard: the race needs two readers holding the same
+ * stale `next_run_at` at once, and the command re-reads on every invocation, so
+ * a single-threaded test can never produce a second stale reader through the
+ * public surface. Covering it means either extracting the claim so a test can
+ * call it twice with one stale value, or a genuine concurrency harness.
+ *
+ * UNTIL THEN, TREAT `withoutOverlapping(5)` IN routes/console.php AS
+ * LOAD-BEARING rather than as belt-and-braces. That is the safe direction: if
+ * the conditional claim works, the lock is redundant and costs nothing; if it
+ * does not, the lock is the only thing standing between a tenant and two
+ * identical reports. Anybody removing that lock as "redundant" needs to write
+ * the coverage first.
  *
  * ── Late once, never twice ───────────────────────────────────────
  *

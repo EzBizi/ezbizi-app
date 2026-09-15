@@ -58,6 +58,23 @@ enum SocialProvider: string
      */
     case Mailchimp = 'mailchimp';
 
+    /*
+     * TEMPORARY, and it goes with the Experimental report.
+     *
+     * Here rather than in an env var because Jose ruled it: "connect them to
+     * each of their designated franchises." A-1 Chimney runs ten Workiz
+     * accounts, one per franchise, and they are DISJOINT — each token 204s on
+     * another account's job, measured 2026-09-14. So a report built on one
+     * token is not partial, it is wrong: the same people book into all ten, so
+     * every person's number comes out low.
+     *
+     * `scope_type`/`scope_id` carry which franchise an account belongs to. Not
+     * `leads_franchise_id` — that answers where a connection's ENQUIRIES get
+     * assigned, which a read-only jobs report never asks. The Google API
+     * session ruled it; their own migration had already separated the two.
+     */
+    case Workiz = 'workiz';
+
     public function label(): string
     {
         return match ($this) {
@@ -74,6 +91,7 @@ enum SocialProvider: string
             self::GoogleBusinessProfile => 'Google Business Profile',
             self::GoogleAds => 'Google Ads',
             self::Thumbtack => 'Thumbtack',
+            self::Workiz => 'Workiz',
         };
     }
 
@@ -94,6 +112,12 @@ enum SocialProvider: string
             self::GoogleBusinessProfile => 'business-profile',
             self::GoogleAds => 'google-ads',
             self::Thumbtack => 'thumbtack',
+
+            // Never reached today: `oauthRoutePattern` filters to the OAuth
+            // providers before it maps, and Workiz connects with a pasted
+            // token. Present so that adding it to an OAuth list later fails
+            // visibly rather than throwing an UnhandledMatchError.
+            self::Workiz => 'workiz',
         };
     }
 
@@ -113,9 +137,10 @@ enum SocialProvider: string
     public function connectsBy(): string
     {
         return match ($this) {
-            self::Bluesky   => 'password',
+            self::Bluesky => 'password',
             self::Mailchimp => 'api_key',
-            default         => 'sign_in',
+            self::Workiz => 'api_key',
+            default => 'sign_in',
         };
     }
 
@@ -161,7 +186,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz];
     }
 
     /**
@@ -189,6 +214,13 @@ enum SocialProvider: string
             // offering Connect to somebody who could never send would be a
             // control that does not work (§4).
             self::Mailchimp => 'newsletter.send',
+
+            // The rule above, applied: the only screen that reads a Workiz
+            // account is the Experimental report, and `reports.build` is what
+            // opens it. Gating on `marketing.edit` would offer Connect to
+            // somebody who could never see what it connects.
+            self::Workiz => 'reports.build',
+
             default => 'marketing.edit',
         };
     }
@@ -228,7 +260,107 @@ enum SocialProvider: string
         return match ($this) {
             self::GoogleAds => 'connect a Google Ads account',
             self::GoogleBusinessProfile => 'connect a Business Profile',
+            self::Workiz => 'connect a Workiz account',
             default => 'connect a social account',
+        };
+    }
+
+    /**
+     * What to say once the connection is made, and where to send them next.
+     *
+     * This lived in SocialAuthController as two sprintf() calls that said
+     * "Pages" and "compose from Social Media Management" for every provider.
+     * True for the nine publishing networks and wrong for everything else:
+     * connecting 37 Google Ads accounts announced 37 "Pages" and pointed at a
+     * module their enquiries never reach. Jose read that screen on 2026-09-14.
+     *
+     * It belongs on the enum for the same reason connectAct() does - a provider
+     * added later cannot be quietly described as something it is not, because
+     * there is no default that invents a noun. The nine that really are social
+     * share one arm, deliberately: they are one family, not nine.
+     *
+     * @param  int  $count  how many accounts the grant produced
+     * @param  string  $name  the first one's display name, for the singular
+     */
+    public function connectedSentence(int $count, string $name): string
+    {
+        $many = $count > 1;
+
+        return match ($this) {
+            self::GoogleAds => $many
+                ? sprintf(
+                    '%d Google Ads accounts are connected to EzBizi. You can close this window — '
+                    .'their enquiries arrive in Leads.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its enquiries arrive '
+                    .'in Leads.',
+                    $name,
+                ),
+
+            self::GoogleBusinessProfile => $many
+                ? sprintf(
+                    '%d Business Profiles are connected to EzBizi. You can close this window — '
+                    .'their reviews arrive in Reviews.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its reviews arrive '
+                    .'in Reviews.',
+                    $name,
+                ),
+
+            self::Thumbtack => $many
+                ? sprintf(
+                    '%d Thumbtack businesses are connected to EzBizi. You can close this window — '
+                    .'their enquiries arrive in Leads.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its enquiries arrive '
+                    .'in Leads.',
+                    $name,
+                ),
+
+            self::Mailchimp => sprintf(
+                '%s is connected to EzBizi. You can close this window — its audiences are '
+                .'available in Email.',
+                $name,
+            ),
+
+            // Named per BRANCH rather than per account, because that is what a
+            // Workiz account is here: one franchise's book. The plural case is
+            // real - somebody connecting from the organization view can hold
+            // several - and the sentence says where they are read, which is the
+            // only screen that reads them.
+            self::Workiz => $many
+                ? sprintf(
+                    '%d Workiz accounts are connected to EzBizi. You can close this window — '
+                    .'their jobs appear in the Experimental report under Reports.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its jobs appear in '
+                    .'the Experimental report under Reports.',
+                    $name,
+                ),
+
+            // The nine publishing networks. "Page" is their word and Social
+            // Media Management is genuinely where they are used.
+            default => $many
+                ? sprintf(
+                    '%d %s Pages are connected to EzBizi. You can close this window and compose '
+                    .'from Social Media Management.',
+                    $count,
+                    $this->label(),
+                )
+                : sprintf(
+                    '%s is connected to EzBizi as a %s account. You can close this window and '
+                    .'compose from Social Media Management.',
+                    $name,
+                    $this->label(),
+                ),
         };
     }
 

@@ -548,9 +548,35 @@ class OrganizationCanvasController extends Controller
         // test, deliberately the same one. "Reaches every company that happens to
         // exist today" is a set that changes when somebody adds a branch, and the
         // organization is not.
-        $reaches = $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
+        // `canActOnOrganization` rather than the hand-written test that stood
+        // here, for ONE RULE rather than two copies of it - not because the old
+        // one let anybody through.
+        //
+        // Checked before changing it, because I first reported this as a hole
+        // and it is not. The nearest reason is ten lines up in this same
+        // function: `hasPermission` runs first and its first line is
+        // `if (! $this->is_active) return false` (User:229). So a deactivated
+        // user is refused BEFORE reaching here, by a method that is not a
+        // `canAct*` one - which is the item I read past when I called this a
+        // hole. Settings proved it by mutation rather than by reading: strip
+        // hasPermission's clause and the endpoint still 403s; strip the
+        // method's too and it 200s, which is the control.
+        //
+        // Further out, a deactivated user cannot log in at all
+        // (AuthenticateUser:93, :209) and deactivating through HR deletes
+        // their tokens (HrPeopleController:386). The scope half is unreachable
+        // too: a CHECK constraint, `assignments_exactly_one_scope`, means an
+        // assignment carrying an organization id IS organization-scoped.
+        //
+        // So the hand-written test was protected by the line in FRONT of it,
+        // not by anything it did itself, and it stops being protected the
+        // moment somebody reorders those two lines or calls this from a path
+        // with no permission gate.
+        //
+        // So this is consistency, and the residual is narrow: somebody
+        // deactivated by a direct database write, outside the HR flow, keeps
+        // their tokens. The method covers that; a hand-written copy would not.
+        $reaches = $user->canActOnOrganization($user->organization);
 
         // Refused by POSITION rather than by place: there is no other
         // organization they could have arranged instead, so "somebody assigned

@@ -352,6 +352,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         onAddSubCompany: node['parent_company_id'] == null
             ? () => _createCompany(parent: node)
             : null,
+        onMove: () => _moveCompany(node),
       );
     }
 
@@ -390,6 +391,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
             onAddSubCompany: isSub
                 ? null
                 : () => _createCompany(parent: company),
+            onMove: () => _moveCompany(company),
             onRenameFranchise: _renameFranchise,
             onToggleFranchise: _toggleFranchise,
           ),
@@ -481,6 +483,106 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       () =>
           widget.api.patch('/companies/${company['id']}', draft.toUpdateJson()),
       'Saved',
+    );
+  }
+
+  /// Make a company a sub company, or make a sub company a company again.
+  ///
+  /// ── Why the list is built here and not asked for ─────────────
+  ///
+  /// The tree this screen is already holding IS the answer: every valid
+  /// destination is a top-level company, and §3 fixes the depth so nothing
+  /// deeper can ever be one. Asking the server for a list of candidates would
+  /// be a second endpoint answering a question the payload on screen has
+  /// already answered, and the two could disagree the moment somebody adds a
+  /// company in another window.
+  ///
+  /// Its own current place is left OUT rather than shown and disabled. A
+  /// picker whose first entry is where the thing already is invites the one
+  /// choice that does nothing, and the server answers that case with a
+  /// cheerful no-op rather than an error, so the screen would say "Moved" and
+  /// move nothing.
+  Future<void> _moveCompany(Map<String, dynamic> company) async {
+    final tree = _tree;
+
+    if (tree == null) return;
+
+    final id = company['id'] as String;
+    final parentId = company['parent_company_id'] as String?;
+
+    final destinations = <({String? id, String label})>[
+      // Only offered when it is somewhere else now. For a company already at
+      // the top this is not a move.
+      if (parentId != null)
+        (
+          id: null,
+          label: 'Top level, under ${tree['organization']['name']}',
+        ),
+      for (final c in (tree['companies'] as List<dynamic>).cast<Map<String, dynamic>>())
+        if (c['id'] != id && c['id'] != parentId)
+          (id: c['id'] as String, label: 'Under ${c['name']}'),
+    ];
+
+    if (destinations.isEmpty) {
+      // One company in the business, or one company and its own parent. There
+      // is nowhere to put it, and saying so is better than a dialog with an
+      // empty list in it.
+      _snack('There is nowhere else to put ${company['name']} yet.');
+
+      return;
+    }
+
+    // Where it is NOW, as a line under the title rather than a row in the list.
+    //
+    // Leaving the current place out of the choices is right — picking it moves
+    // nothing, and the server answers that with a deliberate no-op, so the
+    // screen would say "Moved" and nothing would have happened. But an absence
+    // is not a label: without this the picker stopped saying where the thing
+    // sits, which is the one fact somebody needs to choose. UI/UX's fix, and
+    // better than either shape I had weighed.
+    final parent = parentId == null
+        ? null
+        : (tree['companies'] as List<dynamic>)
+              .cast<Map<String, dynamic>>()
+              .firstWhere(
+                (c) => c['id'] == parentId,
+                orElse: () => <String, dynamic>{},
+              )['name'] as String?;
+
+    final chosen = await showDialog<({String? id, String label})>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Move ${company['name']}'),
+            const SizedBox(height: 4),
+            Text(
+              parent == null
+                  ? 'Currently at the top level.'
+                  : 'Currently under $parent.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
+        children: [
+          for (final d in destinations)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(d),
+              child: Text(d.label),
+            ),
+        ],
+      ),
+    );
+
+    if (chosen == null) return;
+
+    await _send(
+      () => widget.api.patch('/companies/$id/parent', {
+        'parent_company_id': chosen.id,
+      }),
+      chosen.id == null ? 'Now a company' : 'Now a sub company',
     );
   }
 
@@ -629,6 +731,7 @@ class _CompanyCard extends StatelessWidget {
     required this.onToggleActive,
     required this.onAddFranchise,
     required this.onAddSubCompany,
+    required this.onMove,
     required this.onRenameFranchise,
     required this.onToggleFranchise,
   });
@@ -641,6 +744,7 @@ class _CompanyCard extends StatelessWidget {
   final VoidCallback onToggleActive;
   final VoidCallback onAddFranchise;
   final VoidCallback? onAddSubCompany;
+  final VoidCallback onMove;
   final void Function(Map<String, dynamic>) onRenameFranchise;
   final void Function(Map<String, dynamic>) onToggleFranchise;
 
@@ -743,6 +847,7 @@ class _CompanyCard extends StatelessWidget {
                   onToggleActive: onToggleActive,
                   onAddFranchise: onAddFranchise,
                   onAddSubCompany: onAddSubCompany,
+                  onMove: onMove,
                 ),
               ],
             ),

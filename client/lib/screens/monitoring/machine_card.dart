@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'machine_detail.dart';
+
 import '../../core/theme.dart';
 
 /// One machine on the PC Specs grid: what it is called, who sits at it, and
@@ -30,6 +32,8 @@ class MachineCard extends StatelessWidget {
     this.sessions,
     this.cpuPercent,
     this.ramPercent,
+    this.gpuPercent,
+    this.needsAttention = false,
     this.diskPercent,
     this.diskFreeLabel,
     this.activeWindow,
@@ -73,6 +77,23 @@ class MachineCard extends StatelessWidget {
   /// zero. A machine that has not said how busy it is has not said it is idle.
   final int? cpuPercent;
   final int? ramPercent;
+
+  /// Whether Windows says this machine's defences want looking at — see
+  /// [securityNeedsAttention] for which states count and, more importantly,
+  /// which deliberately do not.
+  ///
+  /// It earns a place on the CARD rather than only in the panel because the
+  /// question it answers is "is anything wrong across the room", and finding
+  /// one unhealthy machine among forty-two by opening forty-two panels is not
+  /// answering it. The badge appears ONLY when something is wrong: a badge
+  /// confirming that nothing is wrong would sit on forty-one cards saying
+  /// nothing, which is how people learn to stop reading badges.
+  final bool needsAttention;
+
+  /// Graphics load. Absent on a machine whose counters name no 3D engine, and
+  /// on the agent's first read after launch — rendered "—" either way, for the
+  /// same reason as [cpuPercent].
+  final int? gpuPercent;
   final int? diskPercent;
 
   /// "858 GB free", shown beside the disk meter where it is known.
@@ -109,7 +130,16 @@ class MachineCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // The flexes change ONLY when a second badge exists.
+                  //
+                  // With one badge the header has always fitted, and bounding
+                  // the badge area unconditionally would reserve a slice of
+                  // every card for a badge that forty-one of forty-two do not
+                  // have. With two, the badges need a bounded width or they
+                  // have nowhere to go and the row overflows — which is what
+                  // it did, by 12 pixels, the first time this rendered.
                   Expanded(
+                    flex: needsAttention ? 3 : 1,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -160,9 +190,25 @@ class MachineCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _Badge(
-                    text: online ? 'Live' : seenLabel,
-                    tone: online ? _Tone.good : _Tone.muted,
+                  Flexible(
+                    // flex 0 is laid out unbounded, i.e. exactly as before.
+                    flex: needsAttention ? 2 : 0,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        _Badge(
+                          text: online ? 'Live' : seenLabel,
+                          tone: online ? _Tone.good : _Tone.muted,
+                        ),
+                        if (needsAttention)
+                          const _Badge(
+                            text: securityNeedsAttentionLabel,
+                            tone: _Tone.bad,
+                          ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -170,6 +216,8 @@ class MachineCard extends StatelessWidget {
               MeterBar(label: 'CPU', percent: cpuPercent),
               const SizedBox(height: 6),
               MeterBar(label: 'RAM', percent: ramPercent),
+              const SizedBox(height: 6),
+              MeterBar(label: 'GPU', percent: gpuPercent),
               const SizedBox(height: 6),
               MeterBar(
                 label: 'Disk',
@@ -291,7 +339,7 @@ class MeterBar extends StatelessWidget {
   }
 }
 
-enum _Tone { good, muted }
+enum _Tone { good, muted, bad }
 
 class _Badge extends StatelessWidget {
   const _Badge({required this.text, required this.tone});
@@ -302,10 +350,11 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final good = tone == _Tone.good;
-    final colour = good
-        ? EzBiziTheme.clockIn(context)
-        : theme.colorScheme.onSurfaceVariant;
+    final colour = switch (tone) {
+      _Tone.good => EzBiziTheme.clockIn(context),
+      _Tone.bad => theme.colorScheme.error,
+      _Tone.muted => theme.colorScheme.onSurfaceVariant,
+    };
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

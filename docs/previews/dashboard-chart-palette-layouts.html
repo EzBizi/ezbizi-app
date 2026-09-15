@@ -1,0 +1,368 @@
+<!doctype html><meta charset="utf-8">
+<title>Dashboard charts &rsaquo; the colours &mdash; layouts</title>
+<style>
+/* Every hex under "Today" was MEASURED off EzBiziTheme.light()/.dark() by a
+   throwaway probe on 2026-09-11, not read out of theme.dart and not guessed. */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --paper:#fff;--ground:#f4f6f7;--warn:#8A5A00}
+body.dk{--ink:#E7EDF2;--muted:#9AA6B2;--line:rgba(255,255,255,.14);
+        --primary:#00AEEF;--paper:#10161B;--ground:#0B0F14;--warn:#E0B252}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:760px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:14px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#ctl{display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding:6px 24px 18px;font-size:13px}
+#ctl label{font-weight:600;cursor:pointer;user-select:none}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px}
+.desk{max-width:620px}
+.phone{width:352px;border:1px solid var(--line);border-radius:26px;background:var(--paper);
+       padding:16px 14px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.ttl{font-weight:700;margin:0 0 2px}
+.sml{font-size:12px;color:var(--muted);margin:0 0 14px}
+.pie{width:190px;height:190px;border-radius:50%;margin:0 auto}
+.pie.sm{width:150px;height:150px}
+.lg{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:14px}
+.lg .it{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.sq{border-radius:2px}
+.rows{margin-top:12px}
+.rows .rw{display:flex;align-items:center;gap:10px;padding:7px 0;
+          border-bottom:1px solid var(--line);font-size:13px}
+.rows .rw:last-child{border-bottom:0}
+.rows .nm{flex:1}
+.rows .vl{color:var(--muted);font-variant-numeric:tabular-nums}
+.kind{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:12px;
+       color:var(--muted)}
+.kind .pick{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+       border-radius:999px;padding:3px 10px;font-weight:600;color:var(--ink)}
+.kind .tick{color:var(--primary);font-weight:700}
+.bars{margin-top:6px}
+.bars .b{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+.bars .b .nm{width:96px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+             white-space:nowrap}
+.bars .b .tr{flex:1;height:14px;background:var(--line);border-radius:3px;overflow:hidden}
+.bars .b .fl{height:100%;border-radius:3px}
+.bars .b .vl{width:34px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.note{margin:14px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+      font-size:13px;color:var(--ink);background:var(--ground);max-width:620px}
+.note b{font-weight:700}
+.flag{margin:12px 0 0;font-size:12.5px;color:var(--warn);font-weight:600}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.sw{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;
+    color:var(--muted);width:66px;text-align:center}
+.sw i{width:34px;height:34px;border-radius:7px;border:1px solid var(--line);display:block}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>Dashboard charts &rsaquo; where the colours come from &mdash; pick one desktop and one mobile</h1>
+  <p class="sub"><b>The palette question is CLOSED.</b> Jose answered it in a
+  direction rather than a number on 2026-09-11 &mdash; <i>&ldquo;a more diverse
+  palette with colors that dont blend into one another like, red blue green
+  yellow, high contrast types&rdquo;</i> &mdash; and Dashboard shipped eight
+  validated hues per mode in <code>d212d2dd</code>. <b>Desktop 1, 2 and 3 are
+  history now; the swatches below are the OLD ones.</b> Kept because the mobile
+  layouts still ask a question that is open: whether a phone&rsquo;s chart
+  choice follows him to the desktop.</p>
+</header>
+<div id="nums"></div>
+<div id="ctl">
+  <label>Slices <input type="range" id="n" min="2" max="10" value="7"> <span id="nv">7</span></label>
+  <label><input type="checkbox" id="dark"> Dark theme</label>
+</div>
+<div id="stage"></div>
+<script>
+/* ── Today, measured ───────────────────────────────────────────────
+   EzBiziTheme light(): primary #00708F, secondary #00708F, tertiary #41627A,
+   primaryContainer #C6E7FF, secondaryContainer #D2E5F4, tertiaryContainer
+   #E8DDFF. dashboard_chart.dart indexes this with `colors[i % 6]`.        */
+var TODAY = {
+  light:['#00708F','#00708F','#41627A','#C6E7FF','#D2E5F4','#E8DDFF'],
+  dark :['#00AEEF','#0093CA','#6E8CA0','#004C6B','#374955','#4A4263']
+};
+
+/* ── SUPERSEDED. What I proposed, kept so the record shows what was
+   actually chosen over what. A brand ramp: every step inside the brand's own
+   range, cyan through slate.
+
+   Jose asked for the opposite and he was right. A ramp keeps series identity
+   inside brand identity, and those are different jobs -- which is exactly the
+   confusion that produced the bug. What SHIPPED is eight categorical hues
+   (blue, orange, aqua, yellow, magenta, green, violet, red), validated for
+   CVD separation and contrast against this app's real surfaces rather than
+   chosen by eye. See dashboard_chart.dart `_palette`.                    */
+var RAMP = {
+  light:['#00708F','#B7D9E4','#41627A','#8ACBE0','#00344A','#9AAEBD',
+         '#5FA8BF','#0F5566','#D4E6EC','#2C7C93'],
+  dark :['#00AEEF','#2F5C75','#A8C6D6','#0093CA','#6E8CA0','#0A3D52',
+         '#5FD3F5','#43707F','#C9E4F0','#17556B']
+};
+
+var LABELS = ['Scheduled','In progress','Completed','Cancelled','On hold',
+              'Awaiting parts','Quoted','Invoiced','Warranty','Rescheduled'];
+var VALUES = [34,26,19,12,9,7,6,4,3,2];
+
+function dk(){ return document.getElementById('dark').checked; }
+function N(){ return +document.getElementById('n').value; }
+function today(){ return dk() ? TODAY.dark : TODAY.light; }
+function ramp(){ return dk() ? RAMP.dark : RAMP.light; }
+
+/* A pie from a list of [colour, value]. */
+function pie(parts, cls){
+  var total = 0, i;
+  for (i = 0; i < parts.length; i++) total += parts[i][1];
+  var at = 0, stops = [];
+  for (i = 0; i < parts.length; i++){
+    var to = at + parts[i][1] / total * 360;
+    stops.push(parts[i][0] + ' ' + at.toFixed(2) + 'deg ' + to.toFixed(2) + 'deg');
+    at = to;
+  }
+  return '<div class="pie ' + (cls || '') + '" style="background:conic-gradient(' +
+         stops.join(',') + ')"></div>';
+}
+function legend(parts, square){
+  return '<div class="lg">' + parts.map(function(p){
+    return '<span class="it"><span class="dot' + (square ? ' sq' : '') +
+      '" style="background:' + p[0] + '"></span>' + p[2] + '</span>';
+  }).join('') + '</div>';
+}
+/* [colour, value, label] for the current slice count, coloured by `cols`
+   the way dashboard_chart.dart does it today: index modulo length. */
+function parts(cols){
+  var out = [], i;
+  for (i = 0; i < N(); i++) out.push([cols[i % cols.length], VALUES[i], LABELS[i]]);
+  return out;
+}
+function head(t, s){ return '<p class="ttl">' + t + '</p><p class="sml">' + s + '</p>'; }
+
+/* Which slice indices repeat a colour already used above them. */
+function clashes(p){
+  var seen = {}, bad = [];
+  p.forEach(function(x, i){
+    if (seen[x[0]] !== undefined) bad.push(LABELS[i] + ' = ' + LABELS[seen[x[0]]]);
+    else seen[x[0]] = i;
+  });
+  return bad;
+}
+
+/* ── 0 — what ships today ─────────────────────────────────────── */
+function T0(){
+  var p = parts(today()), bad = clashes(p);
+  return '<div class="card desk">' +
+    head('Jobs by status', 'Exactly what dashboard_chart.dart draws now.') +
+    pie(p) + legend(p) +
+    '<div class="swatches">' + today().map(function(c, i){
+      return '<div class="sw"><i style="background:' + c + '"></i>' +
+        ['primary','secondary','tertiary','primary<br>Container','secondary<br>Container',
+         'tertiary<br>Container'][i] + '<br>' + c + '</div>';
+    }).join('') + '</div>' +
+    (bad.length
+      ? '<p class="flag">Two wedges share a colour: ' + bad.join(' &middot; ') + '</p>'
+      : '') +
+    '</div>' +
+    '<div class="note"><b>Light theme draws the first two wedges in the same ' +
+    'colour, at two slices.</b> <code>primary</code> and <code>secondary</code> ' +
+    'are both <code>#00708F</code> &mdash; theme.dart pins <code>secondary</code> ' +
+    'to the brand cyan on purpose, and the chart palette is the one place that ' +
+    'reads the two as if they were different. So this is not an edge case at ' +
+    'seven statuses: <b>it is every light-theme pie on the dashboard today</b>, ' +
+    'including the four-status default.<br><br>' +
+    '<b>And swatch six is <code>#E8DDFF</code>.</b> That is the violet ' +
+    'theme.dart banished from the product &mdash; the <i>copyWith</i> there pins ' +
+    '<code>secondary</code> and <code>tertiary</code> but not their containers, ' +
+    'so the generated hue survives in the container and the chart reaches for ' +
+    'it at six slices.<br><br>' +
+    'Past six the palette repeats from the top, which is the defect Dashboard ' +
+    'reported.<br><br><b>Three findings, three different reaches &mdash; worth ' +
+    'keeping apart.</b> The duplicate cyan is <b>live now</b>, at two slices, ' +
+    'on the four-status default. The violet is swatch index five, so it needs ' +
+    'a <b>sixth</b> slice to be drawn at all &mdash; latent on Jobs, ordinary ' +
+    'on Inspection (a bar per definition name) and Email (one per mailbox). ' +
+    'The cycling needs a <b>seventh</b>. Flattening them into one alarm is how ' +
+    'the first one stayed invisible for as long as it has.</div>';
+}
+
+/* ── 1 — one brand ramp, as many steps as there are slices ───── */
+function D1(){
+  var p = parts(ramp()), bad = clashes(p);
+  return '<div class="card desk">' +
+    head('Jobs by status', 'The ramp, ten steps, all inside the brand range.') +
+    pie(p) + legend(p) +
+    '<div class="swatches">' + ramp().slice(0, N()).map(function(c){
+      return '<div class="sw"><i style="background:' + c + '"></i>' + c + '</div>';
+    }).join('') + '</div>' +
+    (bad.length ? '<p class="flag">Repeats: ' + bad.join(' &middot; ') + '</p>' : '') +
+    '</div>' +
+    '<div class="note">Ten named steps, ordered so neighbouring wedges are as ' +
+    'far apart as the range allows. Fixes all three problems at once and ' +
+    'changes nothing else.<br><br><b>What it does not fix:</b> at eleven ' +
+    'categories it is back to cycling. The ramp raises the ceiling and does ' +
+    'not remove it &mdash; which is exactly the shape of the defect, so on its ' +
+    'own this is the option that <i>looks</i> finished.</div>';
+}
+
+/* ── 2 — the ramp, and the tail named ────────────────────────── */
+function D2(){
+  var keep = Math.min(N(), 6), cols = ramp(), p = [], i, rest = 0;
+  for (i = 0; i < keep; i++) p.push([cols[i], VALUES[i], LABELS[i]]);
+  for (i = keep; i < N(); i++) rest += VALUES[i];
+  if (rest) p.push([dk() ? '#5B6672' : '#9AA6B2', rest, (N() - keep) + ' more']);
+  return '<div class="card desk">' +
+    head('Jobs by status', 'Six coloured, the rest gathered and counted.') +
+    pie(p) + legend(p) + '</div>' +
+    '<div class="note"><b>Running out of colours becomes a thing on the screen ' +
+    'with a number on it</b> rather than a coincidence you have to notice. The ' +
+    'grey wedge says &ldquo;four more&rdquo;, so nobody is reading a chart that ' +
+    'is lying to them, and the six that are coloured are genuinely ' +
+    'distinguishable.<br><br>Costs you the small categories at a glance &mdash; ' +
+    'they are in the chart and not in the legend. <b>This is the one I would ' +
+    'build</b>, because a pie with nine wedges is unreadable whatever colour ' +
+    'they are, and this is the only option that says so out loud.</div>';
+}
+
+/* ── 3 — colour for the leaders, one neutral for the tail ───── */
+function D3(){
+  var cols = ramp(), p = [], i, grey = dk() ? '#45525E' : '#B9C3CB';
+  for (i = 0; i < N(); i++)
+    p.push([i < 3 ? cols[i] : grey, VALUES[i], LABELS[i]]);
+  return '<div class="card desk">' +
+    head('Jobs by status', 'The top three carry colour; everything else is one neutral.') +
+    pie(p) +
+    '<div class="rows">' + p.map(function(x, i){
+      return '<div class="rw"><span class="dot" style="background:' + x[0] +
+        '"></span><span class="nm">' + x[2] + '</span><span class="vl">' +
+        x[1] + '</span></div>';
+    }).join('') + '</div></div>' +
+    '<div class="note">Colour stops pretending nine categories matter equally. ' +
+    'The legend becomes a list in size order with the numbers on it, so the ' +
+    'tail is still <i>readable</i> &mdash; just not colour-coded.<br><br>' +
+    'Never runs out, because the palette is three. <b>The risk is that it ' +
+    'decides for the reader which three matter</b>, and by size is not always ' +
+    'the answer &mdash; on a cancellations chart the small wedge is the point.</div>';
+}
+
+/* ── 4 — mobile: bars, chosen and SAID, never substituted ───── */
+function M4(){
+  var col = ramp()[0], p = [], i;
+  for (i = 0; i < N(); i++) p.push([col, VALUES[i], LABELS[i]]);
+  return '<div class="phone">' +
+    head('Jobs by status', 'One colour. Length is what you read.') +
+    '<div class="kind">&#9776; Showing <span class="pick">' +
+      '<span class="tick">&#10003;</span> Bar</span> &middot; tap to change</div>' +
+    '<div class="bars">' + p.map(function(x){
+      return '<div class="b"><span class="nm">' + x[2] + '</span>' +
+        '<span class="tr"><span class="fl" style="width:' +
+        (x[1] / VALUES[0] * 100) + '%;background:' + x[0] + '"></span></span>' +
+        '<span class="vl">' + x[1] + '</span></div>';
+    }).join('') + '</div></div>' +
+    '<div class="note">The palette problem does not exist here, on the surface ' +
+    'where it is worst: <b>a bar chart needs one colour</b>, because length ' +
+    'already carries the comparison and the label is on the row. Ten ' +
+    'categories read as well as three, and nothing cycles, rolls up or is ' +
+    'cut. Costs the share-of-whole a pie gives at a glance.<br><br>' +
+    '<b>The strip at the top is the whole of what makes this legal, and I drew ' +
+    'this option without it first.</b> The chart kind is the glance&rsquo;s ' +
+    'contract and the reader&rsquo;s choice within it &mdash; stored, validated ' +
+    'on read and on write, and the header icon is drawn from the STORED value. ' +
+    'A phone that quietly draws a pie as bars therefore gives you a pie icon, ' +
+    '&ldquo;Pie&rdquo; ticked in the menu, and bars in the body. Dashboard ' +
+    'removed exactly that defect in <code>c4254b03</code>, where the menu ' +
+    'offered a kind the server refused. So bars here are a real <i>selection</i>: ' +
+    'the menu says Bar, the icon says Bar, and the body agrees with both.<br><br>' +
+    '<b>Which leaves one question that is yours, not mine.</b> Does that ' +
+    'selection <i>persist</i> &mdash; so opening the dashboard on a phone changes ' +
+    'what you see on the desktop tomorrow &mdash; or does the phone hold its own ' +
+    'choice for this glance? Saying &ldquo;4&rdquo; is enough; I will ask you ' +
+    'this one before building it.</div>';
+}
+
+/* ── 5 — mobile: the ramp, legend as rows with values ───────── */
+function M5(){
+  var p = parts(ramp());
+  return '<div class="phone">' +
+    head('Jobs by status', 'The ramp, and a legend you can actually pair up.') +
+    pie(p, 'sm') +
+    '<div class="rows">' + p.map(function(x){
+      return '<div class="rw"><span class="dot" style="background:' + x[0] +
+        '"></span><span class="nm">' + x[2] + '</span><span class="vl">' +
+        x[1] + '</span></div>';
+    }).join('') + '</div></div>' +
+    '<div class="note">A phone has vertical room and no hover. The legend ' +
+    'stops being a wrapped row of dots &mdash; which is where two similar ' +
+    'colours are hardest to tell apart, at 8px and side by side &mdash; and ' +
+    'becomes rows in wedge order with the numbers on them. <b>Even if two ' +
+    'swatches were close, the order and the value disambiguate them.</b></div>';
+}
+
+/* ── 6 — mobile: top four, and a way into the rest ──────────── */
+function M6(){
+  var keep = Math.min(N(), 4), cols = ramp(), p = [], i, rest = 0;
+  for (i = 0; i < keep; i++) p.push([cols[i], VALUES[i], LABELS[i]]);
+  for (i = keep; i < N(); i++) rest += VALUES[i];
+  if (rest) p.push([dk() ? '#5B6672' : '#9AA6B2', rest, (N() - keep) + ' more']);
+  return '<div class="phone">' +
+    head('Jobs by status', 'Four coloured on a small canvas, the rest one tap away.') +
+    pie(p, 'sm') +
+    '<div class="rows">' + p.map(function(x, i){
+      var more = (i === p.length - 1 && rest);
+      return '<div class="rw"><span class="dot" style="background:' + x[0] +
+        '"></span><span class="nm">' + x[2] + (more ? ' &rsaquo;' : '') +
+        '</span><span class="vl">' + x[1] + '</span></div>';
+    }).join('') + '</div></div>' +
+    '<div class="note">Four rather than six, because the canvas is 150px and a ' +
+    'wedge below a few percent is a hairline whatever colour it is. The ' +
+    'gathered row opens the full list.<br><br><b>The tap is the part worth ' +
+    'arguing about.</b> It is one more place data lives, and if nobody opens ' +
+    'it the small categories are effectively gone &mdash; which is the honest ' +
+    'reading of every roll-up, including 2.<br><br>' +
+    '<b>WITHDRAWN as drawn.</b> The shipped palette has three light steps ' +
+    'below 3:1 on white, which the standard permits only with ' +
+    '&ldquo;relief&rdquo; &mdash; identity must not be colour alone. The relief ' +
+    'is the legend: a labelled dot per slice, plus a semantics label naming ' +
+    'every slice with its total. <b>So the legend is load-bearing now, not ' +
+    'decoration</b>, and a layout that hides rows to save space is not ' +
+    'available. If you want this shape it has to keep a row per category and ' +
+    'collapse only the COLOUR, never the naming.</div>';
+}
+
+var OPT = {
+  0:['Today &mdash; what ships now, measured', T0],
+  1:['1 &middot; Desktop &mdash; one brand ramp, a step per slice', D1],
+  2:['2 &middot; Desktop &mdash; the ramp, and the tail named and counted', D2],
+  3:['3 &middot; Desktop &mdash; colour for the leaders, one neutral for the tail', D3],
+  4:['4 &middot; Mobile &mdash; bars, where length is the variable', M4],
+  5:['5 &middot; Mobile &mdash; the ramp, legend as rows with values', M5],
+  6:['6 &middot; Mobile &mdash; top four, and a way into the rest', M6]
+};
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    cur = 0;
+function show(k){
+  cur = k;
+  stage.innerHTML = '<p class="cap">' + OPT[k][0] + '</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = k === '0' ? 'Today' : (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(+k); };
+  nums.appendChild(b);
+});
+document.getElementById('n').oninput = function(){
+  document.getElementById('nv').textContent = N(); show(cur);
+};
+document.getElementById('dark').onchange = function(){
+  document.body.classList.toggle('dk', dk()); show(cur);
+};
+show(0);
+</script>

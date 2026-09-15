@@ -1,0 +1,350 @@
+<!doctype html><meta charset="utf-8">
+<title>HR &rsaquo; the invitation panel &mdash; layouts</title>
+<style>
+/* Palette from client/lib/core/theme.dart light: ink #060808, muted #5B6672,
+   line #060808 @10%, primary #00708F. Red is Material 3's light error, #BA1A1A,
+   used ONLY where something actually failed -- never on "unknown". */
+:root{--ink:#060808;--muted:#5B6672;--line:rgba(6,8,8,.10);--primary:#00708F;
+      --bad:#BA1A1A;--warn:#8A5A00;--ok:#1B6B4A;--paper:#fff;--ground:#f4f6f7;
+      --fill:rgba(6,8,8,.04)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+     font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif}
+header{padding:20px 24px 6px}
+h1{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.sub{color:var(--muted);font-size:13px;margin:6px 0 0;max-width:780px}
+#nums{display:flex;flex-wrap:wrap;gap:8px;padding:14px 24px 6px}
+#nums button{font:inherit;font-weight:600;background:var(--paper);color:var(--ink);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+#nums button[aria-current=true]{background:var(--primary);color:#fff;border-color:var(--primary)}
+#ctl{padding:6px 24px 18px;font-size:13px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#ctl b{font-weight:700}
+#ctl button{font:inherit;background:var(--paper);border:1px solid var(--line);
+  border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--ink)}
+#ctl button[aria-current=true]{background:var(--ink);color:#fff;border-color:var(--ink)}
+#stage{padding:0 24px 56px}
+.cap{font-size:13px;color:var(--muted);margin:0 0 14px}
+.panel{width:520px;background:var(--paper);border:1px solid var(--line);
+       border-radius:14px;overflow:hidden}
+.phone{width:352px;background:var(--paper);border:1px solid var(--line);
+       border-radius:26px;overflow:hidden}
+.hd{padding:16px 18px 14px;border-bottom:1px solid var(--line)}
+.hd .t{font-weight:700;font-size:16px}
+.hd .s{color:var(--muted);font-size:13px;margin-top:2px}
+.bd{padding:16px 18px}
+.say{font-size:13.5px;line-height:1.55}
+.url{margin-top:14px;padding:13px;background:var(--fill);border-radius:10px;
+     font:13px/1.5 ui-monospace,Consolas,monospace;word-break:break-all}
+.btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);
+     border-radius:9px;padding:9px 14px;font-weight:600;font-size:13px;margin-top:12px;
+     cursor:pointer;background:var(--paper)}
+.btn.pri{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn.wide{display:flex;justify-content:center;width:100%;margin-top:10px}
+.ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+.strip{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:10px;
+       font-size:13px;margin-bottom:14px}
+.strip .ic{font-size:15px;line-height:1.3}
+.strip .tx{flex:1}
+.strip .tx b{display:block;font-weight:700;margin-bottom:2px}
+.strip .act{font-weight:700;color:var(--primary);white-space:nowrap;cursor:pointer}
+.s-ok{background:rgba(27,107,74,.07);border:1px solid rgba(27,107,74,.28);color:var(--ok)}
+.s-bad{background:rgba(186,26,26,.06);border:1px solid rgba(186,26,26,.3);color:var(--bad)}
+.s-unk{background:var(--fill);border:1px solid var(--line);color:var(--muted)}
+.strip .tx span{color:var(--ink);font-weight:400}
+.addr{display:flex;align-items:center;gap:10px;border:1px solid var(--line);
+      border-radius:10px;padding:11px 13px;font-size:14px}
+.addr.bad{border-color:rgba(186,26,26,.45)}
+.addr .em{flex:1;font-weight:600;word-break:break-all}
+.addr .tag{font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:999px;
+           white-space:nowrap}
+.addr .tag.ok{background:rgba(27,107,74,.1);color:var(--ok)}
+.addr .tag.bad{background:rgba(186,26,26,.1);color:var(--bad)}
+.addr .tag.unk{background:var(--fill);color:var(--muted)}
+.why{font-size:12.5px;color:var(--muted);margin-top:8px}
+.why.bad{color:var(--bad)}
+.hide{margin-top:12px;font-size:13px;color:var(--primary);font-weight:700;cursor:pointer}
+.note{margin:16px 0 0;padding:13px 15px;border:1px solid var(--line);border-radius:10px;
+      font-size:13px;background:var(--paper);max-width:640px;line-height:1.55}
+.note b{font-weight:700}
+code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
+     border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+<header>
+  <h1>HR &rsaquo; the invitation panel &mdash; pick one desktop and one mobile</h1>
+  <p class="sub">The panel shown the one moment the raw token exists. <b>Switch the
+  state.</b> <b>Bounced</b> is not knowable yet &mdash; SES event ingestion is being
+  built &mdash; so every option needs somewhere to put it.</p>
+  <p class="sub" style="margin-top:10px"><b>Revised 2026-09-14: &ldquo;address
+  refused&rdquo; is no longer drawn as a send state, and HR is right that it should
+  not be.</b> The invitation is a PLATFORM send &mdash; <code>Notification::route</code>
+  rather than <code>MailDispatcher::asTenant</code> &mdash; so it never produces
+  <code>CannotSendMail</code>, the class that carries a human sentence. What it gets
+  is a raw transport exception, and telling a rejected recipient from a dead
+  connection would mean <b>string-matching a vendor&rsquo;s error text</b>. The
+  failure mode of guessing wrong is telling somebody to fix a perfectly good address
+  &mdash; a confident sentence naming the wrong cause, which is the defect this whole
+  entry exists to avoid. So the handoff failure says what it knows and no more, and
+  <b>the address is correctable in every state instead</b>: the invitation keeps that
+  address on record whatever happened, so the next invite goes to the same typo.
+  &ldquo;This address is wrong&rdquo; gets said once there is a typed bounce event to
+  say it with.</p>
+  <p class="sub" style="margin-top:10px"><b>And correcting an address is a REISSUE,
+  not a field edit &mdash; HR measured that too, and it changes the label rather than
+  the layout.</b> If the typo&rsquo;d address belongs to a real person, <b>that person
+  is holding a working invitation to somebody else&rsquo;s organization.</b> Quietly
+  repointing the row at the corrected address leaves their link alive while the screen
+  says the problem is fixed &mdash; and that is worst in the SUCCESS state, which is
+  exactly where this control is most useful. The semantics already exist and are
+  tested: <code>resend</code> mints a new token and kills the old one. So the control
+  reads as re-inviting, and says the current link stops working, because that is what
+  happens.</p>
+</header>
+<div id="nums"></div>
+<div id="ctl"><b>State:</b></div>
+<div id="stage"></div>
+<script>
+var EMAIL = 'jse@exmaple.com', GOOD = 'jess@everdoors.com';
+var URL = 'https://app.ezbizi.com/invite/9f3c1e77-4a2b-4d51-bb08-2e6a91c4d3f0';
+
+/* The states. `unknown` is a server older than the `emailed` field -- it claims
+   NEITHER outcome and only says what to do. `bounced` does not exist yet. */
+var STATES = {
+  sent:    {label:'Sent',                 addr:GOOD},
+  noxport: {label:'This box does not send', addr:GOOD},
+  failed:  {label:'Couldn’t send',        addr:GOOD},
+  unknown: {label:'Unknown (old server)', addr:GOOD},
+  bounced: {label:'Bounced (coming)',     addr:EMAIL}
+};
+var cur = 'sent', opt = 1;
+function S(){ return cur; }
+function addr(){ return STATES[cur].addr; }
+
+/* One sentence per state, and NONE of them names a cause the server cannot
+   prove. `noxport` is reliable -- MailStatus answers before anything is tried.
+   `failed` is reliable that it failed and nothing more. The split I drew first
+   -- "address refused" versus "transport down" -- rested on parsing an SMTP
+   code out of an exception message, so it is gone. */
+function say(){
+  return {
+    sent: 'Sent to them. The link below is the same one — you only need it ' +
+          'if the message goes astray.',
+    noxport: 'Not sent: this installation is not sending mail at all. The ' +
+          'invitation is fine — copy the link and get it to them yourself.',
+    /* Deliberately does NOT name a cause. The handoff threw; what it threw is
+       a raw transport exception, and telling a rejected address from a dead
+       connection would mean string-matching a vendor's error text. */
+    failed: 'Not sent: the message was refused when we tried to send it. ' +
+          'Copy the link and get it to them yourself — and check the address ' +
+          'above while you are here.',
+    unknown: 'Copy the link and get it to them yourself if you are not certain ' +
+          'the email reached them.',
+    bounced: 'Sent, then bounced: <b>' + EMAIL + '</b> did not accept it. Nothing ' +
+          'reached them, and this invitation keeps that address.'
+  }[cur];
+}
+function tone(){
+  return {sent:'ok', noxport:'bad', failed:'bad', unknown:'unk', bounced:'bad'}[cur];
+}
+function heading(){
+  return {sent:'Sent', noxport:'Not sent', failed:'Not sent',
+          unknown:'May or may not have been sent', bounced:'Bounced'}[cur];
+}
+function why(){
+  return {sent:'', noxport:'This installation is not sending mail at all.',
+          failed:'The message was refused when we tried to send it.', unknown:'',
+          bounced:'The address did not accept it.'}[cur];
+}
+/* The address can ALWAYS be corrected -- see the banner. Only `bounced` is
+   evidence that it is the address that is wrong. */
+function fixable(){ return true; }
+function blamed(){ return cur === 'bounced'; }
+
+function head(t){
+  return '<div class="hd"><div class="t">' + t + '</div>' +
+         '<div class="s">' + addr() + '</div></div>';
+}
+function urlBox(){ return '<div class="url">' + URL + '</div>'; }
+function copyBtn(wide){
+  return '<div class="btn' + (wide ? ' wide' : '') + '">⧉ Copy link</div>';
+}
+
+/* Correcting an address is a REISSUE, not a field edit, and the label has to
+   say so. There is no endpoint to change an invitation's address (four routes:
+   index, store, resend, destroy) so this is new server work either way -- but
+   the shape is `resend`, which already mints a new token and kills the old one.
+   It has to: if the typo'd address belongs to a real person, they are holding a
+   working invitation to somebody else's organization, and quietly repointing
+   the row at the corrected address leaves that link alive while the screen says
+   the problem is fixed. Worst in the SUCCESS state, which is exactly where this
+   control is most useful. */
+function fixBtn(opts){
+  opts = opts || {};
+  return '<div class="btn' + (opts.wide ? ' wide' : '') +
+    (opts.pri ? ' pri' : '') + '">✎ Re-invite at a different address</div>' +
+    '<div class="why" style="margin-top:6px">The current link stops working.</div>';
+}
+function foot(){ return '<div class="ft"><div class="btn pri" style="margin:0">Done</div></div>'; }
+
+/* ── 1 — today's shape, the reason folded into the sentence ───── */
+function D1(){
+  return '<div class="panel">' + head('Invitation ready') +
+    '<div class="bd"><div class="say">' + say() + '</div>' +
+    (fixable() ? fixBtn() : '') +
+    urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
+    '<div class="note"><b>Nothing new on the screen.</b> The one sentence names ' +
+    'which failure it is, and the failing case grows one button. A bounced ' +
+    'state is one more case in the same switch, so it lands without a redraw.' +
+    '<br><br><b>The cost:</b> the state is something you read out of prose. ' +
+    'Somebody scanning the panel for "did it go" has to read a sentence to find ' +
+    'out, and this panel is shown at the one moment when the person is ' +
+    'mid-task and about to close it.</div>';
+}
+
+/* ── 2 — a status strip above the sentence ───────────────────── */
+function D2(){
+  var ic = {sent:'✓', noxport:'✕', refused:'✕', unknown:'?',
+            bounced:'↩'}[cur];
+  return '<div class="panel">' + head('Invitation ready') +
+    '<div class="bd">' +
+    '<div class="strip s-' + tone() + '"><span class="ic">' + ic + '</span>' +
+    '<span class="tx"><b>' + heading() + '</b>' +
+    (why() ? '<span>' + why() + '</span>' : '') + '</span>' +
+    (fixable() ? '<span class="act">Re-invite&hellip;</span>' : '') + '</div>' +
+    '<div class="say">' + say() + '</div>' +
+    urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
+    '<div class="note"><b>The state is legible before the sentence is read</b>, ' +
+    'and the one action for that state sits in the same row as the state. The ' +
+    'sentence stays underneath as the explanation rather than as the only ' +
+    'carrier of the fact.<br><br><b>Where bounced goes:</b> the strip changes ' +
+    'and the body does not. That is the clean seam for a state arriving later ' +
+    'from SES events — the panel gains a row, not a rewrite.<br><br>' +
+    '<b>The cost:</b> a strip and a sentence can drift apart, which is the ' +
+    'shape where the label says one thing and the body another.</div>';
+}
+
+/* ── 3 — the address becomes the subject ─────────────────────── */
+function D3(){
+  var tg = {sent:['ok','Sent'], noxport:['unk','Not sent'],
+            refused:['bad','Refused'], unknown:['unk','Unknown'],
+            bounced:['bad','Bounced']}[cur];
+  return '<div class="panel">' +
+    '<div class="hd"><div class="t">Invitation ready</div></div>' +
+    '<div class="bd">' +
+    '<div class="addr' + (blamed() ? ' bad' : '') + '">' +
+      '<span class="em">' + addr() + '</span>' +
+      '<span class="tag ' + tg[0] + '">' + tg[1] + '</span>' +
+      (fixable() ? '<span class="act" style="color:var(--primary);font-weight:700;' +
+        'cursor:pointer">Re-invite&hellip;</span>' : '') + '</div>' +
+    (why() ? '<div class="why' + (blamed() ? ' bad' : '') + '">' + why() + '</div>' : '') +
+    '<div class="say" style="margin-top:14px">' + say() + '</div>' +
+    urlBox() + copyBtn() + '</div>' + foot() + '</div>' +
+    '<div class="note"><b>In every failing case the address IS the problem</b>, ' +
+    'and today it is the panel subtitle — the one thing on screen that ' +
+    'cannot be acted on. This promotes it to the subject, with the state ' +
+    'attached to it rather than floating above it.<br><br>It also reads ' +
+    'correctly on success: the address is still the thing you would check.' +
+    '<br><br><b>The cost:</b> it makes the panel about the address when on a ' +
+    'good day the panel is about the link. And it is the biggest change to a ' +
+    'screen that is mostly right.</div>';
+}
+
+/* ── 4 — mobile: the action first ───────────────────────────── */
+function M4(){
+  return '<div class="phone">' + head('Invitation ready') +
+    '<div class="bd">' +
+    (blamed()
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
+      : '<div class="btn pri wide" style="margin-top:0">⧉ Copy link</div>' +
+        fixBtn({wide:true})) +
+    '<div class="say" style="margin-top:14px">' + say() + '</div>' +
+    urlBox() + '</div>' + foot() + '</div>' +
+    '<div class="note">The thing to DO is the first thing on the screen and a ' +
+    'full-width target, and <b>which action comes first changes with the ' +
+    'state</b> — a refused address is the one case where copying the link ' +
+    'is not the whole job.<br><br><b>The cost:</b> an action above the ' +
+    'explanation asks somebody to act before reading why. That is fine for ' +
+    'Copy and worth arguing about for Fix.</div>';
+}
+
+/* ── 5 — mobile: the strip, thumb-reachable copy ─────────────── */
+function M5(){
+  var ic = {sent:'✓', noxport:'✕', refused:'✕', unknown:'?',
+            bounced:'↩'}[cur];
+  return '<div class="phone">' + head('Invitation ready') +
+    '<div class="bd">' +
+    '<div class="strip s-' + tone() + '"><span class="ic">' + ic + '</span>' +
+    '<span class="tx"><b>' + heading() + '</b>' +
+    (why() ? '<span>' + why() + '</span>' : '') + '</span></div>' +
+    '<div class="say">' + say() + '</div>' + urlBox() +
+    (fixable() ? fixBtn({wide:true}) : '') +
+    copyBtn(true) + '</div>' + foot() + '</div>' +
+    '<div class="note">Desktop 2 on a phone, with the buttons at the <b>bottom ' +
+    'where the thumb is</b> rather than at the top where the eye is. The state ' +
+    'reads first, the action is reachable last, and the order matches how the ' +
+    'panel is actually used: find out what happened, then do the thing.' +
+    '<br><br>One vocabulary across both surfaces if you pair it with 2.</div>';
+}
+
+/* ── 6 — mobile: the link is behind a tap ────────────────────── */
+function M6(){
+  return '<div class="phone">' + head('Invitation ready') +
+    '<div class="bd">' +
+    '<div class="addr' + (blamed() ? ' bad' : '') + '">' +
+      '<span class="em">' + addr() + '</span>' +
+      '<span class="tag ' + {sent:'ok',noxport:'unk',refused:'bad',unknown:'unk',
+        bounced:'bad'}[cur] + '">' + heading() + '</span></div>' +
+    '<div class="say" style="margin-top:12px">' + say() + '</div>' +
+    (blamed()
+      ? fixBtn({wide:true, pri:true}) + copyBtn(true)
+      : copyBtn(true) + fixBtn({wide:true})) +
+    '<div class="hide">Show the link</div>' +
+    '</div>' + foot() + '</div>' +
+    '<div class="note"><b>A 68-character URL on a 352px screen is four lines of ' +
+    'text nobody reads.</b> It is there to be copied, not looked at — so the ' +
+    'button is on screen and the link itself is behind a tap, for the times ' +
+    'somebody wants to see it before sending it.<br><br><b>The cost, and it is ' +
+    'real:</b> hiding the one irreplaceable thing on the panel. If the copy ' +
+    'button ever fails silently, this is the layout where nobody notices the ' +
+    'link was there at all.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; today’s shape, the reason folded into the sentence', D1],
+  2:['2 &middot; Desktop &mdash; a status strip above the sentence', D2],
+  3:['3 &middot; Desktop &mdash; the address becomes the subject', D3],
+  4:['4 &middot; Mobile &mdash; the action first, full width', M4],
+  5:['5 &middot; Mobile &mdash; the strip, with the buttons where the thumb is', M5],
+  6:['6 &middot; Mobile &mdash; the link behind a tap', M6]
+};
+
+var nums = document.getElementById('nums'), stage = document.getElementById('stage'),
+    ctl = document.getElementById('ctl');
+function show(k){
+  opt = k;
+  stage.innerHTML = '<p class="cap">' + OPT[k][0] + '</p>' + OPT[k][1]();
+  Array.prototype.forEach.call(nums.children, function(b){
+    b.setAttribute('aria-current', b.dataset.k === String(k));
+  });
+}
+Object.keys(OPT).forEach(function(k){
+  var b = document.createElement('button');
+  b.textContent = (k < 4 ? 'Desktop ' : 'Mobile ') + k;
+  b.dataset.k = k; b.onclick = function(){ show(+k); };
+  nums.appendChild(b);
+});
+Object.keys(STATES).forEach(function(s){
+  var b = document.createElement('button');
+  b.textContent = STATES[s].label;
+  b.dataset.s = s;
+  b.onclick = function(){
+    cur = s;
+    Array.prototype.forEach.call(ctl.querySelectorAll('button'), function(x){
+      x.setAttribute('aria-current', x.dataset.s === s);
+    });
+    show(opt);
+  };
+  ctl.appendChild(b);
+});
+ctl.querySelector('button').setAttribute('aria-current', 'true');
+show(1);
+</script>

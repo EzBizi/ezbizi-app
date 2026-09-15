@@ -34,10 +34,16 @@ use Illuminate\Database\Eloquent\Model;
  *
  * ── And it does not decide its own verification state ────────────
  *
- * `state` is written by {@see \App\Support\Mail\DomainVerification} and by
- * nothing else. It is not fillable, there is no API route that sets it, and the
- * whole reason this is not a registry setting is that a registry value IS
- * settable by anybody with `organizations.edit` and a PATCH.
+ * `state` was written by the domain-verification flow, which was deleted on
+ * 2026-09-14. Exactly ONE thing writes it now — {@see connectServer}, which sets
+ * Verified because a tenant's own SMTP has nothing to prove to us — and no
+ * request body can reach it: it is absent from $fillable, so a PATCH cannot
+ * touch it whatever it is sent. That is the whole reason this is not a registry
+ * setting, where any value IS settable by anybody with `organizations.edit`.
+ *
+ * (This paragraph said "NOTHING writes it now" until connectServer was added
+ * minutes later in the same session. A comment goes stale from the change made
+ * four lines below it, by the person who wrote both.)
  */
 class SendingIdentity extends Model implements HoldsSensitiveValues, StatesRetention
 {
@@ -109,17 +115,135 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
     {
         return [
             /*
-             * Encrypted on every row, empty on all of them today.
+             * `encrypted:array`, and the window to choose the cast was still
+             * open when it changed on 2026-09-14.
              *
-             * A cast is per-column and cannot be switched on for rows that
-             * already exist, so the moment to decide is before the first
-             * credential is written rather than after. Same argument as
-             * OnboardingAnswer::$value.
+             * The original note here was right that a cast is per-column and
+             * cannot be switched on for rows that already exist, so the moment
+             * to decide is before the first credential is written. What made the
+             * change safe is not that note though — a docblock records what its
+             * author believed — it is that `credentials` is absent from
+             * $fillable and nothing in app/ or database/ assigns to it, so no
+             * row on any box can hold a value to be misread. That holds for
+             * servers I cannot reach, which counting rows on one does not.
+             *
+             * An array rather than a string because an SMTP connection is five
+             * fields that must travel together — host, port, username, password,
+             * encryption — and a delimited string is how one of them ends up
+             * parsed differently in two places.
+             *
+             * ── ITS OWN CREDENTIAL, NEVER A MAILBOX'S ────────────
+             *
+             * A Mailbox already holds exactly these five for replying as a
+             * shared inbox, and reusing them here is the obvious saving. It is
+             * refused, decided by the Email module on 2026-09-14 and recorded
+             * HERE because this is where somebody stands when the idea occurs.
+             *
+             * The reason that survives every technical fix: the administrator
+             * handed that password over on a screen about REPLYING AS that
+             * inbox. A scheduled report is a different purpose and nobody
+             * consented to it. Solving "which of info@, accounts@ and somebody's
+             * personal address" with a picker would not touch that.
+             *
+             * And the one that is a defect rather than a preference, measured:
+             * the details live in `mailboxes.mail_server` and the password in
+             * `mailboxes.credentials`, both on a row carrying cascadeOnDelete in
+             * FIVE tables. Deleting an inbox would silently take the report
+             * sender's transport with it, and nothing anywhere would connect
+             * those two facts for whoever deleted it.
+             *
+             * The convenience is an explicit "use the same server as info@…"
+             * that COPIES these values at setup and says on screen that it
+             * copied them — never an implicit fallback, because with a fallback
+             * nobody can tell by LOOKING which credential is in use. A copy also
+             * does not follow its source: change that mailbox's password later
+             * and this row still holds the old one, which the screen has to
+             * admit rather than implying a live link.
              */
-            'credentials'     => 'encrypted',
+            'credentials'     => 'encrypted:array',
             'verified_at'     => 'datetime',
-            'last_checked_at' => 'datetime',
+            'last_checked_at'   => 'datetime',
+            'last_attempted_at' => 'datetime',
         ];
+    }
+
+    /**
+     * THE ONLY METHOD THAT ASSIGNS TO `credentials`. One writer, one field.
+     *
+     * `forceFill` because `credentials` is deliberately not fillable, so no
+     * request body can reach it through `update()` whatever it is sent — the
+     * same shape {@see \App\Models\Mailbox::connect()} uses, for the same
+     * reason and deliberately not a second dialect of it.
+     *
+     * The values are COPIED in, never referenced. When they came from a mailbox
+     * the copy is its own from this moment: deleting that inbox takes nothing
+     * with it, and changing its password does not change this. That is the whole
+     * argument for copying rather than pointing, and the screen has to say so —
+     * see the note on the cast above.
+     *
+     * @param  array{host:string,port:int,username:string,password:string,encryption:string}  $server
+     */
+    public function connectServer(array $server): void
+    {
+        $this->forceFill([
+            'transport'   => MailTransport::Smtp->value,
+            'credentials' => [
+                'host'       => $server['host'],
+                'port'       => $server['port'],
+                'username'   => $server['username'],
+                'password'   => $server['password'],
+                'encryption' => $server['encryption'],
+            ],
+
+            /*
+             * Verified, and it is not a lie by omission. `state` exists for the
+             * retired domain-verification flow, where EzBizi had to prove a
+             * claim about a domain before sending. Nothing is claimed here: the
+             * tenant's own server authenticates the send with the password they
+             * gave it, so MailTransport::Smtp->requiresDomainProof() is false
+             * and canSend() never consults this column for these rows.
+             *
+             * Set rather than left null because it is NOT NULL, and because a
+             * row sitting at a state that reads as "awaiting proof" would send
+             * the next reader looking for a proof step that does not exist.
+             */
+            'state'           => SendingState::Verified->value,
+            'state_reason'    => null,
+            'verified_at'     => now(),
+            'last_checked_at' => null,
+        ]);
+    }
+
+    /**
+     * Has anything ever been sent through this server?
+     *
+     * DERIVED, never asserted. The screen used to be going to say "saved, never
+     * tried" as a fact about every row, which was true only because no sending
+     * path existed — and the event that would falsify it lives in another
+     * module. Reading the column means the sentence stops being true by itself
+     * the first time a send records an attempt, with nobody having to remember.
+     *
+     * The inverse is NOT "it works". It says only that something has been tried,
+     * which is why the screen carries its own admission that it cannot yet
+     * report whether sending succeeds.
+     */
+    public function neverTried(): bool
+    {
+        return $this->last_attempted_at === null;
+    }
+
+    /**
+     * Record that a send was attempted through this server, whatever came back.
+     *
+     * Called by the sending path on EVERY attempt, before the outcome is known,
+     * so that a send which throws still counts as tried. An attempt recorded
+     * only on success would leave a row that has failed ten times still saying
+     * nobody has tried it, which is the exact sentence this column exists to
+     * stop being a lie.
+     */
+    public function noteAttempt(): void
+    {
+        $this->forceFill(['last_attempted_at' => now()])->save();
     }
 
     // ── the identity ─────────────────────────────────────────────
@@ -196,7 +320,7 @@ class SendingIdentity extends Model implements HoldsSensitiveValues, StatesReten
      *
      * When a bring-your-own-SMTP transport arrives this becomes a real check —
      * `organizations.edit` plus reach over this row's scope, the same pair
-     * SendingIdentitiesController already applies to writes.
+     * the controller used to apply to writes (deleted 2026-09-14).
      */
     public function mayReveal(User $actor): bool
     {

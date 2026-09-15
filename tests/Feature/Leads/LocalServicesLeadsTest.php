@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Leads;
 
+use App\Models\Company;
 use App\Models\Lead;
+use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Models\User;
 use App\Support\Social\GoogleAdsOAuth;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,7 +28,7 @@ class LocalServicesLeadsTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
-    /** @param array{org: \App\Models\Organization, admin: \App\Models\User, company: \App\Models\Company} $t */
+    /** @param array{org: Organization, admin: User, company: Company} $t */
     private function viewingCompany(array $t): void
     {
         $this->inTenant($t['org'], function () use ($t) {
@@ -35,22 +38,22 @@ class LocalServicesLeadsTest extends TestCase
         });
     }
 
-    /** @param array{org: \App\Models\Organization, company: \App\Models\Company} $t */
+    /** @param array{org: Organization, company: Company} $t */
     private function connected(array $t, string $customerId = '4051729356'): SocialConnection
     {
         return $this->inTenant($t['org'], function () use ($t, $customerId) {
             $connection = new SocialConnection;
             $connection->forceFill([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => SocialConnection::SCOPE_COMPANY,
-                'scope_id'        => $t['company']->id,
-                'provider'        => SocialProvider::GoogleAds->value,
-                'remote_id'       => $customerId,
-                'display_name'    => GoogleAdsOAuth::readableId($customerId),
+                'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'provider' => SocialProvider::GoogleAds->value,
+                'remote_id' => $customerId,
+                'display_name' => GoogleAdsOAuth::readableId($customerId),
             ]);
             $connection->connect([
                 'refresh_token' => 'rt-test',
-                'access_token'  => 'at-stale',
+                'access_token' => 'at-stale',
             ]);
             $connection->save();
 
@@ -61,15 +64,15 @@ class LocalServicesLeadsTest extends TestCase
     private function fakeGoogle(array $searchBody, int $searchStatus = 200): void
     {
         config([
-            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
-            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'client-secret',
             'services.google_ads.developer_token' => 'dev-token',
-            'services.google_ads.version'         => 'v24',
+            'services.google_ads.version' => 'v24',
         ]);
 
         Http::fake([
             'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
-            'googleads.googleapis.com/*'  => Http::response($searchBody, $searchStatus),
+            'googleads.googleapis.com/*' => Http::response($searchBody, $searchStatus),
         ]);
     }
 
@@ -117,12 +120,12 @@ class LocalServicesLeadsTest extends TestCase
          */
         $this->fakeGoogle(['results' => [[
             'localServicesLead' => [
-                'id'               => 'L-CHARGED',
-                'leadType'         => 'PHONE_CALL',
-                'leadStatus'       => 'ACTIVE',
-                'leadCharged'      => true,
+                'id' => 'L-CHARGED',
+                'leadType' => 'PHONE_CALL',
+                'leadStatus' => 'ACTIVE',
+                'leadCharged' => true,
                 'creationDateTime' => '2026-09-01 09:00:00',
-                'contactDetails'   => ['consumerName' => 'Dana', 'phoneNumber' => '+13055550101'],
+                'contactDetails' => ['consumerName' => 'Dana', 'phoneNumber' => '+13055550101'],
             ],
         ]]]);
 
@@ -146,13 +149,13 @@ class LocalServicesLeadsTest extends TestCase
         $this->viewingCompany($t);
 
         $good = $this->connected($t, '4051729356');
-        $bad  = $this->connected($t, '7061094046');
+        $bad = $this->connected($t, '7061094046');
 
         config([
-            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
-            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'client-secret',
             'services.google_ads.developer_token' => 'dev-token',
-            'services.google_ads.version'         => 'v24',
+            'services.google_ads.version' => 'v24',
         ]);
 
         /*
@@ -244,18 +247,18 @@ class LocalServicesLeadsTest extends TestCase
         $this->fakeGoogle([
             'results' => [[
                 'localServicesLead' => [
-                    'id'               => 'lead-77',
-                    'leadType'         => 'MESSAGE',
-                    'categoryId'       => 'chimney_sweep',
-                    'leadStatus'       => 'NEW',
-                    'leadCharged'      => true,
+                    'id' => 'lead-77',
+                    'leadType' => 'MESSAGE',
+                    'categoryId' => 'chimney_sweep',
+                    'leadStatus' => 'NEW',
+                    'leadCharged' => true,
                     'creationDateTime' => '2026-09-01 14:22:00',
-                    'contactDetails'   => [
+                    'contactDetails' => [
                         'consumerName' => 'Dana Whitfield',
-                        'phoneNumber'  => '+1 (555) 123-4567',
-                        'email'        => 'dana@example.test',
+                        'phoneNumber' => '+1 (555) 123-4567',
+                        'email' => 'dana@example.test',
                     ],
-                    'creditDetails'    => ['creditState' => 'CREDITED'],
+                    'creditDetails' => ['creditState' => 'CREDITED'],
                 ],
             ]],
         ]);
@@ -275,6 +278,207 @@ class LocalServicesLeadsTest extends TestCase
         $this->assertSame(Lead::STATUS_NEW, $lead->status);
     }
 
+    /**
+     * A reconnected account must reclaim the enquiries it lost.
+     *
+     * Disconnecting deletes the social_connections row, and the foreign key
+     * sets `leads.connection_id` to NULL rather than deleting the lead - the
+     * right choice, because these are the business's own customer enquiries and
+     * some have already become jobs. But the column was only ever written on
+     * CREATE, so reconnecting re-read the same leads, updated them, and left
+     * them orphaned permanently.
+     *
+     * Orphaned is not merely untidy. `canReply()` requires a connection, so an
+     * orphaned MESSAGE enquiry could not be answered even with the account
+     * back; and `since()` takes its watermark from leads carrying the
+     * connection id, so every reconnect restarted from FIRST_RUN_DAYS.
+     *
+     * Jose's "Disconnect all" on 2026-09-14 orphaned 41,006 of 41,015 leads.
+     */
+    public function test_a_reconnected_account_adopts_the_leads_it_was_disconnected_from(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+
+        $google = [
+            'results' => [[
+                'localServicesLead' => [
+                    'id' => 'lead-77',
+                    'leadType' => 'MESSAGE',
+                    'categoryId' => 'chimney_sweep',
+                    'leadStatus' => 'NEW',
+                    'creationDateTime' => '2026-09-01 14:22:00',
+                    'contactDetails' => ['consumerName' => 'Dana Whitfield'],
+                ],
+            ]],
+        ];
+
+        // 1. Connected, and the lead arrives owned.
+        $first = $this->connected($t);
+        $this->fakeGoogle($google);
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame($first->getKey(), $lead->connection_id, 'positive control: a live sync owns its lead');
+
+        // 2. Disconnected. The lead survives, cut loose - the production shape.
+        $this->inTenant($t['org'], fn () => $first->delete());
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertNull($lead->connection_id, 'the FK must null it rather than delete the enquiry');
+        $this->assertSame($t['company']->id, $lead->company_id, 'and must not take the placement with it');
+
+        // 3. Reconnected. Google returns the same lead, so this is an UPDATE.
+        $second = $this->connected($t);
+        $this->fakeGoogle($google);
+        $this->signedInAs($t['admin']->fresh())
+            ->postJson('/api/v1/leads/sync')
+            ->assertOk()
+            ->assertJsonPath('data.created', 0);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertSame(
+            $second->getKey(),
+            $lead->connection_id,
+            'the update branch must adopt an orphan, not just refresh its fields',
+        );
+        $this->assertSame(1, $this->inTenant($t['org'], fn () => Lead::query()->count()), 'and not by creating a second row');
+    }
+
+    /**
+     * A reconnect must take its enquiries back WITHOUT asking Google.
+     *
+     * Adoption-on-re-read was the first fix and it is not enough: it only
+     * reaches leads Google still returns, so anything outside the window stays
+     * detached for good, and each reclaim costs quota. `remote_customer_id` is
+     * the fact that survives a disconnect, so the re-link is local and exact.
+     *
+     * The window is what makes this test different from the adoption one. Here
+     * the lead is OLD - outside anything a sync would fetch - and Google is
+     * faked returning nothing at all. If the reclaim needed Google, this fails.
+     */
+    public function test_a_reconnect_reclaims_old_leads_without_google_returning_them(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+
+        $first = $this->connected($t);
+
+        // ONE fake, sequenced. Http::fake() stacks rather than replaces, so a
+        // second call later in this test would be ignored and Google would
+        // still be feeding the sync the lead - which is exactly what the
+        // reclaim is supposed to work without.
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                ->push(['results' => [[
+                    'localServicesLead' => [
+                        'id' => 'lead-ancient',
+                        'leadType' => 'MESSAGE',
+                        'leadStatus' => 'NEW',
+                        'creationDateTime' => '2024-08-11 09:00:00',
+                        'contactDetails' => ['consumerName' => 'Dana Whitfield'],
+                    ],
+                ]]], 200)
+                ->pushStatus(200)
+                ->whenEmpty(Http::response(['results' => []], 200)),
+        ]);
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame(
+            $first->remote_id,
+            $lead->remote_customer_id,
+            'the account id must be written down while we still know it',
+        );
+
+        // Disconnect. The enquiry survives; its connection does not.
+        $this->inTenant($t['org'], fn () => $first->delete());
+        $this->assertNull($this->inTenant($t['org'], fn () => Lead::query()->firstOrFail())->connection_id);
+
+        // Reconnect, and Google returns NOTHING. A reclaim that needed the API
+        // would have nothing to work with.
+        $second = $this->connected($t);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->postJson('/api/v1/leads/sync')
+            ->assertOk()
+            ->assertJsonPath('data.fetched', 0);
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::query()->firstOrFail());
+
+        $this->assertSame(
+            $second->getKey(),
+            $lead->connection_id,
+            'the reclaim must re-link from the stored customer id, with no help from Google',
+        );
+    }
+
+    /**
+     * And it must not reclaim somebody else's.
+     *
+     * The positive case above passes just as well for a reclaim that takes
+     * every orphan it can see. A-1 Chimney runs 37 Google Ads accounts under
+     * one company, so "every orphan in this company" would attach a customer's
+     * enquiry to the wrong account - worse than leaving it orphaned, and
+     * invisible until a reply goes out through a stranger's account.
+     */
+    public function test_the_reclaim_leaves_another_accounts_orphan_alone(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->viewingCompany($t);
+
+        $mine = $this->connected($t, '4051729356');
+
+        $orphan = $this->inTenant($t['org'], fn () => Lead::query()->create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'lead-belongs-elsewhere',
+            'remote_customer_id' => '9999999999',   // a different account entirely
+            'lead_type' => 'MESSAGE',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now()->subYear(),
+        ]));
+
+        $this->fakeGoogle(['results' => []]);
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $this->assertNull(
+            $this->inTenant($t['org'], fn () => $orphan->fresh())->connection_id,
+            'an orphan from another account must stay orphaned, whatever company it sits in',
+        );
+
+        // Positive control in the same test: the reclaim is running at all.
+        $own = $this->inTenant($t['org'], fn () => Lead::query()->create([
+            'organization_id' => $t['org']->id,
+            'company_id' => $t['company']->id,
+            'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'lead-is-mine',
+            'remote_customer_id' => $mine->remote_id,
+            'lead_type' => 'MESSAGE',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now()->subYear(),
+        ]));
+
+        $this->signedInAs($t['admin']->fresh())->postJson('/api/v1/leads/sync')->assertOk();
+
+        $this->assertSame(
+            $mine->getKey(),
+            $this->inTenant($t['org'], fn () => $own->fresh())->connection_id,
+            'and one that does match must be taken back, or the test above proves nothing',
+        );
+    }
+
     public function test_a_refused_fetch_puts_googles_reason_on_message_so_the_client_can_show_it(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
@@ -283,8 +487,8 @@ class LocalServicesLeadsTest extends TestCase
 
         $this->fakeGoogle([
             'error' => [
-                'code'    => 404,
-                'status'  => 'NOT_FOUND',
+                'code' => 404,
+                'status' => 'NOT_FOUND',
                 'message' => 'Requested entity was not found.',
             ],
         ], 404);

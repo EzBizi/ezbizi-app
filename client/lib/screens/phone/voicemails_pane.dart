@@ -27,6 +27,12 @@ import 'recording_player.dart';
 /// It is Twilio's transcription and it is often wrong or empty — a blank one
 /// is not an error and the recording stays the record, which is why the player
 /// is always there beside it rather than only when the text is missing.
+///
+/// The field is `voicemail_transcript`, which is the MESSAGE. Records shows
+/// `transcript` beside it, which is the live transcription of the whole call
+/// including the menu prompts the caller sat through. They disagree often and
+/// legitimately, and a voicemail falling back to the live one would present a
+/// recording of our own greeting as something the caller said.
 class VoicemailsPane extends StatefulWidget {
   const VoicemailsPane({
     super.key,
@@ -351,14 +357,49 @@ class _VoicemailsPaneState extends State<VoicemailsPane> {
 
             const SizedBox(height: 8),
 
+            // ── NAME THE SWITCH, DO NOT GUESS AT THE CAUSE ──────
+            //
+            // This used to offer two possibilities and settle neither:
+            // transcription is off for this line, OR Twilio could not make
+            // the audio out. A reader cannot act on either, and the far
+            // likelier one by a mile is the first — measured 2026-09-14, all
+            // thirteen numbers have voicemail transcription off, and 0 of 92
+            // voicemails carry a transcript.
+            //
+            // Jose read it as a defect: "Voicemail tab does not show the
+            // transcripts... but voicemail tab on records does." Records was
+            // showing a different field — the LIVE transcript of the whole
+            // call, menu prompts and all — which is why one had text and the
+            // other did not. Neither was broken. Nobody had turned the
+            // setting on, and nothing on screen said where it was.
+            //
+            // Same shape as the empty Dial pad: whoever can fix it is told
+            // what to fix, and whoever cannot is told what to ask for.
+            //
+            // It names GENERAL rather than Voicemail because the switch moved
+            // there the same day: per line, it was thirteen visits to thirteen
+            // screens, which is why it had never been turned on once. Jose
+            // asked for one switch — "all on or all off at the same time, not
+            // per line" — and a sentence pointing at the old place would send
+            // somebody to a screen that no longer decides it.
+            //
+            // ponytail: still a guess in the rare case where transcription IS
+            // on and Twilio returned nothing. Say which only when a row can
+            // carry its own line's setting; today the list does not.
+            //
             // Shown, not hidden behind a control. A transcript you have to ask
             // for is one nobody reads, and reading is faster than listening.
             Text(
               message.transcript?.trim().isNotEmpty == true
                   ? message.transcript!
-                  : 'No transcript. Either transcription is off for this '
-                        'line or Twilio could not make the audio out — the '
-                        'recording is still the record.',
+                  : (widget.session.me?.can('phone.edit') ?? false)
+                  ? 'No transcript. Turn on "Write down voicemail messages" '
+                        'under Communication → Settings → General; it covers '
+                        'every line, and Twilio charges for each message '
+                        'transcribed. The recording is the record either way.'
+                  : 'No transcript. An administrator can switch transcription '
+                        'on in Communication settings. The recording is the '
+                        'record either way.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: message.transcript?.trim().isNotEmpty == true
                     ? null

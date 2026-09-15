@@ -358,6 +358,252 @@ class CallsController extends Controller
     }
 
     /**
+     * POST /api/v1/phone/calls/park
+     *
+     * Set the call I am on down, so anybody can pick it up.
+     *
+     * ── Why this is a redirect and not a transfer ────────────────────
+     *
+     * Same mechanism as [transfer] and for the same reason given there: this
+     * device knows its own leg, not the customer's, and the customer's is the
+     * one that has to go on holding. Redirecting our own would take the phone
+     * away from the person holding it and leave the customer bridged to
+     * nothing.
+     *
+     * The difference from a transfer is who it is handed to: a transfer names
+     * the devices to ring, a park names nobody. The caller waits in a queue of
+     * their own and the first colleague to dial into it gets them.
+     *
+     * ── Why there are no park slots ──────────────────────────────────
+     *
+     * RingCentral has numbered Park Locations because a desk phone has buttons
+     * and a button needs a number. Nothing here has buttons, so the queue is
+     * named after the call and the screen lists the calls themselves — which
+     * is also the more useful thing to read. You pick up "the call from
+     * +1 305…", not "slot 3", and there is no slot to run out of or collide on.
+     */
+    public function park(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $call = PhoneCall::query()
+            ->where('status', PhoneCall::STATUS_IN_PROGRESS)
+            ->whereNull('parked_at')
+            ->where(fn ($q) => $q
+                ->where('answered_by', $user->id)
+                ->orWhere('user_id', $user->id))
+            ->latest('created_at')
+            ->first();
+
+        if ($call === null) {
+            return response()->json([
+                'message' => 'You are not on a call right now.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $connection = $call->connection;
+        if ($connection === null) {
+            return response()->json([
+                'message' => 'That call is not on a line EzBizi can park it from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // NO permission check on the line, deliberately, for the reason
+        // transfer() gives: the query above only finds a call this person
+        // answered or placed, so they are already on it.
+
+        try {
+            $this->twilio->redirectCall(
+                $connection,
+                (string) $call->twilio_sid,
+                $this->renderer->park($call),
+            );
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'That call has already ended.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Stamped AFTER the redirect, not before. A row that says parked for a
+        // call Twilio refused to move is a call on the board that nobody can
+        // pick up, and the way out of it is a database edit.
+        $call->forceFill([
+            'parked_at' => now(),
+            'parked_by' => $user->id,
+        ])->save();
+
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'queue' => $call->parkQueueName(),
+        ]]);
+    }
+
+    /**
+     * GET /api/v1/phone/calls/parked
+     *
+     * Who is on hold, and who put them there.
+     *
+     * Scoped to the lines this person can see, so parking is shared by the
+     * people who share the phone rather than by the whole organization —
+     * a caller parked on A-1 Chimney's line is not a call Everdoors can pick up.
+     */
+    public function parked(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        // readable(), not visibleTo(): the same lines the calls list uses.
+        // A parked call belongs to whoever shares that phone, so it follows
+        // the GRANT rather than who may edit settings — otherwise an admin
+        // with no line sees calls they cannot pick up, and somebody holding
+        // the line does not.
+        $numberIds = $this->access->readable($request->user())->pluck('id')->all();
+
+        $calls = PhoneCall::query()
+            ->whereNotNull('parked_at')
+            ->whereIn('number_id', $numberIds)
+            ->orderBy('parked_at')
+            ->limit(25)
+            ->get();
+
+        $names = User::query()
+            ->whereIn('id', $calls->pluck('parked_by')->filter()->unique())
+            ->pluck('name', 'id');
+
+        return response()->json(['data' => $calls->map(fn (PhoneCall $call) => [
+            'id' => $call->id,
+            'from_e164' => $call->from_e164,
+            'to_e164' => $call->to_e164,
+            'parked_at' => optional($call->parked_at)->toIso8601String(),
+            'parked_by' => $call->parked_by,
+            'parked_by_name' => $names[$call->parked_by] ?? null,
+
+            // What the desk dials to fetch them. Sent rather than assembled on
+            // the client, so the naming stays one fact in one place.
+            'pick_up' => 'park:'.$call->parkQueueName(),
+        ])->values()->all()]);
+    }
+
+    /**
+     * GET /api/v1/phone/calls/ringing
+     *
+     * Calls ringing somewhere right now, on the lines this person can see.
+     *
+     * ── What this is for ─────────────────────────────────────────────
+     *
+     * Call pickup, asked for by name. A call is ringing a group you are not
+     * in — Sales rings, you are in Support, everybody in Sales is out — and
+     * the only thing you can do today is watch it go to voicemail.
+     *
+     * Scoped by grant rather than by ring group deliberately: whether you may
+     * ANSWER a line is the grant, and whether a line rings YOU is the group.
+     * Pickup exists precisely for the calls that are not ringing you, so
+     * filtering by the group would leave the list empty in the one case it is
+     * for.
+     */
+    public function ringing(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        $numberIds = $this->access->readable($request->user())->pluck('id')->all();
+
+        // A ceiling as well as a floor. `status` is moved by Twilio's status
+        // webhook, and a call whose final callback never arrives stays
+        // `ringing` in this table for ever — offering somebody a Pick up
+        // button for a conversation that ended last Tuesday. Nothing rings for
+        // two minutes, so anything older than that is a row we never heard the
+        // end of rather than a call.
+        $calls = PhoneCall::query()
+            ->where('status', PhoneCall::STATUS_RINGING)
+            ->whereIn('number_id', $numberIds)
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->whereNull('parked_at')
+            ->orderBy('created_at')
+            ->limit(10)
+            ->get();
+
+        return response()->json(['data' => $calls->map(fn (PhoneCall $call) => [
+            'id' => $call->id,
+            'from_e164' => $call->from_e164,
+            'to_e164' => $call->to_e164,
+            'created_at' => optional($call->created_at)->toIso8601String(),
+        ])->values()->all()]);
+    }
+
+    /**
+     * POST /api/v1/phone/calls/{call}/pickup
+     *
+     * Take a call that is ringing somebody else.
+     *
+     * ── Why this is the transfer TwiML ───────────────────────────────
+     *
+     * Because it is the same move: point the CUSTOMER's leg at a set of
+     * devices. Transfer aims it at the devices of the person already on the
+     * call; pickup aims it at the devices of the person asking. Rendering a
+     * second document for that would be a second way for the recording
+     * callback and the dial action to drift.
+     *
+     * ── Why only while it is RINGING ─────────────────────────────────
+     *
+     * An in-progress call has somebody talking on it. Redirecting that is not
+     * a pickup, it is taking a customer away from a colleague mid-sentence —
+     * and from the caller's side the two are indistinguishable, which is
+     * exactly why the guard is on the status rather than on the button.
+     */
+    public function pickUp(Request $request, PhoneCall $call): JsonResponse
+    {
+        $this->authorize('view', $call);
+
+        if ($call->status !== PhoneCall::STATUS_RINGING) {
+            return response()->json([
+                'message' => 'That call is no longer ringing.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $connection = $call->connection;
+        $number = $call->number_id === null ? null : PhoneNumber::query()->find($call->number_id);
+
+        if ($connection === null || $number === null) {
+            return response()->json([
+                'message' => 'That call is not on a line EzBizi can move it from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Every live device this person has. '' rather than a device id: they
+        // are not on the call yet, so there is no leg of theirs to exclude and
+        // whichever of their phones they are near should ring.
+        $targets = $this->otherDevices($connection, (string) $request->user()->id, '');
+
+        if ($targets === []) {
+            return response()->json([
+                'message' => 'No device of yours is signed in to take it.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Refused BEFORE the redirect rather than after. transfer() renders a
+        // document that apologises to the caller and takes a message when it
+        // is handed nothing to ring — correct for a transfer that fails, and
+        // wrong here: it would end a call that is still perfectly alive and
+        // still ringing somebody who might yet answer.
+
+        try {
+            $this->twilio->redirectCall(
+                $connection,
+                (string) $call->twilio_sid,
+                $this->renderer->transfer($number, $targets),
+            );
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'That call has already ended.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'ringing' => count($targets),
+        ]]);
+    }
+
+    /**
      * Every live device this person has except the one asking.
      *
      * @return list<string> Voice identities

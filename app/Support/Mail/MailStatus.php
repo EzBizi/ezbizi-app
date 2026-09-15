@@ -96,24 +96,7 @@ class MailStatus
              * verifier's own sentence; `missing` names the environment
              * variables that would change the answer.
              */
-            'tenant_domains' => $this->tenantDomains(),
         ];
     }
 
-    /**
-     * The state of the domain-verification half.
-     *
-     * Built through DomainVerification rather than by reading config here, so
-     * there is one description of what "connected" means and the health screen
-     * cannot come to disagree with the thing that does the verifying.
-     */
-    private function tenantDomains(): array
-    {
-        $verification = new DomainVerification;
-
-        return [
-            'verifier' => $verification->verifier()->describe(),
-            'missing'  => $verification->missingDeploymentPieces(),
-        ];
-    }
 }

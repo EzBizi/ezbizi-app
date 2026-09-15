@@ -9,18 +9,21 @@ import 'core/deployment.dart';
 import 'core/desktop_updater.dart';
 import 'core/files.dart';
 import 'core/live_view_service.dart';
+import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
 import 'core/remote_control_service.dart';
 import 'core/screenshot_service.dart';
 import 'core/session.dart';
+import 'core/sidebar_order.dart';
 import 'core/staff_session.dart';
 import 'core/theme.dart';
 import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/controlled_banner.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
 import 'screens/hr/onboarding_form.dart';
@@ -393,6 +396,26 @@ class _HomeShellState extends State<HomeShell> {
   VoidCallback? _stopClockListening;
 
   _Rail _rail = _Rail.modules;
+
+  /// Developer only: render the app at phone width without resizing the window
+  /// (Jose, 2026-09-14 — desktop layout 1, mobile layout 4).
+  ///
+  /// Session state rather than a preference. It is a mode you are in for a
+  /// minute; saving it would mean signing in on a desktop to a mobile layout
+  /// with no memory of having asked for one.
+  bool _mobileView = false;
+
+  /// A phone the app has to look right on. Narrow enough to be the real test —
+  /// under the 480 breakpoint `auth_shell` uses, and well under the 600
+  /// `lead_thread` uses and the 900 this shell uses.
+  static const double _phoneWidth = 390;
+
+  /// Whether the drawer is showing its rows with drag handles on.
+  ///
+  /// Held here rather than in the drawer because a Drawer is rebuilt from
+  /// scratch every time it opens; state inside it would be lost on the first
+  /// scroll that closed and reopened it.
+  bool _arrangingDrawer = false;
   void Function()? _stopListening;
 
   /// Reports this device's presence and which module is on screen
@@ -456,6 +479,25 @@ class _HomeShellState extends State<HomeShell> {
       widget.api,
       screenMonitoringExempt: exempt,
     );
+
+    // The availability icon, given a minute hand.
+    //
+    // Do Not Disturb set on the web now reaches the desktop's SERVER state
+    // immediately, and the desktop's ICON found out only when something else
+    // made it look — which in practice meant changing tabs. Jose: "the status
+    // now syncs across devices, which is good, but only displays the change
+    // once you change tabs."
+    //
+    // I had claimed the app coming forward would cover it. It does not, and
+    // his report is what showed that: two windows side by side never leave
+    // the screen, so `AppLifecycleState.resumed` never fires and the hook
+    // watching for it can only wait. That claim is corrected where I made it.
+    //
+    // A minute is the wrong answer for a phone ringing and the right one for
+    // an icon: what it prevents is somebody reading a stale dot for the rest
+    // of the afternoon. Anything that must be immediate — a call starting or
+    // ending — already notifies in the same frame.
+    _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
     if (!exempt) {
       // The capture service tells the heartbeat how each attempt went, and
       // the beat carries it to the server — otherwise a device that cannot
@@ -503,13 +545,72 @@ class _HomeShellState extends State<HomeShell> {
     //
     // Safe for somebody with no phone line: start() looks, finds nothing, and
     // leaves everything false.
-    unawaited(PhoneCallService.current.start(widget.api));
+    _followScope();
+    widget.session.addListener(_followScope);
 
     _apply(widget.address?.path);
     _stopListening = widget.address?.listen((path) {
       if (!mounted) return;
       setState(() => _apply(path));
     });
+  }
+
+  /// Which view the desk was brought up for, so a change can be noticed.
+  String? _deskScope;
+
+  /// Try again for a desk that never came up, now that the view has moved.
+  ///
+  /// `start()` reads `/phone/numbers`, which answers for the scope in view,
+  /// and it ran ONCE — at sign-in. Somebody whose view had no line at that
+  /// moment kept a dead desk for the rest of the session however they
+  /// navigated afterwards, and the screen explained it by saying the phone
+  /// needed a web browser. Jose read that in a web browser. Android had hit
+  /// the same thing from the other side: "I changed scope by accident, which
+  /// silently stopped setup() running at all."
+  ///
+  /// ── Only when there is no desk to lose ───────────────────────
+  ///
+  /// The tempting version re-registers on every scope change, so the desk
+  /// always matches the company on screen. That also makes an org admin
+  /// unreachable for as long as they browse a sub company with no line of its
+  /// own — an ordinary thing to do, and a worse failure than the one being
+  /// fixed. So this only reaches for a line when there is none.
+  ///
+  /// ponytail: the desk can still be registered on a company the reader has
+  /// since navigated away from. Give it the scope's own line when somebody
+  /// asks for that, and decide then what a lineless scope should do.
+  void _followScope() {
+    final scope = widget.session.me?.scope;
+    final key = scope == null ? null : '${scope.type}:${scope.id}';
+    if (key == _deskScope) return;
+    _deskScope = key;
+
+    final phone = PhoneCallService.current;
+    if (phone.hasLine) return;
+
+    // NOT WHILE A CALL IS IN FLIGHT. This guard was here, I took it out, and
+    // taking it out cost Jose a call.
+    //
+    // The first draft of this method refused while `onCall`. Narrowing the
+    // method to "only when there is no line" I decided `hasLine` subsumed it —
+    // if there is no line there is no call. That is false twice over, and the
+    // second way is the one that bit: `stop()` clears `_connectionId`, so
+    // `hasLine` is false on every shell remount, and a call can be RINGING
+    // rather than connected, which `onCall` would not have caught either.
+    //
+    // What it costs to be wrong: restart() disposes the device, twilio-voice's
+    // `Device.destroy()` rejects a pending incoming call, and Twilio reports
+    // the leg BUSY. Jose pressed Answer on the desktop and his own phone said
+    // "please leave your message after the tone" — the caller was refused by
+    // the desk that was ringing.
+    //
+    // So the question is about the DEVICE, not about the line: is there a call
+    // on it, of any kind. A desk with somebody on it is never worth restarting
+    // — the reason this method exists is a banner being wrong, and no banner
+    // is worth a dropped call.
+    if (phone.busy) return;
+
+    unawaited(phone.restart(widget.api));
   }
 
   @override
@@ -520,6 +621,8 @@ class _HomeShellState extends State<HomeShell> {
     _screenshots?.dispose();
     _liveView?.dispose();
     _remoteControl?.dispose();
+
+    widget.session.removeListener(_followScope);
 
     // stop(), not dispose(): the service is a singleton that outlives this
     // widget, and the next person to sign in is not this person.
@@ -620,6 +723,17 @@ class _HomeShellState extends State<HomeShell> {
   /// as a one-line strip under the AppBar, same family as the two-factor chip.
   String? _timeClockNotice;
 
+  /// In-flight resend of the confirmation link, so a second tap cannot fire
+  /// another POST while the first is unanswered. The endpoint is throttled
+  /// server-side per address AND per IP; this stops a person burning that
+  /// allowance on their own double-click.
+  bool _resendingConfirmation = false;
+
+  /// Outcome of that resend. Its own strip rather than [_timeClockNotice]:
+  /// that one is named for the time clock and tinted as an error, and the
+  /// usual outcome here is success.
+  String? _confirmationNotice;
+
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
@@ -638,6 +752,40 @@ class _HomeShellState extends State<HomeShell> {
   Future<void> _signOut() async {
     await widget.api.post('/auth/logout', {});
     widget.session.signOut();
+  }
+
+  /// Ask for another confirmation link.
+  ///
+  /// This exists because the server's refusal used to say "ask for another
+  /// link if it did not arrive" while nothing in this client called the
+  /// endpoint -- a sentence naming a control that was on no screen, which is
+  /// worse than a shorter one because the reader believes there is a way out
+  /// and goes looking for it.
+  ///
+  /// POST /auth/verify/resend answers identically whether or not the address
+  /// matched, so there is no success to read out of it -- only that it was
+  /// accepted. The sentence below says what we DID, never that it arrived.
+  Future<void> _resendConfirmation() async {
+    final me = widget.session.me;
+    if (me == null || _resendingConfirmation) return;
+
+    setState(() {
+      _resendingConfirmation = true;
+      _confirmationNotice = null;
+    });
+
+    final response = await widget.api.post('/auth/verify/resend', {
+      'email': me.email,
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _resendingConfirmation = false;
+      _confirmationNotice = response.ok
+          ? 'We have sent another confirmation link to ${me.email}.'
+          : response.reason;
+    });
   }
 
   Future<void> _punch() async {
@@ -678,8 +826,49 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
+  /// Phone width, or the app as it is.
+  ///
+  /// ── Why this overrides the VIEWPORT and not a flag ───────────────
+  ///
+  /// This shell decides its shape from one line — `width >= 900`, below — but
+  /// it is not the only thing that asks. Nine reads of the viewport width live
+  /// across five files at THREE breakpoints: 900 here, in `staff_shell` and in
+  /// Web widgets; 600 in `lead_thread`; 480 in `auth_shell`; and `side_panel`
+  /// clamping its own width to the window. Flipping this shell's boolean would
+  /// give a narrow shell with DESKTOP screens inside it — a mobile view that is
+  /// wrong in exactly the places somebody would be using it to check.
+  ///
+  /// Overriding `MediaQuery` makes all nine agree, and no screen has to know
+  /// this control exists.
+  ///
+  /// The SizedBox is the other half: the override changes what the app is TOLD,
+  /// and this changes what it is given. Without it the app would report 390 and
+  /// still be laid out across the whole window — a drawer instead of a rail,
+  /// stretched over 1600px, which is not what anything looks like.
   @override
   Widget build(BuildContext context) {
+    if (!_mobileView) return _shell(context);
+
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: _phoneWidth,
+          child: LayoutBuilder(
+            builder: (context, constraints) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                size: Size(_phoneWidth, constraints.maxHeight),
+              ),
+              child: Builder(builder: _shell),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _shell(BuildContext context) {
     final me = widget.session.me!;
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
@@ -705,7 +894,7 @@ class _HomeShellState extends State<HomeShell> {
     //     skipped rather than drawn as a tab that opens nothing.
     //
     // See core/module_screens.dart.
-    final destinations = <Destination>[
+    var destinations = <Destination>[
       // Their own paperwork, first, while it is unfinished.
       //
       // The one destination here that is not a module, and it earns the
@@ -754,6 +943,21 @@ class _HomeShellState extends State<HomeShell> {
               id: module.key,
             ),
     ];
+
+    // Their own order, applied ONCE and here.
+    //
+    // Everything downstream — the fallback selection, the rail's index
+    // translation, the drawer — indexes this list, so rearranging it at the
+    // source means none of them has to know the order exists. `divideAfter`
+    // holds positions in it, and is empty for everybody who has never dragged
+    // anything.
+    final arranged = arrangeSidebar(
+      destinations,
+      me.navigationOrder,
+      (d) => d.id,
+    );
+    destinations = arranged.rows;
+    final divideAfter = arranged.divideAfter;
 
     // Pinned to the bottom, under a rule and the empty space.
     //
@@ -880,7 +1084,12 @@ class _HomeShellState extends State<HomeShell> {
               // of a healthy account.
               twoFactor: !wide && me.twoFactorEnrolmentRequired,
               readOnly: !wide && me.organization.isReadOnly,
+              // The third state this strip's own comment anticipated. It
+              // scrolls rather than wraps, so it does not push every screen
+              // down a row on a phone.
+              emailConfirmation: !wide && me.emailConfirmationRequired,
               onTwoFactor: _showProfile,
+              onEmailConfirmation: _resendConfirmation,
             ),
             leading: wide
                 ? IconButton(
@@ -994,6 +1203,41 @@ class _HomeShellState extends State<HomeShell> {
               // the phone — two taps away at exactly the moment you want it.
               // Draws nothing for somebody who is not on a line.
               AvailabilityButton(api: widget.api),
+
+              // Desktop and phone shapes, one press apart. Staff only: the
+              // same gate the Development rail uses (§4.2), because it is a
+              // tool for building the product rather than part of it.
+              //
+              // It stays in the bar in mobile view rather than moving
+              // somewhere roomier, by Jose's pick (layout 4) — which means it
+              // is the way back as well as the way in, and the way back must
+              // not be somewhere a phone does not draw.
+              if (me.development != null)
+                IconButton(
+                  icon: Icon(
+                    _mobileView
+                        ? Icons.phone_iphone
+                        : Icons.phone_iphone_outlined,
+                  ),
+                  isSelected: _mobileView,
+                  tooltip: _mobileView
+                      ? UiStrings.t('shell.exit_mobile_view')
+                      : UiStrings.t('shell.mobile_view'),
+                  onPressed: () {
+                    final on = !_mobileView;
+                    setState(() => _mobileView = on);
+                    // Not awaited, and that is the point rather than
+                    // laziness: the layout has already changed by the line
+                    // above, and the window catching up is a separate,
+                    // fallible thing. Awaiting it would also hang a widget
+                    // test, where a plugin call never completes.
+                    unawaited(
+                      on
+                          ? MobileViewWindow.shrink(_phoneWidth)
+                          : MobileViewWindow.restore(),
+                    );
+                  },
+                ),
               // Light / dark, one tap, from anywhere.
               //
               // It is the same preference the account screen holds (§2.1 category
@@ -1059,6 +1303,29 @@ class _HomeShellState extends State<HomeShell> {
                       context,
                     ).colorScheme.errorContainer.withValues(alpha: 0.4),
                     onPressed: _showProfile,
+                  ),
+                ),
+              // Same family as the two-factor chip above and for the same
+              // reason: every SAVE is answering 403 until this is done, so
+              // the chrome has to say why and offer the one action that
+              // helps. Reads still work, which is exactly why the app looks
+              // healthy until somebody tries to keep something.
+              if (wide && me.emailConfirmationRequired)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: ActionChip(
+                    avatar: const Icon(Icons.mark_email_unread_outlined, size: 16),
+                    label: Text(
+                      _resendingConfirmation ? 'Sending...' : 'Confirm your email',
+                    ),
+                    tooltip:
+                        'We sent a confirmation link when you signed up. '
+                        'Saving anything is on hold until you open it. '
+                        'Press to send another.',
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.errorContainer.withValues(alpha: 0.4),
+                    onPressed: _resendingConfirmation ? null : _resendConfirmation,
                   ),
                 ),
               if (wide && me.organization.isReadOnly)
@@ -1162,6 +1429,31 @@ class _HomeShellState extends State<HomeShell> {
             ),
 
             /*
+             * "Somebody is driving this machine", said by the app itself.
+             *
+             * The native tray notice is a tooltip plus a one-off balloon, and
+             * a balloon is a courtesy the OS may decline: Focus Assist, a
+             * full-screen window, or a notification policy set years ago all
+             * swallow it, and Shell_NotifyIcon reports success regardless. A
+             * consent notice whose only surface can be silently switched off
+             * is a notice you cannot rely on having given.
+             *
+             * So this says it in the one place the person is certainly
+             * looking. Null for a screen-monitoring-exempt session, which is
+             * never remote-driven in the first place; and the flag it watches
+             * is already the organization's opt-in ANDed with "is actually
+             * being controlled", so an organization that wants a silent agent
+             * still has one.
+             */
+            if (_remoteControl != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: _remoteControl!.controlled,
+                builder: (context, controlled, _) => controlled
+                    ? const ControlledBanner()
+                    : const SizedBox.shrink(),
+              ),
+
+            /*
              * Zero-sized, and load-bearing — the same widget CallTab used to
              * mount, moved up with the device that needs it.
              *
@@ -1262,6 +1554,26 @@ class _HomeShellState extends State<HomeShell> {
                 );
               },
             ),
+            if (_confirmationNotice != null)
+              Material(
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: 0.5),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      _confirmationNotice!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ),
             if (_timeClockNotice != null)
               Material(
                 color: Theme.of(
@@ -1308,6 +1620,7 @@ class _HomeShellState extends State<HomeShell> {
                         expanded: expanded,
                         width: me.navigationWidth,
                         destinations: destinations,
+                        divideAfter: divideAfter,
                         pinned: pinned,
                         staffOnly: staffOnly,
                         selectedIndex: railIndex,
@@ -1324,6 +1637,10 @@ class _HomeShellState extends State<HomeShell> {
                         onResized: (w) => widget.session.setPreference(
                           'navigation.width',
                           w.round(),
+                        ),
+                        onArranged: (order) => widget.session.setPreference(
+                          'navigation.order',
+                          order,
                         ),
                       ),
                     ),
@@ -1383,7 +1700,16 @@ class _HomeShellState extends State<HomeShell> {
        * No `leading` is set on this layout, so Scaffold supplies the button
        * that opens it.
        */
-      drawer: wide ? null : _navigationDrawer(destinations, pinned, staffOnly),
+      drawer: wide
+          ? null
+          : _navigationDrawer(
+              destinations,
+              divideAfter,
+              pinned,
+              staffOnly,
+              (order) =>
+                  widget.session.setPreference('navigation.order', order),
+            ),
     );
   }
 
@@ -1425,8 +1751,10 @@ class _HomeShellState extends State<HomeShell> {
 
   Widget _navigationDrawer(
     List<Destination> destinations,
+    Set<int> divideAfter,
     List<Destination> pinned,
     List<Destination> staffOnly,
+    ValueChanged<List<String>> onArranged,
   ) {
     return Drawer(
       child: Builder(
@@ -1441,26 +1769,87 @@ class _HomeShellState extends State<HomeShell> {
             },
           );
 
+          // SafeArea rather than a bare list: from Android 15 an app targeting
+          // SDK 35+ draws edge to edge by default, so without this the first
+          // row sits under the status bar and the last under the gesture bar.
+          final header = SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+              child: EzBiziTheme.wordmark(context, size: 20),
+            ),
+          );
+
+          // The phone has the easy half of this problem: its sidebar is
+          // already a list of rows, so arranging it is the same list with
+          // handles on. Nothing here is rebuilt to make dragging possible.
+          if (_arrangingDrawer) {
+            return Column(
+              children: [
+                header,
+                const Divider(height: 1),
+                Expanded(
+                  child: _SidebarArranger(
+                    destinations: destinations,
+                    divideAfter: divideAfter,
+                    onDone: (order) {
+                      setState(() => _arrangingDrawer = false);
+                      if (order != null) onArranged(order);
+                    },
+                  ),
+                ),
+              ],
+            );
+          }
+
           return ListView(
-            // SafeArea rather than a bare ListView: from Android 15 an app
-            // targeting SDK 35+ draws edge to edge by default, so without this
-            // the first tile sits under the status bar and the last under the
-            // gesture bar.
             padding: EdgeInsets.zero,
             children: [
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: EzBiziTheme.wordmark(context, size: 20),
-                ),
-              ),
+              header,
               const Divider(height: 1),
-              for (final d in destinations) tile(d, _Rail.modules),
+              for (var i = 0; i < destinations.length; i++) ...[
+                tile(destinations[i], _Rail.modules),
+                // Their own rule, nameless, exactly where they put it. The
+                // last position can never be in the set, so this cannot draw
+                // a second line immediately above the pinned group's one.
+                if (divideAfter.contains(i)) const Divider(),
+              ],
               if (pinned.isNotEmpty) const Divider(),
               for (final d in pinned) tile(d, _Rail.pinned),
               if (staffOnly.isNotEmpty) const Divider(),
               for (final d in staffOnly) tile(d, _Rail.staff),
+
+              // The foot, and the same two things the sidebar's foot carries
+              // (Jose, 2026-09-14: mobile layout 1, and "move it next to the
+              // version number").
+              //
+              // A phone had the version NOWHERE: `BuildStamp` was used at the
+              // foot of the sidebar and on the sign-in screen, and a phone has
+              // no sidebar and is signed in. Its own docblock called those
+              // "the two places somebody already is when they wonder whether
+              // the app has updated" — true when written, false the day this
+              // drawer shipped.
+              const Divider(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _arrangingDrawer = true),
+                      icon: const Icon(Icons.swap_vert, size: 16),
+                      label: Text(UiStrings.t('shell.rearrange')),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        textStyle: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                    const BuildStamp(),
+                  ],
+                ),
+              ),
               SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
             ],
           );
@@ -1500,14 +1889,18 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
   const _BarStates({
     required this.twoFactor,
     required this.readOnly,
+    required this.emailConfirmation,
     required this.onTwoFactor,
+    required this.onEmailConfirmation,
   });
 
   final bool twoFactor;
   final bool readOnly;
+  final bool emailConfirmation;
   final VoidCallback onTwoFactor;
+  final VoidCallback onEmailConfirmation;
 
-  bool get _any => twoFactor || readOnly;
+  bool get _any => twoFactor || readOnly || emailConfirmation;
 
   @override
   Size get preferredSize => Size.fromHeight(_any ? 49 : 1);
@@ -1540,6 +1933,19 @@ class _BarStates extends StatelessWidget implements PreferredSizeWidget {
                     label: const Text('Set up two-factor'),
                     backgroundColor: tint,
                     onPressed: onTwoFactor,
+                  ),
+                ),
+              if (emailConfirmation)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    avatar: const Icon(
+                      Icons.mark_email_unread_outlined,
+                      size: 16,
+                    ),
+                    label: const Text('Confirm your email'),
+                    backgroundColor: tint,
+                    onPressed: onEmailConfirmation,
                   ),
                 ),
               if (readOnly)
@@ -1786,6 +2192,8 @@ class NavigationSidebar extends StatefulWidget {
     required this.onPinnedSelected,
     required this.onStaffSelected,
     this.onResized,
+    this.onArranged,
+    this.divideAfter = const {},
   });
 
   final bool expanded;
@@ -1795,6 +2203,12 @@ class NavigationSidebar extends StatefulWidget {
   final double width;
 
   final List<Destination> destinations;
+
+  /// Positions in [destinations] with a rule under them. Empty for everybody
+  /// who has never rearranged anything, which is the state this sidebar was
+  /// built in and still renders identically.
+  final Set<int> divideAfter;
+
   final List<Destination> pinned;
 
   /// Development, when this person is also EzBizi staff (§4.2). Its own group
@@ -1815,6 +2229,10 @@ class NavigationSidebar extends StatefulWidget {
   /// per pixel of travel.
   final ValueChanged<double>? onResized;
 
+  /// The new order, on Done. Same reasoning as [onResized]: one write when the
+  /// arrangement is finished, not one per row moved.
+  final ValueChanged<List<String>>? onArranged;
+
   static const double collapsedWidth = 80;
   static const double minWidth = 180;
   static const double maxWidth = 420;
@@ -1826,6 +2244,12 @@ class NavigationSidebar extends StatefulWidget {
 class _NavigationSidebarState extends State<NavigationSidebar> {
   /// The width during a drag, before it is committed. Null when not dragging.
   double? _dragWidth;
+
+  /// Whether the rail has widened into a list of rows you can drag.
+  ///
+  /// Local rather than a preference: it is a mode you are in for thirty
+  /// seconds, not a way you like your sidebar. Leaving the screen leaves it.
+  bool _arranging = false;
 
   final TextEditingController _search = TextEditingController();
 
@@ -1879,11 +2303,19 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    final width = widget.expanded
-        ? (_dragWidth ?? widget.width)
+    // Arranging forces the rail open and gives it room for a handle beside the
+    // longest label. Dragging rows in an 80px icon column is dragging things
+    // you cannot tell apart.
+    final arranging = _arranging && widget.onArranged != null;
+    final expanded = widget.expanded || arranging;
+    final width = expanded
+        ? math.max(_dragWidth ?? widget.width, arranging ? 260.0 : 0.0)
         : NavigationSidebar.collapsedWidth;
 
-    final query = widget.expanded ? _query.trim().toLowerCase() : '';
+    // No filter while arranging. A list you are reordering has to be the whole
+    // list: dropping a row between two that happen to be adjacent on screen
+    // and not adjacent in the order would put it somewhere nobody chose.
+    final query = expanded && !arranging ? _query.trim().toLowerCase() : '';
     final filtering = query.isNotEmpty;
 
     // Filtering a rail means filtering its INDICES too, and this list is the
@@ -1903,12 +2335,38 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
           i,
     ];
 
-    // Null when the selected module is filtered out. Not zero -- zero would
-    // paint the highlight on whatever happens to be first.
-    final selectedAt = widget.selectedIndex == null
-        ? -1
-        : shown.indexOf(widget.selectedIndex!);
-    final railSelected = selectedAt < 0 ? null : selectedAt;
+    // The module rail, cut into groups at this person's dividers.
+    //
+    // A NavigationRail cannot put a rule between its own items, so a divider is
+    // a break BETWEEN rails -- the same shape the pinned and staff groups have
+    // always had, for the same reason. Empty groups are dropped rather than
+    // drawn, which is what enforces both rules a rule has to obey: it needs
+    // something on each side, and two of them cannot touch. The filter is why
+    // that is not merely tidiness -- it can empty a group that was perfectly
+    // good when it was saved.
+    final segments = <List<int>>[[]];
+    for (final i in shown) {
+      segments.last.add(i);
+      if (widget.divideAfter.contains(i)) segments.add([]);
+    }
+    segments.removeWhere((group) => group.isEmpty);
+
+    // The ORIGINAL index of the selected row, or null when the filter hid it.
+    // Not zero -- zero would paint the highlight on whatever happens to be
+    // first.
+    final railSelected = shown.contains(widget.selectedIndex)
+        ? widget.selectedIndex
+        : null;
+
+    /// Where the selection sits inside one group, or null when it is in
+    /// another. Exactly one group may claim it, which is what NavigationRail's
+    /// own assert is about.
+    int? within(List<int> group) {
+      if (railSelected == null) return null;
+      final at = group.indexOf(railSelected);
+
+      return at < 0 ? null : at;
+    }
 
     final sidebar = SizedBox(
       // Explicit, not intrinsic. A Row gives its non-flex children
@@ -1948,7 +2406,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             // and wants their screen back; search is for FINDING, which implies
             // wanting labels. An icon at 80px would be a control that only
             // makes sense by first undoing the state you deliberately chose.
-            if (widget.expanded)
+            if (expanded && !arranging)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
                 child: TextField(
@@ -1982,6 +2440,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                   ),
                 ),
               ),
+
 
             // How many of how many.
             //
@@ -2030,7 +2489,16 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               // indistinguishable from a broken one. So it names what was
               // typed, says the list is filtered rather than empty, and points
               // at the way back.
-              child: filtering && shown.isEmpty
+              child: arranging
+                  ? _SidebarArranger(
+                      destinations: widget.destinations,
+                      divideAfter: widget.divideAfter,
+                      onDone: (order) {
+                        setState(() => _arranging = false);
+                        if (order != null) widget.onArranged!(order);
+                      },
+                    )
+                  : filtering && shown.isEmpty
                   ? _noMatch(context, _query.trim())
                   : LayoutBuilder(
                       builder: (context, constraints) => SingleChildScrollView(
@@ -2038,18 +2506,35 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
                           constraints: BoxConstraints(
                             minHeight: constraints.maxHeight,
                           ),
-                          child: IntrinsicHeight(
-                            child: _rail(
-                              context,
-                              expanded: widget.expanded,
-                              width: width,
-                              destinations: [
-                                for (final i in shown) widget.destinations[i],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var g = 0; g < segments.length; g++) ...[
+                                if (g > 0)
+                                  Divider(
+                                    height: 17,
+                                    thickness: 1,
+                                    indent: width * 0.15,
+                                    endIndent: width * 0.15,
+                                    color: scheme.outlineVariant,
+                                  ),
+                                IntrinsicHeight(
+                                  child: _rail(
+                                    context,
+                                    expanded: expanded,
+                                    width: width,
+                                    destinations: [
+                                      for (final i in segments[g])
+                                        widget.destinations[i],
+                                    ],
+                                    selectedIndex: within(segments[g]),
+                                    onSelected: (i) =>
+                                        widget.onSelected(segments[g][i]),
+                                    query: query,
+                                  ),
+                                ),
                               ],
-                              selectedIndex: railSelected,
-                              onSelected: (i) => widget.onSelected(shown[i]),
-                              query: query,
-                            ),
+                            ],
                           ),
                         ),
                       ),
@@ -2078,7 +2563,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
             IntrinsicHeight(
               child: _rail(
                 context,
-                expanded: widget.expanded,
+                expanded: expanded,
                 width: width,
                 destinations: widget.pinned,
                 selectedIndex: widget.pinnedIndex,
@@ -2108,7 +2593,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               IntrinsicHeight(
                 child: _rail(
                   context,
-                  expanded: widget.expanded,
+                  expanded: expanded,
                   width: width,
                   destinations: widget.staffOnly,
                   selectedIndex: widget.staffIndex,
@@ -2117,17 +2602,51 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
               ),
             ],
 
-            // The version, at the very foot of the sidebar. Tapping it opens
-            // what shipped in each build — the memory for "when did we do that".
+            // The foot: what build you are on, and the way into rearranging.
             //
-            // Only when expanded: at 80px it would truncate, and half a build
-            // id is worse than none — it invites people to compare the wrong
-            // characters and conclude they are up to date when they are not.
-            if (widget.expanded)
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 10, 12, 0),
-                child: BuildStamp(),
-              ),
+            // Rearranging used to sit under the search field. Jose, 2026-09-14:
+            // "i dont like the rearrange being on the top, perhaps move it next
+            // to the version number instead." It belongs here for the same
+            // reason Settings does — a place you go to change how the sidebar
+            // behaves rather than a place you go to work — and the top of a
+            // list of modules is the one place it competes with the modules.
+            //
+            // Collapsed shows the version alone. It used to show nothing, on
+            // the reasoning that half a build id is worse than none; the
+            // version is a whole field rather than half of one, and it fits.
+            // See [BuildStamp.compact].
+            Padding(
+              padding: EdgeInsets.fromLTRB(expanded ? 20 : 8, 10, 12, 0),
+              // Stacked, not side by side, and that was measured rather than
+              // chosen: `BuildStamp` is 160px wide on a desktop platform --
+              // the version plus the update control beside it -- and this
+              // sidebar is draggable down to 180. A Row gives its non-flex
+              // children unbounded width, so the two of them overflowed by
+              // 86px at the default 220 rather than shrinking. Stacked they
+              // fit at every width, and the control keeps its WORD, which an
+              // icon squeezed in beside the version could not have.
+              child: expanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!arranging && widget.onArranged != null)
+                          TextButton.icon(
+                            onPressed: () =>
+                                setState(() => _arranging = true),
+                            icon: const Icon(Icons.swap_vert, size: 16),
+                            label: Text(UiStrings.t('shell.rearrange')),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              foregroundColor: scheme.onSurfaceVariant,
+                              textStyle: Theme.of(context).textTheme.labelMedium,
+                            ),
+                          ),
+                        const BuildStamp(),
+                      ],
+                    )
+                  : const Center(child: BuildStamp(compact: true)),
+            ),
             const SizedBox(height: 12),
           ],
         ),
@@ -2136,7 +2655,7 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
 
     // Collapsed has one right width and dragging it would be a fight with the
     // toggle. The handle only exists when there is a width to change.
-    if (!widget.expanded || widget.onResized == null) return sidebar;
+    if (!expanded || widget.onResized == null) return sidebar;
 
     return Stack(
       children: [
@@ -2175,6 +2694,196 @@ class _NavigationSidebarState extends State<NavigationSidebar> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The sidebar as a list you can drag, on both the rail and the phone drawer.
+///
+/// One widget for both because the mechanism is the whole feature: the words
+/// on the buttons, what a divider looks like, whether a drop lands above or
+/// below, and what is saved all have to be the same thing in both places, and
+/// the only way to be sure of that is for it to BE the same thing.
+///
+/// It never touches [NavigationRail]. The rail is what the sidebar is when you
+/// are using it; this is what it becomes while you are arranging it.
+class _SidebarArranger extends StatefulWidget {
+  const _SidebarArranger({
+    required this.destinations,
+    required this.divideAfter,
+    required this.onDone,
+  });
+
+  final List<Destination> destinations;
+  final Set<int> divideAfter;
+
+  /// The order to save, or null when nothing moved — leaving without changing
+  /// anything must not write a preference.
+  final ValueChanged<List<String>?> onDone;
+
+  @override
+  State<_SidebarArranger> createState() => _SidebarArrangerState();
+}
+
+/// One row being dragged: a module, or a divider with an identity of its own.
+///
+/// Dividers are identical to look at and must NOT be identical to the reorder
+/// animation — every child of a ReorderableListView needs a key that is unique
+/// among its siblings, and two rows sharing one is a list that drops rows while
+/// you drag.
+class _ArrangeRow {
+  _ArrangeRow(this.id, this.key);
+
+  _ArrangeRow.divider() : id = sidebarDivider, key = UniqueKey();
+
+  final String id;
+  final Key key;
+}
+
+class _SidebarArrangerState extends State<_SidebarArranger> {
+  late final List<String> _was;
+  late final List<_ArrangeRow> _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _was = sidebarOrderOf(
+      widget.destinations,
+      widget.divideAfter,
+      (d) => d.id,
+    );
+    _rows = [
+      for (final entry in _was)
+        if (entry == sidebarDivider)
+          _ArrangeRow.divider()
+        else
+          _ArrangeRow(entry, ValueKey(entry)),
+    ];
+  }
+
+  List<String> get _order => [for (final row in _rows) row.id];
+
+  void _done() {
+    final order = _order;
+    final changed =
+        order.length != _was.length ||
+        [for (var i = 0; i < order.length; i++) order[i] == _was[i]].contains(
+          false,
+        );
+    widget.onDone(changed ? order : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final labels = {for (final d in widget.destinations) d.id: d};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton.icon(
+                  // After the first row, not at the end.
+                  //
+                  // A rule needs something on both sides to draw at all, so a
+                  // new one appended to the bottom is one you add, see in the
+                  // list, press Done on, and never see again. Here it is legal
+                  // the moment it exists, and on screen without scrolling.
+                  onPressed: () => setState(
+                    () => _rows.insert(
+                      math.min(1, _rows.length),
+                      _ArrangeRow.divider(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.horizontal_rule, size: 16),
+                  label: Text(UiStrings.t('shell.add_divider')),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    alignment: Alignment.centerLeft,
+                    textStyle: theme.textTheme.labelMedium,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _done,
+                child: Text(UiStrings.t('shell.done')),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ReorderableListView.builder(
+            padding: const EdgeInsets.only(bottom: 12),
+            itemCount: _rows.length,
+            onReorder: (from, to) => setState(() {
+              // The index a drop reports is a GAP, so moving a row downwards
+              // counts the gap it vacated. Without this every downward drag
+              // lands one row short of where it was dropped.
+              if (to > from) to -= 1;
+              _rows.insert(to, _rows.removeAt(from));
+            }),
+            itemBuilder: (context, i) {
+              final row = _rows[i];
+              if (row.id == sidebarDivider) {
+                return _dividerRow(context, i, key: row.key);
+              }
+              final destination = labels[row.id];
+
+              return ListTile(
+                key: row.key,
+                dense: true,
+                leading: Icon(destination?.icon ?? Icons.circle_outlined),
+                title: Text(
+                  destination?.label ?? row.id,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: ReorderableDragStartListener(
+                  index: i,
+                  child: const Icon(Icons.drag_handle),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// A divider, as something you can pick up and throw away.
+  ///
+  /// It carries no name. Jose: "the dividers should not have names, just be
+  /// dividers basically" — so there is nothing here to read, and the row is
+  /// entirely its two controls and the rule between them.
+  Widget _dividerRow(BuildContext context, int i, {required Key key}) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.close, size: 16),
+            visualDensity: VisualDensity.compact,
+            tooltip: UiStrings.t('shell.remove_divider'),
+            onPressed: () => setState(() => _rows.removeAt(i)),
+          ),
+          Expanded(
+            child: Divider(thickness: 1, color: scheme.outlineVariant),
+          ),
+          ReorderableDragStartListener(
+            index: i,
+            child: const Padding(
+              padding: EdgeInsets.all(8),
+              child: Icon(Icons.drag_handle),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

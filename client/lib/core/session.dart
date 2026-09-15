@@ -380,6 +380,7 @@ class Me {
     required this.preferences,
     required this.development,
     required this.twoFactorEnrolmentRequired,
+    required this.emailConfirmationRequired,
     required this.passwordMinLength,
     required this.organization,
     required this.scope,
@@ -442,6 +443,17 @@ class Me {
   /// server does refuse is everything outside `/me`, so the shell reads this and
   /// says why instead of letting somebody meet a wall of failed screens.
   final bool twoFactorEnrolmentRequired;
+
+  /// This address has not been confirmed, so every WRITE is refused until
+  /// it is (TODO #22). Reads are untouched, which is why the app looks
+  /// healthy right up until somebody tries to save.
+  ///
+  /// Same reason as [twoFactorEnrolmentRequired] for living on the session
+  /// rather than being inferred from a failed request: a refresh restores
+  /// the session from a stored token and never sees a login body, so
+  /// without it the app comes back with saves failing and nothing on
+  /// screen saying why.
+  final bool emailConfirmationRequired;
 
   /// The minimum length THIS organization's passwords must reach — the platform
   /// floor, or higher where an administrator has raised it (§6
@@ -745,6 +757,7 @@ class Me {
     preferences: {...preferences, key: value},
     development: development,
     twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
+    emailConfirmationRequired: emailConfirmationRequired,
     passwordMinLength: passwordMinLength,
     organization: organization,
     scope: scope,
@@ -768,6 +781,7 @@ class Me {
     preferences: preferences,
     development: development,
     twoFactorEnrolmentRequired: twoFactorEnrolmentRequired,
+    emailConfirmationRequired: emailConfirmationRequired,
     passwordMinLength: passwordMinLength,
     organization: organization,
     scope: scope,
@@ -803,6 +817,17 @@ class Me {
 
     return value.clamp(180.0, 420.0);
   }
+
+  /// The order this person dragged their sidebar into, with their dividers.
+  ///
+  /// Empty is the ordinary state — it means nobody has touched it, and the
+  /// sidebar renders in the order the server sends the modules. Read leniently
+  /// because it is arrangement rather than access: a stale entry costs a
+  /// position, never a module.
+  List<String> get navigationOrder =>
+      (preferences['navigation.order'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList();
 
   /// Whether the dial pad keeps its customer panel open between calls.
   ///
@@ -848,6 +873,7 @@ class Me {
             json['development'] as Map<String, dynamic>,
           ),
     twoFactorEnrolmentRequired: json['two_factor_enrolment_required'] == true,
+    emailConfirmationRequired: json['email_confirmation_required'] == true,
     // Falls back to the compiled floor rather than to zero. A server that
     // does not send this is an older one, and its own minimum is the floor —
     // asking for nothing would be a form that promises to accept `a`.

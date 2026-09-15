@@ -70,9 +70,17 @@ class CompanyPolicy
         // whole organization can add another branch to it — and reaching every
         // company that happens to exist today is NOT the same thing, because the
         // new one is not among them.
-        $standsAtTheTop = $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
+        // `canActOnOrganization`, not a reach derivation of our own - the rule
+        // this file's own next branch up already states. `reparent` below was
+        // converted in cb4cbf13; this was the last copy.
+        //
+        // It was never reachable by a deactivated user: `hasPermission` above
+        // refuses one on its first line (User:229), they cannot sign in
+        // (AuthenticateUser:93, :209), and deactivating through HR deletes
+        // their tokens (HrPeopleController:386). The residual the method covers
+        // and a hand-written copy does not: a session already open when
+        // somebody is deactivated by a DIRECT DATABASE WRITE, outside that flow.
+        $standsAtTheTop = $user->canActOnOrganization($user->organization);
 
         return $standsAtTheTop
             ? Response::allow()
@@ -90,6 +98,57 @@ class CompanyPolicy
             : Refusal::noReach(
                 $user, Refusal::AT_COMPANY, 'change '.$company->name, $company->name,
             );
+    }
+
+    /**
+     * Moving a company under another, or back out to the top (plan §3, §4).
+     *
+     * ── Why this is organization-level, and not the two ends checked ──
+     *
+     * The obvious reading is "authority over the company being moved, plus
+     * authority over its new parent", the way `create` asks about the parent a
+     * sub company would hang from. That reading is wrong here, and the reason is
+     * what a move DOES rather than what it looks like.
+     *
+     * Putting Crestline under A-1 Chimney hands everybody assigned to A-1
+     * Chimney authority over Crestline's franchises, customers, jobs and
+     * settings -- §4's "assignment does not cascade, authority does", applied to
+     * a subtree that was not theirs a moment ago. Nobody is granted anything,
+     * no assignment changes, and the audit trail of the grant is one row saying
+     * a parent id changed. It also moves the settings cascade underneath the
+     * company, so values it inherited from the organization now come from its
+     * new parent, and an automation scoped to that parent starts covering it.
+     *
+     * An act with those consequences belongs to somebody standing over the
+     * whole business, which is the same test `create` makes for a top-level
+     * company and the same one TODO #12 settled: authority never flows upward.
+     * Checking the two ends would let somebody assigned to one branch absorb a
+     * branch they had authority over into one they also had authority over --
+     * defensible in isolation, and a way to reshape an organization nobody
+     * standing over it agreed to.
+     *
+     * `companies.edit` is the permission because this changes a company rather
+     * than adding one. Somebody who may not rename Crestline must not be able
+     * to move it instead.
+     */
+    public function reparent(User $user, Company $company): Response
+    {
+        if (! $user->hasPermission('companies.edit')) {
+            return Refusal::permission('move a company');
+        }
+
+        // canActOnOrganization rather than the hand-written test I copied from
+        // create() above: that copy is one clause weaker -- it does not refuse a
+        // DEACTIVATED user -- which the deploy desk's sweep found on 2026-09-15.
+        // Unreachable here for the same reason as everywhere else, the
+        // hasPermission() line directly above enforcing is_active, and changed
+        // anyway so that it stays unreachable if that line ever moves.
+        //
+        // create()'s copy is three functions up and is NOT mine to change; the
+        // desk is holding it with the other two.
+        return $user->canActOnOrganization($company->organization)
+            ? Response::allow()
+            : Refusal::abovePosition('move '.$company->name.' to a different place in the organization');
     }
 
     /**
