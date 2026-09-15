@@ -1012,6 +1012,234 @@ class TwimlRendererTest extends TestCase
      * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
      * @return array{0: PhoneNumber, 1: User}
      */
+    /**
+     * EVERY EDGE LANDS ON A NODE, and every node can be reached.
+     *
+     * The structural test, and the one worth having: a graph with a dangling
+     * edge does not throw, it DRAWS — as an arrow into nothing, or a box
+     * floating unconnected — so the failure arrives as a screenshot from Jose
+     * rather than as a red test. Nothing else in this suite can see it, because
+     * every other assertion here is about XML a caller hears.
+     *
+     * Run against a line with the lot: hours, a menu with four different kinds
+     * of option, a ring group and a fallback. A simpler fixture would pass
+     * against a graph that only ever emits the straight line.
+     */
+    public function test_the_call_graph_has_no_dangling_edges_or_orphan_nodes(): void
+    {
+        $t = $this->provisionTenant();
+
+        $graph = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk, 2 to leave a message.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                        ['digit' => '2', 'action' => 'voicemail'],
+                        ['digit' => '3', 'action' => 'forward', 'number' => '+13055550100'],
+                        ['digit' => '4', 'action' => 'extension', 'extension' => '204'],
+                    ],
+                ],
+            ]);
+
+            $number->forceFill([
+                'flow_id' => $flow->id,
+                'fallback_number' => '+13055550199',
+            ])->save();
+
+            return (new TwimlRenderer)->graph($number->fresh());
+        });
+
+        $ids = array_column($graph['nodes'], 'id');
+
+        $this->assertSame(
+            $ids,
+            array_values(array_unique($ids)),
+            'two nodes share an id, so an edge to it is ambiguous',
+        );
+
+        foreach ($graph['edges'] as $edge) {
+            $this->assertContains($edge['from'], $ids, 'an edge starts at a node that does not exist');
+            $this->assertContains($edge['to'], $ids, 'an edge points at a node that does not exist');
+            $this->assertNotSame($edge['from'], $edge['to'], 'a node links to itself');
+        }
+
+        // Reachability from the caller, which is the only way in.
+        $reached = ['caller'];
+        do {
+            $before = count($reached);
+            foreach ($graph['edges'] as $edge) {
+                if (in_array($edge['from'], $reached, true) && ! in_array($edge['to'], $reached, true)) {
+                    $reached[] = $edge['to'];
+                }
+            }
+        } while (count($reached) > $before);
+
+        $this->assertEqualsCanonicalizing(
+            $ids,
+            $reached,
+            'a node is drawn that no caller can arrive at',
+        );
+    }
+
+    /**
+     * A menu is where one call becomes several, and the graph has to show it.
+     *
+     * This is the whole reason for a second shape: describe() renders four
+     * options as one sentence. Four keys must be four edges, and "pressed
+     * nothing" is a fifth — the commonest path and the easiest to leave out.
+     */
+    public function test_each_menu_key_is_its_own_branch(): void
+    {
+        $t = $this->provisionTenant();
+
+        $graph = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 or 2.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                        ['digit' => '2', 'action' => 'voicemail'],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->graph($number->fresh());
+        });
+
+        $fromMenu = [];
+        foreach ($graph['edges'] as $edge) {
+            if ($edge['from'] === 'menu') {
+                $fromMenu[] = $edge['label'];
+            }
+        }
+
+        $this->assertEqualsCanonicalizing(
+            ['Press 1', 'Press 2', 'No key pressed'],
+            $fromMenu,
+        );
+    }
+
+    /**
+     * A menu that is attached and never played is drawn as skipped.
+     *
+     * This is the state the screen exists for. A flow can be built, named and
+     * given a line, and contain no menu step — at which point callers go
+     * straight past it and hear nothing. Nobody complains: the caller does not
+     * know they missed a menu and the owner does not know theirs is skipped.
+     *
+     * Asserted on `state`, not on the node existing — a skipped menu drawn the
+     * same as a working one is worse than not drawing it. The second half is
+     * the control: without it this passes against a graph that marks EVERY
+     * menu skipped.
+     */
+    public function test_a_menu_that_never_plays_is_marked_skipped(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$skipped, $played] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Empty flow',
+                'nodes' => ['type' => 'hangup'],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            $renderer = new TwimlRenderer;
+            $before = $renderer->graph($number->fresh());
+
+            $flow->forceFill([
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1.',
+                    'options' => [['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id]],
+                ],
+            ])->save();
+
+            return [$before, $renderer->graph($number->fresh())];
+        });
+
+        $state = static function (array $graph): ?string {
+            foreach ($graph['nodes'] as $node) {
+                if ($node['id'] === 'menu') {
+                    return $node['state'];
+                }
+            }
+
+            return null;
+        };
+
+        $this->assertSame('skipped', $state($skipped));
+        $this->assertSame('ok', $state($played));
+    }
+
+    /**
+     * The graph and the list must not disagree about who answers.
+     *
+     * Two derivations of one question, and this module has already paid once
+     * for two derivations drifting: the Numbers screen spent an afternoon
+     * telling five lines they were fine while every call went to voicemail.
+     * Both read DialPlan::batches(), and this pins that they keep doing so.
+     *
+     * Asserted on the case that can distinguish — a ring group with NOBODY
+     * available, where the honest answer is "dead" and the easy bug is "ok".
+     */
+    public function test_the_graph_agrees_with_the_list_about_who_answers(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$steps, $graph] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $group->forceFill(['member_user_ids' => [], 'member_role_ids' => []])->save();
+
+            $renderer = new TwimlRenderer;
+
+            return [$renderer->describe($number->fresh()), $renderer->graph($number->fresh())];
+        });
+
+        $answerStep = null;
+        foreach ($steps as $step) {
+            if ($step['step'] === 'answer') {
+                $answerStep = $step;
+            }
+        }
+
+        $answerNode = null;
+        foreach ($graph['nodes'] as $node) {
+            if ($node['id'] === 'answer') {
+                $answerNode = $node;
+            }
+        }
+
+        $this->assertNotNull($answerStep);
+        $this->assertNotNull($answerNode);
+
+        $this->assertFalse($answerStep['usable'], 'the fixture reaches somebody, so this proves nothing');
+        $this->assertSame(
+            'dead',
+            $answerNode['state'],
+            'the list says nobody answers and the picture says somebody does',
+        );
+    }
+
     private function lineWithAvailableDesk(array $tenant, bool $record): array
     {
         $connection = $this->connection($tenant);

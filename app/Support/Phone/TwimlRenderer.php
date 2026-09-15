@@ -1060,6 +1060,285 @@ final class TwimlRenderer
     }
 
     /**
+     * The same answer as [describe], drawn as a graph instead of a list.
+     *
+     * ── Why a second shape and not a richer list ─────────────────────
+     *
+     * `describe()` is a LINE: arrival, hours, menu, answer. That is the truth
+     * for a call that takes the default path and a lie about every line with a
+     * menu on it, because a menu is the point where one call becomes five
+     * possible calls. Jose asked for the n8n shape — "Caller ---- (what
+     * happens)" — and the reason it reads better is not decoration: a branch
+     * drawn as a branch shows you the option you configured and forgot, which
+     * a list renders as one more sentence in a column.
+     *
+     * ── Why it lives here, beside describe() ─────────────────────────
+     *
+     * Same reason describe() does, and its docblock gives it: the only honest
+     * answer to "what happens when somebody rings this number" is the one from
+     * the thing that answers the phone. This branches on the SAME predicates
+     * `inbound()` uses — closed(), menuPrompt(), menuNodeOf(),
+     * DialPlan::batches() — so a screen drawn from it cannot disagree with what
+     * a caller hears. A graph derived in a controller would be a third opinion,
+     * and this module has already paid for the second one.
+     *
+     * `state` is 'ok', 'dead' or 'skipped'. **dead** means a caller can get
+     * here and nothing useful happens — an option pointing at a number nobody
+     * set, a group with nobody in it. **skipped** means it is configured and
+     * never reached at all, which is the failure nobody reports because nobody
+     * hears it.
+     *
+     * Read-only, like describe(). It is called to draw a screen.
+     *
+     * @param  array<string, mixed>  $context
+     * @return array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    public function graph(PhoneNumber $number, array $context = []): array
+    {
+        $nodes = [];
+        $edges = [];
+
+        $add = function (
+            string $id,
+            string $kind,
+            string $title,
+            string $detail,
+            string $state = 'ok',
+        ) use (&$nodes): string {
+            $nodes[] = [
+                'id' => $id,
+                'kind' => $kind,
+                'title' => $title,
+                'detail' => $detail,
+                'state' => $state,
+            ];
+
+            return $id;
+        };
+
+        $link = function (string $from, string $to, string $label = '') use (&$edges): void {
+            $edges[] = ['from' => $from, 'to' => $to, 'label' => $label];
+        };
+
+        // Where every call starts, and the only node that is not configuration.
+        $add('caller', 'caller', 'Caller', 'Somebody dials '.$number->e164.'.');
+
+        $pointed = filled($number->twilio_sid);
+        $add(
+            'arrival',
+            'arrival',
+            $pointed ? 'Arrives on '.($number->label ?: $number->e164) : 'Never reaches EzBizi',
+            $pointed
+                ? 'Twilio hands the call to EzBizi.'
+                : 'This line is not pointed at EzBizi, so nothing below runs.',
+            $pointed ? 'ok' : 'dead',
+        );
+        $link('caller', 'arrival');
+
+        if (! $pointed) {
+            return ['nodes' => $nodes, 'edges' => $edges];
+        }
+
+        $connection = $number->connection;
+        $tail = 'arrival';
+
+        // ── Hours, the first real branch ────────────────────────────
+        $schedule = $number->resolved('hours_schedule_id') === null
+            ? null
+            : PhoneHoursSchedule::query()->find($number->resolved('hours_schedule_id'));
+
+        if ($schedule !== null) {
+            $closed = $this->closed($number, $context);
+            $add('hours', 'hours', $schedule->name, 'Opening hours decide what happens next.');
+            $link($tail, 'hours');
+
+            // Which of the three ways a closed call ends is a setting somebody
+            // chose, so it gets a node rather than being folded into a label.
+            $after = (string) ($number->resolved('after_hours') ?: 'voicemail');
+            $forwardTo = trim((string) $number->resolved('after_hours_number'));
+
+            if ($after === 'forward') {
+                $add(
+                    'after-hours',
+                    'forward',
+                    $forwardTo !== '' ? 'Forward to '.$forwardTo : 'Forward — no number set',
+                    $forwardTo !== ''
+                        ? 'Out of hours the call is sent to this number.'
+                        : 'Out of hours this forwards, but no number is set, so the call ends.',
+                    $forwardTo !== '' ? 'ok' : 'dead',
+                );
+            } elseif ($after === 'closed') {
+                $add('after-hours', 'hangup', 'Say we are closed', 'The caller hears a message and the call ends.');
+            } else {
+                $add('after-hours', 'voicemail', 'Voicemail', 'Out of hours, callers go straight to voicemail.');
+            }
+
+            $link('hours', 'after-hours', 'Closed');
+
+            // A junction, not a step: it carries the "Open" label so the branch
+            // reads, and says which side is live as somebody looks at it.
+            $add(
+                'open',
+                'junction',
+                'Open',
+                $closed ? 'This line is CLOSED right now.' : 'This line is OPEN right now.',
+            );
+            $link('hours', 'open', 'Open');
+            $tail = 'open';
+        }
+
+        // The default destination: what a caller gets having pressed nothing.
+        $group = $number->resolved('ring_group_id') === null
+            ? null
+            : PhoneRingGroup::query()->find($number->resolved('ring_group_id'));
+
+        $reaches = $group !== null
+            && $connection !== null
+            && DialPlan::batches($group, $connection) !== [];
+
+        $add(
+            'answer',
+            'ring_group',
+            $group === null ? 'Nobody is rung' : 'Ring '.$group->name,
+            match (true) {
+                $group === null => 'No ring group is set, so every call goes to voicemail.',
+                $connection === null => 'This line has no phone account, so nobody can be dialled.',
+                ! $reaches => $group->name.' has nobody available, so every call goes to voicemail.',
+                default => 'Whoever is on duty in that group is dialled.',
+            },
+            $reaches ? 'ok' : 'dead',
+        );
+
+        // ── The menu, where one call becomes several ────────────────
+        $prompt = $this->menuPrompt($number);
+        $flowId = $number->resolved('flow_id');
+
+        if ($prompt === null) {
+            // CONFIGURED AND NEVER PLAYED, the case describe() also calls out.
+            // Its own node, because a menu nobody hears is exactly what a
+            // picture of the call is for.
+            if ($flowId !== null) {
+                $add(
+                    'menu',
+                    'menu',
+                    'Menu — never played',
+                    'A flow is attached but has no menu step, so callers go straight past it.',
+                    'skipped',
+                );
+                $link($tail, 'menu');
+                $link('menu', 'answer');
+            } else {
+                $link($tail, 'answer');
+            }
+        } else {
+            $add('menu', 'menu', 'Menu plays', $prompt);
+            $link($tail, 'menu');
+
+            $flow = PhoneFlow::query()->find($flowId);
+            $menu = $flow === null ? null : self::menuNodeOf($flow);
+            $options = is_array($menu['options'] ?? null) ? $menu['options'] : [];
+            $seen = [];
+
+            foreach ($options as $option) {
+                if (! is_array($option)) {
+                    continue;
+                }
+
+                $digit = (string) ($option['digit'] ?? '');
+
+                // A duplicate key is unreachable: menuOption() returns the
+                // FIRST match, so the second is configuration nobody can hear.
+                if ($digit === '' || isset($seen[$digit])) {
+                    continue;
+                }
+                $seen[$digit] = true;
+
+                $id = 'key-'.$digit;
+                $label = 'Press '.$digit;
+                $action = (string) ($option['action'] ?? 'ring_group');
+
+                if ($action === 'voicemail') {
+                    $add($id, 'voicemail', 'Voicemail', 'The caller leaves a message.');
+                } elseif ($action === 'hangup') {
+                    $say = trim((string) ($option['say'] ?? ''));
+                    $add($id, 'hangup', 'Message, then end', $say !== '' ? $say : 'The call ends here.');
+                } elseif ($action === 'repeat') {
+                    $add($id, 'menu', 'Play the menu again', 'The caller hears the options a second time.');
+                } elseif ($action === 'forward') {
+                    $to = trim((string) ($option['number'] ?? ''));
+                    $add(
+                        $id,
+                        'forward',
+                        $to !== '' ? 'Forward to '.$to : 'Forward — no number set',
+                        $to !== '' ? 'The call leaves EzBizi for this number.' : 'This option forwards, but no number is set.',
+                        $to !== '' ? 'ok' : 'dead',
+                    );
+                } elseif ($action === 'extension') {
+                    $ext = trim((string) ($option['extension'] ?? ''));
+                    $add(
+                        $id,
+                        'extension',
+                        $ext !== '' ? 'Extension '.$ext : 'Extension — none set',
+                        $ext !== '' ? 'Rings whoever holds that extension.' : 'This option dials an extension, but none is set.',
+                        $ext !== '' ? 'ok' : 'dead',
+                    );
+                } else {
+                    $optionGroupId = (string) ($option['ring_group_id'] ?? '');
+
+                    // An option with no group of its own falls through to the
+                    // line's group. Same destination, so the same node —
+                    // drawing a second one would invent a branch.
+                    if ($optionGroupId === '') {
+                        $link('menu', 'answer', $label);
+
+                        continue;
+                    }
+
+                    $optionGroup = PhoneRingGroup::query()->find($optionGroupId);
+                    $usable = $optionGroup !== null
+                        && $connection !== null
+                        && DialPlan::batches($optionGroup, $connection) !== [];
+
+                    $add(
+                        $id,
+                        'ring_group',
+                        $optionGroup === null ? 'Ring group — missing' : 'Ring '.$optionGroup->name,
+                        $optionGroup === null
+                            ? 'This option points at a ring group that no longer exists.'
+                            : ($usable ? 'Whoever is on duty in that group is dialled.' : 'Nobody in that group is available.'),
+                        $usable ? 'ok' : 'dead',
+                    );
+                }
+
+                $link('menu', $id, $label);
+            }
+
+            // Pressing nothing is an option too, and it is the commonest one.
+            $link('menu', 'answer', 'No key pressed');
+        }
+
+        // ── What happens when nobody picks up ───────────────────────
+        $add('voicemail', 'voicemail', 'Voicemail', 'The caller leaves a message.');
+
+        $fallback = trim((string) $number->resolved('fallback_number'));
+
+        if ($fallback !== '') {
+            $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
+            $link('answer', 'fallback', 'No answer');
+            $link('fallback', 'voicemail', 'No answer');
+        } elseif ($group !== null && $group->overflow === 'queue') {
+            $add('queue', 'queue', 'Hold in a queue', 'Callers wait and are told their place in line.');
+            $link('answer', 'queue', 'Everyone busy');
+            $link('queue', 'answer', 'Somebody free');
+            $link('queue', 'voicemail', 'Waited too long');
+        } else {
+            $link('answer', 'voicemail', 'No answer');
+        }
+
+        return ['nodes' => $nodes, 'edges' => $edges];
+    }
+
+    /**
      * The option a caller chose, or null if this line has no menu or the key
      * is not on it.
      *

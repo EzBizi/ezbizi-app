@@ -166,6 +166,13 @@ class NumbersController extends Controller
                 'record' => $number->record,
                 'transcribe' => $number->transcribe,
                 'steps' => $renderer->describe($number),
+
+                // Added beside `steps`, not instead of it. The list answers
+                // "what happens by default" and the graph answers "what CAN
+                // happen"; the Call Flow tab reads the first and the flowchart
+                // reads the second, and replacing one with the other would
+                // have made this a rewrite of a working screen.
+                'graph' => $renderer->graph($number),
             ])
             ->values()
             ->all();
