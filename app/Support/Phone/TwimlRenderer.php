@@ -1126,11 +1126,28 @@ final class TwimlRenderer
      * a caller hears. A graph derived in a controller would be a third opinion,
      * and this module has already paid for the second one.
      *
-     * `state` is 'ok', 'dead' or 'skipped'. **dead** means a caller can get
-     * here and nothing useful happens — an option pointing at a number nobody
-     * set, a group with nobody in it. **skipped** means it is configured and
-     * never reached at all, which is the failure nobody reports because nobody
-     * hears it.
+     * `state` is 'ok', 'dead' or 'skipped'.
+     *
+     * **dead** — a caller can get here and nothing useful happens: an option
+     * pointing at a number nobody set, a group with nobody in it.
+     *
+     * **skipped** — a caller passes THROUGH this step and hears nothing. It is
+     * configured, it is on the walk, and it does nothing. That is the failure
+     * nobody reports, because the caller does not know they missed a menu and
+     * the owner does not know theirs is silent.
+     *
+     * This sentence used to say "configured and never reached at all", which
+     * is false about the graph below: the skipped menu is linked
+     * `arrival → menu → answer`, so every caller walks it. UI/UX built the
+     * chart to that sentence rather than to the data — a layout rule for
+     * unreachable nodes, a test whose fixture had no edges, and a label on
+     * Jose's screen reading "Never reached" about a step every caller passes
+     * through. The code was right the whole time and the description was not,
+     * which is the harder kind to notice: nothing fails, and the next person
+     * builds on the sentence.
+     *
+     * So: describing your own output is a claim, not recall. The lines below
+     * are the measurement.
      *
      * Read-only, like describe(). It is called to draw a screen.
      *
