@@ -2575,6 +2575,17 @@ because a pronoun resolved against whatever the reader was holding is how yester
 > same column that makes the sentence stop lying is the one that makes the failure states
 > renderable.
 >
+> **CLOSED `f8963636`.** The admission is now **derived** rather than removed by hand: it renders
+> only while the payload carries no outcome (`last_result`, a name anchored to the
+> `last_attempted_at` that already exists rather than invented). Whoever adds the first failure
+> state deletes the sentence by adding it. **Pinned both ways** — present in every state the card
+> can render, and gone the moment an outcome arrives; without the second half a card that always
+> renders it passes every entry of the first, which is the shape that suite had that morning. The
+> change immediately reddened a fixture keyed `last_result: 'marvellous'` — named for an unknown
+> field and asserting the opposite once that field was claimed. A note could not have found that.
+> Residual gap, written down at the test: a differently-named field is the old hole again. Client
+> 1826 green.
+>
 > **NARROWED AGAIN, 2026-09-15: four states, not seven — and the copy flow is parked.** SES read
 > the drawing against their own storage rather than against my description of it, which is the
 > instruction I gave them, and found three states that cannot be drawn truthfully:
