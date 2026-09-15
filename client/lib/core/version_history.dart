@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0218',
+      date: '15 Sep 2026',
+      items: [
+        'Google Ads now reports one account at a time instead of loading every connected account before it shows anything, and adds a chart, status filters and real date ranges.',
+        'The call flow chart draws one box per team rather than one per key, so a team reached by two keys is one box with two arrows into it, and every team has its own queue. Everyone busy no longer looks like it belongs to a single menu option.',
+        'The call flow chart follows light and dark mode instead of always being dark, and two keys reaching the same team are drawn as one wire carrying both labels.',
+        'The experimental call report loads its Workiz branches at the same time rather than one after another.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0217',
       date: '15 Sep 2026',
       items: [
