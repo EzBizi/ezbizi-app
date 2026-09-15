@@ -15,12 +15,16 @@ use Symfony\Component\HttpFoundation\Response as Status;
 /**
  * Google Ads spend and performance, at the two levels we display.
  *
- * ── Gated on reports.view, not leads.view ────────────────────────
+ * ── Gated on ads_performance.view, its own grant ─────────────────
  *
- * Deliberately a higher bar than the enquiry list next door. A dispatcher needs
- * to read an enquiry and reply to it; what the business spends to get those
- * enquiries is a different kind of fact, and the Dispatcher role holding
- * `leads.view` without `reports.view` is the shape that keeps them apart.
+ * Deliberately a higher bar than the enquiry list next door, and deliberately
+ * NOT `reports.view` either. A dispatcher needs to read an enquiry and reply to
+ * it; what the business spends to get those enquiries is a different kind of
+ * fact, and what it measures internally is a third. Dispatcher holds
+ * `leads.view` and not this, which is the shape that keeps them apart.
+ *
+ * (This comment said `reports.view` until 2026-09-15 and was wrong from the
+ * moment the module declared its own permission.)
  *
  * ── The view, not just the organization ──────────────────────────
  *
@@ -40,7 +44,54 @@ class AdsPerformanceController extends Controller
     ) {}
 
     /**
-     * GET /api/v1/ads/performance?from=YYYY-MM-DD&to=YYYY-MM-DD
+     * GET /api/v1/ads/accounts
+     *
+     * The connected accounts, read from OUR database and never from Google.
+     *
+     * This exists because the screen used to load every account at once. A-1
+     * has fifty-three, each costing two API calls, so opening the tab spent
+     * 106 operations of a 15,000/day ceiling and took as long as the slowest
+     * of fifty-three round trips - Jose's words were "takes a lot to load".
+     *
+     * So: this answers instantly from rows we already hold, the screen lists
+     * them, and nothing is asked of Google until somebody picks one.
+     */
+    public function accounts(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user !== null && $user->hasPermission('ads_performance.view'),
+            Status::HTTP_FORBIDDEN,
+            'Reading advertising spend needs the Ads Performance permission.',
+        );
+
+        $rows = SocialConnection::query()
+            ->where('provider', SocialProvider::GoogleAds->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->orderBy('display_name')
+            ->get()
+            ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
+            ->values();
+
+        return response()->json([
+            'data' => $rows->map(fn (SocialConnection $c) => [
+                'connection_id' => $c->getKey(),
+                'customer_id' => $c->remote_id,
+                'name' => $c->display_name,
+            ])->all(),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/ads/performance?connection_id=...&from=YYYY-MM-DD&to=YYYY-MM-DD
+     *
+     * ONE account. `connection_id` is required, deliberately.
+     *
+     * It used to be optional and meant "all of them", which is how opening the
+     * screen came to cost 106 Google operations. Making it required is not a
+     * convenience: an optional fan-out is the kind of default that quietly
+     * spends a tenant's whole daily quota because somebody left a tab open.
      */
     public function index(Request $request): JsonResponse
     {
@@ -55,7 +106,7 @@ class AdsPerformanceController extends Controller
         $input = $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
-            'connection_id' => ['nullable', 'uuid'],
+            'connection_id' => ['required', 'uuid'],
         ]);
 
         // Default to the last 30 days, ending yesterday. Not today: Google
@@ -80,18 +131,17 @@ class AdsPerformanceController extends Controller
         $connections = SocialConnection::query()
             ->where('provider', SocialProvider::GoogleAds->value)
             ->where('status', SocialConnection::STATUS_CONNECTED)
-            ->when(
-                isset($input['connection_id']),
-                fn ($q) => $q->whereKey($input['connection_id']),
-            )
+            ->whereKey($input['connection_id'])
             ->orderBy('display_name')
             ->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c))
             ->values();
 
         if ($connections->isEmpty()) {
+            // Not 404: the id may be perfectly real and simply outside this
+            // person's view, and saying which would leak that it exists.
             return response()->json([
-                'message' => 'No Google Ads account is connected here, so there is no spend to report on.',
+                'message' => 'That Google Ads account is not connected here.',
             ], Status::HTTP_CONFLICT);
         }
 

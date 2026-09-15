@@ -89,9 +89,19 @@ class CampaignPerformance
             $to->format('Y-m-d'),
         );
 
+        /*
+         * Segmented by DAY, and the account totals are summed from it.
+         *
+         * A third query for the totals would cost a third of the quota to
+         * produce a number this data already contains, and the two could
+         * disagree - Google computes an unsegmented total slightly differently
+         * when a conversion is attributed across a day boundary, and a screen
+         * whose header contradicts its own chart is worse than one with no
+         * chart at all.
+         */
         $account = $this->search($connection, $token, sprintf(
-            'SELECT customer.id, customer.descriptive_name, customer.currency_code, '
-            .'customer.time_zone, %s FROM customer WHERE %s',
+            'SELECT segments.date, customer.id, customer.descriptive_name, '
+            .'customer.currency_code, customer.time_zone, %s FROM customer WHERE %s',
             self::REQUIRED_METRICS,
             $window,
         ));
@@ -106,6 +116,7 @@ class CampaignPerformance
         $currency = $account[0]['customer']['currencyCode'] ?? null;
 
         return [
+            'series' => $this->series($account),
             'account' => $this->totals($account, $currency, [
                 'id' => $account[0]['customer']['id'] ?? $connection->remote_id,
                 'name' => $account[0]['customer']['descriptiveName'] ?? $connection->display_name,
@@ -158,6 +169,54 @@ class CampaignPerformance
             'all_conversions' => round($sum('allConversions'), 2),
             'cost' => round($sum('costMicros') / 1_000_000, 2),
             'currency' => $currency,
+        ];
+    }
+
+    /**
+     * One point per day, for the chart.
+     *
+     * Three series rather than one, because they do not share a scale: spend
+     * is money, clicks are a count in the hundreds, conversions are a count in
+     * the tens. Drawn together on one axis the conversions line would be flat
+     * against the bottom and say nothing.
+     *
+     * Days Google returns nothing for are simply absent rather than zero-filled
+     * here. A gap in the line is honest about a day the account did not run;
+     * inventing a zero would draw a crash to the floor and back that never
+     * happened.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function series(array $rows): array
+    {
+        $byDay = [];
+
+        foreach ($rows as $row) {
+            $day = (string) ($row['segments']['date'] ?? '');
+
+            if ($day === '') {
+                continue;
+            }
+
+            $m = $row['metrics'] ?? [];
+            $byDay[$day] ??= ['cost' => 0.0, 'clicks' => 0.0, 'conversions' => 0.0];
+            $byDay[$day]['cost'] += (float) ($m['costMicros'] ?? 0) / 1_000_000;
+            $byDay[$day]['clicks'] += (float) ($m['clicks'] ?? 0);
+            $byDay[$day]['conversions'] += (float) ($m['conversions'] ?? 0);
+        }
+
+        ksort($byDay);
+
+        $points = fn (string $key) => array_values(array_map(
+            fn (string $day) => ['at' => $day, 'value' => round($byDay[$day][$key], 2)],
+            array_keys($byDay),
+        ));
+
+        return [
+            ['label' => 'Cost', 'key' => 'cost', 'points' => $points('cost')],
+            ['label' => 'Clicks', 'key' => 'clicks', 'points' => $points('clicks')],
+            ['label' => 'Conversions', 'key' => 'conversions', 'points' => $points('conversions')],
         ];
     }
 
