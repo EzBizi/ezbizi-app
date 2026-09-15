@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -52,10 +53,52 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   List<_Line> _lines = const [];
   String? _lineId;
 
+  /// What is happening on the shown line right now — null before the first
+  /// answer, and null again whenever the ask fails.
+  CallFlowLive? _live;
+  Timer? _poll;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  /// Ten seconds, and only while this pane is alive.
+  ///
+  /// One request per tick because the endpoint answers for ONE line, which is
+  /// what the pane shows. Polling all thirteen would be thirteen Twilio calls
+  /// every ten seconds, for ever, to fill in twelve numbers nobody is looking
+  /// at.
+  void _startPolling() {
+    _poll?.cancel();
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _loadLive());
+  }
+
+  Future<void> _loadLive() async {
+    final id = _lineId;
+    if (id == null) return;
+
+    final response = await widget.api.get('/phone/call-flow/live?line=$id');
+
+    // The line may have been changed while that was in flight; answering about
+    // the old one would put another line's callers on this chart.
+    if (!mounted || id != _lineId) return;
+
+    setState(() {
+      // The counts are an extra on a screen that works without them. A failed
+      // ask clears them rather than taking the chart down: the graph never
+      // came from Twilio and must still draw.
+      _live = response.ok
+          ? CallFlowLive.fromJson(response.body['data'] as Map<String, dynamic>?)
+          : null;
+    });
   }
 
   Future<void> _load() async {
@@ -79,6 +122,11 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
         _lineId = _lines.isEmpty ? null : _lines.first.id;
       }
     });
+
+    if (_lineId != null) {
+      _startPolling();
+      await _loadLive();
+    }
   }
 
   _Line? get _line {
@@ -152,15 +200,15 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
         else ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-            child: _Counts(graph: graph),
+            child: _Counts(graph: graph, live: _live),
           ),
           Expanded(
             child: LayoutBuilder(
               // The pane's own width, not the window's: this sits in a split,
               // so the window being wide says nothing about the room here.
               builder: (context, box) => box.maxWidth >= 720
-                  ? _Canvas(graph: graph)
-                  : _Ribbon(graph: graph),
+                  ? _Canvas(graph: graph, live: _live)
+                  : _Ribbon(graph: graph, live: _live),
             ),
           ),
         ],
@@ -198,7 +246,13 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
       builder: (context) => _LinePicker(lines: _lines, current: _lineId),
     );
 
-    if (chosen != null && mounted) setState(() => _lineId = chosen);
+    if (chosen == null || !mounted) return;
+
+    setState(() {
+      _lineId = chosen;
+      _live = null;
+    });
+    await _loadLive();
   }
 }
 
@@ -351,9 +405,12 @@ class _LinePickerState extends State<_LinePicker> {
 /// outline colour and a dashed swatch, which is the same distinction the rest
 /// of the app draws between a fault and an advisory.
 class _Counts extends StatelessWidget {
-  const _Counts({required this.graph});
+  const _Counts({required this.graph, this.live});
 
   final CallFlowGraph graph;
+
+  /// Null until the first live answer, and null again when it fails.
+  final CallFlowLive? live;
 
   @override
   Widget build(BuildContext context) {
@@ -361,15 +418,14 @@ class _Counts extends StatelessWidget {
     final scheme = theme.colorScheme;
     final dead = graph.deadCount;
     final skipped = graph.skippedCount;
+    final onLine = live?.onLine ?? 0;
 
-    if (dead == 0 && skipped == 0) {
-      return Text(
-        'Every branch of this flow leads somewhere.',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: scheme.onSurfaceVariant,
-        ),
-      );
-    }
+    // The healthy sentence is a TRAILING line rather than an early return.
+    // It was an early return, and a line with no faults and two callers on it
+    // would have said "every branch leads somewhere" and shown neither — the
+    // live count hidden by the very state it is most worth seeing in, since
+    // most lines are healthy most of the time.
+    final healthy = dead == 0 && skipped == 0;
 
     // A Column of full-width rows rather than a Wrap of intrinsic ones. The
     // detail is a sentence and a sentence GROWS, so in a Row that sizes to its
@@ -378,6 +434,16 @@ class _Counts extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // First, because it is the only line here about right now rather than
+        // about how the line is built. Drawn only when there IS somebody:
+        // a permanent "0 on the line" is clutter on a screen whose normal
+        // state is nobody calling.
+        if (onLine > 0)
+          _CountChip(
+            colour: scheme.primary,
+            label: onLine == 1 ? '1 call on this line now' : '$onLine calls on this line now',
+            detail: 'ringing or connected right now',
+          ),
         if (dead > 0)
           _CountChip(
             colour: scheme.error,
@@ -398,6 +464,16 @@ class _Counts extends StatelessWidget {
                 ? '1 step does nothing'
                 : '$skipped steps do nothing',
             detail: 'a caller passes through and hears nothing',
+          ),
+        if (healthy)
+          Padding(
+            padding: EdgeInsets.only(top: onLine > 0 ? 6 : 0),
+            child: Text(
+              'Every branch of this flow leads somewhere.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
           ),
       ],
     );
@@ -483,6 +559,20 @@ const double _rowGap = 18;
 // one screen is exactly what `theme_conventions_test` exists to stop, and it
 // caught this.
 
+/// "4 waiting · 1m 13s" — one place, because the canvas and the phone both
+/// say it and two spellings of one fact is how they drift.
+String waitingWords(QueueLive queue) {
+  final people = queue.waiting == 1 ? '1 waiting' : '${queue.waiting} waiting';
+  if (queue.waiting == 0 || queue.averageWaitSeconds <= 0) return people;
+
+  final seconds = queue.averageWaitSeconds;
+  final spell = seconds < 60
+      ? '${seconds}s'
+      : '${seconds ~/ 60}m ${(seconds % 60).toString().padLeft(2, '0')}s';
+
+  return '$people · $spell';
+}
+
 IconData _iconFor(String kind) {
   switch (kind) {
     case CallFlowGraph.entryId:
@@ -554,9 +644,10 @@ class _Geometry {
 }
 
 class _Canvas extends StatefulWidget {
-  const _Canvas({required this.graph});
+  const _Canvas({required this.graph, this.live});
 
   final CallFlowGraph graph;
+  final CallFlowLive? live;
 
   @override
   State<_Canvas> createState() => _CanvasState();
@@ -628,7 +719,10 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
                     left: geometry.topLeft[p.node.id]!.dx,
                     top: geometry.topLeft[p.node.id]!.dy,
                     width: _nodeWidth,
-                    child: _NodeTile(node: p.node),
+                    child: _NodeTile(
+                      node: p.node,
+                      queue: widget.live?.forNode(p.node),
+                    ),
                   ),
               ],
             ),
@@ -642,9 +736,13 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
 /// One node: an icon tile with its name under it, the way his reference draws
 /// them.
 class _NodeTile extends StatelessWidget {
-  const _NodeTile({required this.node});
+  const _NodeTile({required this.node, this.queue});
 
   final FlowNode node;
+
+  /// Null when there is nothing honest to draw — not a queue, or Twilio could
+  /// not be asked. Zero is a real answer and is drawn as one.
+  final QueueLive? queue;
 
   String get _kindWord {
     switch (node.kind) {
@@ -677,6 +775,10 @@ class _NodeTile extends StatelessWidget {
     // on exactly one node, so a kind comparison works today and goes silent
     // the moment either side is renamed. Found by Phone.
     final isEntry = node.id == CallFlowGraph.entryId;
+
+    // Somebody is on hold HERE, right now. Zero is a real answer and is drawn
+    // as one, but it does not earn a ring.
+    final holding = (queue?.waiting ?? 0) > 0;
 
     final edge = node.isDead
         ? scheme.error
@@ -714,8 +816,8 @@ class _NodeTile extends StatelessWidget {
                     : paper.tile,
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(
-                  color: edge,
-                  width: isEntry || node.isDead ? 2 : 1,
+                  color: holding ? paper.accent : edge,
+                  width: isEntry || node.isDead || holding ? 2 : 1,
                 ),
               ),
               child: Icon(_iconFor(node.kind), size: 22, color: edge),
@@ -736,6 +838,19 @@ class _NodeTile extends StatelessWidget {
                 node.isDead ? 'Dead end' : 'Does nothing',
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: edge,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 9,
+                ),
+              )
+            // Jose: "see Live Calls flowing through the Node as well". It
+            // replaces the kind word rather than joining it, because on a
+            // queue tile "Queue" is the least interesting true thing on the
+            // screen once somebody is actually holding.
+            else if (queue != null)
+              Text(
+                waitingWords(queue!),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: queue!.waiting > 0 ? paper.accent : paper.muted,
                   fontWeight: FontWeight.w800,
                   fontSize: 9,
                 ),
@@ -978,9 +1093,10 @@ class FlowWirePainter extends CustomPainter {
 /// one page, which is the complaint about the walk this replaces: you never saw
 /// the whole shape, and a fault you had not walked to was invisible.
 class _Ribbon extends StatelessWidget {
-  const _Ribbon({required this.graph});
+  const _Ribbon({required this.graph, this.live});
 
   final CallFlowGraph graph;
+  final CallFlowLive? live;
 
   @override
   Widget build(BuildContext context) {
@@ -994,6 +1110,7 @@ class _Ribbon extends StatelessWidget {
         node: steps[i].node,
         branches: graph.out(steps[i].node.id),
         graph: graph,
+        queue: live?.forNode(steps[i].node),
         last: i == steps.length - 1,
       ),
     );
@@ -1006,12 +1123,14 @@ class _Step extends StatelessWidget {
     required this.branches,
     required this.graph,
     required this.last,
+    this.queue,
   });
 
   final FlowNode node;
   final List<FlowEdge> branches;
   final CallFlowGraph graph;
   final bool last;
+  final QueueLive? queue;
 
   @override
   Widget build(BuildContext context) {
@@ -1073,6 +1192,17 @@ class _Step extends StatelessWidget {
                           node.isDead ? 'Dead end' : 'Does nothing',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: tint,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ] else if (queue != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          waitingWords(queue!),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: queue!.waiting > 0
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant,
                             fontWeight: FontWeight.w800,
                           ),
                         ),

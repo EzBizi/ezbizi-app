@@ -380,6 +380,112 @@ void main() {
     expect(find.text('Hold for Testing'), findsOneWidget);
   });
 
+  /// Live calls on the chart, chosen over editing on 2026-09-15 under Jose's
+  /// standing word while he was away.
+  group('live calls', () {
+    Map<String, dynamic> queueGraph() => {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'g-sales', 'kind': 'ring_group', 'title': 'Sales team',
+          'detail': 'Rings 3 people.', 'state': 'ok'},
+        {'id': 'queue-g-sales', 'kind': 'queue', 'title': 'Hold for Sales',
+          'detail': 'Callers wait.', 'state': 'ok', 'ref': 'g-sales'},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'g-sales', 'label': ''},
+        {'from': 'g-sales', 'to': 'queue-g-sales', 'label': 'Everyone busy'},
+      ],
+    };
+
+    testWidgets('a queue holding people says so on the tile', (tester) async {
+      await _pump(tester, width: 1100, graph: queueGraph(), live: {
+        'on_line': 2,
+        'queues': {
+          'g-sales': {'waiting': 4, 'average_wait_seconds': 73},
+        },
+        'queues_known': true,
+      });
+
+      expect(find.text('4 waiting \u00b7 1m 13s'), findsOneWidget);
+      expect(find.text('2 calls on this line now'), findsOneWidget);
+    });
+
+    /// The state that must never be drawn as zero.
+    testWidgets('when Twilio could not be asked, the tile says nothing', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: queueGraph(), live: {
+        'on_line': 1,
+        'queues': <String, dynamic>{},
+        'queues_known': false,
+      });
+
+      expect(
+        find.textContaining('waiting'),
+        findsNothing,
+        reason: '"0 waiting" here is a confident lie at the exact moment we '
+            'have no idea. The rest of the payload is still good.',
+      );
+      expect(
+        find.text('1 call on this line now'),
+        findsOneWidget,
+        reason: 'on_line does not come from Twilio, so it survives.',
+      );
+    });
+
+    testWidgets('a known-empty queue reads zero rather than dashes', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: queueGraph(), live: {
+        'on_line': 0,
+        'queues': <String, dynamic>{},
+        'queues_known': true,
+      });
+
+      expect(find.text('0 waiting'), findsOneWidget);
+      expect(
+        find.textContaining('on this line now'),
+        findsNothing,
+        reason: 'A permanent "0 on the line" is clutter on a screen whose '
+            'normal state is nobody calling.',
+      );
+    });
+
+    /// The healthy line was an early return, so a flow with no faults and two
+    /// callers on it would have shown neither -- the live count hidden by the
+    /// state it is most worth seeing in.
+    testWidgets('a healthy line shows the live count AND the all-clear', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: queueGraph(), live: {
+        'on_line': 3,
+        'queues': {
+          'g-sales': {'waiting': 0, 'average_wait_seconds': 0},
+        },
+        'queues_known': true,
+      });
+
+      expect(find.text('3 calls on this line now'), findsOneWidget);
+      expect(
+        find.text('Every branch of this flow leads somewhere.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the phone view carries the same count', (tester) async {
+      await _pump(tester, width: 400, graph: queueGraph(), live: {
+        'on_line': 0,
+        'queues': {
+          'g-sales': {'waiting': 2, 'average_wait_seconds': 30},
+        },
+        'queues_known': true,
+      });
+
+      expect(find.text('2 waiting \u00b7 30s'), findsOneWidget);
+    });
+  });
+
   _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires
@@ -599,6 +705,7 @@ Future<void> _pump(
   Map<String, dynamic>? graph,
   List<Map<String, dynamic>>? lines,
   ThemeData? theme,
+  Map<String, dynamic>? live,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -606,6 +713,14 @@ Future<void> _pump(
 
   final api = ApiClient(
     client: MockClient((request) async {
+      if (request.url.path.endsWith('/phone/call-flow/live')) {
+        return http.Response(
+          jsonEncode({'data': live ?? {'on_line': 0, 'queues_known': false}}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       if (request.url.path.endsWith('/phone/call-flow')) {
         return http.Response(
           jsonEncode({

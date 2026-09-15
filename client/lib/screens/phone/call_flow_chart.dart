@@ -25,12 +25,23 @@ class FlowNode {
     required this.title,
     required this.detail,
     required this.state,
+    this.ref = '',
   });
 
   final String id;
   final String kind;
   final String title;
   final String detail;
+
+  /// What this node IS elsewhere — for a queue node, its ring group id.
+  ///
+  /// The live-counts endpoint keys by ring group rather than by node, and
+  /// Phone's reason is a good one: node ids depend on the menu
+  /// (`queue-answer` versus `queue-key-3`), so producing them would mean
+  /// rebuilding the whole graph on every ten-second poll to learn a number
+  /// that depends on none of it. This is the key that makes the join one
+  /// lookup instead.
+  final String ref;
 
   /// `ok` | `dead` | `skipped`.
   ///
@@ -55,6 +66,7 @@ class FlowNode {
     title: '${json['title'] ?? ''}',
     detail: '${json['detail'] ?? ''}',
     state: '${json['state'] ?? 'ok'}',
+    ref: json['ref'] == null ? '' : '${json['ref']}',
   );
 }
 
@@ -290,4 +302,90 @@ List<MergedEdge> mergeParallel(List<FlowEdge> edges) {
             .join(' · '),
       ),
   ];
+}
+
+/// How many callers are holding in one queue, and how long they have waited.
+class QueueLive {
+  const QueueLive({required this.waiting, required this.averageWaitSeconds});
+
+  final int waiting;
+  final int averageWaitSeconds;
+
+  static QueueLive fromJson(Map<String, dynamic> json) => QueueLive(
+    waiting: (json['waiting'] as num?)?.toInt() ?? 0,
+    averageWaitSeconds: (json['average_wait_seconds'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// What is happening on this line right now (Jose: *"see Live Calls flowing
+/// through the Node as well"*).
+///
+/// Exact where callers actually pile up and silent everywhere else, which is
+/// Phone's measurement rather than a design compromise: a call in the menu, a
+/// call ringing a group and a call holding are all `status = ringing` on the
+/// row, and they declined to add a per-step column on purpose — the existing
+/// status already goes stale when a final callback never arrives. Their
+/// sentence: *"a tile reading 2 calls here about a call that ended on Tuesday
+/// is worse than a tile reading nothing."*
+class CallFlowLive {
+  const CallFlowLive({
+    required this.onLine,
+    required this.queues,
+    required this.queuesKnown,
+  });
+
+  /// Ringing or connected on this line now, with a 30-minute ceiling on the
+  /// server: a call whose final callback never arrives would otherwise sit at
+  /// `ringing` for ever, and the one number on this screen that means "right
+  /// now" would be the one that is never right.
+  final int onLine;
+
+  /// Keyed by RING GROUP id, which is what [FlowNode.ref] holds.
+  final Map<String, QueueLive> queues;
+
+  /// False when Twilio could not be asked.
+  ///
+  /// It is a flag rather than an empty map because **an empty map is also what
+  /// a quiet afternoon looks like**. Phone found their first version returned
+  /// empty on failure — a row of confident zeroes at the exact moment it has
+  /// no idea.
+  final bool queuesKnown;
+
+  /// The count for a node, or null when there is nothing honest to draw.
+  ///
+  /// All three rules in one place, because they are easy to get individually
+  /// right and collectively wrong:
+  ///
+  ///   * not a queue node — null; no other kind has a count at all;
+  ///   * we could not ask — null, NOT zero;
+  ///   * asked, and this queue is absent — **zero**. A Twilio queue resource
+  ///     exists only once it has been used, so a group that has never held
+  ///     anybody has no resource. Absent means empty, and the tile says 0
+  ///     rather than dashes.
+  QueueLive? forNode(FlowNode node) {
+    if (!queuesKnown) return null;
+    if (node.ref.isEmpty) return null;
+
+    return queues[node.ref] ??
+        const QueueLive(waiting: 0, averageWaitSeconds: 0);
+  }
+
+  static CallFlowLive? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+
+    final raw = json['queues'];
+
+    return CallFlowLive(
+      onLine: (json['on_line'] as num?)?.toInt() ?? 0,
+      queuesKnown: json['queues_known'] as bool? ?? false,
+      queues: {
+        if (raw is Map)
+          for (final entry in raw.entries)
+            if (entry.value is Map<String, dynamic>)
+              '${entry.key}': QueueLive.fromJson(
+                entry.value as Map<String, dynamic>,
+              ),
+      },
+    );
+  }
 }

@@ -189,6 +189,103 @@ void main() {
     });
   });
 
+  /// Live counts (Jose: *"see Live Calls flowing through the Node as well"*).
+  ///
+  /// Three rules that are easy to get individually right and collectively
+  /// wrong, which is why they are one method rather than three call sites.
+  group('what a node may say about right now', () {
+    const queueNode = FlowNode(
+      id: 'queue-g1',
+      kind: 'queue',
+      title: 'Hold for Sales',
+      detail: '',
+      state: 'ok',
+      ref: 'g1',
+    );
+    const menuNode = FlowNode(
+      id: 'menu',
+      kind: 'menu',
+      title: 'Menu',
+      detail: '',
+      state: 'ok',
+    );
+
+    test('a queue Twilio told us about says its number', () {
+      const live = CallFlowLive(
+        onLine: 2,
+        queuesKnown: true,
+        queues: {'g1': QueueLive(waiting: 4, averageWaitSeconds: 73)},
+      );
+
+      expect(live.forNode(queueNode)!.waiting, 4);
+      expect(live.forNode(queueNode)!.averageWaitSeconds, 73);
+    });
+
+    /// A Twilio queue resource exists only once it has been used, so a group
+    /// that has never held anybody has no resource. Phone measured it: that
+    /// account has three queueing groups and one queue.
+    test('a queue absent from a KNOWN answer is zero, not unknown', () {
+      const live = CallFlowLive(onLine: 0, queuesKnown: true, queues: {});
+
+      expect(live.forNode(queueNode)?.waiting, 0);
+    });
+
+    /// The defect Phone found in their own first version: it returned an
+    /// empty map on failure, which is also what a quiet afternoon looks like
+    /// -- a row of confident zeroes at the exact moment it has no idea.
+    test('an answer we could not get is NOT zero', () {
+      const live = CallFlowLive(onLine: 0, queuesKnown: false, queues: {});
+
+      expect(
+        live.forNode(queueNode),
+        isNull,
+        reason: 'Zero here would draw "nobody is waiting" when the truth is '
+            '"we could not ask", and those are different facts.',
+      );
+    });
+
+    test('a node that is not a queue never has a count', () {
+      const live = CallFlowLive(
+        onLine: 9,
+        queuesKnown: true,
+        queues: {'g1': QueueLive(waiting: 4, averageWaitSeconds: 73)},
+      );
+
+      expect(
+        live.forNode(menuNode),
+        isNull,
+        reason: 'A call in the menu, ringing a group and holding are all '
+            '"ringing" on the row. A number here would be invented.',
+      );
+    });
+
+    test('the payload parses, keyed by ring group rather than node', () {
+      final live = CallFlowLive.fromJson(const {
+        'id': 'n-1',
+        'on_line': 2,
+        'queues': {
+          'g1': {'waiting': 4, 'average_wait_seconds': 73},
+        },
+        'queues_known': true,
+      })!;
+
+      expect(live.onLine, 2);
+      expect(
+        live.forNode(queueNode)!.waiting,
+        4,
+        reason: 'The join is node.ref -> queues[key]. Keying by node id would '
+            'mean rebuilding the whole graph on every ten-second poll.',
+      );
+    });
+
+    test('a payload with no queues_known is treated as not known', () {
+      final live = CallFlowLive.fromJson(const {'on_line': 1})!;
+
+      expect(live.queuesKnown, isFalse);
+      expect(live.forNode(queueNode), isNull);
+    });
+  });
+
   group('parsing', () {
     test('a row with no graph is not a graph', () {
       expect(CallFlowGraph.fromJson(null), isNull);
