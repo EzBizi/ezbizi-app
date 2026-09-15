@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0219',
+      date: '15 Sep 2026',
+      items: [
+        'Google Ads opens on yesterday rather than an empty range, with a search box for accounts and another for campaigns, sortable columns, and a total across every account under a manager. Accounts in the manager tree that EzBizi holds no token for are counted and named rather than left out of the total.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0218',
       date: '15 Sep 2026',
       items: [
