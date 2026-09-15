@@ -107,7 +107,7 @@ class WhatsAppMessage extends Model implements HoldsPersonalData, StatesRetentio
     public static function personalDataHeld(): array
     {
         return [
-            new PersonalDataEntry('counterparty', PersonalDataEntry::IDENTIFIER,
+            new PersonalDataEntry('counterparty', PersonalDataEntry::CONTACT,
                 'The customer\'s WhatsApp number, in E.164. It is the address the message went '
                 .'to or came from, so it cannot be dropped while the message is held.',
                 Erasure::erase()),

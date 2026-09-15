@@ -4,6 +4,7 @@ namespace App\Support\Dashboard;
 
 use App\Models\User;
 use App\Support\Dashboard\Glances\AutomationsGlance;
+use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
@@ -11,7 +12,6 @@ use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
 use App\Support\Dashboard\Glances\InventoryGlance;
 use App\Support\Dashboard\Glances\JobsGlance;
-use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
@@ -42,7 +42,7 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring', 'newsletter', 'reports',
+        'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
     ];
 
     /**
@@ -70,6 +70,30 @@ class GlanceRegistry
          * A live glance registered later wins on this key without this entry
          * being removed first.
          */
+        /*
+         * A placeholder on purpose, and the reason is quota rather than taste.
+         *
+         * A live spend glance would have to ask Google on every dashboard load:
+         * one query for the account level and one for the campaign level, per
+         * connected account. A-1 Chimney has FIFTY-THREE connected accounts, so
+         * that is 106 operations per render against a Basic Access ceiling of
+         * 15,000 a day - 141 dashboard loads and the day's quota is gone,
+         * before the lead sync that actually matters has had any.
+         *
+         * The obvious answer, caching the figures, is the one thing this module
+         * must not do. It reads live and stores nothing by design, and that is
+         * not a preference - it is what we have told Google in the Standard
+         * Access answer and in the OAuth justification now under review.
+         *
+         * So the honest sentence is Newsletter's shape: the numbers live in the
+         * tab, and the tab is one click away. A live glance registered later
+         * wins on this key without this entry being removed first - and if it
+         * ever is, it needs a quota story, not just a query.
+         */
+        'ads_performance' => [
+            'label' => 'Google Ads',
+            'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
+        ],
         'newsletter' => [
             'label' => 'Newsletter',
             'sentence' => 'Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.',
