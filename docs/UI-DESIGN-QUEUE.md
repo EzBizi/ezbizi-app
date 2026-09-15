@@ -2512,7 +2512,36 @@ sending identities (relayed through HR, not measured by me). If that holds, the 
 ships every organization is in B with a perfectly healthy platform — so a design treating B as the
 unusual case is wrong for everyone at once.
 
-### 16 · A mail server for sending — **DRAWN, awaiting Jose**
+### 16 · A mail server for sending — **PICKED: desktop 2, mobile 5. SES building.**
+
+Relayed by the SES session 2026-09-15, verbatim, with the question it answered:
+
+> **SES:** *"Layout numbers — `docs/previews/sending-server-layouts.html`, UI/UX recommends 2
+> and 5. Now the only thing between this and a screen people can use."*
+> **Jose:** *"1 - was you recommend"*
+
+Read as *"as you recommend"*. It resolves to **2 and 5** under either parse, because the
+question named the numbers and SES's own sentence offered to build to the recommendation
+anyway — so there is no reading that lands somewhere else. Recorded rather than paraphrased,
+because a pronoun resolved against whatever the reader was holding is how yesterday went.
+
+> **SCOPE, AGREED 2026-09-15: seven states now, three later, and the drawing already said so.**
+> SES is building `nothing connected · set here, typed · set here, copied · inherited ·
+> inherited-and-that-one-was-copied · copied-then-that-mailbox-changed · saved, never tried`,
+> and **not** `refused (5xx) · unreachable · not ready (4xx)`. Nothing sends yet
+> (`throughTenantProvider` is still on `Mail::build`; the move to the Email module's socket is
+> with Email), so there is no reply code to sort and those three would be **the painted half of
+> a feature, green against fixtures nobody could produce.** That is the same boundary the
+> gallery header already draws — *"drawn so the screen is honest once there is something to be
+> honest about; it is not evidence that anybody will ever be told."* Agreeing costs nothing it
+> did not already cost.
+>
+> **The trap in a half-built state list is not the missing states — it is `saved, never tried`.**
+> It is true of every row today and becomes **false the moment the first send happens**, and the
+> change that makes it false is **in another module**. Nothing in SES's code has to be touched
+> for that screen to start lying: a row that has been tried, and failed, will go on saying
+> nobody has tried it. Flagged to SES to leave the guard where the next person looks and to tell
+> Email, since Email owns the event that invalidates it.
 
 `docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
 with no destination. The fork landed: SES and Email settled that **a report must not go out
