@@ -117,6 +117,11 @@ function apply_filters($hook, $value) {
 function plugin_basename($f) { return 'ezbizi/ezbizi.php'; }
 function admin_url($p = '') { return 'https://example.test/wp-admin/'.$p; }
 function get_current_screen() { return $GLOBALS['screen'] ?? null; }
+function human_time_diff($from, $to = 0) {
+    $d = abs(($to ?: time()) - $from);
+
+    return $d < 3600 ? intdiv($d, 60).' mins' : ($d < 86400 ? intdiv($d, 3600).' hours' : intdiv($d, 86400).' days');
+}
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 /*
@@ -267,6 +272,8 @@ function reset_site() {
     // is_ssl() is false on a perfectly ordinary HTTPS site.
     $GLOBALS['is_ssl'] = false;
     $GLOBALS['env_type'] = 'production';
+    // A refusal one case dates must not decide the next one.
+    delete_option(EZBIZI_REFUSED_SINCE);
     // A filter one case registers must not decide the next one.
     unset($GLOBALS['filters']['wp_is_application_passwords_available']);
     $GLOBALS['home'] = 'https://a-1chimney.com';
@@ -464,6 +471,31 @@ ob_start();
 do_action('admin_notices');
 check('nor is somebody already on the form', ob_get_clean(), '');
 $GLOBALS['screen'] = null;
+
+echo PHP_EOL . "A connected site that is being refused is told why" . PHP_EOL;
+/*
+ * The widgets vanish past the ceiling. Vanishing without a sentence reads as
+ * the plugin breaking, and the person who could fix it is the one person
+ * looking at wp-admin.
+ */
+reset_site();
+$GLOBALS['screen'] = null;
+$GLOBALS['is_admin'] = true;
+update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 86400, false);
+ob_start();
+do_action('admin_notices');
+$refused_notice = ob_get_clean();
+
+check('it says the token is being refused', str_contains($refused_notice, 'refusing'), true);
+check('and that the published values are safe', str_contains($refused_notice, 'values are unaffected'), true);
+check('and where to fix it', str_contains($refused_notice, 'admin.php?page=ezbizi'), true);
+
+// A refusal that started an hour ago is a rotation in progress, not a fault.
+update_option(EZBIZI_REFUSED_SINCE, time() - 3600, false);
+ob_start();
+do_action('admin_notices');
+check('a fresh one says nothing yet', ob_get_clean(), '');
+delete_option(EZBIZI_REFUSED_SINCE);
 
 echo "\nThe plugin's own row offers a way in\n";
 $links = apply_filters(
@@ -687,6 +719,67 @@ $GLOBALS['is_admin'] = false;
 check('the form renders empty', $GLOBALS['sc']['ezbizi_form']([]), '');
 check('and so does the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 
+
+echo PHP_EOL . "A site EzBizi has stopped recognising stops asking for chats" . PHP_EOL;
+/*
+ * The deploy desk found this by looking at a site rather than at the code: the
+ * guard asked whether a public key was ABSENT, and a site whose token the
+ * server REJECTS still holds the last good payload, key and all. So a pairing
+ * that had ended went on drawing a chat box on every page, and a visitor
+ * typing into it is being promised a conversation nobody will receive.
+ *
+ * Refused and unreachable are different facts and only one of them is about
+ * the site, so they are tested apart.
+ */
+reset_site();
+delete_option(EZBIZI_REFUSED_SINCE);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+check('a good read leaves no mark', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+
+// Our bad day. It must change nothing about the site.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 500, 'body' => ''];
+ezbizi_fetch();
+check('a 500 is our problem, not theirs', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
+ezbizi_fetch();
+$first = (int) get_option(EZBIZI_REFUSED_SINCE, 0);
+check('a refusal is dated', $first > 0, true);
+
+// The clock measures how long it has lasted, so it must not restart.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
+ezbizi_fetch();
+check('and dated once', (int) get_option(EZBIZI_REFUSED_SINCE, 0), $first);
+
+// A token being re-pasted leaves a gap of minutes. Nothing may disappear
+// during it: the public key the widgets use is a separate credential that
+// usually still works right through a rotation.
+$GLOBALS['is_admin'] = false;
+check('a fresh refusal hides nothing', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
+
+// A week of it is not a rotation. It is a pairing that ended.
+update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 60, false);
+check('a week of it draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
+check('and no form', $GLOBALS['sc']['ezbizi_form']([]), '');
+
+/*
+ * The values are a DIFFERENT question and must survive it. A phone number a
+ * week stale is still the right phone number; blanking a live page because we
+ * fell out with the account is the one thing this plugin has always refused to
+ * do.
+ */
+check('but the phone number still publishes', ezbizi_payload()['values']['phone'], '555-0100');
+
+// And it is over the moment the site is recognised again.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+check('a good read forgives it', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+check('and the chat comes back', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
 
 echo PHP_EOL . "The chat asks who it is talking to" . PHP_EOL;
 /*
