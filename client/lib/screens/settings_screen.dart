@@ -9,6 +9,7 @@ import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/sending_server_panel.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -637,6 +638,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
         ?_businessAddressCard(context),
+
+        /*
+         * Self-contained on purpose: it fetches its own answer and holds its
+         * own state, so this screen needs one line rather than the loader,
+         * the field and the builder the deleted sending-identity card needed.
+         * Filtered by the search box the same way the others are.
+         */
+        if (_filter == _Filter.all &&
+            SendingServerPanel.matchesSearch(_search.text))
+          SendingServerPanel(api: widget.api, session: widget.session),
         ?organizationData,
       ],
     );

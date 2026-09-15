@@ -841,6 +841,39 @@ Future<void> _pumpSettings(
         return _json(exports ?? _exports());
       }
 
+      /*
+       * Answered here, like /exports, so these tests stay about SETTINGS.
+       *
+       * The mail-server card was added to this screen on 2026-09-15 and fetches
+       * its own answer on build. Without this, its GET falls through to each
+       * test's handler — and four of them count reads, so `expect(reads, 1)`
+       * saw 2 and failed on a request that has nothing to do with the row under
+       * test.
+       *
+       * `in_effect` is the field the card requires before it will draw
+       * anything; this shape makes it render its empty state, which is what
+       * every one of these tests wants it to be doing while they look at
+       * something else.
+       */
+      if (request.url.path.endsWith('/mail/sending-server')) {
+        return _json({
+          'data': {
+            'connected_here': null,
+            'in_effect': {
+              'from_address': 'noreply@ezbizi.test',
+              'from_name': 'EzBizi',
+              'transport': 'platform',
+              'transport_label': 'EzBizi',
+              'source_name': null,
+              'inherited': false,
+            },
+            'may_edit': false,
+            'may_edit_reason': null,
+            'ports': [587, 465],
+          },
+        });
+      }
+
       return handler(request);
     }),
   );

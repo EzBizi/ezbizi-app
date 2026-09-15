@@ -103,13 +103,21 @@ class SendingServersController extends Controller
         $row = $this->resolver->rowAt($scope);
         $user = $request->user();
 
-        return response()->json([
+        /*
+         * Wrapped in `data`, as every other controller here is and as
+         * ApiResponse.data expects — it reads body['data'] and nothing else. An
+         * unwrapped payload passes a server test asserting
+         * assertJsonPath('connected_here.host', ...) and renders NOTHING on the
+         * client, which is the two-halves-passing-separately failure the deploy
+         * desk named. Caught by the widget test, not by mine.
+         */
+        return response()->json(['data' => [
             'connected_here' => $this->describe($row),
             'in_effect' => $this->describeEffective($scope),
             'may_edit' => $this->refusalFor($user, $scope, 'change the mail server') === null,
             'may_edit_reason' => $this->refusalFor($user, $scope, 'change the mail server'),
             'ports' => self::PORTS,
-        ]);
+        ]]);
     }
 
     /**
@@ -179,7 +187,7 @@ class SendingServersController extends Controller
             'username' => $validated['username'],
         ]);
 
-        return response()->json(['connected_here' => $this->describe($row->fresh())]);
+        return response()->json(['data' => ['connected_here' => $this->describe($row->fresh())]]);
     }
 
     /**
@@ -208,14 +216,14 @@ class SendingServersController extends Controller
 
         $this->audit->log('sending_server.disconnected', $scope, ['from_address' => $address]);
 
-        return response()->json([
+        return response()->json(['data' => [
             'connected_here' => null,
 
             // What they fall back to, said at the moment of removal rather than
             // discovered later: removing a branch's server does not stop its
             // mail, it hands it to whatever the company above has set.
             'in_effect' => $this->describeEffective($scope),
-        ]);
+        ]]);
     }
 
     // ── shapes ───────────────────────────────────────────────────
