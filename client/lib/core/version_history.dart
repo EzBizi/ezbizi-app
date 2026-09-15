@@ -11,6 +11,9 @@ class VersionHistory {
       version: '0.0.0215',
       date: '15 Sep 2026',
       items: [
+        'Web Management: two new tabs, Pages and Posts, showing everything on your website - what is published, what is still a draft, and when each last changed. Read from the site itself every time, so it is never a stale copy.',
+        'Web Management: fixes the publishing account never being created on most websites. It was only attempted while a shortcode was being drawn, and the check it made was about the request rather than the site, so on an ordinary secure site it silently never happened.',
+        'The experimental call report now shows average talk time per person. Which Workiz accounts the numbers cover is stated in words, and connecting or disconnecting an account has moved behind Manage Workiz accounts - disconnecting now asks first.',
         'New Google Ads tab under Reports: what each connected Google Ads account spent over a range, with clicks, impressions and conversions beside it, per account and per campaign. Accounts Google will not report on are listed rather than shown as zero spend.',
         'A business can connect its own mail server, and saved reports and automation emails go out through it instead of not going out at all. The screen shows what is set up and when it was last tried, never whether a message arrived.',
       ],
