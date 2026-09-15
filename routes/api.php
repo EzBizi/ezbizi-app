@@ -1317,6 +1317,12 @@ Route::prefix('v1')
         */
         Route::post('phone/calls/transfer', [PhoneCallsController::class, 'transfer']);
 
+        // Park sets a live call down; parked lists who is waiting. Picking
+        // one up is not a route: the desk dials 'park:<queue>' like any other
+        // destination, and the voice webhook bridges it.
+        Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
+        Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);
+
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);
         Route::get('phone/calls/{call}/recording', [PhoneCallsController::class, 'recording']);
 

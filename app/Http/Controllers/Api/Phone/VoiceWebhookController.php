@@ -311,6 +311,23 @@ class VoiceWebhookController extends Controller
             if ($to !== '') {
                 $context['dial_to'] = $to;
             }
+
+            // PICKING UP A PARKED CALL IS WHERE IT STOPS BEING PARKED.
+            //
+            // There is no separate un-park request, deliberately: a screen
+            // that has to tell the server it picked something up is a screen
+            // that leaves the board wrong whenever it crashes, closes, or
+            // loses the network between the two calls. Dialling the queue IS
+            // the retrieval, so this is the only moment that certainly
+            // happened.
+            //
+            // Cleared even when the queue turns out to be empty — a caller who
+            // hung up while on hold is not still parked, and leaving the row
+            // stamped would put a call on the board that nobody can ever pick
+            // up and nothing will ever clear.
+            if (str_starts_with($to, 'park:')) {
+                $this->unpark(substr($to, strlen('park:')));
+            }
             // WHICH LINE THIS PERSON CALLS OUT FROM.
             //
             // The client sends the line its pad has selected, and that is
@@ -591,6 +608,25 @@ class VoiceWebhookController extends Controller
      * Twilio's own word on the hop out of the queue, ours on every hop after
      * it — see the note on `queued` in context().
      */
+    /**
+     * Clear the park stamp for the call waiting in this queue.
+     *
+     * Takes the QUEUE NAME rather than an id, because that is what the desk
+     * dialled and parsing it in two places is how the two spellings drift.
+     */
+    private function unpark(string $queue): void
+    {
+        $prefix = 'ezbizi-park-';
+        if (! str_starts_with($queue, $prefix)) {
+            return;
+        }
+
+        PhoneCall::query()
+            ->whereKey(substr($queue, strlen($prefix)))
+            ->whereNotNull('parked_at')
+            ->update(['parked_at' => null, 'parked_by' => null]);
+    }
+
     private function hasQueued(Request $request): bool
     {
         return $request->input('QueueResult') !== null

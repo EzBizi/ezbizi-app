@@ -119,6 +119,7 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
         'organization_id', 'number_id', 'connection_id',
         'twilio_sid', 'parent_sid', 'direction',
         'from_e164', 'to_e164', 'user_id', 'answered_by', 'status',
+        'parked_at', 'parked_by',
         'error_code', 'error_message',
         'attestation',
         'duration_seconds', 'recording_sid', 'transcription_sid', 'transcript',
@@ -126,6 +127,25 @@ class PhoneCall extends Model implements CarriesAutomationScope, HoldsPersonalDa
         'voicemail', 'dealt_at',
         'tag_id', 'tagged_by', 'tagged_at',
     ];
+
+    /**
+     * The Twilio queue this call waits in while it is parked.
+     *
+     * Named after the CALL, which is what makes park slotless: there is
+     * nothing to allocate, nothing to run out of, and two people parking at
+     * once cannot collide. A desk phone needs numbered park slots because it
+     * has buttons and a button needs a number; a screen can list the calls
+     * themselves, which is also the more useful thing to look at — you pick up
+     * "the call from +1 305…", not "slot 3".
+     *
+     * Prefixed `ezbizi-park-` rather than `ezbizi-` so a park queue is never
+     * mistaken for a ring group's hold queue, which is the same account and a
+     * different feature.
+     */
+    public function parkQueueName(): string
+    {
+        return 'ezbizi-park-'.$this->id;
+    }
 
     protected function casts(): array
     {

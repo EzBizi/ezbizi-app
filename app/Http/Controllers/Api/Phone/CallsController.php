@@ -358,6 +358,132 @@ class CallsController extends Controller
     }
 
     /**
+     * POST /api/v1/phone/calls/park
+     *
+     * Set the call I am on down, so anybody can pick it up.
+     *
+     * ── Why this is a redirect and not a transfer ────────────────────
+     *
+     * Same mechanism as [transfer] and for the same reason given there: this
+     * device knows its own leg, not the customer's, and the customer's is the
+     * one that has to go on holding. Redirecting our own would take the phone
+     * away from the person holding it and leave the customer bridged to
+     * nothing.
+     *
+     * The difference from a transfer is who it is handed to: a transfer names
+     * the devices to ring, a park names nobody. The caller waits in a queue of
+     * their own and the first colleague to dial into it gets them.
+     *
+     * ── Why there are no park slots ──────────────────────────────────
+     *
+     * RingCentral has numbered Park Locations because a desk phone has buttons
+     * and a button needs a number. Nothing here has buttons, so the queue is
+     * named after the call and the screen lists the calls themselves — which
+     * is also the more useful thing to read. You pick up "the call from
+     * +1 305…", not "slot 3", and there is no slot to run out of or collide on.
+     */
+    public function park(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $call = PhoneCall::query()
+            ->where('status', PhoneCall::STATUS_IN_PROGRESS)
+            ->whereNull('parked_at')
+            ->where(fn ($q) => $q
+                ->where('answered_by', $user->id)
+                ->orWhere('user_id', $user->id))
+            ->latest('created_at')
+            ->first();
+
+        if ($call === null) {
+            return response()->json([
+                'message' => 'You are not on a call right now.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $connection = $call->connection;
+        if ($connection === null) {
+            return response()->json([
+                'message' => 'That call is not on a line EzBizi can park it from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // NO permission check on the line, deliberately, for the reason
+        // transfer() gives: the query above only finds a call this person
+        // answered or placed, so they are already on it.
+
+        try {
+            $this->twilio->redirectCall(
+                $connection,
+                (string) $call->twilio_sid,
+                $this->renderer->park($call),
+            );
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'That call has already ended.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Stamped AFTER the redirect, not before. A row that says parked for a
+        // call Twilio refused to move is a call on the board that nobody can
+        // pick up, and the way out of it is a database edit.
+        $call->forceFill([
+            'parked_at' => now(),
+            'parked_by' => $user->id,
+        ])->save();
+
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'queue' => $call->parkQueueName(),
+        ]]);
+    }
+
+    /**
+     * GET /api/v1/phone/calls/parked
+     *
+     * Who is on hold, and who put them there.
+     *
+     * Scoped to the lines this person can see, so parking is shared by the
+     * people who share the phone rather than by the whole organization —
+     * a caller parked on A-1 Chimney's line is not a call Everdoors can pick up.
+     */
+    public function parked(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        // readable(), not visibleTo(): the same lines the calls list uses.
+        // A parked call belongs to whoever shares that phone, so it follows
+        // the GRANT rather than who may edit settings — otherwise an admin
+        // with no line sees calls they cannot pick up, and somebody holding
+        // the line does not.
+        $numberIds = $this->access->readable($request->user())->pluck('id')->all();
+
+        $calls = PhoneCall::query()
+            ->whereNotNull('parked_at')
+            ->whereIn('number_id', $numberIds)
+            ->orderBy('parked_at')
+            ->limit(25)
+            ->get();
+
+        $names = User::query()
+            ->whereIn('id', $calls->pluck('parked_by')->filter()->unique())
+            ->pluck('name', 'id');
+
+        return response()->json(['data' => $calls->map(fn (PhoneCall $call) => [
+            'id' => $call->id,
+            'from_e164' => $call->from_e164,
+            'to_e164' => $call->to_e164,
+            'parked_at' => optional($call->parked_at)->toIso8601String(),
+            'parked_by' => $call->parked_by,
+            'parked_by_name' => $names[$call->parked_by] ?? null,
+
+            // What the desk dials to fetch them. Sent rather than assembled on
+            // the client, so the naming stays one fact in one place.
+            'pick_up' => 'park:'.$call->parkQueueName(),
+        ])->values()->all()]);
+    }
+
+    /**
      * Every live device this person has except the one asking.
      *
      * @return list<string> Voice identities

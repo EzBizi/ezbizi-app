@@ -2,6 +2,7 @@
 
 namespace App\Support\Phone;
 
+use App\Models\PhoneCall;
 use App\Models\PhoneDeviceRegistration;
 use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
@@ -857,6 +858,31 @@ final class TwimlRenderer
      * that nobody answers reaches overflow again and rejoins the queue at the
      * back, for ever, billed per loop.
      */
+    /**
+     * Set a live call down somewhere anybody can pick it up again.
+     *
+     * Rendered for the CUSTOMER's leg and handed to Twilio as a redirect, the
+     * same way [transfer] is — this device knows its own leg, not theirs, and
+     * theirs is the one that has to go on holding.
+     *
+     * No `waitUrl`: with none, Twilio plays its own hold music, which is
+     * exactly what is wanted here. The ring-group queue needs one because it
+     * announces a position; a parked call has no position to announce, and an
+     * endpoint whose whole job would be to play the default is an endpoint to
+     * keep working for nothing.
+     *
+     * No `action` either. A parked call leaves the queue exactly one way — a
+     * colleague dialling into it, which bridges the two legs — and Twilio does
+     * not come back to us for that.
+     */
+    public function park(PhoneCall $call): string
+    {
+        $response = new VoiceResponse;
+        $response->enqueue($call->parkQueueName());
+
+        return (string) $response;
+    }
+
     private function enqueue(
         VoiceResponse $response,
         PhoneNumber $number,
@@ -911,6 +937,24 @@ final class TwimlRenderer
         $attributes['ringTone'] = 'us';
 
         $dial = $response->dial(null, $attributes);
+
+        // ── PICKING UP A PARKED CALL ────────────────────────────────
+        //
+        // Same shape as `client:` above, and for the same reason: the desk
+        // already knows how to place an outbound call, so retrieval is a
+        // destination rather than a second mechanism. `<Dial><Queue>` bridges
+        // whoever is waiting in that queue to the person dialling it, which is
+        // Twilio's own answer for this and needs nothing of ours in between.
+        //
+        // The queue is named after the parked call, so there are no slots to
+        // allocate, run out of, or collide on. A desk phone needs numbered
+        // park slots because it has buttons; a screen can list the calls.
+        if (str_starts_with($to, 'park:')) {
+            $dial->queue(substr($to, strlen('park:')));
+
+            return;
+        }
+
         if (str_starts_with($to, 'client:')) {
             // A colleague's browser. Both ends are ours and both are already
             // looking at a screen that says the call is recorded, so there is
