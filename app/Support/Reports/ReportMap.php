@@ -5,14 +5,14 @@ namespace App\Support\Reports;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InventoryItem;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\MonitoredDevice;
 use App\Models\Service;
 use App\Models\ServiceArea;
 use App\Models\TrainingGuide;
-use App\Models\Vehicle;
-use App\Models\Job;
 use App\Models\User;
+use App\Models\Vehicle;
 
 /**
  * What a report may read, and how tables reach each other (spec 2026-09-10).
@@ -78,6 +78,21 @@ use App\Models\User;
  * The builder walks these; it never composes an ON clause. Adding an edge is
  * how a new join becomes possible, and that is a code review rather than a
  * runtime decision.
+ *
+ * ── GOOGLE ADS IS NOT HERE, AND ADDING IT IS NOT A CODE DECISION ─
+ *
+ * There is no `ads_performance` resource below and there must not be one added
+ * casually. The Leads/Google session has told Google, in writing on case
+ * 9-3038000041842, that the tool displays **Account and Campaign level ONLY**.
+ *
+ * So anything that would put ad group, ad or keyword level in front of a user
+ * is a COMPLIANCE change requiring two weeks' notice to Google — not a column,
+ * not a row in this map, and not something to grant because somebody asked for
+ * a keyword breakdown. It will arrive looking exactly like an ordinary report
+ * request, which is why the constraint is written here, where a person would be
+ * standing when they add the resource, rather than only in Leads' own files.
+ *
+ * Route it to whoever owns the Google integration before writing anything.
  */
 final class ReportMap
 {
@@ -99,24 +114,24 @@ final class ReportMap
     {
         return [
             'jobs' => [
-                'model'          => Job::class,
-                'table'          => 'jobs',
-                'label'          => 'Jobs',
-                'module'         => 'jobs',
-                'permission'     => 'jobs.view',
-                'scope'          => ['franchise_id' => 'franchise'],
+                'model' => Job::class,
+                'table' => 'jobs',
+                'label' => 'Jobs',
+                'module' => 'jobs',
+                'permission' => 'jobs.view',
+                'scope' => ['franchise_id' => 'franchise'],
                 'shared_because' => null,
-                'soft_deletes'   => true,
-                'columns'        => [
-                    'number'           => ['label' => 'Number',    'type' => 'string'],
-                    'title'            => ['label' => 'Title',     'type' => 'string'],
-                    'status'           => ['label' => 'Status',    'type' => 'string'],
-                    'scheduled_for'    => ['label' => 'Scheduled', 'type' => 'datetime'],
-                    'earned_at'        => ['label' => 'Earned',    'type' => 'datetime'],
+                'soft_deletes' => true,
+                'columns' => [
+                    'number' => ['label' => 'Number',    'type' => 'string'],
+                    'title' => ['label' => 'Title',     'type' => 'string'],
+                    'status' => ['label' => 'Status',    'type' => 'string'],
+                    'scheduled_for' => ['label' => 'Scheduled', 'type' => 'datetime'],
+                    'earned_at' => ['label' => 'Earned',    'type' => 'datetime'],
                     'duration_minutes' => ['label' => 'Minutes',   'type' => 'integer'],
-                    'amount_minor'     => ['label' => 'Amount',    'type' => 'money'],
-                    'currency'         => ['label' => 'Currency',  'type' => 'string'],
-                    'created_at'       => ['label' => 'Created',   'type' => 'datetime'],
+                    'amount_minor' => ['label' => 'Amount',    'type' => 'money'],
+                    'currency' => ['label' => 'Currency',  'type' => 'string'],
+                    'created_at' => ['label' => 'Created',   'type' => 'datetime'],
                 ],
                 'relations' => [
                     'customer' => ['to' => 'customers', 'local' => 'customer_id', 'foreign' => 'id'],
@@ -135,27 +150,27 @@ final class ReportMap
             ],
 
             'customers' => [
-                'model'      => Customer::class,
-                'table'      => 'customers',
-                'label'      => 'Customers',
-                'module'     => 'customers',
+                'model' => Customer::class,
+                'table' => 'customers',
+                'label' => 'Customers',
+                'module' => 'customers',
                 'permission' => 'customers.view',
-                'scope'      => [],
+                'scope' => [],
                 'shared_because' => 'Customers are shared across the whole organization by '
                     .'design (§5.2). owning_franchise_id is an accountability tag, not a '
                     .'fence, and filtering on it here would break the sharing rather than '
                     .'enforce anything. ResourceMap makes the same call.',
                 'soft_deletes' => true,
-                'columns'      => [
-                    'number'      => ['label' => 'Number',  'type' => 'string'],
-                    'name'        => ['label' => 'Name',    'type' => 'string'],
-                    'email'       => ['label' => 'Email',   'type' => 'string'],
-                    'phone'       => ['label' => 'Phone',   'type' => 'string'],
-                    'city'        => ['label' => 'City',    'type' => 'string'],
-                    'state'       => ['label' => 'State',   'type' => 'string'],
+                'columns' => [
+                    'number' => ['label' => 'Number',  'type' => 'string'],
+                    'name' => ['label' => 'Name',    'type' => 'string'],
+                    'email' => ['label' => 'Email',   'type' => 'string'],
+                    'phone' => ['label' => 'Phone',   'type' => 'string'],
+                    'city' => ['label' => 'City',    'type' => 'string'],
+                    'state' => ['label' => 'State',   'type' => 'string'],
                     'postal_code' => ['label' => 'ZIP',     'type' => 'string'],
-                    'is_active'   => ['label' => 'Active',  'type' => 'boolean'],
-                    'created_at'  => ['label' => 'Created', 'type' => 'datetime'],
+                    'is_active' => ['label' => 'Active',  'type' => 'boolean'],
+                    'created_at' => ['label' => 'Created', 'type' => 'datetime'],
                 ],
                 'relations' => [],
             ],
@@ -171,24 +186,23 @@ final class ReportMap
              * `franchiseIds()` answers `jobs.franchise_id` and `franchises.id`.
              */
             'franchises' => [
-                'model'          => Franchise::class,
-                'table'          => 'franchises',
-                'label'          => 'Branches',
-                'module'         => 'franchises',
-                'permission'     => 'franchises.view',
-                'scope'          => ['id' => 'franchise'],
+                'model' => Franchise::class,
+                'table' => 'franchises',
+                'label' => 'Branches',
+                'module' => 'franchises',
+                'permission' => 'franchises.view',
+                'scope' => ['id' => 'franchise'],
                 'shared_because' => null,
-                'soft_deletes'   => true,
-                'columns'        => [
-                    'name'       => ['label' => 'Branch',   'type' => 'string'],
-                    'timezone'   => ['label' => 'Timezone', 'type' => 'string'],
-                    'currency'   => ['label' => 'Currency', 'type' => 'string'],
-                    'is_active'  => ['label' => 'Active',   'type' => 'boolean'],
+                'soft_deletes' => true,
+                'columns' => [
+                    'name' => ['label' => 'Branch',   'type' => 'string'],
+                    'timezone' => ['label' => 'Timezone', 'type' => 'string'],
+                    'currency' => ['label' => 'Currency', 'type' => 'string'],
+                    'is_active' => ['label' => 'Active',   'type' => 'boolean'],
                     'created_at' => ['label' => 'Created',  'type' => 'datetime'],
                 ],
                 'relations' => [],
             ],
-
 
             /*
              * THE CATALOGUE SHAPE, five modules of it.
@@ -214,33 +228,33 @@ final class ReportMap
              * result that is too small when they cannot see what is missing.
              */
             'services' => [
-                'model'          => Service::class,
-                'table'          => 'services',
-                'label'          => 'Services',
-                'module'         => 'services',
-                'permission'     => 'services.view',
-                'scope'          => ['company_id' => 'place'],
+                'model' => Service::class,
+                'table' => 'services',
+                'label' => 'Services',
+                'module' => 'services',
+                'permission' => 'services.view',
+                'scope' => ['company_id' => 'place'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
-                'columns'        => [
-                    'number'      => ['label' => 'Number',      'type' => 'string'],
-                    'name'        => ['label' => 'Service',     'type' => 'string'],
+                'soft_deletes' => false,
+                'columns' => [
+                    'number' => ['label' => 'Number',      'type' => 'string'],
+                    'name' => ['label' => 'Service',     'type' => 'string'],
                     'description' => ['label' => 'Description', 'type' => 'string'],
                     'price_minor' => ['label' => 'Price',       'type' => 'money'],
-                    'created_at'  => ['label' => 'Created',     'type' => 'datetime'],
+                    'created_at' => ['label' => 'Created',     'type' => 'datetime'],
                 ],
                 'relations' => [],
             ],
 
             'inventory_items' => [
-                'model'          => InventoryItem::class,
-                'table'          => 'inventory_items',
-                'label'          => 'Inventory',
-                'module'         => 'inventory',
-                'permission'     => 'inventory.view',
-                'scope'          => ['company_id' => 'place'],
+                'model' => InventoryItem::class,
+                'table' => 'inventory_items',
+                'label' => 'Inventory',
+                'module' => 'inventory',
+                'permission' => 'inventory.view',
+                'scope' => ['company_id' => 'place'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
+                'soft_deletes' => false,
                 /*
                  * `last_cost_minor` is NOT reportable, and the absence is a
                  * decision rather than an oversight. Cost is gated on
@@ -250,12 +264,12 @@ final class ReportMap
                  * holding inventory.view. Per-column permissions are the day
                  * that changes.
                  */
-                'columns'        => [
-                    'number'     => ['label' => 'Number',     'type' => 'string'],
-                    'sku'        => ['label' => 'SKU',        'type' => 'string'],
-                    'name'       => ['label' => 'Item',       'type' => 'string'],
-                    'unit'       => ['label' => 'Unit',       'type' => 'string'],
-                    'status'     => ['label' => 'Status',     'type' => 'string'],
+                'columns' => [
+                    'number' => ['label' => 'Number',     'type' => 'string'],
+                    'sku' => ['label' => 'SKU',        'type' => 'string'],
+                    'name' => ['label' => 'Item',       'type' => 'string'],
+                    'unit' => ['label' => 'Unit',       'type' => 'string'],
+                    'status' => ['label' => 'Status',     'type' => 'string'],
                     'reorder_at' => ['label' => 'Reorder at', 'type' => 'integer'],
                     'created_at' => ['label' => 'Created',    'type' => 'datetime'],
                 ],
@@ -263,46 +277,46 @@ final class ReportMap
             ],
 
             'vehicles' => [
-                'model'          => Vehicle::class,
-                'table'          => 'vehicles',
-                'label'          => 'Fleet Management',
-                'module'         => 'fleet_management',
-                'permission'     => 'fleet_management.view',
-                'scope'          => ['company_id' => 'place'],
+                'model' => Vehicle::class,
+                'table' => 'vehicles',
+                'label' => 'Fleet Management',
+                'module' => 'fleet_management',
+                'permission' => 'fleet_management.view',
+                'scope' => ['company_id' => 'place'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
+                'soft_deletes' => false,
                 // `vin` is deliberately absent: it identifies the vehicle to a
                 // third party and nothing on a report needs it.
-                'columns'        => [
-                    'number'                  => ['label' => 'Number',         'type' => 'string'],
-                    'label'                   => ['label' => 'Vehicle',        'type' => 'string'],
-                    'year'                    => ['label' => 'Year',           'type' => 'integer'],
-                    'make'                    => ['label' => 'Make',           'type' => 'string'],
-                    'model'                   => ['label' => 'Model',          'type' => 'string'],
-                    'plate'                   => ['label' => 'Plate',          'type' => 'string'],
-                    'status'                  => ['label' => 'Status',         'type' => 'string'],
-                    'odometer_miles'          => ['label' => 'Odometer',       'type' => 'integer'],
-                    'next_service_on'         => ['label' => 'Service due',    'type' => 'date'],
+                'columns' => [
+                    'number' => ['label' => 'Number',         'type' => 'string'],
+                    'label' => ['label' => 'Vehicle',        'type' => 'string'],
+                    'year' => ['label' => 'Year',           'type' => 'integer'],
+                    'make' => ['label' => 'Make',           'type' => 'string'],
+                    'model' => ['label' => 'Model',          'type' => 'string'],
+                    'plate' => ['label' => 'Plate',          'type' => 'string'],
+                    'status' => ['label' => 'Status',         'type' => 'string'],
+                    'odometer_miles' => ['label' => 'Odometer',       'type' => 'integer'],
+                    'next_service_on' => ['label' => 'Service due',    'type' => 'date'],
                     'registration_expires_on' => ['label' => 'Registration',   'type' => 'date'],
-                    'inspection_expires_on'   => ['label' => 'Inspection due', 'type' => 'date'],
-                    'created_at'              => ['label' => 'Created',        'type' => 'datetime'],
+                    'inspection_expires_on' => ['label' => 'Inspection due', 'type' => 'date'],
+                    'created_at' => ['label' => 'Created',        'type' => 'datetime'],
                 ],
                 'relations' => [],
             ],
 
             'training_guides' => [
-                'model'          => TrainingGuide::class,
-                'table'          => 'training_guides',
-                'label'          => 'Training',
-                'module'         => 'training',
-                'permission'     => 'training.view',
-                'scope'          => ['company_id' => 'place'],
+                'model' => TrainingGuide::class,
+                'table' => 'training_guides',
+                'label' => 'Training',
+                'module' => 'training',
+                'permission' => 'training.view',
+                'scope' => ['company_id' => 'place'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
-                'columns'        => [
-                    'title'      => ['label' => 'Guide',   'type' => 'string'],
-                    'summary'    => ['label' => 'Summary', 'type' => 'string'],
-                    'status'     => ['label' => 'Status',  'type' => 'string'],
+                'soft_deletes' => false,
+                'columns' => [
+                    'title' => ['label' => 'Guide',   'type' => 'string'],
+                    'summary' => ['label' => 'Summary', 'type' => 'string'],
+                    'status' => ['label' => 'Status',  'type' => 'string'],
                     'created_at' => ['label' => 'Created', 'type' => 'datetime'],
                 ],
                 'relations' => [],
@@ -315,26 +329,26 @@ final class ReportMap
              * their junction tables are mapped.
              */
             'leads' => [
-                'model'          => Lead::class,
-                'table'          => 'leads',
-                'label'          => 'Leads',
-                'module'         => 'leads',
-                'permission'     => 'leads.view',
-                'scope'          => ['company_id' => 'place'],
+                'model' => Lead::class,
+                'table' => 'leads',
+                'label' => 'Leads',
+                'module' => 'leads',
+                'permission' => 'leads.view',
+                'scope' => ['company_id' => 'place'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
-                'columns'        => [
-                    'source'          => ['label' => 'Source',       'type' => 'string'],
-                    'contact_name'    => ['label' => 'Name',         'type' => 'string'],
-                    'phone'           => ['label' => 'Phone',        'type' => 'string'],
-                    'email'           => ['label' => 'Email',        'type' => 'string'],
-                    'lead_type'       => ['label' => 'Type',         'type' => 'string'],
-                    'category'        => ['label' => 'Category',     'type' => 'string'],
-                    'service'         => ['label' => 'Service',      'type' => 'string'],
-                    'status'          => ['label' => 'Status',       'type' => 'string'],
-                    'received_at'     => ['label' => 'Received',     'type' => 'datetime'],
+                'soft_deletes' => false,
+                'columns' => [
+                    'source' => ['label' => 'Source',       'type' => 'string'],
+                    'contact_name' => ['label' => 'Name',         'type' => 'string'],
+                    'phone' => ['label' => 'Phone',        'type' => 'string'],
+                    'email' => ['label' => 'Email',        'type' => 'string'],
+                    'lead_type' => ['label' => 'Type',         'type' => 'string'],
+                    'category' => ['label' => 'Category',     'type' => 'string'],
+                    'service' => ['label' => 'Service',      'type' => 'string'],
+                    'status' => ['label' => 'Status',       'type' => 'string'],
+                    'received_at' => ['label' => 'Received',     'type' => 'datetime'],
                     'last_contact_at' => ['label' => 'Last contact', 'type' => 'datetime'],
-                    'created_at'      => ['label' => 'Created',      'type' => 'datetime'],
+                    'created_at' => ['label' => 'Created',      'type' => 'datetime'],
                 ],
                 'relations' => [
                     'job' => ['to' => 'jobs', 'local' => 'job_id', 'foreign' => 'id'],
@@ -348,16 +362,16 @@ final class ReportMap
              * and it brings an edge to Branches with it.
              */
             'service_areas' => [
-                'model'          => ServiceArea::class,
-                'table'          => 'service_areas',
-                'label'          => 'Scheduling',
-                'module'         => 'scheduling',
-                'permission'     => 'scheduling.view',
-                'scope'          => ['franchise_id' => 'franchise'],
+                'model' => ServiceArea::class,
+                'table' => 'service_areas',
+                'label' => 'Scheduling',
+                'module' => 'scheduling',
+                'permission' => 'scheduling.view',
+                'scope' => ['franchise_id' => 'franchise'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
-                'columns'        => [
-                    'name'       => ['label' => 'Service area', 'type' => 'string'],
+                'soft_deletes' => false,
+                'columns' => [
+                    'name' => ['label' => 'Service area', 'type' => 'string'],
                     'created_at' => ['label' => 'Created',      'type' => 'datetime'],
                 ],
                 'relations' => [
@@ -411,19 +425,19 @@ final class ReportMap
              * screen, and that is a disclosure decision rather than an oversight.
              */
             'monitored_devices' => [
-                'model'          => MonitoredDevice::class,
-                'table'          => 'monitored_devices',
-                'label'          => 'Monitoring',
-                'module'         => 'monitoring',
-                'permission'     => 'monitoring.view',
-                'scope'          => ['user_id' => 'people'],
+                'model' => MonitoredDevice::class,
+                'table' => 'monitored_devices',
+                'label' => 'Monitoring',
+                'module' => 'monitoring',
+                'permission' => 'monitoring.view',
+                'scope' => ['user_id' => 'people'],
                 'shared_because' => null,
-                'soft_deletes'   => false,
-                'columns'        => [
-                    'label'          => ['label' => 'Device',       'type' => 'string'],
-                    'platform'       => ['label' => 'Platform',     'type' => 'string'],
-                    'last_seen_at'   => ['label' => 'Last seen',    'type' => 'datetime'],
-                    'created_at'     => ['label' => 'First seen',   'type' => 'datetime'],
+                'soft_deletes' => false,
+                'columns' => [
+                    'label' => ['label' => 'Device',       'type' => 'string'],
+                    'platform' => ['label' => 'Platform',     'type' => 'string'],
+                    'last_seen_at' => ['label' => 'Last seen',    'type' => 'datetime'],
+                    'created_at' => ['label' => 'First seen',   'type' => 'datetime'],
                 ],
                 'relations' => [
                     'person' => ['to' => 'users', 'local' => 'user_id', 'foreign' => 'id'],
@@ -431,10 +445,10 @@ final class ReportMap
             ],
 
             'users' => [
-                'model'      => User::class,
-                'table'      => 'users',
-                'label'      => 'Human Resources',
-                'module'     => 'hr',
+                'model' => User::class,
+                'table' => 'users',
+                'label' => 'Human Resources',
+                'module' => 'hr',
                 'permission' => 'hr.view',
                 /*
                  * CORRECTED 2026-09-14. This read `scope => []` with a
@@ -453,16 +467,16 @@ final class ReportMap
                  * the module scopes it. Read the module's own list query
                  * before writing a shared_because.
                  */
-                'scope'          => ['id' => 'people'],
+                'scope' => ['id' => 'people'],
                 'shared_because' => null,
                 'soft_deletes' => false,
-                'columns'      => [
-                    'name'       => ['label' => 'Name',    'type' => 'string'],
+                'columns' => [
+                    'name' => ['label' => 'Name',    'type' => 'string'],
                     'first_name' => ['label' => 'First name', 'type' => 'string'],
-                    'last_name'  => ['label' => 'Last name',  'type' => 'string'],
-                    'email'      => ['label' => 'Email',   'type' => 'string'],
-                    'phone'      => ['label' => 'Phone',   'type' => 'string'],
-                    'is_active'  => ['label' => 'Active',  'type' => 'boolean'],
+                    'last_name' => ['label' => 'Last name',  'type' => 'string'],
+                    'email' => ['label' => 'Email',   'type' => 'string'],
+                    'phone' => ['label' => 'Phone',   'type' => 'string'],
+                    'is_active' => ['label' => 'Active',  'type' => 'boolean'],
                     'created_at' => ['label' => 'Created', 'type' => 'datetime'],
                 ],
                 'relations' => [],
@@ -472,6 +486,6 @@ final class ReportMap
 
     public static function get(string $key): ?array
     {
-        return static::all()[$key] ?? null;
+        return self::all()[$key] ?? null;
     }
 }
