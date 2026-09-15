@@ -77,16 +77,51 @@ void main() {
     expect(layout.find('service')!.row, 1);
   });
 
-  /// The state that produces no complaint.
+  /// The state that produces no complaint — laid out where it actually goes.
   ///
-  /// A `skipped` node is reachable from nothing a caller walks, so the search
-  /// never reaches it. Dropping it would be the screen hiding the one thing
-  /// nobody else reports — the caller does not know they missed a menu and the
-  /// owner does not know theirs is skipped.
-  test('a node no caller can reach is still placed, past the end', () {
+  /// **This test's fixture used to be an orphan**, because the description I
+  /// built to said a skipped node "is reachable from nothing a caller walks".
+  /// Phone read their own renderer afterwards and it emits the opposite:
+  /// `$add('menu', …, 'skipped')` is linked in with `arrival -> menu` and
+  /// `menu -> answer`. A caller DOES pass through the point and hears nothing,
+  /// which is the whole defect.
+  ///
+  /// So the real shape is an ordinary column in the middle of the chain, and
+  /// that is the right drawing: a reader sees callers passing through a step
+  /// that does nothing, rather than finding it parked off the end looking
+  /// unrelated to the flow it is part of.
+  test('a skipped step sits in the chain, not off the end', () {
     final layout = layOutFlow(graph(
       [
-        ['caller'], ['arrival'], ['greeting', 'skipped'],
+        ['caller'], ['arrival'], ['menu', 'skipped'], ['answer'],
+        ['voicemail'],
+      ],
+      [
+        ['caller', 'arrival'], ['arrival', 'menu'], ['menu', 'answer'],
+        ['answer', 'voicemail'],
+      ],
+    ));
+
+    expect(
+      layout.find('menu')!.column,
+      2,
+      reason:
+          'Between Arrival and Answer, where a caller passes through it. Past '
+          'the end (column 5) would be the old wrong belief drawn.',
+    );
+    expect(layout.columns, 5);
+    expect(layout.back, isEmpty);
+  });
+
+  /// A node the server's contract says cannot exist: unreachable, no edge in.
+  ///
+  /// Kept as a test of the GUARD rather than of `skipped`, which is what it
+  /// was mistaken for. Without the guard such a node is dropped from `placed`
+  /// and disappears from the one screen anybody would notice it on.
+  test('a node the search cannot reach is placed anyway, not dropped', () {
+    final layout = layOutFlow(graph(
+      [
+        ['caller'], ['arrival'], ['greeting'],
       ],
       [
         ['caller', 'arrival'],

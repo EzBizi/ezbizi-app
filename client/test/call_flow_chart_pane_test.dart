@@ -37,7 +37,14 @@ void main() {
     await _pump(tester, width: 1100);
 
     expect(find.text('Dead end'), findsOneWidget);
-    expect(find.text('Never reached'), findsOneWidget);
+    expect(
+      find.text('Does nothing'),
+      findsOneWidget,
+      reason:
+          'Not "Never reached" — the caller passes through a skipped step. '
+          'The old label sent a reader hunting for a branch nobody can get '
+          'to, which is a different fault in a different place.',
+    );
   });
 
   /// The entry node is outlined in the brand colour so the eye starts where
@@ -102,13 +109,50 @@ void main() {
     expect(find.text('1 dead end'), findsOneWidget);
   });
 
+  /// Phone's renderer links a skipped step INTO the walk — `arrival -> menu
+  /// -> answer` — so it draws between two live nodes rather than off the end.
+  /// Nothing on my side covered that shape until they measured their own
+  /// output and told me the description I had built to was wrong.
+  testWidgets('a skipped step draws in the chain, labelled for what it is', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100, graph: {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'arrival', 'kind': 'arrival', 'title': 'Arrival',
+          'detail': 'The line picks up.', 'state': 'ok'},
+        {'id': 'menu', 'kind': 'menu', 'title': 'Menu',
+          'detail': 'Plays nothing.', 'state': 'skipped'},
+        {'id': 'answer', 'kind': 'ring_group', 'title': 'Sales team',
+          'detail': 'Rings 3 people.', 'state': 'ok'},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'arrival', 'label': ''},
+        {'from': 'arrival', 'to': 'menu', 'label': ''},
+        {'from': 'menu', 'to': 'answer', 'label': ''},
+      ],
+    });
+
+    expect(find.text('Menu'), findsOneWidget);
+    expect(find.text('Does nothing'), findsOneWidget);
+    expect(find.text('1 step does nothing'), findsOneWidget);
+    expect(
+      find.text('1 dead end'),
+      findsNothing,
+      reason:
+          'Distinguishes this fixture from the default six-node one, which '
+          'has a dead end; without it the test would pass on either.',
+    );
+  });
+
   testWidgets('the counts are on screen before anything is read', (
     tester,
   ) async {
     await _pump(tester, width: 1100);
 
     expect(find.text('1 dead end'), findsOneWidget);
-    expect(find.text('1 never reached'), findsOneWidget);
+    expect(find.text('1 step does nothing'), findsOneWidget);
   });
 
   /// The one that matters on a phone.
@@ -121,7 +165,7 @@ void main() {
     // invisible. Without this line the screen would say nothing is wrong.
     expect(find.text('Sales team'), findsNothing);
     expect(find.text('1 dead end'), findsOneWidget);
-    expect(find.text('1 never reached'), findsOneWidget);
+    expect(find.text('1 step does nothing'), findsOneWidget);
   });
 
   testWidgets('narrow: walking follows the branch that was tapped', (

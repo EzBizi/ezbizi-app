@@ -2691,9 +2691,14 @@ carries `graph: {nodes, edges}` additively per line; `TwimlRenderer::graph()` bu
 > **THE PICTURE IS NOT WHAT EARNS THE SCREEN. THE TWO STATES ARE.**
 > - **`dead`** — a caller *can* reach it and nothing useful happens: an option pointing at a
 >   number nobody set, a ring group with nobody in it.
-> - **`skipped`** — configured and **never reached at all**. Phone's sentence, and it is the
->   argument for the whole tab: *"callers sail past and hear nothing, and nobody complains because
->   the caller does not know they missed a menu and the owner does not know theirs is skipped."*
+> - **`skipped`** — ~~configured and **never reached at all**~~ **a step the caller passes
+>   straight THROUGH, which plays nothing.** Struck 2026-09-15: Phone gave me that sentence,
+>   then read their own renderer and found it emits the opposite — the node is linked in as
+>   `arrival → menu → answer`, so a caller does traverse it. Left visible rather than deleted
+>   because I built a test fixture to the struck version, and an orphan is a graph their
+>   contract cannot produce. The rest of their sentence stands and is still the argument for
+>   the tab: *"callers sail past and hear nothing, and nobody complains because the caller does
+>   not know they missed a menu and the owner does not know theirs is skipped."*
 >
 > **A flowchart that draws a dead branch identically to a live one is prettier than the list and
 > less useful.** So every option is judged on whether those two are visible *without reading node
@@ -2732,6 +2737,15 @@ a menu option lengthens a column rather than widening the chart, which is the di
 settings pane has room in. **5 is the same drawing at phone width**, so it is one shape to learn
 rather than two; its collapsed branch row carries *"2 of them are dead ends"* so a branch nobody
 opened still reports the thing the screen exists for.
+
+**A third gallery case, added 2026-09-15 at Phone's request** — *a step that does nothing*,
+drawn on options 1 and 6 only, since those are the two built. Zero production lines have one
+today, so there is nothing real to look at, and waiting for one means waiting for the day
+somebody edits a flow badly — which is exactly the day nobody is watching, because the state
+produces no complaint. The gallery is therefore the only place it can be seen before it matters.
+**It draws in the chain, third of five**, between Arrival and the ring group. Note what that
+case looks like: **no red anywhere**, every branch working, and the count at the top is the only
+thing on screen saying anything is wrong.
 
 **Built and committed 2026-09-15** — `b13319ac`, `client/lib/screens/phone/call_flow_chart{,_pane}.dart`,
 as a section appended to Settings (appended, not inserted: `_section` is an index, and inserting

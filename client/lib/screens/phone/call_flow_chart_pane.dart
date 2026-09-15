@@ -22,10 +22,10 @@ import 'call_flow_chart.dart';
 ///
 /// A correct flow and a broken one draw identically unless the states are
 /// visible, so the counts are the first thing on the screen and the drawing is
-/// second. `dead` is a caller reaching something that does nothing. `skipped`
-/// is configured and never reached at all — and nobody reports one, because
-/// the caller does not know they missed a menu and the owner does not know
-/// theirs is skipped.
+/// second. `dead` is a caller reaching something that does nothing and
+/// stopping there. `skipped` is a step the caller passes straight THROUGH,
+/// which plays nothing — and nobody reports one, because the caller does not
+/// know they missed a menu and the owner does not know theirs is silent.
 ///
 /// That is truest on a phone, where [_Walk] shows one node at a time: nothing
 /// is visible until you have walked to it, so the count is the ONLY thing
@@ -220,8 +220,14 @@ class _Counts extends StatelessWidget {
           _CountChip(
             colour: scheme.onSurfaceVariant,
             dashed: true,
-            label: skipped == 1 ? '1 never reached' : '$skipped never reached',
-            detail: 'configured, and no caller ever gets there',
+            // NOT "never reached". The caller DOES reach it; it plays
+            // nothing. The old wording sent a reader looking for a branch
+            // nobody can get to, which is a different fault in a different
+            // place.
+            label: skipped == 1
+                ? '1 step does nothing'
+                : '$skipped steps do nothing',
+            detail: 'a caller passes through and hears nothing',
           ),
       ],
     );
@@ -398,7 +404,7 @@ class _NodeCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text(
-                node.isDead ? 'Dead end' : 'Never reached',
+                node.isDead ? 'Dead end' : 'Does nothing',
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: edge,
                   fontWeight: FontWeight.w700,

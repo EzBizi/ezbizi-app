@@ -66,6 +66,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;z-index:1}
 .crumb b{color:var(--ink)}
 .stepnode{margin:14px;border:1px solid var(--line);border-radius:12px;padding:13px}
 .stepnode.dead{border-color:var(--bad);background:rgba(186,26,26,.05)}
+.stepnode.skip{border-color:var(--warn);background:rgba(138,90,0,.05)}
 .stepnode .t{font-weight:700}
 .stepnode .d{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.5}
 .next{margin:0 14px}
@@ -95,9 +96,13 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   The two states are.</b> Phone built the data and named them, and they are the whole
   argument: <b><code>dead</code></b> — a caller <i>can</i> reach it and nothing useful
   happens, an option pointing at a number nobody set, a ring group with nobody in it.
-  <b><code>skipped</code></b> — configured and <i>never reached at all</i>: callers
-  sail past and hear nothing, <b>nobody complains because the caller does not know
-  they missed a menu and the owner does not know theirs is skipped.</b> A flowchart
+  <b><code>skipped</code></b> — a step the caller passes straight <i>through</i>
+  that plays nothing. <b>Corrected 2026-09-15:</b> this said &ldquo;never reached at
+  all&rdquo; until Phone measured their own renderer and found the node is linked into
+  the chain (<code>arrival &rarr; menu &rarr; answer</code>) &mdash; it is ON the flow,
+  not beside it. Callers sail past and hear nothing, <b>nobody complains because the
+  caller does not know they missed a menu and the owner does not know theirs is
+  silent.</b> A flowchart
   that draws a dead branch identically to a live one is prettier than the list and
   less useful, so <b>every option below is judged on whether you can see those two
   without reading node by node</b> — which is why each carries a count at the top.</p>
@@ -149,26 +154,47 @@ var N = {
   vm:{t:'Voicemail',d:'Takes a message.',s:'ok'},
   queue:{t:'Queue',d:'Holds the caller and tries again.',s:'ok'},
   closed:{t:'Forward',d:'After hours → 860 555 0199.',s:'ok'},
-  greet:{t:'Greeting',d:'A recorded welcome message.',s:'skipped'}
+  greet:{t:'Greeting',d:'A recorded welcome message.',s:'skipped'},
+  /* The silent line. Phone measured their renderer: a skipped step is LINKED
+     IN -- arrival -> menu -> answer -- so a caller passes through it and hears
+     nothing. It is not off to the side of the flow, it is on it. */
+  smenu:{t:'Menu',d:'Configured, and nothing plays here.',s:'skipped'},
+  /* Its own caller box: the title bar names this line's number, and a Caller
+     box quoting a different one is two facts disagreeing on one screen. */
+  scaller:{t:'Caller',d:'Somebody dials +1 860 555 0188.',s:'ok',k:'caller'}
 };
 var COUNTS = {dead:2, skipped:1};
 var BARE = {dead:1, skipped:0};
-function C(){ return CASE === 'bare' ? BARE : COUNTS; }
+var SILENT = {dead:0, skipped:1};
+function C(){ return CASE === 'bare' ? BARE : CASE === 'silent' ? SILENT
+  : COUNTS; }
 function bare(){ return CASE === 'bare'; }
+function silent(){ return CASE === 'silent'; }
+/* Drawn for the two Jose picked. The other four are not built, and mocking a
+   third dataset into an option nobody is going to ship is drawing for its own
+   sake. */
+function silentOnly(){
+  return '<div class="note"><b>This case is drawn for options 1 and 6</b> ' +
+    '&mdash; the two that were picked and built. Switch to one of those to ' +
+    'see where a silent step lands.</div>';
+}
 
 function sum(){
   return '<div class="sum">' +
-    '<span><span class="pipbad"></span><b>' + C().dead +
-    (C().dead === 1 ? ' dead end</b> ' : ' dead ends</b> ') +
-    '&mdash; a caller reaches ' + (C().dead === 1 ? 'this' : 'these') +
-    ' and nothing happens</span>' +
+    (C().dead ? '<span><span class="pipbad"></span><b>' + C().dead +
+      (C().dead === 1 ? ' dead end</b> ' : ' dead ends</b> ') +
+      '&mdash; a caller reaches ' + (C().dead === 1 ? 'this' : 'these') +
+      ' and nothing happens</span>' : '') +
     (C().skipped ? '<span><span class="pipskip"></span><b>' + C().skipped +
-      ' never reached</b> &mdash; configured, no caller ever gets there</span>'
+      (C().skipped === 1 ? ' step does nothing</b>' : ' steps do nothing</b>') +
+      ' &mdash; a caller passes through and hears nothing</span>'
     : '') + '</div>';
 }
 function titlebar(){
   return '<div class="top">Call flow<span class="pick">' +
-    (bare() ? 'General · +1 786 408-6862 ▾' : 'Main line · +1 860 555 0142 ▾') +
+    (bare() ? 'General · +1 786 408-6862 ▾'
+      : silent() ? 'Service · +1 860 555 0188 ▾'
+      : 'Main line · +1 860 555 0142 ▾') +
     '</span></div>';
 }
 function cls(s){ return s === 'dead' ? ' dead' : s === 'skip' || s === 'skipped'
@@ -179,7 +205,7 @@ function node(id, x, y, w){
     '" style="left:' + x + 'px;top:' + y + 'px' + (w ? ';width:' + w + 'px' : '') +
     '"><div class="t">' + n.t + '</div><div class="d">' + n.d + '</div>' +
     (n.s === 'dead' ? '<span class="flag">Dead end</span>' : '') +
-    (n.s === 'skipped' ? '<span class="flag">Never reached</span>' : '') +
+    (n.s === 'skipped' ? '<span class="flag">Does nothing</span>' : '') +
     '</div>';
 }
 function wire(pts, label, lx, ly, dash){
@@ -197,6 +223,21 @@ function wire(pts, label, lx, ly, dash){
 
 /* -- 1 -- left to right, layered -------------------------------- */
 function D1(){
+  if (silent()) return '<div class="win">' + titlebar() + sum() +
+    '<div class="canvas">' + '<svg>' +
+      wire('M136 140 H156','',0,0) + wire('M288 140 H308','',0,0) +
+      wire('M440 140 H460','',0,0) + wire('M592 140 H612','',0,0) +
+    '</svg>' +
+    node('scaller',4,120) + node('arrival',156,120) + node('smenu',308,120) +
+    node('sales',460,120) + node('vm',612,120) + '</div></div>' +
+    '<div class="note"><b>The silent step is the third box, not a footnote at ' +
+    'the end.</b> It sits between Arrival and the ring group because that is ' +
+    'where a caller passes through it &mdash; they hear nothing at that point ' +
+    'and carry on, which is why nobody reports it. Parked off the side it ' +
+    'would read as unrelated to the flow it is part of.<br><br><b>Note there ' +
+    'is no red on this line at all.</b> Every branch works; the count is the ' +
+    'only thing that says anything is wrong, which is the argument for having ' +
+    'the counts above the drawing rather than trusting the picture.</div>';
   if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' + wire('M138 140 H168','',0,0) + wire('M306 140 H336','',0,0) +
     wire('M474 140 H504','',0,0) + '</svg>' +
@@ -241,6 +282,7 @@ function D1(){
 
 /* -- 2 -- top to bottom, spine with branches --------------------- */
 function D2(){
+  if (silent()) return silentOnly();
   if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' + wire('M74 42 V64','',0,0) + wire('M74 106 V128','',0,0) +
     wire('M74 176 V198','',0,0) + '</svg>' +
@@ -282,6 +324,7 @@ function D2(){
 
 /* -- 3 -- an outline that is still a graph ----------------------- */
 function D3(){
+  if (silent()) return silentOnly();
   function r(gut, id, lab){
     var n = N[id];
     return '<div class="row"><span class="lab">' + (lab || '') + '</span>' +
@@ -292,7 +335,7 @@ function D3(){
         'border-radius:999px">Dead end</span>' : '') +
       (n.s === 'skipped' ? ' <span style="background:rgba(138,90,0,.12);' +
         'color:var(--warn);font-size:9.5px;font-weight:700;padding:1px 5px;' +
-        'border-radius:999px">Never reached</span>' : '') +
+        'border-radius:999px">Does nothing</span>' : '') +
       '</span></div>';
   }
   if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="out">' +
@@ -339,6 +382,7 @@ function D3(){
 
 /* -- 4 -- mobile: the canvas, panned ----------------------------- */
 function M4(){
+  if (silent()) return silentOnly();
   return '<div class="phone">' + titlebar() + sum() +
     '<div class="canvas"><svg>' +
       wire('M68 42 V64','',0,0) +
@@ -359,6 +403,7 @@ function M4(){
 
 /* -- 5 -- mobile: the spine, branches collapsed ------------------ */
 function M5(){
+  if (silent()) return silentOnly();
   function s2(id, lab){
     var n = N[id];
     return (lab ? '<div style="font-size:10.5px;color:var(--muted);' +
@@ -406,6 +451,22 @@ function M5(){
 
 /* -- 6 -- mobile: walk it as the caller -------------------------- */
 function M6(){
+  if (silent()) return '<div class="phone">' + titlebar() + sum() +
+    '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Menu</b></div>' +
+    '<div class="stepnode skip"><div class="t">Menu</div>' +
+    '<div class="d">Configured, and nothing plays here. The caller waits, ' +
+    'hears nothing, and is passed straight on.</div></div>' +
+    '<div class="next"><div class="nh">What can happen next</div>' +
+    '<div class="opt"><span class="k">Always</span><span class="g">Sales team' +
+    '<div style="color:var(--muted);font-size:11px">rings 3 people</div>' +
+    '</span><span class="c">&rsaquo;</span></div></div></div>' +
+    '<div class="note"><b>The walk is at its best here and it is worth ' +
+    'seeing why.</b> One option, no branch, nothing red &mdash; a caller ' +
+    'going through this line has an ordinary call. The step that does ' +
+    'nothing is explained in place, where somebody is already reading, ' +
+    'rather than being a flag they have to go and open.<br><br>It is also ' +
+    'the case that most needs the count at the top: walk past this node ' +
+    'without reading it and the line looks entirely healthy.</div>';
   if (bare()) return '<div class="phone">' + titlebar() + sum() +
     '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Nobody is rung</b></div>' +
     '<div class="stepnode dead"><div class="t">Nobody is rung</div>' +
@@ -466,7 +527,8 @@ Object.keys(OPT).forEach(function(k){
   b.textContent=(k<4?'Desktop ':'Mobile ')+k; b.dataset.k=k;
   b.onclick=function(){show(+k);}; nums.appendChild(b);});
 var ctl=document.getElementById('ctl');
-[['typical','Typical — 11 of 13'],['bare','Bare — 2 of 13, four nodes']]
+[['typical','Typical — 11 of 13'],['bare','Bare — 2 of 13, four nodes'],
+ ['silent','A step that does nothing — 0 of 13 today']]
   .forEach(function(c){
     var b=document.createElement('button');
     b.textContent=c[1]; b.dataset.c=c[0];

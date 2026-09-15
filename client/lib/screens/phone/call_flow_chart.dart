@@ -37,9 +37,13 @@ class FlowNode {
   /// `dead` — a caller CAN reach this and nothing useful happens: an option
   /// pointing at a number nobody set, a ring group with nobody in it.
   ///
-  /// `skipped` — configured and never reached at all. Nobody complains about
-  /// one of these, because the caller does not know they missed a menu and the
-  /// owner does not know theirs is skipped.
+  /// `skipped` — the caller passes through this step and it does nothing.
+  ///
+  /// NOT unreachable. Phone measured their own renderer after describing it
+  /// the other way: a skipped menu is linked in the ordinary chain,
+  /// `arrival -> menu -> answer`, so a caller DOES traverse that point and
+  /// simply hears nothing there. Nobody complains, because the caller does not
+  /// know they missed a menu and the owner does not know theirs is silent.
   final String state;
 
   bool get isDead => state == 'dead';
@@ -193,10 +197,18 @@ FlowLayout layOutFlow(CallFlowGraph graph) {
     }
   }
 
-  // A `skipped` node is reachable from nothing a caller walks, so the search
-  // above never assigns it a column. It is not dropped: it goes one column
-  // past the end, where it reads as what it is rather than floating in the
-  // middle of the picture looking like a mistake in the drawing.
+  // Anything the search did not reach, placed one column past the end.
+  //
+  // This is NOT the `skipped` path, though it was written believing it was. A
+  // skipped node is linked into the ordinary chain and BFS gives it a normal
+  // column — measured, `arrival -> menu(skipped) -> answer` puts it at column
+  // 2, in the middle, which is the right drawing: a reader sees callers
+  // passing through a step that does nothing.
+  //
+  // What this loop actually guards is a node the server's contract says cannot
+  // exist — unreachable, or hung off a dangling edge. Kept rather than
+  // deleted, because without it such a node is dropped from `placed` and
+  // vanishes from a chart that is the only place anybody would notice it.
   final deepest = column.values.isEmpty
       ? 0
       : column.values.reduce((a, b) => math.max(a, b));
