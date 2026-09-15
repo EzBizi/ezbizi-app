@@ -62,7 +62,26 @@ final class ImapReplySender
     /**
      * @param  list<string>  $to  envelope recipients — one RCPT TO each. A reply
      *                              passes one; a composed message may pass several.
-     * @param  string  $message  the finished RFC 5322 message from {@see ReplyComposer}
+     * @param  string  $message  a finished RFC 5322 message. {@see ReplyComposer}
+     *                            builds every one today; that is a fact about
+     *                            the callers, NOT a requirement — this method
+     *                            never parses it. It is length-checked,
+     *                            dot-stuffed and written between DATA and the
+     *                            terminator, and nothing else looks inside.
+     *
+     *                            THE ONE REAL CONSTRAINT, and it is not
+     *                            authorship: {@see dotStuffed} rewrites EVERY
+     *                            line ending to CRLF. That is correct for SMTP
+     *                            and idempotent on a message that is already
+     *                            CRLF — but it means a part carrying raw bytes
+     *                            under `Content-Transfer-Encoding: binary` or
+     *                            `8bit` is silently corrupted, because a 0x0D
+     *                            or 0x0A inside the payload is indistinguishable
+     *                            from a line break here. So every part must use
+     *                            a 7-bit-safe encoding: base64 or
+     *                            quoted-printable. ReplyComposer only ever
+     *                            emits base64, which is why this has never
+     *                            bitten and why it was never written down.
      *
      * @throws ImapFailure
      */
