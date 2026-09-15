@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.3.0
+Stable tag: 1.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -151,7 +151,7 @@ refresh.
    again — if you lose it, issue a new one, which takes a moment.
 3. In WordPress, go to **Plugins → Add New → Upload Plugin**, choose the file,
    and activate it.
-4. Go to **Settings → EzBizi** and paste the token.
+4. Click **EzBizi** in the WordPress sidebar and paste the token.
 5. Put the shortcodes wherever the values belong.
 
 == Frequently Asked Questions ==
@@ -164,7 +164,7 @@ account and a registered website.
 = I changed a value in EzBizi and my site still shows the old one. =
 
 Values are cached for about five minutes. Press "Refresh now" on the
-**Settings → EzBizi** screen if you do not want to wait.
+**EzBizi** screen if you do not want to wait.
 
 = Can my subdomains show different details? =
 
@@ -194,6 +194,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.4.0 =
+* EzBizi now has its own item in the WordPress sidebar instead of sitting
+  inside Settings, which is where people were looking for it.
 
 = 1.3.0 =
 * Your pages and posts are visible in EzBizi under Web Management, read from
