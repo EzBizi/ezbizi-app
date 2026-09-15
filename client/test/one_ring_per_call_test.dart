@@ -36,7 +36,7 @@ void main() {
   test('a desk rings once: ours', () async {
     final device = _Fake(ringsItself: false);
     final alerts = _CountingAlerts();
-    final service = PhoneCallService.forTest(device)..alerts = alerts;
+    PhoneCallService.forTest(device).alerts = alerts;
 
     device.ring('+13055550100');
 
