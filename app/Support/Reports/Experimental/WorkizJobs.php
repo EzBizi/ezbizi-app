@@ -31,12 +31,28 @@ use RuntimeException;
  * logger that knows about headers; a URL ends up in far more places and none
  * of them know. So failures report a status and never a URL or a body.
  *
- * That guard was incomplete until the first live run: it only covered a
- * response that came back and FAILED. A connection that never completes
- * throws `ConnectionException`, whose message is built by cURL and contains
- * the full URL — token included. Both paths are caught now. The lesson is
- * that "nothing here logs a URL" was a claim about the code I had written,
- * not about the code that runs.
+ * THE RULE, rather than a count of the ways it can be broken: no failure may
+ * produce a message built from the REQUEST. A status is safe; anything cURL or
+ * Guzzle composed is not, because it carries the URL and the token is in it.
+ *
+ * Stated that way on purpose. This comment twice said a number and was twice
+ * made wrong by the next change:
+ *
+ *   1. The first version guarded a response that came back and FAILED.
+ *   2. The first live run threw `ConnectionException` instead — no response
+ *      to inspect, and a cURL message carrying the whole URL. I fixed it and
+ *      wrote "both paths are caught now".
+ *   3. Then I made `all()` concurrent, and `Http::pool` RETURNS the exception
+ *      object where a response would be rather than raising it. It walked past
+ *      both existing guards, and "both" had been false since that commit —
+ *      written by me, in the same hour, without noticing.
+ *
+ * Which is why the guard is now `instanceof Response` first, everywhere, and
+ * why this paragraph names the property instead of tallying the branches: a
+ * total is a claim about the paths somebody had FOUND, and the next library
+ * behaviour is not in it. The original lesson stands and generalises —
+ * "nothing here logs a URL" was a claim about the code I had written, not
+ * about the code that runs.
  *
  * ── ONE TOKEN PER BRANCH, SO THIS READS SEVERAL ─────────────────
  *
