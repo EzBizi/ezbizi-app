@@ -1150,8 +1150,21 @@ class _CallTabState extends State<CallTab> {
                             Icon(
                               Icons.circle,
                               size: 8,
+
+                              // RED for Do not disturb, asked for by Jose.
+                              //
+                              // It was `onSurfaceVariant`, which is the colour
+                              // of secondary TEXT — so the one state that
+                              // means "this person will not be rung" was drawn
+                              // in the palette's quietest ink, and read as
+                              // switched off rather than as unavailable.
+                              //
+                              // `error` rather than a literal red, so it
+                              // follows the theme into dark mode instead of
+                              // becoming the one hard-coded colour on the
+                              // screen.
                               color: row.state == 'dnd'
-                                  ? theme.colorScheme.onSurfaceVariant
+                                  ? theme.colorScheme.error
                                   : theme.colorScheme.primary,
                             ),
                             const SizedBox(width: 10),

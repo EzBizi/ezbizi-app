@@ -278,6 +278,49 @@ void main() {
     expect(find.byKey(const Key('phone-call-history')), findsNothing);
   });
 
+  /// Do not disturb is RED, and available is not.
+  ///
+  /// Jose asked for it off a screenshot: the dot was drawn in
+  /// `onSurfaceVariant`, which is the colour of secondary TEXT — so the one
+  /// state that means "this person will not be rung" was the quietest ink on
+  /// the row and read as switched off rather than as unavailable.
+  ///
+  /// The second half is the control. Asserting only that a red dot exists
+  /// passes on a build that draws every dot red, which is a worse screen than
+  /// the one being fixed.
+  testWidgets('a teammate on Do not disturb gets a red dot', (tester) async {
+    await _pump(tester, view: CallView.team, size: const Size(900, 800));
+
+    final scheme = Theme.of(
+      tester.element(find.text('Bruno Vega')),
+    ).colorScheme;
+
+    Color? dotBeside(String name) {
+      final row = find.ancestor(
+        of: find.text(name),
+        matching: find.byType(Row),
+      );
+
+      return tester
+          .widget<Icon>(
+            find.descendant(of: row.first, matching: find.byIcon(Icons.circle)),
+          )
+          .color;
+    }
+
+    expect(
+      dotBeside('Bruno Vega'),
+      scheme.error,
+      reason: 'Do not disturb is not drawn in the error colour',
+    );
+
+    expect(
+      dotBeside('Jose Silva'),
+      isNot(scheme.error),
+      reason: 'every dot is red, so the colour says nothing',
+    );
+  });
+
   testWidgets('the pad stops shrinking before the other two do', (
     tester,
   ) async {
@@ -1560,6 +1603,12 @@ MockClientHandler _handler({
             'name': 'Jose Silva',
             'state': 'registered',
             'updated_at': '2026-08-24T12:01:00+00:00',
+          },
+          {
+            'user_id': 'u-3',
+            'name': 'Bruno Vega',
+            'state': 'dnd',
+            'updated_at': '2026-08-24T12:02:00+00:00',
           },
         ],
       });
