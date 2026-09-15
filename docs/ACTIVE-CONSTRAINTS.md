@@ -380,3 +380,44 @@ worse trade than a slightly wrong record. Phone's call, and the right one.
 every file in it belongs to the subject line.** On a shared worktree a
 path-limited commit is not a promise about scope. §8 is the same mechanism from
 the other side; this is what it costs when nobody notices for an hour.
+
+---
+
+## 10 · Never clear SHARED compiled state to debug your own run
+
+**`php artisan optimize:clear` in the shared tree is a change to every other
+session, not to yours.** It deletes the compiled views, and a dozen sessions then
+race to recompile them:
+
+    rename(storage/framework/views/c981E1D.tmp, .../c98666455c25d14c5cbf7f47159b8b84.php):
+    Access is denied (code: 5)
+
+2026-09-15, SES, reported unprompted. Worse than the burst: **it looked like it
+worked.** One suite went green immediately after, which was almost certainly the
+pause rather than the clear - so the command both broke other people's runs and
+awarded itself the credit.
+
+The same applies to anything else that rewrites state the whole tree shares:
+`config:clear`, `view:clear`, `cache:clear`, `composer dump-autoload`,
+`git stash`, `reset --hard`.
+
+**What the symptom actually was, every time so far: §4.** A session was running
+`RefreshDatabase` inside ANOTHER MODULE'S schema - `ezbizi_testing_email` rather
+than their own - while that module worked in it. Alternating 17/17 then 1-passed,
+same tree, same minute. On their own schema: three consecutive 18/18, then all
+seven suites in ONE batch, 77/77 in 34 seconds.
+
+That last number matters because the collision had produced a second, wrong
+conclusion: *"this machine cannot sustain a multi-suite run"*, which had them
+gating one suite at a time for an hour. **A shared-schema collision does not only
+redden tests - it manufactures theories about the machine.**
+
+**One hole kept deliberately, because the tidy story is what gets quoted.**
+Mid-diagnosis the plain `mysql` CLI over TCP returned the same `1698 Access
+denied` as PHP, which is what convinced them it was server-side: a schema
+collision has no business producing an AUTH error. Three commands later, TCP,
+named pipe and TCP again all succeeded with no intervention, and it never
+reproduced. The correlation with the schema is strong; the causal chain has a gap
+in it and nobody has closed it.
+
+So: **check `DB_DATABASE` before concluding anything about this machine.**
