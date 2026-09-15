@@ -2595,6 +2595,31 @@ because a pronoun resolved against whatever the reader was holding is how yester
 >
 > The two-labelled-facts shape itself is unchanged and is what gets built. It stops paying rent
 > while it has nothing to say.
+>
+> **BUILT `d2a256e1` — `client/lib/widgets/sending_server_panel.dart`. One finding, and it is in
+> MY drawing rather than their build.** The third rung of the cascade renders **`EzBizi default`**
+> when nothing is set at any scope, directly above *"Nothing is connected, so these are not going
+> out."*
+>
+> **The sentence is true — I verified it rather than assuming the worse case.** `asTenant()` is
+> retired and refuses unconditionally (Jose, 2026-09-14) and `throughTenantProvider()` throws when
+> the scope has no provider connected, so a tenant's report does **not** quietly leave as EzBizi.
+>
+> **The word above it is the problem.** `PlatformIdentity` calls itself *"the root of the cascade,
+> not a fallback beside it"* and the resolver's loop does end there — so "EzBizi default" is
+> correct about the cascade and wrong about this card. For every other setting it means *a value
+> applies and it is ours*; for this one it means *no value can apply to your content at all*.
+> Same words, opposite operational meaning, one line above a sentence that contradicts them — and
+> the misreading it invites is the one Jose has corrected **four times**. My own gallery header
+> argues against precisely this (*"never an implicit fallback, because with one nobody can tell by
+> looking which credential is actually in use"*) and then I wrote the implicit fallback into the
+> card.
+>
+> **Proposed: keep `Set here` and `Inherited from {name}` verbatim; the third rung becomes
+> `Not set anywhere`.** It diverges from the settings screen's dialect deliberately — the two
+> facts stay distinct, which is what that screen's docblock actually asks for, and the third stops
+> claiming a fallback this content cannot use. SES's call if they would rather vocabulary
+> consistency won.
 
 `docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
 with no destination. The fork landed: SES and Email settled that **a report must not go out
