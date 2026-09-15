@@ -364,6 +364,29 @@ void main() {
     expect(deleted, 'id-Nationwide');
   });
 
+  testWidgets('an account with no API subscription says so, permanently', (
+    tester,
+  ) async {
+    // Jose, 2026-09-15: "we dont pay the api access there". The undercount is
+    // structural, so the screen names it rather than leaving it absent -
+    // "not connected" would read as a task somebody should go and do.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Massachusetts is never included'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a refused Workiz account is named, not folded away', (
     tester,
   ) async {
@@ -660,6 +683,12 @@ Map<String, dynamic> _callDay({
           for (final a in accounts) {'id': 'id-$a', 'name': a},
         ],
         'workiz_failed': {for (final a in failed) a: 'refused'},
+        'workiz_unreachable': [
+          {
+            'name': 'Massachusetts',
+            'reason': 'Workiz API access is not paid for on that account.',
+          },
+        ],
         'totals': {
           'calls': 280,
           'answered': 183,

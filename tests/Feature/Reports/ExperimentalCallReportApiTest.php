@@ -182,6 +182,61 @@ class ExperimentalCallReportApiTest extends TestCase
         $this->assertSame(1, $body['totals']['answered']);
     }
 
+    /**
+     * EVERY account refusing is a different arm from one refusing.
+     *
+     * It builds the failure map itself rather than receiving it, and it did so
+     * with `array_fill_keys($accounts, ...)` after `accounts()` started
+     * carrying {id, name} maps for the disconnect chips — array keys, which is
+     * a TypeError rather than a wrong answer. Nothing caught it because the
+     * other refusal test refuses exactly one account.
+     */
+    public function test_every_workiz_account_refusing_still_returns_the_calls(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->connected($tenant, allRefuse: true);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json();
+
+        $this->assertArrayHasKey('Nationwide', $body['workiz_failed']);
+        $this->assertArrayHasKey('New Jersey', $body['workiz_failed']);
+
+        // The calls survive. A blank jobs column must not read as "nobody
+        // booked anything".
+        $this->assertSame(1, $body['totals']['answered']);
+    }
+
+    /**
+     * A BOOK WE WILL NEVER READ, named rather than absent.
+     *
+     * Jose, 2026-09-15: "we dont pay the api access there". Massachusetts has
+     * no Workiz API subscription, so the undercount is permanent rather than a
+     * configuration somebody will get round to — and since the same people book
+     * into every account, it makes individual people's numbers low rather than
+     * omitting a region. "Not connected" would read as a task.
+     */
+    public function test_an_account_with_no_api_subscription_is_named_as_unreachable(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->connected($tenant);
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('Massachusetts', $body['workiz_unreachable'][0]['name']);
+        $this->assertStringContainsString(
+            'not paid for',
+            $body['workiz_unreachable'][0]['reason'],
+        );
+    }
+
     // ── fixtures ─────────────────────────────────────────────────
 
     private function notConnected(): void
@@ -193,7 +248,7 @@ class ExperimentalCallReportApiTest extends TestCase
         ]);
     }
 
-    private function connected(array $tenant, bool $njRefuses = false): void
+    private function connected(array $tenant, bool $njRefuses = false, bool $allRefuse = false): void
     {
         config([
             'experimental_reports.ringcentral.server' => 'https://platform.ringcentral.test',
@@ -225,11 +280,11 @@ class ExperimentalCallReportApiTest extends TestCase
                 ]],
             ]),
 
-            'api.workiz.com/api/v1/nj/*' => $njRefuses
+            'api.workiz.com/api/v1/nj/*' => ($njRefuses || $allRefuse)
                 ? Http::response([], 403)
                 : Http::response(['flag' => true, 'data' => []]),
 
-            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => [
+            'api.workiz.com/*' => $allRefuse ? Http::response([], 403) : Http::response(['flag' => true, 'data' => [
                 ['Phone' => '2125551212', 'CreatedBy' => 'Trey Brannan', 'CreatedDate' => '2026-09-14 09:00:00'],
             ]]),
         ]);

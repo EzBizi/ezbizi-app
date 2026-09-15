@@ -344,6 +344,21 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           ),
         const SizedBox(height: 8),
         _connectControl(context),
+        // A book nobody will ever read, named rather than absent. Jose,
+        // 2026-09-15: "we dont pay the api access there". Saying "not
+        // connected" would send somebody off to connect it.
+        for (final account
+            in (report['workiz_unreachable'] as List? ?? const []))
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              '${(account as Map)['name']} is never included: '
+              '${account['reason']}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.outline,
+              ),
+            ),
+          ),
         if (failed.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(
