@@ -298,6 +298,91 @@ class NotificationEmailTest extends TestCase
         NotificationFacade::assertSentTo($tenant['admin'], NotificationNotice::class);
     }
 
+    public function test_a_rule_may_decline_the_email_and_still_ring_the_bell(): void
+    {
+        NotificationFacade::fake();
+
+        // The per-rule switch Automations wires to `in_app_only`. The
+        // organization sends email; this one rule asks not to.
+        $tenant = $this->provisionTenant('Kappa');
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+            inAppOnly: true,
+        ));
+
+        $this->assertSame(1, $told);
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Notification::query()->count()));
+        NotificationFacade::assertNothingSent();
+    }
+
+    public function test_a_rule_cannot_demand_an_email_the_company_switched_off(): void
+    {
+        NotificationFacade::fake();
+
+        // The ceiling direction. `in_app_only` only ever NARROWS: with the
+        // organization's email off, a rule leaving the switch untouched still
+        // sends no mail. If this ever inverts, a rule author gains the power to
+        // overrule a company setting from a screen the company cannot see.
+        $tenant = $this->provisionTenant('Lambda');
+        $this->set($tenant, 'notifications.email_enabled', false);
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+            inAppOnly: false,
+        ));
+
+        $this->assertSame(1, $told, 'the bell still rings');
+        NotificationFacade::assertNothingSent();
+    }
+
+    /**
+     * The case Automations' one-argument version would have got wrong.
+     *
+     * A rule declining the email, in a company whose bell is off and whose
+     * email is on. Nobody is told — and ActionRunner asks allows() to explain
+     * that zero, choosing between "nobody has reach over that record" and
+     * "switched off for this company". Without `$inAppOnly` reaching allows(),
+     * it would see a live email channel, answer true, and send the rule author
+     * to audit permissions over a switch they set themselves.
+     */
+    public function test_a_declining_rule_with_the_bell_off_reports_a_setting_not_a_reach_problem(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant('Mu');
+        $this->set($tenant, 'notifications.in_app_enabled', false);
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'A setting changed',
+            subject: $tenant['org'],
+            source: 'automation',
+            inAppOnly: true,
+        ));
+
+        $this->assertSame(0, $told);
+        NotificationFacade::assertNothingSent();
+
+        // The assertion that distinguishes: false means "switched off", which
+        // is the sentence a rule author can act on.
+        $this->assertFalse($this->inTenant(
+            $tenant['org'],
+            fn () => $this->dispatcher()->allows('automation', $tenant['org'], inAppOnly: true),
+        ));
+
+        // And the control: the same organization, a rule that has NOT declined,
+        // is still allowed — because email is on. Without this, the assertion
+        // above passes just as well against an allows() that always said false.
+        $this->assertTrue($this->inTenant(
+            $tenant['org'],
+            fn () => $this->dispatcher()->allows('automation', $tenant['org']),
+        ));
+    }
+
     public function test_both_channels_off_tells_nobody_and_says_so(): void
     {
         NotificationFacade::fake();

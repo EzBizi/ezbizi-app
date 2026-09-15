@@ -95,8 +95,9 @@ class NotificationDispatcher
         string $source = 'system',
         ?string $automationId = null,
         ?string $eventId = null,
+        bool $inAppOnly = false,
     ): int {
-        if (! $this->allows($source, $subject)) {
+        if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
         }
 
@@ -156,7 +157,20 @@ class NotificationDispatcher
             $rowsWritten = count($rows);
         }
 
-        $emailed = $this->alsoByEmail($told, $title, $body, $scope);
+        /*
+         * A RULE MAY DECLINE THE EMAIL. IT MAY NOT DEMAND ONE.
+         *
+         * `$inAppOnly` is the automation builder's per-rule switch, and it is
+         * phrased as a NEGATIVE deliberately: an untouched switch sends a real
+         * `false`, so a positively-phrased key would have silenced the email on
+         * every rule that already exists the day it shipped.
+         *
+         * It only ever narrows. allows() has already applied the organization's
+         * settings above, so a rule cannot turn on a channel the company
+         * switched off — which keeps the answer to "why did I get this email"
+         * one switch rather than two places that have to be read together.
+         */
+        $emailed = $inAppOnly ? 0 : $this->alsoByEmail($told, $title, $body, $scope);
 
         /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.
@@ -418,7 +432,7 @@ class NotificationDispatcher
      * row is written on. The sentence in the old docblock is now the truth
      * rather than the intention.
      */
-    public function allows(string $source, ?Model $subject = null): bool
+    public function allows(string $source, ?Model $subject = null, bool $inAppOnly = false): bool
     {
         $scope = $this->settingsScope($subject);
 
@@ -444,6 +458,29 @@ class NotificationDispatcher
          * without reaching into a file I do not own, and keeps allows() meaning
          * the one thing its name claims: will this be told at all.
          */
+        /*
+         * $inAppOnly NARROWS WHAT COUNTS AS "a channel left", and that is the
+         * whole reason it is a parameter here and not only on dispatch().
+         *
+         * Automations asked for one argument. It needs two, because of a case
+         * the first one opens on its own: a rule declining the email, in a
+         * company whose bell is switched off and whose email is not. dispatch()
+         * would write no row and send no letter and return 0 — and ActionRunner
+         * asks THIS method to explain that zero, choosing between "nobody has
+         * reach over that record" and "switched off for this company". Without
+         * the flag, allows() would still see a live email channel, answer true,
+         * and the rule author would be sent to audit permissions over a switch
+         * they set themselves one screen away.
+         *
+         * Same shape as the third case the channel split opened, which is why
+         * it is worth spelling out twice: every time this method learns a new
+         * reason for nobody to be told, the caller that renders the zero has to
+         * learn it in the same commit or it starts lying.
+         */
+        if ($inAppOnly) {
+            return $this->channelOn('notifications.in_app_enabled', $scope);
+        }
+
         return $this->channelOn('notifications.in_app_enabled', $scope)
             || $this->channelOn('notifications.email_enabled', $scope);
     }
