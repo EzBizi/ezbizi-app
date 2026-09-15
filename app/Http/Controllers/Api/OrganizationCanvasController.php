@@ -549,15 +549,21 @@ class OrganizationCanvasController extends Controller
         // exist today" is a set that changes when somebody adds a branch, and the
         // organization is not.
         // `canActOnOrganization` rather than the hand-written test that stood
-        // here. They agree on scope - a CHECK constraint,
-        // `assignments_exactly_one_scope`, means an assignment carrying an
-        // organization id IS organization-scoped - but they disagree about a
-        // DEACTIVATED user, and only the method refuses one.
+        // here, for ONE RULE rather than two copies of it - not because the old
+        // one let anybody through.
         //
-        // That matters more than it looks: `is_active` is enforced in exactly
-        // three places, all of them `User::canAct*`. Login does not check it and
-        // no middleware checks it, so a reach test written by hand is not a
-        // weaker copy of the rule - it is the whole rule, missing.
+        // Checked before changing it, because I first reported this as a hole
+        // and it is not: the method also refuses a DEACTIVATED user, and the
+        // hand-written test did not - but a deactivated user has no way in.
+        // AuthenticateUser refuses their login (:93 and :209) and deactivating
+        // through HR deletes their tokens (HrPeopleController:386). The scope
+        // half is unreachable too: a CHECK constraint,
+        // `assignments_exactly_one_scope`, means an assignment carrying an
+        // organization id IS organization-scoped.
+        //
+        // So this is consistency, and the residual is narrow: somebody
+        // deactivated by a direct database write, outside the HR flow, keeps
+        // their tokens. The method covers that; a hand-written copy would not.
         $reaches = $user->canActOnOrganization($user->organization);
 
         // Refused by POSITION rather than by place: there is no other
