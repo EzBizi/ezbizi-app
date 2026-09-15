@@ -484,6 +484,126 @@ class CallsController extends Controller
     }
 
     /**
+     * GET /api/v1/phone/calls/ringing
+     *
+     * Calls ringing somewhere right now, on the lines this person can see.
+     *
+     * ── What this is for ─────────────────────────────────────────────
+     *
+     * Call pickup, asked for by name. A call is ringing a group you are not
+     * in — Sales rings, you are in Support, everybody in Sales is out — and
+     * the only thing you can do today is watch it go to voicemail.
+     *
+     * Scoped by grant rather than by ring group deliberately: whether you may
+     * ANSWER a line is the grant, and whether a line rings YOU is the group.
+     * Pickup exists precisely for the calls that are not ringing you, so
+     * filtering by the group would leave the list empty in the one case it is
+     * for.
+     */
+    public function ringing(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        $numberIds = $this->access->readable($request->user())->pluck('id')->all();
+
+        // A ceiling as well as a floor. `status` is moved by Twilio's status
+        // webhook, and a call whose final callback never arrives stays
+        // `ringing` in this table for ever — offering somebody a Pick up
+        // button for a conversation that ended last Tuesday. Nothing rings for
+        // two minutes, so anything older than that is a row we never heard the
+        // end of rather than a call.
+        $calls = PhoneCall::query()
+            ->where('status', PhoneCall::STATUS_RINGING)
+            ->whereIn('number_id', $numberIds)
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->whereNull('parked_at')
+            ->orderBy('created_at')
+            ->limit(10)
+            ->get();
+
+        return response()->json(['data' => $calls->map(fn (PhoneCall $call) => [
+            'id' => $call->id,
+            'from_e164' => $call->from_e164,
+            'to_e164' => $call->to_e164,
+            'created_at' => optional($call->created_at)->toIso8601String(),
+        ])->values()->all()]);
+    }
+
+    /**
+     * POST /api/v1/phone/calls/{call}/pickup
+     *
+     * Take a call that is ringing somebody else.
+     *
+     * ── Why this is the transfer TwiML ───────────────────────────────
+     *
+     * Because it is the same move: point the CUSTOMER's leg at a set of
+     * devices. Transfer aims it at the devices of the person already on the
+     * call; pickup aims it at the devices of the person asking. Rendering a
+     * second document for that would be a second way for the recording
+     * callback and the dial action to drift.
+     *
+     * ── Why only while it is RINGING ─────────────────────────────────
+     *
+     * An in-progress call has somebody talking on it. Redirecting that is not
+     * a pickup, it is taking a customer away from a colleague mid-sentence —
+     * and from the caller's side the two are indistinguishable, which is
+     * exactly why the guard is on the status rather than on the button.
+     */
+    public function pickUp(Request $request, PhoneCall $call): JsonResponse
+    {
+        $this->authorize('view', $call);
+
+        if ($call->status !== PhoneCall::STATUS_RINGING) {
+            return response()->json([
+                'message' => 'That call is no longer ringing.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $connection = $call->connection;
+        $number = $call->number_id === null ? null : PhoneNumber::query()->find($call->number_id);
+
+        if ($connection === null || $number === null) {
+            return response()->json([
+                'message' => 'That call is not on a line EzBizi can move it from.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Every live device this person has. '' rather than a device id: they
+        // are not on the call yet, so there is no leg of theirs to exclude and
+        // whichever of their phones they are near should ring.
+        $targets = $this->otherDevices($connection, (string) $request->user()->id, '');
+
+        if ($targets === []) {
+            return response()->json([
+                'message' => 'No device of yours is signed in to take it.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        // Refused BEFORE the redirect rather than after. transfer() renders a
+        // document that apologises to the caller and takes a message when it
+        // is handed nothing to ring — correct for a transfer that fails, and
+        // wrong here: it would end a call that is still perfectly alive and
+        // still ringing somebody who might yet answer.
+
+        try {
+            $this->twilio->redirectCall(
+                $connection,
+                (string) $call->twilio_sid,
+                $this->renderer->transfer($number, $targets),
+            );
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'That call has already ended.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        return response()->json(['data' => [
+            'call_id' => $call->id,
+            'ringing' => count($targets),
+        ]]);
+    }
+
+    /**
      * Every live device this person has except the one asking.
      *
      * @return list<string> Voice identities

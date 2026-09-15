@@ -157,6 +157,7 @@ class _CallTabState extends State<CallTab> {
     if (token == _wasDeskToken) return;
     _wasDeskToken = token;
     unawaited(_loadParked());
+    unawaited(_loadRinging());
   }
 
   int _wasDeskToken = 0;
@@ -286,6 +287,7 @@ class _CallTabState extends State<CallTab> {
     await _loadCompanyRules();
     await _loadDesk();
     await _loadParked();
+    await _loadRinging();
   }
 
   /// The rules this company set for its own phone system.
@@ -381,6 +383,37 @@ class _CallTabState extends State<CallTab> {
     });
   }
 
+  /// What is ringing elsewhere, for everyone who shares these lines.
+  Future<void> _loadRinging() async {
+    final response = await widget.api.get('/phone/calls/ringing');
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _ringing = [
+        for (final row in (response.data as List? ?? const []))
+          if (row is Map<String, dynamic>) _Ringing.fromJson(row),
+      ];
+    });
+  }
+
+  /// Take a call that is ringing somebody else.
+  Future<void> _takeRinging(_Ringing ringing) async {
+    final response = await widget.api.post(
+      '/phone/calls/${ringing.id}/pickup',
+      const {},
+    );
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _bridgeNote = response.reason);
+    }
+
+    // Reloaded either way. A refusal is almost always "that call is no longer
+    // ringing", which means the list is what is wrong and leaving the row up
+    // invites a second press at the same nothing.
+    await _loadRinging();
+  }
+
   /// Set this call down where anybody can pick it up.
   Future<void> _park() async {
     final response = await widget.api.post('/phone/calls/park', const {});
@@ -445,6 +478,14 @@ class _CallTabState extends State<CallTab> {
   /// Bumped when a call ends, so the history beside the pad shows the row it
   /// just gained without anybody reloading the screen.
   int _historyToken = 0;
+
+  /// Calls ringing somewhere else right now, which this person may take.
+  ///
+  /// Not the same as [_incomingFrom], which is a call ringing THIS device and
+  /// already has its own banner with Accept on it. These are the ones ringing
+  /// a group you are not in — the whole point of pickup, and the reason the
+  /// list is not filtered by who the call is ringing.
+  List<_Ringing> _ringing = const [];
 
   /// Callers somebody has set down, waiting for anybody to pick them up.
   ///
@@ -726,7 +767,8 @@ class _CallTabState extends State<CallTab> {
                     // empty "Parked calls" panel is a box that teaches people
                     // to stop looking at it, and the whole value of this one
                     // is being noticed on the rare day it has somebody in it.
-                    if (_parked.isNotEmpty) _parkedBanner(),
+                    if (_parked.isNotEmpty || _ringing.isNotEmpty)
+                      _waitingBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
 
                     // The zero-sized WebView2 host moved to the shell with
@@ -1728,6 +1770,28 @@ class _LinePicker extends StatelessWidget {
   }
 }
 
+class _Ringing {
+  const _Ringing({
+    required this.id,
+    required this.fromE164,
+    required this.toE164,
+  });
+
+  final String id;
+  final String fromE164;
+
+  /// WHICH LINE it is ringing, which is how somebody decides whether to take
+  /// it. "+1 305… is ringing" says a stranger is calling somebody; "+1 305… is
+  /// ringing Sales" says whether it is any of your business.
+  final String toE164;
+
+  factory _Ringing.fromJson(Map<String, dynamic> json) => _Ringing(
+    id: json['id'] as String? ?? '',
+    fromE164: json['from_e164'] as String? ?? '',
+    toE164: json['to_e164'] as String? ?? '',
+  );
+}
+
 class _Parked {
   const _Parked({
     required this.id,
@@ -1903,13 +1967,50 @@ extension _LiveCall on _CallTabState {
     );
   }
 
-  /// Who is holding, and the button that takes them.
+  /// Calls this person could take: ringing elsewhere, or set down waiting.
   ///
-  /// Named rather than counted. "2 parked calls" tells somebody a fact they
-  /// then have to open something to act on; the number they are holding for is
-  /// the thing that decides whether this one is yours to pick up.
-  Widget _parkedBanner() {
+  /// ── Why one strip and not two ────────────────────────────────────
+  ///
+  /// They are different facts — one is urgent and one is patient — but they
+  /// answer the same question, which is "is there a caller here that nobody
+  /// is dealing with". Two strips would stack, and the second would be the
+  /// one nobody reads.
+  ///
+  /// Ringing first, because it is the one with a clock on it: a parked caller
+  /// waits as long as they are willing to, and a ringing one goes to voicemail
+  /// in seconds.
+  ///
+  /// Named rather than counted throughout. "2 calls waiting" is a fact
+  /// somebody then has to open something to act on; the number they are
+  /// holding for is what decides whether this one is theirs.
+  Widget _waitingBanner() {
     final theme = Theme.of(context);
+
+    // Refused while this desk is already on a call — either kind would place a
+    // second one, and the first is a customer mid-sentence.
+    final busy = _service.onCall;
+
+    Widget row(IconData icon, String text, VoidCallback take) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.onTertiaryContainer),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onTertiaryContainer,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: busy ? null : take,
+            child: const Text('Pick up'),
+          ),
+        ],
+      ),
+    );
 
     return Material(
       color: theme.colorScheme.tertiaryContainer,
@@ -1918,38 +2019,21 @@ extension _LiveCall on _CallTabState {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            for (final ringing in _ringing)
+              row(
+                Icons.ring_volume_outlined,
+                '${formatPhoneNumber(ringing.fromE164)} is ringing '
+                    '${formatPhoneNumber(ringing.toE164)}',
+                () => _takeRinging(ringing),
+              ),
             for (final parked in _parked)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.pause_circle_outline,
-                      size: 18,
-                      color: theme.colorScheme.onTertiaryContainer,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        parked.parkedByName == null
-                            ? '${formatPhoneNumber(parked.fromE164)} is waiting'
-                            : '${formatPhoneNumber(parked.fromE164)} is waiting '
-                                  '— parked by ${parked.parkedByName}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onTertiaryContainer,
-                        ),
-                      ),
-                    ),
-
-                    // Refused while this desk is already on a call: picking up
-                    // would place a second one, and the first is a customer
-                    // mid-sentence.
-                    TextButton(
-                      onPressed: _service.onCall ? null : () => _pickUp(parked),
-                      child: const Text('Pick up'),
-                    ),
-                  ],
-                ),
+              row(
+                Icons.pause_circle_outline,
+                parked.parkedByName == null
+                    ? '${formatPhoneNumber(parked.fromE164)} is waiting'
+                    : '${formatPhoneNumber(parked.fromE164)} is waiting '
+                          '— parked by ${parked.parkedByName}',
+                () => _pickUp(parked),
               ),
           ],
         ),

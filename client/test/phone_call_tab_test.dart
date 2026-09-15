@@ -470,6 +470,60 @@ void main() {
     expect(find.text('Pick up'), findsOneWidget);
   });
 
+  /// A call ringing somewhere else names the LINE as well as the caller.
+  ///
+  /// "+1 305… is ringing" says a stranger is calling somebody. "+1 305… is
+  /// ringing +1 203…" says whether it is any of your business — which is the
+  /// decision somebody is making when they look at this row, since the whole
+  /// point of pickup is calls that are NOT ringing them.
+  testWidgets('a call ringing elsewhere names the line it is ringing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      ringing: const [
+        {
+          'id': 'rg-1',
+          'from_e164': '+13055550100',
+          'to_e164': '+12035550142',
+        },
+      ],
+    );
+
+    expect(
+      find.textContaining('+1 (305) 555-0100 is ringing +1 (203) 555-0142'),
+      findsOneWidget,
+    );
+    expect(find.text('Pick up'), findsOneWidget);
+  });
+
+  /// Both kinds share one strip, and both are reachable in it.
+  ///
+  /// The control for folding them together: a bug that rendered only the
+  /// first list would pass every single-kind test above.
+  testWidgets('a ringing call and a parked one both appear', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      ringing: const [
+        {'id': 'rg-1', 'from_e164': '+13055550100', 'to_e164': '+12035550142'},
+      ],
+      parked: const [
+        {
+          'id': 'pk-1',
+          'from_e164': '+17865550111',
+          'parked_by_name': 'Bruno Vega',
+          'pick_up': 'park:ezbizi-park-pk-1',
+        },
+      ],
+    );
+
+    expect(find.textContaining('is ringing'), findsOneWidget);
+    expect(find.textContaining('is waiting'), findsOneWidget);
+    expect(find.text('Pick up'), findsNWidgets(2));
+  });
+
   testWidgets('a message names who sent it', (tester) async {
     await _pump(tester, size: const Size(900, 800));
 
@@ -1363,6 +1417,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 Future<void> _pump(
   WidgetTester tester, {
   List<Map<String, dynamic>> parked = const [],
+  List<Map<String, dynamic>> ringing = const [],
   CallView view = CallView.dial,
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
@@ -1380,6 +1435,7 @@ Future<void> _pump(
     requireCallTag: requireCallTag,
     preferences: preferences,
     parked: parked,
+    ringing: ringing,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1418,6 +1474,7 @@ MockClientHandler _handler({
   bool requireCallTag = false,
   Map<String, Object?> preferences = const {},
   List<Map<String, dynamic>> parked = const [],
+  List<Map<String, dynamic>> ringing = const [],
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1478,6 +1535,10 @@ MockClientHandler _handler({
 
     if (path.endsWith('/phone/calls/parked') && request.method == 'GET') {
       return _json({'data': parked});
+    }
+
+    if (path.endsWith('/phone/calls/ringing') && request.method == 'GET') {
+      return _json({'data': ringing});
     }
 
     if (path.endsWith('/phone/presence') && request.method == 'GET') {
