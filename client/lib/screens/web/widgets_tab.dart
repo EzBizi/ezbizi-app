@@ -472,6 +472,19 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
         _text(theme, 'Box placeholder', chat['placeholder'],
             (v) => _set('chat', 'placeholder', v)),
+
+        // What the visitor is asked BEFORE the conversation starts. Without
+        // these three answers a chat arrives in Leads with nobody's name on
+        // it, and the only way to reply is to hope they come back.
+        _text(theme, 'Before they start', chat['lead_in'],
+            (v) => _set('chat', 'lead_in', v)),
+        _text(theme, 'Name question', chat['name_label'],
+            (v) => _set('chat', 'name_label', v)),
+        _text(theme, 'Contact question', chat['contact_label'],
+            (v) => _set('chat', 'contact_label', v)),
+        _text(theme, 'Message question', chat['message_label'],
+            (v) => _set('chat', 'message_label', v)),
+        _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
         _dropdown(
           theme,
           'Where it sits',
@@ -637,37 +650,85 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // What a visitor meets first: the coloured header, then the
+              // three questions asked BEFORE the conversation. The message
+              // thread is only reached after those, so previewing the thread
+              // would show the screen almost nobody sees first.
               _mockPanel(
                 surface: surface,
                 radius: radius,
+                padding: EdgeInsets.zero,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _line(chat['title']),
-                      style: TextStyle(
-                        color: text,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      color: accent,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _line(chat['title']),
+                            style: TextStyle(
+                              color: onAccent,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (_line(chat['intro']).isNotEmpty)
+                            Text(
+                              _line(chat['intro']),
+                              style: TextStyle(
+                                color: onAccent.withValues(alpha: 0.9),
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (_line(chat['intro']).isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _line(chat['intro']),
-                        style: TextStyle(color: text, fontSize: 12),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    _mockInput(_line(chat['placeholder']), radius, text),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _mockButton(
-                        _line(chat['send']),
-                        accent,
-                        onAccent,
-                        radius,
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_line(chat['lead_in']).isNotEmpty) ...[
+                            Text(
+                              _line(chat['lead_in']),
+                              style: TextStyle(
+                                color: text.withValues(alpha: 0.85),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          for (final ask in [
+                            chat['name_label'],
+                            chat['contact_label'],
+                            chat['message_label'],
+                          ]) ...[
+                            Text(
+                              '${_line(ask)} *',
+                              style: TextStyle(
+                                color: text,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            _mockInput('', radius, text),
+                            const SizedBox(height: 10),
+                          ],
+                          SizedBox(
+                            width: double.infinity,
+                            child: _mockButton(
+                              _line(chat['start']),
+                              accent,
+                              onAccent,
+                              radius,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -757,9 +818,13 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     required Color surface,
     required double radius,
     required Widget child,
+    // Zero for a panel that paints its own header to the edges, which cannot
+    // happen while the padding is on the outside.
+    EdgeInsets padding = const EdgeInsets.all(12),
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: padding,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(radius),

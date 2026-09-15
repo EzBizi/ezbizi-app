@@ -91,6 +91,8 @@ void main() {
         body = {
           'own': own,
           'config': {
+            // Every key WidgetDefaults::resolve() emits for chat. A fixture
+            // that carries fewer is a fixture agreeing with itself.
             'chat': {
               'enabled': true,
               'title': 'Talk to A-1',
@@ -98,6 +100,11 @@ void main() {
               'button': 'Chat',
               'placeholder': 'Type here',
               'position': 'bottom-right',
+              'lead_in': 'Quick details first, so we can get back to you.',
+              'name_label': 'Your name',
+              'contact_label': 'Phone or email',
+              'message_label': 'How can we help?',
+              'start': 'Start chat',
             },
             'form': {
               'enabled': true,
@@ -393,6 +400,29 @@ void main() {
     // way the visitor's form does, which is part of what is being previewed.
     expect(find.text('Name *'), findsOneWidget);
     expect(find.textContaining('What needs doing?'), findsWidgets);
+  });
+
+  /// The preview shows what a visitor meets FIRST, which is the three
+  /// questions and not the message thread.
+  ///
+  /// Jose compared ours to the chat on A1 Tools: that one asks who you are
+  /// before the conversation, ours opened straight into a message box, and a
+  /// chat with nobody's name on it cannot be answered if they close the tab.
+  /// The preview is where he checks that wording, so it has to be the step
+  /// the wording belongs to.
+  testWidgets('the preview asks before it chats', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // The editable copy, drawn as the visitor will meet it.
+    expect(find.textContaining('Quick details first'), findsWidgets);
+    expect(find.text('Your name *'), findsOneWidget);
+    expect(find.text('Phone or email *'), findsOneWidget);
+    expect(find.text('How can we help? *'), findsOneWidget);
+    expect(find.text('Start chat'), findsWidgets);
+
+    // The control: the closed launcher is still previewed beside it, so these
+    // assertions are about the panel's contents rather than a blank pane.
+    expect(find.text('Chat'), findsWidgets);
   });
 
   /// There is no switch, and nothing may imply there is one.
