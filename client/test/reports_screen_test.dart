@@ -317,8 +317,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // The accounts are disjoint and the same people book into all of them, so
-    // a count that silently covers fewer is wrong rather than partial.
+    // a count that silently covers fewer is wrong rather than partial. This
+    // stays in the SENTENCE even with the chips collapsed - it belongs to the
+    // report, not to setup.
     expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
   });
 
   testWidgets('a connected branch can be taken back from this screen', (
@@ -349,6 +352,13 @@ void main() {
     );
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    // The chips are behind the toggle now: a row of them above the table read
+    // as a filter, and they are setup rather than part of the report.
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
@@ -439,6 +449,9 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     await tester.tap(
       find.descendant(
         of: find.widgetWithText(InputChip, 'Nationwide'),
@@ -511,6 +524,12 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
+    // Behind the manage toggle now, with the chips - connecting is setup.
+    expect(find.text('Connect a Workiz account'), findsNothing);
+
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Connect a Workiz account'), findsOneWidget);
 
     await tester.tap(find.text('Connect a Workiz account'));
@@ -546,6 +565,9 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('Connect a Workiz account'));
     await tester.pumpAndSettle();
 
