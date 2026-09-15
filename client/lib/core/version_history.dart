@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0217',
+      date: '15 Sep 2026',
+      items: [
+        'Colleagues on Do not disturb now show a red dot on the Team list instead of a grey one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0216',
       date: '15 Sep 2026',
       items: [
