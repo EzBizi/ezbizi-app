@@ -1257,6 +1257,22 @@ final class TwimlRenderer
             && $connection !== null
             && DialPlan::batches($group, $connection) !== [];
 
+        // ONE NODE PER GROUP, not one per key.
+        //
+        // Jose, off the drawing: "Ring Existing Client" appeared twice, once
+        // for Press 2 and once for no key pressed — because a menu option
+        // carrying a ring group got its own node keyed by DIGIT, and on the
+        // live line key 2 points at the same group the line already rings. Two
+        // boxes for one team, and a reader counting teams counts wrong.
+        //
+        // Keyed by group id from here on, so a second route to the same team
+        // is a second ARROW into one box, which is what it is.
+        $byGroup = [];
+        $groups = ['answer' => $group];
+        if ($group !== null) {
+            $byGroup[(string) $group->id] = 'answer';
+        }
+
         $add(
             'answer',
             'ring_group',
@@ -1355,10 +1371,21 @@ final class TwimlRenderer
                         continue;
                     }
 
+                    // Already drawn — the line's own group, or an earlier
+                    // key pointing at the same team. Another arrow into it.
+                    if (isset($byGroup[$optionGroupId])) {
+                        $link('menu', $byGroup[$optionGroupId], $label);
+
+                        continue;
+                    }
+
                     $optionGroup = PhoneRingGroup::query()->find($optionGroupId);
                     $usable = $optionGroup !== null
                         && $connection !== null
                         && DialPlan::batches($optionGroup, $connection) !== [];
+
+                    $byGroup[$optionGroupId] = $id;
+                    $groups[$id] = $optionGroup;
 
                     $add(
                         $id,
@@ -1383,17 +1410,43 @@ final class TwimlRenderer
 
         $fallback = trim((string) $number->resolved('fallback_number'));
 
-        if ($fallback !== '') {
-            $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
-            $link('answer', 'fallback', 'No answer');
-            $link('fallback', 'voicemail', 'No answer');
-        } elseif ($group !== null && $group->overflow === 'queue') {
-            $add('queue', 'queue', 'Hold in a queue', 'Callers wait and are told their place in line.');
-            $link('answer', 'queue', 'Everyone busy');
-            $link('queue', 'answer', 'Somebody free');
-            $link('queue', 'voicemail', 'Waited too long');
-        } else {
-            $link('answer', 'voicemail', 'No answer');
+        // EVERY GROUP HAS ITS OWN OVERFLOW, and its own queue.
+        //
+        // This used to draw one queue, hanging off the line's default group,
+        // while the menu's other groups had none — so "Everyone busy" looked
+        // like a property of one box when it is a setting on each team, and
+        // Jose read it exactly that way off the picture.
+        //
+        // They are genuinely separate queues: `PhoneRingGroup::queueName()` is
+        // named after the group, so somebody holding for Appointments is not
+        // in the same line as somebody holding for Existing Clients. One
+        // shared queue node would be a tidier drawing of a different system.
+        foreach ($groups as $nodeId => $team) {
+            if ($team === null) {
+                continue;
+            }
+
+            // A fallback number is the LINE's, and it is tried before any
+            // group overflow — so it belongs on the default group only.
+            if ($nodeId === 'answer' && $fallback !== '') {
+                $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
+                $link('answer', 'fallback', 'No answer');
+                $link('fallback', 'voicemail', 'No answer');
+
+                continue;
+            }
+
+            if ($team->overflow === 'queue') {
+                $queue = 'queue-'.$nodeId;
+                $add($queue, 'queue', 'Hold in a queue', 'Callers for '.$team->name.' wait and are told their place in line.');
+                $link($nodeId, $queue, 'Everyone busy');
+                $link($queue, $nodeId, 'Somebody free');
+                $link($queue, 'voicemail', 'Waited too long');
+
+                continue;
+            }
+
+            $link($nodeId, 'voicemail', 'No answer');
         }
 
         return ['nodes' => $nodes, 'edges' => $edges];
