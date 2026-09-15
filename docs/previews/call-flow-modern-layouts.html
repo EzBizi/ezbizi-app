@@ -1,0 +1,744 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Call flow, modernised — layouts</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --wire:#b3c2c7; --glow:#0f766e;
+  --dpaper:#2b2f36; --dline:#3a414a; --dink:#e8edf2; --dmuted:#9aa6b2;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1100px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 6px}
+.bar button{font:600 12.5px/1 inherit;padding:9px 13px;border:1px solid var(--line);
+  background:var(--paper);border-radius:999px;cursor:pointer;color:var(--ink)}
+.bar button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cap{font-size:12px;color:var(--muted);margin:12px 0 7px}
+.win{width:1040px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.win.dark{background:var(--dpaper);border-color:var(--dline);color:var(--dink)}
+.topbar{padding:11px 15px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:10px;font-weight:700;font-size:13px}
+.dark .topbar{border-color:var(--dline)}
+.pick{margin-left:auto;font-weight:500;font-size:12px;color:var(--muted);
+  border:1px solid var(--line);border-radius:8px;padding:5px 9px;display:flex;
+  align-items:center;gap:7px}
+.dark .pick{border-color:var(--dline);color:var(--dmuted)}
+.sum{padding:9px 15px;border-bottom:1px solid var(--line);display:flex;
+  gap:16px;flex-wrap:wrap;font-size:12.5px}
+.dark .sum{border-color:var(--dline)}
+.pip{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:6px}
+.canvas{position:relative;overflow:auto;
+  background:radial-gradient(circle,rgba(6,8,8,.07) 1px,transparent 1px) 0 0/17px 17px}
+.dark .canvas{background:radial-gradient(circle,rgba(255,255,255,.07) 1px,transparent 1px) 0 0/17px 17px}
+.stage{position:relative}
+svg.wires{position:absolute;inset:0;overflow:visible}
+.base{fill:none;stroke:var(--wire);stroke-width:1.6}
+.dark .base{stroke:#4d5661}
+.pulse{fill:none;stroke:var(--glow);stroke-width:2;stroke-dasharray:5 11;
+  animation:flow 1.15s linear infinite;opacity:.85}
+.dark .pulse{stroke:#5eead4}
+@keyframes flow{to{stroke-dashoffset:-32}}
+.bk .base{stroke-dasharray:5 4}
+.bk .pulse{stroke:var(--warn);animation-direction:reverse}
+.elab{font:600 9.5px sans-serif;fill:var(--muted)}
+.dark .elab{fill:var(--dmuted)}
+.ebg{fill:var(--paper);stroke:none}
+.dark .ebg{fill:var(--dpaper)}
+.nd{position:absolute;width:150px;border:1px solid var(--line);border-radius:11px;
+  background:var(--paper);padding:8px 10px;z-index:2;box-shadow:0 1px 2px rgba(6,8,8,.05)}
+.dark .nd{background:var(--dpaper);border-color:var(--dline)}
+.nd.entry{border-color:var(--brand);border-width:2px;
+  box-shadow:0 0 0 4px rgba(15,118,110,.09)}
+.nd.dead{border-color:var(--bad);background:rgba(186,26,26,.045)}
+.nd.skip{border-color:var(--warn);background:rgba(138,90,0,.05);border-style:dashed}
+.nh{display:flex;align-items:center;gap:7px}
+.chip{width:23px;height:23px;border-radius:7px;background:#eaf3f2;display:flex;
+  align-items:center;justify-content:center;flex:0 0 auto}
+.dark .chip{background:#374049}
+.chip svg{width:13px;height:13px;stroke:var(--brand);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.dark .chip svg{stroke:#5eead4}
+.nd.dead .chip{background:rgba(186,26,26,.1)}
+.nd.dead .chip svg{stroke:var(--bad)}
+.nt{font-weight:700;font-size:11.5px;line-height:1.25}
+.ndd{color:var(--muted);font-size:10.5px;line-height:1.4;margin-top:4px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dark .ndd{color:var(--dmuted)}
+.ndd.open{-webkit-line-clamp:99}
+.more{font-size:9.5px;color:var(--brand);font-weight:700;margin-top:3px;cursor:pointer}
+.flag{display:inline-block;margin-top:5px;font-size:9px;font-weight:800;
+  padding:1px 6px;border-radius:999px;background:rgba(186,26,26,.12);color:var(--bad)}
+.tile{position:absolute;width:120px;text-align:center;z-index:2}
+.tilebox{width:56px;height:56px;margin:0 auto;border-radius:15px;
+  background:#343b44;border:1px solid var(--dline);display:flex;
+  align-items:center;justify-content:center}
+.tile.entry .tilebox{border-color:#5eead4;box-shadow:0 0 0 4px rgba(94,234,212,.14)}
+.tile.dead .tilebox{border-color:var(--bad);background:rgba(186,26,26,.16)}
+.tilebox svg{width:22px;height:22px;stroke:#5eead4;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.tile.dead .tilebox svg{stroke:#ff8a80}
+.tl{font-size:10.5px;font-weight:700;margin-top:7px;color:var(--dink);line-height:1.3}
+.ts{font-size:9px;color:var(--dmuted);margin-top:2px;line-height:1.35}
+.lane{position:absolute;border-radius:10px;background:rgba(15,118,110,.04);
+  border:1px solid rgba(15,118,110,.13);z-index:0}
+.lane.dead{background:rgba(186,26,26,.04);border-color:rgba(186,26,26,.16)}
+.lanelab{position:absolute;font:800 9px sans-serif;color:var(--brand);
+  letter-spacing:.05em;text-transform:uppercase;z-index:1}
+.lanelab.dead{color:var(--bad)}
+.phone{width:380px;background:var(--paper);border:1px solid var(--line);
+  border-radius:26px;overflow:hidden}
+.ribbon{padding:13px;max-height:470px;overflow:auto}
+.step{display:flex;gap:10px}
+.rail{width:24px;display:flex;flex-direction:column;align-items:center;flex:0 0 auto}
+.dot{width:24px;height:24px;border-radius:8px;background:#eaf3f2;display:flex;
+  align-items:center;justify-content:center;flex:0 0 auto}
+.dot svg{width:13px;height:13px;stroke:var(--brand);fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.dot.dead{background:rgba(186,26,26,.1)}
+.dot.dead svg{stroke:var(--bad)}
+.stem{flex:1;width:2px;margin:4px 0;position:relative;min-height:18px;
+  background:linear-gradient(var(--wire) 50%,transparent 0) 0 0/2px 8px repeat-y}
+.stem i{position:absolute;inset:0;display:block;
+  background:linear-gradient(var(--glow) 50%,transparent 0) 0 0/2px 8px repeat-y;
+  animation:down 1.1s linear infinite;opacity:.9}
+@keyframes down{to{background-position:0 16px}}
+.bodycol{flex:1;padding-bottom:13px;min-width:0}
+.bt{font-weight:700;font-size:13px}
+.bd{color:var(--muted);font-size:11.5px;margin-top:2px;line-height:1.45}
+.branch{border:1px solid var(--line);border-radius:10px;margin-top:8px;overflow:hidden}
+.brow{display:flex;align-items:center;gap:9px;padding:9px 11px;font-size:12px;
+  border-bottom:1px solid var(--line)}
+.brow:last-child{border-bottom:0}
+.brow .k{font:800 9px sans-serif;background:#eef3f4;border-radius:5px;
+  padding:3px 6px;color:var(--muted);flex:0 0 auto;min-width:62px;text-align:center}
+.brow.dead .k{background:rgba(186,26,26,.1);color:var(--bad)}
+.brow .g{flex:1;font-weight:600;min-width:0}
+.brow .c{color:var(--muted);font-size:15px}
+.crumb{padding:10px 13px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line)}
+.crumb b{color:var(--ink)}
+.mini{height:104px;border-bottom:1px solid var(--line);position:relative;
+  background:var(--ground);overflow:hidden}
+.bignode{margin:13px;border:1px solid var(--line);border-radius:13px;padding:13px}
+.bignode.entry{border-color:var(--brand);border-width:2px}
+.chipsrow{display:flex;gap:7px;flex-wrap:wrap;padding:0 13px 13px}
+.chipbtn{display:flex;align-items:center;gap:6px;border:1px solid var(--line);
+  border-radius:999px;padding:7px 11px;font-size:11.5px;font-weight:600;background:var(--paper)}
+.chipbtn.dead{border-color:var(--bad);color:var(--bad)}
+.chipbtn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:12px;font-size:12.5px;max-width:1040px}
+.pk{width:340px;border:1px solid var(--line);border-radius:11px;background:var(--paper);
+  box-shadow:0 8px 24px rgba(6,8,8,.13);overflow:hidden}
+.pks{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid var(--line)}
+.pks svg{width:14px;height:14px;stroke:var(--muted);fill:none;stroke-width:2;flex:0 0 auto}
+.pkin{flex:1;font:13px inherit;color:var(--ink)}
+.pkin .cur{display:inline-block;width:1px;height:14px;background:var(--brand);
+  vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.pkcount{font-size:10px;color:var(--muted);font-weight:800;flex:0 0 auto}
+.pkrow{display:flex;align-items:center;gap:9px;padding:8px 11px;font-size:12.5px;
+  border-bottom:1px solid #eef2f3}
+.pkrow:last-child{border-bottom:0}
+.pkrow.on{background:#eaf3f2}
+.pkrow .nm{font-weight:700}
+.pkrow .no{color:var(--muted);font-size:11px}
+.pkrow .st{margin-left:auto;font-size:9px;font-weight:800;padding:2px 7px;
+  border-radius:999px;background:#eef3f4;color:var(--muted);flex:0 0 auto}
+.pkrow .st.bad{background:rgba(186,26,26,.12);color:var(--bad)}
+.pkgrp{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);padding:8px 11px 4px;background:#fafcfc}
+.mark{background:#fde68a;border-radius:3px;padding:0 1px}
+.row2{display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap}
+.kbd{font:700 9px sans-serif;border:1px solid var(--line);border-radius:4px;
+  padding:2px 5px;color:var(--muted);background:#fafcfc}
+</style>
+<div class="wrap">
+<h1>Call flow, modernised &mdash; pick one desktop, one mobile, one picker</h1>
+
+<p class="sub">Jose, 2026-09-15, looking at the built screen: <i>&ldquo;have it begin in the
+middle left, so you can expand up and down when nodes branch&rdquo;</i>, <i>&ldquo;make it look
+a bit more modern as well, with icons, arrows, and even a energy flow animation on the lines to
+make it feel more alive&rdquo;</i>, and <i>&ldquo;we also want a search bar for the number
+picker&rdquo;</i>. His reference: an n8n canvas &mdash; dark, icon tiles, labels under the node,
+an arrowhead on every wire.</p>
+
+<p class="sub"><b>Drawn against his actual line, not a fixture.</b> The screenshot he sent is the
+real graph, so every option below is the same ten nodes and can be compared on arrangement
+rather than on content: <code>Caller &rarr; Arrives on General &rarr; Menu plays</code>, five
+menu branches (<code>Press 1 / 2 / 3 / #</code> and <code>No key pressed</code>), a ring group
+that overflows to a queue, and the queue coming back to the group.</p>
+
+<p class="sub"><b>&#9888; TWO DEFECTS VISIBLE IN HIS SCREENSHOT THAT HE DID NOT MENTION. Both get
+fixed whichever option wins.</b></p>
+
+<p class="sub"><b>1 &mdash; Two edge labels are painted on top of each other.</b> At the queue
+junction his screen reads <code>&#1045;&#1077;rybody bese</code>: that is <i>Everyone busy</i>
+and <i>Waited too long</i> drawn at the same point. <code>FlowWirePainter</code> puts each label
+at the midpoint of its own wire and has no idea another label is already there, so wherever
+wires converge &mdash; which is every line with a queue, 11 of 13 by Phone's count &mdash; they
+collide. <b>Not a glitch: a missing rule.</b></p>
+
+<p class="sub"><b>And the rule has two halves &mdash; I got it wrong once here, and measured the
+page rather than trusting how it looked.</b> My first pass put every label near its wire's
+<i>start</i>, reasoning that a fan separates early. It does not: a fan-<i>out</i> has barely left
+the source there. Measured on this page, that gave the five menu keys a pitch of <b>13px for text
+11px tall</b> &mdash; one pixel of air, which reads as a stack. Labelling a fan-out near its
+<i>destination</i> instead gives <b>67px</b>. So: a wire leaving a node with several outgoing wires
+is labelled <b>near its far end</b>; a wire arriving at a node with several incoming wires &mdash;
+Jose's queue, where his screenshot collides &mdash; is labelled <b>near its near end</b>; anything
+else in the middle. Plus a plate behind every label so no wire runs through the text.</p>
+
+<p class="sub"><b>The wider columns are a second fix for a different problem, and I nearly credited
+them with the first.</b> Changing both at once hid which one worked: measured, the column width
+moves the label pitch by <b>nothing at all</b> &mdash; 13px narrow and 13px wide under the old
+rule, 67px under the new one either way. What the width <i>is</i> for is horizontal room: the
+widest label on this line is <code>Waited too long</code> at <b>72px</b>, and the old 58px gap
+between two 150px nodes left it <b>overhanging by 14px onto the boxes</b>. At 112px it clears by
+40. The chart is now wider than the window and scrolls sideways, which his current screen already
+does.</p>
+
+<p class="sub"><b>2 &mdash; The menu node is five times taller than every other node</b>, because
+it renders the entire prompt: <i>&ldquo;To schedule an appointment press 1, current customer
+please press 2, if you know your parties extension&hellip;&rdquo;</i>. That single box is what
+pushes the whole fan down and right, and it is a large part of why the chart does not fit on
+screen. Every option <b>caps the detail at two lines</b> and reveals the rest on the node itself.
+The prompt is worth reading once, not every time the tab opens.</p>
+
+<p class="sub" style="margin-top:12px"><b>How to answer:</b> one number from <b>1&ndash;3</b>
+(desktop chart), one from <b>4&ndash;6</b> (phone), one from <b>7&ndash;9</b> (number picker).</p>
+
+<div class="bar" id="bar"></div>
+<div class="cap" id="cap"></div>
+<div id="hold"></div>
+</div>
+<script>
+/* Names here avoid window's own properties -- a top-level `function top(){}`
+   killed an entire gallery earlier this week, because window.top is an own
+   non-configurable property and the engine throws at script instantiation. */
+
+var SEL = 1;
+
+/* ---- his real line ------------------------------------------------ */
+var G = {
+  nodes: [
+    {id:'caller', k:'phone',  t:'Caller',  s:'ok',
+     d:'Somebody dials +1 (239) 456-0829.'},
+    {id:'arrive', k:'in',     t:'Arrives on General', s:'ok',
+     d:'Twilio hands the call to EzBizi.'},
+    {id:'menu',   k:'keypad', t:'Menu plays', s:'ok',
+     d:'To schedule an appointment press 1, current customer please press 2, if you know your parties extension you may dial it at any time, to repeat this menu press pound.'},
+    {id:'appt',   k:'users',  t:'Ring Appointment', s:'ok',
+     d:'Whoever is on duty in that group is dialled.'},
+    {id:'exist',  k:'users',  t:'Ring Existing Client', s:'ok',
+     d:'Whoever is on duty in that group is dialled.'},
+    {id:'test',   k:'users',  t:'Ring Testing', s:'ok',
+     d:'Whoever is on duty in that group is dialled.'},
+    {id:'vm1',    k:'vm',     t:'Voicemail', s:'ok',
+     d:'The caller leaves a message.'},
+    {id:'exist2', k:'users',  t:'Ring Existing Client', s:'ok',
+     d:'Whoever is on duty in that group is dialled.'},
+    {id:'queue',  k:'clock',  t:'Hold in a queue', s:'ok',
+     d:'Callers wait and are told their place in line.'},
+    {id:'vm2',    k:'vm',     t:'Voicemail', s:'ok',
+     d:'The caller leaves a message.'}
+  ],
+  edges: [
+    {f:'caller', to:'arrive', l:''},
+    {f:'arrive', to:'menu',   l:''},
+    {f:'menu',   to:'appt',   l:'Press 1'},
+    {f:'menu',   to:'exist',  l:'Press 2'},
+    {f:'menu',   to:'test',   l:'Press 3'},
+    {f:'menu',   to:'vm1',    l:'Press #'},
+    {f:'menu',   to:'exist2', l:'No key pressed'},
+    {f:'test',   to:'queue',  l:'Everyone busy'},
+    {f:'queue',  to:'vm2',    l:'Waited too long'},
+    {f:'queue',  to:'test',   l:'try again'}
+  ]
+};
+
+function nodeById(id){
+  for (var i=0;i<G.nodes.length;i++){ if (G.nodes[i].id===id) return G.nodes[i]; }
+  return null;
+}
+function outOf(id){
+  var r=[]; for (var i=0;i<G.edges.length;i++){ if (G.edges[i].f===id) r.push(G.edges[i]); }
+  return r;
+}
+
+/* Breadth-first, same rule as the shipped layout: a column is the fewest
+   keypresses from the caller, and an edge reaching a node that already has a
+   column is classified rather than followed, so the cycle terminates. */
+function columns(){
+  var col={}, order=['caller'], q=['caller'];
+  col.caller=0;
+  while (q.length){
+    var id=q.shift(), outs=outOf(id);
+    for (var i=0;i<outs.length;i++){
+      var to=outs[i].to;
+      if (col.hasOwnProperty(to)) continue;
+      col[to]=col[id]+1; order.push(to); q.push(to);
+    }
+  }
+  return col;
+}
+
+/* THE CHANGE HE ASKED FOR. Each column is centred on the canvas midline, so
+   the caller sits middle-left and a branch grows symmetrically up AND down
+   instead of only downward from a fixed top. */
+function place(nodeW, nodeH, gapX, gapY, cy, x0){
+  var col=columns(), byCol={}, i, id;
+  for (i=0;i<G.nodes.length;i++){
+    id=G.nodes[i].id;
+    var c=col[id]; if (c===undefined) continue;
+    (byCol[c]=byCol[c]||[]).push(id);
+  }
+  var pos={}, maxC=0;
+  for (var c in byCol){
+    if (!byCol.hasOwnProperty(c)) continue;
+    var list=byCol[c], n=list.length;
+    var total=n*nodeH+(n-1)*gapY, startY=cy-total/2;
+    if (+c>maxC) maxC=+c;
+    for (i=0;i<n;i++){
+      pos[list[i]]={x:x0+(+c)*(nodeW+gapX), y:startY+i*(nodeH+gapY), col:+c};
+    }
+  }
+  return {pos:pos, col:col, cols:maxC+1};
+}
+
+function bez(t,p0,p1,p2,p3){
+  var m=1-t;
+  return m*m*m*p0 + 3*m*m*t*p1 + 3*m*t*t*p2 + t*t*t*p3;
+}
+
+/* WHERE A LABEL GOES, and it is two rules rather than one.
+
+   First attempt here put every label at 26% along its wire, on the theory that
+   a fan separates near its start. Drawn, it was WRONG in the same way the
+   shipped painter is: at 26% a fan-out has barely left the source, so all five
+   keys landed in a stack. The wires of a fan-out separate at the DESTINATION.
+
+   So: a wire leaving a node that has several outgoing wires is labelled near
+   its far end (0.78), where those wires are furthest apart. A wire arriving at
+   a node that has several incoming wires is labelled near its near end (0.22),
+   for the mirror reason -- that is the case in Jose's screenshot, where
+   "Everyone busy" and "Waited too long" collide at a queue. A plain wire is
+   labelled in the middle. Plus a plate painted behind every label so a wire
+   never runs through the text. */
+function outCount(id){ var n=0,i;
+  for (i=0;i<G.edges.length;i++){ if (G.edges[i].f===id) n++; } return n; }
+function inCount(id){ var n=0,i;
+  for (i=0;i<G.edges.length;i++){ if (G.edges[i].to===id) n++; } return n; }
+function labelAt(e){
+  var fanOut = outCount(e.f) > 1, fanIn = inCount(e.to) > 1;
+  if (fanOut && !fanIn) return 0.78;
+  if (fanIn && !fanOut) return 0.22;
+  return 0.5;
+}
+function wiresFor(pos, col, nodeW, nodeH, labels){
+  var out='', i;
+  out += '<defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" ' +
+         'markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--wire)"/>' +
+         '</marker></defs>';
+  for (i=0;i<G.edges.length;i++){
+    var e=G.edges[i], a=pos[e.f], b=pos[e.to];
+    if (!a||!b) continue;
+    var back = col[e.to] <= col[e.f];
+    var x1,y1,x2,y2,c1,c2;
+    if (back){
+      x1=a.x+nodeW/2; y1=a.y+nodeH; x2=b.x+nodeW/2; y2=b.y+nodeH;
+      c1=x1; c2=x2;
+      var d='M'+x1+' '+y1+' C'+x1+' '+(y1+52)+' '+x2+' '+(y2+52)+' '+x2+' '+y2;
+      out+='<g class="bk"><path class="base" d="'+d+'" marker-end="url(#ah)"/>' +
+           '<path class="pulse" d="'+d+'"/></g>';
+      if (labels && e.l){
+        var lx=(x1+x2)/2, ly=y1+46;
+        out+=plate(lx,ly,e.l);
+      }
+      continue;
+    }
+    x1=a.x+nodeW; y1=a.y+nodeH/2; x2=b.x; y2=b.y+nodeH/2;
+    var dx=(x2-x1)*0.55;
+    c1=x1+dx; c2=x2-dx;
+    var path='M'+x1+' '+y1+' C'+c1+' '+y1+' '+c2+' '+y2+' '+x2+' '+y2;
+    out+='<g><path class="base" d="'+path+'" marker-end="url(#ah)"/>' +
+         '<path class="pulse" d="'+path+'"/></g>';
+    if (labels && e.l){
+      var t=labelAt(e);
+      var px=bez(t,x1,c1,c2,x2), py=bez(t,y1,y1,y2,y2);
+      out+=plate(px,py-7,e.l);
+    }
+  }
+  return out;
+}
+function plate(x,y,txt){
+  var w=txt.length*5.1+9;
+  return '<rect class="ebg" x="'+(x-w/2)+'" y="'+(y-7)+'" width="'+w+'" height="13" rx="3"/>' +
+         '<text class="elab" x="'+x+'" y="'+(y+2.5)+'" text-anchor="middle">'+txt+'</text>';
+}
+
+/* ---- icons -------------------------------------------------------- */
+function ico(k){
+  var p={
+    phone:'<path d="M3.5 2.5h3l1.2 3-1.6 1.2a8 8 0 0 0 3.7 3.7L11 8.8l3 1.2v3a1 1 0 0 1-1.1 1A11.5 11.5 0 0 1 2.5 3.6 1 1 0 0 1 3.5 2.5z"/>',
+    'in':'<path d="M9 3h4v10H9"/><path d="M2 8h7"/><path d="M6.5 5.5 9 8l-2.5 2.5"/>',
+    keypad:'<circle cx="4" cy="4" r="1.1"/><circle cx="8" cy="4" r="1.1"/><circle cx="12" cy="4" r="1.1"/><circle cx="4" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="12" cy="8" r="1.1"/><circle cx="4" cy="12" r="1.1"/><circle cx="8" cy="12" r="1.1"/><circle cx="12" cy="12" r="1.1"/>',
+    users:'<circle cx="6" cy="5.5" r="2.3"/><path d="M2 13c0-2.2 1.8-3.6 4-3.6s4 1.4 4 3.6"/><path d="M11 4.2a2.3 2.3 0 0 1 0 4.4"/><path d="M11.5 9.8c1.6.4 2.5 1.6 2.5 3.2"/>',
+    clock:'<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.4 1.6"/>',
+    vm:'<circle cx="4.2" cy="9" r="2.8"/><circle cx="11.8" cy="9" r="2.8"/><path d="M4.2 11.8h7.6"/>',
+    search:'<circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/>',
+    chev:'<path d="M6 4l4 4-4 4"/>'
+  };
+  return '<svg viewBox="0 0 16 16">'+(p[k]||p.phone)+'</svg>';
+}
+
+/* ---- shared chrome ------------------------------------------------ */
+function chrome(dark, pickerHtml){
+  return '<div class="topbar">Call flow' +
+    (pickerHtml||'<span class="pick">General &middot; +1 (239) 456-0829 ' +
+      '<b style="font-size:9px">&#9662;</b></span>') + '</div>' +
+    '<div class="sum"><span><span class="pip" style="background:var(--brand)"></span>' +
+    '<b>Every branch leads somewhere</b></span>' +
+    '<span style="color:var(--muted)">10 steps &middot; 1 queue that comes back</span></div>';
+}
+
+function nodeBox(id, pos, cls){
+  var n=nodeById(id), p=pos[id];
+  var long = n.d.length > 62;
+  return '<div class="nd'+(id==='caller'?' entry':'')+(cls||'')+'" style="left:'+p.x+
+    'px;top:'+p.y+'px"><div class="nh"><span class="chip">'+ico(n.k)+'</span>' +
+    '<span class="nt">'+n.t+'</span></div>' +
+    '<div class="ndd">'+n.d+'</div>' +
+    (long?'<div class="more">Read all of it</div>':'') + '</div>';
+}
+
+/* ---- 1 : centred spine, light ------------------------------------- */
+function D1(){
+  var NW=150, NH=64, r=place(NW,NH,112,13,212,12);
+  var body='';
+  for (var i=0;i<G.nodes.length;i++) body+=nodeBox(G.nodes[i].id, r.pos);
+  return '<div class="win">'+chrome()+
+    '<div class="canvas" style="height:440px"><div class="stage" style="width:1490px;height:430px">' +
+    '<svg class="wires" style="width:1490px;height:430px">'+wiresFor(r.pos,r.col,NW,NH,true)+'</svg>' +
+    body+'</div></div></div>' +
+    '<div class="note"><b>His sentence, taken literally.</b> The caller sits on the left at the ' +
+    'vertical middle and every column is centred on that same midline, so the five-way menu ' +
+    'grows two up and two down from the spine instead of hanging off the bottom. The line he ' +
+    'is actually reading &mdash; caller, arrival, menu &mdash; runs dead straight across the ' +
+    'middle at eye level.<br><br><b>Icons, arrowheads and a travelling pulse on every wire</b>, ' +
+    'flowing the way the call does. The back-edge from the queue pulses <i>backwards</i> and in ' +
+    'amber, so a return reads as a return without needing its label.<br><br><b>The cost:</b> it ' +
+    'is the most conservative of the three &mdash; it is his current screen done properly ' +
+    'rather than a new idea, and it keeps the detail text on the node, which is what made the ' +
+    'menu box enormous. Capped at two lines here, with the full prompt one click away.</div>';
+}
+
+/* ---- 2 : n8n-faithful dark ---------------------------------------- */
+function D2(){
+  var NW=120, NH=56, r=place(NW,NH,120,30,205,14);
+  var body='';
+  for (var i=0;i<G.nodes.length;i++){
+    var n=G.nodes[i], p=r.pos[n.id];
+    var sub = n.id==='menu' ? 'IVR &middot; 5 keys'
+            : n.k==='users' ? 'Ring group'
+            : n.k==='clock' ? 'Queue'
+            : n.k==='vm' ? 'Voicemail'
+            : n.k==='phone' ? 'Inbound' : 'Twilio';
+    body+='<div class="tile'+(n.id==='caller'?' entry':'')+'" style="left:'+p.x+'px;top:'+p.y+
+      'px"><div class="tilebox">'+ico(n.k)+'</div><div class="tl">'+n.t+'</div>' +
+      '<div class="ts">'+sub+'</div></div>';
+  }
+  return '<div class="win dark">'+chrome(true)+
+    '<div class="canvas" style="height:440px"><div class="stage" style="width:1330px;height:430px">' +
+    '<svg class="wires" style="width:1330px;height:430px">'+wiresFor(r.pos,r.col,NW,NH,true)+'</svg>' +
+    body+'</div></div></div>' +
+    '<div class="note"><b>The reference he sent, followed closely.</b> Dark canvas, a rounded ' +
+    'icon tile for the node itself, the name <i>under</i> the tile, and a grey second line ' +
+    'naming what kind of step it is. Wires carry arrowheads and the same energy pulse.<br><br>' +
+    '<b>It is the most &ldquo;alive&rdquo; of the three and it buys that with detail.</b> A ' +
+    'tile has no room for &ldquo;Whoever is on duty in that group is dialled&rdquo; &mdash; ' +
+    'you get the shape of the flow at a glance and you click a node to read anything. For the ' +
+    'menu prompt that is an improvement. For <i>&ldquo;which group does Press 2 ring?&rdquo;</i> ' +
+    'it is a click where option 1 is a glance.<br><br><b>Worth knowing before you pick it:</b> ' +
+    'n8n is a canvas people <i>build</i> on, and this tab is read-only. The look is borrowed ' +
+    'from a tool whose job is editing, which is the one thing you said this screen must not do.' +
+    '</div>';
+}
+
+/* ---- 3 : lanes ----------------------------------------------------- */
+function D3(){
+  var NW=150, NH=64, r=place(NW,NH,112,13,212,12);
+  var lanes='', body='';
+  var fan=[{id:'appt',l:'Press 1'},{id:'exist',l:'Press 2'},{id:'test',l:'Press 3'},
+           {id:'vm1',l:'Press #'},{id:'exist2',l:'No key pressed'}];
+  for (var i=0;i<fan.length;i++){
+    var p=r.pos[fan[i].id];
+    lanes+='<div class="lane" style="left:'+(p.x-16)+'px;top:'+(p.y-9)+'px;width:'+
+      (1470-p.x)+'px;height:'+(NH+18)+'px"></div>' +
+      '<div class="lanelab" style="left:'+(p.x-12)+'px;top:'+(p.y-22)+'px">'+fan[i].l+'</div>';
+  }
+  for (i=0;i<G.nodes.length;i++) body+=nodeBox(G.nodes[i].id, r.pos);
+  return '<div class="win">'+chrome()+
+    '<div class="canvas" style="height:470px"><div class="stage" style="width:1490px;height:460px">' +
+    lanes +
+    '<svg class="wires" style="width:1490px;height:460px">'+wiresFor(r.pos,r.col,NW,NH,false)+'</svg>' +
+    body+'</div></div></div>' +
+    '<div class="note"><b>The branch label is promoted out of the wire and made the name of a ' +
+    'lane.</b> Same centred middle-left spine as option 1, but each menu key owns a horizontal ' +
+    'band that runs to the right edge, so <i>&ldquo;what happens if I press 2&rdquo;</i> is a ' +
+    'row you follow rather than a wire you trace.<br><br><b>This is the one that survives a ' +
+    'bigger menu.</b> A fan of five is fine in option 1; this line already has five and nine is ' +
+    'allowed. At nine, a fan is a wall of crossing wires and lanes are still nine rows.<br><br>' +
+    '<b>It also kills the label collision by construction</b> &mdash; the labels are not on the ' +
+    'wires at all, so they cannot overlap each other no matter how the wires converge.<br><br>' +
+    '<b>The cost:</b> the queue and its return live inside one lane, which makes that lane ' +
+    'taller than the rest and slightly breaks the rhythm. And it is the least like his ' +
+    'reference image.</div>';
+}
+
+/* ---- phone helpers ------------------------------------------------- */
+function stepRow(id, last, extra){
+  var n=nodeById(id);
+  return '<div class="step"><div class="rail"><div class="dot'+
+    (n.s==='dead'?' dead':'')+'">'+ico(n.k)+'</div>' +
+    (last?'':'<div class="stem"><i></i></div>')+'</div>' +
+    '<div class="bodycol"><div class="bt">'+n.t+'</div>' +
+    '<div class="bd">'+n.d+'</div>'+(extra||'')+'</div></div>';
+}
+function branchRows(){
+  var fan=[['Press 1','Ring Appointment'],['Press 2','Ring Existing Client'],
+           ['Press 3','Ring Testing'],['Press #','Voicemail'],
+           ['No key','Ring Existing Client']];
+  var h='<div class="branch">';
+  for (var i=0;i<fan.length;i++){
+    h+='<div class="brow"><span class="k">'+fan[i][0]+'</span>' +
+       '<span class="g">'+fan[i][1]+'</span><span class="c">&rsaquo;</span></div>';
+  }
+  return h+'</div>';
+}
+
+/* ---- 4 : the whole flow, vertical --------------------------------- */
+function M4(){
+  return '<div class="phone">'+chrome()+
+    '<div class="ribbon">' +
+    stepRow('caller') + stepRow('arrive') +
+    stepRow('menu', false, branchRows()) +
+    stepRow('test', false,
+      '<div class="branch"><div class="brow"><span class="k">Busy</span>' +
+      '<span class="g">Hold in a queue</span><span class="c">&rsaquo;</span></div></div>') +
+    stepRow('queue', true,
+      '<div class="branch"><div class="brow"><span class="k">Too long</span>' +
+      '<span class="g">Voicemail</span><span class="c">&rsaquo;</span></div>' +
+      '<div class="brow"><span class="k">Retry</span>' +
+      '<span class="g" style="color:var(--warn)">Back to Ring Testing</span>' +
+      '<span class="c">&#8634;</span></div></div>') +
+    '</div></div>' +
+    '<div class="note"><b>Built for a phone rather than shrunk onto one.</b> The flow runs ' +
+    'top to bottom because that is the direction a phone scrolls, and his &ldquo;expand up and ' +
+    'down&rdquo; becomes &ldquo;the branches indent&rdquo;. The rail on the left carries the ' +
+    'same energy pulse, travelling downward.<br><br><b>Everything is on one page</b>, which is ' +
+    'the complaint about the walk that shipped: you never see the whole shape. Here you scroll ' +
+    'it in about two flicks.<br><br><b>The cost:</b> a menu with nine keys makes a long scroll, ' +
+    'and the cycle is a row that says &ldquo;back to Ring Testing&rdquo; rather than anything ' +
+    'you can see loop.</div>';
+}
+
+/* ---- 5 : mini-map + focus ------------------------------------------ */
+function M5(){
+  var NW=26, NH=13, r=place(NW,NH,15,6,52,10);
+  return '<div class="phone">'+chrome()+
+    '<div class="mini"><div class="stage" style="width:380px;height:104px">' +
+    '<svg class="wires" style="width:380px;height:104px">' +
+    wiresFor(r.pos,r.col,NW,NH,false)+'</svg>' +
+    (function(){
+      var h='';
+      for (var i=0;i<G.nodes.length;i++){
+        var n=G.nodes[i], p=r.pos[n.id];
+        h+='<div style="position:absolute;left:'+p.x+'px;top:'+p.y+'px;width:'+NW+
+           'px;height:'+NH+'px;border-radius:4px;z-index:2;border:1px solid '+
+           (n.id==='menu'?'var(--brand);box-shadow:0 0 0 3px rgba(15,118,110,.18)':'var(--line)')+
+           ';background:var(--paper)"></div>';
+      }
+      return h;
+    })() + '</div></div>' +
+    '<div class="crumb">Caller &rsaquo; Arrives on General &rsaquo; <b>Menu plays</b></div>' +
+    '<div class="bignode"><div class="nh"><span class="chip">'+ico('keypad')+
+    '</span><span class="bt">Menu plays</span></div>' +
+    '<div class="bd" style="margin-top:6px">To schedule an appointment press 1, current ' +
+    'customer please press 2, if you know your parties extension you may dial it at any ' +
+    'time, to repeat this menu press pound.</div></div>' +
+    '<div class="chipsrow">' +
+    '<span class="chipbtn">'+ico('users')+'Press 1 &middot; Appointment</span>' +
+    '<span class="chipbtn">'+ico('users')+'Press 2 &middot; Existing</span>' +
+    '<span class="chipbtn">'+ico('users')+'Press 3 &middot; Testing</span>' +
+    '<span class="chipbtn">'+ico('vm')+'Press # &middot; Voicemail</span>' +
+    '</div></div>' +
+    '<div class="note"><b>The whole shape and the detail at once, which neither of the other ' +
+    'two manages on a phone.</b> A live mini-map across the top &mdash; the real graph, drawn ' +
+    'small, with the current node ringed and the pulse still running &mdash; and the node you ' +
+    'are reading underneath at full size. Tap anywhere on the map to jump.<br><br><b>It is the ' +
+    'only phone option where the cycle is visible</b> rather than described: the queue loop is ' +
+    'a shape in the map even at this size.<br><br><b>The cost:</b> the map is decorative at ' +
+    '380px &mdash; you can see the shape but you cannot read it, so it is an orientation ' +
+    'device and nothing more. If that strip is not earning its 104 pixels, option 4 is the ' +
+    'honest version of the same idea.</div>';
+}
+
+/* ---- 6 : the walk, modernised -------------------------------------- */
+function M6(){
+  return '<div class="phone">'+chrome()+
+    '<div class="crumb">Caller &rsaquo; Arrives on General &rsaquo; <b>Menu plays</b></div>' +
+    '<div class="bignode entry"><div class="nh"><span class="chip">'+ico('keypad')+
+    '</span><span class="bt">Menu plays</span></div>' +
+    '<div class="bd" style="margin-top:6px">To schedule an appointment press 1, current ' +
+    'customer please press 2, if you know your parties extension you may dial it at any ' +
+    'time, to repeat this menu press pound.</div></div>' +
+    '<div style="padding:0 13px 6px;font:800 9.5px sans-serif;letter-spacing:.05em;' +
+    'text-transform:uppercase;color:var(--muted)">What can happen next</div>' +
+    '<div style="padding:0 13px 13px">' + branchRows() + '</div>' +
+    '<div style="height:3px;margin:0 13px 14px;border-radius:2px;' +
+    'background:linear-gradient(90deg,var(--glow) 50%,transparent 0) 0 0/14px 3px repeat-x;' +
+    'animation:down 1.1s linear infinite"></div>' +
+    '</div>' +
+    '<div class="note"><b>What shipped, modernised rather than replaced.</b> Same one-node-at-' +
+    'a-time walk you already picked, now with icons on every step, the branch keys as proper ' +
+    'rows, and an energy bar under the choices.<br><br><b>It is still the best option for ' +
+    'following one path</b> &mdash; a caller pressed 2 and complained, walk exactly what they ' +
+    'walked &mdash; and still the weakest for auditing the line, because you cannot see what ' +
+    'you have not walked to.<br><br><b>Pick this if the phone view is for checking a ' +
+    'complaint.</b> Pick 4 or 5 if it is for satisfying yourself the line is sound. They are ' +
+    'genuinely different jobs and this is the only one of the three that is honest about ' +
+    'choosing.</div>';
+}
+
+/* ---- pickers ------------------------------------------------------- */
+var LINES = [
+  {n:'General',            no:'+1 (239) 456-0829', st:''},
+  {n:'Appointments',       no:'+1 (239) 456-0830', st:''},
+  {n:'Existing Clients',   no:'+1 (860) 555-0142', st:''},
+  {n:'Testing',            no:'+1 (860) 555-0188', st:''},
+  {n:'Service &mdash; North', no:'+1 (860) 555-0155', st:'1 dead end'},
+  {n:'Service &mdash; South', no:'+1 (860) 555-0156', st:''},
+  {n:'Accounts',           no:'+1 (786) 408-6862', st:''},
+  {n:'Spare 1',            no:'+1 (786) 408-6863', st:''}
+];
+function pkRows(filter, mark){
+  var h='';
+  for (var i=0;i<LINES.length;i++){
+    var L=LINES[i];
+    if (filter && L.n.toLowerCase().indexOf(filter)<0 &&
+        L.no.replace(/[^0-9]/g,'').indexOf(filter)<0) continue;
+    var nm=L.n;
+    if (mark && nm.toLowerCase().indexOf(mark)>=0){
+      var at=nm.toLowerCase().indexOf(mark);
+      nm=nm.slice(0,at)+'<span class="mark">'+nm.slice(at,at+mark.length)+'</span>'+
+         nm.slice(at+mark.length);
+    }
+    h+='<div class="pkrow'+(i===0&&!filter?' on':'')+'"><span class="nm">'+nm+'</span>' +
+       '<span class="no">'+L.no+'</span>' +
+       (L.st?'<span class="st bad">'+L.st+'</span>':'<span class="st">ok</span>')+'</div>';
+  }
+  return h;
+}
+function P7(){
+  return '<div class="row2"><div><div class="cap">Desktop &mdash; the dropdown, with a field</div>' +
+    '<div class="pk"><div class="pks">'+ico('search')+
+    '<span class="pkin">serv<span class="cur"></span></span>' +
+    '<span class="pkcount">2 of 13</span></div>' +
+    pkRows('serv','serv')+'</div></div>' +
+    '<div><div class="cap">Phone &mdash; same control, full width</div>' +
+    '<div class="pk" style="width:340px"><div class="pks">'+ico('search')+
+    '<span class="pkin" style="color:var(--muted)">Search 13 lines</span></div>' +
+    pkRows('','')+'</div></div></div>' +
+    '<div class="note"><b>The smallest thing that answers the ask.</b> The picker you already ' +
+    'have, with a search field pinned to the top of the open list and a live count beside it. ' +
+    'Type, the list filters, the match is highlighted. Searching the <b>digits</b> works too, ' +
+    'punctuation ignored, because half the time you know the number and not the name.<br><br>' +
+    '<b>Thirteen lines is exactly the awkward size</b> &mdash; too many to scan, not enough to ' +
+    'justify a bigger idea. This is the option that stays right at thirteen and at thirty.' +
+    '<br><br><b>The cost:</b> none really, which is the argument for it. It is also the least ' +
+    'interesting, and it does nothing for you when you do not know what you are looking for.</div>';
+}
+function P8(){
+  return '<div class="row2"><div><div class="cap">Desktop &mdash; opens over the page</div>' +
+    '<div class="pk" style="width:420px"><div class="pks">'+ico('search')+
+    '<span class="pkin" style="color:var(--muted)">Search lines by name or number</span>' +
+    '<span class="kbd">esc</span></div>' +
+    '<div class="pkgrp">Needs attention &mdash; 1</div>'+
+    '<div class="pkrow on"><span class="nm">Service &mdash; North</span>' +
+    '<span class="no">+1 (860) 555-0155</span><span class="st bad">1 dead end</span></div>' +
+    '<div class="pkgrp">Recently opened</div>'+
+    '<div class="pkrow"><span class="nm">General</span><span class="no">+1 (239) 456-0829</span>' +
+    '<span class="st">ok</span></div>' +
+    '<div class="pkrow"><span class="nm">Testing</span><span class="no">+1 (860) 555-0188</span>' +
+    '<span class="st">ok</span></div>' +
+    '<div class="pkgrp">All lines &mdash; 13</div>'+
+    pkRows('','')+'</div></div></div>' +
+    '<div class="note"><b>A search that answers the question before you type it.</b> Same field, ' +
+    'but the list underneath is <i>grouped</i>: anything with a fault first, then what you had ' +
+    'open recently, then everything. Opens over the page with <span class="kbd">esc</span> to ' +
+    'close.<br><br><b>This is the one that turns the picker into the way you find a problem.</b> ' +
+    'Thirteen lines and you do not know which is broken &mdash; here that is the first row ' +
+    'without typing anything.<br><br><b>The cost, and it is real:</b> the fault group needs the ' +
+    'counts for every line, not just the open one. The tab loads one line at a time today, so ' +
+    'this option asks Phone for a summary the server does not currently send. <b>Worth asking ' +
+    'for, but it is a build on their side before it is a build on mine</b> &mdash; and a ' +
+    'grouped list that cannot fill its first group is worse than option 7.</div>';
+}
+function P9(){
+  return '<div class="row2"><div><div class="cap">Desktop &mdash; the header IS the search</div>' +
+    '<div class="win" style="width:520px"><div class="topbar">Call flow' +
+    '<span class="pick" style="min-width:250px">'+ico('search')+
+    '<span style="color:var(--muted)">General &middot; +1 (239) 456-0829</span></span></div>' +
+    '<div style="padding:14px;color:var(--muted);font-size:12px">' +
+    'Click the line name and it becomes a text field in place &mdash; no dropdown opens, ' +
+    'the results appear below it.</div></div></div></div>' +
+    '<div class="note"><b>No dropdown at all: the line name in the header becomes the input.</b> ' +
+    'Click it, type, the results list under the header, pick one and it turns back into the ' +
+    'name. One control doing both jobs.<br><br><b>It is the tidiest and I am recommending ' +
+    'against it.</b> A control that silently changes what it is when you click it is the ' +
+    'pattern people misjudge most &mdash; you cannot tell by looking that it searches, so the ' +
+    'feature you asked for is invisible until somebody happens to click the thing they already ' +
+    'think of as a label. <b>Drawn so the option is on the table rather than assumed away</b>, ' +
+    'the same way a deliberately weak layout was drawn for the chart.</div>';
+}
+
+/* ---- wiring -------------------------------------------------------- */
+var OPT = {
+  1:['1 &middot; Desktop &mdash; centred spine, middle-left', D1],
+  2:['2 &middot; Desktop &mdash; n8n tiles, dark', D2],
+  3:['3 &middot; Desktop &mdash; a lane per menu key', D3],
+  4:['4 &middot; Phone &mdash; the whole flow, vertical', M4],
+  5:['5 &middot; Phone &mdash; mini-map and focus', M5],
+  6:['6 &middot; Phone &mdash; the walk, modernised', M6],
+  7:['7 &middot; Picker &mdash; a field on the dropdown', P7],
+  8:['8 &middot; Picker &mdash; grouped, faults first', P8],
+  9:['9 &middot; Picker &mdash; the header is the field', P9]
+};
+function draw(k){
+  SEL=k;
+  document.getElementById('cap').innerHTML=OPT[k][0];
+  document.getElementById('hold').innerHTML=OPT[k][1]();
+  var bs=document.querySelectorAll('#bar button');
+  for (var i=0;i<bs.length;i++){
+    bs[i].setAttribute('aria-current', bs[i].getAttribute('data-k')===String(k));
+  }
+}
+(function(){
+  var bar=document.getElementById('bar');
+  for (var k=1;k<=9;k++){
+    var b=document.createElement('button');
+    b.textContent=(k<4?'Desktop ':k<7?'Phone ':'Picker ')+k;
+    b.setAttribute('data-k', k);
+    b.onclick=(function(n){ return function(){ draw(n); }; })(k);
+    bar.appendChild(b);
+  }
+  draw(1);
+})();
+</script>
