@@ -430,7 +430,61 @@ class ExperimentalCallReportTest extends TestCase
      *
      * @param  list<array{0: string, 1: string}>  $rang  [person, leg result]
      */
-    private function inbound(array $rang, ?string $queue = null): array
+    /**
+     * AVERAGE TALK TIME IS THE LEG, NOT THE RECORD.
+     *
+     * Measured against the live API 2026-09-15: one call's record said 197
+     * seconds and its connected leg said 148. The record starts when the caller
+     * reaches the switchboard, so it carries the IVR and the queue wait - time
+     * nobody was on the phone. The fixtures here keep the two numbers different
+     * for exactly that reason: reading the wrong field cannot pass.
+     */
+    public function test_average_talk_time_uses_the_connected_leg(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], talkSeconds: 100, recordSeconds: 900),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], talkSeconds: 200, recordSeconds: 900),
+        ]);
+
+        $day = $this->reconcile([]);
+
+        $this->assertSame(150, $this->person($day, 'Trey Brannan')['avg_talk_seconds']);
+        $this->assertSame(150, $day['totals']['avg_talk_seconds']);
+    }
+
+    /**
+     * A CALL NOBODY TOOK HAS NO TALK TIME, and must not average in as zero.
+     *
+     * 81 of 280 on the first measured day reached nobody. Counting those as
+     * zero-second calls would drag every mean toward nothing while looking
+     * exactly like a measurement.
+     */
+    public function test_a_call_that_reached_nobody_does_not_average_in_as_zero(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], talkSeconds: 200),
+            $this->inbound(rang: [['Trey Brannan', 'Missed']], talkSeconds: 0),
+        ]);
+
+        $day = $this->reconcile([]);
+
+        $this->assertSame(200, $this->person($day, 'Trey Brannan')['avg_talk_seconds']);
+    }
+
+    /** No average at all is a different fact from an average of zero. */
+    public function test_somebody_who_answered_nothing_has_no_average(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [['Trey Brannan', 'Missed']], talkSeconds: 0),
+        ]);
+
+        $day = $this->reconcile([]);
+
+        $this->assertNull($this->person($day, 'Trey Brannan')['avg_talk_seconds']);
+        $this->assertNull($day['totals']['avg_talk_seconds']);
+    }
+
+    private function inbound(array $rang, ?string $queue = null, int $talkSeconds = 148, int $recordSeconds = 197): array
     {
         $legs = [[
             'legType' => 'Accept',
@@ -454,6 +508,11 @@ class ExperimentalCallReportTest extends TestCase
                 'result' => $result,
                 'from' => ['name' => $person],
                 'to' => ['extensionNumber' => '748'],
+
+                // The LEG's duration. Measured live 2026-09-15, these two
+                // differ by 25% on a real call - the record's starts at the
+                // switchboard and carries the IVR and the queue wait.
+                'duration' => $talkSeconds,
             ];
         }
 
@@ -464,6 +523,11 @@ class ExperimentalCallReportTest extends TestCase
             'startTime' => '2026-09-14T13:21:11.795Z',
             'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
             'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
+
+            // Deliberately DIFFERENT from the leg's, so a test asserting the
+            // average cannot pass by reading the wrong field.
+            'duration' => $recordSeconds,
+
             'legs' => $legs,
         ];
     }

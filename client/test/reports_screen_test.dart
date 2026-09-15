@@ -361,6 +361,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Through the confirmation, which is the only way it goes now.
+    await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
+    await tester.pumpAndSettle();
+
     expect(deleted, 'id-Nationwide');
   });
 
@@ -385,6 +389,72 @@ void main() {
       find.textContaining('Massachusetts is never included'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('average talk time shows, and a dash when there is none', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2:28'), findsOneWidget); // 148s, the day's average
+    expect(find.text('3:05'), findsOneWidget); // 185s, Trey Brannan
+
+    // Ranya Lara answered nothing. No average is a different fact from an
+    // average of zero, and "0:00" would read as a real short call.
+    expect(find.text('—'), findsOneWidget);
+    expect(find.text('0:00'), findsNothing);
+  });
+
+  testWidgets('disconnecting a branch asks first', (tester) async {
+    // It used to go on one click. Undoing it needs that branch's Workiz token
+    // pasted again, and the token cannot be read back out of the app.
+    var deleted = false;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          deleted = true;
+          return _json({
+            'data': {'id': 'x', 'problems': []},
+          });
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay());
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(InputChip, 'Nationwide'),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(deleted, isFalse, reason: 'the X disconnected without asking');
+    expect(find.text('Disconnect Nationwide?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Keep'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isFalse);
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (
@@ -696,6 +766,7 @@ Map<String, dynamic> _callDay({
           'new_client': 135,
           'existing_client': 66,
           'jobs': 66,
+          'avg_talk_seconds': 148,
         },
         'people': [
           {
@@ -705,6 +776,7 @@ Map<String, dynamic> _callDay({
             'new_client': 35,
             'existing_client': 14,
             'jobs': 16,
+            'avg_talk_seconds': 185,
             'in_calls': true,
             'in_jobs': true,
           },
@@ -715,6 +787,7 @@ Map<String, dynamic> _callDay({
             'new_client': 0,
             'existing_client': 1,
             'jobs': 0,
+            'avg_talk_seconds': null,
             'in_calls': true,
             'in_jobs': false,
           },

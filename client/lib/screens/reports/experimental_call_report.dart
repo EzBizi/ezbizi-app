@@ -43,6 +43,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   final TextEditingController _token = TextEditingController();
   String? _disconnecting;
+  String? _confirmingDisconnect;
   bool _connecting = false;
   String? _connectError;
   bool _showConnect = false;
@@ -268,6 +269,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         _stat(context, 'New client', totals['new_client']),
         _stat(context, 'Existing client', totals['existing_client']),
         _stat(context, 'Jobs booked', totals['jobs']),
+        _stat(context, 'Avg talk', _mmss(totals['avg_talk_seconds'])),
       ],
     );
   }
@@ -332,14 +334,42 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             runSpacing: 4,
             children: [
               for (final account in accounts)
-                InputChip(
-                  label: Text('${account['name']}'),
-                  onDeleted: _disconnecting == account['id']
-                      ? null
-                      : () => _disconnect('${account['id']}'),
-                  deleteIcon: const Icon(Icons.close, size: 16),
-                  tooltip: 'Disconnect ${account['name']}',
-                ),
+                if (_confirmingDisconnect == account['id'])
+                  // Confirmed IN PLACE rather than in a dialog, the same way
+                  // deleting a saved report is. The X used to disconnect on one
+                  // click, which is a poor trade: undoing it needs that
+                  // branch's Workiz token pasted again, and the token is not
+                  // something the app can show you.
+                  Wrap(
+                    spacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'Disconnect ${account['name']}?',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                      TextButton(
+                        onPressed: _disconnecting == account['id']
+                            ? null
+                            : () => _disconnect('${account['id']}'),
+                        child: const Text('Disconnect'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            setState(() => _confirmingDisconnect = null),
+                        child: const Text('Keep'),
+                      ),
+                    ],
+                  )
+                else
+                  InputChip(
+                    label: Text('${account['name']}'),
+                    onDeleted: () => setState(
+                      () => _confirmingDisconnect = '${account['id']}',
+                    ),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    tooltip: 'Disconnect ${account['name']}',
+                  ),
             ],
           ),
         const SizedBox(height: 8),
@@ -378,8 +408,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Straight through the shared connections endpoint, which already gates on
   /// this provider's own connect permission and needs nothing from here beyond
   /// the id.
+  ///
+  /// IT REMOVES EZBIZI'S STORED TOKEN AND NOTHING ELSE. No Workiz data is
+  /// touched, no job is deleted, nothing changes on their side — that branch
+  /// simply stops appearing in this report until somebody pastes its token
+  /// again. That is still worth a confirmation, because the token is write-only
+  /// once stored and nobody can read it back out of the app.
   Future<void> _disconnect(String id) async {
-    setState(() => _disconnecting = id);
+    setState(() {
+      _disconnecting = id;
+      _confirmingDisconnect = null;
+    });
 
     final response = await widget.api.delete('/social/connections/$id');
 
@@ -472,6 +511,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           DataColumn(label: Text('New'), numeric: true),
           DataColumn(label: Text('Existing'), numeric: true),
           DataColumn(label: Text('Jobs'), numeric: true),
+          DataColumn(label: Text('Avg talk'), numeric: true),
           DataColumn(label: Text('')),
         ],
         rows: [
@@ -484,6 +524,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 DataCell(Text('${person['new_client']}')),
                 DataCell(Text('${person['existing_client']}')),
                 DataCell(Text('${person['jobs']}')),
+                DataCell(Text(_mmss(person['avg_talk_seconds']))),
                 DataCell(Text(_onlyIn(person) ?? '')),
               ],
             ),
@@ -515,13 +556,27 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               '${person['answered']} answered of ${person['rang']} rung · '
               '${person['new_client']} new · '
               '${person['existing_client']} existing · '
-              '${person['jobs']} jobs',
+              '${person['jobs']} jobs · '
+              '${_mmss(person['avg_talk_seconds'])} avg talk',
               style: theme.textTheme.bodyMedium,
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// Seconds as m:ss, and a DASH when there is no average at all.
+  ///
+  /// Null means they answered nothing, which is not the same fact as averaging
+  /// zero seconds. Printing "0:00" would read as a measurement of a real call.
+  String _mmss(Object? seconds) {
+    if (seconds is! int) return '—';
+
+    final minutes = seconds ~/ 60;
+    final rest = (seconds % 60).toString().padLeft(2, '0');
+
+    return '$minutes:$rest';
   }
 
   /// Which system knows this name, when only one of them does.
