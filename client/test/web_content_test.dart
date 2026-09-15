@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
-import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/web/content_tab.dart';
 import 'package:flutter/material.dart';
@@ -9,12 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Web Management → Pages and → Posts.
+/// The Pages and Posts sections of Web Management → SEO.
 ///
-/// One widget serves both tabs, so the assertions worth having are the ones
-/// that would pass if the two were secretly the same screen: that the type
-/// reaches the server, and that switching it refetches rather than leaving one
-/// list on screen under the other's name.
+/// One widget serves both, so the assertion worth having is the one that would
+/// pass if they were secretly the same list: that the type reaches the server.
+/// The site is chosen by SEO's own rail, so this widget is handed it.
 void main() {
   Future<List<String>> pump(
     WidgetTester tester, {
@@ -28,87 +26,41 @@ void main() {
     final asked = <String>[];
 
     final client = MockClient((request) async {
-      final path = request.url.path;
-      Map<String, Object?> body;
-
-      if (path == '/api/v1/me') {
-        body = {
-          'data': {
-            'id': 'u-1',
-            'name': 'Jose Silva',
-            'email': 'jose@example.com',
-            'has_avatar': false,
-            'role': {'id': 'role-1', 'name': 'Administrator'},
-            'permissions': const ['web_management.view', 'web_management.edit'],
-            'modules': const [
-              {
-                'key': 'web_management',
-                'label': 'Web Management',
-                'available': true,
-                'reachable': true,
-              },
-            ],
-            'preferences': const <String, dynamic>{},
-            'organization': {
-              'id': 'org-1',
-              'name': 'A-1 Chimney Group',
-              'franchise_label': 'Franchise',
-              'is_read_only': false,
-            },
-            'scope': null,
-          },
-        };
-      } else if (path == '/api/v1/web/sites') {
-        body = {
-          'data': const [
-            {
-              'id': 'site-1',
-              'host': 'a-1chimney.com',
-              'label': null,
-              'is_primary': true,
-              'public_key': 'pk_x',
-              'company': {'id': 'c1', 'name': 'A-1'},
-              'franchise': null,
-            },
-          ],
-        };
-      } else if (path == '/api/v1/web/sites/site-1/content') {
-        asked.add(request.url.query);
-
-        if (status != 200) {
-          return http.Response(
-            jsonEncode({'message': message}),
-            status,
-            headers: {'content-type': 'application/json'},
-          );
-        }
-
-        body = {'items': items, 'total': total, 'pages': pages};
-      } else {
+      if (request.url.path != '/api/v1/web/sites/site-1/content') {
         return http.Response('{}', 404,
             headers: {'content-type': 'application/json'});
       }
 
+      asked.add(request.url.query);
+
+      if (status != 200) {
+        return http.Response(
+          jsonEncode({'message': message}),
+          status,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+
       return http.Response(
-        jsonEncode(body),
+        jsonEncode({'items': items, 'total': total, 'pages': pages}),
         200,
         headers: {'content-type': 'application/json'},
       );
     });
 
-    final api = ApiClient(client: client);
-    final session = Session(api);
-
-    await tester.runAsync(() => session.adopt('tok'));
-
-    tester.view.physicalSize = const Size(1280, 1400);
+    tester.view.physicalSize = const Size(1000, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: ContentTab(api: api, session: session, type: type),
+        body: SiteContentList(
+          api: ApiClient(client: client),
+          siteId: 'site-1',
+          host: 'a-1chimney.com',
+          type: type,
+        ),
       ),
     ));
     await tester.pumpAndSettle();
@@ -151,14 +103,22 @@ void main() {
     expect(find.text('publish'), findsNothing);
   });
 
-  /// The one word that differs between the two tabs has to reach the server,
-  /// or Posts is Pages wearing a different label.
-  testWidgets('each tab asks for its own type', (tester) async {
-    final pagesAsked = await pump(tester, type: 'page');
-    expect(pagesAsked.first, contains('type=page'));
+  /// The one word that differs between the two has to reach the server, or
+  /// Posts is Pages wearing a different label.
+  ///
+  /// Two tests, not two pumps: pumpWidget replaces the tree but Flutter UPDATES
+  /// an element of the same type in the same position, so a second pump keeps
+  /// the first one's state and never refetches.
+  testWidgets('the Pages section asks for pages', (tester) async {
+    final asked = await pump(tester, type: 'page');
 
-    final postsAsked = await pump(tester, type: 'post');
-    expect(postsAsked.first, contains('type=post'));
+    expect(asked.first, contains('type=page'));
+  });
+
+  testWidgets('the Posts section asks for posts', (tester) async {
+    final asked = await pump(tester, type: 'post');
+
+    expect(asked.first, contains('type=post'));
   });
 
   /// WordPress allows an untitled draft, and a blank row reads as a rendering

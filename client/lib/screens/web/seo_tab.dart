@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
+import 'content_tab.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import 'hours.dart';
@@ -144,8 +145,17 @@ class _SeoTabState extends State<SeoTab> {
       if (response.ok) {
         _sites = (response.body['data'] as List<dynamic>)
             .cast<Map<String, dynamic>>();
-        _sections = ((response.body['sections'] as List<dynamic>?) ?? [])
-            .cast<Map<String, dynamic>>();
+        _sections = [
+          // The server's sections are groups of FIELDS, which is why these two
+          // are added here instead. Pages and Posts are not fields — they are
+          // the site's own content, read live — and putting them in
+          // SeoFields::sections would make the field catalogue describe two
+          // things it does not contain.
+          ...((response.body['sections'] as List<dynamic>?) ?? [])
+              .cast<Map<String, dynamic>>(),
+          const {'key': _pagesKey, 'label': 'Pages'},
+          const {'key': _postsKey, 'label': 'Posts'},
+        ];
         if (_section >= _sections.length) _section = 0;
       } else {
         _error = response.message;
@@ -176,6 +186,13 @@ class _SeoTabState extends State<SeoTab> {
   /// the field catalogue, and a copy in Dart is a second place to edit and a
   /// second place to be wrong. Empty until the first load, which is why the
   /// strip is hidden rather than empty below.
+  /// The two sections that show the website's own content rather than fields.
+  static const String _pagesKey = 'pages';
+  static const String _postsKey = 'posts';
+
+  bool get _showingContent =>
+      _sectionKey == _pagesKey || _sectionKey == _postsKey;
+
   List<Map<String, dynamic>> _sections = [];
 
   int _section = 0;
@@ -254,7 +271,7 @@ class _SeoTabState extends State<SeoTab> {
                     child: Text('Add a website to set what it publishes.'),
                   ),
                 )
-              : SingleChildScrollView(child: _detailFor(selected)),
+              : _paneFor(selected),
         ),
       ],
     );
@@ -275,9 +292,7 @@ class _SeoTabState extends State<SeoTab> {
             builder: (_) => Scaffold(
               appBar: AppBar(title: Text(site['host'] as String)),
               body: SafeArea(
-                child: SingleChildScrollView(
-                  child: _detailFor(site),
-                ),
+                child: _paneFor(site),
               ),
             ),
           ),
@@ -356,6 +371,27 @@ class _SeoTabState extends State<SeoTab> {
     }
 
     return null;
+  }
+
+  /// The fields for this site, or its pages or posts.
+  ///
+  /// The content list scrolls itself and must NOT be wrapped: handing a list
+  /// unbounded height inside a scroll view builds every row at once and takes
+  /// the scrolling with it.
+  Widget _paneFor(Map<String, dynamic> site) {
+    if (_showingContent) {
+      return SiteContentList(
+        // Keyed by site AND section, so switching either refetches rather than
+        // leaving one site's pages under another site's name.
+        key: ValueKey('${site['id']}:$_sectionKey'),
+        api: widget.api,
+        siteId: site['id'] as String,
+        host: site['host'] as String,
+        type: _sectionKey == _pagesKey ? 'page' : 'post',
+      );
+    }
+
+    return SingleChildScrollView(child: _detailFor(site));
   }
 
   Widget _detailFor(Map<String, dynamic> site) => _SiteDetail(
