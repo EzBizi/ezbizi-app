@@ -31,7 +31,10 @@ class WebWidgetsTest extends TestCase
             ->json();
 
         $this->assertFalse($body['own']);
-        $this->assertFalse($body['config']['chat']['enabled']);
+
+        // On, with nothing saved. There is no off any more: placing the widget
+        // is what shows it (Jose, 2026-09-15).
+        $this->assertTrue($body['config']['chat']['enabled']);
         $this->assertSame('#0b5cad', $body['config']['style']['accent']);
         $this->assertCount(4, $body['config']['form']['fields']);
     }
@@ -43,7 +46,7 @@ class WebWidgetsTest extends TestCase
         $this->signedInAs($editor)
             ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
                 'config' => [
-                    'chat' => ['enabled' => true, 'title' => 'Talk to A-1'],
+                    'chat' => ['title' => 'Talk to A-1'],
                     'form' => [
                         'enabled' => true,
                         'fields' => [
@@ -61,7 +64,6 @@ class WebWidgetsTest extends TestCase
             ->json();
 
         $this->assertTrue($body['own']);
-        $this->assertTrue($body['config']['chat']['enabled']);
         $this->assertSame('Talk to A-1', $body['config']['chat']['title']);
         $this->assertSame('#aa0000', $body['config']['style']['accent']);
         $this->assertSame(4, $body['config']['style']['radius']);
@@ -133,7 +135,7 @@ class WebWidgetsTest extends TestCase
 
         $this->signedInAs($editor)
             ->putJson("/api/v1/web/sites/{$primary['data']['id']}/widgets", [
-                'config' => ['style' => ['accent' => '#123456'], 'chat' => ['enabled' => true]],
+                'config' => ['style' => ['accent' => '#123456'], 'chat' => ['title' => 'Talk to A-1']],
             ])->assertOk();
 
         $followed = $this->signedInAs($editor)
@@ -143,7 +145,7 @@ class WebWidgetsTest extends TestCase
 
         $this->assertFalse($followed['own'], 'The branch has no config of its own.');
         $this->assertSame('#123456', $followed['config']['style']['accent']);
-        $this->assertTrue($followed['config']['chat']['enabled']);
+        $this->assertSame('Talk to A-1', $followed['config']['chat']['title']);
 
         // Now it dresses itself, and stops following.
         $this->signedInAs($editor)
@@ -194,7 +196,7 @@ class WebWidgetsTest extends TestCase
         ['site' => $site, 'editor' => $editor] = $this->site();
 
         $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
-            'config' => ['chat' => ['enabled' => true, 'title' => 'Talk to A-1']],
+            'config' => ['chat' => ['title' => 'Talk to A-1']],
         ])->assertOk();
 
         $payload = $this->withToken($site['token'])
@@ -551,5 +553,38 @@ class WebWidgetsTest extends TestCase
         ])->assertCreated()->json();
 
         return ['data' => $body['data'], 'token' => $body['token']];
+    }
+
+    /**
+     * A site that had switched a widget off still gets it, and old plugins
+     * still render it.
+     *
+     * Two things are being held at once. The switches are gone, so a stored
+     * `false` from before today must not go on hiding anything. And plugin
+     * 1.4.0 and earlier render NOTHING when `enabled` is absent or false, and
+     * they are installed on real sites — so the key has to keep arriving, true,
+     * until no such install is left. Drop the key and every widget on a site
+     * that has not updated goes dark, with no error anywhere.
+     */
+    public function test_a_stored_off_switch_is_ignored_and_the_key_still_says_on(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => [
+                    'chat' => ['enabled' => false, 'title' => 'Talk to A-1'],
+                    'form' => ['enabled' => false],
+                ],
+            ])->assertOk();
+
+        $body = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($body['config']['chat']['enabled']);
+        $this->assertTrue($body['config']['form']['enabled']);
+        $this->assertSame('Talk to A-1', $body['config']['chat']['title']);
     }
 }

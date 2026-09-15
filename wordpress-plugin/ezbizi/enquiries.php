@@ -128,7 +128,7 @@ function ezbizi_form_shortcode($atts) {
 
     if ($key === '') {
         return ezbizi_widget_silent(
-            __('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi')
+            __('EzBizi: this site has no browser key yet. Click EzBizi in the sidebar.', 'ezbizi')
         );
     }
 
@@ -137,12 +137,6 @@ function ezbizi_form_shortcode($atts) {
     if (empty($config)) {
         return ezbizi_widget_silent(
             __('EzBizi: no widget settings have arrived yet. They come with the next refresh.', 'ezbizi')
-        );
-    }
-
-    if (empty($config['enabled'])) {
-        return ezbizi_widget_silent(
-            __('EzBizi: the contact form is switched off in Web Management › Widgets.', 'ezbizi')
         );
     }
 
@@ -250,7 +244,7 @@ function ezbizi_chat_shortcode($atts) {
 
     if ($key === '') {
         return ezbizi_widget_silent(
-            __('EzBizi: this site has no browser key yet. Open Settings › EzBizi.', 'ezbizi')
+            __('EzBizi: this site has no browser key yet. Click EzBizi in the sidebar.', 'ezbizi')
         );
     }
 
@@ -259,12 +253,6 @@ function ezbizi_chat_shortcode($atts) {
     if (empty($config)) {
         return ezbizi_widget_silent(
             __('EzBizi: no widget settings have arrived yet. They come with the next refresh.', 'ezbizi')
-        );
-    }
-
-    if (empty($config['enabled'])) {
-        return ezbizi_widget_silent(
-            __('EzBizi: live chat is switched off in Web Management › Widgets.', 'ezbizi')
         );
     }
 

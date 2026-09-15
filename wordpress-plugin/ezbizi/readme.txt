@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -194,6 +194,13 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.5.0 =
+* The live chat and contact form are now Elementor widgets. Search "EzBizi" in
+  the Elements panel and drag either one onto a page. The shortcodes
+  [ezbizi_chat] and [ezbizi_form] still work exactly as before.
+* The widgets no longer have an on/off switch in EzBizi. Putting one on a page
+  is what shows it, and taking it off the page is what hides it.
 
 = 1.4.0 =
 * EzBizi now has its own item in the WordPress sidebar instead of sitting
