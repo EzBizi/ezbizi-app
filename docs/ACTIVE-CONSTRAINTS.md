@@ -351,3 +351,32 @@ broader clears somebody else's deliberate staging.
 (a snapshot of an already-committed tree - safe to clear) from **live** (somebody's
 real work - do not touch). Run it in its own shell call, because a staged line
 outlives the check that did not look for it.
+
+---
+
+## 9 · A commit can carry more than its message says — check before reverting
+
+**`97de664c` is load-bearing for TWO features.** Its subject is *"A business can
+save the mail server its own mail goes through"*, and it also contains **call
+pickup's two routes**:
+
+    git log -S "phone/calls/{call}/pickup" -- routes/api.php   ->  97de664c
+
+Phone had those lines uncommitted in the shared tree when SES committed that path,
+and `git commit -- <path>` takes the whole worktree content of a file. Phone
+noticed because their own commit minutes later reported `routes/api.php`
+unchanged - the absence, not the presence, is what showed it.
+
+**Revert that commit as "just the mail-server change" and call pickup loses its
+routes** while its controller, screen and tests remain. The tests go red, which is
+the good outcome; the feature is gone from a release whose notes never mention the
+phone.
+
+Deliberately NOT re-attributed: the lines are correct and `route:list` resolves
+both. Rewriting a commit already in other people's history to tidy the record is a
+worse trade than a slightly wrong record. Phone's call, and the right one.
+
+**The rule: before reverting anything, `git show <sha> --stat` and ask whether
+every file in it belongs to the subject line.** On a shared worktree a
+path-limited commit is not a promise about scope. §8 is the same mechanism from
+the other side; this is what it costs when nobody notices for an hour.
