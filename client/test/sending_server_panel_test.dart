@@ -272,6 +272,25 @@ void main() {
           {..._setHere(), 'source_name': 'A-1 Chimney', 'inherited': true},
           'Inherited from A-1 Chimney',
         ],
+
+        /*
+         * A payload from a server NEWER than this client, which is reachable on
+         * any deploy where the two halves ship minutes apart — not hypothetical.
+         *
+         * It pins forward tolerance: an outcome field this build has never heard
+         * of is IGNORED, and the card goes on rendering the state it does
+         * understand rather than blanking or crashing. Inventing a verdict from
+         * an unknown word is the confident-wrong-cause defect; refusing to draw
+         * at all is the same defect with a blank face.
+         *
+         * UI/UX asked for this entry to close a different hole and it does not
+         * — see the note below the loop. It earns its place on this one.
+         */
+        'a state this build has never heard of': [
+          {..._connected(neverTried: false), 'last_result': 'marvellous'},
+          _setHere(),
+          'has been attempted',
+        ],
       };
 
       for (final entry in shapes.entries) {
@@ -298,6 +317,30 @@ void main() {
               'does not report whether sending worked.',
         );
       }
+
+      /*
+       * WHAT THIS STILL DOES NOT CATCH, written down rather than papered over.
+       *
+       * It fires when the admission is REMOVED. It does not fire on the partial
+       * change UI/UX identified and which is the likelier accident: somebody
+       * adds a failure state, renders "the server refused the password", and
+       * leaves the admission in — so the card contradicts itself and every
+       * assertion here still passes, the unknown-state entry included. That
+       * entry goes red only if the admission is dropped, which is the case
+       * already covered.
+       *
+       * Closing it means asserting that an outcome verdict and the admission
+       * are never BOTH drawn, and "is this an outcome verdict" cannot be asked
+       * of rendered text without scanning prose — which is the instrument this
+       * loop replaced. It needs the parsed state model we have twice agreed not
+       * to build for states nothing can produce.
+       *
+       * So the hole is real and open. The thing that actually guards it is that
+       * the admission and the failure states are the same decision: the states
+       * arrive when an outcome is recorded, and that is the moment to delete
+       * this sentence. Recorded here because the next person to add a failure
+       * state will be reading this file.
+       */
     });
   });
 }
