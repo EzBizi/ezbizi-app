@@ -166,7 +166,7 @@ function sum(){
       ' never reached</b> &mdash; configured, no caller ever gets there</span>'
     : '') + '</div>';
 }
-function top(){
+function titlebar(){
   return '<div class="top">Call flow<span class="pick">' +
     (bare() ? 'General · +1 786 408-6862 ▾' : 'Main line · +1 860 555 0142 ▾') +
     '</span></div>';
@@ -197,7 +197,7 @@ function wire(pts, label, lx, ly, dash){
 
 /* -- 1 -- left to right, layered -------------------------------- */
 function D1(){
-  if (bare()) return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+  if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' + wire('M138 140 H168','',0,0) + wire('M306 140 H336','',0,0) +
     wire('M474 140 H504','',0,0) + '</svg>' +
     node('caller',6,120) + node('arrival',174,120) + node('nobody',342,120) +
@@ -208,7 +208,7 @@ function D1(){
     'Worth checking every option at this size &mdash; two thirds of a 760px canvas ' +
     'is empty here, and a chart tuned to look good at eleven nodes is tuned for a ' +
     'line that is not the common one either.</div>';
-  return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+  return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' +
       wire('M138 34 H168','',0,0) +
       wire('M306 22 C330 22 330 40 356 40','Press 1',310,16) +
@@ -241,7 +241,7 @@ function D1(){
 
 /* -- 2 -- top to bottom, spine with branches --------------------- */
 function D2(){
-  if (bare()) return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+  if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' + wire('M74 42 V64','',0,0) + wire('M74 106 V128','',0,0) +
     wire('M74 176 V198','',0,0) + '</svg>' +
     node('caller',8,16,120) + node('arrival',8,80,120) + node('nobody',8,144,120) +
@@ -250,7 +250,7 @@ function D2(){
     'layout strains.</b> The spine is the whole chart when the line is bare, which ' +
     'is the shape two of thirteen are in. Compare desktop 1 at this size: the same ' +
     'four nodes leave most of the canvas empty.</div>';
-  return '<div class="win">' + top() + sum() + '<div class="canvas">' +
+  return '<div class="win">' + titlebar() + sum() + '<div class="canvas">' +
     '<svg>' +
       wire('M68 42 V64','',0,0) +
       wire('M134 96 C200 96 200 30 254 30','Press 1',142,90) +
@@ -295,14 +295,14 @@ function D3(){
         'border-radius:999px">Never reached</span>' : '') +
       '</span></div>';
   }
-  if (bare()) return '<div class="win">' + top() + sum() + '<div class="out">' +
+  if (bare()) return '<div class="win">' + titlebar() + sum() + '<div class="out">' +
     r('', 'caller') + r('&#9492;&#9472;', 'arrival') +
     r('&nbsp;&nbsp;&#9492;&#9472;', 'nobody') +
     r('&nbsp;&nbsp;&nbsp;&nbsp;&#9492;&#9472;', 'vm') + '</div></div>' +
     '<div class="note">Four rows. <b>The outline is the only option whose ' +
     'proportions do not change between a four-node line and an eleven-node one' +
     '</b> &mdash; it is the same list, shorter.</div>';
-  return '<div class="win">' + top() + sum() + '<div class="out">' +
+  return '<div class="win">' + titlebar() + sum() + '<div class="out">' +
     r('', 'caller') + r('&#9492;&#9472;', 'arrival') +
     '<div class="row"><span class="lab"></span>' +
     '<span class="gut">&nbsp;&nbsp;&#9492;&#9472;</span>' +
@@ -339,7 +339,7 @@ function D3(){
 
 /* -- 4 -- mobile: the canvas, panned ----------------------------- */
 function M4(){
-  return '<div class="phone">' + top() + sum() +
+  return '<div class="phone">' + titlebar() + sum() +
     '<div class="canvas"><svg>' +
       wire('M68 42 V64','',0,0) +
       wire('M134 96 C186 96 186 30 232 30','1',142,90) +
@@ -370,13 +370,13 @@ function M5(){
       '"><b>' + n.t + '</b><div style="color:var(--muted);font-size:11.5px;' +
       'margin-top:2px">' + n.d + '</div></div>';
   }
-  if (bare()) return '<div class="phone">' + top() + sum() +
+  if (bare()) return '<div class="phone">' + titlebar() + sum() +
     '<div style="padding:12px 0 14px">' + s2('caller') + s2('arrival') +
     s2('nobody') + s2('vm') + '</div></div>' +
     '<div class="note">Four cards, no branch row, nothing collapsed. <b>The bare ' +
     'line needs no interaction at all</b> &mdash; which is the right behaviour for ' +
     'a layout whose collapsing exists to manage a fan that is not there.</div>';
-  return '<div class="phone">' + top() + sum() +
+  return '<div class="phone">' + titlebar() + sum() +
     '<div style="padding:12px 0 14px">' + s2('caller') + s2('arrival') +
     '<div style="margin:0 14px;border:1px solid var(--line);border-radius:10px;' +
     'padding:10px 11px;font-size:12.5px"><b>Menu</b><div style="color:' +
@@ -406,7 +406,7 @@ function M5(){
 
 /* -- 6 -- mobile: walk it as the caller -------------------------- */
 function M6(){
-  if (bare()) return '<div class="phone">' + top() + sum() +
+  if (bare()) return '<div class="phone">' + titlebar() + sum() +
     '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Nobody is rung</b></div>' +
     '<div class="stepnode dead"><div class="t">Nobody is rung</div>' +
     '<div class="d">No ring group is set on this line, so the call is not offered ' +
@@ -417,7 +417,7 @@ function M6(){
     '<div class="note"><b>Two taps to reach the fault on a four-node line.</b> The ' +
     'count at the top said &ldquo;1 dead end&rdquo; immediately; the walk is what ' +
     'tells you which. On a bare line that is a lot of walking for one fact.</div>';
-  return '<div class="phone">' + top() + sum() +
+  return '<div class="phone">' + titlebar() + sum() +
     '<div class="crumb">Caller &rsaquo; Arrival &rsaquo; <b>Menu</b></div>' +
     '<div class="stepnode"><div class="t">Menu</div>' +
     '<div class="d">&ldquo;Press 1 for sales, 2 for service, 3 for ' +
