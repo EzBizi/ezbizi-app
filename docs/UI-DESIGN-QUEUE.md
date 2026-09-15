@@ -1,5 +1,22 @@
 # UI/UX — the queue, and what has been settled
 
+> **⚠ A STATUS IN THIS FILE IS A CLAIM ABOUT THE WORLD, AND FOUR OF THEM WERE FALSE ON
+> 2026-09-15.** Entry 18 read *DRAWN, awaiting Jose* hours after he picked and it shipped; Leads
+> connected accounts read *AWAITING JOSE* while the screen was built, grouped and searchable;
+> entries 7 and 8 read *DRAWN, with Jose* with 311 and 413 lines of the thing on main.
+>
+> **The cause is structural rather than carelessness.** CRAFT ships and tells UI/UX after, other
+> sessions build directly on his word, and nothing makes a row update itself. So the rot is the
+> normal state of this file, not an accident in it.
+>
+> **Before treating any row as open, spend one command proving it is:** find the file that would
+> exist if it were built. `grep -rln` on the feature, then `git log --oneline -1 --` on what comes
+> back. That is the whole check, and it would have caught all four.
+>
+> **And never put a gallery in front of Jose without running it first.** The worst outcome here is
+> not an untidy file — it is asking him to choose between six layouts for a problem somebody
+> solved and shipped while the row sat here saying it was waiting for him.
+
 > **REPORTING RULE, Jose 2026-09-15 (`CLAUDE.md` `0c90472e`, verified): replies to him are 3
 > bullets max** — final result, anything broken, anything he must do, a real question. His named
 > complaint is *"endless summaries replicated on all sessions"*. Peer messages, layout
@@ -1450,7 +1467,9 @@ broken under it.
 The existing `shown` map solves this for filtering alone, on one rail. A green suite proves very
 little here; the test has to go red on an off-by-one.
 
-### 8 · Reports · the builder and the run view — **DRAWN, with Jose**
+### 8 · Reports · the builder and the run view — **SHIPPED**
+
+**Status corrected 2026-09-15 by measurement, not by news.** This read *DRAWN, with Jose* while `client/lib/screens/reports/report_builder.dart` was 413 lines on main, last touched by `341dc86f`. Built, shipped, and the row said it was waiting for him.
 
 `docs/previews/reports-builder-layouts.html`. Three desktop, three mobile, with two toggles:
 a person holding `reports.view` but not `reports.build`, and a report that returned no rows.
@@ -1502,7 +1521,9 @@ screen, which is correct — a builder is a new arrangement, not a state change 
 > and a human label becomes required rather than nice. It is one field in `ReportMap` and one
 > line in the controller at that point.
 
-### 7 · Organization · Brand colour picker — **DRAWN, with Jose**
+### 7 · Organization · Brand colour picker — **SHIPPED. Jose: desktop 1, mobile 6**
+
+**Status corrected 2026-09-15.** He picked these numbers earlier the same day and `client/lib/widgets/brand_colour_card.dart` is 311 lines on main (`bdb7702b`). The row still said *DRAWN, with Jose*.
 
 `docs/previews/brand-colour-picker-layouts.html`, committed `f38e797f`. Three desktop,
 three mobile, plus the "not set yet" state on a toggle. UI/UX designs AND builds this one;
