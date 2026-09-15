@@ -108,6 +108,25 @@
     });
   }
 
+  /**
+   * Turn off the SDK's own incoming ring, if this build of it has one.
+   *
+   * Guarded rather than assumed: `device.audio` is null when the browser hands
+   * the SDK no audio helper, and an unguarded call here would throw inside
+   * setup() and take registration down with it — trading two ringtones for a
+   * phone that does not ring at all.
+   */
+  function silenceOwnRing(d) {
+    try {
+      if (d && d.audio && typeof d.audio.incoming === 'function') {
+        d.audio.incoming(false);
+      }
+    } catch (e) {
+      // An older SDK without the toggle. Two tones is worse than one and
+      // better than a desk that cannot take a call.
+    }
+  }
+
   function setup(token) {
     try {
       if (device) device.destroy();
@@ -119,6 +138,30 @@
         // negotiating something worse on a slow line.
         codecPreferences: ['opus', 'pcmu']
       });
+
+      // ── ONE RINGTONE, AND IT IS OURS ─────────────────────────
+      //
+      // The SDK rings for an incoming call and EzBizi rings too — see
+      // CallAlerts, which every platform uses — so the desktop played both
+      // at once. Jose: "it was ringing twice, with the new ring that u put
+      // for fixing web, and the old ringing from ezbizi desktop app."
+      //
+      // The web build already turned the SDK's incoming ring off for exactly
+      // this reason and the desktop was never given the same treatment. It
+      // was audible before as two similar tones overlapping; making ours a
+      // distinct double burst is what turned an unnoticed overlap into an
+      // obvious one.
+      //
+      // Ours survives, for the reason the web comment gives: it is the same
+      // alert on Windows, Android, iOS and the browser, and a desktop that
+      // rings differently from the phone in your pocket is a desk people
+      // learn to distrust.
+      //
+      // ONLY `incoming`. `outgoing`, `disconnect` and the DTMF keys stay:
+      // nothing else here duplicates them, and the outbound ringback in
+      // particular is carried by <Dial ringTone> rather than by CallAlerts,
+      // so silencing it would leave a caller listening to nothing.
+      silenceOwnRing(device);
 
       device.on('incoming', function (call) {
         pendingCall = call;
