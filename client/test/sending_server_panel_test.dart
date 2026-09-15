@@ -286,8 +286,8 @@ void main() {
          * UI/UX asked for this entry to close a different hole and it does not
          * — see the note below the loop. It earns its place on this one.
          */
-        'a state this build has never heard of': [
-          {..._connected(neverTried: false), 'last_result': 'marvellous'},
+        'a field this build has never heard of': [
+          {..._connected(neverTried: false), 'weather': 'marvellous'},
           _setHere(),
           'has been attempted',
         ],
@@ -319,7 +319,50 @@ void main() {
       }
 
       /*
-       * WHAT THIS STILL DOES NOT CATCH, written down rather than papered over.
+       * The fixture above said `last_result` until the admission became derived
+       * from exactly that key, and the loop went red — correctly. An "unknown
+       * field" fixture that happened to name the one field the card now reads is
+       * a fixture asserting the opposite of what its name claims. Renamed to a
+       * key nothing will ever mean.
+       */
+    });
+
+    testWidgets('and the admission disappears the moment an outcome arrives', (
+      tester,
+    ) async {
+      /*
+       * THE OTHER HALF, and the reason the derivation is worth more than the
+       * note it replaced. The admission is true exactly while the card reports
+       * no outcome, so the two cannot drift apart by one of them being edited:
+       * whoever adds the first failure state makes the sentence disappear BY
+       * ADDING IT, rather than by reading a comment and remembering to delete
+       * something six lines away.
+       *
+       * This is the assertion that makes the loop above mean something. Without
+       * it, a card that ALWAYS renders the admission passes every entry, which
+       * is the shape the loop had before today.
+       *
+       * It does depend on the field being called `last_result` — a guess, said
+       * out loud in the widget. A wrong guess degrades to the old behaviour
+       * rather than to something worse, which is why it is a trade worth making
+       * and NOT a guarantee.
+       */
+      await _pump(
+        tester,
+        connectedHere: {..._connected(neverTried: false), 'last_result': 'refused'},
+        inEffect: _setHere(),
+      );
+
+      expect(find.text(SendingServerPanel.notReportedYet), findsNothing);
+
+      // The control: the card still drew, so this cannot pass by rendering
+      // nothing at all.
+      expect(find.textContaining('smtp.a-1chimney.test'), findsOneWidget);
+    });
+
+    testWidgets('the gap this still does not close', (tester) async {
+      /*
+       * WRITTEN DOWN RATHER THAN PAPERED OVER.
        *
        * It fires when the admission is REMOVED. It does not fire on the partial
        * change UI/UX identified and which is the likelier accident: somebody
@@ -340,7 +383,13 @@ void main() {
        * arrive when an outcome is recorded, and that is the moment to delete
        * this sentence. Recorded here because the next person to add a failure
        * state will be reading this file.
+       *
+       * Deriving the admission (above) narrows it a long way: the contradiction
+       * is now unrepresentable WHEN the outcome arrives under the name guessed.
+       * Under a different name it is exactly the old hole, which is why this
+       * note stays.
        */
+      expect(SendingServerPanel.notReportedYet, isNotEmpty);
     });
   });
 }

@@ -279,19 +279,57 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
               ..._empty(context, answer, mayEdit)
             else
               ..._connected(context, answer, connected, mayEdit),
-            const SizedBox(height: 12),
-            Text(
-              SendingServerPanel.notReportedYet,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
+            /*
+             * DERIVED, so the contradiction is unrepresentable rather than
+             * merely discouraged. UI/UX's idea and the argument that decided it:
+             * rendered unconditionally, the admission relies on whoever adds the
+             * first failure state reading a note and deleting a sentence
+             * elsewhere — the step that gets forgotten, because adding the state
+             * is the work they set out to do. Derived, adding the outcome makes
+             * the sentence disappear by itself.
+             *
+             * THE KEY IS A GUESS AND THAT IS SAID OUT LOUD. If the field is
+             * called something else the sentence persists exactly as it would
+             * have without this check — so a wrong guess degrades to the
+             * previous behaviour rather than to something worse, which is why
+             * the check is never a bad trade. What it must NOT do is read as a
+             * guarantee: it is not one.
+             *
+             * `last_result` rather than a name picked from nothing, because it
+             * pairs with `last_attempted_at`, which already exists and which the
+             * failure states will be read alongside. A convention, not an
+             * invention.
+             *
+             * And the reason this beats a `reportsOutcome` constant, which I
+             * weighed: whoever adds outcomes writes code READING outcome data,
+             * and will find another place reading outcome data six lines away.
+             * A constant in the class header is only found by somebody looking
+             * for it.
+             */
+            if (!_reportsOutcome(connected)) ...[
+              const SizedBox(height: 12),
+              Text(
+                SendingServerPanel.notReportedYet,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  /// Does the answer carry an outcome — did a send WORK, not merely happen?
+  ///
+  /// False for every payload this build can receive, which is the point: the
+  /// admission that this screen does not report whether sending worked is true
+  /// exactly while this is false, so the two cannot drift apart by one of them
+  /// being edited.
+  bool _reportsOutcome(Map<String, dynamic>? connected) =>
+      connected != null && connected['last_result'] != null;
 
   // ── the four states ──────────────────────────────────────────
 
