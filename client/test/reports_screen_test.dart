@@ -585,6 +585,64 @@ void main() {
     );
   });
 
+  testWidgets('a module registered inside Reports gets a chip', (
+    tester,
+  ) async {
+    // A module with parent: 'reports' gets NO sidebar row - _hasDestination in
+    // main.dart refuses every parented module by design, because it is meant to
+    // be drawn as a chip inside its parent. Google Ads shipped registered,
+    // permissioned, deployed and reachable by NOBODY, because this strip was
+    // three hardcoded entries. Its registry test asserted the parent, the
+    // label, the order and the permissions, and passed throughout.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      modules: const [
+        {
+          'key': 'ads_performance',
+          'label': 'Google Ads',
+          'reachable': true,
+          'parent': 'reports',
+        },
+      ],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Google Ads'), findsOneWidget);
+  });
+
+  testWidgets('a child module nobody can reach gets no chip', (tester) async {
+    // reachableModules is doing real work: ads_performance.view is a separate
+    // grant from reports.view and somebody can hold either without the other.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      modules: const [
+        {
+          'key': 'ads_performance',
+          'label': 'Google Ads',
+          'reachable': false,
+          'parent': 'reports',
+        },
+      ],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Google Ads'), findsNothing);
+  });
+
+  testWidgets('the screen does not say its own name twice', (tester) async {
+    // The shell draws this module's label above every screen (_titled ->
+    // ModulePageHeader), so a heading here made "Reports" appear twice. The
+    // heading now carries ONLY an open report's name, which is the thing the
+    // shell cannot know. Marketing has no heading of its own for this reason.
+    await _pumpReports(tester, reports: [_report]);
+
+    // EXACTLY ONE, and it is the chip. Asserting findsNothing was wrong: the
+    // chip legitimately carries that text, so the assertion has to count rather
+    // than forbid - otherwise it would go red on a correct screen.
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
+  });
+
   testWidgets('without reports.build there is no Builder tab at all', (
     tester,
   ) async {
@@ -669,6 +727,7 @@ Future<void> _pumpReports(
     'reports.export',
   ],
   List<Map<String, dynamic>> reports = const [],
+  List<Map<String, dynamic>> modules = const [],
   http.Response? Function(http.Request request)? onRequest,
   double width = 1280,
 }) async {
@@ -685,7 +744,7 @@ Future<void> _pumpReports(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': permissions},
+          'data': {..._me, 'permissions': permissions, 'modules': modules},
         });
       }
 
