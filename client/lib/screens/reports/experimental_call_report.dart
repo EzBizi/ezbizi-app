@@ -44,6 +44,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   final TextEditingController _token = TextEditingController();
   String? _disconnecting;
   String? _confirmingDisconnect;
+  bool _managing = false;
   bool _connecting = false;
   String? _connectError;
   bool _showConnect = false;
@@ -323,57 +324,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     '${covered.join(', ')}.',
           style: theme.textTheme.bodySmall,
         ),
-        const SizedBox(height: 8),
-        // Each connected branch, with the way to remove it. This is the ONLY
-        // place a Workiz account's id is published: it is a data source, and
-        // the shared connections list excludes those on purpose, so without
-        // these chips a credential could be connected and never taken back.
-        if (accounts.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final account in accounts)
-                if (_confirmingDisconnect == account['id'])
-                  // Confirmed IN PLACE rather than in a dialog, the same way
-                  // deleting a saved report is. The X used to disconnect on one
-                  // click, which is a poor trade: undoing it needs that
-                  // branch's Workiz token pasted again, and the token is not
-                  // something the app can show you.
-                  Wrap(
-                    spacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'Disconnect ${account['name']}?',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      TextButton(
-                        onPressed: _disconnecting == account['id']
-                            ? null
-                            : () => _disconnect('${account['id']}'),
-                        child: const Text('Disconnect'),
-                      ),
-                      TextButton(
-                        onPressed: () =>
-                            setState(() => _confirmingDisconnect = null),
-                        child: const Text('Keep'),
-                      ),
-                    ],
-                  )
-                else
-                  InputChip(
-                    label: Text('${account['name']}'),
-                    onDeleted: () => setState(
-                      () => _confirmingDisconnect = '${account['id']}',
-                    ),
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    tooltip: 'Disconnect ${account['name']}',
-                  ),
-            ],
-          ),
-        const SizedBox(height: 8),
-        _connectControl(context),
         // A book nobody will ever read, named rather than absent. Jose,
         // 2026-09-15: "we dont pay the api access there". Saying "not
         // connected" would send somebody off to connect it.
@@ -398,6 +348,93 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               color: theme.colorScheme.error,
             ),
           ),
+        ],
+
+        /*
+         * ── THE ACCOUNTS ARE SAID IN WORDS, MANAGED BEHIND A CLICK ──
+         *
+         * A row of chips sitting above a table reads as a FILTER - Jose's
+         * words: "they appear as if they were filters and people can get
+         * confused". They were never filters; they are the connection list,
+         * and their X disconnects a credential.
+         *
+         * So which accounts a number covers stays in the sentence above, where
+         * it belongs to the report, and the chips move behind this toggle,
+         * where they belong to setup. Nothing is hidden that the reader needs
+         * in order to read the numbers correctly.
+         *
+         * The chips cannot be dropped entirely: a Workiz connection is a data
+         * source, excluded from the shared connections list on purpose, so this
+         * is still the ONLY place its id is published and the only way one can
+         * be taken back.
+         */
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _managing = !_managing),
+            icon: Icon(
+              _managing ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+            ),
+            label: Text(
+              _managing
+                  ? 'Hide Workiz accounts'
+                  : 'Manage Workiz accounts (${accounts.length})',
+            ),
+          ),
+        ),
+        if (_managing) ...[
+          // Each connected branch, with the way to remove it. This is the ONLY
+          // place a Workiz account's id is published: it is a data source, and
+          // the shared connections list excludes those on purpose, so without
+          // these chips a credential could be connected and never taken back.
+          if (accounts.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final account in accounts)
+                  if (_confirmingDisconnect == account['id'])
+                    // Confirmed IN PLACE rather than in a dialog, the same way
+                    // deleting a saved report is. The X used to disconnect on one
+                    // click, which is a poor trade: undoing it needs that
+                    // branch's Workiz token pasted again, and the token is not
+                    // something the app can show you.
+                    Wrap(
+                      spacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Disconnect ${account['name']}?',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        TextButton(
+                          onPressed: _disconnecting == account['id']
+                              ? null
+                              : () => _disconnect('${account['id']}'),
+                          child: const Text('Disconnect'),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _confirmingDisconnect = null),
+                          child: const Text('Keep'),
+                        ),
+                      ],
+                    )
+                  else
+                    InputChip(
+                      label: Text('${account['name']}'),
+                      onDeleted: () => setState(
+                        () => _confirmingDisconnect = '${account['id']}',
+                      ),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      tooltip: 'Disconnect ${account['name']}',
+                    ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          _connectControl(context),
         ],
       ],
     );
