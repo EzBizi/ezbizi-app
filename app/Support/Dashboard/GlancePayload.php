@@ -85,12 +85,38 @@ final class GlancePayload
      *   status_choices   the Jobs earned-status chips
      *   any list of {amount_minor, currency}   drawn as money, under ANY key
      *
+     * ── DECIDED 2026-09-15: do not send what nothing draws ──────────
+     *
+     * Jose was asked and was away; his standing word is to decide it as I
+     * would recommend it, so: **a glance sends what its box draws, and
+     * nothing else.** A figure with no reader is a query on every load and a
+     * disclosure on every response, bought for nothing.
+     *
+     * `organization_total` is the live instance and the rule is general. It
+     * is organization-wide, so a person whose reach is one franchise
+     * receives the whole organization's count — invisible on screen,
+     * readable in the response. Customers KEEPS it and is the shape of a
+     * legitimate exception: its own docblock argues the case (§5.2 shares
+     * the book, so the figure is not withheld from that reader anyway). The
+     * other four carry no argument, which means nobody decided it — it was
+     * copied.
+     *
+     * So the exception is available and it costs a sentence: if your box
+     * needs a figure it does not draw, say why where you send it. An
+     * undocumented one is a copy.
+     *
+     * Those four files belong to their own modules and are not mine to edit;
+     * the decision is recorded here because this is what a glance author
+     * reads, and routed to the deploy desk the same day.
+     *
      * Measured 2026-09-11: `organization_total` is sent by FIVE glances —
      * BusinessProfile, Customers, Leads, Reviews, Web Management — and read
      * by nothing in `client/lib`. A pattern copied four times, not a slip.
      * Each is an extra count on every dashboard load for a figure nobody
-     * sees. Their modules' to keep or drop; it is listed here so the next
-     * author does not copy it a sixth time.
+     * sees. *Said "their modules' to keep or drop" when written — that was
+     * true while nobody had decided, and the decision above settles it: drop
+     * it unless the file argues for it. Still theirs to EDIT; not theirs to
+     * decide case by case, or it stays five different answers.*
      *
      * And a key nothing draws is still SHIPPED. An organization-wide total
      * reaches a viewer whose reach is one franchise — invisible on screen,
