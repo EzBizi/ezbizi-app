@@ -228,6 +228,21 @@ void main() {
     expect(find.widgetWithText(TextField, '07102'), findsOneWidget);
   });
 
+  /// Pages and Posts are sections of SEO, not tabs beside it.
+  ///
+  /// They shipped as top-level tabs for one commit; Jose moved them on
+  /// 2026-09-15. Asserted on the SERVER's own section list too, because these
+  /// two are appended by the client — the server's sections are groups of
+  /// fields and these are not fields.
+  testWidgets('pages and posts sit in the SEO strip', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view']);
+
+    expect(find.text('General'), findsOneWidget);
+    expect(find.text('Social links'), findsOneWidget);
+    expect(find.text('Pages'), findsOneWidget);
+    expect(find.text('Posts'), findsOneWidget);
+  });
+
   /// SEO has sections now, and General is the one that exists.
   testWidgets('SEO opens on its General section', (tester) async {
     await _pumpDestination(tester, permissions: ['web_management.view']);
