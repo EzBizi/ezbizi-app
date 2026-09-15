@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0214',
+      date: '15 Sep 2026',
+      items: [
+        'One ringtone per call, on every platform. The desktop, the browser and the phone each rang twice for a single call, in three different ways, which is why fixing one at a time never settled it. On a phone EzBizi now stays silent on purpose and lets the handset ring: if the app seems to have stopped ringing there, that is the fix.',
+        'Callers on hold can press 1 to be rung back instead of waiting, and are called automatically as soon as somebody is free.',
+        'Scheduling settings now open on a table of every service area and what each can take on each day of the week, instead of a summary of your slot pattern. A day you are closed shows a dash rather than a zero. The day editor is a row per day instead of a panel per day, so a week fits on one screen.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0213',
       date: '15 Sep 2026',
       items: [
