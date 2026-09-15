@@ -751,6 +751,44 @@ void main() {
     );
   });
 
+  /// TOUCH GETS THE SAME ANSWER, added after hover shipped alone.
+  ///
+  /// `MouseRegion` never fires on a phone, so the share was a number only a
+  /// mouse could see. A tap is safe to claim here because the card's reorder
+  /// drag is bound to its GRIP rather than to the whole card — checked before
+  /// adding it, not after.
+  ///
+  /// Tapping the open wedge closes it: touch has no `onExit`, so without that
+  /// the tooltip is a thing you can open and not put away.
+  testWidgets('tapping a wedge shows its share, and again closes it', (
+    tester,
+  ) async {
+    await _pumpPie(tester, const [
+      {'label': 'Scheduled', 'total': 1},
+      {'label': 'Completed', 'total': 1},
+    ]);
+
+    final paint = find
+        .descendant(
+          of: find.byType(DashboardChart),
+          matching: find.byType(CustomPaint),
+        )
+        .first;
+    final centre = tester.getCenter(paint);
+
+    await tester.tapAt(centre + const Offset(38, -38));
+    await tester.pumpAndSettle();
+    expect(find.text('50% · Scheduled'), findsOneWidget);
+
+    await tester.tapAt(centre + const Offset(38, -38));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('%'),
+      findsNothing,
+      reason: 'A second tap on the same wedge must put it away.',
+    );
+  });
+
   /// HOVER ENHANCES, IT DOES NOT GATE.
   ///
   /// `MouseRegion` never fires on a touch screen, so on a phone this layer
