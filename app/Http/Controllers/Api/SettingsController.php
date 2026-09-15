@@ -457,9 +457,33 @@ class SettingsController extends Controller
         // assignment covering the organization itself. Reaching every company
         // that happens to exist today is not the same thing — it is a set that
         // changes when somebody adds a branch, and organization scope is not.
-        return $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
+        //
+        // ASKED OF THE MODEL, like the two branches above it.
+        //
+        // This was the same test written out by hand here, and the branch above
+        // already says why that is wrong in principle: "canActOnCompany, not a
+        // reach derivation of our own". A hand-rolled copy cannot pick up what
+        // the method later learns — and it already differs by one clause, which
+        // the deploy desk's tree-wide sweep found on 2026-09-15:
+        // canActOnOrganization refuses a DEACTIVATED user and this did not.
+        //
+        // No exposure today, and I checked rather than assumed: refusalFor asks
+        // hasPermission() at :532 before it asks this at :536, and
+        // hasPermission's first line is `if (! $this->is_active) return false`
+        // (User:230). So a deactivated user is refused one call earlier and
+        // never arrives here. The same gate sits in front of all three sibling
+        // sites. What this change buys is not a closed hole: it is that the
+        // hole stays closed if anybody ever reorders those two calls or reaches
+        // this method from a path with no permission check in front of it.
+        //
+        // Behaviour is otherwise identical, and that rests on a constraint
+        // rather than on inspection: the model asks for scopeType() ===
+        // SCOPE_ORGANIZATION where this asked only that the column matched, and
+        // the two can only disagree for a row carrying two scope ids at once.
+        // `assignments_exactly_one_scope` in the foundation migration forbids
+        // exactly that on MySQL, and Assignment::saving() enforces it on SQLite
+        // where CHECK is not available.
+        return $user->canActOnOrganization($scope);
     }
 
     /**

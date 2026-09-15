@@ -129,11 +129,16 @@ class CompanyPolicy
             return Refusal::permission('move a company');
         }
 
-        $standsAtTheTop = $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
-
-        return $standsAtTheTop
+        // canActOnOrganization rather than the hand-written test I copied from
+        // create() above: that copy is one clause weaker -- it does not refuse a
+        // DEACTIVATED user -- which the deploy desk's sweep found on 2026-09-15.
+        // Unreachable here for the same reason as everywhere else, the
+        // hasPermission() line directly above enforcing is_active, and changed
+        // anyway so that it stays unreachable if that line ever moves.
+        //
+        // create()'s copy is three functions up and is NOT mine to change; the
+        // desk is holding it with the other two.
+        return $user->canActOnOrganization($company->organization)
             ? Response::allow()
             : Refusal::abovePosition('move '.$company->name.' to a different place in the organization');
     }

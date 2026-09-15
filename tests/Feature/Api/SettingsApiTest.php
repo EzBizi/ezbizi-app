@@ -370,6 +370,59 @@ class SettingsApiTest extends TestCase
         )->assertNotFound();
     }
 
+    /**
+     * Deactivation locks the writes, and it is worth pinning at THIS level.
+     *
+     * The deploy desk's sweep on 2026-09-15 found four sites that re-derive
+     * "stands at the organization" by hand and so miss the `is_active` clause
+     * the model method carries. Mine were two of them and both now ask
+     * `canActOnOrganization`.
+     *
+     * WHAT THIS PINS IS THE PROPERTY, NOT EITHER IMPLEMENTATION OF IT, and I
+     * only know that because the first version of this docblock was wrong and
+     * a mutation said so. I had written that neither change was observable,
+     * reasoning that `refusalFor` asks `hasPermission()` before `reaches()` and
+     * that its `is_active` line therefore answers first. Measured instead:
+     *
+     *   both clauses in place                     PATCH -> 403
+     *   hasPermission's is_active removed         PATCH -> 403   (this line's
+     *                                                            new call holds
+     *                                                            it alone)
+     *   canActOnOrganization's removed too        PATCH -> 200   test fails
+     *
+     * So asking the model rather than re-deriving the test made a SECOND
+     * enforcement point where there had been one, which is the whole of what
+     * defence in depth means here and is more than I claimed for it. Three runs
+     * rather than an argument, and the last one is the control: without it,
+     * "still 403" would equally describe an endpoint nobody can reach.
+     *
+     * The property is the one the sweep was actually about — somebody let go
+     * stops being able to write — and nothing pinned it at the API level.
+     * Deactivation is the control you reach for at the worst possible moment.
+     *
+     * The read is the control. Without it this passes against a suspended
+     * account that cannot reach the endpoint at all, or a scope id that was
+     * never found, and those are different failures with the same status code.
+     */
+    public function test_a_deactivated_administrator_can_no_longer_write_settings(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+
+        Sanctum::actingAs($admin);
+
+        $this->patchJson(
+            "/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}",
+            ['value' => 'en']
+        )->assertOk();
+
+        app(TenantContext::class)->run($org, fn () => $admin->forceFill(['is_active' => false])->save());
+
+        $this->patchJson(
+            "/api/v1/settings/locale?scope_type=organization&scope_id={$org->id}",
+            ['value' => 'en']
+        )->assertForbidden();
+    }
+
     // ── reach (§4) ───────────────────────────────────────────────
 
     public function test_a_franchise_user_cannot_configure_another_franchise(): void

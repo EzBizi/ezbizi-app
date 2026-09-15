@@ -548,9 +548,17 @@ class OrganizationCanvasController extends Controller
         // test, deliberately the same one. "Reaches every company that happens to
         // exist today" is a set that changes when somebody adds a branch, and the
         // organization is not.
-        $reaches = $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
+        // `canActOnOrganization` rather than the hand-written test that stood
+        // here. They agree on scope - a CHECK constraint,
+        // `assignments_exactly_one_scope`, means an assignment carrying an
+        // organization id IS organization-scoped - but they disagree about a
+        // DEACTIVATED user, and only the method refuses one.
+        //
+        // That matters more than it looks: `is_active` is enforced in exactly
+        // three places, all of them `User::canAct*`. Login does not check it and
+        // no middleware checks it, so a reach test written by hand is not a
+        // weaker copy of the rule - it is the whole rule, missing.
+        $reaches = $user->canActOnOrganization($user->organization);
 
         // Refused by POSITION rather than by place: there is no other
         // organization they could have arranged instead, so "somebody assigned
