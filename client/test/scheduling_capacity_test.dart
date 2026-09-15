@@ -24,23 +24,60 @@ void main() {
     await _pump(tester);
 
     expect(find.text('Overview'), findsOneWidget);
-    expect(find.text('Dallas'), findsOneWidget);
 
-    // Twice on purpose: once in the rail, once in the Overview's "areas that
-    // differ" list. Both routes to the exception are the design — the list so
-    // it cannot be forgotten, the rail so somebody who never opens the list
-    // still sees it.
+    // Twice each now: once in the rail, once as a row in the Overview's
+    // all-areas table. The table replaced three cards that each answered a
+    // smaller question.
+    expect(find.text('Dallas'), findsNWidgets(2));
     expect(find.text('Houston'), findsNWidgets(2));
 
+    // The rail still marks an off-pattern area, which is where it is useful.
     expect(find.textContaining('differs'), findsOneWidget);
   });
 
-  testWidgets('the overview names how many areas follow the pattern', (
+  /// The Overview answers "what can each area take", which is what the three
+  /// cards it replaced were each circling: a slot pattern, an Add button the
+  /// rail already had, and a list of areas that differ from the pattern. A
+  /// table of every area's week SHOWS the differences, so naming them
+  /// separately was a worse version of the same answer.
+  testWidgets('the overview shows every area week, and a closed day as a dash', (
     tester,
   ) async {
     await _pump(tester);
 
-    expect(find.textContaining('followed by 1 of 2 areas'), findsOneWidget);
+    // Every weekday is a column.
+    for (final day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+      expect(find.text(day), findsWidgets, reason: '$day should be a column.');
+    }
+
+    // Houston takes 1 on Thursday where Dallas takes 2 — visible without any
+    // card having to say "Houston differs".
+    expect(find.text('1'), findsWidgets);
+    expect(find.text('3'), findsWidgets);
+
+    // Dallas is closed on Sunday, Houston on Saturday and Sunday: three dashes,
+    // never a zero. A zero would be a day that is open and takes nothing, which
+    // the storage cannot express.
+    expect(find.text('—'), findsNWidgets(3));
+    expect(find.text('0'), findsNothing);
+  });
+
+  /// The three removed cards, asserted gone rather than assumed gone.
+  testWidgets('the overview no longer carries the pattern, add or differs cards', (
+    tester,
+  ) async {
+    await _pump(tester);
+
+    expect(find.textContaining('slot pattern'), findsNothing);
+    expect(find.textContaining('followed by'), findsNothing);
+    expect(find.text('Areas that differ'), findsNothing);
+    expect(find.textContaining('follows the pattern'), findsNothing);
+
+    // Add lives in the rail only, and still exists — this is the control that
+    // stops "findsNothing" above passing for a screen that lost the action
+    // entirely.
+    expect(find.widgetWithText(FilledButton, 'Add service area'), findsNothing);
+    expect(find.byTooltip('Add service area'), findsOneWidget);
   });
 
   /// The defect this screen shipped with: it listed areas and had no way to
@@ -64,9 +101,9 @@ void main() {
       },
     );
 
-    expect(find.text('Add service area'), findsOneWidget);
+    expect(find.byTooltip('Add service area'), findsOneWidget);
 
-    await tester.tap(find.text('Add service area'));
+    await tester.tap(find.byTooltip('Add service area'));
     await tester.pumpAndSettle();
 
     // A PANE, not a dialog. A modal over a split screen hides the rail you
@@ -119,7 +156,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Add service area'));
+    await tester.tap(find.byTooltip('Add service area'));
     await tester.pumpAndSettle();
 
     // It opened, and it is asking.
@@ -175,7 +212,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Dallas'));
+    await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.byKey(const Key('scheduling-zip-entry')));
@@ -216,7 +253,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Dallas'));
+    await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
     await tester.ensureVisible(find.byKey(const ValueKey('zip-75201')));
@@ -250,7 +287,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Dallas'));
+    await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
     await _reveal(tester, find.text('Delete area'));
@@ -300,7 +337,7 @@ void main() {
   testWidgets('switching area drops a half-typed confirmation', (tester) async {
     await _pump(tester);
 
-    await tester.tap(find.text('Dallas'));
+    await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
     await _reveal(tester, find.text('Delete area'));
@@ -320,66 +357,6 @@ void main() {
     expect(find.byKey(const Key('scheduling-delete-confirm')), findsNothing);
   });
 
-  /// An ALL-CLEAR is the sentence class nobody swept for, and it is worse to
-  /// get wrong than an overclaiming empty state: an empty state that overclaims
-  /// sends somebody to look and they find out, whereas this one tells them
-  /// nothing needs their attention so they never look.
-  ///
-  /// The rail is franchiseIds()-scoped, so at a franchise view an off-pattern
-  /// area in a sibling franchise is invisible here. "Every area follows the
-  /// pattern" would have said the company was consistent when it was not.
-  testWidgets('the all-clear says "in this view", never that every area follows', (
-    tester,
-  ) async {
-    // Both areas follow the pattern, so the all-clear branch is the one drawn.
-    await _pump(
-      tester,
-      areas: const [
-        {
-          'id': 'a-dallas',
-          'name': 'Dallas',
-          'franchise_id': 'fr-1',
-          'zip_count': 18,
-          'follows_pattern': true,
-        },
-        {
-          'id': 'a-plano',
-          'name': 'Plano',
-          'franchise_id': 'fr-1',
-          'zip_count': 7,
-          'follows_pattern': true,
-        },
-      ],
-    );
-
-    expect(
-      find.text('Every area in this view follows the pattern.'),
-      findsOneWidget,
-    );
-
-    // The world-claim must be gone, not merely accompanied.
-    expect(find.text('Every area follows the pattern.'), findsNothing);
-  });
-
-  /// The positive control for the test above. Without it, "findsNothing" on the
-  /// world-claim would also pass if the all-clear branch had stopped rendering
-  /// altogether — a sentence that never draws reads exactly like a sentence
-  /// that draws correctly.
-  testWidgets('an area that differs suppresses the all-clear and is named', (
-    tester,
-  ) async {
-    await _pump(tester);
-
-    expect(
-      find.text('Every area in this view follows the pattern.'),
-      findsNothing,
-      reason: 'Houston differs, so nothing should be claiming all-clear.',
-    );
-
-    // And the exception is named where it cannot be missed.
-    expect(find.text('Houston'), findsNWidgets(2));
-  });
-
   testWidgets('closing a day sends no rows for it, never a zero', (
     tester,
   ) async {
@@ -396,7 +373,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('Dallas'));
+    await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
     // Dallas is open on Monday. Close it.
@@ -457,10 +434,12 @@ void main() {
     );
 
     // One header per franchise, so a row is never orphaned from its owner.
+    // The headers are the rail's alone; the area NAMES now appear twice, once
+    // in the rail and once as a row in the Overview's table.
     expect(find.text('CONNECTICUT'), findsOneWidget);
     expect(find.text('GEORGIA'), findsOneWidget);
-    expect(find.text('East'), findsOneWidget);
-    expect(find.text('Atlanta North'), findsOneWidget);
+    expect(find.text('East'), findsNWidgets(2));
+    expect(find.text('Atlanta North'), findsNWidgets(2));
   });
 
   /// One franchise means nothing to disambiguate, so a header would be a
@@ -469,7 +448,10 @@ void main() {
     await _pump(tester);
 
     expect(find.text('CONNECTICUT'), findsNothing);
-    expect(find.text('Dallas'), findsOneWidget);
+
+    // Still drawn — the control that stops the assertion above passing for a
+    // rail that rendered nothing at all. Twice: rail row and table row.
+    expect(find.text('Dallas'), findsNWidgets(2));
   });
 
   /// Two companies on screen means the bare franchise name is ambiguous —
@@ -613,6 +595,8 @@ const _defaultAreas = [
     'franchise_id': 'fr-1',
     'zip_count': 18,
     'follows_pattern': true,
+    // Sunday (0) absent -> closed, drawn as a dash.
+    'week': {'1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 1, '0': null},
   },
   {
     'id': 'a-houston',
@@ -620,6 +604,7 @@ const _defaultAreas = [
     'franchise_id': 'fr-1',
     'zip_count': 24,
     'follows_pattern': false,
+    'week': {'1': 3, '2': 3, '3': 3, '4': 1, '5': 3, '6': null, '0': null},
   },
 ];
 

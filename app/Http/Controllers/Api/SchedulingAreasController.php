@@ -59,6 +59,15 @@ class SchedulingAreasController extends Controller
                 // there is no pattern table.
                 'follows_pattern' => $pattern !== null
                     && $shapes[$a->id] === $pattern,
+                // Every weekday, so the Overview can show what each area takes
+                // without a request per area. Costs nothing extra: `slots` is
+                // already eager-loaded above for the shape comparison.
+                //
+                // A day with no rows is CLOSED and comes back as null, not 0.
+                // Zero would be a day that is open and takes nothing, which
+                // the storage deliberately cannot express — the whole module
+                // rests on that distinction.
+                'week' => $this->week($a->slots),
             ])->all(),
             'pattern' => $pattern === null ? null : [
                 'slots' => SlotShape::describe($pattern),
@@ -66,6 +75,34 @@ class SchedulingAreasController extends Controller
                 'of' => $areas->count(),
             ],
         ]);
+    }
+
+    /**
+     * One area's week as `weekday => jobs|null`, all seven days present.
+     *
+     * Null for a closed day rather than 0, and all seven present rather than
+     * only the open ones: the caller has to be able to tell "we do not work
+     * Sundays" from "Sunday takes nothing", and it cannot do that from a key
+     * that is simply missing.
+     *
+     * @param  \Illuminate\Support\Collection<int, ServiceAreaSlot>  $slots
+     * @return array<int, int|null>
+     */
+    private function week($slots): array
+    {
+        $byDay = $slots->groupBy('weekday');
+
+        $out = [];
+
+        foreach (range(0, 6) as $weekday) {
+            $day = $byDay->get($weekday);
+
+            $out[$weekday] = $day === null
+                ? null
+                : (int) $day->sum('max_jobs');
+        }
+
+        return $out;
     }
 
     /** POST /api/v1/scheduling/areas */

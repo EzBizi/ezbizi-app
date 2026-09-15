@@ -341,6 +341,51 @@ class SchedulingApiTest extends TestCase
         $this->assertSame(['Atlanta', 'Dallas'], $wide->all());
     }
 
+    /**
+     * Every area's week arrives with the list, and a CLOSED day is null.
+     *
+     * The Overview draws one row per area without a request per area, so the
+     * index carries the numbers. The part worth pinning is not that they are
+     * there but that a closed day is `null` and never `0`: zero would be a day
+     * that is open and takes nothing, which this module's storage deliberately
+     * cannot express — absence of slot rows IS the closure. A client drawing
+     * "0" where it should draw a dash would say the area works Sundays and is
+     * full.
+     *
+     * All seven days are present, because a missing key cannot be told from a
+     * closed one by anybody reading the payload.
+     */
+    public function test_the_list_carries_each_week_with_closed_days_as_null(): void
+    {
+        [$tenant, $editor] = $this->tenantWithEditor();
+        $area = $this->area($tenant, 'Dallas');
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/slots", [
+                'slots' => [
+                    ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+                    ['weekday' => 1, 'start_time' => '13:00', 'end_time' => '17:00', 'max_jobs' => 3],
+                    ['weekday' => 4, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 1],
+                ],
+            ])
+            ->assertOk();
+
+        $week = $this->signedInAs($editor)
+            ->getJson('/api/v1/scheduling/areas')
+            ->assertOk()
+            ->json('data.0.week');
+
+        $this->assertCount(7, $week, 'Every weekday travels, open or not.');
+
+        // Monday sums its two slots rather than reporting either.
+        $this->assertSame(5, $week['1']);
+        $this->assertSame(1, $week['4']);
+
+        // Sunday has no rows: null, and emphatically not 0.
+        $this->assertNull($week['0']);
+        $this->assertNotSame(0, $week['0']);
+    }
+
     public function test_a_role_without_scheduling_cannot_read_or_write_capacity(): void
     {
         $tenant = $this->provisionTenant('Alpha');
