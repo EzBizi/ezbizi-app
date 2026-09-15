@@ -45,7 +45,7 @@ submission, a filing — never for permission.
 | **Scheduling a job onto a calendar** | Not built, and **test the relation, not a column.** The obvious check — "`jobs` has no scheduled-date column" — is already false: `jobs.scheduled_for` (datetime) and `jobs.assigned_role_id` exist on production, and **0 of 25 jobs have either set**. The durable test is structural: **no table carries both a job reference and a date-or-slot reference.** `service_area_slots` is `(service_area_id, weekday, start_time, end_time, max_jobs)` — a recurring weekly capacity *template* with no `job_id`, no date and no per-occurrence row, so it cannot express "this job, this day, this slot" even in principle. That stays true until the module is actually built, which is exactly when the claim should change. |
 | **WhatsApp messaging** | **In the code on main and NOT reachable — Meta has not published the app.** Relayed by the deploy desk 2026-09-16 and recorded here immediately, because this is the exact shape that reaches the site by accident: the commits are on main, so anyone deriving "what shipped" from the log — which is what the daily check would do if the desk were unreachable — reads a finished feature. A merged commit is not a reachable feature and Meta publishing is not ours to predict. The checkable test is Meta's app status, not the presence of the code. |
 | **Training** | **PUBLISHED 2026-09-09 as a capability card — this row now governs only what may NOT be added to it, and the tense rule is the whole of it.** The card reads *"Write the guide, set the test, give it to the people who need it, and see who still owes what."* — four imperatives and no completed action, deliberately. **The row count this row has always named was finally taken**, by the deploy desk on production release `20260908222755-a18b059a9080`, answering `0037` in `0038`: `training_attempts` **0**, `training_progress` **0**, `training_assignments` **0**. Nobody has ever sat one. That is precisely the Coverage & capacity / Inspections state — built and unused, sellable as a capability and never as usage — so **no sentence may say or imply that anybody has trained**: not "teams train on it", not "your team is up to date", not a number of guides completed. Reachability was re-verified in the deployed tree rather than taken from the release note: `ModuleServiceProvider.php:2288` registers `key: 'training'`, label Training, actions `view/monitor/manage/assign`, so it is in the sidebar and the roles editor; `client/lib/core/module_screens.dart:113` maps it to a screen. **Note how far the REASON travelled while the verdict stood still** — this row said in turn: the tables are missing (false), the tables are empty, the server shipped without a sidebar entry, and now nothing but the tense. Three of those four would have been fixed by "just add the card" on the wrong day. **The original entry follows, because the correction it records is the reason the row survived to be right:** **Corrected 2026-09-02 — the old reason was false.** Its five tables *are* on production (`training_assignments`, `training_attempts`, `training_guides`, `training_progress`, `training_tests`); the row used to say they were not. The verdict does not change, but the reason does: **all five are empty**, so nothing has ever been assigned, attempted or completed. The checkable test is a row count in those tables, not their existence — the old test would now pass and the claim would still be false. **Corrected again 2026-09-08: it now has screens.** `0.0.0151` shipped the server side with no sidebar entry, and the deploy desk said in `0035` "do not describe Training as available" — then `0.0.0159` shipped *"Training is now something you can actually use — read a guide, sit its test, and see who owes what"*, and production is `0.0.0168`. **So the reason has moved twice and the verdict has not.** It is no longer unbuilt and no longer invisible; it is built-and-unused, which the Inspections precedent says is sellable as a capability. **It is still held, deliberately, because the row count is the test this row names and this run could not take one** — a scheduled run cannot reach the desk to ask, and the five tables are not readable from here. **Do not resolve this by reasoning; resolve it by asking.** The next run that reaches the desk should ask for the row count in `training_attempts` and `training_progress`, and if nothing has ever been attempted, a capability card is allowed by the same precedent that allows Coverage & capacity — with the tense rule that comes with it: never "teams train on it". |
-| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the fraction to him explicitly — 2 of 7 at the time, 6 of 12 on 2026-09-10). **The approval covers the capability, not any particular sentence, and the fraction has moved without changing anything the card may say.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. Re-measured on production 2026-09-10 by the desk in `0042`: **6 of 12** `phone_numbers` carry a non-null `ring_group_id` (it was 2 of 7 on 2026-09-02). So calls to those six reach a person. **Six of twelve still dead-end at voicemail** — the fraction roughly doubled and the SHAPE HELD, which is why the rule under it did not move, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction. |
+| **Phone / Communication** | **PUBLISHED 2026-09-04 as a card reading "Your business numbers in one place — dial, texts and voicemail…" — the row now governs only what may NOT be added to it.** **Jose approved it for the site on 2026-09-03** (relayed by the deploy session, which put the fraction to him explicitly — 2 of 7 at the time, 6 of 12 on 2026-09-10). **The approval covers the capability, not any particular sentence, and the fraction has moved without changing anything the card may say.** Draft copy is below, unpublished, awaiting his sight of the actual words. Everything following is the measurement that shapes them.<br><br>**The old blocker has partly lifted; the answer is still no to the strong claim, for a smaller reason.** The row used to say no production line had a ring group and every inbound call reached voicemail. Re-measured on production 2026-09-10 by the desk in `0042`: **6 of 12** `phone_numbers` carry a non-null `ring_group_id` (it was 2 of 7 on 2026-09-02). So calls to those six reach a person. **Six of twelve still dead-end at voicemail** — the fraction roughly doubled and the SHAPE HELD, which is why the rule under it did not move, which is why "phone system" remains an overstatement rather than a promise kept — and the module was renamed **Communication** in `0.0.0141`, so any future copy names that, not "Phone". The checkable test: `phone_numbers` with a non-null `ring_group_id`, as a fraction of all of them. Do not write the claim off a lifted gate; write it off the fraction.<br><br>**THAT TEST IS INCOMPLETE, and the Phone module said so unprompted on 2026-09-15 — it undercounts, which is the understatement direction this file keeps being caught by.** A null `ring_group_id` is not a dead line: it falls back to the connection's `default_ring_group_id`. Measured by the Phone module (session `ezbizi-32`, its own module, on production): **13 numbers; 6 of 13 carry the column; 11 of 13 RESOLVE to a group** once the connection default is applied. So the column moved 6/12 -> 6/13 by one number being added and none gaining a group of its own, while the number that describes what a caller experiences is **11 of 13**. Its words: *"6 of 13 lines route to a team" would be a false statement about the product.* **The test is now the RESOLVED fraction, and the column beside it** — quote both or say which one you are quoting. **The verdict does not move: two of thirteen still dead-end at voicemail**, so every forbidden phrasing stays forbidden — not "never miss a call", not "your calls reach your team", not "phone system". **And note the shape of the error rather than the number:** the named test read one column and the product reads a column *and its fallback*, so the file's own test was measuring a narrower thing than the claim it governs. A test derived from a schema and not from the code path that consumes it will do this again. |
 | **Local Services enquiries arriving as leads** | **INVERTED 2026-09-09 — THIS IS NOW TRUE, AND THE CLAIM IS PUBLISHED. Everything after this paragraph is the history of how it was kept off the site while it was false; read it as method, not as a live prohibition.** The deploy desk ran this row's own test through `artisan tinker` on production release `20260908222755-a18b059a9080` and answered in `0038`: **`leads` with a `remote_id` not beginning `DEMO-` → 23,905, every one of them `source = local_services`**, against the 8 seeded rows this row spent three attempts learning to exclude. The test that was written to catch a decoy did its job and then reported the real thing. Published the same day in the Growth card: *"Connect a Google Ads account and its Local Services enquiries arrive as leads, each carrying the calls and messages that came with it."* The conversation half is `LeadThread` + `LeadConversation` in the deployed tree, whose docblock says Google's Local Services put it there first. **What would put this row back:** the count returning to 0, which would mean a wipe rather than a quiet failure. **And keep the tense rule even now** — the rows are Google's real enquiries into a real advertiser's account, which is what makes the *capability* claim true; it is still not a sentence about how many businesses use EzBizi, and nothing here licenses "teams rely on it". **The original entry, kept whole because its method is the most reused thing in this file:** **Contradicted, not merely unverified — and the evidence is a decoy.** Querying production returns `source = local_services` on 8 leads, which reads exactly like the confirmation this row has been waiting for. All 8 were created in the *same second* and none carries a provider id: they are `leads:seed-demo`, run on production by the deploy session on 2026-08-31. The `source` string was written by the seeder, not by Google. **True count of real Local Services enquiries: 0**, re-confirmed 2026-09-02. **The test this row used to name does not work, and saying so is the point.** It told you to look for a provider `external_id`; there is no `external_id` column on `leads` and none anywhere in `database/migrations/`, so the check silently has nothing to compare and a careful session runs it, finds nothing, and cannot tell "no real leads" from "no such column". **The first replacement written for this row was also wrong, and it is left here as the warning.** It said a genuine enquiry has a `connection_id` and a non-null `synced_at` while a seeded one has neither — reasoned from the real sync path (`LocalServicesLeads.php:216,228`) without ever opening the seeder. **`LeadsSeedDemo.php:132,143` writes both**, pointing `connection_id` at a genuine `social_connections` row it creates. The seeded rows are indistinguishable from real ones on every field that describes *how a lead arrives*, because the seeder's whole job is to look real. **The test that works is the one the seeder deliberately leaves behind:** `LeadsSeedDemo.php:45` stamps `private const PREFIX = 'DEMO-'` onto `remote_id` on every row it plants (`:128`). So — **a real enquiry's `remote_id` is Google's own id and never begins `DEMO-`:**
 
 ```sql
@@ -1186,3 +1186,132 @@ about copy describing watching employees' screens, not on a measurement, and `0.
 `0.0.0202`, `0.0.0207` and `0.0.0208` all widened it further (antivirus/firewall state,
 an in-app screen-control notice, a Monitoring report resource). **Training** — still the
 tense rule only; nothing this week touched it.
+
+## 2026-09-15 (evening): nine releases, nothing to publish, and the site's own test was the understated one
+
+**Production moved `0.0.0211` → `0.0.0220`** (`f3c5f45d` → `ef9f420b`,
+`/download/windows.json`, fetched). `main`'s tip **is** the deployed SHA for
+once, so the working tree and the deployed tree are the same commit.
+`git diff --name-only f3c5f45d ef9f420b` is 159 paths, **two of them under
+`www/`** — `index.html` and `privacy/index.html`, both this morning's runs.
+
+**All four of today's website commits are LIVE, confirmed by fetch rather than
+by the passage of the afternoon.** All seven pages fetched from production are
+byte-identical to `www/` after stripping CR, every one `Last-Modified`
+**Tue, 15 Sep 2026 21:12:58 GMT** — so the site republished after the last of
+them (`78969405`, 14:00 EDT = 18:00 GMT) and matches the tree. No stale deploy,
+no hand edit on the box.
+
+**The audit is clean.** `python www/check-site.py` → `ok - 7 pages, 7 sitemap
+entries`. The forbidden-terms gate, parsed from this file and split on LINES,
+flags before the path, all six strings through one loop → `ok - 4 terms, none
+present`, positive control `EzBizi` **265**, negative control `zzzznotpresent`
+**0**. The four phrasings the Communication card forbids return **0** across
+`www/`.
+
+**Three published claims re-measured at `ef9f420b`:**
+`app/Support/Social/Publishing/Publishers.php` still returns five —
+FacebookPage, Threads, InstagramProfessional, Pinterest, TikTok — and
+`default => null`, so *"Five networks send today"* holds and **no sixth or
+seventh publisher was written**. `app/Support/Newsletter/NewsletterSenders.php`
+is still `Mailchimp` and `default => null`. **`ReportMap::all()` still holds
+ELEVEN keys** — re-counted rather than carried, because that card's own section
+says a count is the clause that ages fastest, and three Google Ads releases in
+this window are exactly what would have moved it. It did not: Google Ads is a
+**tab inside Reports**, not a report resource. Stores: Play `200`; Apple lookup
+`resultCount` **1**, `trackId` 6805979795, **`version` 0.0.0200** (was 0.0.0190
+on 2026-09-14), `currentVersionReleaseDate` 2026-09-15 — both live, both pages
+already correct, nothing to publish.
+
+**Five migrations landed and none touches a do-not-list row.**
+`add_park_to_phone_calls`, `add_last_attempted_at_to_sending_identities`,
+`create_whatsapp_messages_table`, `create_whatsapp_numbers_table`,
+`create_phone_callbacks_table`. The structural scheduling test was re-run over
+every migration in the deployed tree: **no table carries both a job reference
+and a slot reference.** `phone_callbacks` has timestamps and a `ring_group_id`
+and **no job reference at all**, so it is not a near miss.
+
+### The finding is in this file, not on the site: the ring-group test undercounts
+
+The Phone module answered unasked and corrected the test this file has named
+since 2026-09-02. **A null `ring_group_id` falls back to the connection's
+`default_ring_group_id`**, so the column says 6 of 13 and the product does 11 of
+13. The row is corrected above. **The verdict did not move** — two of thirteen
+still dead-end at voicemail, every forbidden phrasing stays forbidden, the card
+needs no edit — and that is why this is a finding about the instrument rather
+than about the claim. **A test derived from a schema, and not from the code path
+that consumes the schema, measures a narrower thing than the claim it governs.**
+Three of this file's hardest rows (`external_id`, `jobs.scheduled_for`, the
+seeder's `connection_id`) are the same mistake in different clothes.
+
+### A published card was false for days and this check could not have seen it
+
+**`0.0.0219`: *"The chat and contact form on your websites can reach EzBizi
+again. The browser was refusing to send the message before it ever left the
+page, so everything a visitor typed came back as our own did-not-send
+notice."*** And `0.0.0217`: they *"were off on every site"*, with no way to
+place them at all on Elementor.
+
+The Web management card, published 2026-09-09, says *"Add the chat bubble and
+contact form in your own brand colour, and the enquiries they take arrive in
+Leads."* **For some window ending today that sentence described a dead
+control**, and every clause of it still read correctly out of the deployed tree,
+because the code that files a `Lead` was never the broken part — the browser
+refused the request before it left the page.
+
+This is the Reports lesson landing on a card that had already shipped:
+**reading the deployed tree proves the code says the thing; it cannot see a dead
+button.** There is nothing to fix — `0217` and `0219` fixed it and production is
+`0220` — and no edit is owed. It is recorded because the daily check has no
+instrument for this, and pretending otherwise is worse than naming the gap. The
+only thing that catches it is a release note admitting it, or somebody using the
+feature.
+
+### Three capabilities are now reachable and unsold — deliberately, for one more day
+
+`78969405` said these would be "written up when they are reachable and
+measured, not when they are merged". Two now are, and the third is measured:
+
+- **A business can connect its own MAIL SERVER** (`0.0.0215`). Measured at
+  `ef9f420b`, both halves, because an enum and a dispatcher branch with no route
+  is the trap this file recorded on 2026-09-14: `routes/api.php:1828-1830`
+  carries `GET`/`PUT`/`DELETE mail/sending-server`, and
+  `client/lib/widgets/sending_server_panel.dart` is the screen. **So the
+  affordance is back and `docs/agents/inbox/0049` is CLOSED by measurement** —
+  `MailDispatcher.php:389` now says *"Open Settings, Sending Server"*, naming a
+  screen that exists. Its controller docblock states Jose's authority verbatim
+  ("yes build it for god sake", 2026-09-14) and that it is deliberately **not**
+  the sending-identity screen he had deleted: our SES is not in the path at all.
+  **No privacy edit is owed** — `/privacy/`'s *"Mail your business writes to its
+  own customers does not go out over ours"* is not weakened by a second route
+  that is also not ours, it is reinforced; and *"a mailing goes through your own
+  Mailchimp account"* is a sentence about newsletters, where
+  `NewsletterSenders::for()` is still Mailchimp alone.
+- **Web Management gained Pages and Posts** (`0.0.0215`), read live from the
+  site rather than cached.
+- **A Google Ads tab inside Reports** (`0.0.0215`–`0.0.0219`): spend, clicks,
+  impressions and conversions per account and per campaign.
+
+**None is published, and the reason is one sentence: all three arrived today.**
+The Reports section of this file records a release where every clause checked
+out in the deployed tree and the button was dead, and the section above records
+the same thing happening to a card that had already shipped. **For a capability
+that is hours old, "every clause checks out" is the weakest evidence this file
+accepts.** Nothing is lost by waiting for a release that does not fix them.
+
+**Still open, and neither mine to close.** **Training** — the tense rule only.
+**WhatsApp** — in the code, unreachable, waiting on Meta publishing the app, and
+the test is Meta's app status and not the commit log.
+
+### What the desk was asked and what actually answered
+
+No deploy desk was reachable. `list_sessions` returns every EzBizi session
+`isRunning: false`; Deployment (`local_072bee23…`) last active 21:40 UTC.
+`ListAgents` showed three live pipe sessions, and the longest-running of them
+(`ezbizi-32`, 10h) turned out to be **the Phone module**, which answered the two
+questions that were its own and declined the other three. **That is the fourth
+state this file has now seen on this channel** — not a dead id, not the
+caller-side refusal, not nobody home, but *the wrong desk answering correctly
+about its own module*. It was worth more than a catalog would have been: the
+ring-group correction above is entirely its finding, and a deploy desk reading a
+row count off the column would have handed over the undercount in good faith.
