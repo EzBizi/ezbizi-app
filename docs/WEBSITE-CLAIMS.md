@@ -1,5 +1,32 @@
 # What the website claims, and on whose authority
 
+> ## PENDING PUBLICATION — delete this block the day it lands
+>
+> **`7ef75f6f` — the "Google user data" section of `/privacy/`. Committed, not live.**
+> **A Google OAuth verification for project `ezbizi-506117` is BLOCKED until it is**,
+> and the Leads/Google session must not reply to Google before it publishes.
+>
+> Google refused on one sentence: the policy must state how **raw** and
+> **aggregated/anonymised** Google user data is used. It said neither.
+>
+> Confirm it landed — run this immediately before anyone tells Google to look,
+> never once at the start of the task:
+>
+> ```
+> curl -s https://www.ezbizi.com/privacy/ | grep -c "Raw Google user data"      # want 1
+> curl -s https://www.ezbizi.com/privacy/ | grep -c "Monitored work computers"  # control, want 1
+> ```
+>
+> **The control is not decoration.** A `0` on the first line alone cannot tell
+> "not published" from "the fetch failed" or "my pattern is wrong". The second
+> line is a string already live, on the same fetch, so a `1` there makes the `0`
+> above it mean something.
+>
+> Also carried by that commit and equally unpublished: the section names the four
+> Ads metrics actually read (`CampaignPerformance.php`: `cost_micros`, `clicks`,
+> `impressions`, `conversions`), which only became true on 2026-09-16.
+
+
 The public site says what EzBizi does. This page records **why each claim is
 allowed to be there**, and — more importantly — what must *not* go back on.
 
