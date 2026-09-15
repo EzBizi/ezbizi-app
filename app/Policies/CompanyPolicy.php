@@ -70,9 +70,17 @@ class CompanyPolicy
         // whole organization can add another branch to it — and reaching every
         // company that happens to exist today is NOT the same thing, because the
         // new one is not among them.
-        $standsAtTheTop = $user->assignments->contains(
-            fn ($a) => $a->assigned_organization_id === $user->organization_id
-        );
+        // `canActOnOrganization`, not a reach derivation of our own - the rule
+        // this file's own next branch up already states. `reparent` below was
+        // converted in cb4cbf13; this was the last copy.
+        //
+        // It was never reachable by a deactivated user: `hasPermission` above
+        // refuses one on its first line (User:229), they cannot sign in
+        // (AuthenticateUser:93, :209), and deactivating through HR deletes
+        // their tokens (HrPeopleController:386). The residual the method covers
+        // and a hand-written copy does not: a session already open when
+        // somebody is deactivated by a DIRECT DATABASE WRITE, outside that flow.
+        $standsAtTheTop = $user->canActOnOrganization($user->organization);
 
         return $standsAtTheTop
             ? Response::allow()
