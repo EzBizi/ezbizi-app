@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0215',
       date: '15 Sep 2026',
       items: [
-        'New Ads Performance tab under Marketing: what each connected Google Ads account spent over a range, with clicks, impressions and conversions beside it, per account and per campaign. Accounts Google will not report on are listed rather than shown as zero spend.',
+        'New Google Ads tab under Reports: what each connected Google Ads account spent over a range, with clicks, impressions and conversions beside it, per account and per campaign. Accounts Google will not report on are listed rather than shown as zero spend.',
         'A business can connect its own mail server, and saved reports and automation emails go out through it instead of not going out at all. The screen shows what is set up and when it was last tried, never whether a message arrived.',
       ],
     ),
