@@ -80,9 +80,18 @@ class InboxBar extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   spacing: 8,
                   children: [
+                    // A COUNT, not the addresses. The rail below lists every
+                    // one of them with its nickname, so spelling them out here
+                    // was the same information twice — and the second copy is
+                    // the one that grows without bound: six inboxes is a header
+                    // wider than the pane.
                     if (allInboxes)
-                      for (final address in allAddresses)
-                        Text(address, style: theme.textTheme.titleMedium)
+                      Text(
+                        allAddresses.length == 1
+                            ? '1 inbox connected'
+                            : '${allAddresses.length} inboxes connected',
+                        style: theme.textTheme.titleMedium,
+                      )
                     else if (mailbox != null) ...[
                       Text(
                         mailbox.address,
