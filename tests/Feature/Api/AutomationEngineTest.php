@@ -750,6 +750,69 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * The per-rule email decline reaches allows(), not only dispatch().
+     *
+     * THIS IS THE ASSERTION WORTH HAVING and it is not the obvious one. Wiring
+     * dispatch() alone looks correct from every angle: no row is written, no
+     * letter is sent, the rule behaves. The damage is in the SENTENCE. With the
+     * bell off, email on, and the rule declining email, dispatch() reaches
+     * nobody - and an allows() that was not told about the decline still sees a
+     * live email channel, answers true, and the run log says "nobody has reach
+     * over that record". The author then audits permissions over a switch they
+     * set themselves, one screen away.
+     *
+     * So this asserts which of the two sentences came back, because that is the
+     * only artefact that differs between wiring one call and wiring both.
+     * Notifications named the case rather than leaving it in a diff.
+     */
+    public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
+    {
+        $automation = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job', 'in_app_only' => true]]);
+
+        // The company rings no bells and does send mail. Without the flag
+        // reaching allows(), the live email channel makes it answer "true".
+        $this->inTenant(function () {
+            $settings = app(SettingsResolver::class);
+            $settings->set('notifications.in_app_enabled', $this->org['organization'], false);
+            $settings->set('notifications.email_enabled', $this->org['organization'], true);
+        });
+
+        $this->makeJob();
+        $this->drain();
+
+        $detail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertStringNotContainsString('reach', $detail,
+            'the rule declined the email itself - blaming reach sends the author to audit permissions');
+        $this->assertStringContainsString('switched off', $detail);
+
+        // THE CONTROL. Same company, same settings, same message - only the
+        // decline removed. Without this the test above could pass against an
+        // allows() that had simply started answering false for everything, and
+        // the assertion would look like proof of the flag when it was proof of
+        // nothing. This one must come back with the OTHER sentence.
+        $control = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job']]);
+
+        $this->makeJob();
+        $this->drain();
+
+        $controlDetail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $control->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertNotSame($detail, $controlDetail,
+            'both rules produced the same sentence, so the flag is not what decided it');
+    }
+
+    /**
      * Zero recipients has two causes and they send you to different places.
      *
      * Break it by returning the old single sentence from ActionRunner::notify()

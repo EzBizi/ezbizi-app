@@ -1257,12 +1257,30 @@ class ActionRunner
 
         $title = $this->interpolate($message, $event, $subject);
 
+        /*
+         * NEGATIVE KEY, AND THAT IS NOT A STYLE CHOICE.
+         *
+         * An untouched switch posts a real `false`, so a positively-phrased key
+         * - `send_email` - would have read as "no email" on every rule that
+         * exists today and silenced all of them the moment it shipped. Unchecked
+         * here means FOLLOW THE ORGANIZATION, which is what `false` already
+         * means to the dispatcher.
+         *
+         * It only ever NARROWS. The company setting stays the ceiling: a rule
+         * may decline the email, never demand one the company has switched off.
+         * That direction matters more than it looks - inverted, a rule author
+         * would be able to overrule a company setting from a screen the company
+         * cannot see.
+         */
+        $inAppOnly = (bool) ($action['in_app_only'] ?? false);
+
         $sent = $this->notifications->dispatch(
             title: $title,
             body: $action['body'] ?? null,
             subject: $subject,
             source: 'automation',
             eventId: $event->getKey(),
+            inAppOnly: $inAppOnly,
         );
 
         return [
@@ -1281,8 +1299,16 @@ class ActionRunner
             // allows() is public for this. Asking it costs one settings read on
             // the zero path only, which is the path somebody is already staring
             // at because their rule looks broken.
+            //
+            // THE FLAG GOES TO BOTH CALLS. Ask allows() without it and a rule
+            // that declined the email, in a company with the bell off and email
+            // on, sends nobody a notification and then reports "nobody has reach
+            // over that record" - because allows() still sees a live email
+            // channel it is no longer allowed to use. The author would audit
+            // PERMISSIONS over a switch they set themselves one screen away.
+            // Notifications named this rather than leaving it in a diff.
             'detail' => $sent === 0
-                ? ($this->notifications->allows('automation', $subject)
+                ? ($this->notifications->allows('automation', $subject, $inAppOnly)
                     ? "Nobody has reach over that record, so there was no one to tell: {$title}"
                     : 'Automation notifications are switched off for this company, so nobody '
                         ."was told: {$title}")

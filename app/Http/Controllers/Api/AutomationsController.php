@@ -1336,6 +1336,15 @@ class AutomationsController extends Controller
             // that reason; do not split them.
             $type('notify', 'Send a notification', false, [
                 $parameter('message', 'Message', 'rich_text'),
+
+                // Phrased as a DECLINE, and required: false so an untouched
+                // switch is simply absent. A positive key - "send an email" -
+                // would read as false on every rule saved before today and
+                // silence all of them on deploy. Unchecked means follow the
+                // organization; the organization setting stays the ceiling, so
+                // this can only ever narrow. Semantics agreed with Notifications
+                // and Settings; the dispatcher honours it at 27527d2f.
+                $parameter('in_app_only', 'In-app only, do not email', 'boolean', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
