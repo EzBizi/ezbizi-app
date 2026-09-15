@@ -433,6 +433,43 @@ void main() {
   /// who a message was sent to. Both directions have to be on screen for this
   /// to mean anything — a test with one inbound message passes whether or not
   /// the app can tell the two apart.
+  /// Nobody waiting draws nothing at all.
+  ///
+  /// The empty state is the one this strip is in almost always, and a
+  /// permanent "Parked calls" panel with nothing in it is a box people learn
+  /// to stop reading — which costs exactly the thing it exists for, being
+  /// noticed on the rare day somebody IS holding.
+  testWidgets('no parked callers means no strip', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    expect(find.textContaining('is waiting'), findsNothing);
+    expect(find.text('Pick up'), findsNothing);
+  });
+
+  /// And somebody waiting is named, with the colleague who set them down.
+  ///
+  /// Named rather than counted: "2 parked calls" is a fact you then have to
+  /// open something to act on, and the number they are holding for is what
+  /// decides whether this one is yours.
+  testWidgets('a parked caller is named, with who parked them', (tester) async {
+    await _pump(
+      tester,
+      size: const Size(900, 800),
+      parked: const [
+        {
+          'id': 'pk-1',
+          'from_e164': '+13055550100',
+          'parked_by_name': 'Bruno Vega',
+          'pick_up': 'park:ezbizi-park-pk-1',
+        },
+      ],
+    );
+
+    expect(find.textContaining('+1 (305) 555-0100 is waiting'), findsOneWidget);
+    expect(find.textContaining('parked by Bruno Vega'), findsOneWidget);
+    expect(find.text('Pick up'), findsOneWidget);
+  });
+
   testWidgets('a message names who sent it', (tester) async {
     await _pump(tester, size: const Size(900, 800));
 
@@ -1325,6 +1362,7 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 Future<void> _pump(
   WidgetTester tester, {
+  List<Map<String, dynamic>> parked = const [],
   CallView view = CallView.dial,
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
@@ -1341,6 +1379,7 @@ Future<void> _pump(
     numbers: numbers ?? const [_number],
     requireCallTag: requireCallTag,
     preferences: preferences,
+    parked: parked,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1378,6 +1417,7 @@ MockClientHandler _handler({
   required List<Map<String, Object?>> numbers,
   bool requireCallTag = false,
   Map<String, Object?> preferences = const {},
+  List<Map<String, dynamic>> parked = const [],
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1434,6 +1474,10 @@ MockClientHandler _handler({
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {
       return _json({'data': numbers});
+    }
+
+    if (path.endsWith('/phone/calls/parked') && request.method == 'GET') {
+      return _json({'data': parked});
     }
 
     if (path.endsWith('/phone/presence') && request.method == 'GET') {

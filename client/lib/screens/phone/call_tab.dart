@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../core/phone_numbers.dart';
 import 'dart:math' as math;
 
@@ -137,8 +138,28 @@ class _CallTabState extends State<CallTab> {
   /// registration finally came up. Never disposes the service: it is the
   /// app's, not this screen's, and outliving this screen is the whole point.
   void _onServiceChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+
+    // PARKING IS THE ONE THING SOMEBODY ELSE'S SCREEN CHANGES.
+    //
+    // A colleague parks a caller on another floor and the person who should
+    // collect them is looking at this tab. Nothing about that reaches here on
+    // its own, so without a refresh the list is only ever right for whoever
+    // did the parking — which is the one person who does not need it.
+    //
+    // Hung on the tokens the desk already bumps rather than a timer of its
+    // own: `presenceToken` is moved once a minute by the monitoring beat, and
+    // `callsToken` the instant a call ends. So the list is right within a
+    // minute always, and immediately at the moment somebody rings off and
+    // goes looking for who is holding.
+    final token = _service.presenceToken + _service.callsToken;
+    if (token == _wasDeskToken) return;
+    _wasDeskToken = token;
+    unawaited(_loadParked());
   }
+
+  int _wasDeskToken = 0;
 
   @override
   void dispose() {
@@ -264,6 +285,7 @@ class _CallTabState extends State<CallTab> {
     if (numbers.isEmpty) return;
     await _loadCompanyRules();
     await _loadDesk();
+    await _loadParked();
   }
 
   /// The rules this company set for its own phone system.
@@ -341,6 +363,71 @@ class _CallTabState extends State<CallTab> {
     });
   }
 
+  /// Who is on hold, for everyone who shares these lines.
+  ///
+  /// Refetched rather than tracked: parking is the one thing here that another
+  /// person's screen changes. A list kept from what THIS desk did would show a
+  /// caller a colleague collected twenty minutes ago, and somebody would press
+  /// Pick up on an empty queue.
+  Future<void> _loadParked() async {
+    final response = await widget.api.get('/phone/calls/parked');
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _parked = [
+        for (final row in (response.data as List? ?? const []))
+          if (row is Map<String, dynamic>) _Parked.fromJson(row),
+      ];
+    });
+  }
+
+  /// Set this call down where anybody can pick it up.
+  Future<void> _park() async {
+    final response = await widget.api.post('/phone/calls/park', const {});
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _bridgeNote = response.reason);
+
+      return;
+    }
+
+    // The audio has gone from this device — the customer is holding on
+    // Twilio's side now — so the desk is off the call even though nobody hung
+    // up. Without this the pad keeps offering Hang up for a call that is no
+    // longer here.
+    _service.hangUp();
+
+    setState(() => _historyToken++);
+    await _loadParked();
+
+    final number = _selected;
+    if (number == null) return;
+    await widget.api.put('/phone/presence', {
+      'connection_id': number.connectionId,
+      'state': _dnd ? 'dnd' : 'registered',
+    });
+  }
+
+  /// Fetch a parked caller onto this device.
+  ///
+  /// An ordinary outbound call whose destination happens to be a queue, which
+  /// is why there is no pick-up endpoint: the server hands us the destination
+  /// and dialling it IS the retrieval.
+  Future<void> _pickUp(_Parked parked) async {
+    final number = _selected;
+    if (number == null) return;
+
+    await _service.connect(to: parked.pickUp, callerId: number.e164);
+    await widget.api.put('/phone/presence', {
+      'connection_id': number.connectionId,
+      'state': 'on_call',
+    });
+
+    if (!mounted) return;
+    await _loadParked();
+  }
+
   /// The desk never registered, so it cannot take a call.
   ///
   /// Read from the service rather than sampled here. It used to be a field set
@@ -358,6 +445,13 @@ class _CallTabState extends State<CallTab> {
   /// Bumped when a call ends, so the history beside the pad shows the row it
   /// just gained without anybody reloading the screen.
   int _historyToken = 0;
+
+  /// Callers somebody has set down, waiting for anybody to pick them up.
+  ///
+  /// Held on the tab rather than the service because it is not this device's
+  /// state: a call parked by a colleague on another floor belongs on this list
+  /// too, and the only thing that knows about it is the server.
+  List<_Parked> _parked = const [];
 
   /// A bridged call is being set up, and what came back from asking.
   bool _bridging = false;
@@ -627,6 +721,12 @@ class _CallTabState extends State<CallTab> {
                   children: [
                     if (_incomingFrom != null) _banner(),
                     if (_deskDown) _deskDownBanner(),
+
+                    // Only when somebody is actually waiting. A permanent
+                    // empty "Parked calls" panel is a box that teaches people
+                    // to stop looking at it, and the whole value of this one
+                    // is being noticed on the rare day it has somebody in it.
+                    if (_parked.isNotEmpty) _parkedBanner(),
                     Expanded(child: wide ? _wide() : _narrow()),
 
                     // The zero-sized WebView2 host moved to the shell with
@@ -1628,6 +1728,30 @@ class _LinePicker extends StatelessWidget {
   }
 }
 
+class _Parked {
+  const _Parked({
+    required this.id,
+    required this.fromE164,
+    required this.parkedByName,
+    required this.pickUp,
+  });
+
+  final String id;
+  final String fromE164;
+  final String? parkedByName;
+
+  /// What the desk dials to fetch them. Sent by the server rather than built
+  /// here, so the queue naming stays one fact in one place.
+  final String pickUp;
+
+  factory _Parked.fromJson(Map<String, dynamic> json) => _Parked(
+    id: json['id'] as String? ?? '',
+    fromE164: json['from_e164'] as String? ?? '',
+    parkedByName: json['parked_by_name'] as String?,
+    pickUp: json['pick_up'] as String? ?? '',
+  );
+}
+
 class _Number {
   const _Number({
     required this.id,
@@ -1730,28 +1854,105 @@ extension _LiveCall on _CallTabState {
         color: theme.colorScheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
+      // WRAP, NOT ROW, and the second button is why.
+      //
+      // With one button an Expanded label and a Row fitted anywhere. Adding
+      // Park overflowed the middle column by 41px — the label is already at
+      // its minimum, so the buttons are what has to give, and a Row cannot
+      // give. Nothing warns: it renders, and the yellow stripes only appear in
+      // a test or in front of somebody with a narrow window.
+      //
+      // Same shape the on-call bar already uses for the same reason. On a
+      // wide desk it is one line; on a narrow one the buttons drop below the
+      // name rather than off the edge of it.
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        alignment: WrapAlignment.spaceBetween,
+        spacing: 8,
+        runSpacing: 8,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  peer.isEmpty ? 'On a call' : peer,
-                  style: theme.textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                peer.isEmpty ? 'On a call' : peer,
+                style: theme.textTheme.titleSmall,
+              ),
+              Text(
+                'Connected',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-                Text(
-                  'Connected',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          FilledButton(onPressed: _hangUp, child: const Text('Hang up')),
+          Wrap(
+            spacing: 8,
+            children: [
+              // Beside Hang up because they are the two ways a call ends for
+              // this person, and the wrong one ends it for the CUSTOMER too.
+              // Outlined rather than filled: hanging up is the ordinary
+              // action and park is the deliberate one.
+              OutlinedButton(onPressed: _park, child: const Text('Park')),
+              FilledButton(onPressed: _hangUp, child: const Text('Hang up')),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Who is holding, and the button that takes them.
+  ///
+  /// Named rather than counted. "2 parked calls" tells somebody a fact they
+  /// then have to open something to act on; the number they are holding for is
+  /// the thing that decides whether this one is yours to pick up.
+  Widget _parkedBanner() {
+    final theme = Theme.of(context);
+
+    return Material(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final parked in _parked)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.pause_circle_outline,
+                      size: 18,
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        parked.parkedByName == null
+                            ? '${formatPhoneNumber(parked.fromE164)} is waiting'
+                            : '${formatPhoneNumber(parked.fromE164)} is waiting '
+                                  '— parked by ${parked.parkedByName}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onTertiaryContainer,
+                        ),
+                      ),
+                    ),
+
+                    // Refused while this desk is already on a call: picking up
+                    // would place a second one, and the first is a customer
+                    // mid-sentence.
+                    TextButton(
+                      onPressed: _service.onCall ? null : () => _pickUp(parked),
+                      child: const Text('Pick up'),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
