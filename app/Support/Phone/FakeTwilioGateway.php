@@ -402,9 +402,22 @@ final class FakeTwilioGateway implements TwilioGateway
      */
     public array $queues = [];
 
+    /**
+     * Set to make queueSizes() throw, so a test can be Twilio being down.
+     *
+     * "Nobody is waiting" and "we could not ask" are different facts and the
+     * endpoint has to tell them apart; without a way to fail here, only the
+     * happy half is reachable.
+     */
+    public ?string $failQueueSizesWith = null;
+
     public function queueSizes(PhoneConnection $connection): array
     {
         $this->record(__FUNCTION__, [$connection->id]);
+
+        if ($this->failQueueSizesWith !== null) {
+            throw new RuntimeException($this->failQueueSizesWith);
+        }
 
         return $this->queues;
     }

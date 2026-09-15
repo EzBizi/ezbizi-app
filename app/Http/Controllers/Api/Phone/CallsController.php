@@ -634,11 +634,11 @@ class CallsController extends Controller
         $this->authorize('viewAny', PhoneCall::class);
 
         $input = $request->validate([
-            'number_id' => ['required', 'string', 'max:191'],
+            'line' => ['required', 'string', 'max:191'],
         ]);
 
         $number = $this->access->readable($request->user())
-            ->firstWhere('id', $input['number_id']);
+            ->firstWhere('id', $input['line']);
 
         if ($number === null) {
             return response()->json(['message' => 'No such line.'], Status::HTTP_NOT_FOUND);
@@ -658,29 +658,60 @@ class CallsController extends Controller
 
         $queues = [];
 
+        // "NOBODY IS WAITING" AND "WE COULD NOT ASK" ARE DIFFERENT FACTS.
+        //
+        // This returned an empty map on failure, which a screen renders as a
+        // row of confident zeroes — the chart would say the queues are empty
+        // at the exact moment it has no idea. UI/UX asked for the difference
+        // before drawing anything, and they were right to: an empty map is
+        // indistinguishable from a quiet afternoon.
+        //
+        // So the flag is the answer, not the emptiness. False means show
+        // nothing on the queue tiles; the rest of the chart is unaffected,
+        // because the graph itself does not come from Twilio.
+        $known = false;
+
         if ($connection !== null) {
             try {
                 foreach ($this->twilio->queueSizes($connection) as $name => $size) {
                     // `ezbizi-<ringGroupId>` — see PhoneRingGroup::queueName().
-                    // Anything else on the account is not ours and is skipped
-                    // rather than guessed at.
+                    // A park queue is a different feature on the same account
+                    // and must not be reported as people holding for a team;
+                    // anything else is not ours at all.
                     if (! str_starts_with($name, 'ezbizi-') || str_starts_with($name, 'ezbizi-park-')) {
                         continue;
                     }
 
-                    $queues[substr($name, strlen('ezbizi-'))] = $size;
+                    $queues[substr($name, strlen('ezbizi-'))] = [
+                        'waiting' => $size['waiting'],
+                        'average_wait_seconds' => $size['average_wait'],
+                    ];
                 }
+
+                $known = true;
             } catch (\Throwable) {
-                // Twilio unreachable. An empty map reads as "nobody waiting",
-                // which is wrong but quiet — and the alternative is a chart
-                // that fails to draw because a count could not be fetched.
                 $queues = [];
             }
         }
 
         return response()->json(['data' => [
-            'line' => $line,
+            'id' => (string) $number->id,
+
+            // Ringing or connected on this line right now.
+            'on_line' => $line,
+
+            // Keyed by RING GROUP id, which is the `ref` on the queue nodes
+            // `TwimlRenderer::graph()` emits — `counts[node.ref]` is the whole
+            // join. Deliberately not keyed by node id: the node ids depend on
+            // the menu (`queue-answer` versus `queue-key-3`), so producing
+            // them here would mean rebuilding the entire graph — flow, groups
+            // and availability — on every ten-second poll, to learn a number
+            // that does not depend on any of it.
             'queues' => (object) $queues,
+
+            // Whether Twilio answered at all. See above: absent-and-known is
+            // zero, absent-and-unknown is nothing to draw.
+            'queues_known' => $known,
         ]]);
     }
 

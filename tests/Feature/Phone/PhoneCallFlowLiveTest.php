@@ -68,11 +68,42 @@ class PhoneCallFlowLiveTest extends TestCase
         ];
 
         $this->signedInAs($desk)
-            ->getJson('/api/v1/phone/call-flow/live?number_id='.$number->id)
+            ->getJson('/api/v1/phone/call-flow/live?line='.$number->id)
             ->assertOk()
             ->assertJsonPath('data.queues.'.$group->id.'.waiting', 3)
-            ->assertJsonPath('data.queues.'.$group->id.'.average_wait', 42)
+            ->assertJsonPath('data.queues.'.$group->id.'.average_wait_seconds', 42)
+            ->assertJsonPath('data.queues_known', true)
             ->assertJsonMissingPath('data.queues.not-ours');
+    }
+
+    /**
+     * "Nobody is waiting" and "we could not ask" are different facts.
+     *
+     * The first version of this endpoint returned an empty map when Twilio
+     * failed, which a screen renders as a row of confident zeroes — the chart
+     * would report every queue empty at the exact moment it had no idea. UI/UX
+     * asked for the difference before drawing anything.
+     *
+     * The flag is the answer rather than the emptiness, because an empty map
+     * is also what a genuinely quiet afternoon looks like. Both halves are
+     * asserted: it must be FALSE when the ask failed, and the test above pins
+     * TRUE when it did not — one without the other passes on a build that
+     * hard-codes either.
+     */
+    public function test_a_twilio_failure_is_not_reported_as_empty_queues(): void
+    {
+        [, , $number, $desk] = $this->line();
+
+        $this->twilio->failQueueSizesWith = 'Twilio is unreachable';
+
+        $this->signedInAs($desk)
+            ->getJson('/api/v1/phone/call-flow/live?line='.$number->id)
+            ->assertOk()
+            ->assertJsonPath('data.queues_known', false)
+
+            // And the rest of the payload still works: the graph does not come
+            // from Twilio, so a chart must still draw when the counts cannot.
+            ->assertJsonPath('data.on_line', 0);
     }
 
     /**
@@ -95,9 +126,9 @@ class PhoneCallFlowLiveTest extends TestCase
             ->update(['created_at' => now()->subHours(3)]));
 
         $this->signedInAs($desk)
-            ->getJson('/api/v1/phone/call-flow/live?number_id='.$number->id)
+            ->getJson('/api/v1/phone/call-flow/live?line='.$number->id)
             ->assertOk()
-            ->assertJsonPath('data.line', 1);
+            ->assertJsonPath('data.on_line', 1);
     }
 
     /**
@@ -123,7 +154,7 @@ class PhoneCallFlowLiveTest extends TestCase
         [, , , $desk] = $this->line();
 
         $this->signedInAs($desk)
-            ->getJson('/api/v1/phone/call-flow/live?number_id=01a00000-0000-7000-8000-000000000000')
+            ->getJson('/api/v1/phone/call-flow/live?line=01a00000-0000-7000-8000-000000000000')
             ->assertStatus(404);
     }
 
