@@ -66,6 +66,34 @@ code{font:12px ui-monospace,Consolas,monospace;background:var(--ground);
   convenience is an <b>explicit</b> &ldquo;use the same server as info@&rdquo; that
   <b>copies</b> the values and says so. <b>Never an implicit fallback</b>, because
   with one nobody can tell by looking which credential is actually in use.</p>
+
+  <p class="sub" style="margin-top:10px"><b>&#9888; THE COPY FLOW IS PARKED, AND THREE OF THE
+  STATES BELOW GO WITH IT. Corrected 2026-09-15, after SES read this drawing properly.</b>
+  <code>copied</code>, <code>inherited-and-copied</code> and <code>copied-then-that-mailbox-changed</code>
+  are <b>not being built</b>, for three reasons that stack:</p>
+  <p class="sub"><b>1 &mdash; the facts are not stored.</b> The copy line needs which mailbox, when,
+  and by whom. <code>SendingIdentity::connectServer</code> writes host, port, username, password
+  and encryption, and nothing else &mdash; verified in the source, not remembered. Drawing the line
+  would mean inventing a source, a date and an actor.</p>
+  <p class="sub"><b>2 &mdash; the stale-copy line is not a missing column, it is a missing
+  relationship.</b> <i>&ldquo;The password on info@ was changed on 2 October; this server still
+  uses the one copied in September&rdquo;</i> requires comparing this credential against the
+  mailbox it came from. With no source recorded there is no mailbox to compare against, so it
+  cannot be derived at all.</p>
+  <p class="sub"><b>3 &mdash; and this is the one that decides it: there is nothing to copy FROM.</b>
+  SES relays a deploy-desk measurement of production &mdash; <b>6 mailboxes, 0 with a mail server,
+  0 with credentials</b>, all <code>gmail_workspace</code>, which carries no SMTP host. So
+  &ldquo;use the same server as one of your inboxes&rdquo; would open onto an empty list for every
+  business that exists. <i>(Relayed through two sessions and not measured by me. The storage claim
+  in 1 I did check.)</i></p>
+  <p class="sub"><b>Consequence for this drawing, and it is mine rather than theirs:</b> the second
+  fact row now renders <b>only when there is a source to name</b>, instead of always. It used to
+  fall back to <i>&ldquo;Typed here&rdquo;</i>, and with copying parked that is the only thing it
+  could ever say &mdash; a row of constant text reads as information and carries none. Worse,
+  nothing records that a value <i>was</i> typed, so the sentence would be an assumption rendered as
+  a fact: the exact thing a derived sentence is supposed to replace. <b>Switch the state picker to a
+  copied state to see the row appear.</b> That is what it will look like when the copy flow arrives
+  and brings its own storage.</p>
   <p class="sub" style="margin-top:10px"><b>The whole design problem is that there
   are TWO facts here and they are independent.</b> <i>Whose value is this</i> &mdash;
   the cascade&rsquo;s question, which this screen already has words for:
@@ -236,8 +264,16 @@ function D2(){
       '<div class="fact"><span class="k">Used here</span><span class="v">' +
       provenance() + (ownScope() ? '' : '<small>Change it there, or set ' +
       'this business&rsquo;s own.</small>') + '</span></div>' +
-      '<div class="fact"><span class="k">These details</span><span class="v">' +
-      (wasCopied() ? copyLine(true) : 'Typed here.') + '</span></div>' +
+      /* CONDITIONAL, not constant. Nothing records that a value was typed --
+         connectServer stores host/port/username/password/encryption and no
+         provenance at all -- so "Typed here." would be an assumption rendered
+         as a fact, and it would be the ONLY thing this row could ever say
+         until a copy flow exists to store a source. The row appears when
+         there is a source to name. Today that is never. */
+      (wasCopied()
+        ? '<div class="fact"><span class="k">These details</span>' +
+          '<span class="v">' + copyLine(true) + '</span></div>'
+        : '') +
       '<div class="fact"><span class="k">Server</span><span class="v">' +
       'smtp.a-1chimney.com : 587<small>' + (wasCopied() ? 'info@a-1chimney.com' : 'reports@a-1chimney.com') + '</small>' +
       '</span></div></div>' + staleLine() + healthLine()) +
@@ -248,9 +284,18 @@ function D2(){
     'inherited-and-copied state is the one that proves it: both rows are full, ' +
     'both are plainly about different things.<br><br><b>The cost:</b> two rows ' +
     'of chrome on a screen whose common state is one server, typed once, never ' +
-    'touched again. <b>This is the one I would build</b> — the common state ' +
-    'costs a row saying &ldquo;Typed here&rdquo;, and the rare state is the ' +
-    'one that goes wrong silently.</div>';
+    'touched again. <b>This is the one Jose picked</b> — the rare state is ' +
+    'the one that goes wrong silently, and it is worth a row.<br><br>' +
+    '<b>&#9888; That trade-off argument was mine and it no longer applies as ' +
+    'written.</b> It assumed the second row sometimes says something else. ' +
+    'With the copy flow parked there is nothing that can put a source in it, ' +
+    'and nothing records that a value was typed either — so a constant ' +
+    '&ldquo;Typed here&rdquo; would be an assumption rendered as a fact, on ' +
+    'every identity, forever. <b>The row is now conditional rather than ' +
+    'constant</b> and does not render at all today. Switch to a copied state ' +
+    'to see it. The shape is unchanged and returns intact the day a copy ' +
+    'stores its source; what changed is that it no longer pays rent while ' +
+    'it has nothing to say.</div>';
 }
 
 /* 3 — provenance on the fields themselves. */
@@ -302,9 +347,11 @@ function M5(){
       '<div class="facts">' +
       '<div class="fact"><span class="k">Used here</span><span class="v">' +
       provenance() + '</span></div>' +
-      '<div class="fact"><span class="k">Details</span><span class="v">' +
-      (wasCopied() ? 'Copied from info@a-1chimney.com<small>A copy, not a ' +
-        'link.</small>' : 'Typed here') + '</span></div>' +
+      (wasCopied()
+        ? '<div class="fact"><span class="k">Details</span><span class="v">' +
+          'Copied from info@a-1chimney.com<small>A copy, not a ' +
+          'link.</small></span></div>'
+        : '') +
       '<div class="fact"><span class="k">Server</span><span class="v">' +
       'smtp.a-1chimney.com : 587</span></div></div>' + staleLine() + healthLine()) +
     '</div></div></div>' +
