@@ -285,9 +285,10 @@ void main() {
   testWidgets('a person only one system knows is marked, never merged', (
     tester,
   ) async {
-    // RingCentral's "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline
-    // Pierrelouis" and nothing joins them. A near-match rule would credit one
-    // person's work to another, so the screen SAYS which side knows them.
+    // Only one direction is knowable: this screen holds a 30-day Workiz roster
+    // and ONE day of calls. "Workiz has never heard of this name" is a real
+    // signal; "they took no calls today" is not, and booking without answering
+    // is a normal way to work.
     await _pumpReports(
       tester,
       reports: [_report],
@@ -299,7 +300,7 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
-    expect(find.text('calls only'), findsOneWidget);
+    expect(find.text('not in Workiz'), findsOneWidget);
   });
 
   testWidgets('the Workiz accounts the jobs column covers are named', (

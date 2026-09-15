@@ -616,17 +616,25 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     return '$minutes:$rest';
   }
 
-  /// Which system knows this name, when only one of them does.
+  /// Flagged only when Workiz has never heard of somebody who took calls.
   ///
-  /// Said rather than hidden, because the usual cause is the two systems
-  /// spelling one person differently and the reader is the only one who can
-  /// tell. Nothing here guesses.
+  /// ONE DIRECTION, because only one is knowable here. `in_jobs` is asked of a
+  /// 30-day window of Workiz jobs, so a false answer means Workiz has no record
+  /// of that name at all — which usually means the two systems spell them
+  /// differently, and the reader is the only one who can tell.
+  ///
+  /// The reverse is deliberately NOT marked. This screen holds one day of
+  /// calls, so "Workiz knows them, RingCentral does not" cannot be told apart
+  /// from "they did not answer a phone today", and booking without answering is
+  /// a normal way to work.
+  ///
+  /// It used to say "calls only" / "Workiz only" off the DAY's rows, which
+  /// marked three people on the first live day who were in both systems and
+  /// had simply booked nothing that morning.
   String? _onlyIn(Map<String, dynamic> person) {
     final inCalls = person['in_calls'] == true;
     final inJobs = person['in_jobs'] == true;
 
-    if (inCalls && inJobs) return null;
-    if (inCalls) return 'calls only';
-    return 'Workiz only';
+    return inCalls && !inJobs ? 'not in Workiz' : null;
   }
 }
