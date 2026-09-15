@@ -594,11 +594,12 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     final layout = layOutFlow(widget.graph);
     final geometry = _Geometry(layout);
+    final paper = FlowCanvas.of(context);
 
     _sync(!MediaQuery.of(context).disableAnimations);
 
     return ColoredBox(
-      color: FlowCanvas.ink,
+      color: paper.ink,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
@@ -614,8 +615,9 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
                     builder: (context, _) => CustomPaint(
                       painter: FlowWirePainter(
                         layout: layout,
-                        colour: FlowCanvas.wire,
-                        labelColour: FlowCanvas.muted,
+                        colour: paper.wire,
+                        labelColour: paper.muted,
+                        paper: paper,
                         phase: _pulse.value,
                       ),
                     ),
@@ -669,6 +671,7 @@ class _NodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final paper = FlowCanvas.of(context);
 
     // `id`, not `kind`. They are different namespaces that happen to coincide
     // on exactly one node, so a kind comparison works today and goes silent
@@ -678,10 +681,10 @@ class _NodeTile extends StatelessWidget {
     final edge = node.isDead
         ? scheme.error
         : node.isSkipped
-        ? FlowCanvas.amber
+        ? paper.amber
         : isEntry
-        ? FlowCanvas.accent
-        : FlowCanvas.tileLine;
+        ? paper.accent
+        : paper.tileLine;
 
     return Tooltip(
       message: node.detail,
@@ -708,7 +711,7 @@ class _NodeTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: node.isDead
                     ? scheme.error.withValues(alpha: 0.16)
-                    : FlowCanvas.tile,
+                    : paper.tile,
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(
                   color: edge,
@@ -724,7 +727,7 @@ class _NodeTile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelSmall?.copyWith(
-                color: FlowCanvas.text,
+                color: paper.text,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -741,7 +744,7 @@ class _NodeTile extends StatelessWidget {
               Text(
                 _kindWord,
                 style: theme.textTheme.labelSmall?.copyWith(
-                  color: FlowCanvas.muted,
+                  color: paper.muted,
                   fontSize: 9,
                 ),
               ),
@@ -761,12 +764,16 @@ class FlowWirePainter extends CustomPainter {
     required this.layout,
     required this.colour,
     required this.labelColour,
+    this.paper = FlowCanvas.light,
     this.phase = 0,
   }) : _geometry = _Geometry(layout);
 
   final FlowLayout layout;
   final Color colour;
   final Color labelColour;
+
+  /// The canvas palette, so the label plates match the ground they sit on.
+  final FlowCanvas paper;
 
   /// 0..1, driven by the pulse controller. 0 when reduce-motion is on.
   final double phase;
@@ -807,7 +814,11 @@ class FlowWirePainter extends CustomPainter {
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
 
-    for (final edge in layout.forward) {
+    // Parallel edges are one wire carrying both keys; the rule and the reason
+    // live in `mergeParallel`, beside the layout, where they can be tested
+    // without pumping a widget.
+    for (final wire in mergeParallel(layout.forward)) {
+      final edge = wire.edge;
       if (!_geometry.topLeft.containsKey(edge.from)) continue;
       if (!_geometry.topLeft.containsKey(edge.to)) continue;
       final from = _geometry.rightOf(edge.from);
@@ -823,9 +834,9 @@ class FlowWirePainter extends CustomPainter {
           to.dy,
         );
       canvas.drawPath(path, pen);
-      _flow(canvas, path, FlowCanvas.accent, reverse: false);
+      _flow(canvas, path, paper.accent, reverse: false);
       _arrow(canvas, path, colour);
-      _label(canvas, edge.label, path, _labelAt(edge));
+      _label(canvas, wire.label, path, _labelAt(edge));
     }
 
     // Back-edges: drawn, never followed. They loop UNDER their source rather
@@ -842,14 +853,14 @@ class FlowWirePainter extends CustomPainter {
         ..moveTo(from.dx, from.dy)
         ..cubicTo(from.dx, dip, to.dx, dip, to.dx, to.dy);
       canvas.drawPath(_dashes(path, dash: 5, gap: 4), pen);
-      _flow(canvas, path, FlowCanvas.amber, reverse: true);
+      _flow(canvas, path, paper.amber, reverse: true);
       _arrow(canvas, path, colour);
       _label(canvas, edge.label, path, 0.5);
     }
   }
 
   void _dots(Canvas canvas, Size size) {
-    final dot = Paint()..color = FlowCanvas.grid;
+    final dot = Paint()..color = paper.grid;
     for (var x = 0.0; x < size.width; x += 17) {
       for (var y = 0.0; y < size.height; y += 17) {
         canvas.drawCircle(Offset(x, y), 1, dot);
@@ -927,7 +938,7 @@ class FlowWirePainter extends CustomPainter {
           ),
           const Radius.circular(4),
         ),
-        Paint()..color = FlowCanvas.ink,
+        Paint()..color = paper.ink,
       );
       painter.paint(canvas, at0);
 
@@ -954,6 +965,7 @@ class FlowWirePainter extends CustomPainter {
       old.layout != layout ||
       old.colour != colour ||
       old.labelColour != labelColour ||
+      old.paper != paper ||
       old.phase != phase;
 }
 
@@ -1008,7 +1020,7 @@ class _Step extends StatelessWidget {
     final tint = node.isDead
         ? scheme.error
         : node.isSkipped
-        ? FlowCanvas.amber
+        ? FlowCanvas.light.amber
         : scheme.primary;
 
     // Only a branching step lists where it goes. A single next step is implied

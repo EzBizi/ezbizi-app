@@ -388,46 +388,82 @@ class EzBiziTheme {
   ];
 }
 
-/// The call-flow canvas, and the one place in the app that does NOT read its
-/// colours from the organization's theme.
+/// The call-flow canvas palette.
 ///
-/// Deliberate, and narrow. Jose asked for the n8n look for this chart —
-/// "more modern, with icons, arrows, and even a energy flow animation" — and a
-/// graph canvas is a drawing rather than a page: it reads as one surface in
-/// both light and dark, the way an editor canvas does, instead of inverting
-/// with the rest of the app.
+/// It WAS one fixed dark set, deliberately: a graph canvas is a drawing rather
+/// than a page, and n8n — the reference Jose sent — is dark in both. He looked
+/// at it running and ruled the other way: *"should be white on white mode,
+/// dark on dark mode"* (2026-09-15). So there are two, and the canvas follows
+/// the app like everything else.
 ///
-/// It lives here rather than in the screen because `theme_conventions_test`
-/// is right that a screen accumulating colour literals is how a palette stops
-/// being one. Fixed does not mean scattered.
+/// Still declared here rather than in the screen. `theme_conventions_test`
+/// caught ten literals accumulating in that one file and was right to; a
+/// palette that is not theme-DERIVED still has to be one place.
 ///
 /// Nothing outside the call-flow chart may use these. A second screen wanting
-/// "the dark one" is the moment this stops being a canvas and starts being an
-/// unmanaged second theme.
+/// "the canvas look" is the moment this stops being a canvas and starts being
+/// an unmanaged second theme.
 class FlowCanvas {
-  const FlowCanvas._();
+  const FlowCanvas({
+    required this.ink,
+    required this.tile,
+    required this.tileLine,
+    required this.text,
+    required this.muted,
+    required this.accent,
+    required this.wire,
+    required this.amber,
+    required this.grid,
+  });
 
   /// The ground the graph is drawn on.
-  static const Color ink = Color(0xFF1D2025);
+  final Color ink;
 
   /// A node tile, and its outline when the node is ordinary.
-  static const Color tile = Color(0xFF2B2F36);
-  static const Color tileLine = Color(0xFF3A414A);
+  final Color tile;
+  final Color tileLine;
 
-  static const Color text = Color(0xFFE8EDF2);
-  static const Color muted = Color(0xFF9AA6B2);
+  final Color text;
+  final Color muted;
 
   /// The entry node, and the energy travelling a live wire.
-  static const Color accent = Color(0xFF5EEAD4);
+  final Color accent;
 
   /// A wire at rest.
-  static const Color wire = Color(0xFF4D5661);
+  final Color wire;
 
-  /// A return: the queue going back to the group it came from, and a step that
-  /// does nothing. Amber rather than red on purpose — neither is a call
+  /// A return — the queue going back to the group it came from — and a step
+  /// that does nothing. Amber rather than red on purpose: neither is a call
   /// failing.
-  static const Color amber = Color(0xFFD9A441);
+  final Color amber;
 
   /// The dot grid. Barely there by design; it says "canvas" and nothing else.
-  static const Color grid = Color(0x14FFFFFF);
+  final Color grid;
+
+  static const FlowCanvas light = FlowCanvas(
+    ink: Color(0xFFFBFDFD),
+    tile: Color(0xFFFFFFFF),
+    tileLine: Color(0xFFD2DCDF),
+    text: Color(0xFF0D1117),
+    muted: Color(0xFF5B6B73),
+    accent: Color(0xFF0F766E),
+    wire: Color(0xFFAEBFC4),
+    amber: Color(0xFF8A5A00),
+    grid: Color(0x14000000),
+  );
+
+  static const FlowCanvas dark = FlowCanvas(
+    ink: Color(0xFF1D2025),
+    tile: Color(0xFF2B2F36),
+    tileLine: Color(0xFF3A414A),
+    text: Color(0xFFE8EDF2),
+    muted: Color(0xFF9AA6B2),
+    accent: Color(0xFF5EEAD4),
+    wire: Color(0xFF4D5661),
+    amber: Color(0xFFD9A441),
+    grid: Color(0x14FFFFFF),
+  );
+
+  static FlowCanvas of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
 }

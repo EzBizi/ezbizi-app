@@ -152,6 +152,43 @@ void main() {
     expect(g.skippedCount, 1);
   });
 
+  group('two keys reaching one team', () {
+    test('are one wire carrying both keys, not two wires on one curve', () {
+      final wires = mergeParallel(const [
+        FlowEdge(from: 'menu', to: 'g1', label: 'Press 1'),
+        FlowEdge(from: 'menu', to: 'g2', label: 'Press 2'),
+        FlowEdge(from: 'menu', to: 'g2', label: 'No key pressed'),
+      ]);
+
+      expect(
+        wires.length,
+        2,
+        reason: 'Three edges, two destinations. Two edges with identical '
+            'endpoints draw on exactly the same curve, so drawing both is two '
+            'labels at one point -- the collision this chart was just fixed '
+            'for, arriving by another door.',
+      );
+
+      final joined = wires.firstWhere((w) => w.edge.to == 'g2');
+
+      expect(joined.label, 'Press 2 \u00b7 No key pressed');
+      expect(
+        wires.firstWhere((w) => w.edge.to == 'g1').label,
+        'Press 1',
+        reason: 'A wire with one key must not gain a separator.',
+      );
+    });
+
+    test('an unlabelled edge contributes nothing to the join', () {
+      final wires = mergeParallel(const [
+        FlowEdge(from: 'a', to: 'b', label: ''),
+        FlowEdge(from: 'a', to: 'b', label: 'Press 9'),
+      ]);
+
+      expect(wires.single.label, 'Press 9');
+    });
+  });
+
   group('parsing', () {
     test('a row with no graph is not a graph', () {
       expect(CallFlowGraph.fromJson(null), isNull);
@@ -178,6 +215,69 @@ void main() {
       expect(g.deadCount, 0);
       expect(g.skippedCount, 0);
     });
+  });
+
+  /// THE SHAPE CHANGED UNDER ME, 2026-09-15 (`5c033dda`).
+  ///
+  /// Jose read the chart and asked why "everyone busy" appeared to come out of
+  /// the fifth menu key when it applies to the whole group. He was reading the
+  /// drawing correctly and the drawing was wrong, so Phone re-measured their own
+  /// renderer against the live line and changed two things:
+  ///
+  ///   * **one node per GROUP, not per key** — a second key reaching the same
+  ///     team is a second EDGE into one box, so a node can now have several
+  ///     inbound edges carrying different labels;
+  ///   * **every queueing group has its own queue**, `queue-<groupNodeId>` —
+  ///     three queueing groups is three `group ⇄ queue` pairs.
+  ///
+  /// The back-edge rule was written and tuned when a line had exactly one
+  /// queue. This is the test that says it still holds at three.
+  test('three queueing groups are three back-edges, not three more columns', () {
+    final layout = layOutFlow(graph(
+      [
+        ['caller'], ['arrival'], ['menu'],
+        ['g1'], ['g2'], ['g3'],
+        ['q1'], ['q2'], ['q3'],
+      ],
+      [
+        ['caller', 'arrival'], ['arrival', 'menu'],
+        ['menu', 'g1', 'Press 1'],
+        ['menu', 'g2', 'Press 2'],
+        ['menu', 'g3', 'Press 3'],
+        // The second route into a box Jose asked about: same target, another
+        // label, and it must not become a second node or another column.
+        ['menu', 'g2', 'No key pressed'],
+        ['g1', 'q1', 'Everyone busy'], ['q1', 'g1', 'try again'],
+        ['g2', 'q2', 'Everyone busy'], ['q2', 'g2', 'try again'],
+        ['g3', 'q3', 'Everyone busy'], ['q3', 'g3', 'try again'],
+      ],
+    ));
+
+    expect(
+      layout.back.map((e) => '${e.from}->${e.to}').toList(),
+      ['q1->g1', 'q2->g2', 'q3->g3'],
+      reason: 'One return per queue. Fewer means a queue was laid out as '
+          'progress and the chart grows a column per retry.',
+    );
+    expect(
+      layout.columns,
+      5,
+      reason: 'caller, arrival, menu, the groups, the queues. Three separate '
+          'queues share a column because they are the same distance from the '
+          'caller, not three columns in a row.',
+    );
+    expect(
+      layout.placed.length,
+      9,
+      reason: 'Nine nodes in, nine placed. A second edge into g2 must not '
+          'place it twice.',
+    );
+    expect(layout.find('g2')!.column, 3);
+    expect(
+      layout.find('q1')!.column,
+      layout.find('q3')!.column,
+      reason: 'Every queue is one step past its group, so they share a column.',
+    );
   });
 
   /// The four-node line, which is two of the thirteen: a spare number with no

@@ -248,3 +248,46 @@ FlowLayout layOutFlow(CallFlowGraph graph) {
         : column.values.reduce((a, b) => math.max(a, b)) + 1,
   );
 }
+
+/// One wire, and every key that travels it.
+class MergedEdge {
+  const MergedEdge({required this.edge, required this.label});
+
+  /// The first of the parallel edges; its `from` and `to` are the wire.
+  final FlowEdge edge;
+
+  /// Every non-empty label on that wire, joined.
+  final String label;
+}
+
+/// Edges sharing a source AND a target are ONE wire carrying both keys.
+///
+/// Jose, reading the live chart on 2026-09-15: *"the everyone busy line seems
+/// to be coming out of last 5th button but in reality it applies to the entire
+/// group"*. He was reading the drawing correctly and the drawing was wrong.
+/// Phone re-measured and now emits **one node per group rather than per key**,
+/// so a second key reaching the same team is a second EDGE into one box.
+///
+/// Two edges with identical endpoints draw as two wires on exactly the same
+/// curve with two labels at the same point — the label collision this chart was
+/// just fixed for, arriving again through another door. Merging them is also
+/// the truer sentence: those keys do reach the same team.
+///
+/// Order is the order the server sent, so the keys read in menu order.
+List<MergedEdge> mergeParallel(List<FlowEdge> edges) {
+  final byPair = <String, List<FlowEdge>>{};
+  for (final e in edges) {
+    (byPair['${e.from}->${e.to}'] ??= []).add(e);
+  }
+
+  return [
+    for (final group in byPair.values)
+      MergedEdge(
+        edge: group.first,
+        label: group
+            .map((e) => e.label)
+            .where((l) => l.isNotEmpty)
+            .join(' · '),
+      ),
+  ];
+}

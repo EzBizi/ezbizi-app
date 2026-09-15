@@ -237,6 +237,50 @@ void main() {
     );
   });
 
+  /// Jose, seeing it live: "should be white on white mode, dark on dark mode".
+  ///
+  /// I built the canvas fixed-dark on purpose — n8n, the reference he sent, is
+  /// dark in both, and a graph canvas is a drawing rather than a page. He
+  /// looked at it running and ruled the other way, so the canvas follows the
+  /// app like everything else.
+  ///
+  /// Asserted on the ground the chart paints rather than left to look right:
+  /// a fixed palette and a theme-following one are indistinguishable until
+  /// somebody switches theme, which no test did.
+  group('the canvas follows the app theme', () {
+    Color groundOf(WidgetTester tester) {
+      final box = tester.widget<ColoredBox>(
+        find
+            .descendant(
+              of: find.byType(CallFlowChartPane),
+              matching: find.byType(ColoredBox),
+            )
+            .first,
+      );
+
+      return box.color;
+    }
+
+    testWidgets('light theme paints a light canvas', (tester) async {
+      await _pump(tester, width: 1100, theme: EzBiziTheme.light());
+
+      expect(groundOf(tester), FlowCanvas.light.ink);
+    });
+
+    testWidgets('dark theme paints a dark canvas', (tester) async {
+      await _pump(tester, width: 1100, theme: EzBiziTheme.dark());
+
+      expect(
+        groundOf(tester),
+        FlowCanvas.dark.ink,
+        reason:
+            'The control that distinguishes: if the palette were still fixed, '
+            'the light test above would pass on whichever one it was fixed to '
+            'and this one would fail.',
+      );
+    });
+  });
+
   _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires
@@ -455,6 +499,7 @@ Future<void> _pump(
   required double width,
   Map<String, dynamic>? graph,
   List<Map<String, dynamic>>? lines,
+  ThemeData? theme,
 }) async {
   tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -488,7 +533,7 @@ Future<void> _pump(
 
   await tester.pumpWidget(
     MaterialApp(
-      theme: EzBiziTheme.light(),
+      theme: theme ?? EzBiziTheme.light(),
       // REDUCE MOTION, and not only for tidiness. The energy flow Jose asked
       // for is an AnimationController on repeat, and a repeating controller
       // schedules frames forever -- `pumpAndSettle` never returns and every
