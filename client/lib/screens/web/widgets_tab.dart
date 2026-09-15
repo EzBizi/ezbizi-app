@@ -467,14 +467,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
 
         Text('Live chat', style: theme.textTheme.titleSmall),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show the chat bubble'),
-          value: chat['enabled'] == true,
-          onChanged: widget.canEdit
-              ? (on) => _set('chat', 'enabled', on)
-              : null,
-        ),
         _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
         _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
         _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
@@ -490,14 +482,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
         const Divider(height: 32),
         Text('Contact form', style: theme.textTheme.titleSmall),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show the contact form'),
-          value: form['enabled'] == true,
-          onChanged: widget.canEdit
-              ? (on) => _set('form', 'enabled', on)
-              : null,
-        ),
         _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
         _text(theme, 'Thank you message', form['thanks'],
             (v) => _set('form', 'thanks', v)),
@@ -646,7 +630,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        _previewHeading(theme, 'Live chat', chat['enabled'] == true),
+        _previewHeading(theme, 'Live chat'),
         const SizedBox(height: 8),
         _mockPage(
           theme,
@@ -696,7 +680,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
         ),
         const SizedBox(height: 20),
-        _previewHeading(theme, 'Contact form', form['enabled'] == true),
+        _previewHeading(theme, 'Contact form'),
         const SizedBox(height: 8),
         _mockPage(
           theme,
@@ -746,28 +730,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
   static String _line(Object? value) => '${value ?? ''}';
 
-  Widget _previewHeading(ThemeData theme, String label, bool on) {
-    /*
-     * A Wrap, not a Row. The pane is a fixed 360 and the pair here is a section
-     * name beside a sentence — "Contact form" and "off on your site" overflowed
-     * it by 6.6 pixels, which a widget test caught and an eye would not have.
-     * Wrapping keeps the whole sentence; ellipsising it would leave "off on
-     * your…" on the one line that has to be unambiguous.
-     */
-    return Wrap(
-      spacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(label, style: theme.textTheme.bodyMedium),
-        if (!on)
-          Text(
-            'off on your site',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
-            ),
-          ),
-      ],
-    );
+  /// Just the section name now.
+  ///
+  /// It used to carry "off on your site" beside it, because a widget could be
+  /// switched off while its editor sat there looking live. Jose removed the
+  /// switches on 2026-09-15 — placing the widget is what shows it — so there is
+  /// no off state left to announce.
+  Widget _previewHeading(ThemeData theme, String label) {
+    return Text(label, style: theme.textTheme.bodyMedium);
   }
 
   /// A stand-in for the customer's page, so the widget is not judged against

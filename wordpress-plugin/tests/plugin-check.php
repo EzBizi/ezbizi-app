@@ -652,18 +652,24 @@ check('the fields still come from EzBizi', str_contains($forced, 'What needs doi
 check('and the button is too', str_contains($forced, '>Send it<'), true);
 check('the argument is ignored entirely', str_contains($forced, 'Override me'), false);
 
-echo PHP_EOL . "A widget switched off in EzBizi renders nothing" . PHP_EOL;
+echo PHP_EOL . "There is no off switch any more" . PHP_EOL;
+/*
+ * The inverse of the check that used to be here, and the reason is Jose's,
+ * 2026-09-15: "get rid of the switches, they should just be on". Putting the
+ * widget on a page is the decision to show it; a second switch that could blank
+ * something already placed did nothing but lose people's work silently.
+ *
+ * The payload below still SAYS enabled=false, because an older server sends
+ * that and so does a row saved before today. Rendering anyway is the whole
+ * point — this is what proves the gate is gone rather than merely untested.
+ */
 reset_site();
 $GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload(false)];
 ezbizi_fetch();
 $GLOBALS['is_admin'] = false;
-check('the form is absent', $GLOBALS['sc']['ezbizi_form']([]), '');
-check('and so is the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
-check(
-    'somebody who can fix it is told',
-    str_contains(($GLOBALS['is_admin'] = true) ? $GLOBALS['sc']['ezbizi_form']([]) : '', 'switched off'),
-    true
-);
+check('a visitor gets the form regardless', str_contains($GLOBALS['sc']['ezbizi_form']([]), 'What needs doing?'), true);
+check('and the chat', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
+check('and nothing mentions a switch', str_contains($GLOBALS['sc']['ezbizi_form']([]), 'switched off'), false);
 
 echo PHP_EOL . "A site with no browser key shows a visitor nothing" . PHP_EOL;
 reset_site();
@@ -673,6 +679,78 @@ $GLOBALS['is_admin'] = false;
 check('the form renders empty', $GLOBALS['sc']['ezbizi_form']([]), '');
 check('and so does the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 
+
+echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
+/*
+ * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
+ * found". The shortcodes had worked since 1.2.0 and that panel cannot see a
+ * shortcode — it lists registered Elementor widgets and nothing else. So on an
+ * Elementor site, which is most of them, we had no widget at all as far as
+ * anybody could tell.
+ *
+ * This runs LAST, and the no-Elementor case runs before the stub is loaded:
+ * once \Elementor\Widget_Base exists it cannot be made not to exist.
+ */
+$manager = null;
+do_action('elementor/widgets/register', $manager);
+check('a site without Elementor registers nothing, and does not fatal', $manager, null);
+
+require_once __DIR__ . '/elementor-stub.php';
+elementor_present();
+
+$manager = new Elementor_Widgets_Manager;
+do_action('elementor/widgets/register', $manager);
+
+check('both widgets are registered', count($manager->registered), 2);
+check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
+check('the chat too', isset($manager->registered['ezbizi-chat']), true);
+
+$chat = $manager->registered['ezbizi-chat'];
+$form = $manager->registered['ezbizi-form'];
+
+// The search that failed. Elementor matches the title and the keywords, so
+// this is the check that stands between us and "No widget found" again.
+check('the title says whose it is', str_contains($chat->get_title(), 'EzBizi'), true);
+check('and searching ezbizi finds it', in_array('ezbizi', $chat->get_keywords(), true), true);
+check('the form as well', in_array('ezbizi', $form->get_keywords(), true), true);
+
+// Nothing configurable: one notice pointing at the one place that decides.
+$chat->ezbizi_call_register_controls();
+check('one control, and it is the notice', count($chat->ezbizi_controls), 1);
+check(
+    'which names where the settings live',
+    str_contains($chat->ezbizi_controls['ezbizi_notice']['raw'] ?? '', 'Widgets'),
+    true
+);
+
+echo PHP_EOL . "The editor does not open chats by being opened" . PHP_EOL;
+/*
+ * The chat widget starts a conversation and polls every five seconds. Rendered
+ * live in the Elementor editor it would file real conversations against the
+ * customer's account every time somebody opened the page to move a heading, and
+ * those arrive in Leads looking like enquiries from nobody.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+elementor_present(true);
+ob_start();
+$chat->ezbizi_call_render();
+$editing = ob_get_clean();
+
+check('a placeholder, named', str_contains($editing, 'EzBizi Live Chat'), true);
+check('and no chat script', str_contains($editing, 'setInterval'), false);
+
+elementor_present(false);
+ob_start();
+$chat->ezbizi_call_render();
+$live = ob_get_clean();
+
+// The control: if render() were broken rather than merely guarded, the check
+// above would pass for the wrong reason.
+check('on a real page it is the widget', str_contains($live, 'Talk to A-1'), true);
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"

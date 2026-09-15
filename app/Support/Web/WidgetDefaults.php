@@ -31,20 +31,24 @@ final class WidgetDefaults
      * @param  string|null  $brand  the customer's own colour, when we know it
      * @return array<string, mixed>
      */
+    /**
+     * Built by `resolve()` so there is exactly one shape.
+     *
+     * It used to assemble chat/form/style itself, which meant a site with no
+     * saved config took a different code path from one with a saved config —
+     * and the day the two shapes diverged, the no-config path was missing a key
+     * the other one had. A default is a saved config with nothing in it, so it
+     * is now literally that.
+     */
     public static function all(?string $brand = null): array
     {
-        return [
-            'chat' => self::chat(),
-            'form' => self::form(),
-            'style' => self::style($brand),
-        ];
+        return self::resolve([], $brand);
     }
 
     /** @return array<string, mixed> */
     public static function chat(): array
     {
         return [
-            'enabled' => false,
             'title' => 'Chat with us',
             'intro' => 'Ask us anything — we will reply here.',
             'button' => 'Chat',
@@ -59,7 +63,6 @@ final class WidgetDefaults
     public static function form(): array
     {
         return [
-            'enabled' => false,
             'button' => 'Send',
             'thanks' => 'Thank you — we will be in touch shortly.',
             'error' => 'Sorry — that did not send. Please try again.',
@@ -130,7 +133,24 @@ final class WidgetDefaults
 
         return [
             'chat' => [
-                'enabled' => (bool) ($chat['enabled'] ?? false),
+                /*
+                 * `enabled` is sent, always true, and means nothing.
+                 *
+                 * Jose removed the switches on 2026-09-15: "get rid of the
+                 * switches, they should just be on". Placing the widget on a
+                 * page is the decision to show it, and a second invisible
+                 * switch that can blank something you deliberately placed has
+                 * one failure mode — the one it produced, where every site was
+                 * built correctly and nothing appeared anywhere.
+                 *
+                 * The key stays on the wire because plugin 1.4.0 and earlier
+                 * render nothing when it is absent, and those are installed on
+                 * real sites. Dropping it would black out every widget on any
+                 * site that had not updated yet. Remove it when no install
+                 * below 1.5.0 is left; `plugin_version` comes in on every
+                 * payload request, so that is a question we can answer.
+                 */
+                'enabled' => true,
                 'title' => self::text($chat['title'] ?? '', 80),
                 'intro' => self::text($chat['intro'] ?? '', 300),
                 'button' => self::text($chat['button'] ?? '', 40),
@@ -142,7 +162,8 @@ final class WidgetDefaults
                     : 'bottom-right',
             ],
             'form' => [
-                'enabled' => (bool) ($form['enabled'] ?? false),
+                // Always on; see the note above.
+                'enabled' => true,
                 'button' => self::text($form['button'] ?? '', 40),
                 'thanks' => self::text($form['thanks'] ?? '', 300),
                 'error' => self::text($form['error'] ?? '', 300),
