@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0216',
       date: '15 Sep 2026',
       items: [
+        'Google Ads now appears as a tab inside Reports, and the Reports screen no longer shows its own name twice. The tab was registered and working but nothing drew it, so there was no way to open it.',
         'The EzBizi plugin now has its own item in the WordPress menu instead of hiding under Settings, and the setup guide points at the new place.',
       ],
     ),
