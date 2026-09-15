@@ -1381,6 +1381,7 @@ Route::prefix('v1')
         // Pickup: what is ringing elsewhere, and taking one. {call} last, so
         // the literal paths above cannot be swallowed by the parameter.
         Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+        Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live']);
         Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
 
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);

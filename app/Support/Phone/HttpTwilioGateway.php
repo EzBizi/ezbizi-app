@@ -602,6 +602,20 @@ final class HttpTwilioGateway implements TwilioGateway
             ->update(['twiml' => $twiml]);
     }
 
+    public function queueSizes(PhoneConnection $connection): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->queues->read([], 50) as $queue) {
+            $out[(string) $queue->friendlyName] = [
+                'waiting' => (int) $queue->currentSize,
+                'average_wait' => (int) $queue->averageWaitTime,
+            ];
+        }
+
+        return $out;
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $message = $this->connectionClient($connection)->messages->create($to, [

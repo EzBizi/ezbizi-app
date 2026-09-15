@@ -604,6 +604,87 @@ class CallsController extends Controller
     }
 
     /**
+     * GET /api/v1/phone/call-flow/live
+     *
+     * What is happening on this line right now, for the call-flow chart.
+     *
+     * ── What is answerable and what is not ───────────────────────────
+     *
+     * Only two things, and the shape says so rather than padding it out:
+     *
+     *   `queues` — EXACT, and asked of Twilio, which is where the callers
+     *   actually are. Keyed by RING GROUP id, matching the `ref` on the queue
+     *   nodes `TwimlRenderer::graph()` emits, so a count joins to a box
+     *   without anybody re-deriving node ids. A group that has never held
+     *   anybody has no queue on the account, and a missing key means zero.
+     *
+     *   `line` — calls ringing or connected on this number, from our own
+     *   rows. One number for the whole picture.
+     *
+     * There is deliberately NO per-node count for the menu or a ring group. A
+     * caller listening to a menu, a caller ringing a team and a caller holding
+     * are all `status = ringing` on the row; nothing records which step a call
+     * is at. A column that did would go stale exactly the way `status`
+     * already does when a final callback never arrives — the pickup list
+     * needed a two-minute ceiling for that — and a tile reading "2 calls here"
+     * about a call that ended on Tuesday is worse than a tile reading nothing.
+     */
+    public function live(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        $input = $request->validate([
+            'number_id' => ['required', 'string', 'max:191'],
+        ]);
+
+        $number = $this->access->readable($request->user())
+            ->firstWhere('id', $input['number_id']);
+
+        if ($number === null) {
+            return response()->json(['message' => 'No such line.'], Status::HTTP_NOT_FOUND);
+        }
+
+        $connection = $number->connection;
+
+        // Same ceiling as the ringing list, and for the same reason: `status`
+        // is moved by Twilio's callbacks, and a call whose final one never
+        // arrives stays `ringing` here for ever. Without this the chart shows
+        // a caller who hung up last Tuesday, permanently.
+        $line = PhoneCall::query()
+            ->where('number_id', $number->id)
+            ->whereIn('status', [PhoneCall::STATUS_RINGING, PhoneCall::STATUS_IN_PROGRESS])
+            ->where('created_at', '>=', now()->subMinutes(30))
+            ->count();
+
+        $queues = [];
+
+        if ($connection !== null) {
+            try {
+                foreach ($this->twilio->queueSizes($connection) as $name => $size) {
+                    // `ezbizi-<ringGroupId>` — see PhoneRingGroup::queueName().
+                    // Anything else on the account is not ours and is skipped
+                    // rather than guessed at.
+                    if (! str_starts_with($name, 'ezbizi-') || str_starts_with($name, 'ezbizi-park-')) {
+                        continue;
+                    }
+
+                    $queues[substr($name, strlen('ezbizi-'))] = $size;
+                }
+            } catch (\Throwable) {
+                // Twilio unreachable. An empty map reads as "nobody waiting",
+                // which is wrong but quiet — and the alternative is a chart
+                // that fails to draw because a count could not be fetched.
+                $queues = [];
+            }
+        }
+
+        return response()->json(['data' => [
+            'line' => $line,
+            'queues' => (object) $queues,
+        ]]);
+    }
+
+    /**
      * Every live device this person has except the one asking.
      *
      * @return list<string> Voice identities

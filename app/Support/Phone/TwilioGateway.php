@@ -241,6 +241,27 @@ interface TwilioGateway
      */
     public function redirectCall(PhoneConnection $connection, string $callSid, string $twiml): void;
 
+    /**
+     * How many callers are waiting in each queue on this account, right now.
+     *
+     * ── Why this is asked of Twilio and not of our own tables ───
+     *
+     * Because Twilio is where the callers actually are. A row in `phone_calls`
+     * says `ringing` for somebody listening to a menu, somebody ringing a
+     * team, and somebody holding in a queue alike — nothing here records which
+     * step a call is at, and a column that did would go stale exactly the way
+     * `status` already does when a final callback never arrives. Twilio's
+     * queue knows its own size and cannot be wrong about it.
+     *
+     * Keyed by the queue's FRIENDLY NAME, which is `ezbizi-<ringGroupId>` —
+     * see `PhoneRingGroup::queueName()`. A group that has never held anybody
+     * has no queue resource at all, so a missing key means zero rather than
+     * unknown.
+     *
+     * @return array<string, array{waiting: int, average_wait: int}>
+     */
+    public function queueSizes(PhoneConnection $connection): array;
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array;
 
     /**

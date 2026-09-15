@@ -1165,6 +1165,15 @@ final class TwimlRenderer
             string $title,
             string $detail,
             string $state = 'ok',
+
+            // WHAT THIS NODE IS ABOUT, when it is about something with an id.
+            //
+            // A ring group node and its queue both carry the group's id, which
+            // is what lets a live count be joined to the right box without the
+            // screen re-deriving my node ids — the ids are mine, and a second
+            // derivation of them somewhere else is the drift this module keeps
+            // paying for.
+            ?string $ref = null,
         ) use (&$nodes): string {
             $nodes[] = [
                 'id' => $id,
@@ -1172,6 +1181,7 @@ final class TwimlRenderer
                 'title' => $title,
                 'detail' => $detail,
                 'state' => $state,
+                'ref' => $ref,
             ];
 
             return $id;
@@ -1284,6 +1294,7 @@ final class TwimlRenderer
                 default => 'Whoever is on duty in that group is dialled.',
             },
             $reaches ? 'ok' : 'dead',
+            $group?->id === null ? null : (string) $group->id,
         );
 
         // ── The menu, where one call becomes several ────────────────
@@ -1395,6 +1406,7 @@ final class TwimlRenderer
                             ? 'This option points at a ring group that no longer exists.'
                             : ($usable ? 'Whoever is on duty in that group is dialled.' : 'Nobody in that group is available.'),
                         $usable ? 'ok' : 'dead',
+                        $optionGroup?->id === null ? null : (string) $optionGroup->id,
                     );
                 }
 
@@ -1438,7 +1450,14 @@ final class TwimlRenderer
 
             if ($team->overflow === 'queue') {
                 $queue = 'queue-'.$nodeId;
-                $add($queue, 'queue', 'Hold in a queue', 'Callers for '.$team->name.' wait and are told their place in line.');
+                $add(
+                    $queue,
+                    'queue',
+                    'Hold in a queue',
+                    'Callers for '.$team->name.' wait and are told their place in line.',
+                    'ok',
+                    (string) $team->id,
+                );
                 $link($nodeId, $queue, 'Everyone busy');
                 $link($queue, $nodeId, 'Somebody free');
                 $link($queue, 'voicemail', 'Waited too long');

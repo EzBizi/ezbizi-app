@@ -392,6 +392,23 @@ final class FakeTwilioGateway implements TwilioGateway
     /** When set, createCall throws this message. */
     public ?string $failCreateCallWith = null;
 
+    /**
+     * Queue sizes a test can set, keyed by queue friendly name.
+     *
+     * Empty by default, which is the honest default: a group that has never
+     * held anybody has no queue on the account either.
+     *
+     * @var array<string, array{waiting: int, average_wait: int}>
+     */
+    public array $queues = [];
+
+    public function queueSizes(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        return $this->queues;
+    }
+
     public function createCall(
         PhoneConnection $connection,
         string $from,
