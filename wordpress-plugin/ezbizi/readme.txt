@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -112,7 +112,8 @@ number, service area and booking link. These are values you have chosen to
 publish on your own public website.
 
 **The publishing account (optional capability, added in 1.1.0):** Once your
-token has been accepted, the plugin creates a WordPress user named
+token has been accepted — on the next content refresh, or the next time an
+administrator opens wp-admin — the plugin creates a WordPress user named
 "ezbizi-service" on a restricted role, generates an application password for it,
 and sends that application password to EzBizi so EzBizi can publish and edit
 content on this site on your behalf. The role can publish and edit posts and
@@ -121,6 +122,12 @@ plugins, edit themes, post unfiltered HTML, or delete anything. The application
 password is sent once, over HTTPS only, and is stored encrypted by EzBizi. If
 the handover fails the application password is deleted immediately rather than
 left active.
+
+**What EzBizi reads with that account (added in 1.3.0):** the list of your
+pages and posts — their titles, web addresses, url slugs, status (published,
+draft, and so on) and when each was last changed — so that you can see them in
+EzBizi under Web Management. It is read on demand when somebody opens that
+screen, nothing is copied or stored, and the text of a page is never requested.
 
 You can revoke it at any time: delete the "EzBizi" application password under
 Users, delete the ezbizi-service user, or deactivate this plugin — deactivation
@@ -187,6 +194,15 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.3.0 =
+* Your pages and posts are visible in EzBizi under Web Management, read from
+  this site when you open the screen. Nothing is copied or stored.
+* Fixes the publishing account never being created on most sites. It was only
+  attempted while a shortcode was being rendered, and the check it made was
+  about the request rather than about the site — so on an ordinary HTTPS site
+  it silently never happened. It is now also attempted when an administrator
+  opens wp-admin.
 
 = 1.2.0 =
 * Live chat and a contact form for your website. Both are off until you turn

@@ -136,6 +136,7 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
+use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
@@ -712,6 +713,9 @@ Route::prefix('v1')
         Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+        // The pages and posts on the site itself, read live through the account
+        // it handed us at pairing. Nothing stored, so nothing to keep in step.
+        Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
         Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
         Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
         Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);

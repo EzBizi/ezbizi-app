@@ -173,8 +173,20 @@ function add_role($slug, $label, $caps) {
 }
 function get_role($slug) { return $GLOBALS['roles'][$slug] ?? null; }
 
+/*
+ * Both halves of the real gate, so the harness can tell "this request is not
+ * SSL" from "the site owner switched application passwords off" -- which is the
+ * distinction the plugin now draws and the reason the pairing was silently
+ * never happening on ordinary HTTPS sites.
+ */
+function is_ssl() { return $GLOBALS['is_ssl'] ?? false; }
+function wp_get_environment_type() { return $GLOBALS['env_type'] ?? 'production'; }
+
 function wp_is_application_passwords_available() {
-    return $GLOBALS['app_passwords_on'] ?? true;
+    return (bool) apply_filters(
+        'wp_is_application_passwords_available',
+        is_ssl() || 'local' === wp_get_environment_type(),
+    );
 }
 
 class WP_Application_Passwords {
@@ -244,7 +256,13 @@ function reset_site() {
     $GLOBALS['roles'] = [];
     $GLOBALS['roles_assigned'] = [];
     $GLOBALS['app_passwords'] = [];
-    $GLOBALS['app_passwords_on'] = true;
+    // A cron or CLI request, which is where the pairing actually runs and where
+    // is_ssl() is false on a perfectly ordinary HTTPS site.
+    $GLOBALS['is_ssl'] = false;
+    $GLOBALS['env_type'] = 'production';
+    // A filter one case registers must not decide the next one.
+    unset($GLOBALS['filters']['wp_is_application_passwords_available']);
+    $GLOBALS['home'] = 'https://a-1chimney.com';
     $_SERVER['REQUEST_URI'] = '/';
 }
 
@@ -504,11 +522,46 @@ check('deactivation revokes it', count($GLOBALS['app_passwords']), 0);
 
 echo PHP_EOL . "A site with application passwords switched off simply does not pair" . PHP_EOL;
 reset_site();
-$GLOBALS['app_passwords_on'] = false;
+// Switched off the way a site owner actually does it: a filter that refuses
+// whatever it is handed. Setting the flag alone only simulates a non-SSL
+// REQUEST, which is a different thing and must still pair.
+add_filter('wp_is_application_passwords_available', fn () => false);
 ok_response(['phone' => '555-0100']);
 $payload = ezbizi_fetch();
 check('no credential', count($GLOBALS['app_passwords']), 0);
 check('and the values still render', $payload['values']['phone'], '555-0100');
+
+echo PHP_EOL . "A cron read on an HTTPS site still pairs" . PHP_EOL;
+reset_site();
+// The state the pairing ACTUALLY runs in: WP-Cron or WP-CLI, where is_ssl() is
+// false on a perfectly ordinary HTTPS site. This returned "no application
+// passwords here" and skipped silently, forever, on a live install.
+$GLOBALS['is_ssl'] = false;
+$GLOBALS['home'] = 'https://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('a non-SSL request on an HTTPS site pairs', count($GLOBALS['app_passwords']), 1);
+
+echo PHP_EOL . "A site that is genuinely plain HTTP does not" . PHP_EOL;
+reset_site();
+$GLOBALS['is_ssl'] = false;
+$GLOBALS['home'] = 'http://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('no credential on a plain-HTTP site', count($GLOBALS['app_passwords']), 0);
+
+echo PHP_EOL . "An admin page load pairs a site with no shortcodes on it" . PHP_EOL;
+reset_site();
+// The gap this closes: ezbizi_service_link() otherwise runs only from a
+// content read, so a site with the plugin installed and the token pasted but
+// no shortcode placed never called home and never paired.
+$GLOBALS['is_ssl'] = true;
+$GLOBALS['home'] = 'https://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+check('nothing paired before the admin loads', count($GLOBALS['app_passwords']), 0);
+do_action('admin_init');
+check('the admin load pairs it', count($GLOBALS['app_passwords']), 1);
+check('and it is the service user', $GLOBALS['users'][0]->user_login, 'ezbizi-service');
 
 echo PHP_EOL . "EzBizi letting go revokes the key on the site too" . PHP_EOL;
 reset_site();

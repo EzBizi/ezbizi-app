@@ -125,6 +125,59 @@ function ezbizi_service_user() {
  * failure, because this is reached from a content read: an install that cannot
  * pair must still render a phone number.
  */
+/**
+ * Whether this site permits application passwords, asked so that a background
+ * request cannot answer for the site.
+ *
+ * ── The bug this exists to fix ──
+ *
+ * `wp_is_application_passwords_available()` defaults to `is_ssl()`, which is a
+ * fact about the CURRENT REQUEST rather than about the site. The pairing runs
+ * from a content read, and a content read is usually WP-Cron — a loopback that
+ * is frequently plain HTTP even on an HTTPS site, and always HTTP under WP-CLI.
+ * So on a perfectly ordinary site the answer was "no", every time, forever, and
+ * silently: the customer saw a plugin that worked and no account ever appeared.
+ * Measured on a live install, where the site is HTTPS and this returned false.
+ *
+ * ── Why this does not simply bypass the check ──
+ *
+ * The filter is also how a site owner switches application passwords OFF, and
+ * overriding that would be taking a decision that is theirs. So: compute what
+ * WordPress would default to, ask for the filtered answer, and compare. If they
+ * differ, somebody set it deliberately and their answer stands. If they agree,
+ * the only input was `is_ssl()` — and we substitute the question actually worth
+ * asking, which is whether the SITE is served over HTTPS.
+ */
+function ezbizi_application_passwords_allowed() {
+    if (wp_is_application_passwords_available()) {
+        return true;
+    }
+
+    /*
+     * It said no. Two different things produce that answer and only one of them
+     * is a decision:
+     *
+     *   - the site owner filtered application passwords off, which stands; or
+     *   - `is_ssl()` was false, which is a fact about THIS REQUEST.
+     *
+     * Comparing the filtered answer against the computed default cannot tell
+     * them apart, because when is_ssl() is false the default is already false
+     * and an owner's "off" looks identical. Asking the filter with `true`
+     * separates them: a filter that switches the feature off returns false
+     * whatever it is handed, and an unfiltered site hands `true` straight back.
+     *
+     * Caught by the plugin harness, which had a case for the switched-off site
+     * and went red on the first version of this function.
+     */
+    if (! apply_filters('wp_is_application_passwords_available', true)) {
+        return false;
+    }
+
+    // Nobody objected, so the only "no" was about this request. Ask the
+    // question that is actually about the site.
+    return wp_parse_url(home_url(), PHP_URL_SCHEME) === 'https';
+}
+
 function ezbizi_service_link() {
     if (get_option(EZBIZI_SERVICE_LINKED, false)) {
         return;
@@ -148,8 +201,7 @@ function ezbizi_service_link() {
         return;
     }
 
-    // Application passwords arrived in WordPress 5.6 and can be switched off.
-    if (! class_exists('WP_Application_Passwords') || ! wp_is_application_passwords_available()) {
+    if (! class_exists('WP_Application_Passwords') || ! ezbizi_application_passwords_allowed()) {
         return;
     }
 
@@ -239,6 +291,22 @@ function ezbizi_service_unlink() {
 
     delete_option(EZBIZI_SERVICE_LINKED);
 }
+
+/*
+ * A second way in, because the first one does not cover every site.
+ *
+ * `ezbizi_service_link()` otherwise runs only from `ezbizi_fetch()`, which
+ * happens when a shortcode renders. A site that has installed the plugin and
+ * pasted its token but not yet put a shortcode on a page never calls home, so
+ * it never pairs — and that is the normal state for the first days of an
+ * install. An admin screen load is a real HTTPS request by somebody who is
+ * setting the site up, which makes it both the likeliest moment and the one
+ * where `is_ssl()` is honestly true.
+ *
+ * Cheap on every later load: the function returns on its first line once the
+ * site is paired.
+ */
+add_action('admin_init', 'ezbizi_service_link');
 
 // Deactivating the plugin must not leave a working key behind.
 register_deactivation_hook(dirname(__FILE__) . '/ezbizi.php', 'ezbizi_service_unlink');

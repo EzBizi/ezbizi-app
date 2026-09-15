@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
+import 'web/content_tab.dart';
 import 'web/seo_tab.dart';
 import 'web/widgets_tab.dart';
 
@@ -44,6 +45,24 @@ class _WebScreenState extends State<WebScreen> {
         'Widgets',
         Icons.chat_bubble_outline,
         () => WidgetsTab(api: widget.api, session: widget.session),
+      ),
+      (
+        'Pages',
+        Icons.description_outlined,
+        () => ContentTab(
+          api: widget.api,
+          session: widget.session,
+          type: 'page',
+        ),
+      ),
+      (
+        'Posts',
+        Icons.article_outlined,
+        () => ContentTab(
+          api: widget.api,
+          session: widget.session,
+          type: 'post',
+        ),
       ),
     ];
 
