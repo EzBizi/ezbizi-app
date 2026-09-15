@@ -77,6 +77,7 @@ use App\Http\Controllers\Api\Phone\NumbersController as PhoneNumbersController;
 use App\Http\Controllers\Api\Phone\PortsController as PhonePortsController;
 use App\Http\Controllers\Api\Phone\PortWebhookController as PhonePortWebhookController;
 use App\Http\Controllers\Api\Phone\PresenceController as PhonePresenceController;
+use App\Http\Controllers\Api\Phone\QueueCallbackWebhookController as PhoneQueueCallbackWebhookController;
 use App\Http\Controllers\Api\Phone\QueueWaitWebhookController as PhoneQueueWaitWebhookController;
 use App\Http\Controllers\Api\Phone\RecordingWebhookController as PhoneRecordingWebhookController;
 use App\Http\Controllers\Api\Phone\ReportsController as PhoneReportsController;
@@ -558,6 +559,18 @@ Route::match(['get', 'post'], 'v1/phone/answered/{organization}/{connection}/{us
 Route::match(['get', 'post'], 'v1/phone/queue/{organization}/{connection}/{number}/{group}', PhoneQueueWaitWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('phone.queue.webhook');
+
+/*
+| Where the digit lands when somebody presses 1 rather than keep holding.
+|
+| Same four segments and the same throttle as the wait URL above, because it
+| is the same caller in the same queue — and the controller reconstructs the
+| wait URL from this one by swapping the segment, which only works while the
+| two stay the same shape.
+*/
+Route::match(['get', 'post'], 'v1/phone/callback/{organization}/{connection}/{number}/{group}', PhoneQueueCallbackWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('phone.queue.callback.webhook');
 
 Route::post('v1/phone/status/{organization}/{connection}', PhoneStatusWebhookController::class)
     ->middleware('throttle:120,1')

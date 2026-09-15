@@ -123,10 +123,42 @@ class QueueWaitWebhookController extends Controller
             );
         }
 
+        // ── THE OFFER, AND WHY IT WRAPS THE MUSIC ───────────────
+        //
+        // "Press 1 and we will call you back." The Gather holds the music, so
+        // the key is live for the whole pass rather than for a moment after a
+        // sentence — somebody reaching for a phone in their pocket has the
+        // length of the hold music to do it.
+        //
+        // When nobody presses anything the Gather times out, the document
+        // ends, and Twilio asks for this URL again, which is the same loop as
+        // before. So the offer costs a caller who ignores it nothing at all.
+        //
+        // ponytail: offered whenever the queue is on, with no setting to turn
+        // it off. A business that would rather people held has not asked for
+        // that yet, and the promise is kept automatically, so the usual reason
+        // to suppress it — nobody acts on them — does not apply here.
+        $gather = $response->gather([
+            'numDigits' => 1,
+            'timeout' => 1,
+            'action' => route('phone.queue.callback.webhook', [
+                'organization' => $line->organization_id,
+                'connection' => $connection,
+                'number' => $line->id,
+                'group' => $ring->id,
+            ]),
+            'method' => 'POST',
+        ]);
+
+        $gather->say(
+            'Or press 1 and we will call you back without losing your place.',
+            ['language' => $language],
+        );
+
         // One pass of music, then Twilio comes back here and asks again. The
         // length of this file IS the gap between announcements, which is the
         // same thing RingCentral calls "repeat every time music ends".
-        $response->play($ring->holdMusicUrl());
+        $gather->play($ring->holdMusicUrl());
 
         return $this->twiml($response);
     }

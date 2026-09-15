@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
+use App\Jobs\PlaceQueueCallback;
 use App\Models\PhoneConnection;
 use App\Models\PhonePresence;
 use App\Support\Phone\PhoneNumberAccess;
@@ -224,6 +225,25 @@ class PresenceController extends Controller
                 ),
             ],
         );
+
+        // SOMEBODY IS FREE, AND SOMEBODY WAS PROMISED A CALL.
+        //
+        // This is the whole trigger for callbacks. A caller who pressed 1 in
+        // the queue was told we would ring them "as soon as somebody is free",
+        // and this request is the only moment in the system that means exactly
+        // that — it is a person saying so about themselves.
+        //
+        // Queued rather than run here: placing a call is a round trip to
+        // Twilio, and neither its latency nor its failures belong in the path
+        // of the control that says "I am back". The job finds nothing and
+        // stops when nothing is owed, which is almost every time.
+        if ($presence->state === PhonePresence::STATE_REGISTERED) {
+            PlaceQueueCallback::dispatch(
+                (string) $this->tenant->idOrFail(),
+                (string) $connection->id,
+                (string) $user->id,
+            );
+        }
 
         return response()->json([
             'data' => [

@@ -315,6 +315,105 @@ class PhoneCallQueueTest extends TestCase
     // ── fixtures ────────────────────────────────────────────────────
 
     /** @return array{0: PhoneNumber, 1: PhoneRingGroup} */
+    /**
+     * The hold loop offers a callback, and the music is INSIDE the offer.
+     *
+     * The nesting is the whole behaviour and no existing test can see it: they
+     * assert `<Play>` appears, which is just as true when the music sits
+     * outside a Gather that is therefore live for a fraction of a second. With
+     * it wrapped, the key works for the entire pass of hold music — which is
+     * how long somebody actually needs to get a phone out of a pocket.
+     */
+    public function test_the_hold_loop_offers_a_callback_around_the_music(): void
+    {
+        $t = $this->provisionTenant();
+        [$org, $number, $group, $connection] = $this->queueFixture($t, available: false);
+
+        $xml = $this->postWait($org, $connection, $number, $group, [
+            'QueuePosition' => 3,
+            'QueueTime' => 10,
+            'From' => '+13055550100',
+        ])->assertOk()->getContent();
+
+        $this->assertStringContainsString('<Gather', $xml);
+        $this->assertStringContainsString('press 1', $xml);
+        $this->assertStringContainsString('/phone/callback/', $xml);
+
+        // The music is a CHILD of the Gather, not a sibling after it.
+        $music = strpos($xml, '<Play');
+        $close = strpos($xml, '</Gather>');
+        $this->assertNotFalse($music);
+        $this->assertNotFalse($close);
+        $this->assertLessThan(
+            $close,
+            $music,
+            'the hold music sits outside the Gather, so the key is live for an '
+            .'instant rather than for the whole pass',
+        );
+    }
+
+    /**
+     * Pressing it writes the promise down and lets them go.
+     *
+     * Both halves matter. A row with no hangup leaves somebody listening to
+     * music they have just declined, and a hangup with no row is a phone
+     * system that told a person it would ring them and then forgot.
+     */
+    public function test_pressing_the_key_records_the_promise_and_hangs_up(): void
+    {
+        $t = $this->provisionTenant();
+        [$org, $number, $group, $connection] = $this->queueFixture($t, available: false);
+
+        $xml = $this->postCallback($org, $connection, $number, $group, [
+            'From' => '+13055550100',
+            'Digits' => '1',
+            'QueuePosition' => 4,
+        ])->assertOk()->getContent();
+
+        $this->assertStringContainsString('call you back', $xml);
+        $this->assertStringContainsString('<Hangup', $xml);
+
+        $this->inTenant($t['org'], function () use ($group) {
+            $owed = \App\Models\PhoneCallback::query()->outstanding()->get();
+
+            $this->assertCount(1, $owed, 'nobody was written down');
+            $this->assertSame('+13055550100', $owed->first()->to_e164);
+            $this->assertSame($group, $owed->first()->ring_group_id);
+            $this->assertSame(4, $owed->first()->position);
+        });
+    }
+
+    /**
+     * A withheld number is told, not promised.
+     *
+     * The case that can distinguish, because the easy implementation writes a
+     * row for anybody who presses a key. A promise to ring a number we do not
+     * have is an obligation nobody can discharge, sitting on somebody screen
+     * for three months — and the caller has been told a thing that is false.
+     */
+    public function test_a_withheld_caller_is_not_promised_a_callback(): void
+    {
+        $t = $this->provisionTenant();
+        [$org, $number, $group, $connection] = $this->queueFixture($t, available: false);
+
+        $xml = $this->postCallback($org, $connection, $number, $group, [
+            'From' => 'anonymous',
+            'Digits' => '1',
+        ])->assertOk()->getContent();
+
+        $this->assertStringContainsString('cannot call you back', $xml);
+        $this->assertStringNotContainsString('<Hangup', $xml);
+
+        // And they go back to holding rather than being dropped.
+        $this->assertStringContainsString('/phone/queue/', $xml);
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            0,
+            \App\Models\PhoneCallback::query()->count(),
+            'an undeliverable promise was written down',
+        ));
+    }
+
     private function queueLine(array $tenant, bool $available): array
     {
         $connection = $this->connection($tenant);
@@ -353,6 +452,25 @@ class PhoneCallQueueTest extends TestCase
     }
 
     /** @return array{0: string, 1: string, 2: string, 3: string} */
+    /**
+     * @param  array<string, mixed>  $params
+     */
+    private function postCallback(
+        string $org,
+        string $connection,
+        string $number,
+        string $group,
+        array $params,
+    ): TestResponse {
+        $url = url("/api/v1/phone/callback/{$org}/{$connection}/{$number}/{$group}");
+        $signable = array_map(static fn ($value) => (string) $value, $params);
+
+        return $this->post($url, $signable, [
+            'X-Twilio-Signature' => (new RequestValidator(self::AUTH_TOKEN))
+                ->computeSignature($url, $signable),
+        ]);
+    }
+
     private function queueFixture(array $tenant, bool $available): array
     {
         return $this->inTenant($tenant['org'], function () use ($tenant, $available) {
