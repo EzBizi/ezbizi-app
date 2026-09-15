@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/cascade_words.dart';
 import '../core/session.dart';
 
 /// Where a business connects the mail server its own mail goes out through.
@@ -403,16 +404,10 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
   /// screen's, and its docblock warns that the third is not a rounding of the
   /// second: nothing set anywhere is a different fact from inheriting a value
   /// somebody in this organization chose.
-  String _provenance(Map<String, dynamic>? effective) {
-    if (effective == null) return 'EzBizi default';
-
-    final source = effective['source_name'] as String?;
-    final inherited = effective['inherited'] as bool? ?? false;
-
-    if (source == null) return 'EzBizi default';
-
-    return inherited ? 'Inherited from $source' : 'Set here';
-  }
+  String _provenance(Map<String, dynamic>? effective) => provenanceWords(
+        effective?['source_name'] as String?,
+        inherited: effective?['inherited'] as bool? ?? false,
+      );
 
   Widget _fact(
     BuildContext context,
