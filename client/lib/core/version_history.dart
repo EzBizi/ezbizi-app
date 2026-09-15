@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0216',
+      date: '15 Sep 2026',
+      items: [
+        'The EzBizi plugin now has its own item in the WordPress menu instead of hiding under Settings, and the setup guide points at the new place.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0215',
       date: '15 Sep 2026',
       items: [
