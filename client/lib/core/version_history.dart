@@ -11,7 +11,10 @@ class VersionHistory {
       version: '0.0.0219',
       date: '15 Sep 2026',
       items: [
+        'The chat and contact form on your websites can reach EzBizi again. The browser was refusing to send the message before it ever left the page, so everything a visitor typed came back as our own did-not-send notice.',
+        'The chat bubble now appears by itself on every page of a website instead of only where somebody pasted it, and it no longer borrows the colours of the site it sits on.',
         'Google Ads opens on yesterday rather than an empty range, with a search box for accounts and another for campaigns, sortable columns, and a total across every account under a manager. Accounts in the manager tree that EzBizi holds no token for are counted and named rather than left out of the total.',
+        'A Google Ads manager account now says on its own row that opening it reads every account beneath it, so the cost of the click is visible before it is made.',
       ],
     ),
     VersionRelease(
