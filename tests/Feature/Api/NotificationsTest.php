@@ -319,11 +319,14 @@ class NotificationsTest extends TestCase
 
     // ── Somewhere to go when you click one ────────────────────────
     //
-    // Until 2026-09-16 every notification carried `meta.route => null`, on
-    // every notification ever sent, and nothing in the client read it. Clicking
-    // one marked it read and left you where you were.
+    // The first version of these compared the endpoint's answer to
+    // ModuleRegistry::moduleKeyOfModel(Job::class) — the SAME function the
+    // endpoint called. It asserted that a function equals itself, passed
+    // perfectly, and shipped a bug that sent "New Live Chat Lead" to the
+    // dashboard. These name the expected key as a literal, which is the only
+    // value the real derivation can produce and the wrong one cannot.
 
-    public function test_a_notification_about_a_record_names_the_module_that_owns_it(): void
+    public function test_a_job_notification_points_at_jobs_not_at_the_module_that_raised_it(): void
     {
         $this->ruleThatNotifies();
         $this->makeJob();
@@ -332,22 +335,31 @@ class NotificationsTest extends TestCase
         $module = $this->as($this->org['admin'])->getJson('/api/v1/notifications')
             ->assertOk()->json('data.0.meta.module');
 
-        // Derived from the owning module's own `emits` declaration rather than
-        // a table in the controller. A Job is emitted by exactly one module, so
-        // this is that module's key and not a guess.
-        $this->assertNotNull($module, 'a job notification has somewhere to go');
-        $this->assertSame(
-            app(ModuleRegistry::class)->moduleKeyOfModel(Job::class),
-            $module,
+        // LITERAL, and this exact case is what the emits-based version got
+        // wrong: `Job` is emitted by the `leads` module, because leads raises
+        // job events — so deriving from the subject CLASS answered 'leads' for
+        // a job. The trigger `job.created` is declared by `jobs`, which is the
+        // question actually being asked.
+        $this->assertSame('jobs', $module);
+    }
+
+    public function test_the_automations_key_names_a_module_that_exists(): void
+    {
+        // The constant the controller uses for "Automation switched off", which
+        // carries no event to derive from. Written rather than derived, so this
+        // is what stops a module rename leaving it pointing at nothing.
+        $this->assertNotNull(
+            app(ModuleRegistry::class)->get('automations'),
+            'NotificationsController::AUTOMATIONS_MODULE must name a real module',
         );
     }
 
     public function test_a_notification_about_nothing_names_no_module(): void
     {
         // The control, and a permanent case rather than a gap: a notification
-        // with no subject has nowhere more specific to go than where you
-        // already are. Without this, returning a module for EVERYTHING would
-        // pass the test above just as well.
+        // with no event and no automation has nowhere more specific to go than
+        // where you already are. Without this, returning a module for
+        // EVERYTHING would pass the test above just as well.
         $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
             title: 'Your trial ends tomorrow',
             onlyTo: $this->org['admin'],
