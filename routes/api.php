@@ -144,6 +144,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
@@ -1654,6 +1655,8 @@ Route::prefix('v1')
         // Before the resource for the same reason catalogue is — `trigger-fields`
         // would otherwise bind as an automation id and 404.
         Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
+        // Before the resource for the third time, same trap.
+        Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
