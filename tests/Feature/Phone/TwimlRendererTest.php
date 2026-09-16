@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Phone;
 
+use App\Models\Franchise;
+use App\Models\Organization;
 use App\Models\PhoneConnection;
 use App\Models\PhoneFlow;
 use App\Models\PhoneHoursSchedule;
@@ -618,7 +620,6 @@ class TwimlRendererTest extends TestCase
         );
     }
 
-
     public function test_pressing_a_menu_key_rings_the_group_that_key_names(): void
     {
         $t = $this->provisionTenant();
@@ -1009,7 +1010,7 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
-     * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
+     * @param  array{org: Organization, franchise: Franchise}  $tenant
      * @return array{0: PhoneNumber, 1: User}
      */
     /**
@@ -1086,6 +1087,185 @@ class TwimlRendererTest extends TestCase
             $reached,
             'a node is drawn that no caller can arrive at',
         );
+    }
+
+    /**
+     * Two queues on one chart are told apart by their titles.
+     *
+     * Jose, 2026-09-16, off a screenshot: three boxes reading "Hold in a
+     * queue", side by side, one per team. The team name was in the detail,
+     * which is a tooltip — so at the zoom he was looking at, the picture said
+     * a caller waits in a queue three times and would not say which.
+     *
+     * TWO groups is what makes this test able to fail. With one queue any
+     * title at all looks right, including the old one.
+     */
+    public function test_each_queue_is_named_after_its_team(): void
+    {
+        $t = $this->provisionTenant();
+
+        $graph = $this->inTenant($t['org'], function () use ($t) {
+            [$number, $user] = $this->lineWithAvailableDesk($t, record: false);
+
+            $appointments = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+            $appointments->forceFill(['name' => 'Appointments', 'overflow' => 'queue'])->save();
+
+            $existing = $this->group($number->connection, [$user->id]);
+            $existing->forceFill(['name' => 'Existing clients', 'overflow' => 'queue'])->save();
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 or 2.',
+                    'options' => [
+                        ['digit' => '2', 'action' => 'ring_group', 'ring_group_id' => $existing->id],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->graph($number->fresh());
+        });
+
+        $queues = [];
+        foreach ($graph['nodes'] as $node) {
+            if ($node['kind'] === 'queue') {
+                $queues[] = $node['title'];
+            }
+        }
+
+        sort($queues);
+
+        $this->assertSame(
+            ['Hold for Appointments', 'Hold for Existing clients'],
+            $queues,
+            'two queues on one chart cannot be told apart',
+        );
+    }
+
+    /**
+     * Clicking a box says where that setting is changed — and the two cases
+     * that are easy to get wrong are both asserted.
+     *
+     * Jose, 2026-09-16: "if i were to click on the ring group at the top it
+     * should open a right sidebar with the list of members, so i can assign -
+     * unassign". That needs the graph to name the pane, because a screen
+     * deriving it from `kind` gets the second case below backwards.
+     */
+    public function test_a_node_says_which_settings_pane_changes_it(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$graph, $groupId, $flowId] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 for the desk, 2 to leave a message.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                        ['digit' => '2', 'action' => 'voicemail'],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return [
+                (new TwimlRenderer)->graph($number->fresh()),
+                (string) $group->id,
+                (string) $flow->id,
+            ];
+        });
+
+        $byId = [];
+        foreach ($graph['nodes'] as $node) {
+            $byId[$node['id']] = $node;
+        }
+
+        // The box Jose named, opening the group he wants to change the
+        // members of — not the line, and not the menu that routed to it.
+        $this->assertSame(
+            ['pane' => 'ring-groups', 'id' => $groupId],
+            $byId['answer']['edit'],
+        );
+
+        // AND THE CASE A SCREEN WOULD GET WRONG.
+        //
+        // This node's kind is `voicemail`, and there is a Voicemail pane, so
+        // anything mapping kind to pane sends somebody to a greeting they did
+        // not click on. It is a row on a menu, and the menu is where it is
+        // changed.
+        $this->assertSame(
+            ['pane' => 'flows', 'id' => $flowId],
+            $byId['key-2']['edit'],
+            'a menu option opened the pane its kind suggests rather than the menu',
+        );
+    }
+
+    /**
+     * The chart shows the call being answered, and what happens after.
+     *
+     * Jose, 2026-09-16: "i also feel like we are missing stuff still like
+     * showing what happens when someone does take the call, and afterwards."
+     * Every box until now was a way for a call NOT to be answered, so a
+     * picture of a phone system ended at its worst outcome.
+     *
+     * The control is the second half: a line nobody can answer must not draw
+     * them, or the chart tells somebody their calls are recorded and filed
+     * when nothing ever picks up.
+     */
+    public function test_the_answered_call_is_drawn_and_only_when_one_can_be(): void
+    {
+        $t = $this->provisionTenant();
+
+        [$answered, $unanswerable] = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: true);
+            $number->connection->forceFill(['require_call_tag' => true])->save();
+
+            // A line that rings nobody: same account, no group at all. One
+            // connection per scope, so it has to share this one.
+            $bare = $this->number($t, $number->connection, ['ring_group_id' => null]);
+
+            return [
+                (new TwimlRenderer)->graph($number->fresh()),
+                (new TwimlRenderer)->graph($bare->fresh()),
+            ];
+        });
+
+        $byId = [];
+        foreach ($answered['nodes'] as $node) {
+            $byId[$node['id']] = $node;
+        }
+
+        $this->assertArrayHasKey('answered', $byId);
+        $this->assertArrayHasKey('recorded', $byId);
+        $this->assertArrayHasKey('wrap-up', $byId);
+
+        $this->assertSame('Recorded', $byId['recorded']['title']);
+        $this->assertStringContainsString(
+            'say what the call was about',
+            $byId['wrap-up']['detail'],
+            'the company requires a tag and the chart does not say so',
+        );
+
+        $walk = [];
+        foreach ($answered['edges'] as $edge) {
+            $walk[] = $edge['from'].' -> '.$edge['to'];
+        }
+
+        $this->assertContains('answer -> answered', $walk);
+        $this->assertContains('answered -> recorded', $walk);
+        $this->assertContains('recorded -> wrap-up', $walk);
+
+        $bareIds = array_column($unanswerable['nodes'], 'id');
+        $this->assertNotContains('answered', $bareIds);
+        $this->assertNotContains('wrap-up', $bareIds);
     }
 
     /**
@@ -1412,7 +1592,7 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
-     * @param  array{org: \App\Models\Organization}  $tenant
+     * @param  array{org: Organization}  $tenant
      */
     private function connection(array $tenant): PhoneConnection
     {
@@ -1423,7 +1603,7 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
-     * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
+     * @param  array{org: Organization, franchise: Franchise}  $tenant
      * @param  array<string, mixed>  $overrides
      */
     private function number(array $tenant, PhoneConnection $connection, array $overrides = []): PhoneNumber
@@ -1437,7 +1617,7 @@ class TwimlRendererTest extends TestCase
     }
 
     /**
-     * @param  array{org: \App\Models\Organization, franchise: \App\Models\Franchise}  $tenant
+     * @param  array{org: Organization, franchise: Franchise}  $tenant
      */
     private function member(array $tenant, string $name, ?string $email = null): User
     {

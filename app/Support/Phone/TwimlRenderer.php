@@ -1203,6 +1203,33 @@ final class TwimlRenderer
      * So: describing your own output is a claim, not recall. The lines below
      * are the measurement.
      *
+     * ── `edit`, and why the screen must not derive it ────────────────
+     *
+     * Each node carries `edit` — `{pane, id}`, or null for the boxes that are
+     * not a setting at all (the caller, the open/closed junction, the moment
+     * somebody answers). `pane` is a section id from `PhoneSettingsTab`, `id`
+     * is the record to open inside it.
+     *
+     * It is here rather than on the screen because `kind` does not determine
+     * it. A voicemail BOX has a pane of its own; a voicemail OPTION on a menu
+     * is a row of that menu, and both are `kind: voicemail`. Anything mapping
+     * kind to pane sends somebody who clicked the second to a greeting
+     * belonging to the first, changes nothing they asked to change, and looks
+     * like it worked. The ring group and its queue deliberately share one
+     * target: queueing versus voicemail is the group's `overflow`, so they are
+     * one setting drawn as two steps.
+     *
+     * This does NOT make graph() a writer. It says where a setting lives; the
+     * pane that owns it still does the writing, with its own permissions.
+     *
+     * ── The end of the call, which was missing ───────────────────────
+     *
+     * `answered`, `recorded` and `wrap_up` are drawn only when a human can
+     * actually pick the call up — a ring group, or an extension. Not after a
+     * forward: that hands the call to a phone system which is not ours, whose
+     * recording and call records are not ours either, and claiming otherwise
+     * would be a statement about somebody else's switchboard.
+     *
      * Read-only, like describe(). It is called to draw a screen.
      *
      * @param  array<string, mixed>  $context
@@ -1228,6 +1255,20 @@ final class TwimlRenderer
             // derivation of them somewhere else is the drift this module keeps
             // paying for.
             ?string $ref = null,
+
+            // WHERE THIS STEP IS CHANGED, as {pane, id}.
+            //
+            // Jose, 2026-09-16, looking at the chart: "if i were to click on
+            // the ring group at the top it should open a right sidebar with
+            // the list of members". A screen can only do that if it knows
+            // which settings pane owns each box, and it must not work that out
+            // from `kind` — the same kind is edited in two places depending on
+            // what made it. A voicemail box has a pane of its own; a voicemail
+            // that is one option on a menu is edited in the menu.
+            //
+            // `pane` is an id from `PhoneSettingsTab._sections` and `id` is the
+            // record inside it, or null when the pane needs no selection.
+            ?array $edit = null,
         ) use (&$nodes): string {
             $nodes[] = [
                 'id' => $id,
@@ -1236,6 +1277,7 @@ final class TwimlRenderer
                 'detail' => $detail,
                 'state' => $state,
                 'ref' => $ref,
+                'edit' => $edit,
             ];
 
             return $id;
@@ -1257,6 +1299,7 @@ final class TwimlRenderer
                 ? 'Twilio hands the call to EzBizi.'
                 : 'This line is not pointed at EzBizi, so nothing below runs.',
             $pointed ? 'ok' : 'dead',
+            edit: ['pane' => 'numbers', 'id' => (string) $number->id],
         );
         $link('caller', 'arrival');
 
@@ -1274,7 +1317,13 @@ final class TwimlRenderer
 
         if ($schedule !== null) {
             $closed = $this->closed($number, $context);
-            $add('hours', 'hours', $schedule->name, 'Opening hours decide what happens next.');
+            $add(
+                'hours',
+                'hours',
+                $schedule->name,
+                'Opening hours decide what happens next.',
+                edit: ['pane' => 'hours', 'id' => (string) $schedule->id],
+            );
             $link($tail, 'hours');
 
             // Which of the three ways a closed call ends is a setting somebody
@@ -1291,11 +1340,24 @@ final class TwimlRenderer
                         ? 'Out of hours the call is sent to this number.'
                         : 'Out of hours this forwards, but no number is set, so the call ends.',
                     $forwardTo !== '' ? 'ok' : 'dead',
+                    edit: ['pane' => 'numbers', 'id' => (string) $number->id],
                 );
             } elseif ($after === 'closed') {
-                $add('after-hours', 'hangup', 'Say we are closed', 'The caller hears a message and the call ends.');
+                $add(
+                    'after-hours',
+                    'hangup',
+                    'Say we are closed',
+                    'The caller hears a message and the call ends.',
+                    edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+                );
             } else {
-                $add('after-hours', 'voicemail', 'Voicemail', 'Out of hours, callers go straight to voicemail.');
+                $add(
+                    'after-hours',
+                    'voicemail',
+                    'Voicemail',
+                    'Out of hours, callers go straight to voicemail.',
+                    edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+                );
             }
 
             $link('hours', 'after-hours', 'Closed');
@@ -1337,6 +1399,13 @@ final class TwimlRenderer
             $byGroup[(string) $group->id] = 'answer';
         }
 
+        // Boxes where a human can pick the call up. Ring groups and
+        // extensions; NOT a forward, which hands the call to a phone system
+        // that is not ours and whose recording and wrap-up are not ours
+        // either. Drawing "Saved to Records" after a forward would be a claim
+        // about somebody else's switchboard.
+        $answerable = $group === null ? [] : ['answer'];
+
         $add(
             'answer',
             'ring_group',
@@ -1349,6 +1418,13 @@ final class TwimlRenderer
             },
             $reaches ? 'ok' : 'dead',
             $group?->id === null ? null : (string) $group->id,
+
+            // The group if there is one, otherwise the line — because the
+            // thing to fix on a line that rings nobody is the line's setting,
+            // and there is no group to open.
+            edit: $group === null
+                ? ['pane' => 'numbers', 'id' => (string) $number->id]
+                : ['pane' => 'ring-groups', 'id' => (string) $group->id],
         );
 
         // ── The menu, where one call becomes several ────────────────
@@ -1366,6 +1442,7 @@ final class TwimlRenderer
                     'Menu — never played',
                     'A flow is attached but has no menu step, so callers go straight past it.',
                     'skipped',
+                    edit: ['pane' => 'flows', 'id' => (string) $flowId],
                 );
                 $link($tail, 'menu');
                 $link('menu', 'answer');
@@ -1373,7 +1450,13 @@ final class TwimlRenderer
                 $link($tail, 'answer');
             }
         } else {
-            $add('menu', 'menu', 'Menu plays', $prompt);
+            $add(
+                'menu',
+                'menu',
+                'Menu plays',
+                $prompt,
+                edit: $flowId === null ? null : ['pane' => 'flows', 'id' => (string) $flowId],
+            );
             $link($tail, 'menu');
 
             $flow = PhoneFlow::query()->find($flowId);
@@ -1399,13 +1482,21 @@ final class TwimlRenderer
                 $label = 'Press '.$digit;
                 $action = (string) ($option['action'] ?? 'ring_group');
 
+                // EVERY OPTION IS EDITED IN THE MENU IT IS A ROW OF.
+                //
+                // Not in the pane its kind suggests: a voicemail OPTION is a
+                // line on a flow, and opening the Voicemail pane from it would
+                // show somebody a greeting they did not click on while the
+                // thing they did click on stayed unchanged.
+                $inMenu = $flowId === null ? null : ['pane' => 'flows', 'id' => (string) $flowId];
+
                 if ($action === 'voicemail') {
-                    $add($id, 'voicemail', 'Voicemail', 'The caller leaves a message.');
+                    $add($id, 'voicemail', 'Voicemail', 'The caller leaves a message.', edit: $inMenu);
                 } elseif ($action === 'hangup') {
                     $say = trim((string) ($option['say'] ?? ''));
-                    $add($id, 'hangup', 'Message, then end', $say !== '' ? $say : 'The call ends here.');
+                    $add($id, 'hangup', 'Message, then end', $say !== '' ? $say : 'The call ends here.', edit: $inMenu);
                 } elseif ($action === 'repeat') {
-                    $add($id, 'menu', 'Play the menu again', 'The caller hears the options a second time.');
+                    $add($id, 'menu', 'Play the menu again', 'The caller hears the options a second time.', edit: $inMenu);
                 } elseif ($action === 'forward') {
                     $to = trim((string) ($option['number'] ?? ''));
                     $add(
@@ -1414,6 +1505,7 @@ final class TwimlRenderer
                         $to !== '' ? 'Forward to '.$to : 'Forward — no number set',
                         $to !== '' ? 'The call leaves EzBizi for this number.' : 'This option forwards, but no number is set.',
                         $to !== '' ? 'ok' : 'dead',
+                        edit: $inMenu,
                     );
                 } elseif ($action === 'extension') {
                     $ext = trim((string) ($option['extension'] ?? ''));
@@ -1423,7 +1515,12 @@ final class TwimlRenderer
                         $ext !== '' ? 'Extension '.$ext : 'Extension — none set',
                         $ext !== '' ? 'Rings whoever holds that extension.' : 'This option dials an extension, but none is set.',
                         $ext !== '' ? 'ok' : 'dead',
+                        edit: $inMenu,
                     );
+
+                    if ($ext !== '') {
+                        $answerable[] = $id;
+                    }
                 } else {
                     $optionGroupId = (string) ($option['ring_group_id'] ?? '');
 
@@ -1461,7 +1558,19 @@ final class TwimlRenderer
                             : ($usable ? 'Whoever is on duty in that group is dialled.' : 'Nobody in that group is available.'),
                         $usable ? 'ok' : 'dead',
                         $optionGroup?->id === null ? null : (string) $optionGroup->id,
+
+                        // The GROUP, not the menu — this is the box Jose named
+                        // when he asked to assign and unassign members from
+                        // the chart. A group that no longer exists has nothing
+                        // to open, so the menu row is the thing to fix.
+                        edit: $optionGroup === null
+                            ? $inMenu
+                            : ['pane' => 'ring-groups', 'id' => (string) $optionGroup->id],
                     );
+
+                    if ($optionGroup !== null) {
+                        $answerable[] = $id;
+                    }
                 }
 
                 $link('menu', $id, $label);
@@ -1472,7 +1581,18 @@ final class TwimlRenderer
         }
 
         // ── What happens when nobody picks up ───────────────────────
-        $add('voicemail', 'voicemail', 'Voicemail', 'The caller leaves a message.');
+        $box = $number->resolved('voicemail_box_id');
+        $add(
+            'voicemail',
+            'voicemail',
+            'Voicemail',
+            $number->resolvedFlag('voicemail_transcribe')
+                ? 'The caller leaves a message, and it is transcribed so it can be read.'
+                : 'The caller leaves a message.',
+            edit: $box === null
+                ? ['pane' => 'numbers', 'id' => (string) $number->id]
+                : ['pane' => 'voicemail', 'id' => (string) $box],
+        );
 
         $fallback = trim((string) $number->resolved('fallback_number'));
 
@@ -1495,7 +1615,13 @@ final class TwimlRenderer
             // A fallback number is the LINE's, and it is tried before any
             // group overflow — so it belongs on the default group only.
             if ($nodeId === 'answer' && $fallback !== '') {
-                $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
+                $add(
+                    'fallback',
+                    'forward',
+                    'Fall back to '.$fallback,
+                    'Tried once if nobody in the group picks up.',
+                    edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+                );
                 $link('answer', 'fallback', 'No answer');
                 $link('fallback', 'voicemail', 'No answer');
 
@@ -1504,13 +1630,25 @@ final class TwimlRenderer
 
             if ($team->overflow === 'queue') {
                 $queue = 'queue-'.$nodeId;
+                // NAMED AFTER ITS TEAM.
+                //
+                // Jose, 2026-09-16, off the screenshot: three boxes reading
+                // "Hold in a queue" side by side, one per team, and the title
+                // is the only line a reader gets at that zoom. The team's name
+                // was in the detail, where it is invisible until you hover.
                 $add(
                     $queue,
                     'queue',
-                    'Hold in a queue',
-                    'Callers for '.$team->name.' wait and are told their place in line.',
+                    'Hold for '.$team->name,
+                    'Callers wait and are told their place in line.',
                     'ok',
                     (string) $team->id,
+
+                    // Queueing versus voicemail is the GROUP's `overflow`, so
+                    // the thing to change is the group — the same record the
+                    // ring node opens, which is right: they are one setting
+                    // drawn as two steps.
+                    edit: ['pane' => 'ring-groups', 'id' => (string) $team->id],
                 );
                 $link($nodeId, $queue, 'Everyone busy');
                 $link($queue, $nodeId, 'Somebody free');
@@ -1520,6 +1658,72 @@ final class TwimlRenderer
             }
 
             $link($nodeId, 'voicemail', 'No answer');
+        }
+
+        // ── AND THEN SOMEBODY PICKS UP ──────────────────────────────
+        //
+        // Jose, 2026-09-16: "i also feel like we are missing stuff still like
+        // showing what happens when someone does take the call, and
+        // afterwards." He was right, and the omission had a shape: every box
+        // on this chart was a way for a call to FAIL to be answered — busy,
+        // queued, timed out, voicemail — so the picture of a phone system
+        // ended at the worst outcome and said nothing about the good one.
+        //
+        // These three are settings like any other, and each is a thing a
+        // caller or a colleague experiences: a recording notice the caller
+        // hears, a transcript somebody reads, a tag the person who answered
+        // is made to choose before their desk works again.
+        if ($answerable !== []) {
+            $add(
+                'answered',
+                'answered',
+                'Somebody answers',
+                'The caller and whoever picked up are connected.',
+            );
+
+            foreach ($answerable as $nodeId) {
+                $link($nodeId, 'answered', 'Answered');
+            }
+
+            $tailAfter = 'answered';
+
+            $recorded = $number->resolvedFlag('record');
+            $transcribed = $number->resolvedFlag('transcribe');
+
+            if ($recorded || $transcribed) {
+                $add(
+                    'recorded',
+                    'recorded',
+                    match (true) {
+                        $recorded && $transcribed => 'Recorded and transcribed',
+                        $recorded => 'Recorded',
+                        default => 'Transcribed',
+                    },
+                    match (true) {
+                        $recorded && $transcribed => 'Both sides are recorded from the moment it is answered, and the words are written down as they are spoken. The caller is told before the menu plays.',
+                        $recorded => 'Both sides are recorded from the moment it is answered. The caller is told before the menu plays.',
+                        default => 'The words are written down as they are spoken.',
+                    },
+                    edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+                );
+                $link('answered', 'recorded');
+                $tailAfter = 'recorded';
+            }
+
+            $requiresTag = $connection !== null && (bool) $connection->require_call_tag;
+
+            $add(
+                'wrap-up',
+                'wrap_up',
+                'Saved to Records',
+                $requiresTag
+                    ? 'Who answered, how long it lasted and any recording are kept in Records. This company asks whoever answered to say what the call was about before their desk is free again.'
+                    : 'Who answered, how long it lasted and any recording are kept in Records.',
+                edit: $connection === null
+                    ? null
+                    : ['pane' => 'connection', 'id' => (string) $connection->id],
+            );
+            $link($tailAfter, 'wrap-up');
         }
 
         return ['nodes' => $nodes, 'edges' => $edges];
