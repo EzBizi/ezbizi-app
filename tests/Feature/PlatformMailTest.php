@@ -648,6 +648,114 @@ class PlatformMailTest extends TestCase
         $this->assertStringContainsString('its own mail server', $refused->getMessage());
     }
 
+    public function test_the_cap_fires_on_the_cache_store_production_actually_runs(): void
+    {
+        /*
+         * THE test that would have caught it, and the reason the other two did
+         * not: they run on the ARRAY store and production runs DATABASE.
+         *
+         * Laravel's DatabaseStore::incrementOrDecrement returns FALSE for a
+         * missing key rather than creating it. The first version of this cap did
+         * `$sent = Cache::increment($key)` and seeded on `$sent === 1`, so on the
+         * database store the seed never ran, the key never existed, every later
+         * increment returned false as well, and `false > $allowance` is false.
+         * The cap never fired in production. Measured:
+         *
+         *     array      increments 1,2,3 => 1, 2, 3
+         *     database   increments 1,2,3 => false, false, false
+         *
+         * Three tests exercised the cap and all three were green. Found by the
+         * Reports session reading the STORE rather than the coverage.
+         *
+         * So this one pins the behaviour where it actually has to hold. It is
+         * the same assertion as the array-store test above and that duplication
+         * is the point: the bug was entirely in which store answered.
+         */
+        config([
+            'cache.default' => 'database',
+            'mail.tenant_hourly_allowance' => 2,
+        ]);
+
+        Cache::store('database')->flush();
+        Mail::fake();
+
+        $send = fn () => $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+            $this->company,
+            new PlatformNotice,
+            'customer@example.test',
+        ));
+
+        // The control, and it is doing real work here: if the counter never
+        // starts, these pass AND the refusal below never comes. Both halves are
+        // needed to tell a working counter from an absent one.
+        $send();
+        $send();
+
+        Mail::assertSentCount(2);
+
+        $refused = null;
+
+        try {
+            $send();
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull(
+            $refused,
+            'The cap did not fire on the database store — which is the store production runs, '
+            .'and the exact way this shipped broken with three green tests.',
+        );
+
+        $this->assertStringContainsString('automated emails in the last hour', $refused->getMessage());
+
+        Mail::assertSentCount(2);
+    }
+
+    public function test_a_counter_that_cannot_answer_refuses_in_its_own_words(): void
+    {
+        /*
+         * A DIFFERENT FACT FROM "you have sent too much", and it gets a different
+         * sentence. If the counter cannot answer we do not know what this
+         * business has sent — telling them they have sent 500 emails sends them
+         * hunting for 499 that never happened. The Automations session hit the
+         * identical shape in their own limiter and split the sentences for the
+         * same reason.
+         *
+         * Refused rather than allowed: nothing ingests SES bounce or complaint
+         * events, so this cap is the only thing between a loop between two rules
+         * and the reputation every tenant shares. A counter admitting it cannot
+         * count is not a reason to stop counting.
+         */
+        config(['mail.tenant_hourly_allowance' => 100]);
+        Mail::fake();
+
+        // A store whose increment never answers — which is precisely what the
+        // database store did for a missing key before the add() seed.
+        Cache::shouldReceive('add')->andReturn(true);
+        Cache::shouldReceive('increment')->andReturn(false);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+                $this->company,
+                new PlatformNotice,
+                'customer@example.test',
+            ));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'An uncountable send was allowed through.');
+
+        // The sentence names the real fault and does NOT invent a number.
+        $this->assertStringContainsString('could not check how much', $refused->getMessage());
+        $this->assertStringNotContainsString('in the last hour', $refused->getMessage());
+
+        Mail::assertNothingSent();
+    }
+
     public function test_the_cap_counts_a_business_and_not_the_whole_platform(): void
     {
         /*
