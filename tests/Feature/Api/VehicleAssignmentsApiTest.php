@@ -149,6 +149,55 @@ class VehicleAssignmentsApiTest extends TestCase
         });
     }
 
+    /**
+     * The unassign path had NO test that the keys actually came back.
+     *
+     * Found on 2026-09-16 by reverting the release so it returned the open row
+     * without closing it: the suite stayed green, because the only unassign
+     * case asserted the refusal when nobody held the keys. A rule that
+     * unassigns a van would have reported success and changed nothing.
+     */
+    public function test_unassign_actually_releases_the_keys(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $admin = $tenant['admin'];
+        $driver = $this->userWithRole($tenant, 'Driver', ['fleet_management.view']);
+
+        $vehicle = $this->inTenant($tenant['org'], function () use ($tenant, $driver) {
+            $vehicle = Vehicle::factory()->create([
+                'company_id' => $tenant['company']->id,
+                'franchise_id' => $tenant['franchise']->id,
+            ]);
+
+            VehicleAssignment::factory()->create([
+                'vehicle_id' => $vehicle->id,
+                'user_id' => $driver->id,
+                'assigned_at' => now()->subDay(),
+                'released_at' => null,
+            ]);
+
+            return $vehicle;
+        });
+
+        $this->signedInAs($admin)
+            ->postJson('/api/v1/vehicles/'.$vehicle->id.'/unassign')
+            ->assertOk()
+            ->assertJsonPath('data.assignment', null);
+
+        $this->inTenant($tenant['org'], function () use ($vehicle, $driver) {
+            // The row stays — who held it when is the question the ledger is
+            // for — but it is closed, and nobody holds the keys now.
+            $rows = VehicleAssignment::query()
+                ->where('vehicle_id', $vehicle->id)
+                ->get();
+
+            $this->assertCount(1, $rows);
+            $this->assertSame($driver->id, $rows[0]->user_id);
+            $this->assertNotNull($rows[0]->released_at);
+            $this->assertNull($vehicle->fresh()->openAssignment());
+        });
+    }
+
     public function test_unassign_with_nobody_holding_keys_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
