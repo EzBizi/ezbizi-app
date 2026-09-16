@@ -70,6 +70,17 @@ function ezbizi_refused_for() {
     return $since > 0 ? max(0, time() - $since) : 0;
 }
 
+/**
+ * Whether EzBizi is refusing this site at all.
+ *
+ * Asked as a yes or no rather than as a duration, because a duration is zero
+ * for the first second of a refusal and "has this lasted long enough" is not
+ * the question any more.
+ */
+function ezbizi_is_refused() {
+    return (int) get_option(EZBIZI_REFUSED_SINCE, 0) > 0;
+}
+
 function ezbizi_widget_config($kind) {
     /*
      * A site EzBizi has been refusing for a week draws no widgets.
@@ -81,7 +92,7 @@ function ezbizi_widget_config($kind) {
      * publishing — a phone number that is a week stale is still the right
      * phone number, while a chat box is a promise that somebody is listening.
      */
-    if (ezbizi_refused_for() > EZBIZI_REFUSED_MAX) {
+    if (ezbizi_is_refused()) {
         return array();
     }
 

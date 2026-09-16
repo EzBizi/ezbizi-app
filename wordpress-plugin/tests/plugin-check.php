@@ -556,7 +556,7 @@ echo PHP_EOL . "A connected site that is being refused is told why" . PHP_EOL;
 reset_site();
 $GLOBALS['screen'] = null;
 $GLOBALS['is_admin'] = true;
-update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 86400, false);
+update_option(EZBIZI_REFUSED_SINCE, time() - 86400, false);
 ob_start();
 do_action('admin_notices');
 $refused_notice = ob_get_clean();
@@ -565,12 +565,21 @@ check('it says the token is being refused', str_contains($refused_notice, 'refus
 check('and that the published values are safe', str_contains($refused_notice, 'values are unaffected'), true);
 check('and where to fix it', str_contains($refused_notice, 'admin.php?page=ezbizi'), true);
 
-// A refusal that started an hour ago is a rotation in progress, not a fault.
-update_option(EZBIZI_REFUSED_SINCE, time() - 3600, false);
+/*
+ * Said from the first refusal, because the widgets have already gone by then.
+ * A notice that waited would leave the one person who could fix it looking at
+ * a site whose chat vanished for no stated reason.
+ */
+update_option(EZBIZI_REFUSED_SINCE, time() - 60, false);
 ob_start();
 do_action('admin_notices');
-check('a fresh one says nothing yet', ob_get_clean(), '');
+check('a fresh refusal is announced too', str_contains(ob_get_clean(), 'refusing'), true);
+
+// And the control: a site nobody is refusing hears nothing at all.
 delete_option(EZBIZI_REFUSED_SINCE);
+ob_start();
+do_action('admin_notices');
+check('a connected site is still not nagged', ob_get_clean(), '');
 
 echo "\nThe plugin's own row offers a way in\n";
 $links = apply_filters(
@@ -830,15 +839,20 @@ $GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
 ezbizi_fetch();
 check('and dated once', (int) get_option(EZBIZI_REFUSED_SINCE, 0), $first);
 
-// A token being re-pasted leaves a gap of minutes. Nothing may disappear
-// during it: the public key the widgets use is a separate credential that
-// usually still works right through a rotation.
+/*
+ * Jose, on the day the chat went onto every page: it "should only show up if a
+ * connection has been connected properly". So a refusal hides it AT ONCE, not
+ * after a grace period — a site EzBizi will not recognise is not connected,
+ * whatever it was an hour ago.
+ *
+ * This replaces a check that asserted the opposite, and the earlier reasoning
+ * was not wrong: rotating a token leaves a gap of minutes during which the
+ * public key often still works, so the chat now disappears for that gap. That
+ * is a small fault that fixes itself. A chat on a site that is no longer ours
+ * is not.
+ */
 $GLOBALS['is_admin'] = false;
-check('a fresh refusal hides nothing', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
-
-// A week of it is not a rotation. It is a pairing that ended.
-update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 60, false);
-check('a week of it draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
+check('a refusal draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 check('and no form', $GLOBALS['sc']['ezbizi_form']([]), '');
 
 /*
