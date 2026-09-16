@@ -25,6 +25,8 @@ class WhatsAppTemplatesTest extends TestCase
 
     private const WABA = '1052799931072265';
 
+    private const REPORTS_WABA = '2086442795335686';
+
     private function numberBelongsTo(array $t): void
     {
         DB::table('whatsapp_numbers')->insert([
@@ -33,6 +35,20 @@ class WhatsAppTemplatesTest extends TestCase
             'phone_number_id' => '1254820167721699',
             'waba_id' => self::WABA,
             'display_number' => '+18778536971',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function secondNumberBelongsTo(array $t): void
+    {
+        DB::table('whatsapp_numbers')->insert([
+            'id' => (string) Str::uuid(),
+            'organization_id' => $t['org']->id,
+            'phone_number_id' => '1366054836581646',
+            'waba_id' => self::REPORTS_WABA,
+            'display_number' => '+18774508572',
+            'display_name' => 'EzBizi Reports',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -79,7 +95,7 @@ class WhatsAppTemplatesTest extends TestCase
         $data = $this->signedInAs($t['admin'])
             ->getJson('/api/v1/automations/whatsapp-templates')
             ->assertOk()
-            ->json('data');
+            ->json('data.0.templates');
 
         $this->assertSame(3, $data[0]['parameters']);
         $this->assertNotSame(2, $data[0]['parameters'], 'counting occurrences would say two');
@@ -106,7 +122,7 @@ class WhatsAppTemplatesTest extends TestCase
         $data = $this->signedInAs($t['admin'])
             ->getJson('/api/v1/automations/whatsapp-templates')
             ->assertOk()
-            ->json('data');
+            ->json('data.0.templates');
 
         $this->assertSame(2, $data[0]['parameters']);
     }
@@ -129,7 +145,7 @@ class WhatsAppTemplatesTest extends TestCase
             $this->signedInAs($t['admin'])
                 ->getJson('/api/v1/automations/whatsapp-templates')
                 ->assertOk()
-                ->json('data'),
+                ->json('data.0.templates'),
             'name',
         );
 
@@ -187,7 +203,7 @@ class WhatsAppTemplatesTest extends TestCase
         $because = $this->signedInAs($t['admin'])
             ->getJson('/api/v1/automations/whatsapp-templates')
             ->assertOk()
-            ->assertJsonPath('data', [])
+            ->assertJsonPath('data.0.templates', [])
             ->json('because');
 
         $this->assertNotEmpty($because, 'an empty list must say why it is empty');
@@ -215,5 +231,87 @@ class WhatsAppTemplatesTest extends TestCase
         $this->signedInAs($t['admin'])
             ->getJson('/api/v1/automations/whatsapp-templates')
             ->assertStatus(409);
+    }
+
+    public function test_each_number_carries_its_own_wabas_templates(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->secondNumberBelongsTo($t);
+
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+
+        /*
+         * The defect this shape replaced. A template is approved per WABA and
+         * our two numbers sit on DIFFERENT WABAs, so a flat list built from
+         * `->first()` answered with one number's templates and silently hid the
+         * other's - which were the ones the reports screen actually needed.
+         *
+         * The fixture deliberately gives the two WABAs DIFFERENT templates. If
+         * both returned the same set, a flat implementation would pass.
+         */
+        Http::fake([
+            'graph.facebook.com/*/'.self::WABA.'/message_templates*' => Http::response(['data' => [
+                ['name' => 'hello_world', 'status' => 'APPROVED', 'category' => 'UTILITY',
+                    'language' => 'en_US', 'components' => [['type' => 'BODY', 'text' => 'hi']]],
+            ]]),
+            'graph.facebook.com/*/'.self::REPORTS_WABA.'/message_templates*' => Http::response(['data' => [
+                ['name' => 'report_document', 'status' => 'APPROVED', 'category' => 'UTILITY',
+                    'language' => 'en_US', 'components' => [['type' => 'BODY', 'text' => 'the {{1}} report']]],
+            ]]),
+        ]);
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/whatsapp-templates')
+            ->assertOk()
+            ->json('data');
+
+        $byNumber = collect($data)->keyBy('from');
+
+        $this->assertSame(
+            ['hello_world'],
+            array_column($byNumber['+18778536971']['templates'], 'name'),
+        );
+        $this->assertSame(
+            ['report_document'],
+            array_column($byNumber['+18774508572']['templates'], 'name'),
+            "the reports number must offer its own WABA's templates, not the other number's",
+        );
+
+        // `from` is what the caller hands back to send(), and `label` is what a
+        // person recognises. Both are needed or the picker cannot be built.
+        $this->assertSame('EzBizi Reports', $byNumber['+18774508572']['label']);
+    }
+
+    public function test_one_wabas_outage_does_not_blank_the_other_number(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->secondNumberBelongsTo($t);
+
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+
+        Http::fake([
+            'graph.facebook.com/*/'.self::WABA.'/message_templates*' => Http::response(['data' => [
+                ['name' => 'hello_world', 'status' => 'APPROVED', 'category' => 'UTILITY',
+                    'language' => 'en_US', 'components' => [['type' => 'BODY', 'text' => 'hi']]],
+            ]]),
+            'graph.facebook.com/*/'.self::REPORTS_WABA.'/message_templates*' => Http::response(
+                ['error' => ['message' => 'Application request limit reached']], 429,
+            ),
+        ]);
+
+        $body = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/whatsapp-templates')
+            ->assertOk()
+            ->json();
+
+        // The working number is still offered...
+        $this->assertSame(['+18778536971'], array_column($body['data'], 'from'));
+
+        // ...and the broken one is NAMED rather than silently missing. A list
+        // that quietly covers fewer numbers than it appears to is the failure
+        // this avoids.
+        $this->assertSame('+18774508572', $body['refused'][0]['from']);
     }
 }
