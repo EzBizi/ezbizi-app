@@ -922,6 +922,53 @@ class AutomationsController extends Controller
         return response()->json(['data' => $this->engine->rehearse($automation, $event)]);
     }
 
+    /**
+     * POST /api/v1/automations/{automation}/run-now
+     *
+     * Run it FOR REAL against a real event, because somebody pressed the button.
+     *
+     * `test` rehearses and performs nothing, which is the right default and does
+     * not answer the question somebody actually has: does the email arrive. A
+     * rule that can only be proved by waiting for a missed call is a rule that
+     * sits broken for a fortnight - which is what happened to the one that
+     * started this.
+     *
+     * A SEPARATE ROUTE RATHER THAN A FLAG ON `test`, so that a real send is
+     * never one wrong argument away from a rehearsal, and so the permission can
+     * differ if it ever needs to.
+     *
+     * REQUIRES `update`, not `view`. Pressing this sends real emails and real
+     * texts on the business's behalf; somebody who may only read the rule must
+     * not be able to fire it.
+     */
+    public function runNow(Request $request, Automation $automation): JsonResponse
+    {
+        $this->assertMine($automation);
+        $this->authorize('update', $automation);
+
+        $input = $request->validate([
+            'event_id' => ['nullable', 'uuid'],
+        ]);
+
+        $event = ($input['event_id'] ?? null) !== null
+            ? AutomationEvent::findOrFail($input['event_id'])
+            : AutomationEvent::where('event_key', $automation->trigger_key)
+                ->latest('occurred_at')
+                ->first();
+
+        if ($event === null) {
+            return response()->json([
+                'message' => "Nothing has triggered '{$automation->trigger_key}' yet, so there "
+                    .'is no real event to run this against. Create or change a record first.',
+                'code' => 'no_event_to_test',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $this->audit->log('automation.run_now', $automation, metadata: ['event_id' => $event->getKey()]);
+
+        return response()->json(['data' => $this->engine->runNow($automation, $event)]);
+    }
+
     /** GET /api/v1/automations/{automation}/runs */
     public function runs(Request $request, Automation $automation): JsonResponse
     {

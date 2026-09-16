@@ -1673,6 +1673,10 @@ Route::prefix('v1')
         Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
+        // Separate from `test` on purpose: that one rehearses and performs
+        // nothing, this one really sends. A flag shared between them would put
+        // a real send one wrong argument away from a rehearsal.
+        Route::post('automations/{automation}/run-now', [AutomationsController::class, 'runNow']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
         Route::apiResource('automations', AutomationsController::class)->except(['store'])
             ->parameters(['automations' => 'automation']);

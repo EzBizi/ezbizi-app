@@ -129,6 +129,15 @@ class _ActionRow {
   /// Meta numbers positionally and "{{1}} owes {{3}}" is a three-parameter
   /// template with a gap. Deriving it would be right on every template anybody
   /// tested and wrong on the one with a hole in it, at send time.
+  /// The recipient KIND while the box is empty, and only then.
+  ///
+  /// The kind is derived from the stored value so a saved rule opens on the
+  /// right one with no second thing to keep in step. That works for every value
+  /// except the empty one, which belongs to all three — so choosing "an address
+  /// I type" cleared the box and the control snapped straight back to a person.
+  /// Remembered here while it is empty and forgotten the moment it is not.
+  String? recipientKind;
+
   String whatsAppTemplate = '';
   int whatsAppParameters = 0;
   final List<TextEditingController> whatsAppValues = [];
@@ -2286,80 +2295,112 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  /// Who an email goes to: somebody here, a field of the event, or a typed address.
+  /// Who an email goes to: KIND FIRST, then one control that fits that kind.
   ///
-  /// The TEXT BOX is the value, and the menu beside it fills it in. That way
-  /// typing an address is not a special case bolted onto a dropdown — it is the
-  /// ordinary thing, and choosing is the shortcut. A DropdownMenu that also
-  /// accepted free text would have to guess whether half-typed text was a choice
-  /// or a value, and guesses like that are how a field silently discards what
-  /// somebody typed.
+  /// It was a single box with everything in one menu — every person plus every
+  /// field of the event. That overflows: thirteen people and ten fields already
+  /// fills the screen, and a hundred employees makes it unusable. Jose said so
+  /// while it was still small enough to work, which is the only time this kind
+  /// of thing gets fixed.
   ///
-  /// A person is stored as `user:<id>`, never as their address, so the rule
-  /// follows them when they change it and refuses when they leave.
+  /// So: choose what KIND of address, then answer one question. A typed address
+  /// gets a box. A person gets a SEARCHABLE list, because scrolling a hundred
+  /// names is the same problem again. A field of the event keeps its own list,
+  /// which is neither of the two Jose named but is what the step shipped with
+  /// and what his live rule uses — removing it would break a saved rule.
+  ///
+  /// THE STORED VALUE IS UNCHANGED: `user:<id>`, a literal address, or a field
+  /// name. The kind is DERIVED from what is stored rather than kept beside it,
+  /// so a rule saved before this screen existed opens on the right kind and
+  /// there is no second thing to keep in step.
   Widget _recipientPicker(_ActionRow row, String key, String label) {
     final controller = row.parameter(key);
+    final value = controller.text.trim();
+    final kind = _recipientKindOf(row, value);
 
-    final choices = <CatalogueChoice>[
-      ...widget.catalogue.people,
-      for (final field in _triggerFields)
-        CatalogueChoice(key: field, label: 'From the event: $field'),
-    ];
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: TextField(
+        DropdownButtonFormField<String>(
+          initialValue: kind,
+          isExpanded: true,
+          decoration: InputDecoration(labelText: label, isDense: true),
+          items: const [
+            DropdownMenuItem(value: 'person', child: Text('Somebody who works here')),
+            DropdownMenuItem(value: 'typed', child: Text('An address I type')),
+            DropdownMenuItem(value: 'field', child: Text('An address from the event')),
+          ],
+          onChanged: _busy
+              ? null
+              // Clearing on a kind change is deliberate: a leftover address
+              // under "somebody who works here" would be a value the new kind
+              // cannot express, and the runner would read it as a field name.
+              : (chosen) => setState(() {
+                  row.recipientKind = chosen;
+                  controller.text = '';
+                }),
+        ),
+        const SizedBox(height: 10),
+        if (kind == 'person')
+          DropdownMenu<String>(
+            initialSelection: value.isEmpty ? null : value,
+            enabled: !_busy,
+            label: const Text('Search people'),
+            expandedInsets: EdgeInsets.zero,
+            enableFilter: true,
+            requestFocusOnTap: true,
+            helperText: widget.catalogue.people.isEmpty
+                ? 'Nobody here has an email address on their account.'
+                : 'Type to search. If they change their address it follows them.',
+            onSelected: _busy
+                ? null
+                : (chosen) => setState(() => controller.text = chosen ?? ''),
+            dropdownMenuEntries: [
+              for (final person in widget.catalogue.people)
+                DropdownMenuEntry<String>(value: person.key, label: person.label),
+            ],
+          )
+        else if (kind == 'field')
+          _triggerFieldPicker(row, key, 'Which field carries the address')
+        else
+          TextField(
             controller: controller,
             enabled: !_busy,
-            decoration: InputDecoration(
-              labelText: label,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email address',
               isDense: true,
-              helperText: _describeRecipient(controller.text.trim()),
+              helperText: 'Goes to this address every time.',
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        PopupMenuButton<String>(
-          enabled: !_busy && choices.isNotEmpty,
-          tooltip: 'Choose a person or a field',
-          icon: const Icon(Icons.arrow_drop_down_circle_outlined),
-          onSelected: (chosen) => setState(() => controller.text = chosen),
-          itemBuilder: (context) => [
-            for (final choice in choices)
-              PopupMenuItem(value: choice.key, child: Text(choice.label)),
-          ],
-        ),
+        if (kind == 'person' && value.isNotEmpty && !_personIsKnown(value))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              // Said here rather than at run time, where it is a failed step
+              // somebody reads days later.
+              'The person this was set to no longer works here, so nothing '
+              'would be sent.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
       ],
     );
   }
 
-  /// Says which of the three a stored value is, so nobody has to know the syntax.
-  String _describeRecipient(String value) {
-    if (value.isEmpty) {
-      return 'Type an address, or choose a person or a field of the event.';
-    }
+  /// Which of the three a stored value is. Derived, never stored beside it.
+  String _recipientKindOf(_ActionRow row, String value) {
+    // A value decides its own kind. Only the empty one has to be remembered,
+    // because it is the one value that could be any of the three.
+    if (value.startsWith('user:')) return 'person';
+    if (value.contains('@')) return 'typed';
+    if (value.isNotEmpty) return 'field';
 
-    if (value.startsWith('user:')) {
-      final person = widget.catalogue.people
-          .where((p) => p.key == value)
-          .firstOrNull;
-
-      return person == null
-          // The person is gone from the list — left, switched off, or lost their
-          // address. Said here rather than at run time, where it would be a
-          // failed step somebody reads days later.
-          ? 'This person no longer works here, so nothing would be sent.'
-          : 'Goes to ${person.label}. If they change their address it follows them.';
-    }
-
-    if (value.contains('@')) return 'Goes to this address every time.';
-
-    return _triggerFields.contains(value)
-        ? 'Goes to whatever this event carries in “$value”.'
-        : 'Not an address, and this event does not carry a field called “$value”.';
+    return row.recipientKind ?? 'person';
   }
+
+  bool _personIsKnown(String value) =>
+      widget.catalogue.people.any((p) => p.key == value);
 
   /// WHICH FIELD OF THE EVENT carries the address or number.
   ///

@@ -768,6 +768,41 @@ void main() {
     });
   });
 
+  /// "Send to" asks WHAT KIND first, then one question.
+  ///
+  /// It was one menu holding every person plus every field of the event.
+  /// Thirteen people and ten fields already filled the screen and a hundred
+  /// employees would make it unusable — Jose said so while it was still small
+  /// enough to work.
+  ///
+  /// THE ASSERTION THAT MATTERS IS THE ABSENCE: choosing "an address I type"
+  /// must not leave the people list on screen. A test that only checked the
+  /// typed box appeared would pass against a control that showed everything at
+  /// once, which is the thing being fixed.
+  testWidgets('the email recipient asks for a kind before offering a list', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(triggerFields: const ['from_address']));
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send an email'));
+
+    // Lands on "somebody who works here", searchable rather than a flat list.
+    expect(find.text('Search people'), findsOneWidget);
+    expect(find.text('Email address'), findsNothing);
+
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('An address I type').last);
+
+    expect(find.text('Email address'), findsOneWidget);
+    expect(find.text('Search people'), findsNothing,
+        reason: 'the people list must be GONE, not merely joined by a box - '
+            'showing both is the overflow this replaced');
+  });
+
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -1964,6 +1999,21 @@ const _catalogue = {
     // Generic like notify: no parameters declared, because the form's shape
     // depends on which template is picked.
     {'key': 'whatsapp.send', 'label': 'Send a WhatsApp message'},
+    {
+      'key': 'email.send',
+      'label': 'Send an email',
+      'parameters': [
+        {
+          'key': 'to_field',
+          'label': 'Send to',
+          'kind': 'recipient',
+          'required': true,
+          'nullable': false,
+        },
+        {'key': 'subject', 'label': 'Subject', 'kind': 'text', 'required': true, 'nullable': false},
+        {'key': 'body', 'label': 'Message', 'kind': 'rich_text', 'required': true, 'nullable': false},
+      ],
+    },
     {
       'key': 'notify',
       'label': 'Send a notification',

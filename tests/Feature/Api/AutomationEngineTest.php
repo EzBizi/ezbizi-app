@@ -1156,6 +1156,48 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * "Run it now" really sends; "Test" still does not.
+     *
+     * The pair is the assertion. A test that only proved run-now sends would
+     * pass just as well against a build where the rehearsal had started sending
+     * too - which is the failure that matters, because somebody presses Test
+     * expecting nothing to leave the building.
+     */
+    public function test_run_now_really_sends_and_test_still_does_not(): void
+    {
+        Mail::fake();
+
+        $automation = $this->automation('job.created', null, [[
+            'type' => 'email.send',
+            'to_field' => 'someone@example.test',
+            'subject' => 'It ran',
+            'body' => 'Hello.',
+        ]]);
+
+        $this->makeJob();
+        $this->drain();
+
+        Mail::fake(); // ignore anything the ordinary delivery just did
+
+        $this->as()->postJson("/api/v1/automations/{$automation->id}/test")->assertOk();
+        Mail::assertNothingSent();
+
+        $this->as()->postJson("/api/v1/automations/{$automation->id}/run-now")
+            ->assertOk()
+            ->assertJsonPath('data.matched', true);
+
+        Mail::assertSent(AutomationMessage::class, 1);
+
+        // NO RUN ROW, and that is the design rather than a gap: automation_runs
+        // is unique on (event_id, automation_version_id), and the common case
+        // for this button is an event the rule has already handled. What makes
+        // the send attributable is the audit trail.
+        $audited = $this->inTenant(fn () => AuditEvent::where('action', 'automation.run_now')->exists());
+
+        $this->assertTrue($audited, 'a real send somebody triggered has to be attributable');
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose
