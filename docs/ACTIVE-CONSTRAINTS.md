@@ -448,7 +448,7 @@ not explain 1698.** If you see it, re-run before reporting; if it reproduces on 
 quiet tree, capture `SHOW PROCESSLIST` and the server error log at that moment -
 that is the evidence nobody has yet.
 
-## 11 · Jose is away from 2026-09-15 evening — decide and finish, do not wait
+## 11 · Jose is away (2026-09-15 evening, again 2026-09-16) — decide and finish
 
 His words, standing: *"coordinate everything with each other and the
 deployment lead session, make sure to finish END TO END since i wont be here
@@ -458,6 +458,10 @@ as well as with Automations and Roles-Permissions."*
 
 And separately: *"let the sessions know if they need to do anything to do it
 while im away, fix stuff, etc."*
+
+And again on 2026-09-16 evening: *"let all the sessions know if they need to
+deploy stuff or want to work on stuff to go ahead and do it, etc."* Same
+standing word, said twice. It is not a one-night exception.
 
 So: **a question addressed to Jose is not a reason to stop.** Decide it the way
 you would recommend it, write down what you decided and why, and keep going. If
@@ -522,3 +526,38 @@ prints when the system is broken, not when it is healthy.
 No grace period was added back to soften this, deliberately. A grace period is
 exactly what Jose just removed, and trading his rule for protection against a
 bug nobody has written is the wrong way round.
+
+## 13 · The Mac relay moves. Find it, do not wait for it
+
+2026-09-16, second time: `ssh mac` failed with *"cannot reach the Mac relay —
+is the Mac mini awake?"* and the Mac was awake the whole time. It had taken a
+new DHCP address. `~/.ssh/config` now points at **10.1.10.187**; it was
+10.1.10.116, and before that the `.local` name that stopped resolving on
+2026-09-09. Each move has cost a release its Apple half.
+
+**Do not ask whether it is awake. Find it.** Three commands, about a minute:
+
+    arp -a | grep 10.1.10.                     # every host the LAN has seen
+    # then, for each, does it answer on 22:
+    Test-NetConnection -ComputerName <ip> -Port 22 -InformationLevel Quiet
+    ssh -i ~/.ssh/a1tools_mac joseluisdemasi@<ip> 'scutil --get LocalHostName'
+
+The last one is what identifies it — `Joses-Mac-mini` — rather than guessing
+from an adjacent address. Two other hosts on this LAN answer on 22 and neither
+is the Mac, so port 22 alone is not the test.
+
+**Then check the thing release.sh checks**, because reachable is not usable:
+
+    ssh mac "security find-identity -v -p codesigning | grep -c 'Apple Distribution.*2CMZQR34RL'"
+
+**And do not stop the whole cut for it.** `--only web,windows,android` ships
+the three that do not need a Mac; `--only ios,macos` builds the other two
+against the SAME pinned SHA afterwards. One version, two passes, nothing lost.
+
+**One trap in that second pass.** A completed release removes its pinned
+worktree from git but can leave the DIRECTORY behind. The Apple pass then finds
+`/h/Development/wt/release-<sha>` present, cannot read a SHA from it, and
+refuses with *"existing release worktree has a different SHA"* — which reads
+like a version mismatch and is really an orphaned folder. `git worktree list`
+will not show it. Check the artefacts are already in `Distribution/`, then
+remove the directory.
