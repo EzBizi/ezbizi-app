@@ -745,9 +745,23 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             $error = (array) $response->json('error', []);
             $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
 
+            /*
+             * rateScope, because without it a night of 429s cannot be read.
+             *
+             * 2026-09-16: 2,033 refusals in three hours and nothing in the log
+             * said whether the limit was on one account or on the developer
+             * token - which is the difference between "click a different
+             * account" and "the day is spent". The scope had to be recovered
+             * by holding a mutex and having somebody load a screen by hand.
+             *
+             * Google sends it. It costs one line to keep, and it answers the
+             * question at 3am with nobody watching.
+             */
             Log::warning("Google refused a Local Services {$what} fetch.", [
                 'http_status' => $response->status(),
                 'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
+                'rate_scope' => data_get($error, 'details.0.errors.0.details.quotaErrorDetails.rateScope'),
+                'retry_delay' => data_get($error, 'details.0.errors.0.details.quotaErrorDetails.retryDelay'),
                 'detail' => mb_substr($detail, 0, 300),
             ]);
 

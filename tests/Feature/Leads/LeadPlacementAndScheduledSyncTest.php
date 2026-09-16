@@ -7,6 +7,7 @@ use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -529,6 +530,60 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
                 .'and must not be counted towards the developer token being spent',
             );
         }
+    }
+
+    /**
+     * A refused fetch records WHOSE limit it was.
+     *
+     * 2026-09-16 cost an afternoon to this: 2,033 refusals in three hours and
+     * nothing in the log said whether the ceiling was on one account or on the
+     * developer token. Those have opposite remedies, and the scope had to be
+     * recovered by holding the scheduler's mutex and asking a person to load a
+     * screen by hand.
+     *
+     * Google sends it in the response. This asserts it reaches the log, because
+     * a field read and dropped is the same as a field never sent.
+     */
+    public function test_a_quota_refusal_is_logged_with_its_scope(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+        $this->connection($t, '1111111111');
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => [
+                    'code' => 429,
+                    'status' => 'RESOURCE_EXHAUSTED',
+                    'message' => 'Resource has been exhausted (e.g. check quota).',
+                    'details' => [['errors' => [['details' => ['quotaErrorDetails' => [
+                        'rateScope' => 'DEVELOPER',
+                        'retryDelay' => '4413s',
+                    ]]]]]],
+                ],
+            ], 429),
+        ]);
+
+        $logged = [];
+
+        Log::listen(function ($message) use (&$logged) {
+            if (str_contains($message->message, 'Google refused a Local Services')) {
+                $logged[] = $message->context;
+            }
+        });
+
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $this->assertNotEmpty($logged, 'the refusal was not logged at all');
+        $this->assertSame('DEVELOPER', $logged[0]['rate_scope'] ?? null);
+        $this->assertSame('4413s', $logged[0]['retry_delay'] ?? null);
     }
 
     public function test_one_failing_account_does_not_stop_the_others(): void
