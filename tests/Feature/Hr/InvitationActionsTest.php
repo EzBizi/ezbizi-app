@@ -3,6 +3,7 @@
 namespace Tests\Feature\Hr;
 
 use App\Models\Contract;
+use App\Models\ContractVersion;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Services\Hr\Invitations;
@@ -178,6 +179,66 @@ class InvitationActionsTest extends TestCase
                 'A rule has no actor, so nobody may be recorded as having started it.',
             );
             $this->assertSame($invitation->getKey(), $onboarding->invitation_id);
+        });
+    }
+
+    /**
+     * The picker offers exactly what the act accepts, and nothing else.
+     *
+     * Automations serves this list to a rule author. If it could offer a
+     * template `startOnboarding` refuses, the author would be told days later,
+     * in a run log, that the choice the builder gave them was never valid —
+     * so both ask one predicate and this proves they agree on a real case.
+     */
+    public function test_the_contract_picker_omits_what_starting_would_refuse(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->artisan('hr:publish-onboarding-catalog', ['organization' => 'Alpha'])
+            ->assertSuccessful();
+
+        $this->inTenant($t['org'], function () use ($t) {
+            // A template nobody could ever sign: published, and with no
+            // signature field in it.
+            $unsignable = Contract::create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Unsignable',
+                'created_by' => $t['admin']->id,
+            ]);
+            $version = ContractVersion::create([
+                'organization_id' => $t['org']->id,
+                'contract_id' => $unsignable->id,
+                'version' => 1,
+                'body' => '',
+                'created_by' => $t['admin']->id,
+                'fields' => [[
+                    'key' => 'note', 'label' => 'Note', 'type' => 'text',
+                    'options' => [], 'filled_by' => 'either', 'required' => false,
+                    'sensitive' => false, 'retired' => false,
+                ]],
+            ]);
+            $unsignable->forceFill(['current_version_id' => $version->id])->save();
+
+            // And one that has never been published at all.
+            Contract::create([
+                'organization_id' => $t['org']->id,
+                'name' => 'Never published',
+                'created_by' => $t['admin']->id,
+            ]);
+
+            $labels = array_column($this->actions()->offerableContracts(), 'label');
+
+            $this->assertNotContains('Unsignable', $labels);
+            $this->assertNotContains('Never published', $labels);
+
+            // The control: a real one IS offered, or the two assertions above
+            // would pass against a picker that returns nothing at all.
+            $this->assertNotEmpty($labels);
+
+            // And the omissions are not an accident of the list being short —
+            // starting against the unsignable one genuinely refuses.
+            $this->expectException(CannotActOnInvitation::class);
+            $this->actions()->startOnboarding($this->invitation($t), $unsignable);
         });
     }
 
