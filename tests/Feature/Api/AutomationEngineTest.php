@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\Lead;
 use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
 use App\Models\Vehicle;
@@ -1014,6 +1015,82 @@ class AutomationEngineTest extends TestCase
 
         $this->assertStringNotContainsString('http', strtolower($result['detail']),
             'a URL built from the token is the same credential in a different coat');
+    }
+
+    /**
+     * A rule replies to website chat and REFUSES a Google enquiry.
+     *
+     * The refusal is the assertion that matters and it is not a style rule.
+     * EzBizi told Google's ads-api-compliance team and OAuth Trust and Safety,
+     * in writing, that the only automated write is "one reply a member of staff
+     * types and sends". Both submissions are open. A rule reaching a
+     * local_services lead makes a live filing false, so this test is the thing
+     * standing between a future edit and that.
+     *
+     * The website-chat half is the CONTROL: without it a refusal test passes
+     * just as well against an arm that refuses everything, which is the same
+     * defect wearing the safe coat.
+     */
+    public function test_a_rule_replies_to_website_chat_and_refuses_a_google_lead(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'lead.received',
+            'payload' => ['after' => ['source' => 'local_services']],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $google = $this->inTenant(function () {
+            $lead = new Lead;
+            $lead->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'g-1',
+                'contact_name' => 'A caller',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ])->save();
+
+            return $lead;
+        });
+
+        $refused = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $google,
+        ));
+
+        $this->assertFalse($refused['ok'],
+            'a rule replying to a Google enquiry makes a live compliance filing false');
+        $this->assertStringContainsString('local_services', $refused['detail'],
+            'the refusal must name the source - "this rule is wrong" and "this source cannot be '
+            .'answered automatically" send somebody to different places');
+
+        // THE CONTROL. A source that DOES permit it must not be refused, or the
+        // assertion above passes against an arm that refuses everything.
+        $chat = $this->inTenant(function () {
+            $lead = new Lead;
+            $lead->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'source' => Lead::SOURCE_WEBSITE_CHAT,
+                'remote_id' => 'chat-1',
+                'contact_name' => 'A visitor',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ])->save();
+
+            return $lead;
+        });
+
+        $allowed = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $chat,
+        ));
+
+        $this->assertStringNotContainsString('can only be answered by a person',
+            (string) ($allowed['detail'] ?? ''),
+            'website chat must not hit the compliance refusal - if it does, the arm refuses '
+            .'everything and the assertion above proves nothing');
     }
 
     /**

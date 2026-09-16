@@ -2054,6 +2054,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       ),
       'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
       'email.send' => _parameterForm(row, widget.catalogue.actionType('email.send')),
+      'lead.reply' => _parameterForm(row, widget.catalogue.actionType('lead.reply')),
       'whatsapp.send' => _whatsAppForm(row),
       // Was the bespoke Message box below. It had to move in the same commit as
       // the server declaring the parameter: _payload() flips to the generic

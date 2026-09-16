@@ -10,6 +10,7 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Leads\LeadReplies;
 use App\Models\Invitation;
 use App\Support\Hr\CannotActOnInvitation;
 use App\Support\Hr\InvitationActions;
@@ -324,6 +325,7 @@ class ActionRunner
         private readonly AdministratorFloor $administrators,
         private readonly VehicleAssignments $vehicleAssignments,
         private readonly InvitationActions $invitations,
+        private readonly LeadReplies $leadReplies,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -373,6 +375,7 @@ class ActionRunner
             'unassign' => $this->unassign($subject),
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
+            'reply' => $this->replyToLead($action, $event, $subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -740,6 +743,92 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Reply in the conversation the enquiry arrived on. Website chat only.
+     *
+     * ── THE LIMIT IS A FILING, NOT A PREFERENCE ──────
+     *
+     * EzBizi told Google's ads-api-compliance team and OAuth Trust and Safety,
+     * in writing, that "the only write is appendLeadConversation: one reply a
+     * member of staff types and sends to a text enquiry". Both submissions are
+     * open; one has bounced twice on discrepancies. A rule reaching a
+     * local_services lead makes a live filing false.
+     *
+     * So this asks `allowsUnattendedReply()` and NOT `canReply()`. They are
+     * different questions and Leads holds them apart on purpose: a Google
+     * enquiry CAN be replied to - a person does it daily - and must not be
+     * replied to by software. An arm testing `canReply()` would get true and
+     * send. The callee refuses a true flag as well, so a caller that forgets is
+     * stopped in the room where the decision is; this check is the one that
+     * produces a sentence somebody can read.
+     *
+     * ── WHY THE REPLY IS MARKED AUTOMATIC ──────
+     *
+     * "Unreplied" means nobody has ANSWERED this person - `LeadThread` computes
+     * `last_contact_from` from the newest row a PERSON was in. Without the flag
+     * every rule anybody wrote would quietly empty the list a business uses to
+     * find the enquiries nobody has answered, and the Replied badge on every row
+     * would say the same untruth. The chain that carries it is three modules
+     * deep and every link has a default, so it compiled perfectly while dropping
+     * the flag at one call site - see docs/AUTOMATION-COVERAGE.md.
+     */
+    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'reply';
+        $message = trim((string) ($action['message'] ?? ''));
+
+        if ($message === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a message.'];
+        }
+
+        if (! $subject instanceof Lead) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only reply to an enquiry, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        if (! $this->leadReplies->allowsUnattendedReply($subject)) {
+            return [
+                'type' => $type, 'ok' => false,
+                // Names the source, because "this rule is wrong" and "this
+                // source may not be answered automatically" send somebody to
+                // different places.
+                'detail' => "Enquiries from \"{$subject->source}\" can only be answered by a "
+                    .'person, so nothing was sent. Only website live chat can be replied to by a '
+                    .'rule.',
+            ];
+        }
+
+        if (! $this->leadReplies->canReply($subject)) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => $this->leadReplies->whyNot($subject)
+                    ?? 'This enquiry cannot be replied to just now.',
+            ];
+        }
+
+        try {
+            $this->leadReplies->for($subject)?->send(
+                $subject,
+                $this->interpolate($message, $event, $subject),
+                automatic: true,
+            );
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.lead_replied', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
+                .'shows as awaiting a reply.',
+        ];
     }
 
     /**

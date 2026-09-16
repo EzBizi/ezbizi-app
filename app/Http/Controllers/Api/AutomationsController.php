@@ -104,6 +104,7 @@ class AutomationsController extends Controller
         // still on HR's branch.
         'resend',
         'revoke',
+        'reply',
 
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
@@ -1508,6 +1509,10 @@ class AutomationsController extends Controller
              * are subject-bound - a job or a vehicle - and the subject is what
              * the arm routes on.
              */
+            $type('lead.reply', 'Reply to the lead', true, [
+                $parameter('message', 'Message', 'rich_text'),
+            ]),
+
             $type('assign_to_user', 'Assign to a person', true, [
                 $parameter('user_field', 'Assign to the person in', 'trigger_field'),
             ]),
