@@ -169,6 +169,8 @@ final class FacebookPublisher implements SocialPublisher
             'image/png'  => '.png',
             'image/webp' => '.webp',
             'image/gif'  => '.gif',
+            'image/heic' => '.heic',
+            'image/heif' => '.heif',
             default      => '.jpg',
         };
     }

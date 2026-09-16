@@ -44,7 +44,7 @@ final readonly class PostPayload
     }
 
     /**
-     * The MIME type for a file extension.
+     * The MIME type for a file extension, or a refusal.
      *
      * Static as well as instance, because MediaHandoff serves these bytes back
      * over HTTP later and has a handle rather than a payload. Meta reads the
@@ -55,27 +55,37 @@ final readonly class PostPayload
      * type off these same headers. Served as the default it arrived as a
      * broken attachment with no error at either end.
      *
-     * THE DEFAULT IS STILL WRONG FOR TWO LIVE CASES and is left alone
-     * deliberately rather than fixed here. `heic` and `heif` are accepted
-     * uploads - they are in SocialMediaKind::BY_EXTENSION, so the composer's
-     * `mimes` rule lets them through - and neither is in this map, so both are
-     * currently served as `video/mp4`. `m4v` likewise. The right fix is to name
-     * every accepted extension and make the default REFUSE, since a confident
-     * wrong type is worse than a failure, but `mp4` itself relies on that
-     * default today, so the change has to enumerate before it can refuse. That
-     * belongs to whoever owns publishing rather than to a WhatsApp errand.
+     * EVERY ACCEPTED EXTENSION IS NAMED AND THE DEFAULT REFUSES, because that
+     * same silent-breakage is what a guessed type buys. The default used to be
+     * `video/mp4`, and `heic`, `heif` and `m4v` all fell into it while being
+     * accepted uploads - they are in SocialMediaKind::BY_EXTENSION, which is
+     * what the composer's `mimes` rule is built from - so an iPhone photo was
+     * handed to Instagram as a video. Keep this list and that one in step: an
+     * extension the composer accepts and this does not now fails loudly, which
+     * is the trade on purpose.
+     *
+     * `m4v` is `video/mp4` on purpose rather than by omission - it is the same
+     * container under another extension, so that is the honest answer.
+     *
+     * @throws SocialPublishFailed when the extension is not one we can name
      */
     public static function mimeForExtension(string $extension): string
     {
         return match (strtolower($extension)) {
-            'png'         => 'image/png',
-            'webp'        => 'image/webp',
-            'gif'         => 'image/gif',
-            'jpg', 'jpeg' => 'image/jpeg',
-            'mov'         => 'video/quicktime',
-            'webm'        => 'video/webm',
-            'pdf'         => 'application/pdf',
-            default       => 'video/mp4',
+            'png'          => 'image/png',
+            'webp'         => 'image/webp',
+            'gif'          => 'image/gif',
+            'jpg', 'jpeg'  => 'image/jpeg',
+            'heic'         => 'image/heic',
+            'heif'         => 'image/heif',
+            'mp4', 'm4v'   => 'video/mp4',
+            'mov'          => 'video/quicktime',
+            'webm'         => 'video/webm',
+            'pdf'          => 'application/pdf',
+            default        => throw new SocialPublishFailed(
+                'EzBizi does not know what kind of file a .'.strtolower($extension).' is, '
+                .'so it will not guess at one a network might reject or mangle.'
+            ),
         };
     }
 }
