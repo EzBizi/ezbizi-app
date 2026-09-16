@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0232',
+      date: '16 Sep 2026',
+      items: [
+        'When Google stops answering, the Leads screen says so. A dead sync used to look exactly like a quiet afternoon, and the list refreshing itself every twenty seconds made that worse rather than better.',
+        'A photo taken on an iPhone now posts to Facebook and Instagram as a photo. It was being sent as a video file, which is not what it is. The same applies to heif photos and m4v videos.',
+        'An automation can send a saved report to a list of people.',
+        'A rule can be run for real from its own menu, instead of waiting for the event to happen.',
+        'Every step in a rule now offers the right kind of choice: people are searchable, a value with a fixed set is chosen rather than typed, a text step lists only lines approved for messaging, and a WhatsApp step asks which number to send from when a business has more than one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0231',
       date: '16 Sep 2026',
       items: [
