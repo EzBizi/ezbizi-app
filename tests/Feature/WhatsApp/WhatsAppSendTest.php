@@ -120,7 +120,14 @@ class WhatsAppSendTest extends TestCase
 
         // An extension, not a phone number. Guessing would send a customer's
         // booking confirmation to whoever owns the number it guessed.
+        //
+        // The SENTENCE is pinned, not just the type, and that applies to every
+        // refusal in this file. Automations renders these messages VERBATIM to
+        // a rule author, so the sentence is the part a person reads - and the
+        // class alone passes on any refusal at all, including one thrown for a
+        // completely unrelated reason.
         $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('not a phone number WhatsApp can be sent to');
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
             ->send('job_booked', '2199'));
@@ -177,6 +184,7 @@ class WhatsAppSendTest extends TestCase
         // Deliberately no number row.
 
         $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('No WhatsApp number is attached to this organization');
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
             ->send('job_booked', '13057242199'));
@@ -192,7 +200,11 @@ class WhatsAppSendTest extends TestCase
         // Alpha has no number of its own. If the lookup were not tenant-scoped
         // it would find Beta's and send one organization's message down
         // another's line - which is the failure that cannot be taken back.
+        // Pinned to the reason as well. Without it this passes if the lookup
+        // finds Beta's number and then throws for some unrelated cause - the
+        // leak would be green.
         $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('No WhatsApp number is attached to this organization');
 
         $this->inTenant($mine['org'], fn () => app(WhatsAppCloud::class)
             ->send('job_booked', '13057242199'));
@@ -359,6 +371,7 @@ class WhatsAppSendTest extends TestCase
         // number we do have - that is the same silent-wrong-sender failure
         // wearing a different hat.
         $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('No WhatsApp number matching');
 
         $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
             ->send('job_booked', '13057242199', [], 'en_US', '+18889999999'));
