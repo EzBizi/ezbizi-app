@@ -163,6 +163,14 @@ Future<void> release() async {
   await _apply('minimizable', () => windowManager.setMinimizable(true));
   await _apply('maximizable', () => windowManager.setMaximizable(true));
   await _apply('resizable', () => windowManager.setResizable(true));
+
+  // titleBar LAST, and it is load-bearing twice. The three setters above call
+  // SetWindowLong and nothing else — no frame change of their own — so the
+  // style bits they write are legal but undrawn until something asks Windows
+  // to recompute the non-client area. setTitleBarStyle ends in
+  // SetWindowPos(..., SWP_FRAMECHANGED), which is that ask. Move this line up
+  // and you do not only lose the caption: you silently lose the minimize box
+  // as well, with every setter above still returning success.
   await _apply('titleBar', () => windowManager.setTitleBarStyle(TitleBarStyle.normal));
 }
 
