@@ -11,6 +11,7 @@ use App\Support\Automations\EventScope;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailStatus;
+use App\Support\Scoping\ViewScope;
 use RuntimeException;
 
 /**
@@ -116,7 +117,37 @@ final class SendSavedReport
             throw new RuntimeException('This rule names nobody to send the report to.');
         }
 
-        $result = $this->runner->run($report->definition, $as);
+        /*
+         * ── RENDERED AT THE REPORT'S PLACE, NOT AT THE AUTHOR'S VIEW ──
+         *
+         * Automations asked who `$as` is when a rule fires at 3am, and the
+         * sharp half of their question was that the actor does not merely
+         * authorise the send — it decides WHAT THE REPORT CONTAINS.
+         *
+         * It did, and from the wrong thing. `run()` derived the scope from
+         * `ViewScope::forUser`, which reads the author's stored
+         * `navigation.scope` preference: the report rendered at whichever chip
+         * that person last clicked in their own top bar. A preference nobody
+         * thinks of as part of a report, deciding a report's figures, months
+         * later, silently.
+         *
+         * A saved report carries its own company or franchise. That is the
+         * answer to "what is this report about", it was chosen deliberately
+         * when the report was saved, and it does not move.
+         *
+         * THE PERSON IS STILL REQUIRED, as the reach floor rather than as the
+         * scope: `forStoredAutomationScope` refuses when the author no longer
+         * reaches the place the report names — "The automation creator no
+         * longer reaches its saved scope." Somebody who has moved from
+         * administrator to one branch stops being able to send an
+         * organization-wide report, which is the correct outcome and a legible
+         * one, rather than the report silently shrinking to their new reach.
+         */
+        $result = $this->runner->run($report->definition, $as, ViewScope::forStoredAutomationScope(
+            $as,
+            $report->franchise_id !== null ? ViewScope::FRANCHISE : ($report->company_id !== null ? ViewScope::COMPANY : null),
+            $report->franchise_id ?? $report->company_id,
+        ));
         $scope = $report->franchise ?? $report->company ?? $as->organization;
 
         $sent = [];

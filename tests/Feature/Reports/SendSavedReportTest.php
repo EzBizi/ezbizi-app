@@ -312,6 +312,75 @@ class SendSavedReportTest extends TestCase
         }
     }
 
+    /**
+     * A SCHEDULED REPORT RENDERS AT ITS OWN PLACE, NOT AT ITS AUTHOR'S VIEW.
+     *
+     * Automations asked who the actor is when a rule fires at 3am, and the
+     * sharp half was that the actor decided what the report CONTAINED. It did,
+     * and from `preferences['navigation.scope']` — the chip its author last
+     * clicked in their own top bar, months earlier, on a morning unrelated to
+     * the report.
+     *
+     * So this test puts the author's stored view at the ORGANIZATION and the
+     * report at ONE BRANCH, and the two disagree on purpose: before the fix the
+     * send carried both branches' jobs, which is a disclosure nobody chose and
+     * nothing in the output mentions.
+     *
+     * The CSV is the artefact, so the CSV is what is asserted — an outcome
+     * object saying "2 rows" would have been just as green either way.
+     */
+    public function test_a_send_renders_at_the_reports_place_not_the_authors_view(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha Second');
+
+        $this->makeJob($tenant, 'Job in the report\'s branch');
+        $this->inTenant($tenant['org'], function () use ($other) {
+            $customer = Customer::factory()->create(['owning_franchise_id' => $other->id]);
+            Job::factory()->create([
+                'franchise_id' => $other->id,
+                'customer_id' => $customer->id,
+                'title' => 'Job somewhere else',
+            ]);
+        });
+
+        // The author is looking at the whole organization, which is the case
+        // the old code took its scope from.
+        $author = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $tenant['admin']->forceFill(['preferences' => ['navigation.scope' => 'organization']])->save();
+
+            return $tenant['admin']->fresh();
+        });
+
+        $report = $this->report($tenant, [
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+        ]);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $report,
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $author,
+        ));
+
+        // The mailable carries the rendered ReportResult, so the ROWS are
+        // assertable directly - better than reaching into the attachment's
+        // bytes, which is an internal shape of Laravel's rather than of this
+        // report.
+        $sent = Mail::sent(SavedReportMail::class)->first();
+        $titles = json_encode($sent->result->rows);
+
+        $this->assertStringContainsString("Job in the report's branch", $titles);
+        $this->assertStringNotContainsString(
+            'Job somewhere else',
+            $titles,
+            "the report rendered at the author's view rather than its own place",
+        );
+    }
+
     // ── the CSV ──────────────────────────────────────────────────
 
     public function test_the_csv_carries_the_labels_and_the_rows(): void
