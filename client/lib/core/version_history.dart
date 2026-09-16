@@ -11,6 +11,8 @@ class VersionHistory {
       version: '0.0.0231',
       date: '16 Sep 2026',
       items: [
+        'A scheduled report now covers the place it was saved for. It used to be rendered at whatever view its author happened to have selected in their top bar, so the same report could carry another branch figures without saying so.',
+        'Airtable bases and Workiz accounts can be given a name, and arrive named instead of showing their internal id.',
         'Clicking a New Live Chat Lead notification now opens Leads already narrowed to website chat, instead of the dashboard.',
       ],
     ),
