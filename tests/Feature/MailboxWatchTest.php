@@ -8,10 +8,12 @@ use App\Models\AutomationVersion;
 use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Support\Email\Arrivals;
+use App\Support\Email\Block;
 use App\Support\Email\CannotReadMailbox;
 use App\Support\Email\EmailPicture;
 use App\Support\Email\MailboxReader;
 use App\Support\Email\MailboxReaders;
+use App\Support\Email\Span;
 use App\Support\Email\MailboxWatcher;
 use App\Support\Email\MessageDetail;
 use App\Support\Email\MessagePage;
@@ -150,6 +152,38 @@ class MailboxWatchTest extends TestCase
         $automation->forceFill(['active_version_id' => $version->id])->save();
 
         return $automation;
+    }
+
+    /**
+     * A rule whose conditions compare `body_matched` against `$words`.
+     *
+     * Built through the real models rather than by stubbing the enumerator, so
+     * the test exercises the same tree-walk production uses. A rule shape the
+     * walker cannot read would pass a stubbed test and fail here.
+     */
+    private function ruleOnBody(Organization $org, string $createdBy, array $words): void
+    {
+        $automation = Automation::create([
+            'organization_id' => $org->id,
+            'name'            => 'Missed calls',
+            'trigger_key'     => 'email.received',
+            'is_active'       => true,
+            'created_by'      => $createdBy,
+        ]);
+
+        $version = AutomationVersion::create([
+            'organization_id' => $org->id,
+            'automation_id'   => $automation->id,
+            'version'         => 1,
+            'conditions'      => ['all' => array_map(
+                fn (string $w) => ['field' => 'body_matched', 'op' => 'contains', 'value' => $w],
+                $words,
+            )],
+            'actions'         => [],
+            'created_by'      => $createdBy,
+        ]);
+
+        $automation->forceFill(['active_version_id' => $version->id])->save();
     }
 
     private function sweep(): void
@@ -439,6 +473,121 @@ class MailboxWatchTest extends TestCase
         // matched against the inbox the mail arrived at.
         $this->assertSame(Mailbox::class, $event->subject_type);
         $this->assertSame($t['mailbox']->getKey(), $event->subject_id);
+    }
+
+    /**
+     * THE CASE THIS EXISTS FOR, and the one that would have shipped broken.
+     *
+     * A-1's RingCentral notifications carry "Status: Missed" at roughly
+     * character 199 of the body. The subject never says it, no header says it,
+     * and the snippet stops at 160 -- so the word is reachable only by reading
+     * the body.
+     *
+     * The snippet here is deliberately INNOCENT of the word. A matcher that
+     * tested the snippet would pass every other assertion in this file and fail
+     * this one, which is the whole point: on Gmail the sweep lists with
+     * `format=metadata` and never holds the body, so the snippet version would
+     * have looked built and matched nothing in production.
+     */
+    public function test_a_rules_own_word_found_in_the_body_is_named_on_the_event(): void
+    {
+        $t = $this->watchedTenant();
+        $this->inTenant($t['org'], fn () => $this->ruleOnBody($t['org'], $t['admin']->id, ['Missed']));
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+
+        WatchedInbox::arrive(
+            'RingCentral',
+            'notify@ringcentral.com',
+            'New Call from CBUS',
+            snippet: 'You have a new call notification from RingCentral for',
+            body: 'You have a new call notification. Caller: (614) 555 0100. Status: Missed.',
+        );
+
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $event = $this->inTenant($t['org'],
+            fn () => AutomationEvent::where('event_key', 'email.received')->latest('occurred_at')->firstOrFail());
+
+        $this->assertSame('Missed', $event->payload['body_matched']);
+
+        // AND STILL NOT THE MESSAGE. The word came from the rule; nothing the
+        // customer wrote is here.
+        $json = json_encode($event->getAttributes());
+        $this->assertStringNotContainsString('614', $json);
+        $this->assertStringNotContainsString('Caller', $json);
+        $this->assertArrayNotHasKey('snippet', $event->payload);
+        $this->assertArrayNotHasKey('body', $event->payload);
+    }
+
+    /**
+     * No rule asking, no read, and the field still exists.
+     *
+     * Both halves matter. Nothing is fetched or stored when nobody has asked --
+     * and the key is present anyway, because the condition picker offers fields
+     * it has SEEN on an event. A key that appeared only once a rule used it
+     * could never be picked to write that rule in the first place.
+     */
+    public function test_with_no_rule_nothing_is_read_and_the_field_is_still_offered(): void
+    {
+        $t = $this->watchedTenant();
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+
+        WatchedInbox::arrive(
+            'RingCentral',
+            'notify@ringcentral.com',
+            'New Call from CBUS',
+            body: 'Status: Missed.',
+        );
+
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $event = $this->inTenant($t['org'],
+            fn () => AutomationEvent::where('event_key', 'email.received')->latest('occurred_at')->firstOrFail());
+
+        $this->assertArrayHasKey('body_matched', $event->payload);
+        $this->assertSame('', $event->payload['body_matched']);
+
+        // The body was never opened: no rule asked, so no second fetch happened.
+        $this->assertNotContains('open', WatchedInbox::$calls);
+    }
+
+    /**
+     * A word in the body that no rule asked about is not reported.
+     *
+     * The control for the test above it. Without this, a payload that echoed
+     * the whole body would pass "Missed is named" and be the very leak the
+     * design exists to avoid.
+     */
+    public function test_only_the_words_a_rule_asked_about_are_named(): void
+    {
+        $t = $this->watchedTenant();
+        $this->inTenant($t['org'], fn () => $this->ruleOnBody($t['org'], $t['admin']->id, ['Missed']));
+
+        WatchedInbox::fill(1);
+        $this->sweep();
+
+        WatchedInbox::arrive(
+            'RingCentral',
+            'notify@ringcentral.com',
+            'New Call',
+            body: 'Status: Answered. Duration: 4 minutes. Voicemail left.',
+        );
+
+        $this->travelTo(now()->addMinutes(6));
+        $this->sweep();
+
+        $event = $this->inTenant($t['org'],
+            fn () => AutomationEvent::where('event_key', 'email.received')->latest('occurred_at')->firstOrFail());
+
+        $this->assertSame('', $event->payload['body_matched']);
+        $this->assertStringNotContainsString('Answered', json_encode($event->getAttributes()));
+        $this->assertStringNotContainsString('Voicemail', json_encode($event->getAttributes()));
     }
 
     /**
@@ -996,6 +1145,7 @@ class WatchedInbox implements MailboxReader
         self::$rejectTheMark = false;
         self::$takesSeconds = 0;
         self::$nextId       = 1;
+        self::$bodies       = [];
     }
 
     /** Mail that was ALREADY THERE when the mailbox was connected. */
@@ -1006,9 +1156,14 @@ class WatchedInbox implements MailboxReader
         }
     }
 
-    public static function arrive(string $name, string $address, string $subject, string $snippet = ''): void
-    {
-        self::arriveFor('*', $name, $address, $subject, $snippet);
+    public static function arrive(
+        string $name,
+        string $address,
+        string $subject,
+        string $snippet = '',
+        string $body = '',
+    ): void {
+        self::arriveFor('*', $name, $address, $subject, $snippet, $body);
     }
 
     /**
@@ -1030,9 +1185,18 @@ class WatchedInbox implements MailboxReader
         string $address,
         string $subject,
         string $snippet = '',
+        string $body = '',
     ): void {
+        $id = 'msg-'.self::$nextId++;
+
+        // The BODY is stored apart from the summary, exactly as a real provider
+        // holds it: a list gives headers and a snippet, and the body costs a
+        // second fetch. A fake that returned the body from `list` would let a
+        // matcher read it there and pass, then find nothing in production.
+        self::$bodies[$id] = $body;
+
         self::$mailboxes[$mailbox][] = new MessageSummary(
-            id: 'msg-'.self::$nextId++,
+            id: $id,
             threadId: null,
             subject: $subject,
             fromName: $name,
@@ -1042,6 +1206,9 @@ class WatchedInbox implements MailboxReader
             snippet: $snippet,
         );
     }
+
+    /** @var array<string, string> message id => body text */
+    public static array $bodies = [];
 
     /** @return MessageSummary[] oldest first, position = index + 1 */
     private function contents(Mailbox $mailbox): array
@@ -1102,7 +1269,22 @@ class WatchedInbox implements MailboxReader
 
     public function open(Mailbox $mailbox, string $messageId): MessageDetail
     {
-        return new MessageDetail($this->contents($mailbox)[0], []);
+        $summary = null;
+
+        foreach ($this->contents($mailbox) as $row) {
+            if ($row->id === $messageId) {
+                $summary = $row;
+                break;
+            }
+        }
+
+        $summary ??= $this->contents($mailbox)[0];
+        $body = WatchedInbox::$bodies[$messageId] ?? '';
+
+        return new MessageDetail(
+            $summary,
+            $body === '' ? [] : [Block::paragraph([new Span($body)])],
+        );
     }
 
     public function reply(Mailbox $mailbox, string $messageId, string $body): void {}
