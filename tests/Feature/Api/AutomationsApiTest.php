@@ -139,7 +139,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'reports', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 

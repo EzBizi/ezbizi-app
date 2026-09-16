@@ -10,6 +10,8 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Reports\SendSavedReport;
+use App\Models\SavedReport;
 use App\Support\Leads\LeadReplies;
 use App\Models\Invitation;
 use App\Support\Hr\CannotActOnInvitation;
@@ -326,6 +328,7 @@ class ActionRunner
         private readonly VehicleAssignments $vehicleAssignments,
         private readonly InvitationActions $invitations,
         private readonly LeadReplies $leadReplies,
+        private readonly SendSavedReport $reports,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -376,6 +379,7 @@ class ActionRunner
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
+            'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -743,6 +747,126 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Email a saved report to the people who read it.
+     *
+     * ── THE ACTOR PROBLEM, AND WHAT IT TURNED OUT TO BE ──────
+     *
+     * `send()` takes a `User $as`, and a rule fires at 3am with nobody behind
+     * it. Asking Reports which user to pass turned up something worse than the
+     * question: their runner took its SCOPE from `ViewScope::forUser`, which
+     * reads the chip that person last clicked in their own top bar. So a
+     * scheduled report rendered at a view chosen months earlier for unrelated
+     * reasons, and the same rule produced different figures depending on it.
+     *
+     * Fixed on their side (081ee5be): a saved report carries its own place and
+     * the run uses that. The author is now only a REACH FLOOR - and if they
+     * have lost reach over the report's place, or left, it refuses rather than
+     * quietly rendering a smaller report. Which was the direction I had wrong:
+     * I expected a demoted author to keep rendering wide, and it would have
+     * SHRUNK. Nobody notices a number getting smaller.
+     *
+     * So the author is the rule's author, and the failure that matters is
+     * caught as `AuthorizationException`.
+     *
+     * ── THREE REFUSALS, THREE ERRANDS ──────
+     *
+     *   AuthorizationException  the author cannot reach the report's place
+     *   RuntimeException        the RULE's scope cannot read the report it names
+     *   CannotSendMail          this business is past its hourly allowance
+     *
+     * Caught apart rather than as one `Throwable`, because they send somebody to
+     * three different places and only the middle one is fixable in the rule.
+     *
+     * ── PARTIAL FAILURE IS A SUCCESS ──────
+     *
+     * One permanently-bad address among five must not fail the action: five
+     * consecutive failures switch a rule off, so a weekly report would go dark
+     * after five weeks while four people were reading it fine. `ok()` is false
+     * only when NOTHING left the building.
+     */
+    private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'report.send';
+
+        if ($automation === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only run as part of a saved rule.',
+            ];
+        }
+
+        $report = SavedReport::find((string) ($action['report_id'] ?? ''));
+
+        if ($report === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The report this step names no longer exists.',
+            ];
+        }
+
+        $recipients = [];
+
+        foreach ((array) ($action['to'] ?? []) as $stored) {
+            $one = $this->contactFromStored(trim((string) $stored), $event, 'email');
+
+            if (is_string($one) && filter_var($one, FILTER_VALIDATE_EMAIL) !== false) {
+                $recipients[] = $one;
+            }
+        }
+
+        $recipients = array_values(array_unique($recipients));
+
+        if ($recipients === []) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'Nobody this step names has an email address, so there was nobody to '
+                    .'send the report to.',
+            ];
+        }
+
+        $author = $automation->activeVersion?->created_by !== null
+            ? User::find($automation->activeVersion->created_by)
+            : null;
+
+        if ($author === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule no longer works here, so the report '
+                    .'cannot be sent. Open the rule and save it again to take it over.',
+            ];
+        }
+
+        try {
+            $result = $this->reports->send($report, $recipients, $automation, $author);
+        } catch (AuthorizationException) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule can no longer see everything the '
+                    .'report covers, so it was not sent. Open the rule and save it again to take '
+                    .'it over.',
+            ];
+        } catch (CannotSendMail $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.report_sent', $report, metadata: ['to' => $recipients]);
+
+        $refused = $result->refused ?? [];
+
+        return [
+            'type' => $type,
+            // Partial failure is a success. See the docblock.
+            'ok' => $result->ok(),
+            'detail' => $refused === []
+                ? 'Sent "'.$report->name.'" to '.count($recipients).' '
+                    .(count($recipients) === 1 ? 'person' : 'people').'.'
+                : 'Sent "'.$report->name.'", except to '.implode(', ', $refused).'.',
+        ];
     }
 
     /**

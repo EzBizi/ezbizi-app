@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Automation;
 use App\Models\Role;
+use App\Models\SavedReport;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
@@ -105,6 +106,7 @@ class AutomationsController extends Controller
         'resend',
         'revoke',
         'reply',
+        'report.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
@@ -416,6 +418,24 @@ class AutomationsController extends Controller
                         'has_email' => $u->email !== null && $u->email !== '',
                         'has_phone' => $u->phone !== null && $u->phone !== '',
                     ])
+                    ->all(),
+
+                /*
+                 * Saved reports a rule can send. Name only - a report's
+                 * DEFINITION says which columns and filters a business uses,
+                 * which is more than a permission about writing rules should
+                 * carry.
+                 *
+                 * Scoped by the ordinary tenant scope, so somebody only sees
+                 * their own organization's. Whether the RULE may send a given
+                 * report is a separate question SendSavedReport answers at run
+                 * time against the rule's scope, and it refuses rather than
+                 * rendering something the rule could not otherwise read.
+                 */
+                'reports' => SavedReport::query()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn (SavedReport $r) => ['id' => $r->id, 'label' => $r->name])
                     ->all(),
 
                 'roles' => Role::query()
@@ -1589,6 +1609,18 @@ class AutomationsController extends Controller
              * are subject-bound - a job or a vehicle - and the subject is what
              * the arm routes on.
              */
+            /*
+             * The recipients are a LIST, unlike every other send: a report goes
+             * to the people who read it, which is usually several. Partial
+             * failure is a success - one permanently-bad address among five
+             * must not switch the rule off after five weeks while four people
+             * are reading it fine.
+             */
+            $type('report.send', 'Send a saved report', true, [
+                $parameter('report_id', 'Which report', 'report'),
+                $parameter('to', 'Send to', 'recipient_list'),
+            ]),
+
             $type('lead.reply', 'Reply to the lead', true, [
                 $parameter('message', 'Message', 'rich_text'),
             ]),

@@ -5,6 +5,8 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use Illuminate\Support\Str;
+use App\Models\SavedReport;
 use App\Models\Lead;
 use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
@@ -1195,6 +1197,68 @@ class AutomationEngineTest extends TestCase
         $audited = $this->inTenant(fn () => AuditEvent::where('action', 'automation.run_now')->exists());
 
         $this->assertTrue($audited, 'a real send somebody triggered has to be attributable');
+    }
+
+    /**
+     * A report step refuses for three different reasons, in three sentences.
+     *
+     * They send somebody to three different places — take the rule over, fix the
+     * rule's scope, come back later — so catching them as one `Throwable` and
+     * rendering one sentence would be the run log lying about which errand it
+     * is. Two of the three are asserted here; the allowance one is SES's and
+     * covered on their side.
+     *
+     * THE AUTHOR CASE IS THE ONE WORTH HAVING. A rule fires with nobody at a
+     * screen, so `send()` renders against the rule's AUTHOR as a reach floor. If
+     * they have left, the honest answer is a refusal naming what to do — not a
+     * substitute actor, which would render somebody else's figures under a rule
+     * they never saw.
+     */
+    public function test_a_report_step_says_which_of_its_refusals_happened(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'automation.schedule_reached',
+            'payload' => [],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $automation = $this->automation('automation.schedule_reached', null, []);
+
+        // A report that does not exist, and a rule that names nobody: two of the
+        // arm's own refusals, before the sender is reached at all.
+        $missing = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => (string) Str::uuid7(), 'to' => ['x@example.test']],
+            $event, null, false, $automation,
+        ));
+
+        $this->assertFalse($missing['ok']);
+        $this->assertStringContainsString('no longer exists', $missing['detail']);
+
+        $report = $this->inTenant(fn () => SavedReport::create([
+            'organization_id' => $this->org['organization']->id,
+            'name' => 'Weekly numbers',
+            'definition' => ['rows' => 'jobs'],
+        ]));
+
+        $nobody = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => $report->id, 'to' => ['not-an-address']],
+            $event, null, false, $automation,
+        ));
+
+        $this->assertFalse($nobody['ok']);
+        $this->assertStringContainsString('nobody to send', $nobody['detail']);
+
+        // THE CONTROL: the two refusals above must not both be "the report does
+        // not exist". Different sentences for different errands is the point.
+        $this->assertNotSame($missing['detail'], $nobody['detail']);
+
+        Mail::assertNothingSent();
     }
 
     /**

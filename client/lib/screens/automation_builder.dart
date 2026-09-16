@@ -138,6 +138,12 @@ class _ActionRow {
   /// Remembered here while it is empty and forgotten the moment it is not.
   String? recipientKind;
 
+  /// An address being typed for a recipient LIST, before it is added.
+  ///
+  /// Held per row rather than in the stored value: half a typed address is not
+  /// a recipient, and putting it in the list would send to it on save.
+  final pendingAddress = TextEditingController();
+
   String whatsAppFrom = '';
   String whatsAppTemplate = '';
   int whatsAppParameters = 0;
@@ -200,6 +206,18 @@ class _ActionRow {
         // string only because every parameter shares one map of text
         // controllers; sending that string would hand the runner one role id
         // with commas in it, which matches nothing and tells nobody.
+        // A recipient LIST is an array on the wire, like roles. Held as a
+        // comma-joined string only because every parameter shares one map of
+        // text controllers.
+        if (field.kind == 'recipient_list') {
+          payload[field.key] = [
+            for (final one in value.split(','))
+              if (one.trim().isNotEmpty) one.trim(),
+          ];
+
+          continue;
+        }
+
         if (field.kind == 'roles') {
           payload[field.key] = [
             for (final id in value.split(','))
@@ -272,6 +290,7 @@ class _ActionRow {
     value.dispose();
     url.dispose();
     message.dispose();
+    pendingAddress.dispose();
     for (final c in whatsAppValues) {
       c.dispose();
     }
@@ -2181,6 +2200,40 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // field of the event, or an address somebody types. Jose asked for
           // the first and last on 2026-09-16; the middle one is what the step
           // shipped with.
+          else if (definition.parameters[i].kind == 'report')
+            DropdownMenu<String>(
+              initialSelection:
+                  row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              enabled: !_busy && widget.catalogue.reports.isNotEmpty,
+              label: Text(definition.parameters[i].label),
+              expandedInsets: EdgeInsets.zero,
+              enableFilter: true,
+              requestFocusOnTap: true,
+              helperText: widget.catalogue.reports.isEmpty
+                  ? 'No saved reports yet. Save one from Reports first.'
+                  : null,
+              onSelected: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+              dropdownMenuEntries: [
+                for (final report in widget.catalogue.reports)
+                  DropdownMenuEntry<String>(
+                    value: report.key,
+                    label: report.label,
+                  ),
+              ],
+            )
+          else if (definition.parameters[i].kind == 'recipient_list')
+            _recipientList(
+              row,
+              definition.parameters[i].key,
+              definition.parameters[i].label,
+            )
           else if (definition.parameters[i].kind == 'recipient' ||
               definition.parameters[i].kind == 'phone_recipient' ||
               definition.parameters[i].kind == 'person_or_field')
@@ -2443,6 +2496,125 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
+      ],
+    );
+  }
+
+  /// SEVERAL recipients, because a report goes to the people who read it.
+  ///
+  /// The other sends address one person; this one usually addresses a handful,
+  /// and one bad address among five must not stop the other four — which is why
+  /// the runner treats partial failure as a success and why this control lets
+  /// somebody add and remove rather than retype a list.
+  ///
+  /// Stored as a comma-joined string because every parameter shares one map of
+  /// text controllers; the payload splits it into the array the runner reads.
+  /// Each entry is the same `user:<id>` or literal address the single-recipient
+  /// control stores, so one resolver serves both.
+  Widget _recipientList(_ActionRow row, String key, String label) {
+    final controller = row.parameter(key);
+
+    final chosen = controller.text
+        .split(',')
+        .map((one) => one.trim())
+        .where((one) => one.isNotEmpty)
+        .toList();
+
+    String labelFor(String stored) {
+      if (!stored.startsWith('user:')) return stored;
+
+      final person =
+          widget.catalogue.people.where((p) => p.key == stored).firstOrNull;
+
+      // A person who has left keeps their id on screen rather than vanishing:
+      // a chip that disappeared would look like somebody removed it.
+      return person?.label ?? '$stored (no longer here)';
+    }
+
+    void store(List<String> next) =>
+        setState(() => controller.text = next.join(','));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        if (chosen.isEmpty)
+          Text(
+            'Nobody yet. Add the people who should receive it.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        if (chosen.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final one in chosen)
+                InputChip(
+                  label: Text(labelFor(one)),
+                  onDeleted: _busy
+                      ? null
+                      : () => store([...chosen]..remove(one)),
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownMenu<String>(
+                enabled: !_busy,
+                label: const Text('Add somebody who works here'),
+                expandedInsets: EdgeInsets.zero,
+                enableFilter: true,
+                requestFocusOnTap: true,
+                onSelected: _busy
+                    ? null
+                    : (added) {
+                        if (added == null || chosen.contains(added)) return;
+                        store([...chosen, added]);
+                      },
+                dropdownMenuEntries: [
+                  for (final person in widget.catalogue.people.where((p) => p.hasEmail))
+                    DropdownMenuEntry<String>(
+                      value: person.key,
+                      label: person.label,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: row.pendingAddress,
+                enabled: !_busy,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Or an address outside the business',
+                  isDense: true,
+                  helperText: 'An accountant, say. Press add.',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Add this address',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: _busy
+                  ? null
+                  : () {
+                      final typed = row.pendingAddress.text.trim();
+
+                      if (typed.isEmpty || chosen.contains(typed)) return;
+
+                      store([...chosen, typed]);
+                      row.pendingAddress.clear();
+                    },
+            ),
+          ],
+        ),
       ],
     );
   }

@@ -338,6 +338,7 @@ class AutomationCatalogue {
     required this.scheduleKinds,
     this.roles = const [],
     this.people = const [],
+    this.reports = const [],
     this.actionBudget,
   });
 
@@ -358,6 +359,7 @@ class AutomationCatalogue {
       // Active people with an address, for an email step's "Send to". The key
       // already carries the `user:` prefix the runner reads, so the client never
       // constructs it and cannot construct it wrongly.
+      reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
       people: [
         for (final row in (json['people'] as List? ?? const []))
           if (row is Map<String, dynamic> && row['id'] is String)
@@ -384,6 +386,11 @@ class AutomationCatalogue {
   /// offer somebody with only a phone. Two lists would be two things to keep in
   /// step the day somebody's details change.
   final List<({String key, String label, bool hasEmail, bool hasPhone})> people;
+
+  /// Saved reports a rule can send. Name only — a report's definition says which
+  /// columns and filters a business uses, which is more than a permission about
+  /// writing rules should carry.
+  final List<CatalogueChoice> reports;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still
