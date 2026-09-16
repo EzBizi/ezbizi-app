@@ -54,6 +54,9 @@ class _SiteContentListState extends State<SiteContentList> {
   int _page = 1;
   String _search = '';
 
+  /// The row whose page is open in this pane, or null for the list.
+  Map<String, dynamic>? _openRow;
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +98,26 @@ class _SiteContentListState extends State<SiteContentList> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final open = _openRow;
+
+    if (open != null) {
+      return PageEditor(
+        api: widget.api,
+        siteId: widget.siteId,
+        host: widget.host,
+        path: _pathOf(open),
+        title: '${open['title'] ?? ''}',
+        link: '${open['link'] ?? ''}',
+        canEdit: widget.canEdit,
+        // What the website already says, so the two boxes WordPress fills in
+        // are not shown empty on a page that has both.
+        wpAuthor: open['author'] is int ? open['author'] as int : null,
+        wpCategories: ((open['categories'] as List<dynamic>?) ?? const [])
+            .whereType<int>()
+            .toList(),
+        onClose: () => setState(() => _openRow = null),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -215,17 +238,10 @@ class _SiteContentListState extends State<SiteContentList> {
 
     if (path.isEmpty) return;
 
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PageEditor(
-        api: widget.api,
-        siteId: widget.siteId,
-        host: widget.host,
-        path: path,
-        title: '${item['title'] ?? ''}',
-        link: '${item['link'] ?? ''}',
-        canEdit: widget.canEdit,
-      ),
-    ));
+    // In this pane, not a pushed route. Jose named it the moment he saw it:
+    // going full screen breaks containment, and a page's fields are a detail
+    // of the site in the rail beside them rather than a place you travel to.
+    setState(() => _openRow = item);
   }
 
   /// The page's path on its own site.

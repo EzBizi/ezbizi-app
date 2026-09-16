@@ -1378,6 +1378,24 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Somebody filled in the contact form on one of your '
                             .'websites. It arrives in Leads at the same moment.',
                     ),
+                    /*
+                     * The one that exists because of what 1.9.0 does: a site
+                     * EzBizi stops recognising takes its chat and contact form
+                     * down at once, so it stops collecting enquiries and says
+                     * so only in a WordPress notice nobody reads.
+                     *
+                     * Who should hear about that is a question about the
+                     * business, not about this module, so it is a trigger
+                     * rather than a notification I chose the recipient for.
+                     */
+                    new TriggerDefinition(
+                        key: 'website.went_quiet',
+                        label: 'Website stopped answering',
+                        description: 'A website that had been connected has not fetched its '
+                            .'details for a day. Its chat and contact form are no longer '
+                            .'showing, so it is not collecting enquiries. Usually its token '
+                            .'was changed or the plugin was removed.',
+                    ),
                 ],
             ),
 

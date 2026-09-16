@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/web/page_editor.dart';
+import 'package:ezbizi_client/widgets/shortcode_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -16,6 +17,7 @@ import 'package:http/testing.dart';
 /// template, so reusing one silently changes what a published page says).
 void main() {
   late List<Map<String, dynamic>> sent;
+  late bool closed;
 
   Future<void> pump(
     WidgetTester tester, {
@@ -24,8 +26,11 @@ void main() {
     List<Map<String, dynamic>> extraFields = const [],
     bool optionsOk = true,
     bool canEdit = true,
+    int? wpAuthor,
+    List<int> wpCategories = const [],
   }) async {
     sent = [];
+    closed = false;
 
     final client = MockClient((request) async {
       if (request.url.path.endsWith('/content/options')) {
@@ -109,7 +114,11 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       theme: EzBiziTheme.light(),
-      home: PageEditor(
+      // A Scaffold around it, because that is where it lives: inside the SEO
+      // tab's pane. It has none of its own, which is the point of the
+      // containment test below.
+      home: Scaffold(
+        body: PageEditor(
         api: ApiClient(client: client),
         siteId: 'site-1',
         host: 'a-1chimney.com',
@@ -117,6 +126,10 @@ void main() {
         title: 'About us',
         link: 'https://a-1chimney.com/about-us',
         canEdit: canEdit,
+        wpAuthor: wpAuthor,
+        wpCategories: wpCategories,
+          onClose: () => closed = true,
+        ),
       ),
     ));
     await tester.pumpAndSettle();
@@ -140,7 +153,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'Trade only');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.byType(FilledButton));
     await tester.pumpAndSettle();
 
     expect(sent, hasLength(1));
@@ -225,7 +238,7 @@ void main() {
     await tester.tap(find.text("Pat O'Brien").last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(FloatingActionButton));
+    await tester.tap(find.byType(FilledButton));
     await tester.pumpAndSettle();
 
     // What reaches the server is the choice, against this page.
@@ -250,9 +263,82 @@ void main() {
     await pump(tester, canEdit: false);
 
     expect(find.text('Add a text field'), findsNothing);
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(FilledButton), findsNothing);
 
     final box = tester.widget<TextField>(find.byType(TextField).first);
     expect(box.enabled, isFalse);
+  });
+
+  /// Jose named this the moment he saw it: going full screen breaks
+  /// containment. It draws in the pane the list was in, so it has a way back
+  /// of its own and no Scaffold of its own.
+  testWidgets('it is a pane and not a screen', (tester) async {
+    await pump(tester);
+
+    // One Scaffold — the one this test put around it — and no app bar. The
+    // editor contributes neither, so it cannot take the window.
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to the list'));
+    await tester.pumpAndSettle();
+
+    expect(closed, isTrue);
+  });
+
+  /// "the fields do not have the shortcodes to be able to copy them like on the
+  /// general one" — a value you cannot paste anywhere is a value with nowhere
+  /// to go.
+  testWidgets('every field carries the shortcode it publishes as', (
+    tester,
+  ) async {
+    await pump(tester);
+
+    expect(find.text('[ezbizi_phone]'), findsOneWidget);
+    expect(find.text('[ezbizi_group]'), findsOneWidget);
+
+    // Copyable, not printed: the control is the point.
+    expect(find.byType(ShortcodeButton), findsWidgets);
+  });
+
+  /// "some pages already have them, so they should be loaded, cause right now
+  /// they all show as empty even if that is not true".
+  testWidgets('the author the website already has is shown', (tester) async {
+    await pump(tester, wpAuthor: 3, wpCategories: const [7]);
+
+    expect(find.text("Pat O'Brien"), findsOneWidget);
+    expect(find.text('Chimney repair'), findsOneWidget);
+    expect(
+      find.text('From the website. Change it to publish something else.'),
+      findsNWidgets(2),
+    );
+  });
+
+  /// Showing it is not the same as claiming it. Opening a page and leaving must
+  /// write nothing, or every page visited would gain an override of a value it
+  /// already had.
+  testWidgets('showing the website value saves nothing on its own', (
+    tester,
+  ) async {
+    await pump(tester, wpAuthor: 3);
+
+    // No save control, because nothing has been edited.
+    expect(find.byType(FilledButton), findsNothing);
+    expect(sent, isEmpty);
+  });
+
+  /// EzBizi's own answer wins, or a page somebody deliberately re-assigned
+  /// would keep showing the website's author back at them.
+  testWidgets('a stored override beats the website', (tester) async {
+    await pump(
+      tester,
+      wpAuthor: 3,
+      pageValues: const {'author': 'Chimney repair'},
+    );
+
+    expect(
+      find.text('From the website. Change it to publish something else.'),
+      findsNothing,
+    );
   });
 }

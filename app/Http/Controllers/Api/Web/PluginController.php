@@ -67,6 +67,13 @@ class PluginController extends Controller
             $site->forceFill([
                 'connected_at' => $site->connected_at ?? now(),
                 'last_seen_at' => now(),
+                /*
+                 * Back, so the next silence is reported as a new one. Cleared
+                 * in the same write that records the sighting: the pair reads
+                 * `last_seen_at` is the fact, `went_quiet_at` is whether
+                 * anybody has been told about it.
+                 */
+                'went_quiet_at' => null,
                 'plugin_version' => is_string($version) ? substr($version, 0, 32) : $site->plugin_version,
             ])->save();
 
