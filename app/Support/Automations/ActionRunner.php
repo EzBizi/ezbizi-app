@@ -1541,6 +1541,18 @@ class ActionRunner
 
         // add() is the atomic one: two workers draining the outbox at once would
         // both read 0 and both write 1 with get()/put().
+        //
+        // AND IT IS WHAT MAKES THE COUNTER EXIST. `DatabaseStore::increment`
+        // returns FALSE for a key that is not there, and production runs
+        // CACHE_STORE=database. A limiter that increments without seeding first
+        // never counts anything at all — measured on a fresh key:
+        //
+        //     array      1, 2, 3
+        //     database   false, false, false
+        //
+        // So this line is not only about two workers racing. Removing it does
+        // not make the limiter slightly wrong; it makes it stop counting, and
+        // the refusal below would then be the only thing standing there.
         Cache::add($key, 0, now()->addHours(2));
 
         $sent = Cache::increment($key);
