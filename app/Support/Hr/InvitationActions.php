@@ -3,6 +3,7 @@
 namespace App\Support\Hr;
 
 use App\Models\Contract;
+use App\Models\ContractVersion;
 use App\Models\Invitation;
 use App\Models\Onboarding;
 use App\Models\User;
@@ -205,10 +206,7 @@ class InvitationActions
             );
         }
 
-        $signed = collect($version->liveFields())
-            ->contains(fn (FieldDefinition $f) => $f->type === FieldType::SIGNATURE);
-
-        if (! $signed) {
+        if (! $this->usable($version)) {
             throw new CannotActOnInvitation(sprintf(
                 'Version %d of "%s" has no signature field, so there would be no way to agree '
                 .'to it. Add one to the template and publish, then start the onboarding — a '
@@ -275,6 +273,64 @@ class InvitationActions
 
             return $onboarding;
         });
+    }
+
+    /**
+     * The contracts a rule may be pointed at — id and name, nothing else.
+     *
+     * Automations needs a picker: a rule that starts somebody's paperwork has
+     * to name which template, and that cannot be derived. They serve it from
+     * their own catalogue, on `automations.view`, the way they already serve
+     * roles — so a rule author need not hold HR's permissions to build one.
+     *
+     * The LIST comes from here rather than from a query of theirs, and that is
+     * the whole point: it offers exactly what {@see startOnboarding} would
+     * accept, because both ask {@see usable}. A picker built from its own
+     * `where` would eventually offer a template the act refuses, and the
+     * author would be told at run time — in a log, days later — that the
+     * choice the builder gave them was never valid.
+     *
+     * NAME ONLY, and deliberately no version. A rule names the CONTRACT and
+     * the version is resolved when it fires, so "Technician v3" in a picker
+     * would read as a pin that does not exist: publish v4 and the rule quietly
+     * uses it, which is right, and the label would have said otherwise.
+     *
+     * Nothing about the content. A contract's fields are what somebody's
+     * salary and home address live in; the title is the most that should cross
+     * into a module whose permission is about writing rules.
+     */
+    public function offerableContracts(): array
+    {
+        return Contract::query()
+            // Nothing writes this column today — the migration that added it
+            // says new onboardings should not offer a contract that was a
+            // mistaken split of another, and no code has ever honoured that.
+            // Filtering anyway costs nothing and means the picker is already
+            // right on the day somebody implements archiving.
+            ->whereNull('archived_at')
+            ->with('currentVersion')
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (Contract $c) => $this->usable($c->currentVersion))
+            ->map(fn (Contract $c) => ['id' => $c->getKey(), 'label' => $c->name])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Could paperwork actually be finished against this version?
+     *
+     * A contract nobody can sign is not a contract: `contract_signatures`
+     * has to name a real signature field, so an onboarding against a version
+     * without one could be completed by nobody, ever, with nothing on screen
+     * saying why. Asked by the act and by the picker, so the picker cannot
+     * offer what the act refuses.
+     */
+    private function usable(?ContractVersion $version): bool
+    {
+        return $version !== null
+            && collect($version->liveFields())
+                ->contains(fn (FieldDefinition $f) => $f->type === FieldType::SIGNATURE);
     }
 
     /**
