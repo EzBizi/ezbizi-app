@@ -39,6 +39,10 @@ class TimeClockExtendTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $this->set($alpha['org'], 'time_clock.enabled', true);
         $this->set($alpha['org'], 'time_clock.extension_minutes', 45);
+        // The PLACE's clock is what a schedule is read in (2026-09-16). These
+        // cases were written when the stored zone drove it, so the place now
+        // says what they always meant: a UTC-5 place. Expectations unchanged.
+        $this->set($alpha['org'], 'timezone', 'Etc/GMT+5');
         $person = $this->scheduledPerson($alpha);
         Carbon::setTestNow(Carbon::parse('2026-09-08 14:00:00', 'UTC'));
 
