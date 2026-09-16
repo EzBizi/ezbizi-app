@@ -2732,11 +2732,49 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  Widget _valueBox(_ActionRow row) => TextField(
-    controller: row.value,
-    enabled: !_busy,
-    decoration: const InputDecoration(labelText: 'Set to', isDense: true),
-  );
+  /// What to set the field to — a list when the field HAS a list.
+  ///
+  /// It was a text box for everything, including a status. The values have been
+  /// served since the condition dropdowns landed, keyed by field, and this side
+  /// never read them — so a rule could set a lead's status to "Booked" and skip
+  /// for ever because the stored value is `booked`. That is the exact complaint
+  /// that started the value pickers, surviving in the other half of the screen.
+  ///
+  /// Anything with an open set keeps its text box: a shorter list pretending to
+  /// be the whole one is worse than typing.
+  Widget _valueBox(_ActionRow row) {
+    final options = _fieldValues[row.field.text.trim()];
+
+    if (options == null) {
+      return TextField(
+        controller: row.value,
+        enabled: !_busy,
+        decoration: const InputDecoration(labelText: 'Set to', isDense: true),
+      );
+    }
+
+    return DropdownMenu<String>(
+      initialSelection: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
+      enabled: !_busy,
+      label: const Text('Set to'),
+      expandedInsets: EdgeInsets.zero,
+      enableFilter: true,
+      requestFocusOnTap: true,
+      onSelected: _busy
+          ? null
+          : (chosen) => setState(() => row.value.text = chosen ?? ''),
+      dropdownMenuEntries: [
+        for (final option in options)
+          DropdownMenuEntry<String>(
+            value: option.value,
+            // The wire name is shown too: a rule saved before this reads back as
+            // the raw value, and somebody comparing the two needs to see they
+            // are the same thing.
+            label: '${option.label}  (${option.value})',
+          ),
+      ],
+    );
+  }
 
   Widget _note(String text) => Builder(
     builder: (context) =>

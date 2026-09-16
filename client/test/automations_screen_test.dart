@@ -837,6 +837,60 @@ void main() {
             'showing both is the overflow this replaced');
   });
 
+  /// "Set to" is a list when the field has one, and a box when it does not.
+  ///
+  /// The values have been served since the condition dropdowns landed and this
+  /// half of the screen never read them — so a rule could set a status to
+  /// "Booked" and skip for ever, because the stored value is `booked`. The
+  /// SECOND assertion is the one that matters: a field with an open set must
+  /// keep its text box, or this trades one wrong control for another.
+  testWidgets('setting a field offers its real values, and only when it has them', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(
+      // `is_active` is writable on the fixture's Customer subject AND has a
+      // closed set, which is the pairing this control is about.
+      triggerFields: const ['is_active', 'name'],
+      triggerFieldValues: const {
+        'is_active': [
+          {'value': '1', 'label': 'Active'},
+          {'value': '0', 'label': 'Inactive'},
+        ],
+      },
+    ));
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Update a field'));
+
+    // The Field control is a PICKER of writable fields, not a text box.
+    await _tap(
+      tester,
+      find.ancestor(
+        of: find.text('Field'),
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('Active').last);
+
+    expect(find.text('Set to'), findsOneWidget);
+
+    await _tap(
+      tester,
+      find.ancestor(
+        of: find.text('Set to'),
+        matching: find.byType(DropdownMenu<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Active  (1)'), findsWidgets,
+        reason: 'the wire value is shown beside the plain one, because a rule '
+            'saved before this reads back as the raw value');
+  });
+
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
