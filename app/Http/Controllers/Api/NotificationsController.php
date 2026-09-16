@@ -99,9 +99,26 @@ class NotificationsController extends Controller
     {
         $data = $request->validate([
             'token' => ['required', 'string', 'max:255'],
-            // Derived from the senders that exist rather than listed here, so
-            // the rule and the capability cannot drift apart. iOS is absent
-            // until there is an APNs sender — see PushSender::platforms().
+            /*
+             * Derived from the senders that exist rather than listed here, so
+             * the rule and the capability cannot drift apart. Both platforms
+             * have one today.
+             *
+             * This comment said "iOS is absent until there is an APNs sender"
+             * for as long as that was true, and then for a while after it was
+             * not — the Android module spotted it sitting one line above the
+             * rule that had started accepting iOS. That is the more dangerous
+             * half of the same mistake they had made in a docblock: a docblock
+             * nobody executes is read by somebody curious, and THIS is read by
+             * somebody deciding whether iOS is wired, next to the code that
+             * proves it is.
+             *
+             * What the endpoint still cannot check: an iOS row is only
+             * deliverable if the token came from `registerForRemoteNotifications`
+             * rather than from PushKit. Both are hex strings of plausible
+             * length and this rule cannot tell them apart — the guarantee lives
+             * in the Swift half and in the client returning early off Android.
+             */
             'platform' => ['required', 'string', Rule::in(app(PushSender::class)->platforms())],
         ]);
 
