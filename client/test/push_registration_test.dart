@@ -67,9 +67,12 @@ void main() {
   });
 
   test('registers nothing off Android, without asking for a token', () async {
-    // iOS is refused by the endpoint on purpose: the same plugin property
-    // holds a PushKit VoIP token there, which cannot receive a notification.
-    // Stopping here means we never present one for refusal.
+    // Not because iOS has no push — it does, there is an APNs sender. Because
+    // the token THIS class can reach is a PushKit VoIP token on iOS, which can
+    // never receive a notification. An iOS token comes from the Swift side.
+    // Asserting the channel is never called is the point: a token we never
+    // produce cannot be sent by a later refactor that trusts the endpoint to
+    // refuse it.
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final asked = mockChannel('a-voip-token-that-must-not-be-sent');
 

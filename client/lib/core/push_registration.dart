@@ -12,12 +12,19 @@ import 'api_client.dart';
 /// told about. Nothing sent one, so the server had a working sender and
 /// nowhere to send.
 ///
-/// Android only. iOS is refused by the endpoint itself, deliberately: the
-/// token below is the FCM registration token, and on iOS the same plugin
-/// property holds a PushKit VoIP token instead — a different credential that
-/// wakes an app for a CALL and cannot receive a notification. A row carrying
-/// one would read as registered and never deliver, which is the failure this
-/// module spent a week inside. iOS joins when there is an APNs sender.
+/// Android only, and that is about where the TOKEN comes from, not about
+/// whether iOS has push.
+///
+/// The endpoint accepts `ios` as of 6fe522bf — there is an APNs sender. What
+/// it must never be given is the token THIS class can reach: on iOS the same
+/// plugin property holds a PushKit VoIP token, a different credential that
+/// wakes an app for a CALL and can never receive a notification. A row
+/// carrying one reads as registered and never delivers, which is the failure
+/// this module spent a week inside.
+///
+/// So the guard below returns before even asking for a token off Android. An
+/// iOS token has to come from `registerForRemoteNotifications` on the Swift
+/// side, which belongs to whoever owns client/ios/, not here.
 class PushRegistration {
   /// The channel MainActivity.kt answers. Declared here rather than shared
   /// with the phone module's copy: one const string in two files is cheaper
