@@ -53,4 +53,25 @@ class ContentController extends Controller
             );
         }
     }
+
+    /**
+     * GET /api/v1/web/sites/{site}/content/options
+     *
+     * The authors and categories the SITE has, for the two dropdowns on a
+     * page's own screen. Read live for the same reason the pages are: a list
+     * typed in EzBizi would drift from the website the first time somebody left.
+     */
+    public function options(WebSite $site): JsonResponse
+    {
+        $this->authorize('view', $site);
+
+        try {
+            return response()->json($this->content->options($site));
+        } catch (RuntimeException $e) {
+            return response()->json(
+                ['message' => $e->getMessage()],
+                Response::HTTP_BAD_GATEWAY,
+            );
+        }
+    }
 }

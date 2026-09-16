@@ -208,6 +208,35 @@ class SeoFields
                 'hint' => 'The line that sits under the name. Yours, not a description of the trade.',
                 'requirement' => self::OPTIONAL,
             ],
+            /*
+             * Three that earn their place on a PAGE rather than on a site.
+             *
+             * They are in the same catalogue as everything else because the
+             * plugin turns a catalogue key into a shortcode and there is no
+             * second mechanism — a page-only catalogue would be a second list
+             * to keep in step, and the first thing to fall out of step is the
+             * one nobody renders.
+             *
+             * Author and category are CHOSEN from the website's own lists
+             * rather than typed, and stored here. Nothing is written back to
+             * WordPress: the account we hold could set a post's author and
+             * deliberately does not.
+             */
+            'group' => [
+                'label' => 'Group',
+                'hint' => 'Your own label for organising pages. Usually set per page.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'author' => [
+                'label' => 'Author',
+                'hint' => 'Chosen from the people on this website. Usually set per page.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'category' => [
+                'label' => 'Category',
+                'hint' => 'Chosen from this website\'s categories. Usually set per page.',
+                'requirement' => self::OPTIONAL,
+            ],
         ]);
     }
 

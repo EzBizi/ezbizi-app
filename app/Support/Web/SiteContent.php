@@ -96,6 +96,81 @@ final class SiteContent
     }
 
     /**
+     * Who may be named as an author, and what a post may be filed under.
+     *
+     * Read from the customer's own WordPress rather than typed in EzBizi: a
+     * dropdown of names somebody invented here would drift away from the site
+     * the moment an author left, and the point of the field is to say something
+     * true about the page.
+     *
+     * NOTHING IS WRITTEN. The account we hold could set a post's author, and
+     * deliberately does not — publishing from EzBizi is a decision nobody has
+     * taken. These are stored as this page's values, the same as its phone
+     * number, and the site remains the only thing that edits the site.
+     *
+     * @return array{authors: array<int, array<string, mixed>>, categories: array<int, array<string, mixed>>}
+     */
+    public function options(WebSite $site): array
+    {
+        return [
+            'authors' => $this->lookup($site, 'wp/v2/users', 'name'),
+            'categories' => $this->lookup($site, 'wp/v2/categories', 'name'),
+        ];
+    }
+
+    /**
+     * One list of named things from WordPress.
+     *
+     * 100 is WordPress's own per_page ceiling and there is no paging here on
+     * purpose: a dropdown with more than a hundred entries is not a dropdown,
+     * and a site with that many authors wants a different screen rather than a
+     * longer list.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function lookup(WebSite $site, string $route, string $nameField): array
+    {
+        if (! $site->isServiceLinked() || $site->service_rest_url === null) {
+            throw new RuntimeException(
+                'This website has not given EzBizi an account yet. Update the plugin on '
+                .$site->host.' and open its WordPress admin once.'
+            );
+        }
+
+        $response = Http::withBasicAuth($site->service_user_login, $site->service_password)
+            ->accept('application/json')
+            ->timeout(12)
+            ->get($this->restBase($site).$route, [
+                'per_page' => 100,
+                'orderby' => 'name',
+                'order' => 'asc',
+                '_fields' => 'id,name,slug',
+            ]);
+
+        if ($response->status() === 401 || $response->status() === 403) {
+            throw new RuntimeException(
+                'The account on '.$site->host.' was refused. Its application password may '
+                .'have been deleted in WordPress — reissue the site token to pair again.'
+            );
+        }
+
+        if (! $response->successful()) {
+            throw new RuntimeException(
+                $site->host.' answered '.$response->status().' when asked who its authors are.'
+            );
+        }
+
+        $body = $response->json();
+
+        return array_map(fn ($row) => [
+            'id' => (int) ($row['id'] ?? 0),
+            // Entities again — "O&#039;Brien" would otherwise reach a dropdown.
+            'name' => html_entity_decode((string) ($row[$nameField] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            'slug' => (string) ($row['slug'] ?? ''),
+        ], is_array($body) ? $body : []);
+    }
+
+    /**
      * The REST root, re-checked against the host this site's token names.
      *
      * Validated on write too. Checked again because the check that matters is
