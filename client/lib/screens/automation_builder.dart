@@ -122,6 +122,16 @@ class _ActionRow {
   final value = TextEditingController();
   final url = TextEditingController();
   final message = TextEditingController();
+
+  /// WhatsApp: the chosen template and one controller per blank it declares.
+  ///
+  /// The COUNT comes from the server, never from counting {{n}} in the preview:
+  /// Meta numbers positionally and "{{1}} owes {{3}}" is a three-parameter
+  /// template with a gap. Deriving it would be right on every template anybody
+  /// tested and wrong on the one with a hole in it, at send time.
+  String whatsAppTemplate = '';
+  int whatsAppParameters = 0;
+  final List<TextEditingController> whatsAppValues = [];
   final Map<String, TextEditingController> parameters = {};
   final Set<String> attachedParameters = {};
 
@@ -199,6 +209,14 @@ class _ActionRow {
         'value': value.text,
       },
       'webhook' => {'type': 'webhook', 'url': url.text.trim()},
+      'whatsapp.send' => {
+        'type': 'whatsapp.send',
+        'template': whatsAppTemplate,
+        'to_field': parameter('to_field').text.trim(),
+        'parameters': [
+          for (final c in whatsAppValues) c.text,
+        ],
+      },
       // Phone actions take no form fields — the subject of the event is enough.
       'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
       _ => throw StateError(
@@ -222,6 +240,7 @@ class _ActionRow {
     // the picker would have shown "Needs a newer version of the app" on a build
     // that has the form, with nothing to explain it.
     'email.send',
+    'whatsapp.send',
   };
 
   void dispose() {
@@ -229,6 +248,9 @@ class _ActionRow {
     value.dispose();
     url.dispose();
     message.dispose();
+    for (final c in whatsAppValues) {
+      c.dispose();
+    }
     for (final controller in parameters.values) {
       controller.dispose();
     }
@@ -322,6 +344,41 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// somebody to two different screens - buy a number, or get an existing one
   /// approved - so the picker has to say which.
   int _linesHeld = 0;
+
+  /// The approved WhatsApp templates, and WHY there are none when there are none.
+  ///
+  /// Two different empty answers — no number attached, and nothing approved yet —
+  /// and the Meta session carries the reason on both. Rendered verbatim rather
+  /// than replaced with a sentence of mine: they know which it is and I do not,
+  /// and "nothing approved yet" is what Jose sees today because `report_summary`
+  /// is still PENDING with Meta.
+  List<({String name, int parameters, String preview})> _whatsAppTemplates =
+      const [];
+  String? _whatsAppBecause;
+
+  Future<void> _loadWhatsAppTemplates() async {
+    final response = await widget.api.get('/automations/whatsapp-templates');
+    if (!mounted) return;
+
+    setState(() {
+      // `response.data` IS the `data` value, not the envelope — so the list is
+      // here and `because` is a sibling of it, read off the body.
+      _whatsAppTemplates = response.ok
+          ? [
+              for (final row in (response.data as List? ?? const []))
+                if (row is Map<String, dynamic>)
+                  (
+                    name: (row['name'] ?? '').toString(),
+                    parameters: (row['parameters'] as num?)?.toInt() ?? 0,
+                    preview: (row['preview'] ?? '').toString(),
+                  ),
+            ]
+          : const [];
+      _whatsAppBecause = response.ok
+          ? (response.body['because'] as String?)
+          : 'The WhatsApp templates could not be read just now.';
+    });
+  }
 
   Future<void> _loadPhoneLines() async {
     final response = await widget.api.get('/phone/numbers');
@@ -426,6 +483,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     _name.addListener(_changed);
     _description.addListener(_changed);
     _loadPhoneLines();
+    _loadWhatsAppTemplates();
 
     final editing = widget.editing;
 
@@ -1054,6 +1112,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         'notify' when action.parameter('message').text.trim().isEmpty =>
           'The notification step needs a message.',
         'sms.send' => _missingParameter(action, 'sms.send'),
+        'email.send' => _missingParameter(action, 'email.send'),
+        // Refused HERE rather than by Meta. Meta catches a short parameter list
+        // too — at send time, in the run log, on the rule that looked finished.
+        'whatsapp.send' when action.whatsAppTemplate.isEmpty =>
+          'The WhatsApp step needs a template.',
+        'whatsapp.send'
+            when action.parameter('to_field').text.trim().isEmpty =>
+          'The WhatsApp step needs a field to take the number from.',
+        'whatsapp.send'
+            when action.whatsAppValues.any((c) => c.text.trim().isEmpty) =>
+          'Every blank in the WhatsApp template needs a value — Meta rejects a '
+              'template sent with one missing.',
         _ => null,
       };
 
@@ -1971,6 +2041,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       ),
       'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
       'email.send' => _parameterForm(row, widget.catalogue.actionType('email.send')),
+      'whatsapp.send' => _whatsAppForm(row),
       // Was the bespoke Message box below. It had to move in the same commit as
       // the server declaring the parameter: _payload() flips to the generic
       // branch on the first declared parameter and reads the PARAMETER
@@ -2067,32 +2138,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // typed destination and that is deliberate — the line there is the
           // tenant's own.
           else if (definition.parameters[i].kind == 'trigger_field')
-            DropdownMenu<String>(
-              initialSelection:
-                  row.parameter(definition.parameters[i].key).text.isEmpty
-                  ? null
-                  : row.parameter(definition.parameters[i].key).text,
-              enabled: !_busy && _triggerFields.isNotEmpty,
-              label: Text(definition.parameters[i].label),
-              expandedInsets: EdgeInsets.zero,
-              enableFilter: true,
-              requestFocusOnTap: true,
-              helperText: _triggerFields.isEmpty
-                  ? (_trigger == null
-                        ? 'Choose what sets the rule off first.'
-                        : 'Nothing of this kind has happened here yet, so there '
-                              'are no fields to choose from.')
-                  : null,
-              onSelected: _busy
-                  ? null
-                  : (chosen) => setState(
-                      () => row.parameter(definition.parameters[i].key).text =
-                          chosen ?? '',
-                    ),
-              dropdownMenuEntries: [
-                for (final field in _triggerFields)
-                  DropdownMenuEntry<String>(value: field, label: field),
-              ],
+            _triggerFieldPicker(
+              row,
+              definition.parameters[i].key,
+              definition.parameters[i].label,
             )
           else if (definition.parameters[i].kind == 'boolean')
             // A yes/no answer, drawn as a switch.
@@ -2144,6 +2193,126 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               ),
             ),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  /// WHICH FIELD OF THE EVENT carries the address or number.
+  ///
+  /// Shared by the email step's declared parameter and the WhatsApp step's own
+  /// form, because they are asking the same question and a second copy would
+  /// answer it differently the first time either changed.
+  ///
+  /// Not a typed destination, and that is the point on both: these send on
+  /// EzBizi's own sending identity and EzBizi's own WhatsApp number, shared by
+  /// every tenant, so a rule that could write to any address is a spam cannon
+  /// with the platform's reputation behind it. `sms.send` takes a typed number
+  /// on purpose — the line there is the tenant's own.
+  Widget _triggerFieldPicker(_ActionRow row, String key, String label) {
+    return DropdownMenu<String>(
+      initialSelection: row.parameter(key).text.isEmpty
+          ? null
+          : row.parameter(key).text,
+      enabled: !_busy && _triggerFields.isNotEmpty,
+      label: Text(label),
+      expandedInsets: EdgeInsets.zero,
+      enableFilter: true,
+      requestFocusOnTap: true,
+      helperText: _triggerFields.isEmpty
+          ? (_trigger == null
+                ? 'Choose what sets the rule off first.'
+                : 'Nothing of this kind has happened here yet, so there are no '
+                      'fields to choose from.')
+          : null,
+      onSelected: _busy
+          ? null
+          : (chosen) => setState(() => row.parameter(key).text = chosen ?? ''),
+      dropdownMenuEntries: [
+        for (final field in _triggerFields)
+          DropdownMenuEntry<String>(value: field, label: field),
+      ],
+    );
+  }
+
+  /// Pick an approved template, say who it goes to, fill its blanks.
+  ///
+  /// The blanks are drawn from the SERVER's count, not from the preview text:
+  /// Meta numbers positionally and "{{1}} owes {{3}}" is three with a gap, so
+  /// counting placeholders would be right on every template anybody tested and
+  /// wrong at send time on the one with a hole. The save is refused when a blank
+  /// is empty for the same reason — Meta would catch it, in the run log, later.
+  Widget _whatsAppForm(_ActionRow row) {
+    if (_whatsAppTemplates.isEmpty) {
+      return _note(
+        _whatsAppBecause ??
+            'No WhatsApp templates are available for this business yet.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: row.whatsAppTemplate.isEmpty
+              ? null
+              : row.whatsAppTemplate,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Template',
+            isDense: true,
+            helperText: 'Only templates Meta has approved are listed.',
+          ),
+          items: [
+            for (final template in _whatsAppTemplates)
+              DropdownMenuItem(
+                value: template.name,
+                child: Text(
+                  template.preview.isEmpty
+                      ? template.name
+                      : '${template.name} — ${template.preview}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: _busy
+              ? null
+              : (chosen) => setState(() {
+                  row.whatsAppTemplate = chosen ?? '';
+
+                  final picked = _whatsAppTemplates
+                      .where((t) => t.name == chosen)
+                      .firstOrNull;
+
+                  row.whatsAppParameters = picked?.parameters ?? 0;
+
+                  // Rebuilt rather than resized: a leftover controller from a
+                  // previous template would carry its value into a blank that
+                  // means something else.
+                  for (final c in row.whatsAppValues) {
+                    c.dispose();
+                  }
+                  row.whatsAppValues
+                    ..clear()
+                    ..addAll([
+                      for (var i = 0; i < row.whatsAppParameters; i++)
+                        TextEditingController()..addListener(_changed),
+                    ]);
+                }),
+        ),
+        const SizedBox(height: 10),
+        _triggerFieldPicker(row, 'to_field', 'Send to the number in'),
+        for (var i = 0; i < row.whatsAppValues.length; i++) ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: row.whatsAppValues[i],
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: 'Blank ${i + 1}',
+              isDense: true,
+              helperText: 'Use {{ field }} to take it from the record.',
+            ),
+          ),
         ],
       ],
     );

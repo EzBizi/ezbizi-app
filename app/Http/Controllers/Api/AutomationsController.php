@@ -78,6 +78,7 @@ class AutomationsController extends Controller
         // bare `mark_dealt` in the namespace every module shares.
         'message.mark_dealt',
         'email.send',
+        'whatsapp.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
@@ -1418,6 +1419,22 @@ class AutomationsController extends Controller
              * that is accepted and ignored: an attachment from ezbizi.com on a
              * message a tenant composed is a phishing vector wearing our domain.
              */
+            /*
+             * A TEMPLATE, never free text, and that is Meta's rule rather than
+             * ours: WhatsAppCloud::sendText's own docblock says free text is
+             * accepted only inside the 24-hour window after the customer wrote
+             * to us. An automation is by definition a message the business
+             * starts - a job booked, a lead arriving - and almost never inside
+             * that window. A message box here would work whenever somebody
+             * tried it right after a reply and silently fail for everybody else.
+             *
+             * No declared parameters: the form's SHAPE depends on which template
+             * is picked, because each has its own number of blanks. Same reason
+             * `update_field` draws its own form - its options depend on the
+             * subject - rather than a bespoke form for its own sake.
+             */
+            $type('whatsapp.send', 'Send a WhatsApp message'),
+
             $type('email.send', 'Send an email', false, [
                 $parameter('to_field', 'Send to the address in', 'trigger_field'),
                 $parameter('subject', 'Subject', 'text'),

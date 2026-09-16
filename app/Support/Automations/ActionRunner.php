@@ -10,6 +10,7 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Social\WhatsAppCloud;
 use Illuminate\Support\Facades\Cache;
 use App\Models\Company;
 use App\Mail\AutomationMessage;
@@ -42,6 +43,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
+use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use App\Models\PhoneMessage;
 use App\Support\Phone\SmsCompliance;
@@ -291,6 +293,7 @@ class ActionRunner
         private readonly AssignmentWriter $trainingAssignments,
         private readonly DealtState $dealt,
         private readonly MailDispatcher $mail,
+        private readonly WhatsAppCloud $whatsapp,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -336,6 +339,7 @@ class ActionRunner
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
+            'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
@@ -701,6 +705,83 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * EzBizi's WhatsApp number, sending an APPROVED TEMPLATE.
+     *
+     * Not free text, and the constraint is Meta's rather than ours: free text is
+     * accepted only inside the 24-hour window after the customer wrote to us,
+     * and an automation is by definition a message the business starts. A
+     * message box would have worked whenever somebody tested it just after a
+     * reply and failed silently for every real use.
+     *
+     * ── What a throw does and does not mean ──────
+     *
+     * `WhatsAppCloud::send()` refuses for three different reasons and its
+     * messages are written to be shown, so they are rendered VERBATIM rather
+     * than wrapped. That matters for one of the three: when Meta is unreachable
+     * the row is left at `queued` with no wamid - deliberately, the outbox shape
+     * - so the message may still be owed. This does NOT add a sentence claiming
+     * nothing was sent, because for that case it would be false. Their words
+     * say what happened; mine would be a guess about which branch threw.
+     */
+    private function sendWhatsApp(array $action, AutomationEvent $event): array
+    {
+        $type = 'whatsapp.send';
+        $template = trim((string) ($action['template'] ?? ''));
+        $field = trim((string) ($action['to_field'] ?? ''));
+
+        if ($template === '' || $field === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step needs a template and a field to send to.',
+            ];
+        }
+
+        $to = $this->valueFromEvent($field, $event);
+
+        if (! is_string($to) || trim($to) === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => "This event carried nothing in \"{$field}\", so there was no number to "
+                    .'send to.',
+            ];
+        }
+
+        // Passed as written. Their `send()` normalises "(305) 724-2199" and
+        // "+1 305 724 2199" alike, and refuses what it cannot be sure of rather
+        // than guessing - so cleaning it here would only give it worse input.
+        $parameters = array_map(
+            fn ($value) => $this->interpolate((string) $value, $event, null),
+            array_values((array) ($action['parameters'] ?? [])),
+        );
+
+        try {
+            $row = $this->whatsapp->send(
+                $template,
+                $to,
+                $parameters,
+                (string) ($action['language'] ?? 'en_US'),
+            );
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.whatsapp_sent', $event, metadata: [
+            'template' => $template,
+            'to' => $row->counterparty,
+        ]);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            // The NUMBER a customer sees is EzBizi's, not this business's, so the
+            // line does not say "your WhatsApp". Said plainly because a rule
+            // author reading it needs to know which number replies come back to.
+            'detail' => "Sent the \"{$template}\" template to {$row->counterparty} from EzBizi's "
+                ."WhatsApp number (status: {$row->status}).",
+        ];
     }
 
     /**

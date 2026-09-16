@@ -667,6 +667,68 @@ void main() {
     expect(find.textContaining('Voice only'), findsNothing);
   });
 
+  /// A WhatsApp step is a template with its blanks filled, never a message box.
+  ///
+  /// Meta accepts free text only inside the 24-hour window after the customer
+  /// wrote in, and an automation is by definition a message the business starts.
+  /// A message box would have worked whenever somebody tried it right after a
+  /// reply and failed silently for every real use.
+  ///
+  /// THE BLANK COUNT COMES FROM THE SERVER. This template declares 2 while its
+  /// preview shows {{1}} and {{3}} — a real Meta shape, numbered positionally
+  /// with a gap — so a builder that counted placeholders would draw the wrong
+  /// number of boxes. Two boxes is the assertion that it did not count.
+  testWidgets('a WhatsApp step fills the template blanks the server declared', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(
+      onCreate: (body) => sent = body,
+      triggerFields: const ['phone', 'contact_name'],
+      whatsAppTemplates: const [
+        {
+          'name': 'appointment_reminder',
+          'parameters': 2,
+          'preview': 'Hi {{1}}, your visit is {{3}}.',
+        },
+      ],
+    ));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Remind them');
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a WhatsApp message'));
+
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.textContaining('appointment_reminder').last);
+
+    expect(find.text('Blank 1'), findsOneWidget);
+    expect(find.text('Blank 2'), findsOneWidget);
+    expect(find.text('Blank 3'), findsNothing);
+
+    // A blank left empty is refused HERE. Meta refuses it too — at send time,
+    // in the run log, on a rule that looked finished.
+    await _type(tester, 'Blank 1', '{{ contact_name }}');
+    expect(_saveButton(tester).onPressed, isNull);
+
+    await _type(tester, 'Blank 2', 'tomorrow');
+
+    await _tap(tester, find.byType(DropdownMenu<String>).last);
+    await _tap(tester, find.text('phone').last);
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect((sent!['actions'] as List).single, {
+      'type': 'whatsapp.send',
+      'template': 'appointment_reminder',
+      'to_field': 'phone',
+      'parameters': ['{{ contact_name }}', 'tomorrow'],
+    });
+  });
+
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -1551,6 +1613,7 @@ MockClientHandler _handler({
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
   Map<String, List<Map<String, String>>>? triggerFieldValues,
+  List<Map<String, Object?>>? whatsAppTemplates,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
   // does not say produces an administrator — which is what every one of these
@@ -1620,6 +1683,14 @@ MockClientHandler _handler({
       }
 
       return _json({'data': list});
+    }
+
+    if (path.endsWith('/automations/whatsapp-templates')) {
+      return _json({
+        'data': whatsAppTemplates ?? const [],
+        if (whatsAppTemplates == null || (whatsAppTemplates as List).isEmpty)
+          'because': 'No WhatsApp template has been approved yet.',
+      });
     }
 
     if (path.endsWith('/phone/numbers') && request.method == 'GET') {
@@ -1844,6 +1915,9 @@ const _catalogue = {
     // now rather than the builder drawing a bespoke box for it. Kept in step
     // because the form is built from this, so a fixture still saying
     // "no parameters" draws no field and the rule cannot be written at all.
+    // Generic like notify: no parameters declared, because the form's shape
+    // depends on which template is picked.
+    {'key': 'whatsapp.send', 'label': 'Send a WhatsApp message'},
     {
       'key': 'notify',
       'label': 'Send a notification',
