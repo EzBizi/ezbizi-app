@@ -2151,6 +2151,16 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // with the whole platform's reputation behind it. `sms.send` takes a
           // typed destination and that is deliberate — the line there is the
           // tenant's own.
+          // THREE SOURCES, ONE BOX, AND TYPING IS ALLOWED. A person here, a
+          // field of the event, or an address somebody types. Jose asked for
+          // the first and last on 2026-09-16; the middle one is what the step
+          // shipped with.
+          else if (definition.parameters[i].kind == 'recipient')
+            _recipientPicker(
+              row,
+              definition.parameters[i].key,
+              definition.parameters[i].label,
+            )
           else if (definition.parameters[i].kind == 'trigger_field')
             _triggerFieldPicker(
               row,
@@ -2274,6 +2284,81 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ),
       ],
     );
+  }
+
+  /// Who an email goes to: somebody here, a field of the event, or a typed address.
+  ///
+  /// The TEXT BOX is the value, and the menu beside it fills it in. That way
+  /// typing an address is not a special case bolted onto a dropdown — it is the
+  /// ordinary thing, and choosing is the shortcut. A DropdownMenu that also
+  /// accepted free text would have to guess whether half-typed text was a choice
+  /// or a value, and guesses like that are how a field silently discards what
+  /// somebody typed.
+  ///
+  /// A person is stored as `user:<id>`, never as their address, so the rule
+  /// follows them when they change it and refuses when they leave.
+  Widget _recipientPicker(_ActionRow row, String key, String label) {
+    final controller = row.parameter(key);
+
+    final choices = <CatalogueChoice>[
+      ...widget.catalogue.people,
+      for (final field in _triggerFields)
+        CatalogueChoice(key: field, label: 'From the event: $field'),
+    ];
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            controller: controller,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: label,
+              isDense: true,
+              helperText: _describeRecipient(controller.text.trim()),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          enabled: !_busy && choices.isNotEmpty,
+          tooltip: 'Choose a person or a field',
+          icon: const Icon(Icons.arrow_drop_down_circle_outlined),
+          onSelected: (chosen) => setState(() => controller.text = chosen),
+          itemBuilder: (context) => [
+            for (final choice in choices)
+              PopupMenuItem(value: choice.key, child: Text(choice.label)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Says which of the three a stored value is, so nobody has to know the syntax.
+  String _describeRecipient(String value) {
+    if (value.isEmpty) {
+      return 'Type an address, or choose a person or a field of the event.';
+    }
+
+    if (value.startsWith('user:')) {
+      final person = widget.catalogue.people
+          .where((p) => p.key == value)
+          .firstOrNull;
+
+      return person == null
+          // The person is gone from the list — left, switched off, or lost their
+          // address. Said here rather than at run time, where it would be a
+          // failed step somebody reads days later.
+          ? 'This person no longer works here, so nothing would be sent.'
+          : 'Goes to ${person.label}. If they change their address it follows them.';
+    }
+
+    if (value.contains('@')) return 'Goes to this address every time.';
+
+    return _triggerFields.contains(value)
+        ? 'Goes to whatever this event carries in “$value”.'
+        : 'Not an address, and this event does not carry a field called “$value”.';
   }
 
   /// WHICH FIELD OF THE EVENT carries the address or number.

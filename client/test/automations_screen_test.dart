@@ -1942,6 +1942,9 @@ const _catalogue = {
       'declared_actions': [],
     },
   ],
+  'people': [
+    {'id': 'user:u-1', 'label': 'Dana Office — dana@alpha.test'},
+  ],
   'roles': [
     {'id': 'role-office', 'label': 'Office'},
     {'id': 'role-tech', 'label': 'Technicians'},

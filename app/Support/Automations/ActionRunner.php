@@ -1231,7 +1231,7 @@ class ActionRunner
             ];
         }
 
-        $to = $this->valueFromEvent($field, $event);
+        $to = $this->emailRecipient($field, $event);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
             return [
@@ -1240,7 +1240,10 @@ class ActionRunner
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
                 'detail' => $to === null || $to === ''
-                    ? "This event carried nothing in \"{$field}\", so there was no address to send to."
+                    ? (str_starts_with($field, self::RECIPIENT_USER)
+                        ? 'The person this step sends to no longer works here, or has no email '
+                            .'address, so there was nobody to send to.'
+                        : "This event carried nothing in \"{$field}\", so there was no address to send to.")
                     : "\"{$field}\" held ".json_encode($to).', which is not an email address.',
             ];
         }
@@ -1270,6 +1273,60 @@ class ActionRunner
         $this->audit->log('automation.emailed', $event, metadata: ['to' => $to]);
 
         return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$to}: {$subject}"];
+    }
+
+    /** Prefix marking a stored recipient as a person rather than a field or an address. */
+    private const RECIPIENT_USER = 'user:';
+
+    /**
+     * Who the email goes to: a person here, a field of the event, or an address.
+     *
+     * ── Three sources, one stored string, and the order is deliberate ──────
+     *
+     *   "user:<id>"        somebody who works here. Stored as an ID rather than
+     *                      their address, so the rule follows them when they
+     *                      change it and refuses when they leave. An address
+     *                      copied at build time would quietly keep mailing a
+     *                      mailbox nobody reads.
+     *   a field name       the address the EVENT carried - the customer who
+     *                      enquired, the person who wrote in.
+     *   anything else      a literal address somebody typed.
+     *
+     * ── Why a typed address is allowed at all ──────
+     *
+     * It was deliberately absent at first. This sends on EzBizi's own transport
+     * and sending identity, shared by every tenant, so a rule that could email
+     * anywhere is a spam cannon with the platform's reputation behind it - one
+     * business's complaint rate suppresses sign-in and password-reset delivery
+     * for all of them. Jose asked for it directly on 2026-09-16: "it should let
+     * me select users ( since they have emails attached to them ) or also let me
+     * type an email".
+     *
+     * What holds the risk instead: 100 sends per rule per hour here, 500 per
+     * business per hour in MailDispatcher, both refusing with a line in the run
+     * log rather than dropping silently. Those are volume limits and NOT
+     * reputation monitoring - there is still no bounce route and no complaint
+     * table, which is the thing that would actually see a tenant going wrong.
+     * That gap is with Jose and is the reason this docblock names it.
+     */
+    private function emailRecipient(string $stored, AutomationEvent $event): mixed
+    {
+        if (str_starts_with($stored, self::RECIPIENT_USER)) {
+            $user = User::query()
+                ->where('is_active', true)
+                ->find(substr($stored, strlen(self::RECIPIENT_USER)));
+
+            return $user?->email;
+        }
+
+        // A literal address is stored as itself. Checked before the event,
+        // because a payload key will never look like an address and an address
+        // is never a payload key - so the test cannot be ambiguous.
+        if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+            return $stored;
+        }
+
+        return $this->valueFromEvent($stored, $event);
     }
 
     /**

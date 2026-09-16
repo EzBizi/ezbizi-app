@@ -385,6 +385,32 @@ class AutomationsController extends Controller
                  * No permissions, no user counts - a name is what a rule names
                  * and everything else on a Role is somebody else's business.
                  */
+                /*
+                 * The people an email step can be addressed to. Id and name and
+                 * the address, because a picker showing two people called Dave
+                 * without their addresses cannot be used.
+                 *
+                 * Served here rather than fetched from /users, which is gated on
+                 * `users.view` - a rule author holds `automations.edit` and need
+                 * not hold that. Same reasoning as roles below and as the
+                 * WhatsApp templates endpoint: gate on the tab the question is
+                 * being asked from.
+                 *
+                 * ACTIVE ONLY, and with an address: somebody switched off cannot
+                 * be a destination, and offering a person with no email address
+                 * is offering a choice that refuses at run time.
+                 */
+                'people' => User::query()
+                    ->where('is_active', true)
+                    ->whereNotNull('email')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'email'])
+                    ->map(fn (User $u) => [
+                        'id' => 'user:'.$u->id,
+                        'label' => trim($u->name.' — '.$u->email),
+                    ])
+                    ->all(),
+
                 'roles' => Role::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -1518,7 +1544,18 @@ class AutomationsController extends Controller
             ]),
 
             $type('email.send', 'Send an email', false, [
-                $parameter('to_field', 'Send to the address in', 'trigger_field'),
+                // THREE SOURCES IN ONE BOX: somebody who works here, a field of
+                // the event, or an address typed in. Stored as one string -
+                // "user:<id>", a field name, or a literal address - because the
+                // alternative is three parameters with an exclusive-or between
+                // them, which is a rule every reader has to learn and every
+                // validator has to repeat.
+                //
+                // A PERSON IS STORED AS AN ID, not as their address. The rule
+                // then follows them when they change it and refuses when they
+                // leave; an address copied at build time would keep mailing a
+                // mailbox nobody reads.
+                $parameter('to_field', 'Send to', 'recipient'),
                 $parameter('subject', 'Subject', 'text'),
                 $parameter('body', 'Message', 'rich_text'),
             ]),

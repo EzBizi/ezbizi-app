@@ -1094,6 +1094,68 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * An email step addresses a person, a field of the event, or a typed address.
+     *
+     * Jose asked for the first and third on 2026-09-16; the middle is what it
+     * shipped with. All three end in one stored string, so the test that matters
+     * is that each resolves to a DIFFERENT address — a resolver that always fell
+     * back to one source would pass any single-case test.
+     *
+     * A PERSON IS STORED AS AN ID. The last case is why: change their address
+     * and the rule follows, because nothing copied the old one at build time.
+     */
+    public function test_an_email_step_resolves_a_person_a_field_or_a_typed_address(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+        $admin = $this->org['admin'];
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'email.received',
+            'payload' => ['from_address' => 'enquirer@example.test'],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $send = fn (string $to) => $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => $to, 'subject' => 'Hello', 'body' => 'Hi.'],
+            $event, null,
+        ));
+
+        $person = $send('user:'.$admin->id);
+        $this->assertTrue($person['ok'], $person['detail'] ?? '');
+        $this->assertStringContainsString($admin->email, $person['detail']);
+
+        $typed = $send('someone@example.test');
+        $this->assertTrue($typed['ok'], $typed['detail'] ?? '');
+        $this->assertStringContainsString('someone@example.test', $typed['detail']);
+
+        $fromEvent = $send('from_address');
+        $this->assertTrue($fromEvent['ok'], $fromEvent['detail'] ?? '');
+        $this->assertStringContainsString('enquirer@example.test', $fromEvent['detail']);
+
+        // Three stored strings, three different destinations — so none of the
+        // three is being reached by accident through another's path.
+        Mail::assertSent(AutomationMessage::class, 3);
+
+        // THE POINT OF STORING AN ID. The rule was written against the person,
+        // not the address they had that day.
+        $this->inTenant(fn () => $admin->forceFill(['email' => 'moved@example.test'])->save());
+
+        $after = $send('user:'.$admin->id);
+        $this->assertStringContainsString('moved@example.test', $after['detail']);
+
+        // And somebody switched off is nobody, rather than a stale address.
+        $this->inTenant(fn () => $admin->forceFill(['is_active' => false])->save());
+
+        $gone = $send('user:'.$admin->id);
+        $this->assertFalse($gone['ok']);
+        $this->assertStringContainsString('no longer works here', $gone['detail']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose
