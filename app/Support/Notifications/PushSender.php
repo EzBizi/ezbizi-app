@@ -48,6 +48,29 @@ class PushSender
     private const TIMEOUT = 15;
 
     /**
+     * The platforms that can actually be delivered to today.
+     *
+     * DERIVED from the senders that exist rather than described in a validation
+     * rule somewhere else, because the two would drift apart silently and only
+     * one of them would be right.
+     *
+     * `ios` is deliberately absent: there is no APNs sender yet. Accepting an
+     * iOS token now would store a row that looks registered and can never be
+     * delivered to — and the Android module measured a sharper version of the
+     * same trap, that the token their plugin exposes on iOS is a PushKit VoIP
+     * token, a different credential from an APNs notification token. It wakes an
+     * app for a CALL and is not interchangeable. A registration endpoint that
+     * accepted it would fill this table with addresses that can never work,
+     * which is worse than refusing them, because a refusal is visible.
+     *
+     * @return string[]
+     */
+    public static function platforms(): array
+    {
+        return ['android'];
+    }
+
+    /**
      * Is there anything to send with?
      *
      * Asked rather than assumed because the credential is deliberately NOT in

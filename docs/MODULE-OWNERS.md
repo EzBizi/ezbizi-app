@@ -119,12 +119,21 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Web Management** | `Api/Web/` · `Models/WebSite.php` · `Models/WebValue.php` · `Support/Web/` · `Policies/WebSitePolicy.php` · `Dashboard/Glances/WebManagementGlance.php` · `screens/web/` · `wordpress-plugin/ezbizi/` · `tests/Feature/Web/` | `358b3db` `e1f4d9a` `4b1a087` `5ce9285` |
 | **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
-| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | **blank — review CLEARED 2026-08-31 and there is new Apple work waiting** |
+| **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` (EzBizi - Apple Module) |
 | **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
 
-> **iOS is unowned, and as of 2026-08-31 there is new Apple work waiting for an
-> owner.** Review **cleared** — the row said *mid-review* until then, and that is
-> the ordinary way an annotation goes stale: the fact moved and the file did not.
+> **iOS is OWNED as of 2026-09-04** by the Apple session above. This note read
+> "unowned" until 2026-09-16 - the second time this row went stale in exactly the
+> way it warns about: the fact moved and the file did not. What follows about
+> what the owner inherits still holds.
+>
+> **Since then:** iOS and macOS go up every cut, current at 0.0.0227. EU trader
+> status is RESOLVED and no longer blocks submission; the Mac App Store review
+> came back approved. Push Notifications is enabled on `com.ezbizi.app`, and
+> `client/ios/Runner/Runner.entitlements` carries `aps-environment = production`
+> on the **Release configuration only** - Debug and Profile claim nothing,
+> because no profile grants it there and a binary claiming an entitlement its
+> profile lacks is a hard signing failure, not a warning.
 > What the next owner inherits: `./scripts/build-app.sh ios --upload` ships a
 > build, signing and validation already wired; signing material lives on the Mac
 > relay and in `H:/Development/Credentials/`, which is **not** in git and must never

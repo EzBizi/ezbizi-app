@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Automations\CarriesAutomationScope;
 use App\Support\Privacy\Erasure;
 use App\Support\Privacy\HoldsPersonalData;
 use App\Support\Privacy\PersonalDataEntry;
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * message, no rule that can compose one. A reply to a lead is a message to a
  * stranger in the customer's name, and it goes out because a person sent it.
  */
-class Lead extends Model implements HoldsPersonalData, StatesRetention
+class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, StatesRetention
 {
     use BelongsToTenant;
     use HasUuids;
@@ -99,6 +100,51 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
      * last quarter did not stop being true because the account was disconnected
      * this morning.
      */
+    /**
+     * Where this enquiry sits in the business, for automations and notifications.
+     *
+     * ── What it fixes ───────────────────────────────────────────
+     *
+     * Without this, `NotificationDispatcher` falls through to sniffing
+     * `franchise_id` off the subject, finds null on a website chat, and takes
+     * the "nothing to scope by" branch - which notifies EVERY ACTIVE USER.
+     * Measured on production by Automations, 2026-09-16: all five website_chat
+     * leads carry a company and no franchise, so Jose's live "Live Chat Lead
+     * Warning" rule was telling all twelve people in the business about each
+     * one. Nothing was broken; it was the documented fallback being reached by
+     * a record shape the sniff was not written for.
+     *
+     * ── Three answers, not one ──────────────────────────────────
+     *
+     * The suggestion that came with the measurement was to return the company
+     * unconditionally. That is right for a website enquiry and wrong for the
+     * others: a lead from an ORGANIZATION-scoped connection carries company and
+     * franchise both null - which is every row from Thumbtack's twelve
+     * businesses - so a blanket answer hands back `['company', null]`, a scope
+     * type naming no id. The dispatcher would then ask "who can act on company
+     * null", and the honest answer to that question is nobody.
+     *
+     * So: the franchise when it has one, the company when it has one, and
+     * `[null, null]` when it has neither. The last case is not a shrug - the
+     * dispatcher reads it as the organization and narrows to the people who
+     * STAND at the organization rather than everybody in it, which is still
+     * tighter than the everybody-active branch this replaces.
+     *
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function automationScope(): array
+    {
+        if ($this->franchise_id !== null) {
+            return [Assignment::SCOPE_FRANCHISE, $this->franchise_id];
+        }
+
+        if ($this->company_id !== null) {
+            return [Assignment::SCOPE_COMPANY, $this->company_id];
+        }
+
+        return [null, null];
+    }
+
     public function scopeSourceStillConnected(Builder $query): Builder
     {
         return $query->where(function (Builder $q) {

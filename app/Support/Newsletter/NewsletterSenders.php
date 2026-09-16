@@ -19,6 +19,14 @@ use App\Support\Social\SocialProvider;
  *
  * ── Why "EzBizi sends it" is not in this map ────────────────────
  *
+ * **Read this as being about NEWSLETTERS only.** EzBizi's own SES does now
+ * carry tenant-authored automated mail — Jose asked for the `Send an email`
+ * automation action on 2026-09-16, "the Ezbizi SES one, not the company one",
+ * and it is live. Nothing below reverses that or applies to it. The two are
+ * different questions: an automation email is one message to one recipient
+ * taken from the event, and a newsletter is a list send whose bounce and
+ * complaint rate sets a domain's reputation.
+ *
  * Because EzBizi does not send newsletters, by design rather than by omission:
  * a mailing goes out on the tenant's own reputation, to their list, through
  * their provider. See the design doc §1.

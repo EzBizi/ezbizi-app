@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/client_platform.dart';
 import '../core/os_notifications.dart';
+import '../core/push_registration.dart';
 import 'side_panel.dart';
 import 'tag.dart';
 
@@ -99,6 +100,13 @@ class _NotificationBellState extends State<NotificationBell>
      * is the moment an app is expected to ask.
      */
     if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+
+    // Same moment, for the other half of notifications: enable() above asks
+    // the OS to SHOW one, and this tells the server which handset to WAKE.
+    // Android only; it returns immediately elsewhere. Hooked here because the
+    // comment above already establishes that this mount means "just signed
+    // in", which is when a device token is worth sending.
+    if (!ClientPlatform.isWeb) unawaited(PushRegistration.start(widget.api));
 
     _refresh();
     _poll = Timer.periodic(_pollEvery, (_) => unawaited(_refresh()));

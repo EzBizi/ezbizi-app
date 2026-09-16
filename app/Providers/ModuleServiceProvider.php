@@ -1258,10 +1258,32 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
-                        description: 'Puts the person a rule fired about onto a named mailing '
-                            .'list, so "a new customer joins the list" is a rule somebody can '
-                            .'write. It does not stand in for their agreement to be mailed, '
-                            .'which the list records separately.',
+                        /*
+                         * NOT BUILT, and the description used to promise
+                         * something that does not exist: "their agreement to be
+                         * mailed, which the list records separately". No list
+                         * records it. Measured 2026-09-16 — the ONLY consent
+                         * artefact in this module is `NewsletterUnsubscribe`,
+                         * which records people who said STOP. Nothing anywhere
+                         * records anybody saying yes.
+                         *
+                         * And there is nothing to add them TO. An audience is
+                         * `customers` (the recipients ARE the tenant's customer
+                         * records, synced to Mailchimp at send time) or
+                         * `mailchimp` (the members live in Mailchimp and EzBizi
+                         * must not write to them). There is no membership table,
+                         * so "add to audience" has no row to create.
+                         *
+                         * So this cannot be built as declared, and whether it
+                         * SHOULD be built is a consent question rather than a
+                         * code one — it is with Jose. Left declared and honest
+                         * rather than withdrawn, because withdrawing it would
+                         * decide that question by removing it.
+                         */
+                        description: 'Not built yet. It would add the person a rule fired about '
+                            .'to a mailing list. Nothing in EzBizi records that somebody agreed '
+                            .'to be mailed — only that they asked to stop — so what this should '
+                            .'do about that is still being decided.',
                     ),
                 ],
             ),
@@ -1355,6 +1377,24 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Contact form submitted',
                         description: 'Somebody filled in the contact form on one of your '
                             .'websites. It arrives in Leads at the same moment.',
+                    ),
+                    /*
+                     * The one that exists because of what 1.9.0 does: a site
+                     * EzBizi stops recognising takes its chat and contact form
+                     * down at once, so it stops collecting enquiries and says
+                     * so only in a WordPress notice nobody reads.
+                     *
+                     * Who should hear about that is a question about the
+                     * business, not about this module, so it is a trigger
+                     * rather than a notification I chose the recipient for.
+                     */
+                    new TriggerDefinition(
+                        key: 'website.went_quiet',
+                        label: 'Website stopped answering',
+                        description: 'A website that had been connected has not fetched its '
+                            .'details for a day. Its chat and contact form are no longer '
+                            .'showing, so it is not collecting enquiries. Usually its token '
+                            .'was changed or the plugin was removed.',
                     ),
                 ],
             ),
