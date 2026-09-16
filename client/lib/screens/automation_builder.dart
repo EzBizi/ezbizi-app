@@ -310,14 +310,33 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// with a different answer per company.
   List<(String, String)> _lines = const [];
 
+  /// How many lines the company holds BEFORE the messaging filter.
+  ///
+  /// Without it an empty picker has two causes and one sentence: no phone lines
+  /// at all, and lines that exist but none approved for texting. Those send
+  /// somebody to two different screens - buy a number, or get an existing one
+  /// approved - so the picker has to say which.
+  int _linesHeld = 0;
+
   Future<void> _loadPhoneLines() async {
     final response = await widget.api.get('/phone/numbers');
     if (!mounted || !response.ok) return;
 
+    final rows = (response.data as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+
     setState(() {
+      _linesHeld = rows.length;
       _lines = [
-        for (final row in (response.data as List? ?? const []))
-          if (row is Map<String, dynamic>)
+        for (final row in rows)
+          // ONLY LINES THAT MAY SEND A TEXT. Twilio approves outbound SMS per
+          // number, and a line without it accepts the rule, runs, and is refused
+          // by the carrier at send time - a failure that arrives in the run log
+          // long after the rule was written and reads as a Twilio problem rather
+          // than as a choice made in this picker. `sms_outbound_allowed` is what
+          // the Phone module already tracks for exactly this question.
+          if (row['sms_outbound_allowed'] == true)
             (
               (row['id'] ?? '').toString(),
               [
@@ -2009,9 +2028,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               decoration: InputDecoration(
                 labelText: definition.parameters[i].label,
                 isDense: true,
-                helperText: _lines.isEmpty
+                helperText: _lines.isNotEmpty
+                    ? 'Only lines approved for messaging are listed.'
+                    : _linesHeld == 0
                     ? 'No phone lines on this company yet.'
-                    : 'Only lines approved for messaging can send.',
+                    // The sentence that used to be missing. Lines exist and none
+                    // of them may text, which is a different errand entirely -
+                    // and before the filter this case showed a full list whose
+                    // every option failed at the carrier.
+                    : 'This company has $_linesHeld phone '
+                          '${_linesHeld == 1 ? 'line' : 'lines'}, and none are '
+                          'approved for text messaging yet.',
               ),
               items: [
                 for (final line in _lines)

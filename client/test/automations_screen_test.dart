@@ -638,6 +638,35 @@ void main() {
     );
   });
 
+  /// A line the carrier will refuse is not offered.
+  ///
+  /// Twilio approves outbound SMS per number. Before this the picker listed
+  /// every line the company held, so a rule could be written against a
+  /// voice-only number, save cleanly, and fail at send time — arriving in the
+  /// run log as a carrier error long after, and reading like a Twilio problem
+  /// rather than a choice this screen offered.
+  ///
+  /// THE SECOND EXPECT IS THE ONE THAT MATTERS: asserting the approved line is
+  /// present would pass just as well against no filter at all.
+  testWidgets('the Send from picker lists only lines approved for texting', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithSms()));
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Phone')));
+    await _tap(tester, _inStep(find.text('Send a message')));
+
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Marketing'), findsWidgets);
+    expect(find.textContaining('Voice only'), findsNothing);
+  });
+
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -1600,6 +1629,16 @@ MockClientHandler _handler({
             'id': 'num-1',
             'e164': '+12394560829',
             'label': 'Marketing',
+            // Mirrors NumbersController: the real endpoint has always sent this
+            // and the stub did not, which is why the picker could offer a line
+            // the carrier would refuse.
+            'sms_outbound_allowed': true,
+          },
+          {
+            'id': 'num-2',
+            'e164': '+15005550006',
+            'label': 'Voice only',
+            'sms_outbound_allowed': false,
           },
         ],
       });
