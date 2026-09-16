@@ -446,4 +446,28 @@ return [
         'platform_sms_account_sid' => env('TWILIO_PLATFORM_SMS_ACCOUNT_SID'),
     ],
 
+    /*
+    |---------------------------------------------------------------------------
+    | Firebase Cloud Messaging — push to a closed app (plan §12)
+    |---------------------------------------------------------------------------
+    |
+    | The project is `ezbizi-506117`, registered against applicationId
+    | `com.ezbizi.app` by the Android module; `client/android/app/google-
+    | services.json` is committed and is how the DEVICE registers. It cannot
+    | send anything — the server needs its own credential, which is the service
+    | account below.
+    |
+    | A PATH rather than the JSON in the environment, because the private key
+    | inside it is multi-line and a .env carrying one is how a key arrives with
+    | its newlines eaten. The file is never committed: it is on the box, and
+    | `PushSender::configured()` answers false wherever it is absent, so a
+    | developer machine without it simply has no push channel rather than a
+    | broken one.
+    |
+    */
+    'fcm' => [
+        'project_id' => env('FCM_PROJECT_ID', 'ezbizi-506117'),
+        'credentials' => env('FCM_CREDENTIALS'),
+    ],
+
 ];
