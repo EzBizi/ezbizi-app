@@ -68,6 +68,30 @@ Widget? phoneSettingsPane(
   _ => null,
 };
 
+/// What the rail calls that pane, or null for an id it does not list.
+///
+/// The twin of [phoneSettingsPane], and it exists for the same reason. The
+/// drawer the call flow chart opens shows a trail — "Settings › Phone › Ring
+/// groups" — so somebody can go and find the section again. It kept its own
+/// map of those words, which drifted the moment a section was added: four ids
+/// on the rail were missing from it, and four more were spelled differently
+/// from the words actually on screen.
+///
+/// So it reads the rail's own list. A label here and a label there is the same
+/// duplication as a switch here and a switch there, one level down, and it
+/// fails the same way: quietly, in a breadcrumb sending somebody to a section
+/// that is not called that.
+///
+/// Null rather than the id. An internal id is not a place a person can go
+/// looking, so the trail stops instead — see `phonePaneTrail`.
+String? phoneSettingsPaneLabel(String id) {
+  for (final section in _PhoneSettingsTabState._sections) {
+    if (section.id == id) return section.label;
+  }
+
+  return null;
+}
+
 class PhoneSettingsTab extends StatefulWidget {
   const PhoneSettingsTab({super.key, required this.api, required this.session});
 

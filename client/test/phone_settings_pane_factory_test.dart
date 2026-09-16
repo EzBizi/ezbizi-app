@@ -33,6 +33,27 @@ void main() {
     );
   });
 
+  /// The drawer's breadcrumb says what the RAIL says, not what a second copy
+  /// of the words says.
+  ///
+  /// `trust` is the case that can tell those apart. The drawer kept its own
+  /// map of these labels and that map called this section "Trust"; the rail
+  /// has always called it "Trust & caller identity", which is the phrase
+  /// somebody scanning the settings list will actually find. Any id whose two
+  /// spellings happened to agree would pass against either source.
+  test('a label is the rail own word for that section', () {
+    expect(phoneSettingsPaneLabel('trust'), 'Trust & caller identity');
+    expect(phoneSettingsPaneLabel('ring-groups'), 'Ring groups');
+  });
+
+  /// And an id the rail does not list has no name to give.
+  ///
+  /// Null rather than the id: `phonePaneTrail` stops the breadcrumb on null,
+  /// and an internal id is not a place a person can go looking.
+  test('an unlisted id has no label', () {
+    expect(phoneSettingsPaneLabel('not-a-pane'), isNull);
+  });
+
   /// THE CASE THAT CAN DISTINGUISH.
   ///
   /// `connection` is a real section on the rail, and it is deliberately NOT

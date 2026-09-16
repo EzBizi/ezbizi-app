@@ -37,45 +37,25 @@ import '../../core/session.dart';
 import 'call_flow_chart.dart';
 import 'settings_tab.dart';
 
-/// What a pane id is called on screen.
+/// Where to go and find this pane again, said in the rail's own words.
 ///
-/// The words are the settings rail's own. A drawer that renamed them would
-/// leave somebody hunting for a section that does not exist under that name.
-/// Unknown id, honest breadcrumb: the trail stops rather than inventing a
-/// section name.
+/// The words come from `phoneSettingsPaneLabel`, which reads the settings
+/// rail's own sections. This file used to keep a map of them, and it had
+/// drifted exactly as a second copy does: four ids missing, and four more
+/// spelled differently from the words on screen -- "Trust" for a section
+/// called "Trust & caller identity". A trail that renames a section leaves
+/// somebody hunting for one that does not exist.
 ///
-/// It used to fall back to the raw id. Phone's factory now also serves the
-/// rail, which means `connection` and `cost` reach this drawer -- and those
-/// would have rendered as "Settings > Phone > cost", naming a section that is
-/// called Cost and sending somebody hunting for a lowercase one. A shorter
-/// true trail beats a longer invented one.
+/// Unknown id, honest breadcrumb: the trail STOPS rather than inventing a
+/// section. It used to fall back to the raw id, and once Phone's factory
+/// started serving the rail as well, `connection` and `cost` began reaching
+/// this drawer -- which would have read "Settings > Phone > cost" for a
+/// section called Cost. A shorter true trail beats a longer invented one.
 String phonePaneTrail(String id) {
-  final name = phonePaneNames[id];
+  final name = phoneSettingsPaneLabel(id);
 
   return name == null ? 'Settings › Phone' : 'Settings › Phone › $name';
 }
-
-/// STILL A SECOND SOURCE OF TRUTH, and the same defect class as the switch
-/// Phone just deleted -- one level down, on the labels instead of the widgets.
-///
-/// The rail holds these words in its own `_sections`. The fix is the twin of
-/// what they built: a `phoneSettingsPaneLabel(id)` beside
-/// `phoneSettingsPane(id, ...)`, after which this map goes the way the switch
-/// went. Raised with them. Until then the trail above makes a miss harmless
-/// rather than wrong.
-const Map<String, String> phonePaneNames = {
-  'general': 'General',
-  'call-flow': 'Call flow',
-  'numbers': 'Numbers',
-  'porting': 'Porting',
-  'flows': 'IVR menus',
-  'hours': 'Opening hours',
-  'ring-groups': 'Ring groups',
-  'voicemail': 'Voicemail',
-  'blocked': 'Blocked numbers',
-  'trust': 'Trust',
-  'tags': 'Call tags',
-};
 
 /// The drawer itself: a header saying which box you opened, a line saying
 /// where you are, and the pane.
