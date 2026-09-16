@@ -483,3 +483,38 @@ because there is nobody to catch a bad one:
   not on a ref. `merged into main` and `live` are different facts, and today
   one of them was reported as the other while a Google reviewer had directions
   to the screen it affected.
+
+## 12 · An auth bug on our side now blanks the chat on 110 customer sites
+
+Plugin 1.9.0, out on all 110 installs since 2026-09-16, removes the widgets at
+the FIRST 401 or 403 from EzBizi. Jose's ruling, with the chat live and real
+messages arriving: it *"should only show up, if a connection has been connected
+properly."* Correct for a revoked token, and it means the blast radius of an
+authentication bug in the plugin-token path changed shape overnight:
+
+**Every customer chat box and contact form disappears within five minutes of
+the deploy, on all 110 sites at once, silently, with the explanation in a
+wp-admin notice nobody reads.**
+
+Recovery is automatic — the next 200 clears the refusal and the widgets come
+straight back with no intervention — and only 401/403 count, so a timeout or a
+500 does nothing. An ordinary outage is not this.
+
+**Before deploying anything that touches plugin-token validation, arrange the
+check first, because the desk cannot run it alone.** The probe is one request:
+
+    curl -s "https://app.ezbizi.com/api/v1/web/plugin/values?host=<a live host>" \
+      -H "Authorization: Bearer <that site's token>" -o /dev/null -w "%{http_code}"
+
+200 means the estate is fine; 401 means every chat box is gone. But
+`web_sites.token_hash` is a HASH — the plaintext is shown once at creation and
+once at rotation and is unrecoverable afterwards, by us and by support. So this
+desk cannot mint that request, and an unauthenticated call returns 401 either
+way, which is indistinguishable from the failure it is meant to detect.
+
+Web Management can answer it from the WordPress side with wp-cli. Ask them
+BEFORE the cut, not after: a check you cannot run is not a check.
+
+No grace period was added back to soften this, deliberately. A grace period is
+exactly what Jose just removed, and trading his rule for protection against a
+bug nobody has written is the wrong way round.
