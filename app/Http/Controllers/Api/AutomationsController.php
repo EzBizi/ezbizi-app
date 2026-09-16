@@ -81,6 +81,15 @@ class AutomationsController extends Controller
         'email.send',
         'whatsapp.send',
 
+        // ONE ENTRY, FOUR ACTIONS. This list holds EXECUTION TYPES, not action
+        // keys: ActionDefinition derives the type from everything after the
+        // first dot, so company.deactivate, franchise.deactivate,
+        // user.deactivate and customer.deactivate all arrive as `deactivate`
+        // and the SUBJECT is what differs - the same way `update_field` has
+        // served four modules since it was written. Listing the four keys here
+        // instead published none of them; the drift guard said so.
+        'deactivate',
+
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.

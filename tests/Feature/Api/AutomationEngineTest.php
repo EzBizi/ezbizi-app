@@ -825,6 +825,69 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * One arm switches off four different kinds of record, and refuses the fifth.
+     *
+     * The registry derives an execution type from everything after the first
+     * dot, so `customer.deactivate` and `user.deactivate` arrive here as the
+     * same `deactivate` with different subjects. The value of testing it as one
+     * is that a subject nobody declared it for must be REFUSED rather than
+     * quietly written to - `forceFill(['is_active' => false])` would otherwise
+     * succeed on any model that happens to have the column.
+     *
+     * THE LAST ADMINISTRATOR is the case worth having. A rule that switches off
+     * the only person who could switch it back on is worse from an automation
+     * than from a screen, because nobody was standing there when it ran. It asks
+     * AdministratorFloor rather than counting here, so it cannot drift from what
+     * the staff screen and account deletion enforce.
+     */
+    public function test_switching_a_record_off_refuses_the_last_administrator_and_a_wrong_subject(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'customer.created',
+            'payload' => [],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $customerId = $this->as()->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $this->org['franchise']->id,
+            'name' => 'Switch me off',
+        ])->assertCreated()->json('data.id');
+
+        $customer = $this->inTenant(fn () => Customer::findOrFail($customerId));
+
+        $off = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $customer));
+        $this->assertTrue($off['ok'], $off['detail'] ?? '');
+        $this->assertFalse((bool) $this->inTenant(fn () => Customer::findOrFail($customerId)->is_active));
+
+        // Twice is not a failure. A rule firing again on the same record must
+        // not red the run and count towards the five that auto-disable it.
+        $again = $this->inTenant(fn () => $runner->run(
+            ['type' => 'deactivate'], $event, $customer->fresh(),
+        ));
+        $this->assertTrue($again['ok']);
+        $this->assertStringContainsString('already', $again['detail']);
+
+        // The only administrator: refused, and still active afterwards.
+        $admin = $this->org['admin'];
+
+        $refused = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $admin));
+        $this->assertFalse($refused['ok']);
+        $this->assertStringContainsString('administrator', $refused['detail']);
+        $this->assertTrue((bool) $admin->fresh()->is_active,
+            'the refusal has to leave the account ON - a message about a write that happened '
+            .'anyway is worse than no message');
+
+        // A subject this action was never declared for is refused rather than
+        // written to, even though AutomationEvent has no is_active to set.
+        $wrong = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $event));
+        $this->assertFalse($wrong['ok']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose
