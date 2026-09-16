@@ -897,6 +897,12 @@ class AutomationEngineTest extends TestCase
         // written to, even though AutomationEvent has no is_active to set.
         $wrong = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $event));
         $this->assertFalse($wrong['ok']);
+
+        // THE SENTENCE, not just the refusal. `ok:false` here is produced by the
+        // guard AND by the arm accepting the subject and failing afterwards on a
+        // model with no `is_active` — so asserting the refusal alone stays green
+        // in exactly the case where the guard has stopped guarding.
+        $this->assertStringContainsString('is about something else', $wrong['detail']);
     }
 
     /**
