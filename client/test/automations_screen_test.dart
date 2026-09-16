@@ -553,7 +553,7 @@ void main() {
         // DECLARED parameter, and the generic payload branch sends every declared
         // parameter. false means "follow the organization", which is what these
         // rules always did, so the behaviour is unchanged - the wire is not.
-        {'type': 'notify', 'message': 'It is done', 'in_app_only': false},
+        {'type': 'notify', 'message': 'It is done', 'in_app_only': false, 'role_ids': []},
       ],
     });
   });
@@ -587,6 +587,7 @@ void main() {
       'type': 'notify',
       'message': 'No email please',
       'in_app_only': true,
+      'role_ids': [],
     });
   });
 
@@ -726,6 +727,44 @@ void main() {
       'template': 'appointment_reminder',
       'to_field': 'phone',
       'parameters': ['{{ contact_name }}', 'tomorrow'],
+    });
+  });
+
+  /// A notification can be narrowed to roles, and untouched narrows nothing.
+  ///
+  /// The second half is what protects every rule saved before this existed: an
+  /// untouched picker must send NO role ids, not an empty-string one, and not
+  /// change who is told. Jose's live rule notifies twelve people today because
+  /// a website-chat lead carries no franchise — narrowing is the point, and
+  /// accidentally narrowing a rule nobody edited would be the opposite.
+  ///
+  /// IDs travel, not names. A role's name is editable, so a rule storing names
+  /// would re-point itself the day somebody renamed one — silently, and wider.
+  testWidgets('a notification step can be narrowed to roles, and stores ids', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(onCreate: (body) => sent = body));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Tell the office');
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a notification'));
+    await _type(tester, 'Message', 'A chat came in');
+
+    // Untouched first: the step is complete and narrows nothing.
+    expect(_saveButton(tester).onPressed, isNotNull);
+
+    await _tap(tester, find.widgetWithText(FilterChip, 'Office'));
+    await _tap(tester, find.text('Create automation'));
+
+    expect((sent!['actions'] as List).single, {
+      'type': 'notify',
+      'message': 'A chat came in',
+      'in_app_only': false,
+      'role_ids': ['role-office'],
     });
   });
 
@@ -916,7 +955,7 @@ void main() {
         ],
       },
       'actions': [
-        {'type': 'notify', 'message': 'Everyone should know.', 'in_app_only': false},
+        {'type': 'notify', 'message': 'Everyone should know.', 'in_app_only': false, 'role_ids': []},
       ],
     });
 
@@ -1903,6 +1942,10 @@ const _catalogue = {
       'declared_actions': [],
     },
   ],
+  'roles': [
+    {'id': 'role-office', 'label': 'Office'},
+    {'id': 'role-tech', 'label': 'Technicians'},
+  ],
   'operators': [
     {'key': 'eq', 'label': 'is'},
     {'key': 'in', 'label': 'is one of'},
@@ -1933,6 +1976,13 @@ const _catalogue = {
           'key': 'in_app_only',
           'label': 'In-app only, do not email',
           'kind': 'boolean',
+          'required': false,
+          'nullable': false,
+        },
+        {
+          'key': 'role_ids',
+          'label': 'Only tell these roles',
+          'kind': 'roles',
           'required': false,
           'nullable': false,
         },

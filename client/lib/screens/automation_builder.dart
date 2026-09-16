@@ -186,6 +186,19 @@ class _ActionRow {
         // looks fine and is one typo from disaster: the string 'false' casts
         // to TRUE. Typing it here means the server never has to know what the
         // control stored, and no future writer has to rediscover that rule.
+        // A roles parameter is a LIST on the wire. It is held as a comma-joined
+        // string only because every parameter shares one map of text
+        // controllers; sending that string would hand the runner one role id
+        // with commas in it, which matches nothing and tells nobody.
+        if (field.kind == 'roles') {
+          payload[field.key] = [
+            for (final id in value.split(','))
+              if (id.trim().isNotEmpty) id.trim(),
+          ];
+
+          continue;
+        }
+
         if (field.kind == 'boolean') {
           payload[field.key] = value == 'true';
           continue;
@@ -2143,6 +2156,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               definition.parameters[i].key,
               definition.parameters[i].label,
             )
+          // WHICH ROLES, and nothing chosen means everybody with reach — which
+          // is what every rule saved before this did, so an untouched picker
+          // must not change one. It narrows and can never widen: reach still
+          // decides who COULD be told.
+          else if (definition.parameters[i].kind == 'roles')
+            _rolePicker(row, definition.parameters[i].key, definition.parameters[i].label)
           else if (definition.parameters[i].kind == 'boolean')
             // A yes/no answer, drawn as a switch.
             //
@@ -2194,6 +2213,64 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
         ],
+      ],
+    );
+  }
+
+  /// Roles to narrow a notification to, stored as IDS.
+  ///
+  /// Not names: a Role has no key column and its name is editable, so a rule
+  /// storing names would re-point itself the day somebody tidied "Office" into
+  /// "Office Staff" — silently, and in the WIDENING direction. An id survives a
+  /// rename and fails loudly on a delete.
+  ///
+  /// Stored in the parameter controller as a comma-joined list because every
+  /// parameter shares one map of text controllers; the payload splits it back
+  /// into an array, the same shape the runner reads.
+  Widget _rolePicker(_ActionRow row, String key, String label) {
+    final chosen = row
+        .parameter(key)
+        .text
+        .split(',')
+        .where((id) => id.trim().isNotEmpty)
+        .toSet();
+
+    final roles = widget.catalogue.roles;
+
+    if (roles.isEmpty) {
+      return _note('No roles to choose from, so this will tell everybody who '
+          'can see the record.');
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        Text(
+          chosen.isEmpty
+              ? 'Nothing chosen — everybody who can see the record is told.'
+              : 'Only these roles are told, and only those of them who can '
+                    'already see the record.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final role in roles)
+              FilterChip(
+                label: Text(role.label),
+                selected: chosen.contains(role.key),
+                onSelected: _busy
+                    ? null
+                    : (on) => setState(() {
+                        final next = {...chosen};
+                        on ? next.add(role.key) : next.remove(role.key);
+                        row.parameter(key).text = next.join(',');
+                      }),
+              ),
+          ],
+        ),
       ],
     );
   }

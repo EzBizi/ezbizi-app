@@ -1592,6 +1592,14 @@ class ActionRunner
          */
         $inAppOnly = (bool) ($action['in_app_only'] ?? false);
 
+        // Strings, filtered, re-indexed: an empty box in the builder must mean
+        // "narrow nothing" rather than "a role whose id is the empty string",
+        // which would match nothing and tell nobody.
+        $roleIds = array_values(array_filter(array_map(
+            fn ($id) => trim((string) $id),
+            (array) ($action['role_ids'] ?? []),
+        ), fn (string $id) => $id !== ''));
+
         $sent = $this->notifications->dispatch(
             title: $title,
             body: $action['body'] ?? null,
@@ -1599,6 +1607,7 @@ class ActionRunner
             source: 'automation',
             eventId: $event->getKey(),
             inAppOnly: $inAppOnly,
+            roleIds: $roleIds,
         );
 
         return [
@@ -1627,7 +1636,15 @@ class ActionRunner
             // Notifications named this rather than leaving it in a diff.
             'detail' => $sent === 0
                 ? ($this->notifications->allows('automation', $subject, $inAppOnly)
-                    ? "Nobody has reach over that record, so there was no one to tell: {$title}"
+                    ? ($roleIds !== []
+                        // THREE ZEROES, THREE ERRANDS. This one names the ROLE
+                        // as what narrowed it, because that is the switch the
+                        // author can go and change - the same reason the line
+                        // below stopped saying "reach" when a company had simply
+                        // switched notifications off.
+                        ? 'Nobody in the chosen role has reach over that record, so there '
+                            ."was no one to tell: {$title}"
+                        : "Nobody has reach over that record, so there was no one to tell: {$title}")
                     : 'Automation notifications are switched off for this company, so nobody '
                         ."was told: {$title}")
                 : "Told {$sent} ".($sent === 1 ? 'person' : 'people').": {$title}",

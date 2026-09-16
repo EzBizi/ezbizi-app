@@ -336,6 +336,7 @@ class AutomationCatalogue {
     required this.actionTypes,
     required this.timezones,
     required this.scheduleKinds,
+    this.roles = const [],
     this.actionBudget,
   });
 
@@ -349,11 +350,18 @@ class AutomationCatalogue {
       // CatalogueChoice every other closed list uses.
       timezones: _list(json['timezones'], CatalogueChoice.tryFromIdLabel),
       scheduleKinds: _list(json['schedule_kinds'], CatalogueChoice.tryFrom),
+      // Served by the automations catalogue rather than fetched from /roles,
+      // which is gated on `roles.view` — a rule author holds automations.edit
+      // and need not hold that. Id and name only.
+      roles: _list(json['roles'], CatalogueChoice.tryFromIdLabel),
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
 
   final List<CatalogueModule> modules;
+
+  /// The roles a notification step may narrow to. Empty narrows nothing.
+  final List<CatalogueChoice> roles;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

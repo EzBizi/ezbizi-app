@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Automation;
+use App\Models\Role;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
@@ -345,6 +346,29 @@ class AutomationsController extends Controller
         return response()->json([
             'data' => [
                 'modules' => $modules,
+
+                /*
+                 * ID AND NAME ONLY, and served from here rather than fetched
+                 * from /roles, which is gated on `roles.view`.
+                 *
+                 * A rule author holds `automations.edit`; they need not hold
+                 * `roles.view`, and a picker that 403s for half the people who
+                 * can open the screen is an empty list with no explanation. The
+                 * same reasoning the WhatsApp templates endpoint uses: gate on
+                 * the tab the question is being asked from.
+                 *
+                 * No permissions, no user counts - a name is what a rule names
+                 * and everything else on a Role is somebody else's business.
+                 */
+                'roles' => Role::query()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    // `label`, not `name`: every closed list in this payload is
+                    // id/label and the client reads them with one mapper. Sent
+                    // as `name` it would have parsed with the id as its label
+                    // and drawn a row of uuids.
+                    ->map(fn (Role $role) => ['id' => $role->id, 'label' => $role->name])
+                    ->all(),
                 // Fixed in code, deliberately: a runtime-editable operator set is
                 // arbitrary expressions over arbitrary fields (§2.1 category 1).
                 'operators' => [
@@ -1388,6 +1412,24 @@ class AutomationsController extends Controller
                 // a rule does, not only an instruction, so it should say what
                 // was chosen. Notifications' argument, 2026-09-15.
                 $parameter('in_app_only', 'In-app only, do not email', 'boolean', false),
+
+                /*
+                 * WHICH ROLES, rather than everybody who can see the record.
+                 *
+                 * Empty means today's behaviour exactly - everybody with reach -
+                 * so every rule saved before this keeps its audience. It NARROWS
+                 * and can never widen: reach still decides who could be told and
+                 * the role decides who should be, the same ceiling rule as
+                 * in_app_only.
+                 *
+                 * IDs, not names. A Role has no key column and its name is
+                 * editable, so storing names would re-point every rule the day
+                 * somebody tidied "Office" into "Office Staff" - silently, and
+                 * in the WIDENING direction. An id survives a rename and fails
+                 * loudly on a delete, which is the pair worth having.
+                 * Notifications' correction, and they were right.
+                 */
+                $parameter('role_ids', 'Only tell these roles', 'roles', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
