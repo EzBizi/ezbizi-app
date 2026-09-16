@@ -32,6 +32,19 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     public const FROM_CONSUMER   = 'CONSUMER';
     public const FROM_ADVERTISER = 'ADVERTISER';
 
+    /**
+     * `is_automatic` — software wrote this row, not a person.
+     *
+     * Set it on anything sent without somebody pressing Send: a website's
+     * greeting, a rule's reply. It does not change what the thread SHOWS —
+     * the words are the words and they are the newest thing said — it changes
+     * whether the enquiry still counts as awaiting an answer.
+     *
+     * See LeadThread::refresh(). The short version: a robot saying hello is
+     * not somebody answering, and "unreplied" is the list a business uses to
+     * find the people nobody has got back to.
+     */
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::withParent(
@@ -84,6 +97,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
         'occurred_at', 'duration_ms', 'recording_url', 'text', 'attachments',
+        'is_automatic',
     ];
 
     protected function casts(): array
@@ -92,6 +106,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
             'occurred_at' => 'datetime',
             'duration_ms' => 'integer',
             'attachments' => 'array',
+            'is_automatic' => 'boolean',
         ];
     }
 

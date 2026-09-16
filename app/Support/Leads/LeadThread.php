@@ -78,6 +78,30 @@ final class LeadThread
      * A cache, never the record: `last_contact_*` on the lead exist so the
      * list shows a preview without a query per row, and they are rebuilt from
      * the thread here every time the thread changes.
+     *
+     * ── TWO QUESTIONS, TWO ROWS ─────────────────────────────────
+     *
+     * "What was said last" and "has anybody answered" are different questions,
+     * and until 2026-09-16 one row answered both.
+     *
+     * `last_contact_at`, `_channel` and `_preview` come from the NEWEST row,
+     * because that is what the list should show — including a website's
+     * automatic greeting, which really is the most recent thing said.
+     *
+     * `last_contact_from` comes from the newest row a PERSON was involved in,
+     * because it is read by exactly two things and both are asking whether
+     * somebody has answered: the Unreplied filter, and the Replied / Awaiting
+     * reply badge beside each row.
+     *
+     * Without the split, a greeting sent at t=0 marked a brand new enquiry as
+     * replied-to. Web Management defaulted their auto-reply ON, three Leads
+     * tests went red, and it shipped defaulted OFF to avoid this — a feature
+     * turned down rather than a filter fixed. Automations hit the same wall
+     * from the other side, because Jose's "reply to the lead" rule would have
+     * emptied the unreplied list for anybody who wrote one.
+     *
+     * A lead whose ONLY reply is automatic therefore reads as awaiting one,
+     * which is true: nobody has answered that person.
      */
     public function refresh(Lead $lead): void
     {
@@ -86,10 +110,19 @@ final class LeadThread
             ->orderByDesc('occurred_at')
             ->first();
 
+        // The newest row software did NOT write. Null when every row is
+        // automatic, which reads the same as no conversation at all: nobody
+        // has answered.
+        $lastHuman = LeadConversation::query()
+            ->where('lead_id', $lead->getKey())
+            ->where('is_automatic', false)
+            ->orderByDesc('occurred_at')
+            ->first();
+
         $lead->forceFill([
             'last_contact_at'      => $last?->occurred_at,
             'last_contact_channel' => $last?->channel,
-            'last_contact_from'    => $last?->participant,
+            'last_contact_from'    => $lastHuman?->participant,
             'last_contact_preview' => $last !== null ? self::preview($last) : null,
         ])->save();
 
