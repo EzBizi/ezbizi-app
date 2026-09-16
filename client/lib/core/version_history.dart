@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0226',
+      date: '16 Sep 2026',
+      items: [
+        'Zoom in and out of the call flow chart.',
+        'The call flow chart names each queue after its team, and shows what happens once somebody answers a call.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0225',
       date: '16 Sep 2026',
       items: [
