@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0227',
+      date: '16 Sep 2026',
+      items: [
+        'Click a box on the call flow chart and a drawer opens the real settings for it, the same panel the settings rail shows, so the two cannot drift apart.',
+        'The zoom readout on the call flow chart follows the canvas rather than the buttons.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0226',
       date: '16 Sep 2026',
       items: [
