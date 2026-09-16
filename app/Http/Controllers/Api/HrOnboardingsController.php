@@ -20,6 +20,8 @@ use App\Support\Contracts\CommonCore;
 use App\Support\Contracts\DocumentFingerprint;
 use App\Support\Contracts\DocumentRenderer;
 use App\Support\Contracts\FieldDefinition;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Contracts\FieldType;
 use App\Support\Contracts\PdfRenderer;
 use App\Support\Notifications\NotificationDispatcher;
@@ -91,6 +93,7 @@ class HrOnboardingsController extends Controller
         private readonly NotificationDispatcher $notifications,
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly InvitationActions $actions,
     ) {}
 
     /**
@@ -207,96 +210,24 @@ class HrOnboardingsController extends Controller
             $actor, $invitation->scopeType(), $invitation->scopeId(), 'invitation_id',
         );
 
-        $this->assertInvitationCanCarryAnOnboarding($invitation);
-
-        $version = $contract->currentVersion;
-
-        if ($version === null) {
-            throw ValidationException::withMessages(['contract_id' =>
-                'That template has never been published, so there is nothing to ask. Publish '
-                .'a version of it first.',
+        // What STARTING means lives in InvitationActions now, because
+        // Automations causes the same act from a rule and a second copy would
+        // have drifted the first time one changed. The four state rules moved
+        // in with it — already carrying paperwork, withdrawn, lapsed, no
+        // signature field. Everything above this line is the ACTOR half, which
+        // a rule has no answer for and this controller must still ask.
+        //
+        // Converted to the refusal shape this endpoint has always answered
+        // with: 422 carrying an `errors` key the client reads in preference to
+        // `message`. `invitation_id` for every one of them, because that is
+        // the field the old messages were attached to.
+        try {
+            $onboarding = $this->actions->startOnboarding($invitation, $contract, $actor);
+        } catch (CannotActOnInvitation $e) {
+            throw ValidationException::withMessages([
+                $e->field ?? 'invitation_id' => $e->getMessage(),
             ]);
         }
-
-        /*
-         * A contract nobody signs is not a contract.
-         *
-         * Refused HERE rather than discovered at the end, because the end is
-         * after somebody has filled in twenty fields. Without a signature field
-         * the ceremony has nothing to attach to: `contract_signatures.field_key`
-         * has to name a real signature field (the model refuses anything else),
-         * so an onboarding started against such a version could be completed by
-         * nobody, ever, with nothing on screen saying why.
-         *
-         * This is not the software deciding what a contract says. It is the one
-         * thing ESIGN requires of any of them, and FieldType already carries the
-         * type that expresses it.
-         */
-        if ($version->liveFields() === []
-            || ! collect($version->liveFields())->contains(
-                fn (FieldDefinition $f) => $f->type === FieldType::SIGNATURE)) {
-            throw ValidationException::withMessages(['contract_id' => sprintf(
-                'Version %d of "%s" has no signature field, so there would be no way to agree '
-                .'to it. Add one to the template and publish, then start the onboarding — a '
-                .'form that can be filled in and never finished is worse than one that refuses '
-                .'to start.',
-                $version->version, $contract->name,
-            )]);
-        }
-
-        $onboarding = DB::transaction(function () use ($invitation, $version, $actor) {
-            $live = Onboarding::query()
-                ->where('invitation_id', $invitation->getKey())
-                ->where('status', '!=', Onboarding::CANCELLED)
-                ->lockForUpdate()
-                ->first();
-
-            if ($live !== null) {
-                throw ValidationException::withMessages(['invitation_id' =>
-                    'That invitation already has an onboarding in flight. Cancel it first '
-                    .'if you meant a different contract.',
-                ]);
-            }
-
-            $onboarding = Onboarding::create([
-                'invitation_id'       => $invitation->getKey(),
-                // Set when the invitation has already been accepted. Null is the
-                // ordinary case: the employer starts the paperwork and pre-fills
-                // it before the person has an account.
-                'user_id'             => $invitation->accepted_user_id,
-                'contract_version_id' => $version->getKey(),
-                'status'              => Onboarding::IN_PROGRESS,
-                'started_at'          => now(),
-                'started_by_user_id'  => $actor->getKey(),
-            ]);
-
-            $this->audit->log('onboarding.started', $onboarding, metadata: [
-                'invitation_id' => $invitation->getKey(),
-                'contract'      => $version->contract?->name,
-                'version'       => $version->version,
-                'email'         => $invitation->email,
-            ]);
-
-            /*
-             * Inside the transaction, which is what an outbox is for: the form
-             * and the fact that it opened commit together or neither does.
-             *
-             * The scope a rule matches on is not in this payload and does not
-             * need to be — Onboarding::automationScope() reads it off the
-             * invitation, so a rule scoped to one franchise sees this and a rule
-             * scoped to another does not.
-             */
-            $this->events->emit('onboarding.started', $onboarding, ['after' => [
-                'status'        => $onboarding->status,
-                'contract'      => $version->contract?->name,
-                'contract_id'   => $version->contract_id,
-                'version'       => $version->version,
-                'invitation_id' => $invitation->getKey(),
-                'email'         => $invitation->email,
-            ]], actor: $actor);
-
-            return $onboarding;
-        });
 
         return response()->json(
             ['data' => $this->detail($onboarding->fresh(), $actor)],

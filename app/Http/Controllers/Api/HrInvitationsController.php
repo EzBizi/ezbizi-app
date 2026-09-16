@@ -10,6 +10,8 @@ use App\Services\Hr\Invitations;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Mail\MailStatus;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Tenancy\TenantContext;
@@ -89,6 +91,7 @@ class HrInvitationsController extends Controller
         private readonly PermissionCatalogue $catalogue,
         private readonly AuditLogger $audit,
         private readonly EventEmitter $events,
+        private readonly InvitationActions $actions,
         private readonly TenantContext $tenant,
     ) {}
 
@@ -315,53 +318,41 @@ class HrInvitationsController extends Controller
          */
         $this->catalogue->assertRoleAssignable($request->user(), $invitation->role);
 
-        if ($invitation->accepted_at !== null) {
-            throw ValidationException::withMessages(['invitation' =>
-                'That invitation has already been accepted — they have an account. If they '
-                .'cannot get in, a password reset is what they need.',
-            ]);
-        }
-
-        if ($invitation->revoked_at !== null) {
-            throw ValidationException::withMessages(['invitation' =>
-                'That invitation was withdrawn. Send a new one if you have changed your mind, '
-                .'so the record still shows what was decided and when.',
-            ]);
-        }
-
         // The same two refusals store() makes, and for the same reasons — an
         // address already holding an account, or already holding an open
         // invitation. This invitation is excluded from the second, or the act
         // would be refused on the grounds of the very row it is reissuing.
+        //
+        // An ACTOR rule, so it stays here: it asks what this organization's
+        // book already contains, which is a question about the request rather
+        // than about the invitation's own state. See InvitationActions for the
+        // split between the two.
         if ($readdressed) {
             $this->assertNotAlreadyHere($input['email'], except: $invitation);
         }
 
-        $token = DB::transaction(function () use ($invitation, $input, $readdressed) {
-            $was = $invitation->email;
-
-            if ($readdressed) {
-                $invitation->forceFill(['email' => strtolower(trim($input['email']))])->save();
-            }
-
-            $token = $this->invitations->resend($invitation);
-
-            // A distinct action, because it is a distinct fact: somebody's
-            // invitation went to the wrong place and was corrected. Both
-            // addresses, because "which address did we get wrong" is the
-            // question this row will be read to answer. Never the token.
-            $this->audit->log(
-                $readdressed ? 'invitation.readdressed' : 'invitation.resent',
+        // What resending MEANS lives in one place now, because Automations
+        // causes the same act from a rule and a second copy would have drifted
+        // the first time one of them changed. The accepted and withdrawn
+        // refusals moved in with it; everything above this line is the actor
+        // half, which a rule has no answer for and this controller must still
+        // ask.
+        // Converted rather than rendered bare, because this endpoint's refusal
+        // shape is somebody's contract: it has always answered 422 with an
+        // `errors.invitation` key, the client prefers `errors` over `message`,
+        // and a field that goes absent is the one response change that breaks a
+        // reader who asked for none of this. Fleet returns the message alone;
+        // theirs was a new endpoint with nothing to keep faith with.
+        try {
+            $token = $this->actions->resend(
                 $invitation,
-                metadata: array_filter([
-                    'email'      => $invitation->email,
-                    'was'        => $readdressed ? $was : null,
-                    'expires_at' => $invitation->expires_at->toIso8601String(),
-                ], fn ($v) => $v !== null),
+                $readdressed ? $input['email'] : null,
             );
-
-            return $token;
-        });
+        } catch (CannotActOnInvitation $e) {
+            throw ValidationException::withMessages([
+                $e->field ?? 'invitation' => $e->getMessage(),
+            ]);
+        }
 
         $state = $this->deliver($invitation, $token);
 
@@ -384,41 +375,16 @@ class HrInvitationsController extends Controller
     {
         $this->authorize('delete', $invitation);
 
-        if ($invitation->accepted_at !== null) {
-            throw ValidationException::withMessages(['invitation' =>
-                'That invitation has already been accepted, so there is nothing left to '
-                .'withdraw. Switch the person’s access off instead if that is what you mean.',
+        // Idempotent, and the state rules travel with it — see
+        // InvitationActions::revoke. A rule withdraws stale invitations on the
+        // same path this button does. Converted to the refusal shape this
+        // endpoint has always answered with, for the reason given in resend().
+        try {
+            $this->actions->revoke($invitation);
+        } catch (CannotActOnInvitation $e) {
+            throw ValidationException::withMessages([
+                $e->field ?? 'invitation' => $e->getMessage(),
             ]);
-        }
-
-        if ($invitation->revoked_at === null) {
-            // Read before the write, so the event can say what it was withdrawn
-            // FROM — an invitation somebody had already opened and one nobody
-            // ever looked at are different things to withdraw, and `changed_from`
-            // is how a rule tells them apart.
-            $before = $invitation->status();
-
-            DB::transaction(function () use ($invitation, $before) {
-                $invitation->forceFill(['revoked_at' => now()])->save();
-
-                $this->audit->log('invitation.revoked', $invitation, metadata: [
-                    'email' => $invitation->email,
-                ]);
-
-                // Inside the transaction, like every emit: the outbox row and
-                // the withdrawal commit together or neither does.
-                $this->events->emit('invitation.revoked', $invitation, [
-                    'before' => ['status' => $before],
-                    'after'  => [
-                        'status'     => $invitation->status(),
-                        'email'      => $invitation->email,
-                        'role'       => $invitation->role?->name,
-                        'scope_type' => $invitation->scopeType(),
-                        'scope_id'   => $invitation->scopeId(),
-                        'revoked_at' => $invitation->revoked_at->toIso8601String(),
-                    ],
-                ]);
-            });
         }
 
         return response()->json(['data' => $this->present($invitation->fresh())]);
