@@ -831,7 +831,7 @@ class LeadConversationsTest extends TestCase
             public function source(): string { return 'website_chat'; }
             public function canReply(Lead $lead): bool { return true; }
             public function allowsUnattendedReply(): bool { return true; }
-            public function send(Lead $lead, string $text): LeadConversation
+            public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
             {
                 $this->sent[] = $text;
                 return LeadConversation::create([

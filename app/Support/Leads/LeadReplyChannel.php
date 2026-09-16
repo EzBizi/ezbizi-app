@@ -70,12 +70,30 @@ interface LeadReplyChannel
     /**
      * Send, and return the row the thread shows as ours.
      *
-     * Callers that send WITHOUT a person - a rule, a greeting - must also mark
-     * the row `is_automatic` so it does not read as somebody answering. See
-     * LeadThread::refresh().
+     * ── `$automatic` is a PATH, not an instruction ───────────────
+     *
+     * This parameter exists because a docblock telling callers to mark the row
+     * was not a mechanism. Between 2026-09-16 and the commit that added it,
+     * two files said "callers must mark the row `is_automatic`" and the chain
+     * from here to the row had nowhere to carry it: `send()` took a Lead and a
+     * string, and there was no third thing to pass. Automations found it while
+     * writing the line that would have passed it — everything READ the column
+     * and nothing could WRITE it. A rule's reply would have gone in as a
+     * person's and taken the enquiry off the Unreplied list, which is the exact
+     * failure the column was added to prevent, arriving through the front door.
+     *
+     * Defaulted false so the human composer — the only caller today — is
+     * untouched and no implementor changes signature to keep compiling.
+     *
+     * A channel answering false to `allowsUnattendedReply()` must REFUSE a true
+     * flag rather than quietly accept it. Two guards on one boundary is not
+     * belt and braces here: the first is asked by the caller and the second by
+     * the callee, and only the second is in the room when a new caller appears.
+     *
+     * @param  bool  $automatic  software is sending this, nobody pressed Send
      *
      * @throws \RuntimeException with a sentence for the screen when the
      *                           provider refuses; never retried by the caller
      */
-    public function send(Lead $lead, string $text): LeadConversation;
+    public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation;
 }

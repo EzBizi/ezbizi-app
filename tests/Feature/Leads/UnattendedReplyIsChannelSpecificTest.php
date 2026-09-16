@@ -169,4 +169,91 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
             'and software really cannot',
         );
     }
+
+    /**
+     * THE CALLEE'S HALF OF THE GUARD.
+     *
+     * `allowsUnattendedReply()` is asked by the caller. A caller that forgets
+     * to ask — or one written later by somebody who never read that method —
+     * arrives at `send()` with the flag set, and this is what is in the room
+     * then. It throws rather than ignoring the flag, because a reply that went
+     * out anyway and merely READ as automatic would still be the write EzBizi
+     * has told Google it does not make.
+     */
+    public function test_google_refuses_the_flag_even_if_nobody_asked_first(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $lead = $this->inTenant($t['org'], function () use ($t) {
+            $connection = SocialConnection::create([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type' => SocialConnection::SCOPE_COMPANY,
+                'scope_id' => $t['company']->getKey(),
+                'provider' => SocialProvider::GoogleAds->value,
+                'remote_id' => '4051729356',
+                'display_name' => 'A1 Chimney - Cleveland',
+            ]);
+            $connection->connect(['refresh_token' => 'rt-good']);
+            $connection->save();
+
+            return Lead::create([
+                'organization_id' => $t['org']->getKey(),
+                'company_id' => $t['company']->getKey(),
+                'connection_id' => $connection->getKey(),
+                'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'L-guard',
+                'contact_name' => 'Dana Whitfield',
+                'lead_type' => 'MESSAGE',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ]);
+        });
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/only be replied to by a person/');
+
+        $this->inTenant(
+            $t['org'],
+            fn () => app(LocalServicesLeads::class)->send($lead, 'Hello', automatic: true),
+        );
+    }
+
+    /**
+     * And the control: the same call WITHOUT the flag must not be refused by
+     * this guard. Without it, "throws when automatic" passes on a send() that
+     * throws always — which would break the human composer for every Google
+     * enquiry in the product.
+     */
+    public function test_the_guard_does_not_refuse_a_person(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $lead = $this->inTenant($t['org'], fn () => Lead::create([
+            'organization_id' => $t['org']->getKey(),
+            'company_id' => $t['company']->getKey(),
+            'source' => Lead::SOURCE_LOCAL_SERVICES,
+            'remote_id' => 'L-human',
+            'contact_name' => 'Dana Whitfield',
+            'lead_type' => 'MESSAGE',
+            'status' => Lead::STATUS_NEW,
+            'received_at' => now(),
+        ]));
+
+        try {
+            $this->inTenant(
+                $t['org'],
+                fn () => app(LocalServicesLeads::class)->send($lead, 'Hello'),
+            );
+        } catch (\RuntimeException $e) {
+            $this->assertStringNotContainsString(
+                'only be replied to by a person',
+                $e->getMessage(),
+                'a human reply was refused by the automation guard',
+            );
+
+            return;
+        }
+
+        $this->addToAssertionCount(1);
+    }
 }

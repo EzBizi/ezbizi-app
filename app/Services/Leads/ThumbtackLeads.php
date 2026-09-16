@@ -98,8 +98,25 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
      * the id the next MessageCreatedV4 carries and it is what stops the same
      * sentence arriving twice.
      */
-    public function send(Lead $lead, string $text): LeadConversation
+    public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
+        /*
+         * The callee's half of the guard. `allowsUnattendedReply()` answers
+         * false for this channel and a caller is expected to ask — but a
+         * caller that forgets, or one written later by somebody who never read
+         * that method, arrives HERE. nothing forbids it and nobody has argued for it, so the channel says no.
+         *
+         * Throws rather than ignoring the flag: a reply that went out anyway
+         * and merely read as automatic would still be the write we said we do
+         * not make.
+         */
+        if ($automatic) {
+            throw new RuntimeException(
+                'A Thumbtack enquiry can only be replied to by a person. '
+                .'See LeadReplyChannel::allowsUnattendedReply().',
+            );
+        }
+
         $connection = $lead->connection;
 
         if ($connection === null) {

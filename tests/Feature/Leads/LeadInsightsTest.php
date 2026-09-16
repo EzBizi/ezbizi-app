@@ -167,7 +167,7 @@ class LeadInsightsTest extends TestCase
             public function source(): string { return 'website_chat'; }
             public function canReply(Lead $lead): bool { return true; }
             public function allowsUnattendedReply(): bool { return true; }
-            public function send(Lead $lead, string $text): LeadConversation { throw new \RuntimeException('must not send'); }
+            public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation { throw new \RuntimeException('must not send'); }
         };
         $this->app->instance('test.chat-channel', $channel);
         $this->app->tag(['test.chat-channel'], \App\Support\Leads\LeadReplies::TAG);
