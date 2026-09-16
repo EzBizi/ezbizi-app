@@ -213,7 +213,7 @@ class AutomationSubjectScopeTest extends TestCase
     private const HAS_NOT_DECLARED_WHAT_IT_EMITS = [
         'companies', 'franchises', 'users', 'hr', 'time_clock',
         'customers', 'jobs', 'marketing', 'phone',
-        'fleet_management', 'inventory', 'services', 'leads', 'reviews',
+        'fleet_management', 'inventory', 'services', 'reviews',
         'business_profile', 'email', 'monitoring',
     ];
 
