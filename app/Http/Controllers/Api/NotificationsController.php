@@ -102,7 +102,7 @@ class NotificationsController extends Controller
             // Derived from the senders that exist rather than listed here, so
             // the rule and the capability cannot drift apart. iOS is absent
             // until there is an APNs sender — see PushSender::platforms().
-            'platform' => ['required', 'string', Rule::in(PushSender::platforms())],
+            'platform' => ['required', 'string', Rule::in(app(PushSender::class)->platforms())],
         ]);
 
         $user = $request->user();

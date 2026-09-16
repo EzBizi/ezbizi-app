@@ -41,6 +41,8 @@ class NotificationPushTest extends TestCase
 
     private const OAUTH = 'https://oauth2.googleapis.com/token';
 
+    private const APNS = 'https://api.push.apple.com/*';
+
     /**
      * A service account the signer will actually accept.
      *
@@ -294,30 +296,149 @@ class NotificationPushTest extends TestCase
         $this->assertSame($colleague->id, $devices->first()->user_id);
     }
 
-    public function test_an_ios_token_is_refused_while_there_is_no_apns_sender(): void
+    /**
+     * Renamed and inverted from
+     * `test_an_ios_token_is_refused_while_there_is_no_apns_sender`, which was
+     * true until ApnsSender existed and would otherwise have stayed green while
+     * asserting the opposite of what the code now does.
+     *
+     * What survives the inversion is the reason the refusal existed: an iOS row
+     * is only deliverable if the CLIENT registered for remote notifications
+     * proper. Android measured that their plugin's iOS token is a PushKit VoIP
+     * credential, which wakes an app for a CALL and cannot carry this — and the
+     * endpoint cannot tell the two apart by looking. That guarantee now lives in
+     * the Apple module's Swift half, not in a validation rule here.
+     */
+    public function test_an_ios_token_is_accepted_now_that_an_apns_sender_exists(): void
     {
         $tenant = $this->provisionTenant('Kappa');
 
-        // Android measured that the token their plugin exposes on iOS is a
-        // PushKit VoIP token — a different credential from an APNs notification
-        // token, which wakes an app for a CALL and cannot carry this. Accepting
-        // it would store a row that looks registered and can never be delivered
-        // to. A refusal is visible; a dead row is not.
         $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/notifications/devices', [
-                'token' => 'token-pushkit-voip',
+                'token' => 'token-real-apns',
                 'platform' => 'ios',
+            ])->assertOk();
+
+        $devices = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->get());
+        $this->assertCount(1, $devices);
+        $this->assertSame('ios', $devices->first()->platform);
+    }
+
+    public function test_a_platform_with_no_sender_at_all_is_still_refused(): void
+    {
+        $tenant = $this->provisionTenant('Lambda');
+
+        // The control that keeps the rule honest: the allowed list is DERIVED
+        // from the senders that exist, so something with no sender must still
+        // be refused. Without this, `platforms()` could start returning
+        // anything and nothing would notice.
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/notifications/devices', [
+                'token' => 'token-from-a-toaster',
+                'platform' => 'windows',
             ])->assertStatus(422);
 
         $this->assertSame(0, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+    }
 
-        // The control: the SAME request with the platform that does have a
-        // sender is accepted, so this pins the platform and not a broken route.
-        $this->signedInAs($tenant['admin'])
-            ->postJson('/api/v1/notifications/devices', [
-                'token' => 'token-pushkit-voip',
-                'platform' => 'android',
-            ])->assertOk();
+    /** An EC P-256 key, the shape Apple issues a .p8 in. */
+    private function configureApns(): void
+    {
+        $key = openssl_pkey_new([
+            'private_key_type' => OPENSSL_KEYTYPE_EC,
+            'curve_name' => 'prime256v1',
+        ]);
+        openssl_pkey_export($key, $pem);
+
+        $path = storage_path('framework/testing/apns-'.Str::uuid7().'.p8');
+        @mkdir(dirname($path), 0777, true);
+        file_put_contents($path, $pem);
+
+        config([
+            'services.apns.key_id' => '8C7774ZGVH',
+            'services.apns.team_id' => '2CMZQR34RL',
+            'services.apns.topic' => 'com.ezbizi.app',
+            'services.apns.key' => $path,
+            'services.apns.production' => true,
+        ]);
+    }
+
+    /**
+     * THE TRAP, and the only reason this test exists.
+     *
+     * `openssl_sign` on an EC key emits a DER SEQUENCE of two INTEGERs. It is a
+     * valid ECDSA signature and `openssl_verify` confirms it against the same
+     * key all day. JWS ES256 is not that — it is exactly 64 bytes, R then S,
+     * each left-padded to 32. Hand Apple the DER and the answer is 403
+     * InvalidProviderToken: a key error, for a key that was never wrong, which
+     * sends somebody to regenerate the one thing that was fine.
+     *
+     * Asserting the LENGTH is what distinguishes the two. A DER signature for
+     * P-256 is 70-72 bytes and varies run to run; 64 exactly is the JOSE form.
+     */
+    public function test_the_provider_token_is_signed_in_jose_form_not_der(): void
+    {
+        Http::fake([self::APNS => Http::response('', 200)]);
+
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Mu');
+        $device = $this->device($tenant, $tenant['admin']->id, 'token-iphone');
+        $this->inTenant($tenant['org'], fn () => $device->forceFill(['platform' => 'ios'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead', subject: $tenant['org'], source: 'automation',
+        ));
+
+        Http::assertSent(function ($request) {
+            $this->assertSame('com.ezbizi.app', $request->header('apns-topic')[0]);
+
+            $jwt = str_replace('bearer ', '', $request->header('authorization')[0]);
+            [$header, , $signature] = explode('.', $jwt);
+
+            $this->assertSame('ES256', json_decode(base64_decode(strtr($header, '-_', '+/')), true)['alg']);
+
+            $raw = base64_decode(strtr($signature, '-_', '+/').str_repeat('=', (4 - strlen($signature) % 4) % 4));
+            $this->assertSame(64, strlen($raw), 'ES256 is raw R||S, not DER');
+
+            return true;
+        });
+    }
+
+    public function test_apple_saying_gone_deletes_the_token(): void
+    {
+        // 410, not 404. FCM says 404/UNREGISTERED and Apple says 410/Gone for
+        // the same thing; a sender checking only for 404 would keep every dead
+        // iPhone token forever while looking like it pruned them.
+        Http::fake([self::APNS => Http::response(['reason' => 'Unregistered'], 410)]);
+
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Nu');
+        $device = $this->device($tenant, $tenant['admin']->id, 'token-deleted-app');
+        $this->inTenant($tenant['org'], fn () => $device->forceFill(['platform' => 'ios'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead', subject: $tenant['org'], source: 'automation',
+        ));
+
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+    }
+
+    public function test_a_bad_device_token_is_kept_because_it_is_usually_the_wrong_environment(): void
+    {
+        // The control for the test above, and a real distinction: 400
+        // BadDeviceToken usually means the token was minted for the other APNs
+        // environment. Deleting on it would throw away a good token every time
+        // somebody pointed a sandbox build at production.
+        Http::fake([self::APNS => Http::response(['reason' => 'BadDeviceToken'], 400)]);
+
+        $this->configureApns();
+        $tenant = $this->provisionTenant('Xi');
+        $device = $this->device($tenant, $tenant['admin']->id, 'token-wrong-env');
+        $this->inTenant($tenant['org'], fn () => $device->forceFill(['platform' => 'ios'])->save());
+
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead', subject: $tenant['org'], source: 'automation',
+        ));
 
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
     }

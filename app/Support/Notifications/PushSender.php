@@ -47,27 +47,32 @@ class PushSender
 
     private const TIMEOUT = 15;
 
+    public function __construct(private readonly ApnsSender $apns) {}
+
     /**
-     * The platforms that can actually be delivered to today.
+     * The platforms a token can be REGISTERED for.
      *
-     * DERIVED from the senders that exist rather than described in a validation
-     * rule somewhere else, because the two would drift apart silently and only
-     * one of them would be right.
+     * Which senders EXIST, not which are configured — and the distinction is
+     * load-bearing. A developer machine has no FCM credential and a production
+     * box before the key lands has none either; if this answered "configured"
+     * both would refuse Android registrations, and the tokens that should have
+     * been accumulating against the day it works would simply be lost.
+     * Registration asks "can this ever be delivered to", and sending asks "can
+     * it be delivered to now".
      *
-     * `ios` is deliberately absent: there is no APNs sender yet. Accepting an
-     * iOS token now would store a row that looks registered and can never be
-     * delivered to — and the Android module measured a sharper version of the
-     * same trap, that the token their plugin exposes on iOS is a PushKit VoIP
-     * token, a different credential from an APNs notification token. It wakes an
-     * app for a CALL and is not interchangeable. A registration endpoint that
-     * accepted it would fill this table with addresses that can never work,
-     * which is worse than refusing them, because a refusal is visible.
+     * `ios` was absent until ApnsSender existed, and that absence had a reason
+     * worth keeping in view: the Android module measured that the token their
+     * plugin exposes on iOS is a PushKit VoIP token, a different credential
+     * that wakes an app for a CALL and cannot carry a notification. So an iOS
+     * row is only ever valid if the CLIENT registered for remote notifications
+     * proper — the endpoint cannot tell the two apart by looking, and the Apple
+     * module owns the Swift side that makes it the right one.
      *
      * @return string[]
      */
-    public static function platforms(): array
+    public function platforms(): array
     {
-        return ['android'];
+        return ['android', 'ios'];
     }
 
     /**
@@ -81,6 +86,11 @@ class PushSender
      */
     public function configured(): bool
     {
+        return $this->fcmConfigured() || $this->apns->configured();
+    }
+
+    private function fcmConfigured(): bool
+    {
         return $this->projectId() !== null && $this->credentials() !== null;
     }
 
@@ -90,9 +100,26 @@ class PushSender
      */
     public function send(Collection $devices, string $title, ?string $body): int
     {
-        if ($devices->isEmpty() || ! $this->configured()) {
+        if ($devices->isEmpty()) {
             return 0;
         }
+
+        /*
+         * ROUTED BY PLATFORM, because the two services share a shape and
+         * nothing else — different endpoint, auth scheme, signature algorithm
+         * and dead-token signal. The dispatcher does not know either of them
+         * exists; it asks for a notification to reach a set of handsets and
+         * this decides how each one is reached.
+         */
+        [$apple, $google] = $devices->partition(fn (DeviceToken $device) => $device->platform === 'ios');
+
+        $sent = $this->apns->send($apple, $title, $body);
+
+        if ($google->isEmpty() || ! $this->fcmConfigured()) {
+            return $sent;
+        }
+
+        $devices = $google;
 
         try {
             $accessToken = $this->accessToken();
@@ -106,10 +133,8 @@ class PushSender
                 'devices' => $devices->count(),
             ]);
 
-            return 0;
+            return $sent;
         }
-
-        $sent = 0;
 
         foreach ($devices as $device) {
             if ($this->deliver($device, $accessToken, $title, $body)) {
