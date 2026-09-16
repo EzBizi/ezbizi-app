@@ -11,6 +11,8 @@ class VersionHistory {
       version: '0.0.0232',
       date: '16 Sep 2026',
       items: [
+        'The run log for a rule that sends a report now names who did not get it, and says so when mail is going nowhere at all. It used to print Sent to 2 people on a machine where nothing had left.',
+        'A WhatsApp step now says it handed the message over rather than that it sent it, and records which message it was. Meta returns success for messages it refuses seconds later, so the old line went green above something that never arrived.',
         'Work schedules now follow the clock of the branch or company they belong to, so the end-of-shift reminder and the automatic clock-out happen at the right hour. A schedule saved with a fixed offset kept no daylight saving, which put every reminder an hour late through the summer.',
         'When Google stops answering, the Leads screen says so. A dead sync used to look exactly like a quiet afternoon, and the list refreshing itself every twenty seconds made that worse rather than better.',
         'A photo taken on an iPhone now posts to Facebook and Instagram as a photo. It was being sent as a video file, which is not what it is. The same applies to heif photos and m4v videos.',
