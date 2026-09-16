@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/async_body.dart';
+import 'page_editor.dart';
 
 /// One site's pages, or one site's posts, read live from the site itself.
 ///
@@ -26,11 +27,17 @@ class SiteContentList extends StatefulWidget {
     required this.siteId,
     required this.host,
     required this.type,
+    this.canEdit = false,
   });
 
   final ApiClient api;
   final String siteId;
   final String host;
+
+  /// Passed down rather than asked for again: the rail that chose the site
+  /// already knows, and two screens answering the same permission question
+  /// differently is how a read-only user meets an editable box.
+  final bool canEdit;
   /// `page` or `post` — the only thing that differs between the two.
   final String type;
 
@@ -167,18 +174,81 @@ class _SiteContentListState extends State<SiteContentList> {
                 : '${item['title']}',
           ),
           subtitle: Text(_line(item)),
-          trailing: status == 'publish'
-              ? null
-              // Only the ones that are NOT live are worth marking. A badge on
-              // every row is a column of noise saying what the reader assumes.
-              : Chip(
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (status != 'publish')
+                // Only the ones that are NOT live are worth marking. A badge on
+                // every row is a column of noise saying what the reader assumes.
+                Chip(
                   label: Text(status),
                   visualDensity: VisualDensity.compact,
                 ),
-          onTap: link.isEmpty ? null : () => launchUrl(Uri.parse(link)),
+              if (link.isNotEmpty)
+                IconButton(
+                  tooltip: 'Open the page on the website',
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  onPressed: () => launchUrl(Uri.parse(link)),
+                ),
+            ],
+          ),
+          /*
+           * The row opens the page's own EzBizi screen, and the icon beside it
+           * opens the real page. It was the other way round for one release,
+           * and Jose's words were "clicking them leads u to said page, which is
+           * fine but not the main purpose" — a list of a website's pages inside
+           * EzBizi exists to edit what EzBizi publishes onto them.
+           */
+          onTap: () => _open(item),
         );
       },
     );
+  }
+
+  /// This page's own screen.
+  ///
+  /// The PATH is what identifies a page to EzBizi, not the WordPress id: values
+  /// are stored against a path because the plugin only knows what it is
+  /// rendering, and a post id means nothing to a shortcode on a page.
+  void _open(Map<String, dynamic> item) {
+    final path = _pathOf(item);
+
+    if (path.isEmpty) return;
+
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PageEditor(
+        api: widget.api,
+        siteId: widget.siteId,
+        host: widget.host,
+        path: path,
+        title: '${item['title'] ?? ''}',
+        link: '${item['link'] ?? ''}',
+        canEdit: widget.canEdit,
+      ),
+    ));
+  }
+
+  /// The page's path on its own site.
+  ///
+  /// Taken from the live link rather than built from the slug: WordPress puts
+  /// posts under a permalink structure the slug alone cannot reconstruct, and a
+  /// path we guessed would store values against a page that does not exist.
+  String _pathOf(Map<String, dynamic> item) {
+    final link = '${item['link'] ?? ''}';
+
+    if (link.isNotEmpty) {
+      final parsed = Uri.tryParse(link);
+
+      if (parsed != null && parsed.path.isNotEmpty && parsed.path != '/') {
+        return parsed.path.endsWith('/')
+            ? parsed.path.substring(0, parsed.path.length - 1)
+            : parsed.path;
+      }
+    }
+
+    final slug = '${item['slug'] ?? ''}'.trim();
+
+    return slug.isEmpty ? '' : '/$slug';
   }
 
   /// The slug and when it last changed — the two things that tell one page from

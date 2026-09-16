@@ -388,6 +388,9 @@ class _SeoTabState extends State<SeoTab> {
         siteId: site['id'] as String,
         host: site['host'] as String,
         type: _sectionKey == _pagesKey ? 'page' : 'post',
+        // Asked here, where the answer already is. A page's screen must not
+        // decide the permission for itself and reach a different answer.
+        canEdit: _canEdit,
       );
     }
 
