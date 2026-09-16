@@ -149,10 +149,34 @@ class ApnsSender
             return false;
         }
 
+        /*
+         * THE KEY ID AND TOPIC ARE IN HERE BECAUSE THEY ARE WHAT DISTINGUISHES
+         * THE TWO REFUSALS THAT LOOK LIKE A BROKEN SIGNATURE.
+         *
+         * 403 InvalidProviderToken reads as "the signature is wrong", and the
+         * first instinct is the ES256 DER-versus-raw trap in joseSignature.
+         * But a JWT signed perfectly with the right key and stamped with the
+         * WRONG `kid` fails in exactly the same way — and the credentials
+         * folder holds two .p8 files whose names differ by eight characters,
+         * one of which (27YW9B9D6Y) authenticates to App Store Connect rather
+         * than to APNs. The Apple module named that trap; this is it written
+         * down where somebody debugging at speed will actually see it, rather
+         * than in a message from three weeks earlier.
+         *
+         * 400 BadDeviceToken has the same shape one level over: usually the
+         * token was minted for the other environment, but a wrong `apns-topic`
+         * produces it too, and the topic is not otherwise visible from a log.
+         *
+         * Neither value is a secret. A Key ID is an identifier and travels in
+         * the JWT header in clear; the topic is the bundle id, which is on
+         * every build.
+         */
         Log::warning('Push refused by APNs.', [
             'device_token_id' => $device->getKey(),
             'status' => $response->status(),
             'reason' => $response->json('reason'),
+            'key_id' => $this->settings()['key_id'] ?? null,
+            'topic' => $this->settings()['topic'] ?? null,
         ]);
 
         return false;
