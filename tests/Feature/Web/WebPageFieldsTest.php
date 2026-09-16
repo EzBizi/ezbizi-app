@@ -209,4 +209,92 @@ class WebPageFieldsTest extends TestCase
 
         Http::assertNothingSent();
     }
+
+    /**
+     * A template is one piece of text nine pages share, written once.
+     *
+     * Stored site-wide, which is the whole difference from a page field: the
+     * shortcode means the same thing everywhere, and that is the only reason
+     * somebody would reach for one.
+     */
+    public function test_a_template_is_shared_by_the_whole_site(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+        $id = $site['data']['id'];
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/$id/values", [
+            'values' => ['template_1' => 'Serving the tri-state area since 1974.'],
+        ])->assertOk();
+
+        $fields = collect(
+            $this->signedInAs($editor)->getJson("/api/v1/web/sites/$id/values")
+                ->assertOk()->json('data.fields')
+        )->keyBy('key');
+
+        $this->assertTrue($fields->has('template_1'));
+        $this->assertSame('[ezbizi_template_1]', $fields['template_1']['shortcode']);
+        $this->assertSame('Template 1', $fields['template_1']['label']);
+
+        // No path, and that absence is what tells a template from a page field.
+        $this->assertNull($fields['template_1']['path']);
+        $this->assertTrue($fields['template_1']['template']);
+    }
+
+    /** It has to reach the website, or the shortcode renders nothing. */
+    public function test_the_website_is_told_about_templates(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/values", [
+                'values' => ['template_1' => 'Serving the tri-state area since 1974.'],
+            ])->assertOk();
+
+        $payload = $this->withToken($site['token'])
+            ->getJson('/api/v1/web/plugin/values?host=a-1chimney.com')
+            ->assertOk()
+            ->json();
+
+        $this->assertContains('template_1', array_column($payload['fields'], 'key'));
+
+        // Site-wide, so it is in values rather than under a page.
+        $this->assertSame(
+            'Serving the tri-state area since 1974.',
+            $payload['values']['template_1'] ?? null,
+        );
+    }
+
+    /**
+     * A template overridden on one page would be a shortcode meaning different
+     * things in different places, which is exactly what somebody reaches for a
+     * template to avoid — and they would find out by reading two pages side by
+     * side rather than from any error.
+     */
+    public function test_a_template_cannot_be_overridden_on_a_page(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/values", [
+                'path' => '/about-us',
+                'values' => ['template_1' => 'Different here.'],
+            ])->assertStatus(422);
+    }
+
+    /**
+     * The one that protects a shortcode already pasted into nine pages:
+     * deleting template 2 of three must not hand template 3's name to new words.
+     */
+    public function test_a_new_template_never_takes_a_name_already_in_use(): void
+    {
+        $this->assertSame(
+            'template_4',
+            PageFields::nextTemplateKey(['template_1', 'template_3']),
+        );
+
+        $this->assertSame('template_1', PageFields::nextTemplateKey([]));
+        $this->assertTrue(PageFields::isTemplateKey('template_2'));
+        $this->assertFalse(PageFields::isTemplateKey('template_0'));
+        $this->assertFalse(PageFields::isTemplateKey('template_2_x'));
+    }
 }

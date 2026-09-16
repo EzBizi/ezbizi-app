@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
 import 'content_tab.dart';
+import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/side_panel.dart';
 import 'hours.dart';
@@ -155,6 +156,7 @@ class _SeoTabState extends State<SeoTab> {
               .cast<Map<String, dynamic>>(),
           const {'key': _pagesKey, 'label': 'Pages'},
           const {'key': _postsKey, 'label': 'Posts'},
+          const {'key': _templatesKey, 'label': 'Templates'},
         ];
         if (_section >= _sections.length) _section = 0;
       } else {
@@ -189,6 +191,10 @@ class _SeoTabState extends State<SeoTab> {
   /// The two sections that show the website's own content rather than fields.
   static const String _pagesKey = 'pages';
   static const String _postsKey = 'posts';
+
+  /// Text shared by many pages, so it belongs beside Pages and Posts rather
+  /// than among the field groups: like them it is content, not a field group.
+  static const String _templatesKey = 'templates';
 
   bool get _showingContent =>
       _sectionKey == _pagesKey || _sectionKey == _postsKey;
@@ -379,6 +385,16 @@ class _SeoTabState extends State<SeoTab> {
   /// unbounded height inside a scroll view builds every row at once and takes
   /// the scrolling with it.
   Widget _paneFor(Map<String, dynamic> site) {
+    if (_sectionKey == _templatesKey) {
+      return TemplatesPane(
+        key: ValueKey('${site['id']}:templates'),
+        api: widget.api,
+        siteId: site['id'] as String,
+        host: site['host'] as String,
+        canEdit: _canEdit,
+      );
+    }
+
     if (_showingContent) {
       return SiteContentList(
         // Keyed by site AND section, so switching either refetches rather than
