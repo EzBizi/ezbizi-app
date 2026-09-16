@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.8.0
+ * Version:           1.9.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.8.0';
+const EZBIZI_VERSION = '1.9.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -67,18 +67,28 @@ const EZBIZI_REFRESHING = 'ezbizi_refreshing';
 const EZBIZI_REFUSED_SINCE = 'ezbizi_refused_since';
 
 /*
- * How long a refusal has to last before the widgets stop drawing. Seven days.
+ * There is no grace period, and there was one for half a day.
  *
- * Not immediately, because rotating a token leaves a real gap while somebody
- * pastes the new one, and the public key the widgets use is a separate
- * credential that usually still works through it — blanking a working chat
- * over a thirty-second gap would be the worse mistake.
+ * Jose's rule, on the day the chat went onto every page: it "should only show
+ * up if a connection has been connected properly". A site EzBizi is refusing
+ * is not connected, whatever it was yesterday, so seven days of grace was
+ * seven days of a chat box on a site somebody had disconnected, collecting
+ * messages into an account that will not accept them.
  *
- * Not never, which is what it was: a site whose pairing has genuinely ended
- * went on drawing a chat box on every page, and a visitor typing into it is
- * being promised a conversation nobody is going to receive.
+ * I had argued for that grace because rotating a token leaves a gap of minutes
+ * while somebody pastes the new one, and the public key the widgets use often
+ * survives it. The reasoning still holds and it is not worth what it costs: a
+ * chat that vanishes for ten minutes during a rotation is a small fault that
+ * fixes itself, and a chat on a site that is no longer ours is not.
+ *
+ * There is deliberately no constant left to tune. A duration compared against
+ * zero would also answer "not yet" for the first second of every refusal, and
+ * a boundary like that is a bug waiting for the one test that stamps and reads
+ * in the same second — which is exactly how this one announced itself.
+ *
+ * Only a REFUSAL counts: 401 or 403, EzBizi saying it does not recognise this
+ * site. A timeout or a 500 is our own bad day and changes nothing.
  */
-const EZBIZI_REFUSED_MAX = 604800;
 
 require_once __DIR__ . '/service-account.php';
 require_once __DIR__ . '/enquiries.php';
@@ -401,7 +411,7 @@ add_action('admin_notices', function () {
          */
         $refused = function_exists('ezbizi_refused_for') ? ezbizi_refused_for() : 0;
 
-        if ($refused > EZBIZI_REFUSED_MAX) {
+        if ($refused > 0) {
             printf(
                 '<div class="notice notice-error"><p>%s <a href="%s">%s</a></p></div>',
                 esc_html(sprintf(

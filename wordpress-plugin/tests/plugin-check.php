@@ -245,6 +245,34 @@ function check($what, $got, $want) {
     echo "  FAIL  {$what}\n        want: ".var_export($want, true)."\n        got:  ".var_export($got, true)."\n";
 }
 
+/**
+ * A payload whose field list this build of the plugin has never seen.
+ *
+ * `tagline` is a field added to EzBizi after this plugin shipped; `template_1`
+ * is text a customer wrote once for the whole site; `about_us_field_1` is a
+ * paragraph they invented for one page. None of the three exists anywhere in
+ * the plugin's source, which is the point.
+ */
+function invented_payload() {
+    return json_encode([
+        'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
+        'fields' => [
+            ['key' => 'phone', 'label' => 'Phone number', 'hint' => '', 'shortcode' => '[ezbizi_phone]'],
+            ['key' => 'tagline', 'label' => 'Tagline', 'hint' => '', 'shortcode' => '[ezbizi_tagline]'],
+            ['key' => 'template_1', 'label' => 'Template 1', 'hint' => '', 'shortcode' => '[ezbizi_template_1]'],
+            ['key' => 'about_us_field_1', 'label' => 'About us - field 1', 'hint' => '', 'shortcode' => '[ezbizi_about_us_field_1]'],
+        ],
+        'values' => [
+            'phone' => '555-0100',
+            'tagline' => 'Not just our name.',
+            'template_1' => 'Licensed and insured since 1974.',
+        ],
+        'pages' => [
+            '/about-us' => ['about_us_field_1' => 'We have swept chimneys since 1974.'],
+        ],
+    ]);
+}
+
 function payload_json(array $values, array $pages = []) {
     return json_encode([
         'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
@@ -355,6 +383,53 @@ $_SERVER['REQUEST_URI'] = '/contact/?utm_source=x';
 check('trailing slash and query still match', ezbizi_value('phone'), '555-0999');
 $_SERVER['REQUEST_URI'] = '/about';
 check('another page gets the site value', ezbizi_value('phone'), '555-0100');
+
+echo PHP_EOL . "Keys this plugin has never heard of" . PHP_EOL;
+/*
+ * Jose asked whether the plugin had been updated for the new SEO fields, the
+ * page text and the templates. It has not, and the answer to whether it needs
+ * to be is here rather than in a sentence: the plugin registers a shortcode for
+ * every key the server sends, so a field invented in EzBizi this morning is a
+ * working shortcode this afternoon with nothing installed.
+ *
+ * None of the three keys below appears anywhere in this plugin's source.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => invented_payload()];
+ezbizi_payload(true);
+
+/*
+ * Registration happens on `init`, from whatever payload exists at that moment
+ * — which is a fact about the live plugin and not a quirk of this harness. A
+ * field invented in EzBizi becomes a shortcode on the NEXT request after the
+ * cache refreshes, not on the one that fetched it. Five minutes, not never,
+ * and worth knowing before somebody reports that their new field "did nothing"
+ * for a minute.
+ */
+do_action('init');
+
+check('a field added to EzBizi after this release is registered', isset($GLOBALS['sc']['ezbizi_tagline']), true);
+check('and renders', $GLOBALS['sc']['ezbizi_tagline']([]), 'Not just our name.');
+
+// A template is site-wide: the same words wherever it is pasted.
+$_SERVER['REQUEST_URI'] = '/anything-at-all';
+check('a template renders on any page', $GLOBALS['sc']['ezbizi_template_1']([]), 'Licensed and insured since 1974.');
+
+// A page's own text is the opposite: only where it belongs.
+$_SERVER['REQUEST_URI'] = '/about-us';
+check('a page field renders on its page', $GLOBALS['sc']['ezbizi_about_us_field_1']([]), 'We have swept chimneys since 1974.');
+
+$_SERVER['REQUEST_URI'] = '/contact';
+check('and nowhere else', $GLOBALS['sc']['ezbizi_about_us_field_1']([]), '');
+
+/*
+ * The control. Without it, "renders nothing elsewhere" would pass just as
+ * happily on a plugin that had never registered the shortcode at all — which
+ * is the failure being ruled out.
+ */
+check('the shortcode exists to be empty', isset($GLOBALS['sc']['ezbizi_about_us_field_1']), true);
+
+$_SERVER['REQUEST_URI'] = '/';
 
 echo "\nA failed API call must never blank a live page\n";
 reset_site();
@@ -481,7 +556,7 @@ echo PHP_EOL . "A connected site that is being refused is told why" . PHP_EOL;
 reset_site();
 $GLOBALS['screen'] = null;
 $GLOBALS['is_admin'] = true;
-update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 86400, false);
+update_option(EZBIZI_REFUSED_SINCE, time() - 86400, false);
 ob_start();
 do_action('admin_notices');
 $refused_notice = ob_get_clean();
@@ -490,12 +565,21 @@ check('it says the token is being refused', str_contains($refused_notice, 'refus
 check('and that the published values are safe', str_contains($refused_notice, 'values are unaffected'), true);
 check('and where to fix it', str_contains($refused_notice, 'admin.php?page=ezbizi'), true);
 
-// A refusal that started an hour ago is a rotation in progress, not a fault.
-update_option(EZBIZI_REFUSED_SINCE, time() - 3600, false);
+/*
+ * Said from the first refusal, because the widgets have already gone by then.
+ * A notice that waited would leave the one person who could fix it looking at
+ * a site whose chat vanished for no stated reason.
+ */
+update_option(EZBIZI_REFUSED_SINCE, time() - 60, false);
 ob_start();
 do_action('admin_notices');
-check('a fresh one says nothing yet', ob_get_clean(), '');
+check('a fresh refusal is announced too', str_contains(ob_get_clean(), 'refusing'), true);
+
+// And the control: a site nobody is refusing hears nothing at all.
 delete_option(EZBIZI_REFUSED_SINCE);
+ob_start();
+do_action('admin_notices');
+check('a connected site is still not nagged', ob_get_clean(), '');
 
 echo "\nThe plugin's own row offers a way in\n";
 $links = apply_filters(
@@ -755,15 +839,20 @@ $GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
 ezbizi_fetch();
 check('and dated once', (int) get_option(EZBIZI_REFUSED_SINCE, 0), $first);
 
-// A token being re-pasted leaves a gap of minutes. Nothing may disappear
-// during it: the public key the widgets use is a separate credential that
-// usually still works right through a rotation.
+/*
+ * Jose, on the day the chat went onto every page: it "should only show up if a
+ * connection has been connected properly". So a refusal hides it AT ONCE, not
+ * after a grace period — a site EzBizi will not recognise is not connected,
+ * whatever it was an hour ago.
+ *
+ * This replaces a check that asserted the opposite, and the earlier reasoning
+ * was not wrong: rotating a token leaves a gap of minutes during which the
+ * public key often still works, so the chat now disappears for that gap. That
+ * is a small fault that fixes itself. A chat on a site that is no longer ours
+ * is not.
+ */
 $GLOBALS['is_admin'] = false;
-check('a fresh refusal hides nothing', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
-
-// A week of it is not a rotation. It is a pairing that ended.
-update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 60, false);
-check('a week of it draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
+check('a refusal draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 check('and no form', $GLOBALS['sc']['ezbizi_form']([]), '');
 
 /*
