@@ -500,20 +500,24 @@ Recovery is automatic — the next 200 clears the refusal and the widgets come
 straight back with no intervention — and only 401/403 count, so a timeout or a
 500 does nothing. An ordinary outage is not this.
 
-**Before deploying anything that touches plugin-token validation, arrange the
-check first, because the desk cannot run it alone.** The probe is one request:
+**After deploying anything that touches plugin-token validation, run this on
+the box. It needs no credential and makes no outbound call:**
 
-    curl -s "https://app.ezbizi.com/api/v1/web/plugin/values?host=<a live host>" \
-      -H "Authorization: Bearer <that site's token>" -o /dev/null -w "%{http_code}"
+    php artisan ezbizi:web-estate        # 0 = the estate is being answered
+                                         # 1 = names how many have gone quiet
 
-200 means the estate is fine; 401 means every chat box is gone. But
-`web_sites.token_hash` is a HASH — the plaintext is shown once at creation and
-once at rotation and is unrecoverable afterwards, by us and by support. So this
-desk cannot mint that request, and an unauthenticated call returns 401 either
-way, which is indistinguishable from the failure it is meant to detect.
+It reads `last_seen_at`, which is written only AFTER a token resolves, so a
+site being turned away simply stops arriving — the estate's health was already
+in our own table. Baseline when it was written: 111 registered, 93 seen in five
+minutes, 110 in fifteen, 1 never seen.
 
-Web Management can answer it from the WordPress side with wp-cli. Ask them
-BEFORE the cut, not after: a check you cannot run is not a check.
+The earlier version of this section said the desk could not check this, and
+named a curl that carries a site token. That was true and is not any more.
+Worth remembering WHY it was true: `web_sites.token_hash` is a hash, so the
+plaintext cannot be minted here, and an unauthenticated call to that endpoint
+returns the same 401 the failure produces — a probe indistinguishable from the
+thing it is meant to detect. If you find yourself writing a check, ask what it
+prints when the system is broken, not when it is healthy.
 
 No grace period was added back to soften this, deliberately. A grace period is
 exactly what Jose just removed, and trading his rule for protection against a
