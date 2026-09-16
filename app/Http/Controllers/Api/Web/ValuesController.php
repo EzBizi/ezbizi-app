@@ -86,7 +86,17 @@ class ValuesController extends Controller
          */
         $unknown = array_values(array_filter(
             array_diff(array_keys($input['values']), SeoFields::keys()),
-            fn (string $key) => ! ($path !== '' && PageFields::isCustomKey($key)),
+            fn (string $key) => ! (
+                ($path !== '' && PageFields::isCustomKey($key))
+                /*
+                 * A template is site-wide and only site-wide. Allowed on a page
+                 * it would be a shortcode meaning different things in different
+                 * places, which is exactly what somebody reaches for a template
+                 * to avoid — and they would find out by reading two pages side
+                 * by side rather than from any error.
+                 */
+                || ($path === '' && PageFields::isTemplateKey($key))
+            ),
         ));
 
         if ($unknown !== []) {
@@ -104,6 +114,14 @@ class ValuesController extends Controller
         if (count($custom) > PageFields::MAX_PER_PAGE) {
             return response()->json([
                 'message' => 'A page can hold at most '.PageFields::MAX_PER_PAGE.' text fields.',
+            ], 422);
+        }
+
+        $templates = array_filter(array_keys($input['values']), PageFields::isTemplateKey(...));
+
+        if (count($templates) > PageFields::MAX_TEMPLATES) {
+            return response()->json([
+                'message' => 'A site can hold at most '.PageFields::MAX_TEMPLATES.' templates.',
             ], 422);
         }
 

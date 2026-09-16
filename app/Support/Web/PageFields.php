@@ -47,8 +47,27 @@ final class PageFields
      */
     public const PATTERN = '/^[a-z0-9]+(?:_[a-z0-9]+)*_field_[1-9][0-9]{0,2}$/';
 
+    /**
+     * A template: one piece of text shared by every page that pastes it.
+     *
+     * `template_1` rather than `<page>_field_1`, and stored site-wide, which is
+     * the whole difference. A page field says something about one page; a
+     * template is the paragraph that appears on nine of them, written once. The
+     * shortcode is `[ezbizi_template_1]` and it means the same everywhere,
+     * which is the only reason it is worth having.
+     *
+     * It is deliberately NOT allowed on a page. A template that could be
+     * overridden per page would be a shortcode meaning different things in
+     * different places, which is precisely what somebody reaches for a template
+     * to avoid — and they would find out by reading two pages side by side.
+     */
+    public const TEMPLATE_PATTERN = '/^template_[1-9][0-9]{0,2}$/';
+
     /** One page's worth, at most. Beyond this it is a CMS, which this is not. */
     public const MAX_PER_PAGE = 30;
+
+    /** The same ceiling, for the same reason: each one is a live shortcode. */
+    public const MAX_TEMPLATES = 30;
 
     public static function isCustomKey(string $key): bool
     {
@@ -56,6 +75,34 @@ final class PageFields
             // A built-in always wins: if a future SeoFields key ever matched
             // this shape, the catalogue would carry it twice.
             && ! in_array($key, SeoFields::keys(), true);
+    }
+
+    public static function isTemplateKey(string $key): bool
+    {
+        return preg_match(self::TEMPLATE_PATTERN, $key) === 1
+            && ! in_array($key, SeoFields::keys(), true);
+    }
+
+    /**
+     * The next template name.
+     *
+     * From the names present, never from how many: deleting template 2 of three
+     * must not hand template 3's name to new words, on a site where
+     * `[ezbizi_template_3]` is already pasted into nine pages.
+     *
+     * @param  array<int, string>  $existing
+     */
+    public static function nextTemplateKey(array $existing): string
+    {
+        $taken = [];
+
+        foreach ($existing as $key) {
+            if (preg_match('/^template_([0-9]+)$/', $key, $m) === 1) {
+                $taken[] = (int) $m[1];
+            }
+        }
+
+        return 'template_'.(($taken === [] ? 0 : max($taken)) + 1);
     }
 
     /**
@@ -110,11 +157,13 @@ final class PageFields
 
         $rows = WebValue::query()
             ->where('site_id', $site->getKey())
-            ->get(['path', 'key']);
+            ->get(['path', 'key', 'value']);
 
         foreach ($rows as $row) {
-            if (self::isCustomKey((string) $row->key)) {
-                $found[(string) $row->key] = (string) $row->path;
+            $key = (string) $row->key;
+
+            if (self::isCustomKey($key) || self::isTemplateKey($key)) {
+                $found[$key] = (string) $row->path;
             }
         }
 
@@ -134,25 +183,38 @@ final class PageFields
         $out = [];
 
         foreach (self::forSite($site) as $key => $path) {
+            $template = self::isTemplateKey($key);
+
             $out[] = [
                 'key' => $key,
                 'label' => self::label($key),
-                'hint' => 'Free text for '.($path === '' ? 'the home page' : $path).'.',
+                'hint' => $template
+                    ? 'Shared text. The same on every page that uses it.'
+                    : 'Free text for '.($path === '' ? 'this site' : $path).'.',
                 'requirement' => SeoFields::OPTIONAL,
                 'section' => SeoFields::GENERAL,
                 'shortcode' => '[ezbizi_'.$key.']',
-                // The page it overrides, so a screen can group them without
-                // parsing the key back apart.
-                'path' => $path,
+                /*
+                 * The page it belongs to, so a screen can group them without
+                 * parsing the key apart. A template has none on purpose: it
+                 * belongs to the site, and its absence is what tells the
+                 * Templates tab from the page screens.
+                 */
+                'path' => $template ? null : $path,
+                'template' => $template,
             ];
         }
 
         return $out;
     }
 
-    /** `about_us_field_2` reads as "About us — field 2". */
+    /** `about_us_field_2` reads as "About us — field 2", `template_2` as "Template 2". */
     private static function label(string $key): string
     {
+        if (self::isTemplateKey($key)) {
+            return 'Template '.substr($key, strlen('template_'));
+        }
+
         if (preg_match('/^(.*)_field_([0-9]+)$/', $key, $m) !== 1) {
             return $key;
         }
