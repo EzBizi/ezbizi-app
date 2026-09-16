@@ -485,6 +485,12 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         _text(theme, 'Message question', chat['message_label'],
             (v) => _set('chat', 'message_label', v)),
         _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
+
+        // Sent back the moment they press it. A real message on the thread, so
+        // whoever picks the conversation up in Leads can see what the person
+        // was already told. Leave it empty to send nothing.
+        _text(theme, 'Automatic first reply', chat['auto_reply'],
+            (v) => _set('chat', 'auto_reply', v)),
         _dropdown(
           theme,
           'Where it sits',
@@ -734,6 +740,38 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                   ],
                 ),
               ),
+              // What happens the instant they press it. Previewed because it
+              // is the only message on the thread nobody will proof-read
+              // before a stranger reads it.
+              if (_line(chat['auto_reply']).isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _mockPanel(
+                  surface: surface,
+                  radius: radius,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _mockBubble(
+                          'Hello, I need…',
+                          accent,
+                          onAccent,
+                          radius,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _mockBubble(
+                        _line(chat['auto_reply']),
+                        const Color(0xFFF1F3F5),
+                        const Color(0xFF1B1B1B),
+                        radius,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 8),
               // The closed bubble, which is what most visitors ever see of it.
               _mockButton(_line(chat['button']), accent, onAccent, radius),
@@ -811,6 +849,19 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         borderRadius: BorderRadius.circular(8),
       ),
       child: child,
+    );
+  }
+
+  /// One message, leaning the way it came from.
+  Widget _mockBubble(String text, Color fill, Color ink, double radius) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 240),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(radius + 2),
+      ),
+      child: Text(text, style: TextStyle(color: ink, fontSize: 12)),
     );
   }
 

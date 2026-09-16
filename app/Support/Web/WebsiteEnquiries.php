@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Models\WebWidget;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadThread;
 use Illuminate\Support\Str;
@@ -70,6 +71,7 @@ final class WebsiteEnquiries
         $chat->forceFill(['token_hash' => $hash, 'last_seen_at' => now()])->save();
 
         $this->say($chat, $message, LeadConversation::FROM_CONSUMER);
+        $this->autoReply($chat, $site);
 
         /*
          * The SITE is the subject, not the lead. Leads raises
@@ -96,6 +98,46 @@ final class WebsiteEnquiries
      * messages sent in the same second must not collide, and a counter would
      * need a lock to be safe under two browser tabs.
      */
+    /**
+     * The answer that arrives before a person does.
+     *
+     * ── Why it is a real message ──
+     *
+     * The widget could draw a greeting locally and it would look identical to
+     * the visitor. It would also be invisible in Leads, so whoever picks the
+     * conversation up would not know what the person had already been told, and
+     * would either repeat it or contradict it. Writing it to the thread costs
+     * one row and makes the two views agree.
+     *
+     * ── Why only at the start ──
+     *
+     * Jose asked for it on the first reply. Every message would make a machine
+     * that argues with people: somebody typing three lines in a row would get
+     * three identical answers, each one more clearly nobody.
+     *
+     * ── Why blank means silence ──
+     *
+     * The switches came off the widgets on purpose, and this is not one coming
+     * back: an empty greeting is not a disabled feature, it is a business that
+     * would rather say nothing than say something automatic.
+     */
+    private function autoReply(WebChat $chat, WebSite $site): void
+    {
+        $config = WebWidget::resolvedFor($site);
+        $text = trim((string) ($config['chat']['auto_reply'] ?? ''));
+
+        if ($text === '') {
+            return;
+        }
+
+        /*
+         * Both rows land in the same second, so they tie on occurred_at. The
+         * id breaks it — LeadConversation ids are UUID v7 — and this one is
+         * written second, so it reads second. See messagesFor().
+         */
+        $this->say($chat, $text, LeadConversation::FROM_ADVERTISER);
+    }
+
     public function say(WebChat $chat, string $message, string $from): LeadConversation
     {
         $lead = $chat->lead;

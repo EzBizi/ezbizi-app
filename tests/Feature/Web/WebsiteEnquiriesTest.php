@@ -428,4 +428,96 @@ class WebsiteEnquiriesTest extends TestCase
 
         $this->assertSame(1, $raised, 'the arrival of a website lead is an event, not only its words');
     }
+
+    /** Set the greeting the way the Widgets tab does. */
+    private function greetWith(array $made, string $text): void
+    {
+        // Not "Web Editor": siteWithKey already made one in this org, and the
+        // role name is unique per organization.
+        $editor = $this->userWithRole(
+            $made['tenant'],
+            'Widget Editor',
+            ['web_management.view', 'web_management.edit'],
+        );
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$made['site']->getKey()}/widgets", [
+                'config' => ['chat' => ['auto_reply' => $text]],
+            ])->assertOk();
+    }
+
+    /**
+     * The answer that arrives before a person does.
+     *
+     * Asserted on the THREAD as well as the reply, because the point of storing
+     * it rather than drawing it in the widget is that Leads shows it: whoever
+     * picks the conversation up has to see what the visitor was already told,
+     * or they repeat it or contradict it.
+     */
+    public function test_a_chat_is_answered_the_moment_it_starts(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $body = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        // Two messages, in the order they happened: the question, then us.
+        $this->assertCount(2, $body['messages']);
+        $this->assertSame('you', $body['messages'][0]['from']);
+        $this->assertSame('hello i need a sweep', $body['messages'][0]['text']);
+        $this->assertSame('them', $body['messages'][1]['from']);
+        $this->assertSame('We have you — one moment.', $body['messages'][1]['text']);
+
+        $this->inTenant($made['tenant']['org'], function () {
+            $this->assertDatabaseHas('lead_conversations', [
+                'lead_id' => WebChat::query()->firstOrFail()->lead_id,
+                'participant' => LeadConversation::FROM_ADVERTISER,
+                'text' => 'We have you — one moment.',
+            ]);
+        });
+    }
+
+    /**
+     * Blank is a business that would rather say nothing than say something
+     * automatic — not a switch coming back in through the side door.
+     */
+    public function test_an_empty_greeting_sends_nothing(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, '   ');
+
+        $body = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->assertCount(1, $body['messages']);
+    }
+
+    /**
+     * Only the first. Every message would make a machine that argues with
+     * people: somebody typing three lines in a row would get three identical
+     * answers, each one more clearly nobody.
+     */
+    public function test_it_answers_once_and_not_every_time(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $started = $this->startChat($made['site']->public_key, 'hello')
+            ->assertCreated()
+            ->json();
+
+        $after = $this->withToken($started['token'])
+            ->postJson("/api/v1/web/chat/{$started['chat']}/messages", ['message' => 'still there?'])
+            ->assertOk()
+            ->json();
+
+        $this->assertSame(
+            1,
+            collect($after['messages'])->where('text', 'We have you — one moment.')->count(),
+            'The greeting was sent again on a later message.',
+        );
+    }
 }

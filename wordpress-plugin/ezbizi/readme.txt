@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.7.1
+Stable tag: 1.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -194,6 +194,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.8.0 =
+* If EzBizi stops recognising this site's token for a week, the chat and
+  contact form stop showing rather than collecting messages nobody will
+  receive, and an administrator is told why. Your published values keep
+  working — a phone number that is a week old is still your phone number.
 
 = 1.7.1 =
 * The chat bubble sits higher, so it no longer lands on a sticky bar along the

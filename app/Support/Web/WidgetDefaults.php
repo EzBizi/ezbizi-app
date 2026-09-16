@@ -67,6 +67,28 @@ final class WidgetDefaults
             'contact_label' => 'Phone or email',
             'message_label' => 'How can we help?',
             'start' => 'Start chat',
+            /*
+             * Sent back the instant somebody starts a chat.
+             *
+             * A visitor who types a question and watches nothing happen has no
+             * way to tell a business that is closed from a widget that is
+             * broken, and they close the tab. This is a real message on the
+             * thread rather than something the widget draws locally, so it is
+             * in Leads too and staff can see exactly what the person was told.
+             *
+             * Empty by default, and that is not a switch in disguise — the
+             * field IS the setting, and the wording is the whole feature. A
+             * greeting in the wrong voice is worse than none.
+             *
+             * It also has a consequence nobody would choose by accident:
+             * "unreplied" in Leads means `last_contact_from = CONSUMER`, so an
+             * automatic answer takes every new chat OUT of the unreplied
+             * filter the instant it arrives. A real enquiry would look
+             * answered. Raised with the Leads module; until a conversation row
+             * can say it was automatic, this stays off unless a business types
+             * something into it deliberately.
+             */
+            'auto_reply' => '',
             'error' => 'Sorry — that did not send. Please try again.',
             'away' => 'We are not at the desk right now, but leave a message and we will come back to you.',
             'position' => 'bottom-right',
@@ -176,6 +198,7 @@ final class WidgetDefaults
                 'contact_label' => self::text($chat['contact_label'] ?? '', 40),
                 'message_label' => self::text($chat['message_label'] ?? '', 60),
                 'start' => self::text($chat['start'] ?? '', 40),
+                'auto_reply' => self::text($chat['auto_reply'] ?? '', 500),
                 'error' => self::text($chat['error'] ?? '', 200),
                 'position' => in_array($chat['position'] ?? '', ['bottom-right', 'bottom-left', 'inline'], true)
                     ? $chat['position']

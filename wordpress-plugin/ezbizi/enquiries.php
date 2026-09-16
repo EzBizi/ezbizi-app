@@ -58,7 +58,33 @@ function ezbizi_api_base() {
  * a successful read — in which case the widgets render nothing rather than
  * guessing at somebody's colours.
  */
+/**
+ * How long EzBizi has been refusing this site, in seconds, or 0 if it is not.
+ *
+ * Its own function because two different things ask: the widgets, which stop
+ * drawing, and the notice that tells an administrator why.
+ */
+function ezbizi_refused_for() {
+    $since = (int) get_option(EZBIZI_REFUSED_SINCE, 0);
+
+    return $since > 0 ? max(0, time() - $since) : 0;
+}
+
 function ezbizi_widget_config($kind) {
+    /*
+     * A site EzBizi has been refusing for a week draws no widgets.
+     *
+     * The deploy desk found the hole: the guard below asks whether a key is
+     * ABSENT, and a site whose token the server rejects still has the last
+     * good payload, key and all. So a pairing that had ended went on showing a
+     * chat box on every page. The values are a different question and keep
+     * publishing — a phone number that is a week stale is still the right
+     * phone number, while a chat box is a promise that somebody is listening.
+     */
+    if (ezbizi_refused_for() > EZBIZI_REFUSED_MAX) {
+        return array();
+    }
+
     $payload = ezbizi_payload();
 
     if (! isset($payload['widgets']) || ! is_array($payload['widgets'])) {

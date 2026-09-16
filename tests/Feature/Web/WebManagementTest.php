@@ -1366,4 +1366,46 @@ class WebManagementTest extends TestCase
             ['Authorization' => 'Bearer '.$token],
         );
     }
+
+    /**
+     * The four Jose asked for on 2026-09-16, with the shortcodes they produce.
+     *
+     * Pinned by KEY rather than by count, because the key is what a customer
+     * pastes into a page: renaming one silently breaks every site already
+     * publishing it, and a count would not notice.
+     */
+    public function test_the_newest_fields_are_offered_with_their_shortcodes(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole($tenant, 'Web Editor', [
+            'web_management.view', 'web_management.edit',
+        ]);
+
+        $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
+            'company_id' => $tenant['company']->getKey(),
+            'host' => 'a-1chimney.com',
+        ])->assertCreated()->json();
+
+        $fields = collect(
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$created['data']['id']}/values")
+                ->assertOk()
+                ->json('data.fields')
+        )->keyBy('key');
+
+        foreach ([
+            'maps_url' => '[ezbizi_maps_url]',
+            'country' => '[ezbizi_country]',
+            'timezone' => '[ezbizi_timezone]',
+            'tagline' => '[ezbizi_tagline]',
+        ] as $key => $shortcode) {
+            $this->assertTrue($fields->has($key), "The $key field is not offered.");
+            $this->assertSame($shortcode, $fields[$key]['shortcode']);
+
+            // None of them can be required: every site that exists today has
+            // none of them set, and a new requirement would mark all of them
+            // incomplete overnight.
+            $this->assertNotSame('required', $fields[$key]['requirement']);
+        }
+    }
 }

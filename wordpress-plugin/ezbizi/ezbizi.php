@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.7.1
+ * Version:           1.8.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.7.1';
+const EZBIZI_VERSION = '1.8.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -54,6 +54,31 @@ const EZBIZI_CACHE_TTL = 300;
 // one. Only reached on sites where WP-Cron never runs.
 const EZBIZI_STALE_MAX = 3600;
 const EZBIZI_REFRESHING = 'ezbizi_refreshing';
+
+/*
+ * When EzBizi started REFUSING this site's token, as distinct from failing to
+ * answer. Cleared by any successful read.
+ *
+ * A 401 or 403 is the server saying it does not recognise this site any more.
+ * A timeout, a 500 or a DNS failure is us having a bad day, and a site must
+ * never hide anything because of that — those keep serving the last good
+ * payload exactly as before.
+ */
+const EZBIZI_REFUSED_SINCE = 'ezbizi_refused_since';
+
+/*
+ * How long a refusal has to last before the widgets stop drawing. Seven days.
+ *
+ * Not immediately, because rotating a token leaves a real gap while somebody
+ * pastes the new one, and the public key the widgets use is a separate
+ * credential that usually still works through it — blanking a working chat
+ * over a thirty-second gap would be the worse mistake.
+ *
+ * Not never, which is what it was: a site whose pairing has genuinely ended
+ * went on drawing a chat box on every page, and a visitor typing into it is
+ * being promised a conversation nobody is going to receive.
+ */
+const EZBIZI_REFUSED_MAX = 604800;
 
 require_once __DIR__ . '/service-account.php';
 require_once __DIR__ . '/enquiries.php';
@@ -179,7 +204,20 @@ function ezbizi_fetch() {
         ),
     ));
 
-    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+    $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+
+    if ($code !== 200) {
+        /*
+         * Refused is not the same as unreachable, and only one of them is
+         * about this site. 401 and 403 are EzBizi saying it does not recognise
+         * the token; anything else is a bad day at our end and must change
+         * nothing here. Stamped once, so the clock measures how long the
+         * refusal has lasted rather than restarting on every page view.
+         */
+        if (($code === 401 || $code === 403) && ! get_option(EZBIZI_REFUSED_SINCE, false)) {
+            update_option(EZBIZI_REFUSED_SINCE, time(), false);
+        }
+
         /*
          * Cache the FAILURE briefly too. Without this, a site whose token was
          * revoked calls the API on every page view of every visitor — the
@@ -196,6 +234,9 @@ function ezbizi_fetch() {
     if (! is_array($payload) || ! isset($payload['values'])) {
         return get_option(EZBIZI_LAST_GOOD, $empty);
     }
+
+    // Answered, so whatever was wrong is over.
+    delete_option(EZBIZI_REFUSED_SINCE);
 
     // Stamped so ezbizi_payload() can tell "five minutes stale" from "this site
     // has had no successful read since March".
@@ -352,6 +393,30 @@ add_action('admin_notices', function () {
     $settings = ezbizi_settings();
 
     if ($settings['token'] !== '') {
+        /*
+         * A token that is present and refused is a different sentence from no
+         * token at all, and it has to be SAID: past the ceiling the chat and
+         * the form stop drawing, and a widget that vanishes without explanation
+         * reads as the plugin breaking rather than as the pairing ending.
+         */
+        $refused = function_exists('ezbizi_refused_for') ? ezbizi_refused_for() : 0;
+
+        if ($refused > EZBIZI_REFUSED_MAX) {
+            printf(
+                '<div class="notice notice-error"><p>%s <a href="%s">%s</a></p></div>',
+                esc_html(sprintf(
+                    /* translators: %s: how long, e.g. "8 days". */
+                    __(
+                        'EzBizi has been refusing this site\'s token for %s, so the chat and contact form have stopped showing. Your published values are unaffected. Issue a new site token in Web Management and paste it here.',
+                        'ezbizi'
+                    ),
+                    human_time_diff(time() - $refused)
+                )),
+                esc_url(admin_url('admin.php?page=ezbizi')),
+                esc_html__('Open EzBizi settings', 'ezbizi')
+            );
+        }
+
         return;
     }
 

@@ -204,4 +204,38 @@ void main() {
 
     expect(find.text('Page 1 of 2'), findsOneWidget);
   });
+
+  /// Jose's correction: "clicking them leads u to said page, which is fine but
+  /// not the main purpose". A list of a website's pages inside EzBizi exists to
+  /// edit what EzBizi publishes onto them, so the row opens that and the icon
+  /// beside it opens the real page.
+  testWidgets('a row opens the page inside EzBizi, not the website', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      type: 'page',
+      total: 1,
+      items: const [
+        {
+          'id': 12,
+          'title': 'About us',
+          'slug': 'about-us',
+          'status': 'publish',
+          'link': 'https://a-1chimney.com/about-us',
+          'modified': '2026-09-10T11:00:00',
+        },
+      ],
+    );
+
+    // The way out to the real page is still there, as its own control.
+    expect(find.byTooltip('Open the page on the website'), findsOneWidget);
+
+    await tester.tap(find.text('About us'));
+    await tester.pumpAndSettle();
+
+    // The page's own screen, named by its path — which is what identifies a
+    // page to EzBizi, because a post id means nothing to a shortcode.
+    expect(find.text('a-1chimney.com/about-us'), findsOneWidget);
+  });
 }

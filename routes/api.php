@@ -746,6 +746,12 @@ Route::prefix('v1')
         // The pages and posts on the site itself, read live through the account
         // it handed us at pairing. Nothing stored, so nothing to keep in step.
         Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
+
+        /*
+         * Before the {site}/content/{path} shape anybody adds later: a literal
+         * segment registered after a wildcard one is unreachable.
+         */
+        Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
         Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
         Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
         Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
