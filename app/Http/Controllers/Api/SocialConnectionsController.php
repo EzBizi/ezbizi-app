@@ -41,12 +41,29 @@ class SocialConnectionsController extends Controller
          * and nothing can be posted to one. Listing them here put twenty-two
          * Google Ads accounts in the Social Media Management composer as
          * "Pages", each with a tick box, as if a post could go to one.
+         *
+         * ── EXCEPT WHEN THE CALLER ASKS FOR THEM ────────────────────
+         *
+         * Jose, 2026-09-16, wants Airtable and Workiz connectable from Settings
+         * > Integrations rather than from the one screen that reads them. That
+         * screen and the composer share this endpoint, so the choice was to
+         * drop the filter for both or to let a caller opt in.
+         *
+         * Opt-in, because dropping it is not neutral: `can_publish` already
+         * tells the composer which rows it may offer, so a data source would
+         * render there DISABLED rather than as a page - correct, and still
+         * fifty-three Google Ads rows of clutter in a composer that has nothing
+         * to do with them. The default stays exactly as it was; Integrations
+         * passes `include=data_sources` and nothing else changes.
          */
+        $includeDataSources = $request->query('include') === 'data_sources';
+
         $rows = SocialConnection::query()
             ->orderBy('display_name')
             ->get()
             ->filter(fn (SocialConnection $c) => $this->access->inView($user, $c)
-                && ! in_array($c->providerEnum(), SocialProvider::dataSources(), true))
+                && ($includeDataSources
+                    || ! in_array($c->providerEnum(), SocialProvider::dataSources(), true)))
             ->values();
 
         return response()->json([
