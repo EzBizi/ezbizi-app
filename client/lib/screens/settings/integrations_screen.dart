@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/social_network_mark.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
@@ -58,7 +59,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   Future<void> _load() async {
-    final response = await widget.api.get('/social/connections');
+    // Data sources are filtered out of this endpoint by default, because
+    // listing them once put twenty-two Google Ads accounts in the Social Media
+    // composer as if a post could go to one. Integrations is the screen that
+    // wants them, so it is the screen that asks.
+    final response = await widget.api.get('/social/connections', {
+      'include': 'data_sources',
+    });
     if (!mounted) return;
 
     setState(() {
@@ -98,7 +105,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           title: 'Mailing',
           icon: Icons.drafts_outlined,
           rows: byFamily['mailing'] ?? const [],
-          empty: 'No mailing account connected in $_viewName. A newsletter is '
+          empty:
+              'No mailing account connected in $_viewName. A newsletter is '
               'sent through the company\'s own account, so one has to be '
               'connected before anything can go out.',
           where: 'Marketing › Newsletter',
@@ -121,9 +129,74 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           empty: 'No advertising account connected in $_viewName.',
           where: 'Leads',
         ),
+        const SizedBox(height: 12),
+        _family(
+          context,
+          title: 'Reporting',
+          icon: Icons.assessment_outlined,
+          rows: byFamily['reporting'] ?? const [],
+          empty:
+              'No reporting source connected in $_viewName. Reports read '
+              'these directly, so a report covering a business with none '
+              'connected has nothing to show.',
+          // The one family that connects HERE rather than elsewhere, which is
+          // why it passes forms instead of a `where` sentence.
+          connect: _reportingForms(),
+        ),
       ],
     );
   }
+
+  /// The connect forms for the Reporting family.
+  ///
+  /// Jose, 2026-09-16: "make the connection in Integrations", and for both
+  /// Airtable and Workiz — "make it as well so any company can make workiz
+  /// connections via api as well, same set it up on integrations".
+  ///
+  /// Airtable has no other connect screen, so this is its only home. Workiz
+  /// also has one on Reports › Experimental; that one stays for now because a
+  /// branch connecting its own book from the screen that reads it is a real
+  /// path, and both go through the same endpoint and the same shared form
+  /// rather than being two implementations.
+  List<Widget> _reportingForms() => [
+    Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
+    const SizedBox(height: 4),
+    Text(
+      'One connection is one base. Connect as many bases as this business '
+      'keeps its figures in.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/airtable',
+      submitLabel: 'Connect base',
+      fields: const [
+        ('api_token', 'Personal access token', 'pat…'),
+        ('base_id', 'Base id', 'app… — from the base\'s URL'),
+      ],
+      onConnected: _load,
+    ),
+    const SizedBox(height: 16),
+    Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
+    const SizedBox(height: 4),
+    Text(
+      'One connection is one Workiz account. Switch to the branch it belongs '
+      'to before connecting it — the accounts are separate books and a report '
+      'attributes each one to its branch.',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+    const SizedBox(height: 8),
+    ApiKeyConnectForm(
+      api: widget.api,
+      path: '/social/workiz',
+      submitLabel: 'Connect account',
+      fields: const [
+        ('api_token', 'API token', 'api_… — from Workiz › Developer › v1'),
+      ],
+      onConnected: _load,
+    ),
+  ];
 
   Widget _family(
     BuildContext context, {
@@ -131,7 +204,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required IconData icon,
     required List<_Connection> rows,
     required String empty,
-    required String where,
+    String? where,
+    List<Widget>? connect,
   }) {
     final theme = Theme.of(context);
 
@@ -161,7 +235,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                     // looking at this screen, so it says so here rather than
                     // only on the module that owns it.
                     : Tooltip(
-                        message: row.statusReason ?? 'This connection needs attention.',
+                        message:
+                            row.statusReason ??
+                            'This connection needs attention.',
                         child: Icon(
                           Icons.error_outline,
                           size: 18,
@@ -170,13 +246,28 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                       ),
               ),
           const SizedBox(height: 8),
-          // Deliberately a sentence and not a button: connecting is done where
-          // the account is understood, and a second Connect flow here would be
-          // a second thing to keep correct.
-          Text(
-            'Connect and disconnect under $where.',
-            style: theme.textTheme.bodySmall,
-          ),
+
+          /*
+           * A SENTENCE FOR MOST FAMILIES, A FORM FOR ONE.
+           *
+           * This used to be a sentence for all of them, and the comment here
+           * said why: "connecting is done where the account is understood, and
+           * a second Connect flow here would be a second thing to keep
+           * correct." Jose overrode the first half on 2026-09-16 for the
+           * reporting sources — "make the connection in Integrations".
+           *
+           * The second half is still true, which is why the form is a shared
+           * widget rather than a copy: Workiz can be connected from Reports ›
+           * Experimental as well, and two forms posting to one endpoint would
+           * be two sets of field names to keep in step.
+           */
+          if (connect != null)
+            ...connect
+          else
+            Text(
+              'Connect and disconnect under $where.',
+              style: theme.textTheme.bodySmall,
+            ),
         ],
       ),
     );
@@ -205,6 +296,7 @@ class _Connection {
   String get family => switch (provider) {
     'mailchimp' => 'mailing',
     'google_ads' || 'google_business_profile' || 'thumbtack' => 'leads',
+    'airtable' || 'workiz' => 'reporting',
     _ => 'social',
   };
 

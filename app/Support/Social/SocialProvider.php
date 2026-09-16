@@ -75,6 +75,20 @@ enum SocialProvider: string
      */
     case Workiz = 'workiz';
 
+    /**
+     * A tenant's own Airtable base, read by Reports.
+     *
+     * ONE CONNECTION IS ONE BASE rather than one account. A personal access
+     * token reaches several bases and a business keeps unrelated things in
+     * different ones, so "an Airtable account" would be a row that silently
+     * answers for whichever base a caller named. Connect as many as you use.
+     *
+     * Generic on Jose's instruction, 2026-09-16: "make the system so future
+     * businesses can integrate Airtable Themselves, so it-s not just an
+     * a-1chimney thing". Nothing here names A-1 or its base ids.
+     */
+    case Airtable = 'airtable';
+
     public function label(): string
     {
         return match ($this) {
@@ -92,6 +106,7 @@ enum SocialProvider: string
             self::GoogleAds => 'Google Ads',
             self::Thumbtack => 'Thumbtack',
             self::Workiz => 'Workiz',
+            self::Airtable => 'Airtable',
         };
     }
 
@@ -118,6 +133,7 @@ enum SocialProvider: string
             // token. Present so that adding it to an OAuth list later fails
             // visibly rather than throwing an UnhandledMatchError.
             self::Workiz => 'workiz',
+            self::Airtable => 'airtable',
         };
     }
 
@@ -140,6 +156,7 @@ enum SocialProvider: string
             self::Bluesky => 'password',
             self::Mailchimp => 'api_key',
             self::Workiz => 'api_key',
+            self::Airtable => 'api_key',
             default => 'sign_in',
         };
     }
@@ -186,7 +203,7 @@ enum SocialProvider: string
      */
     public static function dataSources(): array
     {
-        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz];
+        return [self::GoogleBusinessProfile, self::GoogleAds, self::Thumbtack, self::Workiz, self::Airtable];
     }
 
     /**
@@ -220,6 +237,11 @@ enum SocialProvider: string
             // opens it. Gating on `marketing.edit` would offer Connect to
             // somebody who could never see what it connects.
             self::Workiz => 'reports.build',
+
+            // Same reasoning: the only screens that read an Airtable base are
+            // the report ones, so `marketing.edit` would offer Connect to
+            // somebody who could never see what it connects.
+            self::Airtable => 'reports.build',
 
             default => 'marketing.edit',
         };
@@ -261,6 +283,7 @@ enum SocialProvider: string
             self::GoogleAds => 'connect a Google Ads account',
             self::GoogleBusinessProfile => 'connect a Business Profile',
             self::Workiz => 'connect a Workiz account',
+            self::Airtable => 'connect an Airtable base',
             default => 'connect a social account',
         };
     }
@@ -328,6 +351,25 @@ enum SocialProvider: string
                 .'available in Email.',
                 $name,
             ),
+
+            // Named per BASE, because that is what one Airtable connection is.
+            // Without this arm the default fires and says "Airtable Pages …
+            // compose from Social Media Management", which is wrong in both
+            // halves: a base is not a page and nothing posts to it. Found by
+            // calling every method on the new case rather than reading the
+            // match arms — the default answered, confidently, in the shape of
+            // a different kind of provider.
+            self::Airtable => $many
+                ? sprintf(
+                    '%d Airtable bases are connected to EzBizi. You can close this window — '
+                    .'their tables are read by Reports.',
+                    $count,
+                )
+                : sprintf(
+                    '%s is connected to EzBizi. You can close this window — its tables are '
+                    .'read by Reports.',
+                    $name,
+                ),
 
             // Named per BRANCH rather than per account, because that is what a
             // Workiz account is here: one franchise's book. The plural case is

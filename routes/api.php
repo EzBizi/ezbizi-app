@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
+use App\Http\Controllers\Api\AirtableConnectController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
@@ -796,6 +797,19 @@ Route::prefix('v1')
          */
         Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
         Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
+
+        /*
+        | Connecting a data source from Settings > Integrations.
+        |
+        | Jose, 2026-09-16: Airtable and Workiz should both be connectable by
+        | any business from Integrations rather than from the one screen that
+        | happens to read them. The Workiz route above stays: it is the same
+        | controller, and a branch connecting its own book from the Experimental
+        | screen is still a real path. Two routes to one action is cheaper than
+        | moving a shipped one and breaking the screen already using it.
+        */
+        Route::post('social/airtable', [AirtableConnectController::class, 'store']);
+        Route::post('social/workiz', [WorkizConnectController::class, 'store']);
 
         Route::get('reports/fields', [ReportsController::class, 'fields']);
         Route::post('reports/{id}/run', [ReportsController::class, 'run']);
