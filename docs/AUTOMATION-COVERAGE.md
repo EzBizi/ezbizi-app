@@ -131,6 +131,48 @@ and a trap when the shared thing should not be shared: Inventory named
 so a rule could not write arbitrary columns on a stock record through the generic
 arm.
 
+## A description can promise a safeguard that does not exist
+
+Marketing found this in their own declaration and it is the sharpest hazard in
+this file, because it is invisible to every test. `newsletter.add_to_audience`
+described itself as not standing in for somebody's agreement to be mailed,
+"which the list records separately".
+
+**No list records it.** The only consent artefact in the module is
+`NewsletterUnsubscribe` — people who asked to STOP. Nothing anywhere records
+anybody saying yes. So a person deciding whether that action was safe to enable
+would have been reassured by a sentence that could not be cashed.
+
+Descriptions are the only thing a rule author has to go on, and they are read at
+exactly the moment somebody is deciding whether something is safe. Nothing
+executes them, so they rot silently and they can be wrong on arrival.
+
+To re-run the scan: walk the registry and look for descriptions containing
+`cannot`, `does not`, `never`, `only`, `separately`, `records`. About twenty
+declarations make a checkable assertion of that kind today. Each is its owner's
+to verify — the auditor cannot check a claim about somebody else's domain, only
+notice that one is being made.
+
+The same class caught `phone.sms.send`, which said "the line has to be approved
+for messaging first" while the builder was offering lines that were not. True as
+a warning, false as a description of what the picker did. Fixed 2026-09-16 by
+filtering the picker; the sentence now describes the software.
+
+## Checking a dead trigger needs two instruments, not one
+
+Inventory's hardening, and it is the method this audit should have started with.
+
+A grep for the emit and the registry's `isRaised:` flag are structurally
+different instruments with different failure modes. A single-line grep misses a
+multi-line emit and reports a live trigger as dead — that is exactly what gave
+this audit eleven false alarms. The registry flag is declared rather than
+derived, so it is wrong in the other direction: it says what somebody believed
+when they wrote it.
+
+**So the keys worth chasing are the ones where the two DISAGREE.** Agreement of
+two independent instruments is the evidence; either alone is a guess that happens
+to be right. All four triggers in the section above survived both checks.
+
 ## A caution about reading exemptions
 
 `automationExemptBecause` is read at the moment somebody is deciding whether to
