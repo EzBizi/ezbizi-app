@@ -950,7 +950,10 @@ class ActionRunner
             ];
         }
 
-        $userId = $this->valueFromEvent($field, $event);
+        // A person chosen in the rule, or a field of the event carrying an id.
+        $userId = str_starts_with($field, self::RECIPIENT_USER)
+            ? substr($field, strlen(self::RECIPIENT_USER))
+            : $this->valueFromEvent($field, $event);
 
         if (! is_string($userId) || trim($userId) === '') {
             return [
@@ -1143,13 +1146,16 @@ class ActionRunner
             ];
         }
 
-        $to = $this->valueFromEvent($field, $event);
+        $to = $this->contactFromStored($field, $event, 'phone');
 
         if (! is_string($to) || trim($to) === '') {
             return [
                 'type' => $type, 'ok' => false,
-                'detail' => "This event carried nothing in \"{$field}\", so there was no number to "
-                    .'send to.',
+                'detail' => str_starts_with($field, self::RECIPIENT_USER)
+                    ? 'The person this step sends to no longer works here, or has no phone '
+                        .'number, so there was nobody to send to.'
+                    : "This event carried nothing in \"{$field}\", so there was no number to "
+                        .'send to.',
             ];
         }
 
@@ -1167,6 +1173,13 @@ class ActionRunner
                 $to,
                 $parameters,
                 (string) ($action['language'] ?? 'en_US'),
+                // WHICH NUMBER, because a template is approved per WABA and a
+                // business can hold numbers on more than one. Meta's send()
+                // refuses rather than guessing when it is not named, which is
+                // right and is why the rule has to carry it.
+                ($action['from'] ?? null) !== null && $action['from'] !== ''
+                    ? (string) $action['from']
+                    : null,
             );
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
@@ -1311,18 +1324,36 @@ class ActionRunner
      */
     private function emailRecipient(string $stored, AutomationEvent $event): mixed
     {
+        return $this->contactFromStored($stored, $event, 'email');
+    }
+
+    /**
+     * The same three sources, for whichever contact detail the step needs.
+     *
+     * A step that texts and a step that emails ask the same question - who -
+     * and differ only in which column answers it. Two resolvers would be two
+     * places to fix the day a fourth source is added.
+     */
+    private function contactFromStored(string $stored, AutomationEvent $event, string $column): mixed
+    {
         if (str_starts_with($stored, self::RECIPIENT_USER)) {
             $user = User::query()
                 ->where('is_active', true)
                 ->find(substr($stored, strlen(self::RECIPIENT_USER)));
 
-            return $user?->email;
+            return $user?->getAttribute($column);
         }
 
-        // A literal address is stored as itself. Checked before the event,
-        // because a payload key will never look like an address and an address
-        // is never a payload key - so the test cannot be ambiguous.
-        if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+        // A literal value is stored as itself. Checked before the event, because
+        // a payload key never looks like an address or a phone number and
+        // neither ever looks like a payload key - so the test cannot be
+        // ambiguous. A number is anything with a digit and no letters; a field
+        // name has letters and no leading +.
+        if ($column === 'email') {
+            if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+                return $stored;
+            }
+        } elseif (preg_match('/^[+0-9][0-9 ()\-.]*$/', $stored) === 1) {
             return $stored;
         }
 
@@ -1398,7 +1429,13 @@ class ActionRunner
             ];
         }
 
-        $to = trim((string) ($action['to'] ?? ''));
+        // Resolved the same three ways as the email step: a person here, a
+        // field of the event, or a number typed in. It was typed-only, which
+        // asked somebody to keep a phone number correct inside a rule for
+        // years.
+        $to = trim((string) $this->contactFromStored(
+            trim((string) ($action['to'] ?? '')), $event, 'phone',
+        ));
         $body = trim((string) ($action['body'] ?? ''));
 
         if ($to === '' || $body === '') {

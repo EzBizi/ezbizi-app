@@ -687,11 +687,20 @@ void main() {
     await _pump(tester, _handler(
       onCreate: (body) => sent = body,
       triggerFields: const ['phone', 'contact_name'],
+      // GROUPED BY NUMBER, as Meta's endpoint returns it: a template is
+      // approved against the WABA behind a number, and ours sit on different
+      // ones. The flat shape hid one number's templates entirely.
       whatsAppTemplates: const [
         {
-          'name': 'appointment_reminder',
-          'parameters': 2,
-          'preview': 'Hi {{1}}, your visit is {{3}}.',
+          'from': '+18778536971',
+          'label': 'EzBizi',
+          'templates': [
+            {
+              'name': 'appointment_reminder',
+              'parameters': 2,
+              'preview': 'Hi {{1}}, your visit is {{3}}.',
+            },
+          ],
         },
       ],
     ));
@@ -702,7 +711,17 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, find.text('Send a WhatsApp message'));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    // Found by its LABEL, not by position. This form now holds three dropdowns
+    // - the step type, the template, and the recipient kind - and an index into
+    // that is a test that breaks every time the form gains a control, silently
+    // testing the wrong one.
+    await _tap(
+      tester,
+      find.ancestor(
+        of: find.text('Template'),
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+    );
     await tester.pumpAndSettle();
     await _tap(tester, find.textContaining('appointment_reminder').last);
 
@@ -717,6 +736,18 @@ void main() {
 
     await _type(tester, 'Blank 2', 'tomorrow');
 
+    // The recipient asks WHAT KIND first now. Default is a person; this rule
+    // wants the number the event carried.
+    await _tap(
+      tester,
+      find.ancestor(
+        of: find.text('Send to'),
+        matching: find.byType(DropdownButtonFormField<String>),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('A number from the event').last);
+
     await _tap(tester, find.byType(DropdownMenu<String>).last);
     await _tap(tester, find.text('phone').last);
 
@@ -724,6 +755,9 @@ void main() {
 
     expect((sent!['actions'] as List).single, {
       'type': 'whatsapp.send',
+      // The sending NUMBER rides with it now: a template is approved per WABA
+      // and our two numbers sit on different ones, so the runner cannot pick.
+      'from': '+18778536971',
       'template': 'appointment_reminder',
       'to_field': 'phone',
       'parameters': ['{{ contact_name }}', 'tomorrow'],

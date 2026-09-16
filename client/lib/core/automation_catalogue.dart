@@ -358,7 +358,16 @@ class AutomationCatalogue {
       // Active people with an address, for an email step's "Send to". The key
       // already carries the `user:` prefix the runner reads, so the client never
       // constructs it and cannot construct it wrongly.
-      people: _list(json['people'], CatalogueChoice.tryFromIdLabel),
+      people: [
+        for (final row in (json['people'] as List? ?? const []))
+          if (row is Map<String, dynamic> && row['id'] is String)
+            (
+              key: row['id'] as String,
+              label: (row['label'] ?? row['id']).toString(),
+              hasEmail: row['has_email'] == true,
+              hasPhone: row['has_phone'] == true,
+            ),
+      ],
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
@@ -368,8 +377,13 @@ class AutomationCatalogue {
   /// The roles a notification step may narrow to. Empty narrows nothing.
   final List<CatalogueChoice> roles;
 
-  /// People an email step can be addressed to. Keys carry the `user:` prefix.
-  final List<CatalogueChoice> people;
+  /// People a step can be addressed to, and which contact details they have.
+  ///
+  /// One list rather than two, filtered by what the step needs: a texting step
+  /// must not offer somebody with only an email, and an emailing step must not
+  /// offer somebody with only a phone. Two lists would be two things to keep in
+  /// step the day somebody's details change.
+  final List<({String key, String label, bool hasEmail, bool hasPhone})> people;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

@@ -402,12 +402,19 @@ class AutomationsController extends Controller
                  */
                 'people' => User::query()
                     ->where('is_active', true)
-                    ->whereNotNull('email')
+                    ->where(fn ($q) => $q->whereNotNull('email')->orWhereNotNull('phone'))
                     ->orderBy('name')
-                    ->get(['id', 'name', 'email'])
+                    ->get(['id', 'name', 'email', 'phone'])
                     ->map(fn (User $u) => [
                         'id' => 'user:'.$u->id,
-                        'label' => trim($u->name.' — '.$u->email),
+                        'label' => trim($u->name.' — '.($u->email ?: $u->phone)),
+                        // WHICH CONTACT THEY HAVE, so a step that texts does not
+                        // offer somebody with only an email and a step that
+                        // emails does not offer somebody with only a phone. One
+                        // list, filtered by what the step needs, rather than two
+                        // lists to keep in step.
+                        'has_email' => $u->email !== null && $u->email !== '',
+                        'has_phone' => $u->phone !== null && $u->phone !== '',
                     ])
                     ->all(),
 
@@ -1587,7 +1594,12 @@ class AutomationsController extends Controller
             ]),
 
             $type('assign_to_user', 'Assign to a person', true, [
-                $parameter('user_field', 'Assign to the person in', 'trigger_field'),
+                // A PERSON OR A FIELD. It was field-only, which meant a rule
+                // could hand work to whoever the event named and could not hand
+                // it to a named person - "when a job is created, give it to
+                // Dana" was unbuildable. `person_or_field` offers both and
+                // stores the same `user:<id>` the other steps use.
+                $parameter('user_field', 'Assign to', 'person_or_field'),
             ]),
 
             $type('email.send', 'Send an email', false, [
@@ -1609,7 +1621,12 @@ class AutomationsController extends Controller
 
             $type('sms.send', 'Send a message', true, [
                 $parameter('number_id', 'Send from', 'phone_number'),
-                $parameter('to', 'Send to', 'text'),
+                // WAS FREE TEXT, asking somebody to type a phone number into a
+                // rule that will run for years. Same three sources as the email
+                // step - somebody here, a field of the event, or a number typed
+                // - because "who does this go to" is one question and the only
+                // difference is which column answers it.
+                $parameter('to', 'Send to', 'phone_recipient'),
                 $parameter('body', 'Message', 'text'),
             ]),
         ];
