@@ -561,6 +561,75 @@ class CampaignPerformanceTest extends TestCase
         }
     }
 
+    /**
+     * A throttle says WHOSE throttle it is.
+     *
+     * "Too many requests. Retry in 4413 seconds." on a screen showing one
+     * account reads as a problem with that account. Google sends the field
+     * that settles it and we used to drop it, which left the only question
+     * worth asking - is every other account fine? - unanswerable from the
+     * screen.
+     *
+     * Both scopes are asserted, because a helper that returned the same
+     * sentence for either would satisfy a test for one of them.
+     */
+    public function test_a_throttle_says_whether_it_is_this_account_or_all_of_them(): void
+    {
+        $cases = [
+            'ACCOUNT' => 'this account alone',
+            'DEVELOPER' => 'every account',
+        ];
+
+        // ONE fake, closed over a variable the loop moves. Http::fake STACKS
+        // rather than replaces, so a second fake inside the loop is ignored
+        // and both passes get the first scope - which is exactly how the
+        // DEVELOPER case first came back wearing the ACCOUNT sentence.
+        $scope = '';
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => function () use (&$scope) {
+                return Http::response([
+                    'error' => ['details' => [['errors' => [[
+                        'message' => 'Too many requests. Retry in 4413 seconds.',
+                        'details' => ['quotaErrorDetails' => [
+                            'rateScope' => $scope,
+                            'rateName' => 'Requests per day',
+                            'retryDelay' => '4413s',
+                        ]],
+                    ]]]]],
+                ], 429);
+            },
+        ]);
+
+        foreach ($cases as $scope => $expected) {
+            $t = $this->provisionTenant('A1-Group-'.$scope);
+            $row = $this->connected($t);
+
+            $body = $this->signedInAs($t['admin']->fresh())
+                ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
+                ->assertOk()
+                ->json();
+
+            $because = $body['refused'][0]['because'];
+
+            $this->assertStringContainsString('Retry in 4413 seconds', $because);
+            $this->assertStringContainsString(
+                $expected,
+                $because,
+                "a $scope throttle must say so - the two have opposite answers to "
+                .'"can I just look at a different account"',
+            );
+        }
+    }
+
     public function test_the_series_is_daily_and_the_totals_are_its_sum(): void
     {
         $t = $this->provisionTenant('A1-Group');

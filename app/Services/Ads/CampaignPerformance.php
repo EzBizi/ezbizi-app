@@ -323,13 +323,45 @@ class CampaignPerformance
             // Google's own sentence, not a status code. "Not enabled or
             // deactivated" and "quota exhausted" are different problems for
             // whoever is looking at the screen, and both arrive as 403.
-            throw new RuntimeException(
-                (string) ($response->json('error.details.0.errors.0.message')
-                    ?? $response->json('error.message')
-                    ?? 'Google refused the performance request (HTTP '.$response->status().').')
-            );
+            $message = (string) ($response->json('error.details.0.errors.0.message')
+                ?? $response->json('error.message')
+                ?? 'Google refused the performance request (HTTP '.$response->status().').');
+
+            throw new RuntimeException($message.$this->scopeOfThrottle($response->json()));
         }
 
         return array_values((array) $response->json('results', []));
+    }
+
+    /**
+     * Whether a throttle is this ACCOUNT or the whole developer token.
+     *
+     * "Too many requests. Retry in 4413 seconds." reads, on a screen with one
+     * account open, as a problem with that account. Google sends the field
+     * that settles it - quotaErrorDetails.rateScope - and until 2026-09-16 we
+     * read the message and threw the rest away, which left the one question
+     * worth asking unanswerable: is every other account fine, or is nothing
+     * going to work for the next hour?
+     *
+     * The difference is not academic. ACCOUNT means click a different account
+     * and carry on. DEVELOPER means the whole fleet is waiting, including the
+     * lead sync, and there is nothing to do but wait it out.
+     *
+     * @param  mixed  $body
+     */
+    private function scopeOfThrottle($body): string
+    {
+        $details = data_get($body, 'error.details.0.errors.0.details.quotaErrorDetails');
+
+        if (! is_array($details)) {
+            return '';
+        }
+
+        return match ($details['rateScope'] ?? '') {
+            'ACCOUNT' => ' This limit is on this account alone - other connected accounts are unaffected.',
+            'DEVELOPER' => " This limit is on EzBizi's whole Google Ads connection, so every account "
+                .'is waiting on the same clock.',
+            default => '',
+        };
     }
 }
