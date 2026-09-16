@@ -254,6 +254,74 @@ class NotificationPushTest extends TestCase
         $this->assertSame(0, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
     }
 
+    public function test_a_handset_registering_twice_is_one_row(): void
+    {
+        $tenant = $this->provisionTenant('Theta');
+
+        // The Android client presents its token on EVERY launch, so the same
+        // value arrives many times. Rows must not accumulate.
+        foreach ([1, 2, 3] as $ignored) {
+            $this->signedInAs($tenant['admin'])
+                ->postJson('/api/v1/notifications/devices', [
+                    'token' => 'token-same-handset',
+                    'platform' => 'android',
+                ])->assertOk();
+        }
+
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+    }
+
+    public function test_a_handset_that_changes_hands_moves_rather_than_duplicating(): void
+    {
+        $tenant = $this->provisionTenant('Iota');
+        $colleague = $this->userWithRole($tenant, 'Colleague', []);
+
+        $this->signedInAs($tenant['admin'])->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-shared-tablet', 'platform' => 'android',
+        ])->assertOk();
+
+        $this->signedInAs($colleague)->postJson('/api/v1/notifications/devices', [
+            'token' => 'token-shared-tablet', 'platform' => 'android',
+        ])->assertOk();
+
+        // One row, now owned by whoever actually signed in. Two rows would mean
+        // the previous person keeps an address for a handset they no longer
+        // hold, which is the worst outcome: a notification about a record they
+        // may not open, delivered to somebody else's device.
+        $devices = $this->inTenant($tenant['org'], fn () => DeviceToken::query()->get());
+
+        $this->assertCount(1, $devices);
+        $this->assertSame($colleague->id, $devices->first()->user_id);
+    }
+
+    public function test_an_ios_token_is_refused_while_there_is_no_apns_sender(): void
+    {
+        $tenant = $this->provisionTenant('Kappa');
+
+        // Android measured that the token their plugin exposes on iOS is a
+        // PushKit VoIP token — a different credential from an APNs notification
+        // token, which wakes an app for a CALL and cannot carry this. Accepting
+        // it would store a row that looks registered and can never be delivered
+        // to. A refusal is visible; a dead row is not.
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/notifications/devices', [
+                'token' => 'token-pushkit-voip',
+                'platform' => 'ios',
+            ])->assertStatus(422);
+
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+
+        // The control: the SAME request with the platform that does have a
+        // sender is accepted, so this pins the platform and not a broken route.
+        $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/notifications/devices', [
+                'token' => 'token-pushkit-voip',
+                'platform' => 'android',
+            ])->assertOk();
+
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => DeviceToken::query()->count()));
+    }
+
     public function test_a_refusal_that_is_not_unregistered_keeps_the_token(): void
     {
         // The control for the test above. Without it, deleting on EVERY failure

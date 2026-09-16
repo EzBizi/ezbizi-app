@@ -1824,6 +1824,7 @@ Route::prefix('v1')
         // No policy: every query is bound to the signed-in user's own id, so
         // there is nothing to authorize beyond being signed in.
         Route::get('notifications', [NotificationsController::class, 'index']);
+        Route::post('notifications/devices', [NotificationsController::class, 'registerDevice']);
         Route::post('notifications/read-all', [NotificationsController::class, 'markAllRead']);
         Route::post('notifications/{notification}/read', [NotificationsController::class, 'markRead']);
 
