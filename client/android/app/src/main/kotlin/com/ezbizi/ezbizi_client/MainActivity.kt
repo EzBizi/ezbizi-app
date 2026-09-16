@@ -1,5 +1,8 @@
 package com.ezbizi.ezbizi_client
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Bundle
 import com.google.firebase.messaging.FirebaseMessaging
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -28,6 +31,46 @@ import io.flutter.plugin.common.MethodChannel
 /// working the day this was written. This costs no download size and has no
 /// iOS surface at all.
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        createNotificationChannel()
+    }
+
+    /// Makes the one EzBizi notification channel exist, at launch, always.
+    ///
+    /// A push whose channel does not exist on the device does not fail — FCM
+    /// quietly delivers it on `fcm_fallback_notification_channel` instead.
+    /// Measured on the emulator before this landed. That works, and it means
+    /// EzBizi's notifications appear in Settings under a generic name a person
+    /// cannot tune separately from anything else. Invisible until somebody
+    /// tries to mute ONE kind of notification and finds they can only mute all
+    /// of them, by which point they are a customer.
+    ///
+    /// flutter_local_notifications creates this same channel, but LAZILY — the
+    /// first time it shows a LOCAL notification. A handset that has only ever
+    /// received pushes never reaches that, which is exactly the handset this
+    /// matters for. So it is created here instead, unconditionally.
+    ///
+    /// The values are copied from os_notifications.dart, deliberately and
+    /// exactly. A channel is IMMUTABLE once created: whoever creates it first
+    /// decides the name a person reads forever, and the two halves creating it
+    /// with different names would be a coin toss over which won on any given
+    /// device. If that file's channel changes, change this with it.
+    ///
+    /// No SDK guard: minSdk is 26 and channels arrived in 26.
+    private fun createNotificationChannel() {
+        val channel = NotificationChannel(
+            "ezbizi_notifications",
+            "EzBizi notifications",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        )
+        channel.description =
+            "Assignments, mentions, reminders and alerts from EzBizi."
+
+        getSystemService(NotificationManager::class.java)
+            ?.createNotificationChannel(channel)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
