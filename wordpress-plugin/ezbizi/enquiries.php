@@ -154,6 +154,28 @@ function ezbizi_widget_style($id, $style) {
         . '</style>';
 }
 
+/**
+ * A unique id for one widget on this page.
+ *
+ * ── Why not a random number ──
+ *
+ * It was `wp_rand(1000, 9999)`, which is fine for one form on a page and not
+ * for the case Jose described: a contact form dropped into several places on
+ * the same page. Two draws can match — one in nine thousand per pair, which is
+ * small until you multiply it by every page view of every site — and when they
+ * do, the second form's script binds to the first form's element and one of
+ * them silently stops working.
+ *
+ * Counting removes the possibility rather than shrinking it. Per request,
+ * which is the only scope that matters: ids need to be unique within one
+ * rendered page and nothing compares them across two.
+ */
+function ezbizi_widget_id($prefix) {
+    static $n = 0;
+
+    return $prefix . '-' . (++$n);
+}
+
 /** Nothing on a visitor's page; a sentence for somebody who can fix it. */
 function ezbizi_widget_silent($why) {
     return current_user_can('manage_options') ? '<p>' . esc_html($why) . '</p>' : '';
@@ -183,7 +205,7 @@ function ezbizi_form_shortcode($atts) {
         return '';
     }
 
-    $id = 'ezbizi-form-' . wp_rand(1000, 9999);
+    $id = ezbizi_widget_id('ezbizi-form');
     $out = ezbizi_widget_style($id, $config['style']);
     $out .= '<form class="ezbizi-form" id="' . esc_attr($id) . '" novalidate>';
 
@@ -300,7 +322,7 @@ function ezbizi_chat_shortcode($atts) {
      */
     $GLOBALS['ezbizi_chat_drawn'] = true;
 
-    $id = 'ezbizi-chat-' . wp_rand(1000, 9999);
+    $id = ezbizi_widget_id('ezbizi-chat');
     $position = ezbizi_widget_text($config, 'position', 'bottom-right');
 
     $anchor = '';

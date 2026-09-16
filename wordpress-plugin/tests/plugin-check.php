@@ -302,6 +302,14 @@ function reset_site() {
     $GLOBALS['env_type'] = 'production';
     // A refusal one case dates must not decide the next one.
     delete_option(EZBIZI_REFUSED_SINCE);
+
+    /*
+     * And nor must who was looking. `is_admin` was the one piece of state
+     * reset_site() did not clear, so a section that set it false leaked into
+     * the next section's notice check — which is a test failing because of a
+     * test rather than because of the plugin.
+     */
+    $GLOBALS['is_admin'] = true;
     // A filter one case registers must not decide the next one.
     unset($GLOBALS['filters']['wp_is_application_passwords_available']);
     $GLOBALS['home'] = 'https://a-1chimney.com';
@@ -383,6 +391,34 @@ $_SERVER['REQUEST_URI'] = '/contact/?utm_source=x';
 check('trailing slash and query still match', ezbizi_value('phone'), '555-0999');
 $_SERVER['REQUEST_URI'] = '/about';
 check('another page gets the site value', ezbizi_value('phone'), '555-0100');
+
+echo PHP_EOL . "Two forms on one page are two forms" . PHP_EOL;
+/*
+ * Jose's reason for wanting the form as an Elementor widget: it goes in
+ * several places on a site, and sometimes more than once on a page. The id was
+ * a random number, so two of them could draw the same one — and then the second
+ * form's script binds to the first form's element and one silently stops
+ * working. One in nine thousand per pair, which is small until it is multiplied
+ * by every page view of every site.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+$first = $GLOBALS['sc']['ezbizi_form']([]);
+$second = $GLOBALS['sc']['ezbizi_form']([]);
+
+preg_match('/id="(ezbizi-form-[0-9]+)"/', $first, $a);
+preg_match('/id="(ezbizi-form-[0-9]+)"/', $second, $b);
+
+check('the first form is identified', isset($a[1]), true);
+check('and so is the second', isset($b[1]), true);
+check('and they are not the same form', ($a[1] ?? 'x') === ($b[1] ?? 'x'), false);
+
+// The control: each one's script addresses ITS own id, which is the whole
+// reason the ids have to differ.
+check('each script addresses its own', str_contains($second, wp_json_encode($b[1] ?? '')), true);
 
 echo PHP_EOL . "Keys this plugin has never heard of" . PHP_EOL;
 /*
