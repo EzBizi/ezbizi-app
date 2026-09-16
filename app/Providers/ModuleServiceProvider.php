@@ -1258,10 +1258,32 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
-                        description: 'Puts the person a rule fired about onto a named mailing '
-                            .'list, so "a new customer joins the list" is a rule somebody can '
-                            .'write. It does not stand in for their agreement to be mailed, '
-                            .'which the list records separately.',
+                        /*
+                         * NOT BUILT, and the description used to promise
+                         * something that does not exist: "their agreement to be
+                         * mailed, which the list records separately". No list
+                         * records it. Measured 2026-09-16 — the ONLY consent
+                         * artefact in this module is `NewsletterUnsubscribe`,
+                         * which records people who said STOP. Nothing anywhere
+                         * records anybody saying yes.
+                         *
+                         * And there is nothing to add them TO. An audience is
+                         * `customers` (the recipients ARE the tenant's customer
+                         * records, synced to Mailchimp at send time) or
+                         * `mailchimp` (the members live in Mailchimp and EzBizi
+                         * must not write to them). There is no membership table,
+                         * so "add to audience" has no row to create.
+                         *
+                         * So this cannot be built as declared, and whether it
+                         * SHOULD be built is a consent question rather than a
+                         * code one — it is with Jose. Left declared and honest
+                         * rather than withdrawn, because withdrawing it would
+                         * decide that question by removing it.
+                         */
+                        description: 'Not built yet. It would add the person a rule fired about '
+                            .'to a mailing list. Nothing in EzBizi records that somebody agreed '
+                            .'to be mailed — only that they asked to stop — so what this should '
+                            .'do about that is still being decided.',
                     ),
                 ],
             ),
@@ -1355,6 +1377,24 @@ class ModuleServiceProvider extends ServiceProvider
                         label: 'Contact form submitted',
                         description: 'Somebody filled in the contact form on one of your '
                             .'websites. It arrives in Leads at the same moment.',
+                    ),
+                    /*
+                     * The one that exists because of what 1.9.0 does: a site
+                     * EzBizi stops recognising takes its chat and contact form
+                     * down at once, so it stops collecting enquiries and says
+                     * so only in a WordPress notice nobody reads.
+                     *
+                     * Who should hear about that is a question about the
+                     * business, not about this module, so it is a trigger
+                     * rather than a notification I chose the recipient for.
+                     */
+                    new TriggerDefinition(
+                        key: 'website.went_quiet',
+                        label: 'Website stopped answering',
+                        description: 'A website that had been connected has not fetched its '
+                            .'details for a day. Its chat and contact form are no longer '
+                            .'showing, so it is not collecting enquiries. Usually its token '
+                            .'was changed or the plugin was removed.',
                     ),
                 ],
             ),
@@ -1813,6 +1853,32 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
+                /*
+                 * THREE record types, not one, and the other two are why this
+                 * is separate from `subject` above.
+                 *
+                 * Leads raises `lead.*` carrying a Lead, and `customer.created`
+                 * / `job.created` / `job.scheduled` when an enquiry is
+                 * converted - the record handed to the event is the Customer or
+                 * the Job that was just made, not the lead it came from. A
+                 * reader of `subject` alone would conclude this module
+                 * broadcasts one kind of record and be wrong about two.
+                 *
+                 * Declaring it is what lets AutomationSubjectScopeTest ask of
+                 * each: can this say where it sits? Until today Leads was on
+                 * that file's HAS_NOT_DECLARED_WHAT_IT_EMITS list, so nothing
+                 * could ask, and a notify rule on any lead trigger reached
+                 * every active user in the organization. Lead implements
+                 * CarriesAutomationScope as of 8f526b14; Customer and Job carry
+                 * owning_franchise_id and franchise_id.
+                 *
+                 * The declaration is a FLOOR rather than the fix. `leads` has a
+                 * franchise_id column and would have satisfied that test for
+                 * months while every website chat carried null in it - the
+                 * column existing is not the column being filled. What actually
+                 * narrowed the audience was implementing the interface.
+                 */
+                emits: [Lead::class, Customer::class, Job::class],
                 triggers: [
                     new TriggerDefinition(
                         key: 'lead.received',
@@ -1881,6 +1947,33 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 automationActions: [
+                    /*
+                     * WEBSITE CHAT ONLY, AND THE LIMIT IS A FILING RATHER THAN
+                     * A PREFERENCE. EzBizi told Google's ads-api-compliance
+                     * team and OAuth Trust and Safety, in writing and in these
+                     * words, that "the only write is appendLeadConversation:
+                     * one reply a member of staff types and sends to a text
+                     * enquiry". Both submissions are open and one has already
+                     * bounced twice on discrepancies. A rule reaching a
+                     * local_services lead makes a live filing false.
+                     *
+                     * The limit is STRUCTURAL rather than a note here:
+                     * `LeadReplyChannel::allowsUnattendedReply()` is required
+                     * rather than defaulted, answers false on LocalServices and
+                     * Thumbtack, and those two THROW on an automatic send even
+                     * if a caller forgets to ask. Thumbtack's false is a choice
+                     * rather than a filing - one line and an argument if it is
+                     * ever wanted.
+                     */
+                    new ActionDefinition(
+                        key: 'lead.reply',
+                        label: 'Reply to the lead',
+                        description: 'Sends a reply in the conversation the enquiry arrived on. '
+                            .'Website live chat only - enquiries from Google and Thumbtack can '
+                            .'only be answered by a person, and this step refuses them. The reply '
+                            .'is recorded as automatic, so it does not take the lead off the '
+                            .'unreplied list.',
+                    ),
                     new ActionDefinition(
                         key: 'lead.update_field',
                         label: 'Update a field',

@@ -120,6 +120,15 @@ final class WebsiteEnquiries
      * The switches came off the widgets on purpose, and this is not one coming
      * back: an empty greeting is not a disabled feature, it is a business that
      * would rather say nothing than say something automatic.
+     *
+     * ── What used to be wrong with it, and is not any more ──
+     *
+     * This wrote an ADVERTISER row, and "unreplied" in Leads read the newest
+     * row's participant — so a greeting took a brand new enquiry out of the
+     * list a business uses to find the people nobody has answered. Leads fixed
+     * it at 072cb313: `is_automatic` is set here, the preview still shows the
+     * greeting because it IS the most recent thing said, and `last_contact_from`
+     * now comes from the newest row a PERSON was in.
      */
     private function autoReply(WebChat $chat, WebSite $site): void
     {
@@ -135,16 +144,30 @@ final class WebsiteEnquiries
          * id breaks it — LeadConversation ids are UUID v7 — and this one is
          * written second, so it reads second. See messagesFor().
          */
-        $this->say($chat, $text, LeadConversation::FROM_ADVERTISER);
+        $this->say($chat, $text, LeadConversation::FROM_ADVERTISER, automatic: true);
     }
 
-    public function say(WebChat $chat, string $message, string $from): LeadConversation
-    {
+    /**
+     * @param  bool  $automatic  a machine said it, not a person
+     *
+     * Optional and defaulting to false because both callers are in this file
+     * and only one of them is a machine. The flag is what keeps "unreplied" in
+     * Leads honest: without it the greeting counts as somebody having answered,
+     * and a brand new enquiry drops out of the list a business uses to find the
+     * people nobody has replied to.
+     */
+    public function say(
+        WebChat $chat,
+        string $message,
+        string $from,
+        bool $automatic = false,
+    ): LeadConversation {
         $lead = $chat->lead;
 
         $this->thread->store($lead, $chat->getKey().':'.Str::random(16), [
             'channel' => self::CHANNEL_LIVECHAT,
             'participant' => $from,
+            'is_automatic' => $automatic,
             'occurred_at' => now(),
             'text' => $message,
         ]);

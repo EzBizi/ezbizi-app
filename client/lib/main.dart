@@ -1279,7 +1279,12 @@ class _HomeShellState extends State<HomeShell> {
                   },
                 ),
               ),
-              NotificationBell(api: widget.api),
+              NotificationBell(
+                api: widget.api,
+                // The shell already knows how to select a module; the bell
+                // only needs to name one.
+                onOpenModule: (key) => _show(_Rail.modules, key),
+              ),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is
               // answering 403 until they do, so the chrome has to say why and

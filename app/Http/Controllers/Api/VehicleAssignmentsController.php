@@ -8,6 +8,8 @@ use App\Models\Vehicle;
 use App\Models\VehicleAssignment;
 use App\Support\Access\Refusal;
 use App\Support\Automations\EventEmitter;
+use App\Support\Fleet\CannotAssignVehicle;
+use App\Support\Fleet\VehicleAssignments;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +28,7 @@ class VehicleAssignmentsController extends Controller
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly EventEmitter $events,
+        private readonly VehicleAssignments $assignments,
     ) {}
 
     /**
@@ -86,43 +89,18 @@ class VehicleAssignmentsController extends Controller
             ->with('assignments.assignedCompany')
             ->findOrFail($input['user_id']);
 
-        $inReach = $vehicle->company_id === null
-            ? $this->worksInOrganization($assignee)
-            : ($assignee->is_active && $assignee->canActOnCompany($vehicle->company));
-
-        if (! $inReach) {
-            return response()->json([
-                'message' => $vehicle->company_id === null
-                    ? 'You can assign people who work in this group. This person does not.'
-                    : 'You can assign people who work in this company. This person does not.',
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        try {
+            $assignment = $this->assignments->assign(
+                $vehicle,
+                $assignee,
+                $input['note'] ?? null,
+            );
+        } catch (CannotAssignVehicle $e) {
+            return response()->json(
+                ['message' => $e->getMessage()],
+                $e->status(),
+            );
         }
-
-        $assignment = DB::transaction(function () use ($vehicle, $assignee, $input) {
-            $open = $vehicle->openAssignment();
-            if ($open !== null) {
-                $open->released_at = now();
-                $open->save();
-                $this->events->emit('vehicle.unassigned', $vehicle, [
-                    'before' => ['user_id' => $open->user_id],
-                    'after' => ['user_id' => null],
-                ]);
-            }
-
-            $assignment = VehicleAssignment::create([
-                'vehicle_id' => $vehicle->getKey(),
-                'user_id' => $assignee->getKey(),
-                'assigned_at' => now(),
-                'released_at' => null,
-                'note' => $input['note'] ?? null,
-            ]);
-
-            $this->events->emit('vehicle.assigned', $vehicle, [
-                'after' => ['user_id' => $assignee->getKey()],
-            ]);
-
-            return $assignment;
-        });
 
         return response()->json([
             'data' => [
@@ -136,21 +114,11 @@ class VehicleAssignmentsController extends Controller
     {
         $this->authorize('assign', $vehicle);
 
-        $open = $vehicle->openAssignment();
-        if ($open === null) {
+        if ($this->assignments->release($vehicle) === null) {
             return response()->json([
                 'message' => 'Nobody has the keys.',
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-
-        DB::transaction(function () use ($vehicle, $open) {
-            $open->released_at = now();
-            $open->save();
-            $this->events->emit('vehicle.unassigned', $vehicle, [
-                'before' => ['user_id' => $open->user_id],
-                'after' => ['user_id' => null],
-            ]);
-        });
 
         return response()->json([
             'data' => [

@@ -8,6 +8,20 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Audit retention (plan §10). Runs nightly; the command reports what it removed.
+/*
+ * Websites that have stopped fetching their details.
+ *
+ * Hourly rather than daily, and that is not a contradiction of the day-long
+ * threshold: the sweep asks whether a site has been silent for 24 hours, and
+ * running it hourly only decides how soon after that somebody hears. Daily
+ * would mean an average half-day of extra silence on a site that is no longer
+ * collecting enquiries.
+ *
+ * Cheap to run often because it says each one ONCE — `went_quiet_at` is what
+ * stops an hourly sweep becoming an hourly alert.
+ */
+Schedule::command('ezbizi:web-quiet-sweep')->hourly()->withoutOverlapping(30);
+
 Schedule::command('ezbizi:expire-audit')->dailyAt('03:40');
 
 // Everything else's retention (§10), read off each model's own declaration.

@@ -3,6 +3,7 @@
 namespace App\Support\Notifications;
 
 use App\Models\Assignment;
+use App\Models\DeviceToken;
 use App\Models\Franchise;
 use App\Models\Notification;
 use App\Models\Role;
@@ -83,6 +84,7 @@ class NotificationDispatcher
         private readonly TenantContext $tenant,
         private readonly SettingsResolver $settings,
         private readonly ScopeReach $reach,
+        private readonly PushSender $push,
     ) {}
 
     /**
@@ -177,6 +179,24 @@ class NotificationDispatcher
         $emailed = $inAppOnly ? 0 : $this->alsoByEmail($told, $title, $body, $scope);
 
         /*
+         * AND THE THIRD CHANNEL — the only one that reaches a closed app.
+         *
+         * `$inAppOnly` suppresses this too, and that is the key's NAME being
+         * honoured rather than its label: "in-app only" means the bell and
+         * nothing else. The switch Automations shipped reads "In-app only, do
+         * not email", which was complete when email was the only other channel
+         * and now names one of two — their wording to widen, not mine to
+         * reinterpret.
+         *
+         * No separate ceiling, unlike email. MAX_EMAIL_RECIPIENTS exists
+         * because a mailshot damages a sending reputation shared by every
+         * organization on the platform and cannot be taken back; a push is
+         * dismissed with a swipe and costs nobody else anything. The 200-row
+         * cap above already bounds it.
+         */
+        $pushed = $inAppOnly ? 0 : $this->alsoByPush($told, $title, $body, $scope);
+
+        /*
          * HOW MANY PEOPLE WERE TOLD — on any channel, not how many rows exist.
          *
          * ActionRunner renders this to a rule author as "Told 5 people", so it
@@ -188,7 +208,51 @@ class NotificationDispatcher
          * zero when the bell is switched off, and "Told 0 people" is a lie told
          * to somebody whose 5 colleagues just received an email about it.
          */
-        return max($rowsWritten, $emailed);
+        return max($rowsWritten, $emailed, $pushed);
+    }
+
+    /**
+     * The same notification again, to the handsets of the people it is for.
+     *
+     * -- Why this counts DEVICES and returns PEOPLE --
+     *
+     * One person has a phone and a tablet and is told once, not twice. The
+     * count that leaves this method is therefore the number of RECIPIENTS with
+     * at least one device that accepted it, not the number of deliveries —
+     * because dispatch() folds it into "how many people were told", and a
+     * colleague with two handsets would otherwise inflate the sentence a rule
+     * author reads.
+     *
+     * -- Why a missing credential is silence rather than a failure --
+     *
+     * The FCM service account lives on the box and is deliberately not in the
+     * repository, so every developer machine legitimately lacks it. An absent
+     * credential is a configuration state: no push channel, the bell and the
+     * email unaffected, nothing thrown from inside a queue worker.
+     *
+     * @param  Collection<int, User>  $recipients
+     * @return int recipients reached on at least one device
+     */
+    private function alsoByPush(Collection $recipients, string $title, ?string $body, Model $scope): int
+    {
+        if (! $this->channelOn('notifications.push_enabled', $scope) || ! $this->push->configured()) {
+            return 0;
+        }
+
+        $devices = DeviceToken::query()
+            ->whereIn('user_id', $recipients->map->getKey()->all())
+            ->get();
+
+        if ($devices->isEmpty()) {
+            return 0;
+        }
+
+        $reached = $devices
+            ->groupBy('user_id')
+            ->filter(fn (Collection $forOnePerson) => $this->push->send($forOnePerson, $title, $body) > 0)
+            ->count();
+
+        return $reached;
     }
 
     /**
@@ -553,8 +617,31 @@ class NotificationDispatcher
             return $this->channelOn('notifications.in_app_enabled', $scope);
         }
 
-        return $this->channelOn('notifications.in_app_enabled', $scope)
-            || $this->channelOn('notifications.email_enabled', $scope);
+        /*
+         * EVERY channel, and this list is the fourth time it has had to grow.
+         *
+         * It read `in_app` alone, then `in_app || email`, and adding push made
+         * it wrong a third time in the same way: with the bell and the mail
+         * both switched off and push on, this answered false and dispatch()
+         * returned before the one channel that WAS available could fire. The
+         * defect is silent every time, because a notification that never
+         * happens looks exactly like one nobody had reach for.
+         *
+         * So the rule is written once here rather than as a boolean expression
+         * that somebody has to remember to extend: any channel that can carry
+         * this notification makes it worth resolving an audience for. A fourth
+         * channel adds a line to the array and nothing else.
+         */
+        foreach (['notifications.in_app_enabled', 'notifications.email_enabled'] as $key) {
+            if ($this->channelOn($key, $scope)) {
+                return true;
+            }
+        }
+
+        // Push carries the extra condition that the platform credential exists,
+        // which the other two do not have: a server with no FCM service account
+        // has the setting switched on and no way to act on it.
+        return $this->channelOn('notifications.push_enabled', $scope) && $this->push->configured();
     }
 
     /**

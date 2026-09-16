@@ -60,6 +60,104 @@ void main() {
 
     expect(find.text('4'), findsOneWidget);
   });
+
+  testWidgets('tapping a notification opens the module it is about', (
+    tester,
+  ) async {
+    // Until 2026-09-16 this did nothing but mark it read. Being told "New Live
+    // Chat Lead" and given no way to open the lead is the whole complaint.
+    final opened = <String>[];
+
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n1',
+        'source': 'automation',
+        'title': 'New Live Chat Lead',
+        'body': null,
+        'subject': {'type': 'Lead', 'id': 'lead-1'},
+        'meta': {'module': 'leads'},
+        'read_at': null,
+        'created_at': '2026-09-16T12:00:00+00:00',
+      },
+      onOpenModule: opened.add,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('New Live Chat Lead'));
+    await tester.pumpAndSettle();
+
+    expect(opened, ['leads']);
+  });
+
+  testWidgets('a notification about nothing openable navigates nowhere', (
+    tester,
+  ) async {
+    // The control. `meta.module` is null for a notification with no subject —
+    // "your trial ends tomorrow" has nowhere more specific to go than where
+    // you already are. Without this, navigating on EVERY tap would pass the
+    // test above just as well, and every such notification would throw you out
+    // of whatever you were looking at.
+    final opened = <String>[];
+
+    await _pumpWithItem(
+      tester,
+      item: {
+        'id': 'n2',
+        'source': 'system',
+        'title': 'Your trial ends tomorrow',
+        'body': null,
+        'subject': {'type': null, 'id': null},
+        'meta': {'module': null},
+        'read_at': null,
+        'created_at': '2026-09-16T12:00:00+00:00',
+      },
+      onOpenModule: opened.add,
+    );
+
+    await tester.tap(find.byIcon(Icons.notifications_none));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Your trial ends tomorrow'));
+    await tester.pumpAndSettle();
+
+    expect(opened, isEmpty);
+    // And the panel is still open, because nothing popped it.
+    expect(find.text('Your trial ends tomorrow'), findsOneWidget);
+  });
+}
+
+/// One notification in the list, and a spy for where a tap sends you.
+Future<void> _pumpWithItem(
+  WidgetTester tester, {
+  required Map<String, dynamic> item,
+  required void Function(String) onOpenModule,
+}) async {
+  final api = ApiClient(
+    client: MockClient((request) async {
+      if (request.method == 'POST') return _json({'data': {}});
+
+      return _json({
+        'data': [item],
+        'meta': {'unread': item['read_at'] == null ? 1 : 0},
+      });
+    }),
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        appBar: AppBar(
+          actions: [NotificationBell(api: api, onOpenModule: onOpenModule)],
+        ),
+      ),
+    ),
+  );
+
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(

@@ -5,6 +5,10 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\Lead;
+use App\Models\Invitation;
+use App\Support\Fleet\VehicleAssignments;
+use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
 use Illuminate\Support\Facades\Mail;
 use App\Support\Automations\ActionRunner;
@@ -885,6 +889,270 @@ class AutomationEngineTest extends TestCase
         // written to, even though AutomationEvent has no is_active to set.
         $wrong = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $event));
         $this->assertFalse($wrong['ok']);
+    }
+
+    /**
+     * Unassigning asserts the ROW, because a call that returns is not a release.
+     *
+     * Fleet broke `release()` on purpose so it returned the open assignment
+     * WITHOUT closing it, and their six tests stayed green — the only unassign
+     * case asserted the refusal when nobody holds the keys, so nothing asserted
+     * that unassigning released anything. A hole they had carried for three
+     * weeks. This arm would have reported success and changed nothing, on a
+     * timer, with no failure anywhere to say so.
+     *
+     * So: `released_at` set and `openAssignment()` null. Never "the call came
+     * back".
+     */
+    public function test_unassigning_a_vehicle_actually_releases_the_keys(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'vehicle.status_changed',
+            'payload' => ['after' => ['user_id' => $this->org['admin']->id]],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        // Built through the API: `vehicles` has NOT NULL columns the controller
+        // fills in (`number`, the derived label), so a hand-made row would be a
+        // vehicle the application cannot create.
+        $vehicleId = $this->as()->postJson('/api/v1/vehicles', [
+            // Left on the group rather than a franchise: a place belongs to a
+            // company and this fixture holds no company id. An organization
+            // vehicle also exercises the wider of Fleet's two reach branches.
+            'year' => 2022,
+            'make' => 'Ford',
+            'model' => 'Transit',
+            'plate' => 'KEY-0001',
+            'vin' => '1FTBW2CM5NKA09911',
+            'body_type' => 'van',
+            'fuel_type' => 'gas',
+            'ownership' => ['kind' => 'owned', 'counterparty' => 'Dealer Co', 'purchase_price_cents' => 100],
+        ])->assertCreated()->json('data.id');
+
+        [$vehicle, $assignment] = $this->inTenant(function () use ($vehicleId) {
+            $vehicle = Vehicle::findOrFail($vehicleId);
+
+            $held = app(VehicleAssignments::class)->assign($vehicle, $this->org['admin']);
+
+            return [$vehicle, $held];
+        });
+
+        $this->assertNotNull($this->inTenant(fn () => $vehicle->fresh()->openAssignment()),
+            'nothing is held, so the release below would prove nothing');
+
+        $result = $this->inTenant(fn () => $runner->run(['type' => 'unassign'], $event, $vehicle));
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+
+        // THE ROW, not the return.
+        $this->assertNotNull($this->inTenant(fn () => $assignment->fresh()->released_at));
+        $this->assertNull($this->inTenant(fn () => $vehicle->fresh()->openAssignment()));
+
+        // Again on a van nobody drives: got what it asked for, not a failure.
+        $again = $this->inTenant(fn () => $runner->run(['type' => 'unassign'], $event, $vehicle->fresh()));
+        $this->assertTrue($again['ok']);
+        $this->assertStringContainsString('Nobody held', $again['detail']);
+    }
+
+    /**
+     * A resend never writes the invitation token into the run log.
+     *
+     * THIS IS THE ASSERTION THE FILE'S OWN CONVENTION ARGUES AGAINST. Every arm
+     * returns a `detail` sentence that lands in `action_results` on the run row —
+     * kept three months, rendered on a screen. The natural sentence for this arm
+     * is "Resent: {url}", and `resend()` answers the RAW TOKEN, which exists
+     * nowhere else because only its hash is stored. Anyone holding it can accept
+     * the invitation and become that person.
+     *
+     * So this asserts the token is absent from the detail rather than asserting
+     * the resend worked. HR named the hazard from the other side of the module
+     * boundary; nothing on this side would have failed if the token were there.
+     */
+    public function test_resending_an_invitation_keeps_the_token_out_of_the_run_log(): void
+    {
+        // Built through HR's own endpoint: `invitations` has NOT NULL columns
+        // the controller fills in and `token_hash` is guarded, correctly - it is
+        // a credential and nothing should mass-assign it. A hand-made row here
+        // would be an invitation the application cannot create.
+        $this->as()->postJson('/api/v1/hr/invitations', [
+            'email' => 'newcomer@alpha.test',
+            'role_id' => $this->org['admin']->role_id,
+            'scope_type' => 'franchise',
+            'scope_id' => $this->org['franchise']->id,
+        ])->assertCreated();
+
+        $invitation = $this->inTenant(fn () => Invitation::where('email', 'newcomer@alpha.test')->firstOrFail());
+        $before = $invitation->token_hash;
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'invitation.sent',
+            'payload' => [],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)
+            ->run(['type' => 'resend'], $event, $invitation));
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+
+        // The control: the token the resend just minted is readable here, so a
+        // detail line carrying it WOULD be caught. Without this the assertion
+        // below passes against an arm that failed before minting anything.
+        $fresh = $this->inTenant(fn () => $invitation->fresh());
+        $this->assertNotSame($before, $fresh->token_hash,
+            'the resend did not mint a new token, so this proves nothing about logging one');
+
+        foreach (['detail', 'type'] as $key) {
+            $this->assertStringNotContainsString('token', strtolower((string) ($result[$key] ?? '')),
+                'the run log must not carry the credential, nor name it');
+        }
+
+        $this->assertStringNotContainsString('http', strtolower($result['detail']),
+            'a URL built from the token is the same credential in a different coat');
+    }
+
+    /**
+     * A rule replies to website chat and REFUSES a Google enquiry.
+     *
+     * The refusal is the assertion that matters and it is not a style rule.
+     * EzBizi told Google's ads-api-compliance team and OAuth Trust and Safety,
+     * in writing, that the only automated write is "one reply a member of staff
+     * types and sends". Both submissions are open. A rule reaching a
+     * local_services lead makes a live filing false, so this test is the thing
+     * standing between a future edit and that.
+     *
+     * The website-chat half is the CONTROL: without it a refusal test passes
+     * just as well against an arm that refuses everything, which is the same
+     * defect wearing the safe coat.
+     */
+    public function test_a_rule_replies_to_website_chat_and_refuses_a_google_lead(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'lead.received',
+            'payload' => ['after' => ['source' => 'local_services']],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $google = $this->inTenant(function () {
+            $lead = new Lead;
+            $lead->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'source' => Lead::SOURCE_LOCAL_SERVICES,
+                'remote_id' => 'g-1',
+                'contact_name' => 'A caller',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ])->save();
+
+            return $lead;
+        });
+
+        $refused = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $google,
+        ));
+
+        $this->assertFalse($refused['ok'],
+            'a rule replying to a Google enquiry makes a live compliance filing false');
+        $this->assertStringContainsString('local_services', $refused['detail'],
+            'the refusal must name the source - "this rule is wrong" and "this source cannot be '
+            .'answered automatically" send somebody to different places');
+
+        // THE CONTROL. A source that DOES permit it must not be refused, or the
+        // assertion above passes against an arm that refuses everything.
+        $chat = $this->inTenant(function () {
+            $lead = new Lead;
+            $lead->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'source' => Lead::SOURCE_WEBSITE_CHAT,
+                'remote_id' => 'chat-1',
+                'contact_name' => 'A visitor',
+                'status' => Lead::STATUS_NEW,
+                'received_at' => now(),
+            ])->save();
+
+            return $lead;
+        });
+
+        $allowed = $this->inTenant(fn () => $runner->run(
+            ['type' => 'reply', 'message' => 'Thanks for getting in touch.'], $event, $chat,
+        ));
+
+        $this->assertStringNotContainsString('can only be answered by a person',
+            (string) ($allowed['detail'] ?? ''),
+            'website chat must not hit the compliance refusal - if it does, the arm refuses '
+            .'everything and the assertion above proves nothing');
+    }
+
+    /**
+     * An email step addresses a person, a field of the event, or a typed address.
+     *
+     * Jose asked for the first and third on 2026-09-16; the middle is what it
+     * shipped with. All three end in one stored string, so the test that matters
+     * is that each resolves to a DIFFERENT address — a resolver that always fell
+     * back to one source would pass any single-case test.
+     *
+     * A PERSON IS STORED AS AN ID. The last case is why: change their address
+     * and the rule follows, because nothing copied the old one at build time.
+     */
+    public function test_an_email_step_resolves_a_person_a_field_or_a_typed_address(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+        $admin = $this->org['admin'];
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'email.received',
+            'payload' => ['from_address' => 'enquirer@example.test'],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $send = fn (string $to) => $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => $to, 'subject' => 'Hello', 'body' => 'Hi.'],
+            $event, null,
+        ));
+
+        $person = $send('user:'.$admin->id);
+        $this->assertTrue($person['ok'], $person['detail'] ?? '');
+        $this->assertStringContainsString($admin->email, $person['detail']);
+
+        $typed = $send('someone@example.test');
+        $this->assertTrue($typed['ok'], $typed['detail'] ?? '');
+        $this->assertStringContainsString('someone@example.test', $typed['detail']);
+
+        $fromEvent = $send('from_address');
+        $this->assertTrue($fromEvent['ok'], $fromEvent['detail'] ?? '');
+        $this->assertStringContainsString('enquirer@example.test', $fromEvent['detail']);
+
+        // Three stored strings, three different destinations — so none of the
+        // three is being reached by accident through another's path.
+        Mail::assertSent(AutomationMessage::class, 3);
+
+        // THE POINT OF STORING AN ID. The rule was written against the person,
+        // not the address they had that day.
+        $this->inTenant(fn () => $admin->forceFill(['email' => 'moved@example.test'])->save());
+
+        $after = $send('user:'.$admin->id);
+        $this->assertStringContainsString('moved@example.test', $after['detail']);
+
+        // And somebody switched off is nobody, rather than a stale address.
+        $this->inTenant(fn () => $admin->forceFill(['is_active' => false])->save());
+
+        $gone = $send('user:'.$admin->id);
+        $this->assertFalse($gone['ok']);
+        $this->assertStringContainsString('no longer works here', $gone['detail']);
     }
 
     /**

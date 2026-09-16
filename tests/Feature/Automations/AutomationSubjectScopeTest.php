@@ -213,7 +213,7 @@ class AutomationSubjectScopeTest extends TestCase
     private const HAS_NOT_DECLARED_WHAT_IT_EMITS = [
         'companies', 'franchises', 'users', 'hr', 'time_clock',
         'customers', 'jobs', 'marketing', 'phone',
-        'fleet_management', 'inventory', 'services', 'leads', 'reviews',
+        'fleet_management', 'inventory', 'services', 'reviews',
         'business_profile', 'email', 'monitoring',
     ];
 
@@ -376,7 +376,33 @@ class AutomationSubjectScopeTest extends TestCase
         ));
     }
 
-    /** Every declared emitted model can say where it sits. */
+    /**
+     * Every declared emitted model can say where it sits.
+     *
+     * ── WHAT THIS CHECKS, AND THE HALF IT CANNOT SEE ──────
+     *
+     * It checks the SHAPE of a record: does this model have some way of
+     * answering "which franchise or company am I". It does NOT check the STATE
+     * of the rows, and the difference is a defect that lived in production.
+     *
+     * `Lead` has had a `franchise_id` column all along, so it satisfied this
+     * test for months while EVERY website chat lead carried NULL in it. The
+     * dispatcher's sniff reads franchise columns, found null, fell to the
+     * organization branch, and a rule notifying about a website enquiry told all
+     * twelve people in the business. Measured on production 2026-09-16: five
+     * website_chat leads, `franchise_id` NULL on all five, `company_id` set on
+     * all five. This test was green throughout.
+     *
+     * Only `CarriesAutomationScope` closed it, because the interface asks the
+     * RECORD what it holds rather than asking the schema what columns exist.
+     *
+     * So: a pass here is a FLOOR, not an assurance. It says the question can be
+     * asked of this model. It says nothing about the answer being useful for the
+     * rows that actually exist. When adding a model to `emits`, the follow-up is
+     * to look at real rows and ask whether the column is FILLED — the Leads
+     * session's caveat, and they were right that it belongs here rather than in
+     * a comment of theirs.
+     */
     public function test_every_emitted_model_can_say_where_it_sits(): void
     {
         $unscoped = [];

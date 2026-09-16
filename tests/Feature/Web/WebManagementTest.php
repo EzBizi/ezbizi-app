@@ -51,8 +51,15 @@ class WebManagementTest extends TestCase
          * The subject is the SITE, so a rule can name which website.
          */
         $this->assertNull($module->automationExemptBecause);
+        /*
+         * `website.went_quiet` joined them when plugin 1.9.0 made a refused
+         * site take its chat and form down at once: it stops collecting
+         * enquiries and says so only in a WordPress notice nobody reads. Who
+         * hears about that is a question about the business, so it is a trigger
+         * rather than a notification with a recipient I chose.
+         */
         $this->assertSame(
-            ['website.chat_started', 'website.form_submitted'],
+            ['website.chat_started', 'website.form_submitted', 'website.went_quiet'],
             array_map(fn ($trigger) => $trigger->key, $module->triggers),
         );
     }

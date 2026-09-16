@@ -53,6 +53,18 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
+     * No, and this one is a choice rather than a filing.
+     *
+     * Nothing EzBizi has told Thumbtack forbids it; nobody has asked for it
+     * either. A channel arrives false and gets argued up, because the failure
+     * that matters is a channel inheriting an answer nobody chose.
+     */
+    public function allowsUnattendedReply(): bool
+    {
+        return false;
+    }
+
+    /**
      * A negotiation IS a message thread, so unlike Google there is no
      * call/message split to respect: what stops a reply is the account being
      * gone, or there being nobody at the other end.
@@ -86,8 +98,25 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
      * the id the next MessageCreatedV4 carries and it is what stops the same
      * sentence arriving twice.
      */
-    public function send(Lead $lead, string $text): LeadConversation
+    public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
+        /*
+         * The callee's half of the guard. `allowsUnattendedReply()` answers
+         * false for this channel and a caller is expected to ask — but a
+         * caller that forgets, or one written later by somebody who never read
+         * that method, arrives HERE. nothing forbids it and nobody has argued for it, so the channel says no.
+         *
+         * Throws rather than ignoring the flag: a reply that went out anyway
+         * and merely read as automatic would still be the write we said we do
+         * not make.
+         */
+        if ($automatic) {
+            throw new RuntimeException(
+                'A Thumbtack enquiry can only be replied to by a person. '
+                .'See LeadReplyChannel::allowsUnattendedReply().',
+            );
+        }
+
         $connection = $lead->connection;
 
         if ($connection === null) {

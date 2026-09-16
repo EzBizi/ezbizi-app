@@ -35,6 +35,7 @@ class WebSite extends Model implements StatesRetention
         return [
             'connected_at' => 'datetime',
             'last_seen_at' => 'datetime',
+            'went_quiet_at' => 'datetime',
             'service_linked_at' => 'datetime',
             // Readable, because we present it TO WordPress rather than
             // recognising it when somebody presents it to us. See the

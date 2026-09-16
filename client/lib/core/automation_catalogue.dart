@@ -337,6 +337,7 @@ class AutomationCatalogue {
     required this.timezones,
     required this.scheduleKinds,
     this.roles = const [],
+    this.people = const [],
     this.actionBudget,
   });
 
@@ -354,6 +355,10 @@ class AutomationCatalogue {
       // which is gated on `roles.view` — a rule author holds automations.edit
       // and need not hold that. Id and name only.
       roles: _list(json['roles'], CatalogueChoice.tryFromIdLabel),
+      // Active people with an address, for an email step's "Send to". The key
+      // already carries the `user:` prefix the runner reads, so the client never
+      // constructs it and cannot construct it wrongly.
+      people: _list(json['people'], CatalogueChoice.tryFromIdLabel),
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
@@ -362,6 +367,9 @@ class AutomationCatalogue {
 
   /// The roles a notification step may narrow to. Empty narrows nothing.
   final List<CatalogueChoice> roles;
+
+  /// People an email step can be addressed to. Keys carry the `user:` prefix.
+  final List<CatalogueChoice> people;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

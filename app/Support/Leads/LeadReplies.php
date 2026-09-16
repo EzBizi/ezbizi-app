@@ -30,6 +30,22 @@ final class LeadReplies
     }
 
     /**
+     * May a rule send on this lead's channel?
+     *
+     * Asked separately from `canReply()` on purpose: a Google enquiry can be
+     * replied to perfectly well, and must not be replied to by software. One
+     * method answering both would let a caller test the wrong thing and get a
+     * plausible answer.
+     *
+     * False when no channel exists for the source, which is the right answer
+     * for a source nothing can reply to at all.
+     */
+    public function allowsUnattendedReply(Lead $lead): bool
+    {
+        return $this->for($lead)?->allowsUnattendedReply() ?? false;
+    }
+
+    /**
      * Why not, in the refusing channel's own words.
      *
      * Null when a reply CAN be sent. The generic sentence is deliberately

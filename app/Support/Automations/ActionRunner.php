@@ -10,6 +10,12 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Leads\LeadReplies;
+use App\Models\Invitation;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
+use App\Support\Fleet\CannotAssignVehicle;
+use App\Support\Fleet\VehicleAssignments;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Support\Facades\Cache;
@@ -146,6 +152,27 @@ class ActionRunner
             'odometer_miles' => 'Odometer (miles)',
             'next_service_on' => 'Next service date',
             'next_service_miles' => 'Next service miles',
+        ],
+
+        /*
+         * `lead.update_field` HAS BEEN PUBLISHED AS WORKING AND HAD NOTHING TO
+         * WRITE. Leads declares it and describes it — "sets one field on the
+         * lead that triggered the rule: its status, or the summary kept against
+         * it" — and this map had no Lead entry, so `writableOn(Lead::class)`
+         * answered an empty array. The action was offered, the field picker had
+         * no options, and the description promised two fields that could not be
+         * chosen. Found on 2026-09-16 while answering a question about a
+         * different module.
+         *
+         * EXACTLY THE TWO THE DESCRIPTION NAMES, and no more. The contact
+         * details an enquirer gave are deliberately absent: they are a record of
+         * what somebody said, and the description says a rule cannot change
+         * them. `source`, `remote_id` and the source's own status belong to the
+         * advertising account rather than to us.
+         */
+        Lead::class => [
+            'status' => 'Status',
+            'summary' => 'Summary',
         ],
     ];
 
@@ -296,6 +323,9 @@ class ActionRunner
         private readonly MailDispatcher $mail,
         private readonly WhatsAppCloud $whatsapp,
         private readonly AdministratorFloor $administrators,
+        private readonly VehicleAssignments $vehicleAssignments,
+        private readonly InvitationActions $invitations,
+        private readonly LeadReplies $leadReplies,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -341,6 +371,11 @@ class ActionRunner
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'deactivate' => $this->deactivate($subject),
+            'assign_to_user' => $this->assignToUser($action, $event, $subject),
+            'unassign' => $this->unassign($subject),
+            'resend' => $this->resendInvitation($subject),
+            'revoke' => $this->revokeInvitation($subject),
+            'reply' => $this->replyToLead($action, $event, $subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -711,6 +746,302 @@ class ActionRunner
     }
 
     /**
+     * Reply in the conversation the enquiry arrived on. Website chat only.
+     *
+     * ── THE LIMIT IS A FILING, NOT A PREFERENCE ──────
+     *
+     * EzBizi told Google's ads-api-compliance team and OAuth Trust and Safety,
+     * in writing, that "the only write is appendLeadConversation: one reply a
+     * member of staff types and sends to a text enquiry". Both submissions are
+     * open; one has bounced twice on discrepancies. A rule reaching a
+     * local_services lead makes a live filing false.
+     *
+     * So this asks `allowsUnattendedReply()` and NOT `canReply()`. They are
+     * different questions and Leads holds them apart on purpose: a Google
+     * enquiry CAN be replied to - a person does it daily - and must not be
+     * replied to by software. An arm testing `canReply()` would get true and
+     * send. The callee refuses a true flag as well, so a caller that forgets is
+     * stopped in the room where the decision is; this check is the one that
+     * produces a sentence somebody can read.
+     *
+     * ── WHY THE REPLY IS MARKED AUTOMATIC ──────
+     *
+     * "Unreplied" means nobody has ANSWERED this person - `LeadThread` computes
+     * `last_contact_from` from the newest row a PERSON was in. Without the flag
+     * every rule anybody wrote would quietly empty the list a business uses to
+     * find the enquiries nobody has answered, and the Replied badge on every row
+     * would say the same untruth. The chain that carries it is three modules
+     * deep and every link has a default, so it compiled perfectly while dropping
+     * the flag at one call site - see docs/AUTOMATION-COVERAGE.md.
+     */
+    private function replyToLead(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'reply';
+        $message = trim((string) ($action['message'] ?? ''));
+
+        if ($message === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a message.'];
+        }
+
+        if (! $subject instanceof Lead) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only reply to an enquiry, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        if (! $this->leadReplies->allowsUnattendedReply($subject)) {
+            return [
+                'type' => $type, 'ok' => false,
+                // Names the source, because "this rule is wrong" and "this
+                // source may not be answered automatically" send somebody to
+                // different places.
+                'detail' => "Enquiries from \"{$subject->source}\" can only be answered by a "
+                    .'person, so nothing was sent. Only website live chat can be replied to by a '
+                    .'rule.',
+            ];
+        }
+
+        if (! $this->leadReplies->canReply($subject)) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => $this->leadReplies->whyNot($subject)
+                    ?? 'This enquiry cannot be replied to just now.',
+            ];
+        }
+
+        try {
+            $this->leadReplies->for($subject)?->send(
+                $subject,
+                $this->interpolate($message, $event, $subject),
+                automatic: true,
+            );
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.lead_replied', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Replied in the chat. It is recorded as automatic, so the enquiry still '
+                .'shows as awaiting a reply.',
+        ];
+    }
+
+    /**
+     * Send somebody's invitation again.
+     *
+     * ── THE RETURN VALUE IS A LIVE CREDENTIAL AND IS DISCARDED ──────
+     *
+     * `resend()` answers the RAW TOKEN. Only its hash is stored, so that string
+     * exists nowhere else, and anyone holding it can accept the invitation and
+     * become that person.
+     *
+     * Every arm in this file returns a `detail` sentence that lands in
+     * `action_results` on the run row — kept three months, rendered on a screen
+     * anybody with `automations.view` can open. So the natural way to write this
+     * arm is `"Resent: {$url}"`, and that is a live credential in a durable log
+     * with a UI. It is not a hypothetical near-miss; it is where this file's own
+     * convention points. HR shouted about it across the module boundary and they
+     * were right to.
+     *
+     * DO NOT PUT THE RETURN VALUE, OR A URL BUILT FROM IT, IN THE DETAIL LINE.
+     * A rule has no use for it either way — nobody is reading the run log in
+     * order to accept an invitation.
+     *
+     * ── AND THE `$email` PARAMETER IS NOT OFFERED AT ALL ──────
+     *
+     * `resend()` takes an optional address and re-points the invitation, killing
+     * the previous link. A rule that could choose that address by condition is
+     * an account takeover with a friendly interface, and no rule author would
+     * recognise it as one while building it. Not accepted and ignored — absent,
+     * so there is nothing to fill in and nothing to quietly drop.
+     */
+    private function resendInvitation(?Model $subject): array
+    {
+        $type = 'resend';
+
+        if (! $subject instanceof Invitation) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only resend an invitation, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        try {
+            // Deliberately not assigned. See the docblock above.
+            $this->invitations->resend($subject);
+        } catch (CannotActOnInvitation $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.invitation_resent', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Sent the invitation again. The previous link no longer works.',
+        ];
+    }
+
+    /**
+     * Withdraw an invitation that has not been accepted.
+     *
+     * Idempotent on HR's side — already revoked is a no-op rather than a
+     * refusal — which is why a rule on `invitation.revoked` cannot re-fire this
+     * into a loop.
+     */
+    private function revokeInvitation(?Model $subject): array
+    {
+        $type = 'revoke';
+
+        if (! $subject instanceof Invitation) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only withdraw an invitation, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        try {
+            $this->invitations->revoke($subject);
+        } catch (CannotActOnInvitation $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.invitation_revoked', $subject);
+
+        return ['type' => $type, 'ok' => true, 'detail' => 'Withdrew the invitation.'];
+    }
+
+    /**
+     * Hand a job or a vehicle to the person the EVENT named.
+     *
+     * ONE ARM, TWO ACTIONS, and they are not the same underneath - which is the
+     * point of routing rather than copying. A job's assignment is a column with
+     * a reach rule; a vehicle's is an assignment PERIOD that has to displace the
+     * open one and emit twice. Fleet owns the second and now exposes it
+     * (VehicleAssignments, dab92dba), so this calls their code rather than
+     * carrying a second copy of it that drifts the first time they change one.
+     *
+     * THE ASSIGNEE COMES FROM A FIELD OF THE EVENT, the same shape the email and
+     * WhatsApp steps use. A rule hands the keys to the person the event was
+     * about - the one who reported the fault, the one who booked the job - not
+     * to somebody named once when the rule was written and still named a year
+     * later after they left.
+     *
+     * BOTH REACH CHECKS ARE ASKED OF WHOEVER OWNS THEM. Fleet's lives inside
+     * assign(), so this cannot forget it; a job's is `canActOnFranchise`, which
+     * is the User model's own answer rather than arithmetic repeated here.
+     */
+    private function assignToUser(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'assign_to_user';
+        $field = trim((string) ($action['user_field'] ?? ''));
+
+        if ($field === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step needs to know which field carries the person to assign.',
+            ];
+        }
+
+        $userId = $this->valueFromEvent($field, $event);
+
+        if (! is_string($userId) || trim($userId) === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => "This event carried nothing in \"{$field}\", so there was nobody to "
+                    .'assign.',
+            ];
+        }
+
+        $assignee = User::find($userId);
+
+        if ($assignee === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => "\"{$field}\" held ".json_encode($userId).', which is not somebody '
+                    .'who works here.',
+            ];
+        }
+
+        if ($subject instanceof Vehicle) {
+            try {
+                $this->vehicleAssignments->assign($subject, $assignee);
+            } catch (CannotAssignVehicle $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => "Handed the keys to {$assignee->name}.",
+            ];
+        }
+
+        if ($subject instanceof Job) {
+            if (! $assignee->canActOnFranchise($subject->franchise)) {
+                return [
+                    'type' => $type, 'ok' => false,
+                    'detail' => "{$assignee->name} is not assigned anywhere this job can be seen.",
+                ];
+            }
+
+            $subject->forceFill(['performed_by_user_id' => $assignee->getKey()])->save();
+            $this->audit->log('automation.assigned', $subject, metadata: ['to' => $assignee->getKey()]);
+
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => "Gave the job to {$assignee->name}.",
+            ];
+        }
+
+        return [
+            'type' => $type, 'ok' => false,
+            'detail' => 'This step can only assign a job or a vehicle, and this rule is about '
+                .'something else.',
+        ];
+    }
+
+    /**
+     * Take the keys back.
+     *
+     * `release()` answers NULL when nobody held them rather than throwing, and
+     * Fleet is right that null is what this arm wants: a rule unassigning a van
+     * nobody drives has got what it asked for. A person who pressed Unassign
+     * wants telling, which is why their controller turns the same null into a
+     * 422 and this does not.
+     */
+    private function unassign(?Model $subject): array
+    {
+        $type = 'unassign';
+
+        if (! $subject instanceof Vehicle) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only unassign a vehicle, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        $released = $this->vehicleAssignments->release($subject);
+
+        $this->audit->log('automation.unassigned', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => $released === null
+                ? 'Nobody held the keys, so nothing changed.'
+                : 'Took the keys back.',
+        ];
+    }
+
+    /**
      * Switch off whatever the rule was about — a company, franchise, user or customer.
      *
      * ONE ARM, FOUR ACTIONS. `ActionDefinition::type()` derives the execution
@@ -900,7 +1231,7 @@ class ActionRunner
             ];
         }
 
-        $to = $this->valueFromEvent($field, $event);
+        $to = $this->emailRecipient($field, $event);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
             return [
@@ -909,7 +1240,10 @@ class ActionRunner
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
                 'detail' => $to === null || $to === ''
-                    ? "This event carried nothing in \"{$field}\", so there was no address to send to."
+                    ? (str_starts_with($field, self::RECIPIENT_USER)
+                        ? 'The person this step sends to no longer works here, or has no email '
+                            .'address, so there was nobody to send to.'
+                        : "This event carried nothing in \"{$field}\", so there was no address to send to.")
                     : "\"{$field}\" held ".json_encode($to).', which is not an email address.',
             ];
         }
@@ -939,6 +1273,60 @@ class ActionRunner
         $this->audit->log('automation.emailed', $event, metadata: ['to' => $to]);
 
         return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$to}: {$subject}"];
+    }
+
+    /** Prefix marking a stored recipient as a person rather than a field or an address. */
+    private const RECIPIENT_USER = 'user:';
+
+    /**
+     * Who the email goes to: a person here, a field of the event, or an address.
+     *
+     * ── Three sources, one stored string, and the order is deliberate ──────
+     *
+     *   "user:<id>"        somebody who works here. Stored as an ID rather than
+     *                      their address, so the rule follows them when they
+     *                      change it and refuses when they leave. An address
+     *                      copied at build time would quietly keep mailing a
+     *                      mailbox nobody reads.
+     *   a field name       the address the EVENT carried - the customer who
+     *                      enquired, the person who wrote in.
+     *   anything else      a literal address somebody typed.
+     *
+     * ── Why a typed address is allowed at all ──────
+     *
+     * It was deliberately absent at first. This sends on EzBizi's own transport
+     * and sending identity, shared by every tenant, so a rule that could email
+     * anywhere is a spam cannon with the platform's reputation behind it - one
+     * business's complaint rate suppresses sign-in and password-reset delivery
+     * for all of them. Jose asked for it directly on 2026-09-16: "it should let
+     * me select users ( since they have emails attached to them ) or also let me
+     * type an email".
+     *
+     * What holds the risk instead: 100 sends per rule per hour here, 500 per
+     * business per hour in MailDispatcher, both refusing with a line in the run
+     * log rather than dropping silently. Those are volume limits and NOT
+     * reputation monitoring - there is still no bounce route and no complaint
+     * table, which is the thing that would actually see a tenant going wrong.
+     * That gap is with Jose and is the reason this docblock names it.
+     */
+    private function emailRecipient(string $stored, AutomationEvent $event): mixed
+    {
+        if (str_starts_with($stored, self::RECIPIENT_USER)) {
+            $user = User::query()
+                ->where('is_active', true)
+                ->find(substr($stored, strlen(self::RECIPIENT_USER)));
+
+            return $user?->email;
+        }
+
+        // A literal address is stored as itself. Checked before the event,
+        // because a payload key will never look like an address and an address
+        // is never a payload key - so the test cannot be ambiguous.
+        if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+            return $stored;
+        }
+
+        return $this->valueFromEvent($stored, $event);
     }
 
     /**

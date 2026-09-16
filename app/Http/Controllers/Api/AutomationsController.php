@@ -90,6 +90,22 @@ class AutomationsController extends Controller
         // instead published none of them; the drift guard said so.
         'deactivate',
 
+        // Also shared, and NOT the same underneath: a job's assignment is a
+        // column with a reach rule, a vehicle's is a period that displaces the
+        // open one and emits twice. The arm routes on the subject and asks
+        // whoever owns each rule - Fleet's VehicleAssignments, and the User
+        // model's own canActOnFranchise.
+        'assign_to_user',
+        'unassign',
+
+        // HR's, through App\Support\Hr\InvitationActions so the screen and the
+        // rule enforce the same state rules. `onboarding.start` is NOT here yet:
+        // it needs a contract named by the rule, and the list it picks from is
+        // still on HR's branch.
+        'resend',
+        'revoke',
+        'reply',
+
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.
@@ -369,6 +385,32 @@ class AutomationsController extends Controller
                  * No permissions, no user counts - a name is what a rule names
                  * and everything else on a Role is somebody else's business.
                  */
+                /*
+                 * The people an email step can be addressed to. Id and name and
+                 * the address, because a picker showing two people called Dave
+                 * without their addresses cannot be used.
+                 *
+                 * Served here rather than fetched from /users, which is gated on
+                 * `users.view` - a rule author holds `automations.edit` and need
+                 * not hold that. Same reasoning as roles below and as the
+                 * WhatsApp templates endpoint: gate on the tab the question is
+                 * being asked from.
+                 *
+                 * ACTIVE ONLY, and with an address: somebody switched off cannot
+                 * be a destination, and offering a person with no email address
+                 * is offering a choice that refuses at run time.
+                 */
+                'people' => User::query()
+                    ->where('is_active', true)
+                    ->whereNotNull('email')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'email'])
+                    ->map(fn (User $u) => [
+                        'id' => 'user:'.$u->id,
+                        'label' => trim($u->name.' — '.$u->email),
+                    ])
+                    ->all(),
+
                 'roles' => Role::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -1486,8 +1528,34 @@ class AutomationsController extends Controller
              */
             $type('whatsapp.send', 'Send a WhatsApp message'),
 
+            /*
+             * The person comes from a FIELD of the event, not a name typed once
+             * when the rule was written and still named a year later after they
+             * left. Declared module_only because both actions that derive to it
+             * are subject-bound - a job or a vehicle - and the subject is what
+             * the arm routes on.
+             */
+            $type('lead.reply', 'Reply to the lead', true, [
+                $parameter('message', 'Message', 'rich_text'),
+            ]),
+
+            $type('assign_to_user', 'Assign to a person', true, [
+                $parameter('user_field', 'Assign to the person in', 'trigger_field'),
+            ]),
+
             $type('email.send', 'Send an email', false, [
-                $parameter('to_field', 'Send to the address in', 'trigger_field'),
+                // THREE SOURCES IN ONE BOX: somebody who works here, a field of
+                // the event, or an address typed in. Stored as one string -
+                // "user:<id>", a field name, or a literal address - because the
+                // alternative is three parameters with an exclusive-or between
+                // them, which is a rule every reader has to learn and every
+                // validator has to repeat.
+                //
+                // A PERSON IS STORED AS AN ID, not as their address. The rule
+                // then follows them when they change it and refuses when they
+                // leave; an address copied at build time would keep mailing a
+                // mailbox nobody reads.
+                $parameter('to_field', 'Send to', 'recipient'),
                 $parameter('subject', 'Subject', 'text'),
                 $parameter('body', 'Message', 'rich_text'),
             ]),

@@ -446,4 +446,50 @@ return [
         'platform_sms_account_sid' => env('TWILIO_PLATFORM_SMS_ACCOUNT_SID'),
     ],
 
+    /*
+    |---------------------------------------------------------------------------
+    | Firebase Cloud Messaging — push to a closed app (plan §12)
+    |---------------------------------------------------------------------------
+    |
+    | The project is `ezbizi-506117`, registered against applicationId
+    | `com.ezbizi.app` by the Android module; `client/android/app/google-
+    | services.json` is committed and is how the DEVICE registers. It cannot
+    | send anything — the server needs its own credential, which is the service
+    | account below.
+    |
+    | A PATH rather than the JSON in the environment, because the private key
+    | inside it is multi-line and a .env carrying one is how a key arrives with
+    | its newlines eaten. The file is never committed: it is on the box, and
+    | `PushSender::configured()` answers false wherever it is absent, so a
+    | developer machine without it simply has no push channel rather than a
+    | broken one.
+    |
+    */
+    /*
+    |---------------------------------------------------------------------------
+    | APNs — push to a closed iPhone (plan §12)
+    |---------------------------------------------------------------------------
+    |
+    | A team-scoped .p8 auth key rather than a per-app certificate: it does not
+    | expire annually and covers sandbox and production, so nobody is paged in a
+    | year for a lapsed cert. The file is on the box and never committed.
+    |
+    | `topic` is the BUNDLE ID, measured by the Apple module off the shipped
+    | artefact — not the Kotlin-style namespace that resembles it. The wrong
+    | value returns 400 BadDeviceToken, which reads like a bad token.
+    |
+    */
+    'apns' => [
+        'key_id' => env('APNS_KEY_ID'),
+        'team_id' => env('APNS_TEAM_ID'),
+        'key' => env('APNS_KEY_FILE'),
+        'topic' => env('APNS_TOPIC', 'com.ezbizi.app'),
+        'production' => env('APNS_PRODUCTION', true),
+    ],
+
+    'fcm' => [
+        'project_id' => env('FCM_PROJECT_ID', 'ezbizi-506117'),
+        'credentials' => env('FCM_CREDENTIALS'),
+    ],
+
 ];

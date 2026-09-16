@@ -139,7 +139,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -390,6 +390,53 @@ class AutomationsApiTest extends TestCase
      * for an arm; that is the known weakness of a source-scanning guard and it
      * is why the pattern is this tight rather than merely quoting the key.
      */
+    /**
+     * An action that says it sets a field must have a field to set.
+     *
+     * `lead.update_field` was published as working and `writableOn(Lead::class)`
+     * answered an empty array, so the action was offered, the field picker had
+     * no options, and the description promised two fields nobody could choose.
+     * The arm/const drift guard could not see it: the arm exists, the const
+     * lists it, and the thing missing was a THIRD list neither of them reads.
+     *
+     * So this checks the pairing directly — every module whose subject-bound
+     * `update_field` is published must have writable fields declared for that
+     * subject. Asserting the count alone would pass against a map that had
+     * gained an unrelated entry, so it names the module that fails.
+     */
+    public function test_a_published_update_field_action_has_fields_to_write(): void
+    {
+        $registry = app(\App\Support\Modules\ModuleRegistry::class);
+
+        $empty = [];
+
+        foreach ($registry->all() as $key => $module) {
+            foreach ($module->automationActions as $action) {
+                if ($action->type() !== 'update_field') {
+                    continue;
+                }
+
+                $published = (new ReflectionClass(AutomationsController::class))
+                    ->getConstant('IMPLEMENTED_ACTIONS');
+
+                if (! in_array('update_field', $published, true)) {
+                    continue;
+                }
+
+                if (ActionRunner::writableOn($module->subject?->model) === []) {
+                    $empty[] = $key.'/'.$action->key;
+                }
+            }
+        }
+
+        $this->assertSame([], $empty, implode("
+", [
+            'These modules publish "Update a field" as working and declare no writable',
+            'fields for their subject, so the picker offers the action and then offers',
+            'nothing to set: '.implode(', ', $empty),
+        ]));
+    }
+
     public function test_every_action_the_runner_can_perform_can_also_be_chosen(): void
     {
         $source = file_get_contents(app_path('Support/Automations/ActionRunner.php'));
@@ -702,7 +749,11 @@ class AutomationsApiTest extends TestCase
         $this->assertStringContainsString('cannot set any field on Company', $message);
         // And points at the records that CAN be changed, read off the registry
         // rather than written into the sentence.
-        $this->assertStringContainsString('a Customer, a Job or a Vehicle', $message);
+        // The list is DERIVED from ActionRunner::WRITABLE rather than written
+        // out here, which is why adding Lead to that map changed this sentence
+        // and reddened this test. That is the behaviour worth having: the
+        // refusal cannot go stale against the capability it describes.
+        $this->assertStringContainsString('a Customer, a Job, a Vehicle or a Lead', $message);
     }
 
     /**

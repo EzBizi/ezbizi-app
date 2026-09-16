@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/shortcode_button.dart';
 
 /// Text written once and used on as many pages as want it.
 ///
@@ -240,19 +241,22 @@ class _TemplatesPaneState extends State<TemplatesPane> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TextField(
-            controller: _box(key),
-            enabled: widget.canEdit,
-            minLines: 3,
-            maxLines: 12,
-            decoration: InputDecoration(
-              labelText: _label(key),
-              isDense: true,
-              // The shortcode, beside the box, because pasting it is the whole
-              // point of writing the text.
-              helperText: '[ezbizi_$key]',
+          // The shortcode as a button, the same control the General tab uses:
+          // pasting it is the whole point of writing the text, and helper text
+          // is something you retype rather than copy.
+          withShortcode(
+            TextField(
+              controller: _box(key),
+              enabled: widget.canEdit,
+              minLines: 3,
+              maxLines: 12,
+              decoration: InputDecoration(
+                labelText: _label(key),
+                isDense: true,
+              ),
+              onChanged: (value) => setState(() => _edits[key] = value),
             ),
-            onChanged: (value) => setState(() => _edits[key] = value),
+            '[ezbizi_$key]',
           ),
           if (widget.canEdit)
             Align(

@@ -8,6 +8,7 @@ use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Support\Leads\LeadReplies;
+use App\Support\Web\WebsiteChatReplies;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -519,5 +520,121 @@ class WebsiteEnquiriesTest extends TestCase
             collect($after['messages'])->where('text', 'We have you — one moment.')->count(),
             'The greeting was sent again on a later message.',
         );
+    }
+
+    /**
+     * The greeting must not count as somebody having answered.
+     *
+     * This is the defect that kept it switched off: an ADVERTISER row took a
+     * brand new enquiry out of the list a business uses to find the people
+     * nobody has replied to. Leads fixed the reading at 072cb313 and this is
+     * the half that has to be true on my side — the row is MARKED.
+     *
+     * Asserted on the lead's own cache rather than on the column, because the
+     * cache is what the unreplied filter actually reads. A test on
+     * `is_automatic` alone would pass while the filter still lied.
+     */
+    public function test_the_greeting_does_not_make_a_new_enquiry_look_answered(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated();
+
+        $this->inTenant($made['tenant']['org'], function () {
+            $lead = WebChat::query()->firstOrFail()->lead->refresh();
+
+            // Still unreplied: the newest row a PERSON was in is the visitor's.
+            $this->assertSame(LeadConversation::FROM_CONSUMER, $lead->last_contact_from);
+
+            // And the greeting is still the preview, because it IS the most
+            // recent thing said. Hiding it would be a different lie.
+            $this->assertSame('We have you — one moment.', $lead->last_contact_preview);
+
+            $this->assertTrue(
+                (bool) LeadConversation::query()
+                    ->where('text', 'We have you — one moment.')
+                    ->firstOrFail()
+                    ->is_automatic,
+            );
+        });
+    }
+
+    /** A person replying still counts, or the flag would have gone too far. */
+    public function test_a_real_reply_still_marks_the_lead_answered(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $started = $this->startChat($made['site']->public_key, 'hello')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $chat = WebChat::query()->findOrFail($started['chat']);
+
+            app(WebsiteEnquiries::class)->say(
+                $chat,
+                'Morning — what is the address?',
+                LeadConversation::FROM_ADVERTISER,
+            );
+
+            $this->assertSame(
+                LeadConversation::FROM_ADVERTISER,
+                $chat->lead->refresh()->last_contact_from,
+            );
+        });
+    }
+
+    /**
+     * The whole path: a rule replies through the channel, and the enquiry is
+     * still waiting for a person.
+     *
+     * The two halves were written by different sessions a day apart — Leads
+     * added the parameter to `send()` and deliberately did not pass it on,
+     * because `say()` did not take it on main yet. This is the seam, so it is
+     * the thing worth a test rather than either half alone.
+     */
+    public function test_a_rule_replying_through_the_channel_is_marked_automatic(): void
+    {
+        $made = $this->siteWithKey();
+
+        $started = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $lead = WebChat::query()->findOrFail($started['chat'])->lead;
+
+            app(WebsiteChatReplies::class)->send($lead, 'A machine wrote this.', automatic: true);
+
+            // Still unreplied: nobody has actually answered.
+            $this->assertSame(
+                LeadConversation::FROM_CONSUMER,
+                $lead->refresh()->last_contact_from,
+            );
+        });
+    }
+
+    /** And the control: the same call without the flag DOES mark it answered. */
+    public function test_the_same_channel_still_carries_a_person(): void
+    {
+        $made = $this->siteWithKey();
+
+        $started = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $lead = WebChat::query()->findOrFail($started['chat'])->lead;
+
+            app(WebsiteChatReplies::class)->send($lead, 'A person wrote this.');
+
+            $this->assertSame(
+                LeadConversation::FROM_ADVERTISER,
+                $lead->refresh()->last_contact_from,
+            );
+        });
     }
 }

@@ -658,8 +658,14 @@ class SettingRegistry
             new SettingDefinition(
                 key: 'notifications.push_enabled', label: 'Send push notifications',
                 type: SettingDefinition::TYPE_BOOL, default: true,
-                notYetInEffect: 'Takes effect when there is a mobile app to push to. '
-                    .'Notifications are only shown inside the app today.',
+                /*
+                 * The notYetInEffect sentence came off when push became real.
+                 * NotificationDispatcher reads this key in two places now, so
+                 * leaving "takes effect when there is a mobile app to push to"
+                 * would be the setting telling somebody it does nothing while
+                 * it decides whether their phone buzzes. Two guards caught it
+                 * in the same run, from both directions.
+                 */
             ),
             new SettingDefinition(
                 key: 'notifications.in_app_enabled', label: 'Show in-app notifications',
