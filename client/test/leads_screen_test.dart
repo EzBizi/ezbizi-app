@@ -362,6 +362,40 @@ void main() {
     expect(find.text('Connect Google Ads'), findsOneWidget);
   });
 
+
+  // ── arriving from a notification (Jose, 2026-09-16) ─────────────
+
+  testWidgets('a notification can open the screen already narrowed to its '
+      'source', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      initialSource: 'website_chat',
+    );
+
+    // The FIRST list request is already narrowed. Asserting the drawn chip
+    // alone would pass on a screen that loads everything and then filters,
+    // which is what a caller would notice as the list flashing every source's
+    // leads before settling.
+    expect(_lastListQuery['source'], 'website_chat');
+  });
+
+  testWidgets('a source the strip does not know is ignored, not selected',
+      (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      initialSource: 'carrier_pigeon',
+    );
+
+    // Not narrowed to nothing. An unknown source passed straight through would
+    // select no chip and ask the API for a source that matches no lead, which
+    // draws as an empty inbox - the one failure this screen exists to avoid.
+    expect(_lastListQuery.containsKey('source'), isFalse);
+  });
+
   // ── one list across every source (sources layout 1 / 4) ─────────
 
   testWidgets('one list under a source strip: All first, and every source '
@@ -1051,6 +1085,7 @@ Future<void> _pump(
   required List<Map<String, dynamic>> connections,
   List<String> permissions = const ['leads.view', 'leads.edit'],
   Size size = const Size(1200, 900),
+  String? initialSource,
 }) async {
   _posts.clear();
   _patches.clear();
@@ -1211,7 +1246,11 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: LeadsScreen(api: api, session: session),
+        body: LeadsScreen(
+          api: api,
+          session: session,
+          initialSource: initialSource,
+        ),
       ),
     ),
   );

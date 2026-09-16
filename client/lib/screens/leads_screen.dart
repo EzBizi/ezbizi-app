@@ -28,10 +28,34 @@ import '../widgets/tab_bar_like.dart';
 /// whole module exists to avoid: a screen that quietly shows nothing while an
 /// enquiry sits unanswered.
 class LeadsScreen extends StatefulWidget {
-  const LeadsScreen({super.key, required this.api, required this.session});
+  const LeadsScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    this.initialSource,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Which source strip entry to open on, for arriving from a notification.
+  ///
+  /// `initialSource` and NOT `initialTab`, which is what it was asked for as.
+  /// The strip is drawn with `TabBarLike` and looks like tabs, but it is a
+  /// FILTER: there is no TabController and no tab views, only `_source`
+  /// narrowing one list. A parameter called `initialTab` invites an index and
+  /// tab semantics, and the value that actually belongs here is the source as
+  /// the API spells it -- `website_chat`, the same string `_sourceChips` and
+  /// the `source` column use.
+  ///
+  /// Null keeps the default, which is All and is the right default for
+  /// somebody opening Leads to look at their leads. Nothing was tried and
+  /// removed here; the screen simply had no reason to start narrowed until a
+  /// notification wanted to say "this enquiry, from this source".
+  ///
+  /// A source the strip does not know is ignored rather than drawn: an unknown
+  /// value would otherwise select nothing and read as an empty inbox.
+  final String? initialSource;
 
   @override
   State<LeadsScreen> createState() => _LeadsScreenState();
@@ -164,6 +188,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Set BEFORE the first _load(), not through _setSource() after it. That
+    // would fire a second request and show the unfiltered list first, so
+    // arriving from a notification would flash every source's leads and then
+    // narrow -- which reads as the screen changing its mind.
+    //
+    // Checked against the strip rather than trusted: a source it does not know
+    // would select nothing and draw as an empty inbox, which is the one thing
+    // this screen exists to avoid.
+    final wanted = widget.initialSource;
+
+    if (wanted != null && _sourceChips.any((c) => c.$1 == wanted)) {
+      _source = wanted;
+    }
+
     _load();
     _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
