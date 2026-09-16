@@ -152,6 +152,27 @@ class ActionRunner
             'next_service_on' => 'Next service date',
             'next_service_miles' => 'Next service miles',
         ],
+
+        /*
+         * `lead.update_field` HAS BEEN PUBLISHED AS WORKING AND HAD NOTHING TO
+         * WRITE. Leads declares it and describes it — "sets one field on the
+         * lead that triggered the rule: its status, or the summary kept against
+         * it" — and this map had no Lead entry, so `writableOn(Lead::class)`
+         * answered an empty array. The action was offered, the field picker had
+         * no options, and the description promised two fields that could not be
+         * chosen. Found on 2026-09-16 while answering a question about a
+         * different module.
+         *
+         * EXACTLY THE TWO THE DESCRIPTION NAMES, and no more. The contact
+         * details an enquirer gave are deliberately absent: they are a record of
+         * what somebody said, and the description says a rule cannot change
+         * them. `source`, `remote_id` and the source's own status belong to the
+         * advertising account rather than to us.
+         */
+        Lead::class => [
+            'status' => 'Status',
+            'summary' => 'Summary',
+        ],
     ];
 
     /**
