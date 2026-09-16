@@ -856,16 +856,16 @@ class ActionRunner
 
         $this->audit->log('automation.report_sent', $report, metadata: ['to' => $recipients]);
 
-        $refused = $result->refused ?? [];
-
         return [
             'type' => $type,
             // Partial failure is a success. See the docblock.
             'ok' => $result->ok(),
-            'detail' => $refused === []
-                ? 'Sent "'.$report->name.'" to '.count($recipients).' '
-                    .(count($recipients) === 1 ? 'person' : 'people').'.'
-                : 'Sent "'.$report->name.'", except to '.implode(', ', $refused).'.',
+            // THE CALLEE WRITES THIS LINE, not us. `refused` is a map of
+            // address => why, so imploding it prints the reasons and drops the
+            // addresses; and `transportDelivers` is false on a box whose mail
+            // goes nowhere, which a count of recipients cannot say. Both are
+            // already said correctly by summary(), which exists for this.
+            'detail' => '"'.$report->name.'". '.$result->summary(),
         ];
     }
 

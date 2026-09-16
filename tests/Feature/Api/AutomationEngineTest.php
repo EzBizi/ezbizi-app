@@ -76,9 +76,9 @@ class AutomationEngineTest extends TestCase
         return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
-    private function automation(string $trigger, ?array $conditions, array $actions): Automation
+    private function automation(string $trigger, ?array $conditions, array $actions, ?string $author = null): Automation
     {
-        return $this->inTenant(function () use ($trigger, $conditions, $actions) {
+        return $this->inTenant(function () use ($trigger, $conditions, $actions, $author) {
             $automation = Automation::create([
                 'organization_id' => $this->org['organization']->id,
                 'name'            => "When {$trigger}",
@@ -92,6 +92,9 @@ class AutomationEngineTest extends TestCase
                 'version'         => 1,
                 'conditions'      => $conditions,
                 'actions'         => $actions,
+                // A version is immutable once written, so an author cannot be
+                // added afterwards — which is why it is an argument here.
+                'created_by'      => $author,
                 'created_at'      => now(),
             ]);
 
@@ -1259,6 +1262,62 @@ class AutomationEngineTest extends TestCase
         $this->assertNotSame($missing['detail'], $nobody['detail']);
 
         Mail::assertNothingSent();
+    }
+
+    /**
+     * THE SUCCESS LINE IS THE CALLEE'S, NOT OURS.
+     *
+     * `SentReport` carries two things a recipient count cannot say: `refused` is
+     * a map of address => why, and `transportDelivers` is false on a box whose
+     * mail goes nowhere. This arm first hand-rolled its own sentence from a
+     * count and an implode — which printed the REASONS while dropping the
+     * addresses, and said "Sent to 2 people" on a deployment where nothing left
+     * the building. That is the exact failure `SentReport` was written to
+     * prevent, missed by the caller it was written for.
+     *
+     * Nothing above reaches a successful send, so the wrong sentence was
+     * invisible to this suite. Asserted here on the transport wording, which a
+     * count of recipients can never produce: MAIL_MAILER is `array` under test,
+     * so `delivers()` is false and the honest line says so.
+     */
+    public function test_a_sent_report_says_what_the_sender_says(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'automation.schedule_reached',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        // A rule fires with nobody at a screen, so the send renders as the rule's
+        // AUTHOR, which is why one is named here.
+        $automation = $this->automation(
+            'automation.schedule_reached', null, [], $this->org['admin']->id,
+        );
+
+        $report = $this->inTenant(fn () => SavedReport::create([
+            'organization_id' => $this->org['organization']->id,
+            'name'            => 'Weekly numbers',
+            'definition'      => [
+                'root'    => 'jobs',
+                'columns' => [['resource' => 'jobs', 'column' => 'title']],
+                'filters' => [],
+            ],
+        ]));
+
+        $sent = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => $report->id, 'to' => ['owner@example.test']],
+            $event, null, false, $automation->fresh(),
+        ));
+
+        $this->assertTrue($sent['ok'], $sent['detail']);
+        $this->assertStringContainsString('Weekly numbers', $sent['detail']);
+        $this->assertStringContainsString('does not deliver', $sent['detail']);
     }
 
     /**
