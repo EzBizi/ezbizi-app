@@ -473,7 +473,7 @@ class HrAutomationsTest extends TestCase
      * with them. What is NOT allowed is advertising an action the save-time
      * check then rejects with no warning, which is what `implemented` is for.
      */
-    public function test_the_hr_actions_are_declared_and_marked_as_not_built_yet(): void
+    public function test_each_hr_action_reports_whether_it_is_actually_built(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $hr    = $this->userWithRole($alpha, 'People manager', ['automations.view', 'hr.view']);
@@ -484,7 +484,23 @@ class HrAutomationsTest extends TestCase
             'Human Resources declares no actions. Declaring nothing is the state this replaced.');
 
         foreach ($module['declared_actions'] as $action) {
-            $this->assertFalse($action['implemented'], $action['key']);
+            /*
+             * Was a blanket assertFalse until 2026-09-16, and the module is no
+             * longer uniform: Automations built resend and revoke against HR's
+             * InvitationActions, while onboarding.start is deliberately still
+             * unbuilt because it needs a contract named by the rule.
+             *
+             * So this asserts the ACTUAL state per action rather than one
+             * answer for the module. A blanket assertTrue would have been the
+             * same mistake in the other direction, and would have gone red on
+             * onboarding.start - which is how this list was checked rather
+             * than assumed.
+             */
+            $this->assertSame(
+                in_array($action['key'], ['invitation.resend', 'invitation.revoke'], strict: true),
+                $action['implemented'],
+                $action['key'],
+            );
 
             // The sentence has to describe the ACTION and never its absence, so
             // it still reads correctly on the day the flag flips.

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="Airtable">
+  <rect x="3.5" y="3.5" width="41" height="41" rx="9" fill="#FFFFFF"/>
+  <rect x="3.5" y="3.5" width="41" height="41" rx="9" fill="none" stroke="#E3E3E3"/>
+  <path fill="#FFBF00" d="M11 15.4h11.4v6.2H11z"/>
+  <path fill="#18BFFF" d="M25.6 15.4H37v6.2H25.6z"/>
+  <path fill="#F82B60" d="M11 24.8h11.4V31H11z"/>
+  <path fill="#2D7FF9" d="M25.6 24.8H37V31H25.6z"/>
+</svg>
