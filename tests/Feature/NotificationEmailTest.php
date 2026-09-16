@@ -11,6 +11,8 @@ use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -380,6 +382,90 @@ class NotificationEmailTest extends TestCase
         $this->assertTrue($this->inTenant(
             $tenant['org'],
             fn () => $this->dispatcher()->allows('automation', $tenant['org']),
+        ));
+    }
+
+    /**
+     * The narrowing Jose asked for: a rule notifies a chosen role.
+     *
+     * Measured motivation rather than a preference — his live website-chat rule
+     * reaches every active person in the business, because a Lead carries
+     * `company_id` and no `franchise_id`, and audienceFor's sniff looks for a
+     * franchise column. Twelve people per web enquiry.
+     */
+    public function test_naming_a_role_narrows_the_audience_to_it(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant('Nu');
+        $sales = $this->userWithRole($tenant, 'Sales', ['customers.view']);
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead',
+            subject: $tenant['org'],
+            source: 'automation',
+            roleIds: [$sales->role_id],
+        ));
+
+        $this->assertSame(1, $told);
+
+        // The row went to Sales and NOT to the administrator, who has reach
+        // over the same record and would have been told without the role.
+        $rows = $this->inTenant($tenant['org'], fn () => Notification::query()->pluck('user_id')->all());
+        $this->assertSame([$sales->id], $rows);
+
+        // The control: same call, no role named, and the audience is wider.
+        // Without this the assertion above passes equally well against a
+        // dispatcher that had simply stopped telling the administrator.
+        $this->inTenant($tenant['org'], fn () => Notification::query()->delete());
+
+        $toldWithoutRole = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead',
+            subject: $tenant['org'],
+            source: 'automation',
+        ));
+
+        $this->assertGreaterThan($told, $toldWithoutRole, 'the role is what narrowed it');
+    }
+
+    public function test_a_role_nobody_with_reach_holds_tells_nobody_rather_than_everybody(): void
+    {
+        NotificationFacade::fake();
+
+        // A role that exists but whose only holder cannot see this record. The
+        // failure being guarded is the tempting one: falling back to the full
+        // reach audience, which is the noise the role was chosen to remove.
+        $tenant = $this->provisionTenant('Xi');
+        $branch = $this->userWithRole($tenant, 'Branch', ['customers.view'], onlyAt: $tenant['franchise']);
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead',
+            subject: $tenant['org'],
+            source: 'automation',
+            roleIds: [$branch->role_id],
+        ));
+
+        $this->assertSame(0, $told);
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => Notification::query()->count()));
+    }
+
+    public function test_a_role_that_no_longer_exists_refuses_instead_of_widening(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant('Omicron');
+
+        $this->expectException(InvalidArgumentException::class);
+
+        // Silently notifying the whole business because somebody deleted a role
+        // would be worse than never having narrowed at all — it would look
+        // deliberate. A rule broken this way can only be fixed by a person, and
+        // they can only fix what they are told about.
+        $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            title: 'New Live Chat Lead',
+            subject: $tenant['org'],
+            source: 'automation',
+            roleIds: [(string) Str::uuid7()],
         ));
     }
 

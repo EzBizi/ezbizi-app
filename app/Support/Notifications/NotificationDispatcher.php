@@ -5,6 +5,7 @@ namespace App\Support\Notifications;
 use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\Notification;
+use App\Models\Role;
 use App\Models\User;
 use App\Notifications\NotificationNotice;
 use App\Support\Access\ScopeReach;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
 
@@ -96,14 +98,16 @@ class NotificationDispatcher
         ?string $automationId = null,
         ?string $eventId = null,
         bool $inAppOnly = false,
+        array $roleIds = [],
     ): int {
         if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
         }
 
-        $recipients = $onlyTo !== null
-            ? collect([$onlyTo])
-            : $this->audienceFor($subject);
+        $recipients = $this->narrowToRoles(
+            $onlyTo !== null ? collect([$onlyTo]) : $this->audienceFor($subject),
+            $roleIds,
+        );
 
         if ($recipients->isEmpty()) {
             return 0;
@@ -314,6 +318,74 @@ class NotificationDispatcher
     private function channelOn(string $key, Model $scope): bool
     {
         return (bool) $this->settings->get($key, $scope);
+    }
+
+    /**
+     * Narrow a reach-derived audience to the roles a rule named.
+     *
+     * ── It FILTERS. It never resolves an audience of its own ─────────
+     *
+     * Reach decides who COULD be told, exactly as it decides the job list (§4);
+     * the role only decides which of those SHOULD be. Selecting users by role
+     * directly would be a second derivation of "who hears about this", and the
+     * way two derivations disagree is a notification sent to somebody who
+     * cannot open the record it names — the leak this class's header exists to
+     * prevent, arriving through the narrowing feature meant to reduce noise.
+     *
+     * So a rule can only ever take people away. It cannot reach past the
+     * organization's own permission structure, for the same reason a rule can
+     * decline the email but never demand one.
+     *
+     * ── Why an unknown role REFUSES rather than falls back ───────────
+     *
+     * The tempting fallback is "role gone, notify everyone with reach". That is
+     * the exact failure this parameter was added to remove: Jose's live website
+     * chat rule reaches all twelve people in the business today, and a rule
+     * silently returning to that behaviour because somebody deleted a role
+     * would be worse than the original, because it would look deliberate.
+     *
+     * InvalidArgumentException rather than a quiet zero because ActionRunner
+     * already renders a thrown action error to the rule author, and it is the
+     * idiom this path uses for configuration that cannot be honoured
+     * ("notify needs a message."). A rule naming a role that no longer exists
+     * is broken in a way only a person can fix, and they can only fix what they
+     * are told about.
+     *
+     * ── Why IDs rather than names ────────────────────────────────────
+     *
+     * Roles are `organization_id` + `name` and the name is editable. Storing
+     * names would break every rule the day somebody tidied "Office" into
+     * "Office Staff", silently and in the widening direction. An id survives a
+     * rename and fails loudly on a delete, which is the pair of behaviours
+     * worth having.
+     *
+     * @param  Collection<int, User>  $recipients
+     * @param  string[]  $roleIds  empty narrows nothing
+     * @return Collection<int, User>
+     */
+    private function narrowToRoles(Collection $recipients, array $roleIds): Collection
+    {
+        if ($roleIds === []) {
+            return $recipients;
+        }
+
+        // Tenant-scoped by BelongsToTenant, so a role id belonging to another
+        // organization reads as missing here rather than matching.
+        $known = Role::query()->whereKey($roleIds)->pluck('id')->all();
+        $missing = array_values(array_diff($roleIds, $known));
+
+        if ($missing !== []) {
+            throw new InvalidArgumentException(sprintf(
+                'This rule notifies a role that no longer exists (%s). Nobody was told, '
+                .'deliberately: notifying everybody instead would be the noise the role was '
+                .'chosen to avoid. Edit the rule to name a role that exists.',
+                implode(', ', $missing),
+            ));
+        }
+
+        return $recipients
+            ->filter(fn (User $user) => in_array($user->role_id, $roleIds, true))
+            ->values();
     }
 
     /**
