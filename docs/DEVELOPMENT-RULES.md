@@ -9,6 +9,7 @@ These are current operating rules. Detailed incident evidence remains in the [ar
 - Commit intended paths only. Inspect `scripts/index-landmines.sh` immediately before a shared-tree commit, then full paths and hunks. Private-index commits need one pinned base for tree, parent and compare-and-swap, plus shared-index reconciliation afterward; consult the archived recipe before using plumbing commands.
 - Verify content at the final commit after merges. An ancestor check proves history, not preservation. Do not infer session authorship from shared Git names.
 - A1 Tools is read-only reference. Secrets stay outside repo, board and chat. Diagnose production read-only; ship using release scripts. Never test against production or copy its environment into a sandbox.
+- Write the callee before the caller. A saved file that does not COMPILE reds every client suite that reaches the app shell, not only the one for the module you are editing — a peer could not gate `screens/phone/settings_tab.dart` because `automation_builder.dart` was calling a method not yet written. A green module suite is not evidence about the shared tree: which suites a broken file takes down depends on which surface each test file builds, not on how careful the edit was, so no gate the author could have run would have said anything.
 - Owned developer connections use `development@ezbizi.com` after the Workspace mailbox exists. Customer OAuth uses their own identity. Do not move DNS to Route 53; self-hosting is settled architecture.
 
 ## Product and domain rules
