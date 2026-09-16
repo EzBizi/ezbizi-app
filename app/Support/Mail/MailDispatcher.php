@@ -283,7 +283,11 @@ class MailDispatcher
          * bounce or complaint events yet, so there is no second line of defence
          * to fall back on.
          */
-        if ($sent === false) {
+        // `! is_int` rather than `=== false`, taken from the Automations session's
+        // own limiter: false is what the database store returns today, and the
+        // question being asked is "did this counter give me a number", which is
+        // the property that has to hold on a store nobody has tried yet.
+        if (! is_int($sent)) {
             throw new CannotSendMail(
                 'EzBizi could not check how much automated email this business has already '
                 .'sent, so nothing was sent rather than risk sending too much. This is a '
