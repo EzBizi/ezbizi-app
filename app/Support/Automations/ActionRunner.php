@@ -1402,12 +1402,8 @@ class ActionRunner
             ];
         }
 
-        if ($automation !== null && ! $this->withinRuleAllowance($automation)) {
-            return [
-                'type' => $type, 'ok' => false,
-                'detail' => 'This rule has sent '.self::EMAILS_PER_RULE_PER_HOUR.' emails in the last '
-                    .'hour, which is its limit. It will send again on the hour.',
-            ];
+        if ($automation !== null && ($refusal = $this->ruleAllowanceRefusal($automation)) !== null) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
         try {
@@ -1518,7 +1514,28 @@ class ActionRunner
         return $payload['after'][$field] ?? $payload[$field] ?? null;
     }
 
-    private function withinRuleAllowance(Automation $automation): bool
+    /**
+     * Why this rule may not send another email, or null if it may.
+     *
+     * ── A COUNTER THAT IS NOT COUNTING MUST NOT READ AS PERMISSION ──────
+     *
+     * `Cache::increment()` returns int|false, and `false <= 100` is TRUE in
+     * PHP — bool wins the comparison and the int is cast, so a counter that
+     * stopped working would have read as "well within the allowance" and let a
+     * rule send without limit. Fail-open on the one guard standing between a
+     * loop between two rules and EzBizi's own SES reputation, which is shared
+     * by every tenant and is not something a later fix gives back.
+     *
+     * So a non-int refuses, and says something DIFFERENT from the allowance
+     * sentence. Both stop the send; only one of them is a fact about this rule,
+     * and telling somebody they have sent a hundred emails when the cache is
+     * broken sends them to read a run log looking for ninety-nine sends that
+     * never happened.
+     *
+     * The test harness cannot reach this: `CACHE_STORE=array` in phpunit.xml
+     * always increments. Production is `database`, measured on the box.
+     */
+    private function ruleAllowanceRefusal(Automation $automation): ?string
     {
         $key = 'automation-email:'.$automation->getKey().':'.now()->format('YmdH');
 
@@ -1526,7 +1543,18 @@ class ActionRunner
         // both read 0 and both write 1 with get()/put().
         Cache::add($key, 0, now()->addHours(2));
 
-        return Cache::increment($key) <= self::EMAILS_PER_RULE_PER_HOUR;
+        $sent = Cache::increment($key);
+
+        if (! is_int($sent)) {
+            return 'The counter that keeps this rule from sending too many emails is not '
+                .'answering, so nothing was sent. Nobody has been emailed twice; try the rule '
+                .'again, and tell somebody if it keeps saying this.';
+        }
+
+        return $sent <= self::EMAILS_PER_RULE_PER_HOUR
+            ? null
+            : 'This rule has sent '.self::EMAILS_PER_RULE_PER_HOUR.' emails in the last hour, '
+                .'which is its limit. It will send again on the hour.';
     }
 
     /** The Organization, Company or Franchise the rule belongs to. */

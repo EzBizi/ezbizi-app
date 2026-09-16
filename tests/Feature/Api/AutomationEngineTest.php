@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -1388,6 +1389,53 @@ class AutomationEngineTest extends TestCase
         // Sent to the PROVIDER ID behind the number the rule named: the display
         // number is what a person chooses and must never reach Meta's URL.
         Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699'));
+    }
+
+    /**
+     * A COUNTER THAT IS NOT COUNTING MUST NOT READ AS PERMISSION.
+     *
+     * `Cache::increment()` returns int|false, and `false <= 100` is TRUE in PHP:
+     * the int is cast to bool and the comparison succeeds. So a broken counter
+     * read as "well within the allowance" and let the rule send without limit —
+     * fail-open on the one guard between a loop and EzBizi's SES reputation,
+     * which every tenant shares and which no later fix gives back.
+     *
+     * The harness cannot produce this: `CACHE_STORE=array` in phpunit.xml always
+     * increments, so the branch is unreachable through the pipeline and the
+     * facade is faked instead. Production is `database`, measured on the box.
+     *
+     * The sentence is asserted as DIFFERENT from the allowance one. Both stop
+     * the send; telling somebody they have sent a hundred emails when the cache
+     * is broken sends them to a run log looking for ninety-nine that never
+     * happened.
+     */
+    public function test_a_broken_email_counter_refuses_rather_than_sending(): void
+    {
+        Mail::fake();
+
+        Cache::shouldReceive('add')->andReturnTrue();
+        Cache::shouldReceive('increment')->andReturnFalse();
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['email' => 'owner@example.test'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'email.send',
+            'to_field' => 'owner@example.test',
+            'subject'  => 'Your job is booked',
+            'body'     => 'Thanks.',
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $this->assertFalse($result['ok']);
+        $this->assertStringContainsString('not answering', $result['detail']);
+        $this->assertStringNotContainsString('which is its limit', $result['detail']);
+
+        Mail::assertNothingSent();
     }
 
     /**
