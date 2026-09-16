@@ -689,8 +689,16 @@ void main() {
       await tester.pump();
 
       expect(
-        find.textContaining('changed in Settings › Phone ›'),
+        find.textContaining('changed in Settings › Phone.'),
         findsOneWidget,
+        reason: 'The trail STOPS rather than naming a section. Falling back '
+            'to the raw id would render "Settings › Phone › cost" for a '
+            'section called Cost, sending somebody hunting a lowercase one.',
+      );
+      expect(
+        find.textContaining('something-phone-added-later'),
+        findsNothing,
+        reason: 'An internal id is not a place a person can go looking.',
       );
     });
 

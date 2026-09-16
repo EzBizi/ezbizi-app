@@ -41,6 +41,28 @@ import 'settings_tab.dart';
 ///
 /// The words are the settings rail's own. A drawer that renamed them would
 /// leave somebody hunting for a section that does not exist under that name.
+/// Unknown id, honest breadcrumb: the trail stops rather than inventing a
+/// section name.
+///
+/// It used to fall back to the raw id. Phone's factory now also serves the
+/// rail, which means `connection` and `cost` reach this drawer -- and those
+/// would have rendered as "Settings > Phone > cost", naming a section that is
+/// called Cost and sending somebody hunting for a lowercase one. A shorter
+/// true trail beats a longer invented one.
+String phonePaneTrail(String id) {
+  final name = phonePaneNames[id];
+
+  return name == null ? 'Settings › Phone' : 'Settings › Phone › $name';
+}
+
+/// STILL A SECOND SOURCE OF TRUTH, and the same defect class as the switch
+/// Phone just deleted -- one level down, on the labels instead of the widgets.
+///
+/// The rail holds these words in its own `_sections`. The fix is the twin of
+/// what they built: a `phoneSettingsPaneLabel(id)` beside
+/// `phoneSettingsPane(id, ...)`, after which this map goes the way the switch
+/// went. Raised with them. Until then the trail above makes a miss harmless
+/// rather than wrong.
 const Map<String, String> phonePaneNames = {
   'general': 'General',
   'call-flow': 'Call flow',
@@ -104,7 +126,7 @@ class CallFlowEditDrawer extends StatelessWidget {
                 // Somebody changing a ring group from a chart should still
                 // know they changed a ring group, and where to find it again.
                 child: Text(
-                  'Settings › Phone › ${phonePaneNames[edit.pane] ?? edit.pane}',
+                  phonePaneTrail(edit.pane),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -170,8 +192,7 @@ class CallFlowEditDrawer extends StatelessWidget {
         edit == null
             ? 'This step is part of how the call arrives, so there is nothing '
                   'to change on it here.'
-            : 'This one is changed in Settings › Phone › '
-                  '${phonePaneNames[edit.pane] ?? edit.pane}.',
+            : 'This one is changed in ${phonePaneTrail(edit.pane)}.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
