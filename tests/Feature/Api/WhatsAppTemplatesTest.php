@@ -169,6 +169,36 @@ class WhatsAppTemplatesTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_a_waba_with_nothing_approved_yet_says_so_rather_than_going_silent(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+
+        // Day one, and every day until Meta finishes reviewing: a number is
+        // attached and NOTHING is approved on it. Both empty answers used to
+        // be `data: []`, told apart only by whether `because` was there, so a
+        // builder printing `because` verbatim rendered nothing for this one -
+        // which reads as a broken feature rather than as "come back shortly".
+        $this->metaReturns([
+            ['name' => 'report_summary', 'status' => 'PENDING', 'category' => 'UTILITY',
+                'language' => 'en_US', 'components' => [['type' => 'BODY', 'text' => 'hi']]],
+        ]);
+
+        $because = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/whatsapp-templates')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->json('because');
+
+        $this->assertNotEmpty($because, 'an empty list must say why it is empty');
+
+        // And it must not be the OTHER reason. A number IS attached here, so
+        // blaming a missing number would send somebody to configure a thing
+        // that is already configured.
+        $this->assertStringNotContainsString('no WhatsApp number', strtolower($because));
+        $this->assertStringContainsString('approved', strtolower($because));
+    }
+
     public function test_meta_being_unreachable_is_a_conflict_not_a_five_hundred(): void
     {
         $t = $this->provisionTenant('Alpha');

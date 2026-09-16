@@ -3,6 +3,7 @@
 namespace App\Support\Social;
 
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppNumber;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -69,6 +70,82 @@ final class WhatsAppCloud
                 ]]]),
             ],
         ]);
+    }
+
+    /**
+     * Send a template to a customer, row and all. The call an automation makes.
+     *
+     * ── Why this owns the row instead of taking one ──────────────
+     *
+     * `sendTemplate` takes a `WhatsAppMessage` the caller built, which is right
+     * for a reply screen that already has one and wrong for everybody else.
+     * Three facts have to be true about that row - `phone_number_id` is the
+     * WhatsAppNumber's provider id and NOT the display number, `counterparty`
+     * is digits with no leading `+`, and the row exists BEFORE the attempt -
+     * and every caller that builds its own is a copy of those three facts that
+     * goes stale silently the day one of them changes.
+     *
+     * ── Created before the attempt, deliberately ─────────────────
+     *
+     * Same shape as the automation engine's outbox: write the intent, then
+     * try. A process that dies mid-send then leaves a `queued` row saying
+     * something was owed, rather than leaving silence that nobody can tell
+     * from a rule that never fired.
+     *
+     * ── The number is resolved here, under the tenant scope ──────
+     *
+     * Not passed in. `WhatsAppNumber` is tenant-scoped, so asking it inside the
+     * caller's tenant context is what makes it impossible to send from another
+     * organization's line by passing the wrong id.
+     *
+     * @param  array<int, string|int|float>  $parameters  fills {{1}}, {{2}} in order
+     *
+     * @throws RuntimeException when the tenant has no number, the recipient is
+     *                          not a number we can be sure of, or Meta refuses
+     */
+    public function send(
+        string $template,
+        string $recipient,
+        array $parameters = [],
+        string $language = 'en_US',
+    ): WhatsAppMessage {
+        $number = WhatsAppNumber::query()->first();
+
+        if ($number === null) {
+            throw new RuntimeException(
+                'No WhatsApp number is attached to this organization, so there is nothing to '
+                .'send from.'
+            );
+        }
+
+        /*
+         * Reused rather than rewritten, and from a Thumbtack class on purpose:
+         * it already returns null instead of guessing, and a second normaliser
+         * is a second set of rules about what "10 digits" means. A wrong number
+         * here sends a customer's booking confirmation to a stranger's handset.
+         */
+        $e164 = ThumbtackAssociatePhoneNumbers::e164($recipient);
+
+        if ($e164 === null) {
+            throw new RuntimeException(
+                'That is not a phone number WhatsApp can be sent to, so nothing was sent.'
+            );
+        }
+
+        $row = WhatsAppMessage::create([
+            'organization_id' => $number->organization_id,
+            'phone_number_id' => $number->phone_number_id,
+            'direction' => WhatsAppMessage::DIRECTION_OUT,
+            // Meta wants the digits without the `+`, and every inbound `from`
+            // it sends us is in that shape too - so both directions of a
+            // conversation key the same way and thread together.
+            'counterparty' => ltrim($e164, '+'),
+            'status' => WhatsAppMessage::STATUS_QUEUED,
+            'kind' => 'template',
+            'template_name' => $template,
+        ]);
+
+        return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
     }
 
     /**

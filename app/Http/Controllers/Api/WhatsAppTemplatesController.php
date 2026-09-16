@@ -79,6 +79,25 @@ class WhatsAppTemplatesController extends Controller
             return response()->json(['message' => $e->getMessage()], Status::HTTP_CONFLICT);
         }
 
+        if ($templates === []) {
+            /*
+             * The second empty answer, and it needed saying.
+             *
+             * "No number attached" and "no template approved yet" both come
+             * back as `data: []`, and until this existed they were told apart
+             * only by whether `because` was present - so a builder rendering
+             * `because` verbatim showed nothing at all for the commoner of the
+             * two. A WABA with nothing approved is the NORMAL day-one state:
+             * approval takes Meta hours, and in between the picker would read
+             * as "this feature is broken" rather than "come back shortly".
+             */
+            return response()->json([
+                'data' => [],
+                'because' => 'No WhatsApp template has been approved yet. Meta reviews each one '
+                    .'before it can be sent, so this list fills in once that is done.',
+            ]);
+        }
+
         return response()->json(['data' => $templates]);
     }
 }

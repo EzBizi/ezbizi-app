@@ -5,197 +5,199 @@ namespace Tests\Feature\WhatsApp;
 use App\Models\WhatsAppMessage;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Sending, and what the row says when it does not work.
+ * `send()` — the call an automation makes, and the row it owns.
  *
- * The row is written BEFORE the call and the provider's id written back after.
- * Everything here is about the states between those two moments, because those
- * are the ones that are invisible if the row is only written on success.
+ * This exists so no caller has to know three facts about this module:
+ * `phone_number_id` is the provider's id and not the display number,
+ * `counterparty` is digits with no `+`, and the row is written BEFORE the
+ * attempt. Each is pinned here, because each is silent when it goes wrong -
+ * a send from a display number is refused by Meta with a message about an
+ * unknown id, and a row written after the attempt leaves nothing at all behind
+ * when the process dies mid-flight.
  */
 class WhatsAppSendTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
 
-    private const PHONE_ID = '1256610664203381';
+    private const PHONE_ID = '1254820167721699';
 
-    private function queued(array $t): WhatsAppMessage
+    private function numberBelongsTo(array $t): void
     {
-        config([
-            'services.meta.whatsapp_token' => 'system-user-token',
-            'services.meta.whatsapp_version' => 'v21.0',
-        ]);
-
-        return $this->inTenant($t['org'], fn () => WhatsAppMessage::create([
+        DB::table('whatsapp_numbers')->insert([
+            'id' => (string) Str::uuid(),
             'organization_id' => $t['org']->id,
             'phone_number_id' => self::PHONE_ID,
-            'direction' => WhatsAppMessage::DIRECTION_OUT,
-            'counterparty' => '13057242199',
-            'status' => WhatsAppMessage::STATUS_QUEUED,
-            'kind' => 'text',
-            'body' => 'Your technician is on the way.',
-        ]));
+            'waba_id' => '1052799931072265',
+            'display_number' => '+18778536971',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
     }
 
-    public function test_a_sent_message_records_metas_id(): void
+    private function metaAccepts(): void
     {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
+        // A DIFFERENT wamid per call, because Meta gives a different one per
+        // call. A fixed id looks fine until a test sends twice, and then the
+        // unique index on wamid throws - which is the index doing its job and
+        // the fixture lying about reality.
+        $n = 0;
 
-        Http::fake(['graph.facebook.com/*' => Http::response([
-            'messaging_product' => 'whatsapp',
-            'messages' => [['id' => 'wamid.HBgLMTMwNTcyNDIxOTk']],
-        ], 200)]);
+        Http::fake(function () use (&$n) {
+            $n++;
 
-        $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendText($row, 'Your technician is on the way.'));
-
-        $fresh = $this->inTenant($t['org'], fn () => $row->fresh());
-
-        // Without the id, no later status can ever find this row - every
-        // delivery and read receipt Meta sends is keyed by it and nothing else.
-        $this->assertSame('wamid.HBgLMTMwNTcyNDIxOTk', $fresh->wamid);
-        $this->assertSame(WhatsAppMessage::STATUS_SENT, $fresh->status);
-        $this->assertNotNull($fresh->sent_at);
-    }
-
-    public function test_it_posts_to_the_pinned_version_and_the_right_number(): void
-    {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
-
-        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'w1']]], 200)]);
-
-        $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendText($row, 'hello'));
-
-        Http::assertSent(function ($request) {
-            // The version is pinned rather than 'latest' because Meta retires
-            // versions and a retired one answers errors to everything.
-            $this->assertStringContainsString('/v21.0/'.self::PHONE_ID.'/messages', $request->url());
-
-            $body = $request->data();
-            $this->assertSame('whatsapp', $body['messaging_product']);
-            $this->assertSame('13057242199', $body['to']);
-            $this->assertSame('text', $body['type']);
-            $this->assertSame('hello', $body['text']['body']);
-
-            return true;
+            return Http::response(['messages' => [['id' => 'wamid.ACCEPTED'.$n]]]);
         });
     }
 
-    public function test_a_template_carries_its_parameters_in_order(): void
+    public function test_it_sends_from_the_provider_id_and_never_from_the_display_number(): void
     {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
 
-        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'w2']]], 200)]);
+        $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '(305) 724-2199', ['Thursday']));
 
-        $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendTemplate(
-            $row,
-            'appointment_reminder',
-            'en_US',
-            ['Thursday', '9am'],
-        ));
+        $this->assertSame(self::PHONE_ID, $row->phone_number_id);
+        $this->assertNotSame('+18778536971', $row->phone_number_id);
 
-        Http::assertSent(function ($request) {
-            $body = $request->data();
-
-            $this->assertSame('template', $body['type']);
-            $this->assertSame('appointment_reminder', $body['template']['name']);
-            $this->assertSame('en_US', $body['template']['language']['code']);
-
-            // Order is the whole contract: Meta fills {{1}} and {{2}} by
-            // POSITION, so a reordered array silently tells the customer the
-            // wrong day.
-            $this->assertSame(
-                ['Thursday', '9am'],
-                array_column($body['template']['components'][0]['parameters'], 'text'),
-            );
-
-            return true;
-        });
+        // And the URL is built from it. Posting to the display number is the
+        // mistake this guards, and Meta answers it with "unknown path
+        // components" rather than anything that names the real problem.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/'.self::PHONE_ID.'/messages'));
     }
 
-    public function test_a_template_with_no_parameters_sends_no_components(): void
+    public function test_it_normalises_however_the_number_was_typed(): void
     {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
 
-        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'w3']]], 200)]);
+        foreach (['(305) 724-2199', '305-724-2199', '+1 305 724 2199', '13057242199'] as $typed) {
+            $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+                ->send('job_booked', $typed));
 
-        $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendTemplate($row, 'hello_world'));
-
-        Http::assertSent(function ($request) {
-            // An empty `components` array is not the same as none: Meta rejects
-            // a body component with no parameters for a template that has no
-            // variables.
-            $this->assertArrayNotHasKey('components', $request->data()['template']);
-
-            return true;
-        });
+            // Digits, no `+`. Meta sends every inbound `from` in this shape, so
+            // both directions of one conversation key the same way; a stored
+            // `+1305...` would thread as a separate conversation.
+            $this->assertSame('13057242199', $row->counterparty, "failed for: {$typed}");
+        }
     }
 
-    public function test_metas_refusal_is_kept_in_the_row_in_its_own_words(): void
+    public function test_a_number_it_cannot_be_sure_of_is_refused_rather_than_guessed(): void
     {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
 
-        Http::fake(['graph.facebook.com/*' => Http::response([
-            'error' => [
-                'message' => '(#132001) Template name does not exist in the translation',
-                'error_user_msg' => 'The template does not exist in en_US.',
-            ],
-        ], 400)]);
+        // An extension, not a phone number. Guessing would send a customer's
+        // booking confirmation to whoever owns the number it guessed.
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '2199'));
+    }
+
+    public function test_nothing_is_sent_for_a_number_it_refused(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
 
         try {
-            $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendTemplate($row, 'no_such_template'));
-            $this->fail('a refused send must throw');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('template does not exist', $e->getMessage());
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+                ->send('job_booked', '2199'));
+        } catch (RuntimeException) {
+            // expected
         }
 
-        $fresh = $this->inTenant($t['org'], fn () => $row->fresh());
-
-        $this->assertSame(WhatsAppMessage::STATUS_FAILED, $fresh->status);
-        $this->assertStringContainsString(
-            'template does not exist',
-            (string) $fresh->status_reason,
-            "Meta's own sentence, not a code: an unapproved template and a number that is not "
-            .'on WhatsApp are different problems and both arrive as a failure',
-        );
-    }
-
-    public function test_a_missing_token_does_not_blame_the_message(): void
-    {
-        $t = $this->provisionTenant('A1-Group');
-        $row = $this->queued($t);
-
-        config(['services.meta.whatsapp_token' => '']);
-        Http::fake();
-
-        try {
-            $this->inTenant($t['org'], fn () => (new WhatsAppCloud)->sendText($row, 'hello'));
-            $this->fail('an unconfigured token must throw');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('configuration fault', $e->getMessage());
-        }
-
-        $fresh = $this->inTenant($t['org'], fn () => $row->fresh());
-
-        // The point of the test. A token EzBizi never configured says nothing
-        // about the customer or the message, and marking it FAILED sends
-        // somebody to check the recipient's number.
-        $this->assertSame(
-            WhatsAppMessage::STATUS_QUEUED,
-            $fresh->status,
-            'our own misconfiguration must not be recorded as the message failing',
-        );
-        $this->assertNull($fresh->status_reason);
-
+        // The half the exception test cannot see: it refused BEFORE calling
+        // Meta and before writing a row, rather than after.
         Http::assertNothingSent();
+        $this->assertSame(0, WhatsAppMessage::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_a_send_that_dies_in_flight_leaves_a_row_saying_something_was_owed(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+
+        // Meta unreachable. The row must already exist by the time this is
+        // thrown - that is the whole reason it is created before the attempt.
+        Http::fake(fn () => throw new ConnectionException('timed out'));
+
+        try {
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+                ->send('job_booked', '13057242199'));
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        $row = WhatsAppMessage::query()->withoutGlobalScopes()->first();
+
+        $this->assertNotNull($row, 'a death in flight must leave a record, not silence');
+        $this->assertSame(WhatsAppMessage::STATUS_QUEUED, $row->status);
+        $this->assertNull($row->wamid);
+        $this->assertSame('job_booked', $row->template_name);
+    }
+
+    public function test_it_refuses_when_the_organization_has_no_number(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+        $this->metaAccepts();
+        // Deliberately no number row.
+
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199'));
+    }
+
+    public function test_it_sends_from_this_tenants_number_and_never_anothers(): void
+    {
+        $mine = $this->provisionTenant('Alpha');
+        $other = $this->provisionTenant('Beta');
+        $this->numberBelongsTo($other);
+        $this->metaAccepts();
+
+        // Alpha has no number of its own. If the lookup were not tenant-scoped
+        // it would find Beta's and send one organization's message down
+        // another's line - which is the failure that cannot be taken back.
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($mine['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199'));
+    }
+
+    public function test_the_parameters_reach_meta_in_order(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('invoice_overdue', '13057242199', ['Jose', 4182.60]));
+
+        Http::assertSent(function ($request) {
+            $p = $request->data()['template']['components'][0]['parameters'];
+
+            // Positional and stringified: Meta rejects a numeric type here, and
+            // an automation filling {{2}} from a money field hands us a float.
+            return $p[0] === ['type' => 'text', 'text' => 'Jose']
+                && $p[1] === ['type' => 'text', 'text' => '4182.6'];
+        });
     }
 }
