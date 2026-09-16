@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0232',
       date: '16 Sep 2026',
       items: [
+        'A rule that sends email can no longer exceed its hourly limit if the counter behind that limit stops working.',
         'The run log for a rule that sends a report now names who did not get it, and says so when mail is going nowhere at all. It used to print Sent to 2 people on a machine where nothing had left.',
         'A WhatsApp step now says it handed the message over rather than that it sent it, and records which message it was. Meta returns success for messages it refuses seconds later, so the old line went green above something that never arrived.',
         'Work schedules now follow the clock of the branch or company they belong to, so the end-of-shift reminder and the automatic clock-out happen at the right hour. A schedule saved with a fixed offset kept no daylight saving, which put every reminder an hour late through the summer.',
