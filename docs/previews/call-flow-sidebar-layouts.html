@@ -1,0 +1,368 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Editing from the call flow — layouts</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --dink:#1d2025; --dtile:#2b2f36; --dline:#3a414a; --dtext:#e8edf2;
+  --dmuted:#9aa6b2; --accent:#5eead4;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 6px}
+.bar button{font:600 12.5px/1 inherit;padding:9px 13px;border:1px solid var(--line);
+  background:var(--paper);border-radius:999px;cursor:pointer;color:var(--ink)}
+.bar button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cap{font-size:12px;color:var(--muted);margin:12px 0 7px}
+.win{width:1120px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden;display:flex}
+.chart{flex:1;background:var(--dink);position:relative;min-height:430px;
+  background-image:radial-gradient(circle,rgba(255,255,255,.08) 1px,transparent 1px);
+  background-size:17px 17px}
+.tile{position:absolute;width:112px;text-align:center}
+.tbox{width:52px;height:52px;margin:0 auto;border-radius:14px;background:var(--dtile);
+  border:1px solid var(--dline);display:flex;align-items:center;justify-content:center;
+  font-size:19px}
+.tile.sel .tbox{border-color:var(--accent);border-width:2px;
+  box-shadow:0 0 0 4px rgba(94,234,212,.16)}
+.tl{font-size:10px;font-weight:700;margin-top:6px;color:var(--dtext);line-height:1.3}
+.ts{font-size:8.5px;color:var(--dmuted);margin-top:2px}
+.wire{position:absolute;height:1px;background:var(--dline)}
+.drawer{width:372px;border-left:1px solid var(--line);background:var(--paper);
+  display:flex;flex-direction:column}
+.dhead{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:9px}
+.dhead .ic{width:28px;height:28px;border-radius:9px;background:#eaf3f2;display:flex;
+  align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+.dhead .t{font-weight:700;font-size:13px;line-height:1.25}
+.dhead .s{font-size:10.5px;color:var(--muted)}
+.dhead .x{margin-left:auto;color:var(--muted);font-size:16px}
+.dbody{padding:14px 15px;overflow:auto;flex:1}
+.crumbs{padding:9px 15px;border-bottom:1px solid var(--line);font-size:10.5px;
+  color:var(--muted)}
+.crumbs b{color:var(--ink)}
+.lab{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin:2px 0 7px}
+.member{display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid #eef2f3;font-size:12.5px}
+.member:last-child{border-bottom:0}
+.av{width:26px;height:26px;border-radius:50%;background:#e6eef0;display:flex;
+  align-items:center;justify-content:center;font-size:10px;font-weight:700;
+  color:var(--muted);flex:0 0 auto}
+.member .nm{flex:1;font-weight:600}
+.member .du{font-size:9.5px;color:var(--brand);font-weight:800}
+.member .du.off{color:var(--muted)}
+.sw{width:34px;height:19px;border-radius:999px;background:var(--brand);
+  position:relative;flex:0 0 auto}
+.sw.off{background:#cfd9dc}
+.sw i{position:absolute;top:2px;left:17px;width:15px;height:15px;border-radius:50%;
+  background:#fff;display:block}
+.sw.off i{left:2px}
+.btn{display:inline-block;border:1px solid var(--line);border-radius:9px;
+  padding:8px 12px;font-size:12px;font-weight:600;background:var(--paper)}
+.btn.go{background:var(--brand);color:#fff;border-color:var(--brand)}
+.row{display:flex;align-items:center;gap:9px;padding:11px 0;
+  border-bottom:1px solid #eef2f3;font-size:12.5px}
+.row:last-child{border-bottom:0}
+.row .g{flex:1;font-weight:600}
+.row .v{color:var(--muted);font-size:11.5px}
+.row .c{color:var(--muted)}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:12px;font-size:12.5px;max-width:1120px}
+.note.warn{border-left-color:var(--bad)}
+.phone{width:380px;background:var(--paper);border:1px solid var(--line);
+  border-radius:26px;overflow:hidden;position:relative;min-height:560px}
+.pchart{height:190px;background:var(--dink);position:relative;
+  background-image:radial-gradient(circle,rgba(255,255,255,.08) 1px,transparent 1px);
+  background-size:15px 15px}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--paper);
+  border-top:1px solid var(--line);border-radius:18px 18px 0 0;
+  box-shadow:0 -6px 22px rgba(6,8,8,.13)}
+.grab{width:38px;height:4px;border-radius:2px;background:#d7e0e3;margin:9px auto 4px}
+.ribrow{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid #eef2f3}
+.ribrow .rd{width:24px;height:24px;border-radius:8px;background:#eaf3f2;display:flex;
+  align-items:center;justify-content:center;font-size:12px;flex:0 0 auto}
+.ribrow .rb{flex:1;min-width:0}
+.ribrow .rt{font-weight:700;font-size:12.5px}
+.ribrow .rs{font-size:11px;color:var(--muted)}
+.inline{background:#f6fafa;border:1px solid var(--line);border-radius:10px;
+  margin:0 14px 12px;padding:11px}
+.two{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+</style>
+<div class="wrap">
+<h1>Editing from the call flow &mdash; pick one desktop and one mobile</h1>
+
+<p class="sub">Jose, 2026-09-16: <i>&ldquo;if i were to click on the ring group at the top as u
+can see in the image, it should open a right sidebar with the list of members, so i can assign -
+unassign, so basically, <b>every settings needs to be synced and manageable from here as
+well</b>&rdquo;</i>.</p>
+
+<p class="sub"><b>This is the ask I parked yesterday, and he has now made it twice.</b> It reverses
+the read-only scope he set with <i>&ldquo;shows me&rdquo;</i>, so it is settled: the chart becomes
+somewhere you change things. What is NOT settled is what the drawer is, and the three answers cost
+very different amounts and age very differently.</p>
+
+<p class="sub"><b>The hinge is the second half of his sentence.</b> &ldquo;A list of members I can
+assign and unassign&rdquo; is one editor. <b>&ldquo;Every settings manageable from here&rdquo; is
+fourteen</b> &mdash; Phone stamps every node with <code>edit: {pane, id}</code>, where
+<code>pane</code> is a real section id (<code>ring-groups</code>, <code>voicemail</code>,
+<code>hours</code>, <code>flows</code>, <code>messaging</code>&hellip;). Whether the drawer
+<i>hosts</i> those panes or <i>reimplements</i> them is the whole decision.</p>
+
+<p class="sub"><b>&#9888; One thing worth knowing before picking 2.</b> A bespoke editor per node
+kind is the nicest to use and the one that goes wrong quietly: the day somebody adds a field to
+ring groups in Settings, this drawer still shows yesterday&rsquo;s fields and nothing fails. Option
+1 cannot drift, because there is only one of it.</p>
+
+<p class="sub"><b>Phone has offered to put anything else on a node</b> &mdash; permissions, a short
+label, whether a node is editable at all &mdash; rather than have me derive it. So if a layout here
+needs a fact it does not have, that is a question rather than a blocker.</p>
+
+<div class="bar" id="bar"></div>
+<div class="cap" id="cap"></div>
+<div id="hold"></div>
+</div>
+<script>
+var SEL = 1;
+
+var NODES = [
+  {x:14,  y:150, ic:'☎', t:'Caller', s:'Inbound'},
+  {x:150, y:150, ic:'↙', t:'Arrives on General', s:'Arrives'},
+  {x:286, y:150, ic:'⌗', t:'Menu plays', s:'Keypad'},
+  {x:422, y:60,  ic:'\u{1F465}', t:'Ring Appointment', s:'Ring group', sel:true},
+  {x:422, y:150, ic:'\u{1F465}', t:'Ring Existing Client', s:'Ring group'},
+  {x:422, y:240, ic:'\u{1F465}', t:'Ring Testing', s:'Ring group'},
+  {x:558, y:60,  ic:'⏱', t:'Hold for Appointment', s:'Queue'},
+  {x:558, y:240, ic:'✓', t:'Somebody answers', s:'Picked up'}
+];
+
+function chart(selIndex){
+  var h = '';
+  for (var i = 0; i < NODES.length; i++){
+    var n = NODES[i];
+    var on = (i === (selIndex === undefined ? 3 : selIndex));
+    h += '<div class="tile' + (on ? ' sel' : '') + '" style="left:' + n.x +
+      'px;top:' + n.y + 'px"><div class="tbox">' + n.ic + '</div>' +
+      '<div class="tl">' + n.t + '</div><div class="ts">' + n.s + '</div></div>';
+  }
+  h += '<div class="wire" style="left:126px;top:176px;width:24px"></div>';
+  h += '<div class="wire" style="left:262px;top:176px;width:24px"></div>';
+  h += '<div class="wire" style="left:398px;top:176px;width:24px"></div>';
+  h += '<div class="wire" style="left:534px;top:86px;width:24px"></div>';
+  h += '<div class="wire" style="left:534px;top:266px;width:24px"></div>';
+  return '<div class="chart">' + h + '</div>';
+}
+
+function head(extra){
+  return '<div class="dhead"><span class="ic">\u{1F465}</span>' +
+    '<span><div class="t">Ring Appointment</div>' +
+    '<div class="s">' + (extra || 'Ring group · 3 people') + '</div></span>' +
+    '<span class="x">✕</span></div>';
+}
+
+function members(){
+  var people = [
+    ['MR','Maria Ruiz','On duty',true],
+    ['TC','Tom Carter','On duty',true],
+    ['AD','Aisha Dyer','Off duty',false],
+    ['JP','Jon Park','Not in this group',false]
+  ];
+  var h = '<div class="lab">Who this rings</div>';
+  for (var i = 0; i < people.length; i++){
+    var p = people[i];
+    h += '<div class="member"><span class="av">' + p[0] + '</span>' +
+      '<span class="nm">' + p[1] + '</span>' +
+      '<span class="du' + (p[3] ? '' : ' off') + '">' + p[2] + '</span>' +
+      '<span class="sw' + (p[3] ? '' : ' off') + '"><i></i></span></div>';
+  }
+  return h;
+}
+
+function paneRows(){
+  return '<div class="lab">Ring group settings</div>' +
+    '<div class="row"><span class="g">Ring style</span>' +
+    '<span class="v">Everyone at once</span><span class="c">›</span></div>' +
+    '<div class="row"><span class="g">Ring for</span>' +
+    '<span class="v">20 seconds</span><span class="c">›</span></div>' +
+    '<div class="row"><span class="g">If nobody answers</span>' +
+    '<span class="v">Hold in a queue</span><span class="c">›</span></div>' +
+    '<div class="row"><span class="g">Record these calls</span>' +
+    '<span class="v">On</span><span class="c">›</span></div>';
+}
+
+/* ---- 1 : the real pane, hosted ------------------------------------ */
+function D1(){
+  return '<div class="win">' + chart() +
+    '<div class="drawer">' + head() +
+    '<div class="crumbs">Settings › Phone › <b>Ring groups</b> › Appointment</div>' +
+    '<div class="dbody">' + members() + '<div style="height:14px"></div>' +
+    paneRows() + '</div></div></div>' +
+    '<div class="note"><b>The drawer HOSTS the real Settings pane.</b> Phone already stamps every ' +
+    'node with the section id it is edited in — <code>ring-groups</code>, <code>voicemail</code>, ' +
+    '<code>hours</code> — so the drawer looks that pane up and renders it. The breadcrumb says ' +
+    'where you actually are, because somebody changing a ring group from a chart should still know ' +
+    'they changed a ring group.<br><br><b>It cannot drift, and that is the whole argument.</b> ' +
+    'There is one ring-group editor in the app. Add a field to it and this drawer has it the same ' +
+    'day, with no second place to remember. It is also the only option that delivers the second ' +
+    'half of his sentence — <i>every</i> setting, not the ones somebody got round to.<br><br>' +
+    '<b>The cost is real and it is width.</b> Those panes were drawn for a full settings tab, and ' +
+    'at 372px some of them will need work — this is a commitment to making fourteen panes survive ' +
+    'a narrow column, not a free reuse.</div>';
+}
+
+/* ---- 2 : a focused editor ----------------------------------------- */
+function D2(){
+  return '<div class="win">' + chart() +
+    '<div class="drawer">' + head() +
+    '<div class="dbody">' + members() +
+    '<div style="height:16px"></div>' +
+    '<span class="btn">Add somebody</span> ' +
+    '<span class="btn">Open full settings</span>' +
+    '<div style="height:16px"></div>' +
+    '<div class="lab">What happens next</div>' +
+    '<div class="row"><span class="g">If nobody answers</span>' +
+    '<span class="v">Hold in a queue</span><span class="c">›</span></div>' +
+    '</div></div></div>' +
+    '<div class="note"><b>Exactly what he described, and nothing else.</b> The list of members ' +
+    'with a switch each, the one setting that changes what the chart draws next, and a door to ' +
+    'the full pane for everything else. It is the nicest of the three to use and it is the ' +
+    'smallest thing that answers the first half of his sentence.<br><br><b>It is also the one ' +
+    'that goes wrong quietly, which is why I am not recommending it.</b> The day somebody adds a ' +
+    'field to ring groups in Settings, this drawer goes on showing yesterday’s fields and ' +
+    '<b>nothing fails</b> — no test, no error, just a second editor that has quietly stopped ' +
+    'agreeing with the first. Every node kind needs its own, so it is fourteen editors to write ' +
+    'and fourteen to keep in step.<br><br><b>Pick it if you want the members list soon</b> and are ' +
+    'content that &ldquo;every settings manageable from here&rdquo; arrives later or not at all.</div>';
+}
+
+/* ---- 3 : summary first, pane on demand ---------------------------- */
+function D3(){
+  return '<div class="win">' + chart() +
+    '<div class="drawer">' + head() +
+    '<div class="dbody">' +
+    '<div class="lab">Right now</div>' +
+    '<div class="row"><span class="g">Waiting in the queue</span>' +
+    '<span class="v">4 · 1m 13s</span></div>' +
+    '<div class="row"><span class="g">On duty</span><span class="v">2 of 4</span></div>' +
+    '<div style="height:14px"></div>' + members() +
+    '<div style="height:16px"></div>' +
+    '<span class="btn go">Edit this ring group</span>' +
+    '<div style="height:10px"></div>' +
+    '<div style="font-size:11.5px;color:var(--muted)">Opens the Settings pane in this ' +
+    'drawer, with a way back to the chart.</div>' +
+    '</div></div></div>' +
+    '<div class="note"><b>Reading and changing are different jobs, and this one says so.</b> The ' +
+    'drawer opens on what the node IS — who is on duty, who is waiting, what it rings — with ' +
+    'assign and unassign right there, because that is the change he named. Everything else is one ' +
+    'tap away and arrives as the real pane, pushed into the same drawer with a way back.<br><br>' +
+    '<b>It is option 1 with a landing page</b>, and the landing page is the live state, which is ' +
+    'the thing a chart is for. It also means the narrow-pane work can be done <i>per pane, as ' +
+    'needed</i>, rather than all fourteen before anything ships.<br><br><b>The cost:</b> two ' +
+    'layers where 1 has one, and a reader who wanted the settings has to pass through a screen ' +
+    'they did not ask for. On a node you open twenty times a day that stops being a summary and ' +
+    'starts being a toll.</div>';
+}
+
+/* ---- mobile ------------------------------------------------------- */
+function pchart(){
+  var h = '<div class="pchart">';
+  var m = [[10,20,'☎','Caller'],[120,20,'⌗','Menu'],[230,20,'\u{1F465}','Appointment'],
+           [120,110,'\u{1F465}','Existing'],[230,110,'⏱','Hold']];
+  for (var i = 0; i < m.length; i++){
+    h += '<div class="tile" style="left:' + m[i][0] + 'px;top:' + m[i][1] +
+      'px;width:96px' + (i === 2 ? '' : '') + '"><div class="tbox" style="width:42px;height:42px;' +
+      (i === 2 ? 'border-color:var(--accent);border-width:2px;' : '') +
+      'font-size:16px">' + m[i][2] + '</div><div class="tl">' + m[i][3] + '</div></div>';
+  }
+  return h + '</div>';
+}
+
+function M4(){
+  return '<div class="phone">' + pchart() +
+    '<div class="sheet"><div class="grab"></div>' + head() +
+    '<div class="dbody" style="max-height:250px">' + members() +
+    '<div style="height:12px"></div>' + paneRows() + '</div></div></div>' +
+    '<div class="note"><b>The desktop drawer, as the thing a phone actually has.</b> A sheet you ' +
+    'drag up from the bottom, with the chart still visible above it so you can see which box you ' +
+    'opened. Same content as whichever desktop option wins, so there is one editor rather than ' +
+    'two.<br><br><b>The cost:</b> a ring group with nine people and a full settings pane under it ' +
+    'is a lot of scrolling in a sheet that is already only part of the screen. Drag it to full ' +
+    'height and it is option 5 with extra steps.</div>';
+}
+
+function M5(){
+  return '<div class="phone">' + head('Ring group · 3 people') +
+    '<div class="crumbs">‹ Back to the call flow</div>' +
+    '<div class="dbody">' + members() + '<div style="height:14px"></div>' +
+    paneRows() + '</div></div>' +
+    '<div class="note"><b>A whole screen, not a sheet.</b> Tapping a node goes somewhere, with a ' +
+    'back arrow that says where it goes back to. Nothing is cramped, a nine-person group has room, ' +
+    'and the settings pane gets the full width it was drawn for — which is the same width it has ' +
+    'in Settings, so nothing needs redrawing at all.<br><br><b>The cost is the chart disappearing.</b> ' +
+    'You lose the thing you were looking at, and coming back re-orients you. On a phone that is ' +
+    'often the right trade: the chart at 380px was never the part doing the work.</div>';
+}
+
+function M6(){
+  return '<div class="phone">' +
+    '<div class="ribrow"><span class="rd">☎</span><span class="rb">' +
+    '<div class="rt">Caller</div><div class="rs">Somebody dials.</div></span></div>' +
+    '<div class="ribrow"><span class="rd">⌗</span><span class="rb">' +
+    '<div class="rt">Menu plays</div><div class="rs">Press 1, 2, 3 or #.</div></span></div>' +
+    '<div class="ribrow" style="border-bottom:0"><span class="rd" ' +
+    'style="background:#d9f2ee">\u{1F465}</span><span class="rb">' +
+    '<div class="rt">Ring Appointment</div><div class="rs">Rings 3 people · tap to change</div>' +
+    '</span><span style="color:var(--muted)">⌄</span></div>' +
+    '<div class="inline">' + members() +
+    '<div style="height:12px"></div><span class="btn">Open full settings</span></div>' +
+    '<div class="ribrow"><span class="rd">⏱</span><span class="rb">' +
+    '<div class="rt">Hold for Appointment</div><div class="rs">4 waiting · 1m 13s</div></span></div>' +
+    '</div>' +
+    '<div class="note"><b>No drawer at all: the step you tapped opens where it sits.</b> The phone ' +
+    'view is already a list, and a list that expands in place is the pattern a phone user expects ' +
+    'from every other list in the app — nothing slides over anything, nothing is hidden behind ' +
+    'anything, and the flow above and below stays put so you keep your place.<br><br><b>It is the ' +
+    'only mobile option where the chart never goes away</b> while you change something, which ' +
+    'matters most for the change he actually named: turning somebody off a rota and seeing what ' +
+    'that does to the rest of the line.<br><br><b>The cost:</b> it only works for short editors. ' +
+    'A full settings pane inline would push the next step half a screen down, so this one needs ' +
+    'the &ldquo;open full settings&rdquo; door more than the others do.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; the real Settings pane, hosted in the drawer', D1],
+  2:['2 &middot; Desktop &mdash; a focused editor per node', D2],
+  3:['3 &middot; Desktop &mdash; live summary first, the pane on demand', D3],
+  4:['4 &middot; Phone &mdash; a drag-up sheet, chart still visible', M4],
+  5:['5 &middot; Phone &mdash; a whole screen with a way back', M5],
+  6:['6 &middot; Phone &mdash; the step expands where it sits', M6]
+};
+
+function draw(k){
+  SEL = k;
+  document.getElementById('cap').innerHTML = OPT[k][0];
+  document.getElementById('hold').innerHTML = OPT[k][1]();
+  var bs = document.querySelectorAll('#bar button');
+  for (var i = 0; i < bs.length; i++){
+    bs[i].setAttribute('aria-current', bs[i].getAttribute('data-k') === String(k));
+  }
+}
+
+(function(){
+  var bar = document.getElementById('bar');
+  for (var k = 1; k <= 6; k++){
+    var b = document.createElement('button');
+    b.textContent = (k < 4 ? 'Desktop ' : 'Phone ') + k;
+    b.setAttribute('data-k', k);
+    b.onclick = (function(n){ return function(){ draw(n); }; })(k);
+    bar.appendChild(b);
+  }
+  draw(1);
+})();
+</script>

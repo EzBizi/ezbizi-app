@@ -2824,6 +2824,55 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 19 · Communication · Editing from the call flow — **DRAWN, awaiting Jose**
+
+`docs/previews/call-flow-sidebar-layouts.html`. Jose, 2026-09-16, verbatim:
+
+> *"if i were to click on the ring group at the top as u can see in the image, it should open a
+> right sidebar with the list of members, so i can assign - unassign, so basically, **every
+> settings needs to be synced and manageable from here as well**"*
+
+**This is the ask parked on 2026-09-15 as entry 18b’s option B, and he has now made it twice.**
+The scope question is therefore settled by him rather than by me: the chart becomes somewhere you
+change things. Parking it was right and unparking it is his call, not a reversal of mine.
+
+**The hinge is the second half of his sentence.** *"A list of members I can assign and unassign"*
+is one editor. *"Every settings manageable from here"* is fourteen — Phone stamps every node with
+`edit: {pane, id}`, where `pane` is a real section id out of `PhoneSettingsTab._sections`
+(`ring-groups`, `voicemail`, `hours`, `flows`, `messaging`…). **Whether the drawer HOSTS those
+panes or REIMPLEMENTS them is the whole decision**, and the three answers age very differently.
+
+> **Do not derive the pane from `kind`.** Phone's warning, with a test pinning it: a voicemail BOX
+> and a voicemail OPTION on a menu are both kind `voicemail` and are edited in two different
+> panes. The ring group node and its queue node deliberately share one target, because
+> queueing-versus-voicemail is the group's own `overflow` setting.
+
+**Recommendation: 1 and 6.**
+
+**1 hosts the real pane** and is the only option that cannot drift. There is one ring-group editor
+in the app; add a field to it and the drawer has it the same day. It is also the only one that
+delivers the second half of his sentence rather than the first. Its cost is honest and worth
+saying out loud: those panes were drawn for a full settings tab, and this is a commitment to
+making fourteen of them survive a 372px column.
+
+**2 is the nicest to use and the one that goes wrong quietly**, which is why it is not the
+recommendation: the day somebody adds a field to ring groups in Settings, a bespoke drawer shows
+yesterday's fields and **nothing fails**. Fourteen editors to write and fourteen to keep in step.
+**3 is 1 with a live landing page** — genuinely good, and it lets the narrow-pane work happen per
+pane rather than all fourteen before anything ships; its cost is a screen you did not ask for on
+a node you open twenty times a day.
+
+**6 is the phone answer** because that view is already a list, and a list that expands in place is
+what every other list in the app does. It is also the only mobile option **where the chart never
+goes away while you change something** — which matters most for the change he actually named:
+taking somebody off a rota and seeing what it does to the rest of the line. **5 is the safe
+choice** if the settings panes turn out to need full width, since it gives them exactly the width
+they already have in Settings and nothing needs redrawing.
+
+**Phone has offered to put anything else on a node** — permissions, a short label, whether a node
+is editable at all — rather than have the client derive it. So a layout needing a fact it does
+not have is a question, not a blocker.
+
 ### 18b · Communication · Call flow, after Jose saw it live — **A CHOSEN, B PARKED**
 
 Jose, 2026-09-15, on the running chart: *"looks amazing"*, with five asks. Two were Phone's data
