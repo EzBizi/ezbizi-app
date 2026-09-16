@@ -8,6 +8,7 @@ use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Support\Leads\LeadReplies;
+use App\Support\Web\WebsiteChatReplies;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -582,6 +583,57 @@ class WebsiteEnquiriesTest extends TestCase
             $this->assertSame(
                 LeadConversation::FROM_ADVERTISER,
                 $chat->lead->refresh()->last_contact_from,
+            );
+        });
+    }
+
+    /**
+     * The whole path: a rule replies through the channel, and the enquiry is
+     * still waiting for a person.
+     *
+     * The two halves were written by different sessions a day apart — Leads
+     * added the parameter to `send()` and deliberately did not pass it on,
+     * because `say()` did not take it on main yet. This is the seam, so it is
+     * the thing worth a test rather than either half alone.
+     */
+    public function test_a_rule_replying_through_the_channel_is_marked_automatic(): void
+    {
+        $made = $this->siteWithKey();
+
+        $started = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $lead = WebChat::query()->findOrFail($started['chat'])->lead;
+
+            app(WebsiteChatReplies::class)->send($lead, 'A machine wrote this.', automatic: true);
+
+            // Still unreplied: nobody has actually answered.
+            $this->assertSame(
+                LeadConversation::FROM_CONSUMER,
+                $lead->refresh()->last_contact_from,
+            );
+        });
+    }
+
+    /** And the control: the same call without the flag DOES mark it answered. */
+    public function test_the_same_channel_still_carries_a_person(): void
+    {
+        $made = $this->siteWithKey();
+
+        $started = $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $lead = WebChat::query()->findOrFail($started['chat'])->lead;
+
+            app(WebsiteChatReplies::class)->send($lead, 'A person wrote this.');
+
+            $this->assertSame(
+                LeadConversation::FROM_ADVERTISER,
+                $lead->refresh()->last_contact_from,
             );
         });
     }

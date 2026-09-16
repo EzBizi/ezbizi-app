@@ -65,17 +65,15 @@ final class WebsiteChatReplies implements LeadReplyChannel
     }
 
     /**
-     * `$automatic` is ACCEPTED AND NOT YET CARRIED, deliberately.
+     * `$automatic` says a machine wrote this, not a person.
      *
-     * `WebsiteEnquiries::say()` grows the parameter in Web Management's own
-     * branch (31f0542e, `session/web-management`), which is not on main yet.
-     * Signing for it here keeps this implementor matching the interface without
-     * reaching into a signature that does not exist on this branch.
+     * It is carried through to the row, which is the whole point: without it a
+     * rule-driven reply reads as somebody having answered, and the enquiry
+     * drops off the unreplied list while nobody has actually replied.
      *
-     * WEB: when that branch merges, pass it on — `say($chat, $text, $from,
-     * automatic: $automatic)`. Until then a rule-driven reply on this channel
-     * would still read as a person answering, so Automations should not ship
-     * its arm against website chat until both halves are on main.
+     * This parameter arrived from Leads (be14359e) signed for but not passed
+     * on, because `say()` did not take it on main at the time — a deliberate
+     * half, with a note naming this branch. Both halves are now here.
      */
     public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
@@ -94,7 +92,7 @@ final class WebsiteChatReplies implements LeadReplyChannel
             );
         }
 
-        return $this->enquiries->say($chat, $text, LeadConversation::FROM_ADVERTISER);
+        return $this->enquiries->say($chat, $text, LeadConversation::FROM_ADVERTISER, $automatic);
     }
 
     private function chatFor(Lead $lead): ?WebChat
