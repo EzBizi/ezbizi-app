@@ -147,6 +147,53 @@ void main() {
     );
   });
 
+  /// A STALLED SYNC SAYS SO WHERE SOMEBODY IS LOOKING.
+  ///
+  /// 2026-09-16: Google refused every Local Services fetch for four hours and
+  /// nothing on any screen said a word. The auto-refresh shipped the same day
+  /// makes that worse rather than better - a dead sync now looks exactly like
+  /// a quiet afternoon, the same rows re-read every twenty seconds with a
+  /// dispatcher watching it happen.
+  ///
+  /// Two tests rather than two pumps in one: a second `pumpWidget` of the same
+  /// widget type REUSES the State, so `initState` and the load it starts never
+  /// run again and the screen keeps the first answer. The first version of
+  /// this test did that and failed for a reason that had nothing to do with
+  /// the feature.
+  testWidgets('the sources band says when enquiries are delayed', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      delayedSince: '2026-09-16T09:25:00Z',
+    );
+
+    expect(find.byKey(const ValueKey('sync-delayed')), findsOneWidget);
+
+    // And it says the thing that stops somebody panicking: the enquiries are
+    // late, not lost. Without that sentence the honest answer reads as data
+    // loss, which is a different and worse claim.
+    expect(find.textContaining('Nothing is lost'), findsOneWidget);
+  });
+
+  /// THE CONTROL, and it is the half that keeps the feature honest: a healthy
+  /// list must not wear an outage.
+  testWidgets('a healthy sync says nothing at all', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+    );
+
+    expect(
+      find.byKey(const ValueKey('sync-delayed')),
+      findsNothing,
+      reason: 'a quiet afternoon must not be dressed as an outage',
+    );
+  });
+
   testWidgets('the divider drags the panes, within limits', (tester) async {
     await _pump(
       tester,
@@ -1083,6 +1130,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
   required List<Map<String, dynamic>> connections,
+  String? delayedSince,
   List<String> permissions = const ['leads.view', 'leads.edit'],
   Size size = const Size(1200, 900),
   String? initialSource,
@@ -1224,6 +1272,7 @@ Future<void> _pump(
               'current_page': 1,
               'last_page': 1,
               'connections': connections,
+              'sync_delayed_since': delayedSince,
             },
           }),
           200,

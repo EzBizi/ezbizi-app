@@ -76,6 +76,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
   List<Map<String, dynamic>> _leads = [];
   List<Map<String, dynamic>> _connections = [];
 
+  /// When Google last refused the scheduled fetch on quota, or null.
+  ///
+  /// The list refreshes itself every twenty seconds now, so a stalled sync
+  /// looks exactly like a quiet afternoon - the same rows, re-read, over and
+  /// over. On 2026-09-16 that quiet afternoon was four hours of enquiries not
+  /// arriving, found only because somebody opened the Ads report for an
+  /// unrelated reason.
+  String? _delayedSince;
+
   /// The open Connected sources panel, when there is one. A panel is its own
   /// route: the screen's setState does not reach it, so a row disconnected
   /// from inside it stayed on screen until the panel was closed and opened
@@ -250,6 +259,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
+      _delayedSince = meta['sync_delayed_since'] as String?;
       _total = (meta['total'] as num?)?.toInt() ?? _leads.length;
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
@@ -904,6 +914,20 @@ class _LeadsScreenState extends State<LeadsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('Connected sources', style: theme.textTheme.bodyMedium),
+              // Said HERE rather than as a banner: this is the line a person
+              // already reads to learn where enquiries come from, so it is
+              // where "they are not coming right now" belongs. A dismissible
+              // banner would be dismissed once and never seen again on the
+              // day it mattered.
+              if (_delayedSince != null)
+                Text(
+                  'Google is refusing our requests, so new enquiries are '
+                  'delayed. Nothing is lost — they arrive when it clears.',
+                  key: const ValueKey('sync-delayed'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
               Text(
                 _sourcesSummary(),
                 key: const ValueKey('sources-summary'),

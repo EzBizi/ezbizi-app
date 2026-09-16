@@ -9,6 +9,7 @@ use App\Services\Leads\LocalServicesLeads;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -65,6 +66,16 @@ class SyncLeads extends Command
      * a fact about the developer token, which is what the ceiling belongs to.
      */
     private const QUOTA_REFUSALS_BEFORE_STOPPING = 3;
+
+    /**
+     * Where a stalled sync says so, for the Leads screen to read.
+     *
+     * Organization-free on purpose: the ceiling belongs to EzBizi's developer
+     * token, so it is spent for everybody at once. A per-tenant key would imply
+     * a per-tenant quota and let one organization's screen look healthy while
+     * the same outage stopped its enquiries too.
+     */
+    public const STALLED_KEY = 'leads.sync.stalled_on_quota';
 
     public function __construct(
         private readonly LocalServicesLeads $localServices,
@@ -345,6 +356,35 @@ class SyncLeads extends Command
                         'consecutive_refusals' => $quotaRefusals,
                         'accounts_not_read'    => count($due) - $fetchedAccounts,
                     ]);
+
+                    /*
+                     * AND SAY SO WHERE SOMEBODY IS LOOKING.
+                     *
+                     * 2026-09-16: Google refused every lead fetch from 09:25 to
+                     * 13:25. Nothing on any screen said so. Jose found out at
+                     * 12:40 because he happened to open the Ads report for an
+                     * unrelated reason, and by then four hours of enquiries had
+                     * not arrived. The log said it the whole time; a log is not
+                     * a place anybody is standing.
+                     *
+                     * A cache key rather than a column because the fact expires
+                     * on its own. The TTL is the recovery mechanism: every
+                     * abandoned run rewrites it, and the first run that does not
+                     * abandon simply stops renewing it, so the banner clears
+                     * without anyone writing a "recovered" path that could get
+                     * the edge wrong. Clearing a state is rarely the inverse of
+                     * entering it, and the cheapest way to be right about that
+                     * is not to have an exit at all.
+                     *
+                     * Thirty-five minutes: longer than the five-minute tick so a
+                     * single stalled run keeps saying so, short enough that a
+                     * recovered fleet stops within one quiet cadence.
+                     */
+                    Cache::put(
+                        self::STALLED_KEY,
+                        now()->toIso8601String(),
+                        now()->addMinutes(35),
+                    );
 
                     break;
                 }
