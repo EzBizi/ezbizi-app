@@ -26,6 +26,7 @@ class FlowNode {
     required this.detail,
     required this.state,
     this.ref = '',
+    this.edit,
   });
 
   final String id;
@@ -42,6 +43,15 @@ class FlowNode {
   /// that depends on none of it. This is the key that makes the join one
   /// lookup instead.
   final String ref;
+
+  /// Where this box is changed, or null when it is not a thing you change.
+  ///
+  /// Jose, 2026-09-16: *"every settings needs to be synced and manageable from
+  /// here as well"*. **Synced is the word that decided the design** — he named
+  /// a property rather than a layout, and a bespoke editor per node kind is
+  /// precisely the thing that goes out of sync, silently, the first time
+  /// somebody adds a field in Settings.
+  final NodeEdit? edit;
 
   /// `ok` | `dead` | `skipped`.
   ///
@@ -67,6 +77,7 @@ class FlowNode {
     detail: '${json['detail'] ?? ''}',
     state: '${json['state'] ?? 'ok'}',
     ref: json['ref'] == null ? '' : '${json['ref']}',
+    edit: NodeEdit.fromJson(json['edit']),
   );
 }
 
@@ -387,5 +398,33 @@ class CallFlowLive {
               ),
       },
     );
+  }
+}
+
+/// Which Settings pane edits a node, and which record in it.
+///
+/// [pane] is a section id out of the phone settings tab's own list —
+/// `ring-groups`, `voicemail`, `hours`, `flows`… — and it is **given** rather
+/// than derived.
+///
+/// Phone's warning, with a test pinning it: a voicemail BOX and a voicemail
+/// OPTION on a menu are both kind `voicemail` and are edited in two different
+/// panes, so deriving the pane from [FlowNode.kind] is wrong on a real line
+/// rather than in theory. A ring group node and its queue node deliberately
+/// share one target, because queueing-versus-voicemail is the group's own
+/// `overflow` setting.
+class NodeEdit {
+  const NodeEdit({required this.pane, required this.id});
+
+  final String pane;
+  final String id;
+
+  static NodeEdit? fromJson(Object? json) {
+    if (json is! Map) return null;
+
+    final pane = json['pane'];
+    if (pane == null || '$pane'.isEmpty) return null;
+
+    return NodeEdit(pane: '$pane', id: '${json['id'] ?? ''}');
   }
 }

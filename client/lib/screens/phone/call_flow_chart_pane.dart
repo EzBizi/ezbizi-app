@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/phone_numbers.dart';
 import '../../core/theme.dart';
+import '../../core/session.dart';
 import 'call_flow_chart.dart';
+import 'call_flow_edit_drawer.dart';
 
 /// The call flow as a chart (Jose, 2026-09-15: desktop 2 + mobile 4).
 ///
@@ -39,9 +41,18 @@ import 'call_flow_chart.dart';
 /// is visible until you have walked to it, so the count is the ONLY thing
 /// answering "is any of this broken?" at a glance. It is not a caption there.
 class CallFlowChartPane extends StatefulWidget {
-  const CallFlowChartPane({super.key, required this.api});
+  const CallFlowChartPane({
+    super.key,
+    required this.api,
+    required this.session,
+  });
 
   final ApiClient api;
+
+  /// Needed because the drawer hosts the real settings panes, and they take
+  /// it. Threading it here rather than giving the drawer its own is the point:
+  /// one pane, one session, one editor.
+  final Session session;
 
   @override
   State<CallFlowChartPane> createState() => _CallFlowChartPaneState();
@@ -57,6 +68,9 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   /// answer, and null again whenever the ask fails.
   CallFlowLive? _live;
   Timer? _poll;
+
+  /// The box whose settings are open, or null.
+  FlowNode? _editing;
 
   @override
   void initState() {
@@ -206,9 +220,34 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
             child: LayoutBuilder(
               // The pane's own width, not the window's: this sits in a split,
               // so the window being wide says nothing about the room here.
-              builder: (context, box) => box.maxWidth >= 720
-                  ? _Canvas(graph: graph, live: _live)
-                  : _Ribbon(graph: graph, live: _live),
+              builder: (context, box) {
+                if (box.maxWidth < 720) {
+                  return _Ribbon(
+                    graph: graph,
+                    live: _live,
+                    onOpen: _openEditor,
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(
+                      child: _Canvas(
+                        graph: graph,
+                        live: _live,
+                        onOpen: _openEditor,
+                      ),
+                    ),
+                    if (_editing != null)
+                      CallFlowEditDrawer(
+                        node: _editing!,
+                        api: widget.api,
+                        session: widget.session,
+                        onClose: () => setState(() => _editing = null),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -229,6 +268,34 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   /// every line and its whole graph, so `deadCount` and `skippedCount` are
   /// there for all thirteen — I had told Jose this option was blocked on Phone
   /// sending a summary, and that was wrong: I had not read the payload.
+  /// Wide opens the drawer beside the chart; narrow pushes a screen.
+  ///
+  /// Mobile 5 rather than the inline expansion I first recommended, and the
+  /// reason is the desktop decision rather than a change of taste: once the
+  /// drawer hosts the REAL settings panes, they need the width they already
+  /// have in Settings. Expanding one inside a 380px list row would mean
+  /// redrawing every pane for a place none of them were built for, which is
+  /// exactly the cost that hosting them was meant to avoid.
+  void _openEditor(FlowNode node) {
+    final wide = MediaQuery.of(context).size.width >= 720;
+
+    if (wide) {
+      setState(() => _editing = node);
+
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CallFlowEditScreen(
+          node: node,
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Widget _picker(ThemeData theme) => TextButton.icon(
     onPressed: _openPicker,
     icon: const Icon(Icons.search, size: 16),
@@ -655,10 +722,11 @@ class _Geometry {
 }
 
 class _Canvas extends StatefulWidget {
-  const _Canvas({required this.graph, this.live});
+  const _Canvas({required this.graph, this.live, required this.onOpen});
 
   final CallFlowGraph graph;
   final CallFlowLive? live;
+  final void Function(FlowNode) onOpen;
 
   @override
   State<_Canvas> createState() => _CanvasState();
@@ -778,6 +846,7 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
                         child: _NodeTile(
                           node: p.node,
                           queue: widget.live?.forNode(p.node),
+                          onTap: () => widget.onOpen(p.node),
                         ),
                       ),
                   ],
@@ -876,9 +945,10 @@ class _ZoomBar extends StatelessWidget {
 /// One node: an icon tile with its name under it, the way his reference draws
 /// them.
 class _NodeTile extends StatelessWidget {
-  const _NodeTile({required this.node, this.queue});
+  const _NodeTile({required this.node, this.queue, this.onTap});
 
   final FlowNode node;
+  final VoidCallback? onTap;
 
   /// Null when there is nothing honest to draw — not a queue, or Twilio could
   /// not be asked. Zero is a real answer and is drawn as one.
@@ -937,19 +1007,11 @@ class _NodeTile extends StatelessWidget {
     return Tooltip(
       message: node.detail,
       child: InkWell(
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(node.title),
-            content: Text(node.detail),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        ),
+        // Opens the settings for this box rather than a dialog of its own
+        // text. The detail is still readable -- the drawer leads with it --
+        // and a tap that only showed you what you could already see was the
+        // weakest thing on the canvas.
+        onTap: onTap,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1239,10 +1301,11 @@ class FlowWirePainter extends CustomPainter {
 /// one page, which is the complaint about the walk this replaces: you never saw
 /// the whole shape, and a fault you had not walked to was invisible.
 class _Ribbon extends StatelessWidget {
-  const _Ribbon({required this.graph, this.live});
+  const _Ribbon({required this.graph, this.live, required this.onOpen});
 
   final CallFlowGraph graph;
   final CallFlowLive? live;
+  final void Function(FlowNode) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -1258,6 +1321,7 @@ class _Ribbon extends StatelessWidget {
         graph: graph,
         queue: live?.forNode(steps[i].node),
         last: i == steps.length - 1,
+        onOpen: () => onOpen(steps[i].node),
       ),
     );
   }
@@ -1269,6 +1333,7 @@ class _Step extends StatelessWidget {
     required this.branches,
     required this.graph,
     required this.last,
+    required this.onOpen,
     this.queue,
   });
 
@@ -1276,6 +1341,7 @@ class _Step extends StatelessWidget {
   final List<FlowEdge> branches;
   final CallFlowGraph graph;
   final bool last;
+  final VoidCallback onOpen;
   final QueueLive? queue;
 
   @override
@@ -1327,9 +1393,16 @@ class _Step extends StatelessWidget {
                   Row(
                     children: [
                       Flexible(
-                        child: Text(
-                          node.title,
-                          style: theme.textTheme.titleSmall,
+                        child: InkWell(
+                          onTap: node.edit == null ? null : onOpen,
+                          child: Text(
+                            node.title,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              decoration: node.edit == null
+                                  ? null
+                                  : TextDecoration.underline,
+                            ),
+                          ),
                         ),
                       ),
                       if (node.isDead || node.isSkipped) ...[

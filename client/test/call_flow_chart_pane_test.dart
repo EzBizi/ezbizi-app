@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/call_flow_chart.dart';
 import 'package:ezbizi_client/screens/phone/call_flow_chart_pane.dart';
@@ -614,6 +615,101 @@ void main() {
     );
   });
 
+  /// Jose, 2026-09-16: "it should open a right sidebar with the list of
+  /// members, so i can assign - unassign, so basically, every settings needs
+  /// to be SYNCED and manageable from here as well".
+  ///
+  /// Synced is the word that decided it. He named a property rather than a
+  /// layout, and a bespoke editor per node kind is the thing that goes out of
+  /// sync -- silently, the first time somebody adds a field in Settings. So
+  /// the drawer opens the same pane the settings tab opens.
+  group('changing a box from the chart', () {
+    Map<String, dynamic> graphWith(Map<String, dynamic>? edit) => {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'g1', 'kind': 'ring_group', 'title': 'Ring Appointment',
+          'detail': 'Whoever is on duty is dialled.', 'state': 'ok',
+          'edit': ?edit},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'g1', 'label': ''},
+      ],
+    };
+
+    testWidgets('tapping a box says which Settings pane you are in', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: graphWith(
+        {'pane': 'ring-groups', 'id': 'rg-1'},
+      ));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pump();
+
+      expect(
+        find.text('Settings › Phone › Ring groups'),
+        findsOneWidget,
+        reason: 'Somebody changing a ring group from a chart should still know '
+            'they changed a ring group, and where to find it again.',
+      );
+    });
+
+    testWidgets('a step that is not a setting says so instead', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: graphWith(null));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pump();
+
+      expect(
+        find.textContaining('nothing to change on it here'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Settings › Phone ›'),
+        findsNothing,
+        reason: 'A breadcrumb to a pane that does not edit this box would send '
+            'somebody looking for a setting that is not there.',
+      );
+    });
+
+    /// The failure this file is most likely to have: a pane id it has never
+    /// heard of. It must degrade to a door, never to another pane's content,
+    /// because wrong content looks like it worked.
+    testWidgets('a pane this build does not know degrades to a door', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: graphWith(
+        {'pane': 'something-phone-added-later', 'id': 'x'},
+      ));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pump();
+
+      expect(
+        find.textContaining('changed in Settings › Phone ›'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('closing it puts the chart back', (tester) async {
+      await _pump(tester, width: 1100, graph: graphWith(
+        {'pane': 'ring-groups', 'id': 'rg-1'},
+      ));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pump();
+      expect(find.byTooltip('Close'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pump();
+
+      expect(find.textContaining('Settings › Phone ›'), findsNothing);
+    });
+  });
+
   _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires
@@ -873,6 +969,12 @@ Future<void> _pump(
     }),
   );
 
+  // The drawer hosts the real settings panes and they take a session, so the
+  // pane does too. One pane, one session, one editor -- which is the whole
+  // reason the drawer hosts them rather than drawing its own.
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
+
   await tester.pumpWidget(
     MaterialApp(
       theme: theme ?? EzBiziTheme.light(),
@@ -888,7 +990,9 @@ Future<void> _pump(
         data: MediaQuery.of(context).copyWith(disableAnimations: true),
         child: child!,
       ),
-      home: Scaffold(body: CallFlowChartPane(api: api)),
+      home: Scaffold(
+        body: CallFlowChartPane(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();

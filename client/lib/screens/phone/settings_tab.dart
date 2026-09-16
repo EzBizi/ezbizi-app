@@ -454,7 +454,10 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       // and the form comes first because that is the order somebody works in.
       'general' => GeneralPane(api: widget.api, session: widget.session),
       'call-flow' => CallFlowPane(api: widget.api),
-      'call-flow-chart' => CallFlowChartPane(api: widget.api),
+      'call-flow-chart' => CallFlowChartPane(
+        api: widget.api,
+        session: widget.session,
+      ),
       'connection' => _connectionBody(),
       'numbers' => NumbersPane(api: widget.api, session: widget.session),
       'porting' => PortingPane(api: widget.api, session: widget.session),

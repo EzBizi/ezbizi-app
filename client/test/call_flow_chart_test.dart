@@ -286,6 +286,57 @@ void main() {
     });
   });
 
+  /// Where a box is changed (Jose: "every settings needs to be **synced** and
+  /// manageable from here as well").
+  group('where a node is edited', () {
+    test('the pane is taken from the server, never derived from the kind', () {
+      final box = FlowNode.fromJson(const {
+        'id': 'vm-box',
+        'kind': 'voicemail',
+        'title': 'Voicemail',
+        'state': 'ok',
+        'edit': {'pane': 'voicemail', 'id': 'vb-1'},
+      });
+      final option = FlowNode.fromJson(const {
+        'id': 'vm-key',
+        'kind': 'voicemail',
+        'title': 'Voicemail',
+        'state': 'ok',
+        'edit': {'pane': 'flows', 'id': 'menu-9'},
+      });
+
+      expect(
+        box.edit!.pane,
+        isNot(option.edit!.pane),
+        reason: "Phone's warning, with a test on their side pinning it: a "
+            'voicemail BOX and a voicemail OPTION on a menu share a kind and '
+            'are edited in two different panes. Deriving from kind is wrong '
+            'on a real line, not in theory.',
+      );
+      expect(box.edit!.pane, 'voicemail');
+      expect(option.edit!.pane, 'flows');
+      expect(option.edit!.id, 'menu-9');
+    });
+
+    test('a node with nothing to change says so by carrying no edit', () {
+      final node = FlowNode.fromJson(const {
+        'id': 'arrival',
+        'kind': 'arrival',
+        'title': 'Arrives on General',
+        'state': 'ok',
+      });
+
+      expect(node.edit, isNull);
+    });
+
+    test('an edit with no pane is not an edit', () {
+      expect(NodeEdit.fromJson(const {'id': 'x'}), isNull);
+      expect(NodeEdit.fromJson(const {'pane': ''}), isNull);
+      expect(NodeEdit.fromJson('ring-groups'), isNull);
+      expect(NodeEdit.fromJson(null), isNull);
+    });
+  });
+
   group('parsing', () {
     test('a row with no graph is not a graph', () {
       expect(CallFlowGraph.fromJson(null), isNull);
