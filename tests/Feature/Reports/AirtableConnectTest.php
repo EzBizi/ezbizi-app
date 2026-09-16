@@ -230,6 +230,49 @@ class AirtableConnectTest extends TestCase
         )));
     }
 
+    /**
+     * NAMING IT HAS TO BE VISIBLE, or it is a write with no read.
+     *
+     * `rename` could already set a label; `index` never returned one, so
+     * naming a connection changed nothing anybody could see. An Airtable base
+     * displays as its id - `appadTMQltMGmGrse` tells nobody anything - which is
+     * exactly the case where a name matters most.
+     */
+    public function test_a_named_base_comes_back_with_its_name(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->fakeBase();
+
+        $id = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/social/airtable', [
+                'api_token' => 'pat_fine',
+                'base_id' => self::BASE,
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->signedInAs($tenant['admin'])
+            ->patchJson('/api/v1/social/connections/'.$id.'/label', [
+                'label' => 'Profit and Loss',
+            ])
+            ->assertOk();
+
+        $row = collect($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/social/connections?include=data_sources')
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('provider', 'airtable');
+
+        $this->assertSame('Profit and Loss', $row['label']);
+
+        // And the base id survives alongside it. The name is what a person
+        // recognises; the id is what identifies it to Airtable when something
+        // is wrong, so replacing one with the other loses the half you need
+        // at exactly the moment you need it.
+        $this->assertSame(self::BASE, $row['display_name']);
+    }
+
     private function fakeBase(): void
     {
         Http::fake(['api.airtable.com/*' => Http::response([

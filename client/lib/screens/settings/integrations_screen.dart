@@ -142,9 +142,75 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           // The one family that connects HERE rather than elsewhere, which is
           // why it passes forms instead of a `where` sentence.
           connect: _reportingForms(),
+
+          // Only the reporting sources, for now. The others are named where
+          // they are connected, and this screen is not trying to become the
+          // place every account is administered.
+          canName: true,
         ),
       ],
     );
+  }
+
+  /// Give a connection a name a person recognises.
+  ///
+  /// The endpoint has existed since before this screen did — nothing listed
+  /// the label, so naming a connection had no visible effect and nobody could
+  /// tell it had worked. A write with no read.
+  ///
+  /// In a dialog rather than in place, and that is a deliberate exception to
+  /// the house rule: this row sits in a list of rows, and an inline field would
+  /// reflow every connection under it while somebody types.
+  Future<void> _rename(_Connection row) async {
+    final controller = TextEditingController(text: row.label ?? '');
+
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Name this ${row.providerLabel} connection'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            labelText: 'Name',
+            // The id, so somebody naming several in a row can tell them apart
+            // while the dialog is covering the list.
+            helperText: row.displayName,
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    controller.dispose();
+
+    // Null is Cancel. An EMPTY string is not — it is "take the name off",
+    // which the endpoint accepts and stores as null.
+    if (name == null || !mounted) return;
+
+    final response = await widget.api.patch(
+      '/social/connections/${row.id}/label',
+      {'label': name.trim()},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _error = response.message);
+      return;
+    }
+
+    _load();
   }
 
   /// The connect forms for the Reporting family.
@@ -206,6 +272,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     required String empty,
     String? where,
     List<Widget>? connect,
+    bool canName = false,
   }) {
     final theme = Theme.of(context);
 
@@ -224,13 +291,30 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                 dense: true,
                 leading: SocialNetworkMark(network: row.provider, size: 24),
                 title: Text(
-                  row.displayName,
+                  row.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                subtitle: Text('${row.providerLabel} · ${row.scopeWord}'),
+                // `appadTMQltMGmGrse` tells nobody anything, so a named
+                // connection leads with its name - and still shows the id
+                // underneath, because that is what identifies it to Airtable
+                // when something is wrong.
+                subtitle: Text(
+                  [
+                    if (row.beneath != null) row.beneath!,
+                    row.providerLabel,
+                    row.scopeWord,
+                  ].join(' · '),
+                ),
+                onTap: canName ? () => _rename(row) : null,
                 trailing: row.connected
-                    ? null
+                    ? (canName
+                          ? IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 18),
+                              tooltip: 'Name this connection',
+                              onPressed: () => _rename(row),
+                            )
+                          : null)
                     // A broken connection is the whole reason somebody comes
                     // looking at this screen, so it says so here rather than
                     // only on the module that owns it.
@@ -276,17 +360,27 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 
 class _Connection {
   const _Connection({
+    required this.id,
     required this.provider,
     required this.providerLabel,
     required this.displayName,
     required this.scopeType,
     required this.connected,
+    this.label,
     this.statusReason,
   });
 
+  final String id;
   final String provider;
   final String providerLabel;
   final String displayName;
+
+  /// What this business calls it. Null until somebody names it.
+  ///
+  /// Kept beside `displayName` rather than replacing it: an Airtable base's
+  /// display name is its BASE ID, so a named connection still has to be able
+  /// to show which base it is.
+  final String? label;
   final String scopeType;
   final bool connected;
   final String? statusReason;
@@ -307,7 +401,13 @@ class _Connection {
     _ => scopeType,
   };
 
+  /// What to put in front of a person, and what to put under it.
+  String get title => (label ?? '').isNotEmpty ? label! : displayName;
+  String? get beneath => (label ?? '').isNotEmpty ? displayName : null;
+
   factory _Connection.fromJson(Map<String, dynamic> json) => _Connection(
+    id: json['id'] as String? ?? '',
+    label: json['label'] as String?,
     provider: json['provider'] as String? ?? '',
     providerLabel: json['provider_label'] as String? ?? '',
     displayName: json['display_name'] as String? ?? '',

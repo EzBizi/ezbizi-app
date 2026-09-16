@@ -72,6 +72,21 @@ class SocialConnectionsController extends Controller
                 'provider' => $c->provider,
                 'provider_label' => $c->providerLabel(),
                 'display_name' => $c->display_name,
+
+                /*
+                 * The tenant's own name for it, and NOT folded into
+                 * display_name. A screen needs both: the label is what a person
+                 * recognises, the display name is what the provider calls it,
+                 * and an Airtable base's display name is its id - so collapsing
+                 * them here would leave a renamed connection with no way to
+                 * show which base it actually is.
+                 *
+                 * `rename` has been able to set this since before I arrived;
+                 * nothing listed it, so naming a connection had no visible
+                 * effect anywhere. A write with no read.
+                 */
+                'label' => $c->label,
+
                 'handle' => $c->handle,
                 'scope_type' => $c->scope_type,
                 'scope_id' => $c->scope_id,

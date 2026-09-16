@@ -148,8 +148,14 @@ class SocialConnectionsApiTest extends TestCase
         $row = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)
             ->assertOk()->json('data.0');
 
+        // The whole key list, in order, on purpose: this is the guard that
+        // catches a token arriving in this payload by somebody adding a field
+        // without thinking about what a connection row contains. `label` was
+        // added 2026-09-16 by the Reports module - the tenant's own name for a
+        // connection, which nothing listed before, so naming one had no
+        // visible effect anywhere.
         $this->assertSame([
-            'id', 'provider', 'provider_label', 'display_name', 'handle',
+            'id', 'provider', 'provider_label', 'display_name', 'label', 'handle',
             'scope_type', 'scope_id', 'status', 'status_reason', 'last_reached_at',
             'can_publish', 'cannot_publish_because', 'posting_note',
         ], array_keys($row));
