@@ -149,6 +149,26 @@ class LeadsController extends Controller
             });
         }
 
+        /*
+         * A DISCONNECTED ACCOUNT TAKES ITS ENQUIRIES OFF THE LIST WITH IT.
+         *
+         * Jose, 2026-09-16, having disconnected A-1 Chimney's Google Ads
+         * account and found its enquiries still sitting there: "if the account
+         * where the leads come from is disconnected, then it should hide said
+         * leads, only show them again once the account is reconnected."
+         *
+         * They are hidden rather than removed, and the "show them again" half
+         * needs no code: disconnecting only nulls `connection_id`, the rows
+         * keep `remote_customer_id`, and reclaim() re-adopts them on the next
+         * connect. The same mechanism that fixed 41,006 orphans reads as the
+         * un-hide here.
+         *
+         * See Lead::scopeSourceStillConnected for why this is not a global
+         * scope, and why website enquiries are exempt rather than special-cased
+         * (they never had a connection_id to lose).
+         */
+        $query->sourceStillConnected();
+
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
         }

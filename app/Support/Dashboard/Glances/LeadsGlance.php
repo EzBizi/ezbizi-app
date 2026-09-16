@@ -66,6 +66,18 @@ final class LeadsGlance extends DescribedGlance
              */
             $inReach = fn ($query) => $query
                 ->where('is_test', false)
+                /*
+                 * And enquiries whose account has been disconnected, for the
+                 * same reason and in the same place.
+                 *
+                 * Jose asked for those hidden from the Leads list on
+                 * 2026-09-16. Hiding them there and counting them here would
+                 * put "38 enquiries" on the dashboard above a list showing two,
+                 * and the person reading it has no way to tell which number is
+                 * lying. A figure nobody can reconcile with the screen beside
+                 * it is worse than either number alone.
+                 */
+                ->sourceStillConnected()
                 ->where(
                     fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
                 );
@@ -173,9 +185,16 @@ final class LeadsGlance extends DescribedGlance
                             'points' => $points,
                         ],
                     ],
-                    'slices'             => $slices,
-                    'sentences'          => $sentences,
-                    'organization_total' => (int) Lead::query()->count(),
+                    'slices'    => $slices,
+                    'sentences' => $sentences,
+                    // `organization_total` was here and is gone. GlancePayload's
+                    // rule: a glance sends what its box draws, and this one was
+                    // read by nothing in client/lib - a count on every dashboard
+                    // load for a figure nobody sees, and organization-wide, so a
+                    // franchise-level reader received the whole organization's
+                    // number in the response. It also had no honest answer once
+                    // disconnected enquiries are hidden: whichever rule it took,
+                    // it would disagree with the box above it.
                 ],
             );
         });

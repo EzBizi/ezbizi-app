@@ -5,6 +5,8 @@ namespace Tests\Feature\Leads;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Lead;
+use App\Models\SocialConnection;
+use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -35,15 +37,52 @@ class LeadsRespectTheViewTest extends TestCase
     use BuildsTenants;
     use RefreshDatabase;
 
+    /**
+     * The account these enquiries arrived through.
+     *
+     * Every row here is `local_services`, and since 2026-09-16 a Google or
+     * Thumbtack enquiry with no connection is HIDDEN from the list - it means
+     * the account was disconnected. Without this the fixtures were rows that
+     * cannot exist in production, and the view assertions below would pass or
+     * fail for a reason that has nothing to do with the view.
+     *
+     * One connection for all of them on purpose: placement is read off the
+     * LEAD's company and franchise columns, so which account it came through
+     * must not change the answer, and sharing one is the cheapest way to say
+     * so.
+     */
+    private function account(array $t): SocialConnection
+    {
+        return $this->connection ??= $this->inTenant($t['org'], function () use ($t) {
+            $row = SocialConnection::create([
+                'organization_id' => $t['org']->getKey(),
+                'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id'        => $t['org']->getKey(),
+                'provider'        => SocialProvider::GoogleAds->value,
+                'remote_id'       => '4051729356',
+                'display_name'    => 'A1 Chimney',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
+    private ?SocialConnection $connection = null;
+
     private function lead(array $t, ?Company $company, ?Franchise $franchise, string $name): Lead
     {
         static $n = 0;
         $n++;
 
+        $account = $this->account($t);
+
         return $this->inTenant($t['org'], fn () => Lead::create([
             'organization_id' => $t['org']->getKey(),
             'company_id'      => $company?->getKey(),
             'franchise_id'    => $franchise?->getKey(),
+            'connection_id'   => $account->getKey(),
             'source'          => Lead::SOURCE_LOCAL_SERVICES,
             'remote_id'       => 'L-'.$n,
             'contact_name'    => $name,

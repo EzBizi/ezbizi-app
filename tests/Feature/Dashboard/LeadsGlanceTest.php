@@ -5,10 +5,12 @@ namespace Tests\Feature\Dashboard;
 use App\Models\Assignment;
 use App\Models\Franchise;
 use App\Models\Lead;
+use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\LeadsGlance;
+use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -62,15 +64,47 @@ class LeadsGlanceTest extends TestCase
         return app(TenantContext::class)->run($this->alpha['org'], $fn);
     }
 
+    private ?SocialConnection $account = null;
+
+    /**
+     * The account these enquiries arrived through.
+     *
+     * Every row here is `local_services`, and since 2026-09-16 a Google or
+     * Thumbtack enquiry with no connection is left out of this count - it means
+     * the account was disconnected, and the box must agree with the Leads list
+     * beside it. Without this the fixtures were rows that cannot exist in
+     * production and the counts below would be measuring the wrong absence.
+     */
+    private function account(): SocialConnection
+    {
+        return $this->account ??= $this->inTenant(function () {
+            $row = SocialConnection::create([
+                'organization_id' => $this->alpha['org']->id,
+                'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id'        => $this->alpha['org']->id,
+                'provider'        => SocialProvider::GoogleAds->value,
+                'remote_id'       => '4051729356',
+                'display_name'    => 'A1 Chimney',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
     private function lead(?Franchise $franchise, string $status = Lead::STATUS_NEW, bool $test = false): Lead
     {
         static $n = 0;
         $n++;
 
+        $account = $this->account();
+
         return $this->inTenant(fn () => Lead::create([
             'organization_id' => $this->alpha['org']->id,
             'company_id'      => $this->alpha['company']->id,
             'franchise_id'    => $franchise?->id,
+            'connection_id'   => $account->getKey(),
             'source'          => Lead::SOURCE_LOCAL_SERVICES,
             'is_test'         => $test,
             'remote_id'       => 'L-'.$n,

@@ -55,6 +55,59 @@ class Lead extends Model implements HoldsPersonalData, StatesRetention
     public const SOURCE_WEBSITE_FORM = 'website_form';
 
     /**
+     * The sources that arrive THROUGH a connected account.
+     *
+     * Not a list of "external" sources: the website is external too. It is the
+     * list of sources where a `social_connections` row is what makes the
+     * enquiries arrive at all, which is why losing that row is a fact about
+     * the enquiries rather than only about the account.
+     *
+     * Website chat and forms are deliberately absent. They come in through the
+     * WordPress plugin and never carry a `connection_id` — they are born with
+     * the column null, so a rule written as "hide every lead with no
+     * connection" would hide every website enquiry the day it shipped.
+     */
+    public const SOURCES_VIA_CONNECTION = [
+        self::SOURCE_LOCAL_SERVICES,
+        self::SOURCE_THUMBTACK,
+    ];
+
+    /**
+     * Enquiries a person should still be shown — those whose account is connected.
+     *
+     * Jose, 2026-09-16, after disconnecting A-1 Chimney's Google Ads account
+     * and finding its enquiries still listed: *"if the account where the leads
+     * come from is disconnected, then it should hide said leads, only show them
+     * again once the account is reconnected."*
+     *
+     * ── Hidden, not deleted, and not a global scope ──────────────
+     *
+     * Disconnecting nulls `leads.connection_id`; it does not touch the rows.
+     * They keep `remote_customer_id`, which is what lets `reclaim()` re-adopt
+     * them the moment the same account is connected again — so "show them again
+     * once the account is reconnected" needs no second mechanism, it is the
+     * adoption that already exists.
+     *
+     * A GLOBAL scope would have been fewer call sites and the wrong shape: it
+     * would also hide these rows from retention sweeps, exports, automations
+     * and the reply path, which is not hiding, it is a silent partial delete.
+     * This is applied on the two surfaces a person LOOKS at — the list and the
+     * dashboard count — and nowhere else, so the figures a person compares
+     * agree with each other and nothing downstream loses a record.
+     *
+     * Reporting is deliberately left alone: what a business spent on enquiries
+     * last quarter did not stop being true because the account was disconnected
+     * this morning.
+     */
+    public function scopeSourceStillConnected(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->whereNotNull($this->getTable().'.connection_id')
+                ->orWhereNotIn($this->getTable().'.source', self::SOURCES_VIA_CONNECTION);
+        });
+    }
+
+    /**
      * Ours, not the source's.
      *
      * `NEW` is the absence of a decision rather than a decision, which is why a

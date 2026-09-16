@@ -28,10 +28,42 @@ class LeadsApiTest extends TestCase
     private const PHONE = '+1 (555) 123-4567';
 
     /** @param array{org: Organization} $t */
+    private ?SocialConnection $account = null;
+
+    /**
+     * The account these enquiries arrived through.
+     *
+     * Every row here is `local_services`, and since 2026-09-16 a Google or
+     * Thumbtack enquiry with no connection is hidden from the list - it means
+     * the account was disconnected. Without this the fixtures were rows that
+     * cannot exist in production, and every assertion below would be about the
+     * wrong thing.
+     */
+    private function account(array $t): SocialConnection
+    {
+        return $this->account ??= $this->inTenant($t['org'], function () use ($t) {
+            $row = SocialConnection::create([
+                'organization_id' => $t['org']->id,
+                'scope_type'      => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id'        => $t['org']->id,
+                'provider'        => SocialProvider::GoogleAds->value,
+                'remote_id'       => '4051729356',
+                'display_name'    => 'A1 Chimney',
+            ]);
+            $row->connect(['refresh_token' => 'rt-good']);
+            $row->save();
+
+            return $row;
+        });
+    }
+
     private function lead(array $t, array $attributes = []): Lead
     {
+        $account = $this->account($t);
+
         return $this->inTenant($t['org'], fn () => Lead::create([
             'organization_id' => $t['org']->id,
+            'connection_id'   => $account->getKey(),
             'source'          => Lead::SOURCE_LOCAL_SERVICES,
             'remote_id'       => 'lead-'.bin2hex(random_bytes(6)),
             'contact_name'    => 'Dana Whitfield',
