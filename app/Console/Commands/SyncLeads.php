@@ -303,11 +303,25 @@ class SyncLeads extends Command
                     'reason'        => $e->getMessage(),
                 ]);
 
-                // The message is built in LocalServicesLeads::page() a few
-                // files away and says "(HTTP 429)". Matched rather than typed
-                // into a new exception class, because there is exactly one
-                // thrower and one reader of it.
+                /*
+                 * The message is built in LocalServicesLeads::page() a few
+                 * files away and says "(HTTP 429)". Matched rather than typed
+                 * into a new exception class, because there is exactly one
+                 * thrower and one reader of it.
+                 *
+                 * An ACCOUNT-scoped 429 does NOT count. Three different
+                 * accounts refused back to back is only evidence about the
+                 * developer token if the limits are the token's; if each one
+                 * is hitting its own, stopping here starves every account
+                 * behind them, every run, and the log would say "stopped on
+                 * quota" each time while nothing was wrong with the quota.
+                 *
+                 * A response that says nothing about scope still counts. That
+                 * is the outage this was written during, and a brake that
+                 * needs a field Google may omit is not a brake.
+                 */
                 $quotaRefusals = str_contains($e->getMessage(), '(HTTP 429)')
+                    && ! str_contains($e->getMessage(), LocalServicesLeads::ACCOUNT_SCOPED)
                     ? $quotaRefusals + 1
                     : 0;
 

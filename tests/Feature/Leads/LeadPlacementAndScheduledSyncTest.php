@@ -586,6 +586,73 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         $this->assertSame('4413s', $logged[0]['retry_delay'] ?? null);
     }
 
+    /**
+     * AN ACCOUNT-SCOPED 429 IS NOT EVIDENCE ABOUT THE TOKEN.
+     *
+     * The brake stops a run after three 429s in a row because three DIFFERENT
+     * accounts refused back to back is a fact about the developer token. That
+     * reasoning only holds if the limit belongs to the token. If each account
+     * is hitting its own, stopping starves every account behind them - every
+     * run, silently, with the log saying "stopped on quota" each time while
+     * nothing was wrong with the quota.
+     *
+     * Google is the only one who knows which, and it says so in
+     * quotaErrorDetails.rateScope. Five accounts, all ACCOUNT-scoped: all five
+     * must still be asked.
+     */
+    public function test_account_scoped_rate_limits_do_not_stop_the_run(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $ids = ['1111111111', '2222222222', '3333333333', '4444444444', '5555555555'];
+
+        foreach ($ids as $id) {
+            $this->connection($t, $id);
+        }
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => [
+                    'code' => 429,
+                    'status' => 'RESOURCE_EXHAUSTED',
+                    'details' => [['errors' => [['details' => ['quotaErrorDetails' => [
+                        'rateScope' => 'ACCOUNT',
+                        'retryDelay' => '30s',
+                    ]]]]]],
+                ],
+            ], 429),
+        ]);
+
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $asked = [];
+
+        Http::assertSent(function ($request) use (&$asked) {
+            if (preg_match('#/customers/(\d+)/#', $request->url(), $m)) {
+                $asked[$m[1]] = true;
+            }
+
+            return true;
+        });
+
+        foreach ($ids as $id) {
+            $this->assertArrayHasKey(
+                $id,
+                $asked,
+                "account $id was never asked: its neighbours' OWN rate limits are not "
+                .'evidence that the developer token is spent',
+            );
+        }
+    }
+
     public function test_one_failing_account_does_not_stop_the_others(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
