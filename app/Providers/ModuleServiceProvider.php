@@ -1258,10 +1258,32 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
-                        description: 'Puts the person a rule fired about onto a named mailing '
-                            .'list, so "a new customer joins the list" is a rule somebody can '
-                            .'write. It does not stand in for their agreement to be mailed, '
-                            .'which the list records separately.',
+                        /*
+                         * NOT BUILT, and the description used to promise
+                         * something that does not exist: "their agreement to be
+                         * mailed, which the list records separately". No list
+                         * records it. Measured 2026-09-16 — the ONLY consent
+                         * artefact in this module is `NewsletterUnsubscribe`,
+                         * which records people who said STOP. Nothing anywhere
+                         * records anybody saying yes.
+                         *
+                         * And there is nothing to add them TO. An audience is
+                         * `customers` (the recipients ARE the tenant's customer
+                         * records, synced to Mailchimp at send time) or
+                         * `mailchimp` (the members live in Mailchimp and EzBizi
+                         * must not write to them). There is no membership table,
+                         * so "add to audience" has no row to create.
+                         *
+                         * So this cannot be built as declared, and whether it
+                         * SHOULD be built is a consent question rather than a
+                         * code one — it is with Jose. Left declared and honest
+                         * rather than withdrawn, because withdrawing it would
+                         * decide that question by removing it.
+                         */
+                        description: 'Not built yet. It would add the person a rule fired about '
+                            .'to a mailing list. Nothing in EzBizi records that somebody agreed '
+                            .'to be mailed — only that they asked to stop — so what this should '
+                            .'do about that is still being decided.',
                     ),
                 ],
             ),
