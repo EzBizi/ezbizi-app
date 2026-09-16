@@ -4,6 +4,40 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  // ── APNs, for notifications that arrive when EzBizi is CLOSED ────
+  //
+  // Local notifications (flutter_local_notifications) need the app running to
+  // exist at all. Waking a sleeping handset is APNs and nothing else, so this
+  // is the only path by which a phone in somebody's pocket ever buzzes.
+  //
+  // THIS IS NOT THE VoIP TOKEN. twilio_voice holds a PushKit token, which wakes
+  // the app for an incoming CALL and cannot carry a notification. Both are hex
+  // strings of plausible length, the server cannot tell them apart by looking,
+  // and a VoIP token stored as a notification token produces a row that reads
+  // as registered and never delivers. This file is the only place that
+  // guarantee can live, which is why the token is taken from
+  // didRegisterForRemoteNotificationsWithDeviceToken and from nowhere else.
+  private static let apnsChannelName = "com.ezbizi.app/apns"
+
+  private var apnsChannel: FlutterMethodChannel?
+
+  // The token usually arrives BEFORE Dart is listening.
+  //
+  // Registration is asynchronous and the callback can land while the engine is
+  // still starting, so a design that only pushes the token to Dart loses it on
+  // most launches and looks like "APNs sometimes does not give us a token".
+  // Caching it and answering getToken from the cache makes the race
+  // uninteresting: whichever happens first, Dart gets the same string.
+  private var cachedApnsToken: String?
+
+  // Distinguishes "asked and was refused" from "never asked".
+  //
+  // A simulator has no APNs token at all and never will. Without this, silence
+  // there is indistinguishable from a token that was requested and never
+  // arrived on a real device — the same shape as an absence that cannot say
+  // whether the check was broken.
+  private var apnsFailure: String?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -26,10 +60,94 @@ import UserNotifications
     UNUserNotificationCenter.current().delegate =
       self as? UNUserNotificationCenterDelegate
 
+    // Deliberately NOT gated on the alert permission.
+    //
+    // registerForRemoteNotifications yields a device token whatever the user
+    // has said about banners; permission governs whether a delivered push is
+    // DISPLAYED, not whether the device can be addressed. Gating registration
+    // on permission would mean somebody who declines banners can never be
+    // reached even silently, and would make the token depend on a prompt that
+    // another part of the app owns.
+    application.registerForRemoteNotifications()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    // Hex, lowercase, no separators — what APNs expects as the device token and
+    // what the /notifications/devices endpoint stores.
+    let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
+
+    cachedApnsToken = hex
+    apnsFailure = nil
+    apnsChannel?.invokeMethod("onToken", arguments: hex)
+
+    // super last: FlutterAppDelegate forwards this to every plugin that wants
+    // it, and twilio_voice is one of them. Taking our copy first means our
+    // token cannot be affected by what a plugin does with the same callback.
+    super.application(
+      application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    didFailToRegisterForRemoteNotificationsWithError error: Error
+  ) {
+    // Recorded rather than swallowed. On a simulator this fires every launch
+    // with "no valid aps-environment entitlement", which is correct and
+    // expected there; on a real device it is the single most useful line when
+    // somebody asks why a handset never registered.
+    apnsFailure = error.localizedDescription
+    cachedApnsToken = nil
+    apnsChannel?.invokeMethod("onTokenError", arguments: error.localizedDescription)
+
+    super.application(
+      application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    // applicationRegistrar.messenger(), not a property on the bridge itself.
+    // FlutterImplicitEngineBridge exposes exactly two things - pluginRegistry
+    // and applicationRegistrar - and the messenger hangs off the second, from
+    // FlutterBaseRegistrar. Read out of FlutterEngine.h and FlutterPlugin.h on
+    // the relay rather than guessed; the name I first reached for
+    // (applicationBinaryMessenger) does not exist and would not have failed
+    // until a Mac compiled it.
+    let channel = FlutterMethodChannel(
+      name: AppDelegate.apnsChannelName,
+      binaryMessenger: engineBridge.applicationRegistrar.messenger())
+
+    channel.setMethodCallHandler { [weak self] call, result in
+      switch call.method {
+      case "getToken":
+        // Three distinguishable answers, on purpose. A bare nil would collapse
+        // "not yet" and "never going to" into one value, and those want
+        // different behaviour from the Dart side: retry versus give up.
+        if let token = self?.cachedApnsToken {
+          result(token)
+        } else if let failure = self?.apnsFailure {
+          result(FlutterError(
+            code: "apns_unavailable", message: failure, details: nil))
+        } else {
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    apnsChannel = channel
+
+    // The token can arrive before this handler exists, so replay it. Without
+    // this, a launch where registration wins the race leaves Dart waiting for
+    // an onToken that already happened.
+    if let token = cachedApnsToken {
+      channel.invokeMethod("onToken", arguments: token)
+    }
   }
 }
