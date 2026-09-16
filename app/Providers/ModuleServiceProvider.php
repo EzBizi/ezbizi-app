@@ -1823,10 +1823,24 @@ class ModuleServiceProvider extends ServiceProvider
                         // 2026-09-08 — somebody building a rule off the old
                         // wording would reasonably conclude it did not cover
                         // their Thumbtack enquiries, and quietly not build it.
-                        description: 'An enquiry arrived from a connected account — Google Ads or '
-                            .'Thumbtack. It carries the contact details as the enquirer gave them, '
-                            .'which source and location it came through, and when it arrived — not '
-                            .'yet what it is about.',
+                        // FOUR SOURCES, AND THE SAME MISTAKE TWICE. The note
+                        // above records Thumbtack being added while this
+                        // sentence still said "advertising", so a rule author
+                        // would conclude it did not cover them. Website chat
+                        // has raised this since 2026-09-08 and the sentence
+                        // still named two sources - measured on the box: 1992
+                        // local_services, 4 thumbtack, 4 website_chat, all on
+                        // this trigger. Forms take the same path and have had
+                        // no submission yet. A description is the only thing a
+                        // rule author has to go on, so it has to list what
+                        // ACTUALLY raises this, and name the values a condition
+                        // is written against.
+                        description: 'An enquiry arrived — from Google Ads, from Thumbtack, or '
+                            .'from the business\'s own website as a live chat or a form. It '
+                            .'carries the contact details as the enquirer gave them, which source '
+                            .'and location it came through, and when it arrived — not yet what it '
+                            .'is about. Narrow it with a condition on "source": local_services, '
+                            .'thumbtack, website_chat or website_form.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.contact_received',

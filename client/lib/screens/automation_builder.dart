@@ -342,6 +342,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   List<String> _triggerFields = const [];
   int? _fieldsSampled;
 
+  /// Value => label for fields whose set is fixed in code, keyed by field.
+  ///
+  /// A field with no entry keeps its text box: a dropdown over an open set
+  /// would be a shorter list pretending to be the whole one.
+  Map<String, List<({String value, String label})>> _fieldValues = const {};
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -373,6 +379,19 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _fieldsSampled = response.ok
           ? (response.data?['sampled'] as num?)?.toInt() ?? 0
           : null;
+      _fieldValues = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['values'] as Map? ?? const {}).entries)
+                entry.key.toString(): [
+                  for (final option in (entry.value as List? ?? const []))
+                    (
+                      value: (option['value'] ?? '').toString(),
+                      label: (option['label'] ?? '').toString(),
+                    ),
+                ],
+            }
+          : const {};
     });
   }
 
@@ -861,6 +880,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // the request is in flight is offering fields that cannot be read.
       _triggerFields = const [];
       _fieldsSampled = null;
+      _fieldValues = const {};
     });
 
     _loadTriggerFields();
@@ -1650,6 +1670,43 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 )
+              : (arity == OperatorArity.one &&
+                        _fieldValues[row.field.text.trim()] != null)
+              // A CLOSED SET GETS A LIST, because nothing on this screen told
+              // anybody the value they had to type was `website_chat`. The
+              // field picker fixed half of "people cannot guess them around"
+              // and left the other half: knowing the field is `source` does not
+              // tell you what goes in the box beside it.
+              //
+              // Only for `is`. "is one of" takes several values separated by
+              // commas, and one dropdown cannot say two things - that case
+              // keeps the text box and lists the options underneath instead.
+              ? DropdownMenu<String>(
+                  initialSelection: row.value.text.trim().isEmpty
+                      ? null
+                      : row.value.text.trim(),
+                  enabled: !_busy,
+                  label: const Text('Value'),
+                  expandedInsets: EdgeInsets.zero,
+                  enableFilter: true,
+                  requestFocusOnTap: true,
+                  onSelected: _busy
+                      ? null
+                      : (chosen) => setState(
+                          () => row.value.text = chosen ?? '',
+                        ),
+                  dropdownMenuEntries: [
+                    for (final option in _fieldValues[row.field.text.trim()]!)
+                      DropdownMenuEntry<String>(
+                        value: option.value,
+                        // The wire name is shown as well as the plain one: a
+                        // rule saved before this existed reads back as the raw
+                        // value, and somebody comparing the two needs to see
+                        // they are the same thing.
+                        label: '${option.label}  (${option.value})',
+                      ),
+                  ],
+                )
               : TextField(
                   controller: row.value,
                   enabled: !_busy,
@@ -1660,7 +1717,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     // sent one string, the evaluator compares against a list, so
                     // the clause never matched anything.
                     helperText: arity == OperatorArity.many
-                        ? 'Separate them with commas'
+                        ? (_fieldValues[row.field.text.trim()] == null
+                              ? 'Separate them with commas'
+                              : 'Separate them with commas — '
+                                    '${_fieldValues[row.field.text.trim()]!.map((o) => o.value).join(', ')}')
                         : null,
                   ),
                 ),

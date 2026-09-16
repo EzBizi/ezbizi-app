@@ -9,6 +9,12 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
+use App\Models\Lead;
+use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryUnit;
+use App\Support\Fleet\VehicleFuelType;
+use App\Support\Fleet\VehicleBodyType;
+use App\Models\InventoryItem;
 use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Models\PhoneCall;
@@ -136,6 +142,93 @@ class ActionRunner
      * @param  class-string|null  $model
      * @return array<string, string> field => label, empty when nothing is writable
      */
+    /**
+     * The values a condition can be written against, for fields with a fixed set.
+     *
+     * Two shapes, and the difference is about DRIFT rather than style:
+     *
+     *   'field' => EnumClass::class   read at runtime from ::cases(). A module
+     *                                 adding a case is offered immediately and
+     *                                 cannot leave this list half-complete.
+     *   'field' => [value => label]   only where there is no enum to read - a
+     *                                 set of string constants - and then a test
+     *                                 pins it against the model so the same
+     *                                 drift fails loudly instead.
+     *
+     * ONLY FOR SETS FIXED IN CODE. Job status is deliberately absent: it is
+     * RENAMEABLE PER TENANT (SettingsController::renameJobStatuses), so the
+     * honest list is a settings read rather than a constant, and a hardcoded
+     * dropdown would show one business another business's words.
+     *
+     * A half-complete list is worse than a text box - it looks authoritative
+     * while quietly excluding the value somebody needed.
+     */
+    private const FIELD_VALUES = [
+        Lead::class => [
+            'source' => [
+                'local_services' => 'Google Local Services',
+                'thumbtack' => 'Thumbtack',
+                'website_chat' => 'Website live chat',
+                'website_form' => 'Website form',
+            ],
+            'status' => [
+                'new' => 'New',
+                'booked' => 'Booked',
+                'archived' => 'Archived',
+                'not_a_lead' => 'Not a real enquiry',
+            ],
+        ],
+        Vehicle::class => [
+            'body_type' => VehicleBodyType::class,
+            'fuel_type' => VehicleFuelType::class,
+            'status' => VehicleStatus::class,
+        ],
+        InventoryItem::class => [
+            'unit' => InventoryUnit::class,
+            'status' => InventoryItemStatus::class,
+        ],
+    ];
+
+    /**
+     * Words the humaniser gets wrong, and nothing else.
+     *
+     * `out_of_service` becomes "Out of service" on its own; `suv` becomes "Suv".
+     */
+    private const VALUE_LABELS = [
+        'suv' => 'SUV',
+        'ft' => 'Feet',
+        'in' => 'Inches',
+        'gal' => 'Gallons',
+        'lb' => 'Pounds',
+        'in_shop' => 'In the shop',
+    ];
+
+    /** @return array<string, array<string, string>> field => [value => label] */
+    public static function valuesOn(?string $model): array
+    {
+        if ($model === null || ! isset(self::FIELD_VALUES[$model])) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach (self::FIELD_VALUES[$model] as $field => $set) {
+            if (is_array($set)) {
+                $out[$field] = $set;
+
+                continue;
+            }
+
+            foreach ($set::cases() as $case) {
+                $value = (string) $case->value;
+                $out[$field][$value] = self::VALUE_LABELS[$value]
+                    ?? ucfirst(str_replace('_', ' ', $value));
+            }
+        }
+
+        return $out;
+    }
+
     public static function writableOn(?string $model): array
     {
         return $model === null ? [] : (self::WRITABLE[$model] ?? []);

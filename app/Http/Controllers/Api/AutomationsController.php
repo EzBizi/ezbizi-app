@@ -497,9 +497,37 @@ class AutomationsController extends Controller
         $fields = array_keys($fields);
         sort($fields);
 
+        /*
+         * ADDITIVE, keyed by field, and only for fields that have a closed set.
+         *
+         * `fields` stays a flat list of strings so a client that has not been
+         * updated is unaffected - this is a map beside it, not a change of shape.
+         * It answers the half of "people cannot guess them around" that the
+         * field picker left open: knowing the field is `source` does not tell
+         * anybody that the value they must type is `website_chat`.
+         *
+         * Values are DECLARED, never sampled. Reading them off recent events
+         * would leak what this tenant's records contain, and this endpoint has
+         * never returned a value - only which keys exist.
+         */
+        $values = [];
+
+        foreach (ActionRunner::valuesOn($this->registry->get($moduleKey)?->subject?->model) as $field => $set) {
+            if (! in_array($field, $fields, true)) {
+                continue;
+            }
+
+            $values[$field] = array_map(
+                fn (string $value, string $label) => ['value' => $value, 'label' => $label],
+                array_keys($set),
+                array_values($set),
+            );
+        }
+
         return response()->json(['data' => [
             'trigger' => $key,
             'fields' => $fields,
+            'values' => $values,
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.

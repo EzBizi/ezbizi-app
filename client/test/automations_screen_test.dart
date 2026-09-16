@@ -590,6 +590,54 @@ void main() {
     });
   });
 
+  /// A field with a fixed set is chosen, not typed.
+  ///
+  /// The field picker fixed half of "people cannot guess them around" and left
+  /// the other half: knowing the field is `source` tells nobody that the value
+  /// they must type is `website_chat`. Asserting the WIRE value rather than the
+  /// label, because the label is for the reader and the engine compares the
+  /// value - a dropdown that showed the right words and sent the wrong string
+  /// would look completely correct on screen.
+  testWidgets('a value with a fixed set is a dropdown, and sends the wire value', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(
+      onCreate: (body) => sent = body,
+      triggerFields: const ['source', 'contact_name'],
+      triggerFieldValues: const {
+        'source': [
+          {'value': 'local_services', 'label': 'Google Local Services'},
+          {'value': 'website_chat', 'label': 'Website live chat'},
+        ],
+      },
+    ));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Chat replies');
+    await _tap(tester, find.text('Created'));
+
+    await _tap(tester, find.text('Add a condition'));
+    await _type(tester, 'Field', 'source');
+
+    // The entries do not exist until the menu is open, which is also the point:
+    // before this change the same spot was a TextField and nothing listed the
+    // values at all.
+    await _tap(tester, find.byType(DropdownMenu<String>).last);
+    await _tap(tester, find.text('Website live chat  (website_chat)').last);
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a notification'));
+    await _type(tester, 'Message', 'A chat came in');
+    await _tap(tester, find.text('Create automation'));
+
+    expect(
+      ((sent!['conditions'] as Map)['all'] as List).single,
+      {'field': 'source', 'op': 'eq', 'value': 'website_chat'},
+    );
+  });
+
   testWidgets('a condition with no field cannot be saved', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
@@ -1473,6 +1521,7 @@ MockClientHandler _handler({
   // Null leaves the endpoint unanswered, which is what every test written
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
+  Map<String, List<Map<String, String>>>? triggerFieldValues,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
   // does not say produces an administrator — which is what every one of these
@@ -1504,6 +1553,7 @@ MockClientHandler _handler({
         'data': {
           'trigger': request.url.queryParameters['trigger'],
           'fields': triggerFields,
+          'values': triggerFieldValues ?? const {},
           'sampled': triggerFields.isEmpty ? 0 : 1,
         },
       });
