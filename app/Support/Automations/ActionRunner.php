@@ -1320,8 +1320,16 @@ class ActionRunner
             // The NUMBER a customer sees is EzBizi's, not this business's, so the
             // line does not say "your WhatsApp". Said plainly because a rule
             // author reading it needs to know which number replies come back to.
-            'detail' => "Sent the \"{$template}\" template to {$row->counterparty} from EzBizi's "
-                ."WhatsApp number (status: {$row->status}).",
+            //
+            // AND IT STOPS AT THE HANDOFF. `$row->status` is `sent` here and the
+            // webhook may flip it to `failed` seconds later — Meta returns 200
+            // and a wamid for a message it will refuse, measured at dba98c6c. A
+            // run-log line is written once and never revisited, so printing a
+            // status that expires would leave a green line above a message that
+            // never arrived. The row keeps the outcome; this sentence does not
+            // claim one.
+            'detail' => "Handed the \"{$template}\" template to WhatsApp for {$row->counterparty}, "
+                ."from EzBizi's number. WhatsApp accepts or refuses it afterwards.",
         ];
     }
 

@@ -5,6 +5,8 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use App\Models\SavedReport;
 use App\Models\Lead;
@@ -1318,6 +1320,67 @@ class AutomationEngineTest extends TestCase
         $this->assertTrue($sent['ok'], $sent['detail']);
         $this->assertStringContainsString('Weekly numbers', $sent['detail']);
         $this->assertStringContainsString('does not deliver', $sent['detail']);
+    }
+
+    /**
+     * The WhatsApp arm had no test at all, which is how its run-log line came to
+     * claim an outcome it cannot know.
+     *
+     * Meta returns HTTP 200 and a wamid for a message it will then refuse — the
+     * webhook flips the row to `failed` with a reason seconds later (measured by
+     * the Meta session, dba98c6c). A run-log line is written once and never
+     * revisited, so `status: sent` would sit there green forever above a message
+     * that never arrived. The sentence stops at the handoff.
+     *
+     * The other half is the number: a template is approved per WABA and a
+     * business can hold numbers on more than one, so the arm must send from the
+     * one the RULE names and not from whichever row comes back first.
+     */
+    public function test_a_whatsapp_step_names_the_template_and_claims_no_outcome(): void
+    {
+        $this->inTenant(fn () => DB::table('whatsapp_numbers')->insert([
+            'id'              => (string) Str::uuid(),
+            'organization_id' => $this->org['organization']->id,
+            'phone_number_id' => '1254820167721699',
+            'waba_id'         => '1052799931072265',
+            'display_number'  => '+18778536971',
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]));
+
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+
+        Http::fake(fn () => Http::response(['messages' => [['id' => 'wamid.ACCEPTED']]]));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'whatsapp.send',
+            'template' => 'job_booked',
+            'to_field' => '+1 305 724 2199',
+            // THE NUMBER A PERSON PICKED, which is the display number. The
+            // provider id is Meta's and appears only in the URL below.
+            'from'     => '+18778536971',
+        ], $event, null, false, null));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+        $this->assertStringContainsString('job_booked', $result['detail']);
+
+        // THE POINT. Any of these words would be a claim about a message Meta
+        // has not finished deciding about.
+        foreach (['delivered', 'arrived', 'received', 'status: sent'] as $word) {
+            $this->assertStringNotContainsStringIgnoringCase($word, $result['detail']);
+        }
+
+        // Sent to the PROVIDER ID behind the number the rule named: the display
+        // number is what a person chooses and must never reach Meta's URL.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699'));
     }
 
     /**
