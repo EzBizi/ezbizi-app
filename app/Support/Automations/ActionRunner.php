@@ -1330,6 +1330,15 @@ class ActionRunner
             // claim one.
             'detail' => "Handed the \"{$template}\" template to WhatsApp for {$row->counterparty}, "
                 ."from EzBizi's number. WhatsApp accepts or refuses it afterwards.",
+            // THE LINK, so a reader can show the outcome without this row ever
+            // being rewritten: the sentence above is a true-forever snapshot of
+            // the handoff, and `whatsapp_messages` carries the live status the
+            // webhook maintains. Stored only for WhatsApp, because it is the
+            // only send whose outcome changes AFTER the action returns — EzBizi
+            // ingests no SES events, so an email arm has nothing to point at.
+            // Cheap now and unrecoverable later: a run recorded without it can
+            // never be joined to its message.
+            'message_id' => $row->id,
         ];
     }
 

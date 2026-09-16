@@ -1378,6 +1378,13 @@ class AutomationEngineTest extends TestCase
             $this->assertStringNotContainsStringIgnoringCase($word, $result['detail']);
         }
 
+        // THE LINK TO THE LIVE OUTCOME. `action_results` is cast to array and
+        // written wholesale, so this persists with no migration — and it is the
+        // only way a run recorded tonight can ever be joined to the status the
+        // webhook maintains. Recorded without it, that join is unrecoverable.
+        $this->assertNotNull($result['message_id']);
+        $this->assertDatabaseHas('whatsapp_messages', ['id' => $result['message_id']]);
+
         // Sent to the PROVIDER ID behind the number the rule named: the display
         // number is what a person chooses and must never reach Meta's URL.
         Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699'));
