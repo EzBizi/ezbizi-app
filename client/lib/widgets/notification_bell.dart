@@ -35,9 +35,20 @@ import 'tag.dart';
 /// likely to be wrong and the moment a person is most likely to look at it, and
 /// `resumed` is the only event that catches it.
 class NotificationBell extends StatefulWidget {
-  const NotificationBell({super.key, required this.api});
+  const NotificationBell({super.key, required this.api, this.onOpenModule});
 
   final ApiClient api;
+
+  /// Where to send somebody who taps a notification.
+  ///
+  /// A MODULE KEY, because that is the unit the shell can select — no module
+  /// today accepts a record to open within it, so this goes as far as the shell
+  /// goes. The server derives the key from the owning module's own `emits`
+  /// declaration and sends null when a notification is about nothing openable.
+  ///
+  /// Optional so the bell keeps working in a test or any shell that has nowhere
+  /// to send anybody. Null here means the old behaviour: tapping marks read.
+  final void Function(String moduleKey)? onOpenModule;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -336,6 +347,36 @@ class _NotificationBellState extends State<NotificationBell>
 
                         await _refresh();
                         if (!context.mounted) return;
+
+                        /*
+                         * GO TO WHAT IT IS ABOUT, if there is anywhere to go.
+                         *
+                         * Read from the REFRESHED list rather than from the row
+                         * this closure captured: the refresh above re-reads the
+                         * governed feed, and a notification that has since
+                         * stopped being visible must not still navigate on its
+                         * stale copy.
+                         *
+                         * Until today this did nothing but mark read, which for
+                         * "New Live Chat Lead" meant being told about a lead and
+                         * given no way to open it.
+                         */
+                        final current = _items
+                            .cast<Map<String, dynamic>?>()
+                            .firstWhere(
+                              (item) => item?['id'] == n['id'],
+                              orElse: () => null,
+                            );
+
+                        final module =
+                            (current?['meta'] as Map<String, dynamic>?)?['module']
+                                as String?;
+
+                        if (module != null && widget.onOpenModule != null) {
+                          Navigator.of(context).pop();
+                          widget.onOpenModule!(module);
+                          return;
+                        }
 
                         // repaint, not setState: setState rebuilds the
                         // bell behind the panel, and the panel's own

@@ -7,10 +7,12 @@ use App\Models\Automation;
 use App\Models\AutomationEvent;
 use App\Models\AutomationVersion;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\Notification;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -313,5 +315,51 @@ class NotificationsTest extends TestCase
         ));
 
         $this->assertSame(1, $sent, 'the override belongs to one franchise, not the organization');
+    }
+
+    // ── Somewhere to go when you click one ────────────────────────
+    //
+    // Until 2026-09-16 every notification carried `meta.route => null`, on
+    // every notification ever sent, and nothing in the client read it. Clicking
+    // one marked it read and left you where you were.
+
+    public function test_a_notification_about_a_record_names_the_module_that_owns_it(): void
+    {
+        $this->ruleThatNotifies();
+        $this->makeJob();
+        $this->drain();
+
+        $module = $this->as($this->org['admin'])->getJson('/api/v1/notifications')
+            ->assertOk()->json('data.0.meta.module');
+
+        // Derived from the owning module's own `emits` declaration rather than
+        // a table in the controller. A Job is emitted by exactly one module, so
+        // this is that module's key and not a guess.
+        $this->assertNotNull($module, 'a job notification has somewhere to go');
+        $this->assertSame(
+            app(ModuleRegistry::class)->moduleKeyOfModel(Job::class),
+            $module,
+        );
+    }
+
+    public function test_a_notification_about_nothing_names_no_module(): void
+    {
+        // The control, and a permanent case rather than a gap: a notification
+        // with no subject has nowhere more specific to go than where you
+        // already are. Without this, returning a module for EVERYTHING would
+        // pass the test above just as well.
+        $this->inTenant(fn () => app(NotificationDispatcher::class)->dispatch(
+            title: 'Your trial ends tomorrow',
+            onlyTo: $this->org['admin'],
+            source: 'system',
+        ));
+
+        $notifications = $this->as($this->org['admin'])->getJson('/api/v1/notifications')
+            ->assertOk()->json('data');
+
+        $trial = collect($notifications)->firstWhere('title', 'Your trial ends tomorrow');
+
+        $this->assertNotNull($trial);
+        $this->assertNull($trial['meta']['module']);
     }
 }

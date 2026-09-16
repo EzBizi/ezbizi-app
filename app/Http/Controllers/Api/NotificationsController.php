@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\DeviceToken;
 use App\Models\Notification;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\PushSender;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +28,8 @@ use Illuminate\Validation\Rule;
  */
 class NotificationsController extends Controller
 {
+    public function __construct(private readonly ModuleRegistry $modules) {}
+
     /** GET /api/v1/notifications */
     public function index(Request $request): JsonResponse
     {
@@ -137,7 +140,28 @@ class NotificationsController extends Controller
         return response()->json(['data' => ['registered' => true]]);
     }
 
-    /** No module currently gives a notification a route of its own. */
+    /**
+     * One notification, with somewhere to go.
+     *
+     * ── `meta.module`, replacing a `meta.route` that was always null ──
+     *
+     * The old key promised a path and delivered nothing on every notification
+     * ever sent, and nothing in the client read it. Clicking a notification
+     * marked it read and left you exactly where you were — which for "New Live
+     * Chat Lead" means being told about a lead and given no way to open it.
+     *
+     * A MODULE KEY rather than a path, because that is the unit the client can
+     * actually act on: the shell selects a module by id, and no module today
+     * accepts a record to open within it. Deep-linking to the individual lead
+     * is a per-module change owned by each of those modules, not something this
+     * controller can invent — so this goes as far as the shell can go and no
+     * further, rather than shipping a path nobody honours. The record's id is
+     * already in `subject.id` for whoever builds that next.
+     *
+     * Null is an ordinary answer, not a gap: a notification about an
+     * Organization, or one with no subject, has nowhere more specific to go
+     * than where you already are.
+     */
     private function present(Notification $notification): array
     {
         return [
@@ -149,7 +173,11 @@ class NotificationsController extends Controller
                 'type' => $notification->subject_type ? class_basename($notification->subject_type) : null,
                 'id' => $notification->subject_id,
             ],
-            'meta' => ['route' => null],
+            'meta' => [
+                'module' => $notification->subject_type === null
+                    ? null
+                    : $this->modules->moduleKeyOfModel($notification->subject_type),
+            ],
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
