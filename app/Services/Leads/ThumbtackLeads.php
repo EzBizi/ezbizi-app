@@ -53,6 +53,18 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
+     * No, and this one is a choice rather than a filing.
+     *
+     * Nothing EzBizi has told Thumbtack forbids it; nobody has asked for it
+     * either. A channel arrives false and gets argued up, because the failure
+     * that matters is a channel inheriting an answer nobody chose.
+     */
+    public function allowsUnattendedReply(): bool
+    {
+        return false;
+    }
+
+    /**
      * A negotiation IS a message thread, so unlike Google there is no
      * call/message split to respect: what stops a reply is the account being
      * gone, or there being nobody at the other end.

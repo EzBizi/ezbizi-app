@@ -42,6 +42,23 @@ final class WebsiteChatReplies implements LeadReplyChannel
         return Lead::SOURCE_WEBSITE_CHAT;
     }
 
+    /**
+     * Yes. Nothing leaves EzBizi's own database and no third party is told
+     * anything, which is why this is the one channel a rule may send on.
+     *
+     * The product already sends unattended here - `WebsiteEnquiries::autoReply`
+     * greets a visitor before a person arrives. Anything sending without a
+     * person must mark the row `is_automatic`, or it reads as somebody having
+     * answered and takes the enquiry out of the Unreplied list.
+     *
+     * Added by Leads with the interface, 2026-09-16. This file is Web
+     * Management's; the answer is theirs to change.
+     */
+    public function allowsUnattendedReply(): bool
+    {
+        return true;
+    }
+
     public function canReply(Lead $lead): bool
     {
         return $this->chatFor($lead) !== null;

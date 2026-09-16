@@ -392,6 +392,16 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
         return Lead::SOURCE_LOCAL_SERVICES;
     }
 
+    /**
+     * No. EzBizi has told Google in writing that its only write is a reply a
+     * member of staff typed, and both submissions saying so are open. See
+     * LeadReplyChannel::allowsUnattendedReply().
+     */
+    public function allowsUnattendedReply(): bool
+    {
+        return false;
+    }
+
     /** Google accepts replies for text enquiries only, while the account is connected. */
     public function canReply(Lead $lead): bool
     {

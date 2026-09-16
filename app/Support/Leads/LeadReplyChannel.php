@@ -15,8 +15,10 @@ use App\Models\LeadConversation;
  * `lead-reply-channels` in its own provider - see [LeadReplies] - so the
  * controller never learns a source by name.
  *
- * A reply is a person's sentence to a stranger in the customer's name. Every
- * implementation sends only because somebody pressed Send, never from a rule.
+ * A reply is a person's sentence to a stranger in the customer's name. Which
+ * of these may be sent WITHOUT somebody pressing Send is
+ * `allowsUnattendedReply()`, and that answer is not a matter of taste - see
+ * the method.
  */
 interface LeadReplyChannel
 {
@@ -27,7 +29,50 @@ interface LeadReplyChannel
     public function canReply(Lead $lead): bool;
 
     /**
+     * May software send on this channel with nobody pressing Send?
+     *
+     * ── This is a compliance answer, not a preference ────────────
+     *
+     * Until 2026-09-16 this file said only "never from a rule", and Automations
+     * read that as somebody's judgement about unattended replies - reasonably,
+     * because the paragraph carried the rule and not the stakes. It carries
+     * both now.
+     *
+     * For Local Services the reason is a filing. EzBizi told
+     * `ads-api-compliance` on 2026-09-15, and Google's OAuth Trust and Safety
+     * team on 2026-09-16, in these words:
+     *
+     *     "The only write is appendLeadConversation: one reply a member of
+     *      staff types and sends to a text enquiry."
+     *
+     * Both submissions are open, and the OAuth one has already bounced twice on
+     * discrepancies between what was filed and what the product does. A rule
+     * that reaches a Google lead makes that sentence false while a reviewer is
+     * reading it. So the answer there is no, and it stays no until somebody
+     * re-files - at which point the quoted sentence above is what has to change
+     * first.
+     *
+     * Thumbtack answers no as well, and that one IS a choice: no filing forbids
+     * it, and nobody has argued for it. A new channel should arrive false and
+     * be argued up.
+     *
+     * Website chat answers yes. Nothing leaves EzBizi's own database, no third
+     * party is told anything, and the product already sends an unattended
+     * greeting there.
+     *
+     * Deliberately REQUIRED rather than defaulted. A default false would be
+     * safer to forget, and forgetting is the failure: a channel that never
+     * thought about this would silently inherit an answer nobody chose. Adding
+     * it reds every implementor, which is the point.
+     */
+    public function allowsUnattendedReply(): bool;
+
+    /**
      * Send, and return the row the thread shows as ours.
+     *
+     * Callers that send WITHOUT a person - a rule, a greeting - must also mark
+     * the row `is_automatic` so it does not read as somebody answering. See
+     * LeadThread::refresh().
      *
      * @throws \RuntimeException with a sentence for the screen when the
      *                           provider refuses; never retried by the caller
