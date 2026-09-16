@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -132,10 +134,23 @@ class _LeadThreadState extends State<LeadThread> {
     'not_a_lead': 'Not a lead',
   };
 
+  /// How often an OPEN conversation re-reads itself.
+  ///
+  /// Faster than the list beside it, because this is somebody mid-conversation
+  /// with a member of the public: ten seconds is the gap between them sending
+  /// a message and it appearing. The list can afford twenty; a person waiting
+  /// for an answer cannot.
+  ///
+  /// One row, from our own database. No external quota is spent.
+  static const _pollEvery = Duration(seconds: 10);
+
+  Timer? _poll;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _poll = Timer.periodic(_pollEvery, (_) => _load(quiet: true));
     // After the first frame: the parent answers by rebuilding its list, and
     // a setState during this widget's own build is an exception, not a mark.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -171,6 +186,7 @@ class _LeadThreadState extends State<LeadThread> {
 
   @override
   void dispose() {
+    _poll?.cancel();
     _note.dispose();
     _compose.dispose();
     _player.stop();
@@ -243,14 +259,28 @@ class _LeadThreadState extends State<LeadThread> {
     await widget.onReplied?.call();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  /// Re-read this conversation.
+  ///
+  /// `quiet` is what makes the poll usable: without it every tick would set
+  /// `_loading` and replace the thread with a spinner, which is a worse
+  /// experience than the staleness it is fixing. A quiet pass changes the
+  /// messages and nothing else - the compose box, the note editor and the
+  /// recording player are all untouched, so a half-typed reply survives it.
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/leads/${widget.lead['id']}');
     if (!mounted) return;
+
+    // A quiet pass that fails says nothing. It will try again in ten seconds,
+    // and replacing a readable conversation with an error because one poll
+    // lost the network is the wrong trade.
+    if (quiet && !response.ok) return;
 
     setState(() {
       _loading = false;

@@ -22,6 +22,7 @@ import 'package:http/testing.dart';
 /// are the ones people most want to hear. The fetching state is not decoration.
 void main() {
   _wordTests();
+  _autoRefreshTests();
 
   /// The call row carries the same play bar Voicemail and Records use:
   /// fetch on the first press through the lead's own endpoint, then play,
@@ -455,5 +456,213 @@ void _wordTests() {
     expect(sourceWord('local_services'), 'Google Ads');
     expect(sourceWord('website_chat'), 'Website chat');
     expect(sourceWord('website_form'), 'Website form');
+  });
+}
+
+
+/// AN OPEN CONVERSATION RE-READS ITSELF.
+///
+/// Jose, 2026-09-16, after a live chat went unanswered for half an hour: "when
+/// a new message arrives, it does not show it, unless you leave the tab and
+/// come back in." The dispatcher was looking straight at the thread.
+///
+/// Its own client rather than the shared `_pump` below, because this needs the
+/// server's answer to CHANGE between two reads and that helper returns a fixed
+/// one. Bending the shared fixture to carry a second state would have made
+/// every other test in this file depend on it.
+void _autoRefreshTests() {
+  testWidgets('a new message appears in an open thread on its own', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // What the server holds. The test moves it; nobody touches the screen.
+    final conversations = <Map<String, dynamic>>[
+      {
+        'id': 'c-in',
+        'channel': 'MESSAGE',
+        'from': 'CONSUMER',
+        'occurred_at': '2026-09-16T09:00:00Z',
+        'duration_ms': null,
+        'text': 'Is Saturday ok?',
+        'attachments': <String>[],
+        'has_recording': false,
+      },
+    ];
+
+    var reads = 0;
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/leads/lead-1')) {
+          reads++;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'id': 'lead-1',
+                'can_reply': true,
+                'cannot_reply_because': null,
+                'can_suggest': false,
+                'conversations': conversations,
+                'customer_matches': <Map<String, dynamic>>[],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"data":{}}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: LeadThread(
+            api: api,
+            lead: const {
+              'id': 'lead-1',
+              'contact_name': 'Marcus Bell',
+              'source': 'website_chat',
+              'status': 'new',
+            },
+            onStatusChanged: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Is Saturday ok?'), findsOneWidget);
+    expect(find.text('Are you still there?'), findsNothing);
+    expect(reads, 1);
+
+    // The customer sends another message.
+    conversations.add({
+      'id': 'c-in-2',
+      'channel': 'MESSAGE',
+      'from': 'CONSUMER',
+      'occurred_at': '2026-09-16T09:05:00Z',
+      'duration_ms': null,
+      'text': 'Are you still there?',
+      'attachments': <String>[],
+      'has_recording': false,
+    });
+
+    // The control: three seconds in, nothing has been asked for. Without it
+    // this passes on a widget that re-reads on every frame.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(reads, 1);
+    expect(find.text('Are you still there?'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 8));
+    await tester.pump();
+
+    expect(reads, greaterThan(1));
+    expect(
+      find.text('Are you still there?'),
+      findsOneWidget,
+      reason: 'somebody is waiting in a live chat and the dispatcher is '
+          'looking at this exact screen',
+    );
+  });
+
+  /// The quiet pass must not blank the conversation it is refreshing.
+  ///
+  /// `_load()` sets `_loading` and draws a spinner, which is right when you
+  /// open a thread and wrong ten seconds later: the messages a person is
+  /// reading would flicker away four times a minute. Asserted by holding the
+  /// second read in flight and looking at the screen while it hangs.
+  testWidgets('the refresh never replaces the thread with a spinner', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final gate = Completer<void>();
+    var reads = 0;
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/leads/lead-1')) {
+          reads++;
+          // The SECOND read hangs, which is when a spinner would show.
+          if (reads > 1) await gate.future;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'id': 'lead-1',
+                'can_reply': true,
+                'can_suggest': false,
+                'conversations': [
+                  {
+                    'id': 'c-in',
+                    'channel': 'MESSAGE',
+                    'from': 'CONSUMER',
+                    'occurred_at': '2026-09-16T09:00:00Z',
+                    'duration_ms': null,
+                    'text': 'Is Saturday ok?',
+                    'attachments': <String>[],
+                    'has_recording': false,
+                  },
+                ],
+                'customer_matches': <Map<String, dynamic>>[],
+              },
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"data":{}}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: LeadThread(
+            api: api,
+            lead: const {
+              'id': 'lead-1',
+              'contact_name': 'Marcus Bell',
+              'source': 'website_chat',
+              'status': 'new',
+            },
+            onStatusChanged: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Is Saturday ok?'), findsOneWidget);
+
+    // Tick into the refresh and hold it there, mid-flight.
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    expect(reads, 2, reason: 'the refresh should be in flight');
+
+    expect(
+      find.text('Is Saturday ok?'),
+      findsOneWidget,
+      reason: 'the conversation must stay on screen while it refreshes',
+    );
+
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Is Saturday ok?'), findsOneWidget);
   });
 }

@@ -142,14 +142,35 @@ class _LeadsScreenState extends State<LeadsScreen> {
     'not_a_lead': 'Not a lead',
   };
 
+  /// How often the list re-reads itself while somebody is looking at it.
+  ///
+  /// Jose, 2026-09-16: a website chat arrived while a dispatcher was sitting on
+  /// this screen, and it did not appear until they left the tab and came back.
+  /// A person waiting in a live chat had nobody answer for half an hour.
+  ///
+  /// Twenty seconds rather than a websocket because this list is read from
+  /// OUR database, not from Google or Thumbtack: a poll costs one indexed
+  /// query and no external quota, which is the whole reason it is an
+  /// acceptable answer here and would not be on the Ads report next door.
+  ///
+  /// It is safe to fire mid-use. `_load()` only shows a spinner when the list
+  /// is EMPTY, the open thread is keyed on the lead id so its State and a
+  /// half-typed reply survive the rebuild, and `_request` discards any answer
+  /// that arrives out of order.
+  static const _pollEvery = Duration(seconds: 20);
+
+  Timer? _poll;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
 
   @override
   void dispose() {
+    _poll?.cancel();
     _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();

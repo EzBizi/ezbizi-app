@@ -40,6 +40,113 @@ void main() {
     expect(_lastListQuery['search'], '609');
   });
 
+  /// THE LIST REFRESHES ITSELF.
+  ///
+  /// Jose, 2026-09-16: "we missed 1 live chat 30 mins ago cause the dispatcher
+  /// was on the chat page, but it never auto updated by itself to show the new
+  /// message had arrived." A person waiting in a live chat had nobody answer
+  /// for half an hour, and the enquiry was on the server the whole time.
+  ///
+  /// The control is the first pump. Without it this passes on a screen that
+  /// re-reads on EVERY frame, which would be a different defect wearing the
+  /// same green.
+  testWidgets('a new enquiry appears with nobody touching the screen', (
+    tester,
+  ) async {
+    final leads = [_lead('lead-1', 'Marcus Bell')];
+
+    await _pump(tester, leads: leads, connections: _connected);
+
+    // Marcus is drawn twice - the row and the thread header beside it - which
+    // is why the assertions below are about Dana.
+    expect(find.text('Marcus Bell'), findsWidgets);
+    expect(find.text('Dana Whitfield'), findsNothing);
+
+    // A website chat arrives on the server. Nobody clicks anything.
+    leads.insert(0, _lead('lead-2', 'Dana Whitfield'));
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(
+      find.text('Dana Whitfield'),
+      findsNothing,
+      reason: 'five seconds in, nothing should have been asked for yet - '
+          'without this the test cannot tell a poll from a rebuild',
+    );
+
+    await tester.pump(const Duration(seconds: 16));
+    await tester.pump();
+
+    expect(
+      find.text('Dana Whitfield'),
+      findsWidgets,
+      reason: 'the enquiry was on the server and the dispatcher was looking '
+          'straight at the screen',
+    );
+  });
+
+  /// AND IT MUST NOT MOVE THE PANE UNDER SOMEBODY.
+  ///
+  /// `_selected` falls back to the first row when nobody has picked one, so a
+  /// new enquiry arriving at the top opens itself - which is right for a
+  /// dispatcher watching for the next chat. Once they HAVE picked a row, the
+  /// refresh must leave it alone: a thread that swaps itself out every twenty
+  /// seconds while somebody is reading it would be a worse bug than the one
+  /// this fixes, and it would look like the feature working.
+  testWidgets('a refresh leaves the open thread where it was', (tester) async {
+    final leads = [
+      _lead('lead-1', 'Marcus Bell'),
+      _lead('lead-2', 'Priya Raman'),
+    ];
+
+    await _pump(tester, leads: leads, connections: _connected);
+
+    await tester.tap(find.text('Priya Raman').first);
+    await tester.pumpAndSettle();
+
+    // Two of her on screen now: the row, and the thread header beside it.
+    expect(find.text('Priya Raman'), findsNWidgets(2));
+
+    leads.insert(0, _lead('lead-3', 'Dana Whitfield'));
+
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+
+    expect(find.text('Dana Whitfield'), findsOneWidget,
+        reason: 'the new enquiry belongs in the LIST');
+    expect(
+      find.text('Priya Raman'),
+      findsNWidgets(2),
+      reason: 'the thread being read must still be the thread on screen',
+    );
+  });
+
+  /// And it is not a Google rule. The source tabs are one list with a filter,
+  /// so the refresh has to survive the filter being set - which is the state a
+  /// dispatcher watching live chat is actually in.
+  testWidgets('the refresh keeps the source filter it was given', (
+    tester,
+  ) async {
+    final leads = [_lead('lead-1', 'Marcus Bell')];
+
+    await _pump(tester, leads: leads, connections: _connected);
+
+    await tester.tap(find.text('Chat'));
+    await tester.pumpAndSettle();
+    expect(_lastListQuery['source'], 'website_chat');
+
+    _lastListQuery = const {};
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+
+    expect(
+      _lastListQuery['source'],
+      'website_chat',
+      reason: 'a refresh that drops the filter would swap the dispatcher off '
+          'the tab they are watching',
+    );
+  });
+
   testWidgets('the divider drags the panes, within limits', (tester) async {
     await _pump(
       tester,
