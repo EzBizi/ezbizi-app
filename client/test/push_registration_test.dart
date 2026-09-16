@@ -25,12 +25,19 @@ void main() {
 
   setUp(() {
     binding = TestWidgetsFlutterBinding.ensureInitialized();
+    // Static listener state outlives a test; without this the second test
+    // of a pair measures the first one's handler.
+    PushRegistration.resetForTest();
   });
 
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     binding.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('com.ezbizi.app/fcm'),
+      null,
+    );
+    binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('com.ezbizi.app/apns'),
       null,
     );
   });
@@ -106,5 +113,109 @@ void main() {
     await PushRegistration.start(_api());
 
     expect(_sent, isEmpty);
+  });
+
+  group('iOS', () {
+    /// Answers the apns channel's getToken, and counts the asks.
+    List<int> mockApns(String? token, {PlatformException? fails}) {
+      final asked = [0];
+
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('com.ezbizi.app/apns'),
+        (call) async {
+          expect(call.method, 'getToken');
+          asked[0]++;
+          if (fails != null) throw fails;
+          return token;
+        },
+      );
+
+      return asked;
+    }
+
+    /// Delivers what the Swift side would push into the handler.
+    Future<void> deliver(String method, Object? arguments) {
+      return binding.defaultBinaryMessenger.handlePlatformMessage(
+        'com.ezbizi.app/apns',
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, arguments),
+        ),
+        (_) {},
+      );
+    }
+
+    test('a token from getToken is registered as ios, never as android', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns('a1b2c3deadbeef');
+
+      await PushRegistration.start(_api());
+
+      expect(_sent.length, 1);
+      expect(_sent.single['path'], contains('/notifications/devices'));
+      expect(_sent.single['body'], contains('"platform":"ios"'));
+      // The whole point of two channels. An android label on an APNs token
+      // would be accepted by the server and could never be delivered to.
+      expect(_sent.single['body'], isNot(contains('android')));
+    });
+
+    test('a null token posts nothing, and the later onToken registers it', () async {
+      // `null` is the ORDINARY answer during launch — registration is
+      // asynchronous. There is no retry loop because there does not need to
+      // be: the handler is attached before the ask, so the token arrives
+      // through onToken whenever it is ready.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns(null);
+
+      await PushRegistration.start(_api());
+      expect(_sent, isEmpty, reason: 'nothing to register yet');
+
+      await deliver('onToken', 'arrived-a-moment-later');
+
+      expect(_sent.length, 1);
+      expect(_sent.single['body'], contains('arrived-a-moment-later'));
+      expect(_sent.single['body'], contains('"platform":"ios"'));
+    });
+
+    test('apns_unavailable is permanent and registers nothing', () async {
+      // A simulator has no APNs token and never will. This is the answer that
+      // must NOT be treated like `null` — retrying it is a loop that can only
+      // fail, and the distinction is why getToken has three answers.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final asked = mockApns(
+        null,
+        fails: PlatformException(code: 'apns_unavailable'),
+      );
+
+      await PushRegistration.start(_api());
+
+      expect(_sent, isEmpty);
+      expect(asked[0], 1, reason: 'asked once and did not loop');
+    });
+
+    test('an empty token is never posted', () async {
+      // A row addressing no device is worse than no row: it reads as
+      // registered and can never deliver.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns('');
+
+      await PushRegistration.start(_api());
+
+      expect(_sent, isEmpty);
+    });
+
+    test('the apns channel is not touched on android', () async {
+      // The control that keeps the two halves apart. Android must never reach
+      // the Apple channel, and the reverse is already covered above.
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final apns = mockApns('should-not-be-asked');
+      binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('com.ezbizi.app/fcm'),
+        (call) async => null,
+      );
+
+      await PushRegistration.start(_api());
+
+      expect(apns[0], 0, reason: 'never asked the Apple channel');
+    });
   });
 }
