@@ -27,6 +27,47 @@ import 'settings_pane.dart';
 /// Connection is the pane that works this task. The others say they are not
 /// built yet rather than inventing a list. Below 600px the rail and the form
 /// are one pane at a time, with Back, the same split Fleet uses.
+/// The Phone settings pane for an id, or null when api and session are not
+/// enough to build it.
+///
+/// ── Why this is a function and not a method ──────────────────────
+///
+/// There are two doors onto these panes now: the settings rail, and the drawer
+/// the call flow chart opens when somebody clicks a box. UI/UX built the
+/// second one against a switch of their own and wrote the debt at the top of
+/// the file: two switches over the same ids drift, and the day a pane is added
+/// here the drawer goes on not knowing about it with nothing failing.
+///
+/// So the list lives once, here, where the rail's own sections already live,
+/// and both doors call it.
+///
+/// ── Null, not a guess ────────────────────────────────────────────
+///
+/// Three panes need more than an api and a session — Connection and Cost read
+/// the tab's loaded scopes, and Messaging is not built. They stay in
+/// [_PhoneSettingsTabState._sectionBody], which is the only place that HAS
+/// those. A caller that gets null shows a door to Settings, which is true of
+/// every pane; a caller handed the wrong pane would think it worked.
+Widget? phoneSettingsPane(
+  String id, {
+  required ApiClient api,
+  required Session session,
+}) => switch (id) {
+  'general' => GeneralPane(api: api, session: session),
+  'call-flow' => CallFlowPane(api: api),
+  'call-flow-chart' => CallFlowChartPane(api: api, session: session),
+  'numbers' => NumbersPane(api: api, session: session),
+  'porting' => PortingPane(api: api, session: session),
+  'flows' => FlowsPane(api: api, session: session),
+  'hours' => HoursPane(api: api, session: session),
+  'ring-groups' => RingGroupsPane(api: api, session: session),
+  'voicemail' => VoicemailPane(api: api, session: session),
+  'blocked' => BlockedNumbersPane(api: api, session: session),
+  'trust' => TrustPane(api: api, session: session),
+  'tags' => TagsPane(api: api, session: session),
+  _ => null,
+};
+
 class PhoneSettingsTab extends StatefulWidget {
   const PhoneSettingsTab({super.key, required this.api, required this.session});
 
@@ -448,34 +489,25 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     // Keyed on the section's id, not its position. The rail is grouped and
     // therefore reorderable, and an index would quietly repoint every section
     // below a move.
-    return switch (_sections[_section].id) {
-      // General leads and Call flow follows it. They answer the same question
-      // — one as the form you fill in, one as the report of what that did —
-      // and the form comes first because that is the order somebody works in.
-      'general' => GeneralPane(api: widget.api, session: widget.session),
-      'call-flow' => CallFlowPane(api: widget.api),
-      'call-flow-chart' => CallFlowChartPane(
-        api: widget.api,
-        session: widget.session,
-      ),
-      'connection' => _connectionBody(),
-      'numbers' => NumbersPane(api: widget.api, session: widget.session),
-      'porting' => PortingPane(api: widget.api, session: widget.session),
-      'flows' => FlowsPane(api: widget.api, session: widget.session),
-      'hours' => HoursPane(api: widget.api, session: widget.session),
-      'ring-groups' => RingGroupsPane(api: widget.api, session: widget.session),
-      'voicemail' => VoicemailPane(api: widget.api, session: widget.session),
-      'blocked' => BlockedNumbersPane(api: widget.api, session: widget.session),
-      'trust' => TrustPane(api: widget.api, session: widget.session),
-      'tags' => TagsPane(api: widget.api, session: widget.session),
-      'cost' => UsagePane(
-        api: widget.api,
-        session: widget.session,
-        scopeType: _places.first.type,
-        scopeId: _places.first.id,
-      ),
-      _ => _unbuilt('Messaging campaigns will be set here.'),
-    };
+    final id = _sections[_section].id;
+
+    // The shared list first — see [phoneSettingsPane]. General leads and Call
+    // flow follows it there, because they answer the same question, one as the
+    // form you fill in and one as the report of what that did, and the form
+    // comes first because that is the order somebody works in.
+    return phoneSettingsPane(id, api: widget.api, session: widget.session) ??
+        // And the three the shared list cannot build, because they need
+        // something only this tab has: the loaded scopes, and a section label.
+        switch (id) {
+          'connection' => _connectionBody(),
+          'cost' => UsagePane(
+            api: widget.api,
+            session: widget.session,
+            scopeType: _places.first.type,
+            scopeId: _places.first.id,
+          ),
+          _ => _unbuilt('Messaging campaigns will be set here.'),
+        };
   }
 
   Widget _unbuilt(String sentence) {

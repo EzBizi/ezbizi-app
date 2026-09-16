@@ -16,39 +16,26 @@
 /// So the drawer opens the same `RingGroupsPane` the settings tab opens. There
 /// is one ring-group editor in this app and this is a second door onto it.
 ///
-/// ── The switch below is a SECOND switch, and that is a debt ────────
+/// ── There is ONE list of panes, and it is not here ────────────────
 ///
-/// `PhoneSettingsTab._sectionBody()` has the first one. Two switches over the
-/// same ids can drift, which is the failure this file exists to avoid, so it
-/// is worth being plain about why this one is here anyway and what makes it
-/// survivable:
+/// This file used to carry a second switch over pane ids, with
+/// `PhoneSettingsTab._sectionBody()` carrying the first. UI/UX wrote that up
+/// as a debt rather than leaving it silent, and they were right to: two
+/// switches over the same ids drift, and the day a pane is added to Settings
+/// the drawer goes on not knowing about it with nothing failing.
 ///
-///   * the duplication is a list of *references to public widgets*, not a
-///     reimplementation — the panes themselves stay single;
-///   * a pane id this file has never heard of **falls through to a sentence
-///     and a door**, never to wrong content. It degrades to "open it in
-///     Settings", which is true of every pane whether or not it is listed.
-///
-/// The fix is one factory both callers use, and that lives in Phone's file.
-/// Raised with them rather than edited in: inserting into that tab's own lists
-/// broke thirteen tests earlier this week, and it is their module.
+/// It is now `phoneSettingsPane()` in `settings_tab.dart`, called by the rail
+/// and by this drawer. A pane that needs more than an api and a session comes
+/// back null and this falls through to a sentence and a door — "open it in
+/// Settings", which is true of every pane whether or not it is listed.
 library;
 
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
-import 'blocked_numbers_pane.dart';
 import 'call_flow_chart.dart';
-import 'flows_pane.dart';
-import 'general_pane.dart';
-import 'hours_pane.dart';
-import 'numbers_pane.dart';
-import 'porting_pane.dart';
-import 'ring_groups_pane.dart';
-import 'tags_pane.dart';
-import 'trust_pane.dart';
-import 'voicemail_pane.dart';
+import 'settings_tab.dart';
 
 /// What a pane id is called on screen.
 ///
@@ -67,37 +54,6 @@ const Map<String, String> phonePaneNames = {
   'trust': 'Trust',
   'tags': 'Call tags',
 };
-
-/// The real pane for an id, or null when this build does not know the id.
-///
-/// Null rather than a guess: a pane rendered for the wrong id is worse than a
-/// door to Settings, because it looks like it worked.
-Widget? phonePaneFor(String id, {required ApiClient api, required Session session}) {
-  switch (id) {
-    case 'general':
-      return GeneralPane(api: api, session: session);
-    case 'numbers':
-      return NumbersPane(api: api, session: session);
-    case 'porting':
-      return PortingPane(api: api, session: session);
-    case 'flows':
-      return FlowsPane(api: api, session: session);
-    case 'hours':
-      return HoursPane(api: api, session: session);
-    case 'ring-groups':
-      return RingGroupsPane(api: api, session: session);
-    case 'voicemail':
-      return VoicemailPane(api: api, session: session);
-    case 'blocked':
-      return BlockedNumbersPane(api: api, session: session);
-    case 'trust':
-      return TrustPane(api: api, session: session);
-    case 'tags':
-      return TagsPane(api: api, session: session);
-    default:
-      return null;
-  }
-}
 
 /// The drawer itself: a header saying which box you opened, a line saying
 /// where you are, and the pane.
@@ -124,7 +80,7 @@ class CallFlowEditDrawer extends StatelessWidget {
     final edit = node.edit;
     final pane = edit == null
         ? null
-        : phonePaneFor(edit.pane, api: api, session: session);
+        : phoneSettingsPane(edit.pane, api: api, session: session);
 
     return SizedBox(
       width: width,
