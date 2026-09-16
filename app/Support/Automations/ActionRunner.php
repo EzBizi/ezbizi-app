@@ -10,6 +10,9 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\Invitation;
+use App\Support\Hr\CannotActOnInvitation;
+use App\Support\Hr\InvitationActions;
 use App\Support\Fleet\CannotAssignVehicle;
 use App\Support\Fleet\VehicleAssignments;
 use App\Support\Access\AdministratorFloor;
@@ -299,6 +302,7 @@ class ActionRunner
         private readonly WhatsAppCloud $whatsapp,
         private readonly AdministratorFloor $administrators,
         private readonly VehicleAssignments $vehicleAssignments,
+        private readonly InvitationActions $invitations,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -346,6 +350,8 @@ class ActionRunner
             'deactivate' => $this->deactivate($subject),
             'assign_to_user' => $this->assignToUser($action, $event, $subject),
             'unassign' => $this->unassign($subject),
+            'resend' => $this->resendInvitation($subject),
+            'revoke' => $this->revokeInvitation($subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -713,6 +719,93 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Send somebody's invitation again.
+     *
+     * ── THE RETURN VALUE IS A LIVE CREDENTIAL AND IS DISCARDED ──────
+     *
+     * `resend()` answers the RAW TOKEN. Only its hash is stored, so that string
+     * exists nowhere else, and anyone holding it can accept the invitation and
+     * become that person.
+     *
+     * Every arm in this file returns a `detail` sentence that lands in
+     * `action_results` on the run row — kept three months, rendered on a screen
+     * anybody with `automations.view` can open. So the natural way to write this
+     * arm is `"Resent: {$url}"`, and that is a live credential in a durable log
+     * with a UI. It is not a hypothetical near-miss; it is where this file's own
+     * convention points. HR shouted about it across the module boundary and they
+     * were right to.
+     *
+     * DO NOT PUT THE RETURN VALUE, OR A URL BUILT FROM IT, IN THE DETAIL LINE.
+     * A rule has no use for it either way — nobody is reading the run log in
+     * order to accept an invitation.
+     *
+     * ── AND THE `$email` PARAMETER IS NOT OFFERED AT ALL ──────
+     *
+     * `resend()` takes an optional address and re-points the invitation, killing
+     * the previous link. A rule that could choose that address by condition is
+     * an account takeover with a friendly interface, and no rule author would
+     * recognise it as one while building it. Not accepted and ignored — absent,
+     * so there is nothing to fill in and nothing to quietly drop.
+     */
+    private function resendInvitation(?Model $subject): array
+    {
+        $type = 'resend';
+
+        if (! $subject instanceof Invitation) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only resend an invitation, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        try {
+            // Deliberately not assigned. See the docblock above.
+            $this->invitations->resend($subject);
+        } catch (CannotActOnInvitation $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.invitation_resent', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Sent the invitation again. The previous link no longer works.',
+        ];
+    }
+
+    /**
+     * Withdraw an invitation that has not been accepted.
+     *
+     * Idempotent on HR's side — already revoked is a no-op rather than a
+     * refusal — which is why a rule on `invitation.revoked` cannot re-fire this
+     * into a loop.
+     */
+    private function revokeInvitation(?Model $subject): array
+    {
+        $type = 'revoke';
+
+        if (! $subject instanceof Invitation) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only withdraw an invitation, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        try {
+            $this->invitations->revoke($subject);
+        } catch (CannotActOnInvitation $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.invitation_revoked', $subject);
+
+        return ['type' => $type, 'ok' => true, 'detail' => 'Withdrew the invitation.'];
     }
 
     /**

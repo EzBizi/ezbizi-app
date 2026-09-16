@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
 use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
@@ -954,6 +955,65 @@ class AutomationEngineTest extends TestCase
         $again = $this->inTenant(fn () => $runner->run(['type' => 'unassign'], $event, $vehicle->fresh()));
         $this->assertTrue($again['ok']);
         $this->assertStringContainsString('Nobody held', $again['detail']);
+    }
+
+    /**
+     * A resend never writes the invitation token into the run log.
+     *
+     * THIS IS THE ASSERTION THE FILE'S OWN CONVENTION ARGUES AGAINST. Every arm
+     * returns a `detail` sentence that lands in `action_results` on the run row —
+     * kept three months, rendered on a screen. The natural sentence for this arm
+     * is "Resent: {url}", and `resend()` answers the RAW TOKEN, which exists
+     * nowhere else because only its hash is stored. Anyone holding it can accept
+     * the invitation and become that person.
+     *
+     * So this asserts the token is absent from the detail rather than asserting
+     * the resend worked. HR named the hazard from the other side of the module
+     * boundary; nothing on this side would have failed if the token were there.
+     */
+    public function test_resending_an_invitation_keeps_the_token_out_of_the_run_log(): void
+    {
+        // Built through HR's own endpoint: `invitations` has NOT NULL columns
+        // the controller fills in and `token_hash` is guarded, correctly - it is
+        // a credential and nothing should mass-assign it. A hand-made row here
+        // would be an invitation the application cannot create.
+        $this->as()->postJson('/api/v1/hr/invitations', [
+            'email' => 'newcomer@alpha.test',
+            'role_id' => $this->org['admin']->role_id,
+            'scope_type' => 'franchise',
+            'scope_id' => $this->org['franchise']->id,
+        ])->assertCreated();
+
+        $invitation = $this->inTenant(fn () => Invitation::where('email', 'newcomer@alpha.test')->firstOrFail());
+        $before = $invitation->token_hash;
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'invitation.sent',
+            'payload' => [],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)
+            ->run(['type' => 'resend'], $event, $invitation));
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+
+        // The control: the token the resend just minted is readable here, so a
+        // detail line carrying it WOULD be caught. Without this the assertion
+        // below passes against an arm that failed before minting anything.
+        $fresh = $this->inTenant(fn () => $invitation->fresh());
+        $this->assertNotSame($before, $fresh->token_hash,
+            'the resend did not mint a new token, so this proves nothing about logging one');
+
+        foreach (['detail', 'type'] as $key) {
+            $this->assertStringNotContainsString('token', strtolower((string) ($result[$key] ?? '')),
+                'the run log must not carry the credential, nor name it');
+        }
+
+        $this->assertStringNotContainsString('http', strtolower($result['detail']),
+            'a URL built from the token is the same credential in a different coat');
     }
 
     /**

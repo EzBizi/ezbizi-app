@@ -98,6 +98,13 @@ class AutomationsController extends Controller
         'assign_to_user',
         'unassign',
 
+        // HR's, through App\Support\Hr\InvitationActions so the screen and the
+        // rule enforce the same state rules. `onboarding.start` is NOT here yet:
+        // it needs a contract named by the rule, and the list it picks from is
+        // still on HR's branch.
+        'resend',
+        'revoke',
+
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.
