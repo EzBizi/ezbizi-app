@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0222',
+      date: '16 Sep 2026',
+      items: [
+        'Clocking in no longer leaves the desktop window without its title bar. The lock screen took the bar away and gave it back a moment too early, so the window came out of the lock screen with nothing to drag, minimize or close until you clocked out and in again.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0221',
       date: '15 Sep 2026',
       items: [
