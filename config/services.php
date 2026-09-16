@@ -427,6 +427,23 @@ return [
         // feature is OFF rather than broken while it is unset — see
         // PlatformSms::configured().
         'platform_sms_from' => env('TWILIO_PLATFORM_SMS_FROM'),
+
+        // WHICH ACCOUNT THAT NUMBER LIVES ON, when it is not the parent.
+        //
+        // +18777373929 moved to the EzBizi SUBACCOUNT on 2026-09-16 at Jose's
+        // word, because the number is EzBizi-the-business's and the parent is
+        // the platform. A Twilio number can only be a `From` for the account
+        // that holds it, so a send addressed to the parent would be refused
+        // with 21606 — and 21606 reads like a bad number rather than a number
+        // on the wrong account, which is an hour nobody gets back.
+        //
+        // Authentication is unaffected: the parent's SID and token still sign
+        // the request, and Twilio lets a parent act on its subaccounts. This
+        // is the account in the URL, not the credentials.
+        //
+        // Empty falls back to the parent, which is right for an installation
+        // whose platform number was never moved.
+        'platform_sms_account_sid' => env('TWILIO_PLATFORM_SMS_ACCOUNT_SID'),
     ],
 
 ];

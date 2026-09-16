@@ -72,7 +72,7 @@ class PlatformSms
                 ->withBasicAuth($this->sid(), $this->token())
                 ->timeout(15)
                 ->post(
-                    "https://api.twilio.com/2010-04-01/Accounts/{$this->sid()}/Messages.json",
+                    "https://api.twilio.com/2010-04-01/Accounts/{$this->sendingSid()}/Messages.json",
                     ['To' => $to, 'From' => $this->from(), 'Body' => $body],
                 );
 
@@ -94,6 +94,25 @@ class PlatformSms
         }
 
         return false;
+    }
+
+    /**
+     * The account the NUMBER is on, which is not always the one we sign as.
+     *
+     * EzBizi's own toll-free moved off the parent and onto the EzBizi
+     * subaccount on 2026-09-16, because it belongs to EzBizi-the-business and
+     * the parent is the platform. Twilio scopes a `From` to the account that
+     * holds the number, so the URL has to name that account — while the basic
+     * auth stays the parent's, which Twilio accepts for its own subaccounts.
+     *
+     * Falls back to the signing account, so an installation that never moved
+     * its number keeps working with nothing set.
+     */
+    private function sendingSid(): string
+    {
+        $value = trim((string) config('services.twilio.platform_sms_account_sid'));
+
+        return $value === '' ? (string) $this->sid() : $value;
     }
 
     private function sid(): ?string
