@@ -275,12 +275,26 @@ crosses.
 
 It crossed, and the evidence now exists in Google's own logs: 2026-09-16
 produced **2,033 refusals between 09:25 and 12:35**, unbroken, ~690 an hour
-against a call rate of ~10.2 a minute. So the cadence went back to the half hour
-the same day. Jose: *"Reverse this so we have some leway, we already went over
+against a call rate of ~10.2 a minute at a fleet of **51** accounts. So the
+cadence went back to the half hour the same day. Jose: *"Reverse this so we have some leway, we already went over
 the threshhold so we are good with stepping back on it now."* The ~1,150/day it
 returns is the headroom the Ads report and a person looking at it come out of —
 at 107% every operation the day had was already promised to the sync, which is
 how an afternoon was lost to filming a demo video for Google.
+
+**THE FLEET ON THIS PAGE NO LONGER EXISTS, 2026-09-16.** Every figure above is
+about a fleet of roughly fifty to sixty connected Google Ads accounts. That
+afternoon Jose disconnected **49** of them between 13:11 and 14:02 while testing
+the OAuth consent flow for Google's demo video, leaving **3** rows (two real and
+one demo placeholder). So the quota arithmetic here is history rather than a
+description of today, and it will be history again the moment those accounts are
+reconnected.
+
+Two numbers measured either side of that hour looked like a contradiction and
+were not: 51 before the first disconnect, 3 after the last, and 51 - 49 = 2 plus
+the demo row. Both were true; what was missing was what happened in between.
+Before retracting a measurement that disagrees with a later one, ask what
+changed between them - see `a-stale-measurement-looks-like-a-wrong-one`.
 
 Read the daily figure from Google rather than modelling it. Arithmetic from the
 tiering rules said 16,704/day on 2026-09-10 while the counter said 12,361: runs

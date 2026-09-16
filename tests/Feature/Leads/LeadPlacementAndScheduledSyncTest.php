@@ -368,7 +368,7 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
      * about 690 an hour against a sustained rate of roughly 600 - essentially
      * every call refused, and the command kept making them. The 15,000/day
      * ceiling belongs to the DEVELOPER TOKEN, so once it is spent asking the
-     * next forty-eight accounts cannot succeed.
+     * every remaining account cannot succeed either.
      *
      * What it costs is not politeness. While the window rolls over, the few
      * operations that free up were being spent instantly by this command, so

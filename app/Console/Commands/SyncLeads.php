@@ -57,8 +57,11 @@ class SyncLeads extends Command
      * How many accounts in a row must be refused on quota before the run stops.
      *
      * Three, not one: a single 429 can be one account's own rate limit, and
-     * abandoning fifty healthy accounts because of it would be the old bug
-     * with the sign flipped. Three DIFFERENT accounts refused back to back is
+     * abandoning every healthy account behind it would be the old bug with
+     * the sign flipped. (Counts here move: the fleet was ~51 during the
+     * 2026-09-16 outage this was written for, and 3 an hour later after Jose
+     * disconnected 49 while testing the consent flow. The reasoning does not
+     * depend on the size, so do not pin one into it.) Three DIFFERENT accounts refused back to back is
      * a fact about the developer token, which is what the ceiling belongs to.
      */
     private const QUOTA_REFUSALS_BEFORE_STOPPING = 3;
