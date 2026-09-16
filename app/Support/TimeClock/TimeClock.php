@@ -313,16 +313,41 @@ final class TimeClock
      */
     private function scheduleFor(User $user): ?array
     {
-        if (is_array($user->work_schedule)) {
-            return $user->work_schedule;
-        }
-
         $assignment = $user->assignments()->orderBy('created_at')->first();
         $scope = match ($assignment?->scopeType()) {
             Assignment::SCOPE_FRANCHISE => $assignment->assignedFranchise,
             Assignment::SCOPE_COMPANY => $assignment->assignedCompany,
             default => null,
         } ?? $user->organization;
+
+        /*
+         * ── The clock is the PLACE's, read now; never the stored one ──
+         *
+         * `work_schedule.timezone` is a record of where somebody stood when
+         * they saved it. It is NOT the clock the shift runs on, and reading it
+         * as one cost Jose an hour on 2026-09-16: his row still said
+         * `Etc/GMT+5` from before the platform default became
+         * `America/New_York`, a fixed offset keeps no daylight saving, and so
+         * his 17:00 resolved to 18:00 Eastern. Every reminder and every
+         * automatic clock-out ran an hour late, and every morning punch was
+         * flagged as outside schedule.
+         *
+         * A snapshot cannot be right: correcting a place's timezone has to move
+         * the people who work there, and a person assigned somewhere else again
+         * works on the new place's clock. So the zone is resolved here, through
+         * the same cascade the business-hours fallback below already uses, and
+         * the same answer serves both.
+         */
+        $timezone = (string) $this->settings->get('timezone', $scope);
+
+        if (is_array($user->work_schedule)) {
+            return [
+                'timezone' => $timezone,
+                'days' => is_array($user->work_schedule['days'] ?? null)
+                    ? $user->work_schedule['days']
+                    : [],
+            ];
+        }
 
         $hours = $this->settings->get('ops.business_hours', $scope);
 
@@ -338,10 +363,7 @@ final class TimeClock
                 : null;
         }
 
-        return [
-            'timezone' => (string) $this->settings->get('timezone', $scope),
-            'days' => $days,
-        ];
+        return ['timezone' => $timezone, 'days' => $days];
     }
 
     /** @return array{id: string, user_id: string, clocked_in_at: string, clocked_out_at: ?string} */

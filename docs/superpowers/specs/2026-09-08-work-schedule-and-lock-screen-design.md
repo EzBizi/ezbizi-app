@@ -44,7 +44,7 @@ does (`H:\A1Chimney\a1_tools\lib\features\timeclock`); nothing is copied.
 | # | Decision |
 |---|---|
 | 1 | **Server decides, client shows.** The server stamps each shift's scheduled end at clock in, moves it on extend, and a per-minute command closes any open shift past its end. The client arms a local timer from the end time it is told and renders the reminder and the lock. A closed laptop or a killed tab still clocks out on time. |
-| 2 | Schedule is a nullable JSON column `work_schedule` on `users`, weekday shape identical to the `ops.business_hours` setting, plus a **timezone snapshot** taken from the editor's current view when saved. A person's day is evaluated in that zone; the command needs no "view". |
+| 2 | Schedule is a nullable JSON column `work_schedule` on `users`, weekday shape identical to the `ops.business_hours` setting. **The clock it is read in is the person's own place's `timezone`, resolved at read** through the settings cascade — the same resolution the Business-hours fallback uses, so the per-minute command still needs no "view". The `timezone` stored alongside the days is a RECORD of where it was set and is not read as the clock: corrected 2026-09-16, after a row saved before the platform default changed still said `Etc/GMT+5`, which keeps no daylight saving, and ran every reminder and automatic clock-out an hour late. |
 | 3 | Editors: HR Records (`hr.edit`) always; **Your account** only when the organization setting *People can edit their own schedule* is on. Your account always shows it read-only. |
 | 4 | Clock In is **never refused** by the schedule. A shift on a day off, or started more than 30 minutes before the scheduled start, is stamped `outside_schedule` and tagged on the day list. |
 | 5 | Reminder lead is an organization setting, default **5 minutes**. Extension length is an organization setting, default **30 minutes**, unlimited repeats. Each Extend moves the end by that length and the reminder returns before the new end. |
@@ -94,7 +94,7 @@ Resources reads it. It does not go in `preferences`.
 Validation on save: every weekday key present; a day is `null` or `{start, end}`
 with `end` strictly after `start` on the same day; overnight windows are refused
 in v1 ("A shift that crosses midnight is not supported yet."). `timezone` is
-written by the server from the editor's view, never accepted from the client.
+written by the server from the editor's view and never accepted from the client. It records where the schedule was set; it is NOT the clock the day is read in (see decision 2).
 
 Both columns are declared on `User::personalDataHeld()`: `work_schedule` is
 ACTIVITY, erased to null; `lock_screen_exempt` is dropped with the account.

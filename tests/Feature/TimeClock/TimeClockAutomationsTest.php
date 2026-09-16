@@ -8,9 +8,11 @@ use App\Models\Organization;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Automations\ActionRunner;
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -167,6 +169,11 @@ class TimeClockAutomationsTest extends TestCase
     {
         $t = $this->provisionTenant('Alpha');
         $this->enableClockIn($t['org']);
+        // The PLACE's clock is what a schedule is read in (2026-09-16). These
+        // cases were written when the stored zone drove it, so the place now
+        // says what they always meant: a UTC-5 place. Expectations unchanged.
+        app(TenantContext::class)->run($t['org'], fn () => app(SettingsResolver::class)
+            ->set('timezone', $t['org'], 'Etc/GMT+5'));
         $puncher = $this->userWithRole($t, 'Tech', ['time_clock.view']);
         $this->inTenant($t['org'], fn () => $puncher->forceFill(['work_schedule' => [
             'timezone' => 'Etc/GMT+5',
@@ -174,7 +181,7 @@ class TimeClockAutomationsTest extends TestCase
                 'wednesday' => ['start' => '08:00', 'end' => '17:00'], 'thursday' => ['start' => '08:00', 'end' => '17:00'],
                 'friday' => ['start' => '08:00', 'end' => '17:00'], 'saturday' => null, 'sunday' => null],
         ]])->save());
-        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: outside
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: outside
 
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();
 
@@ -187,7 +194,7 @@ class TimeClockAutomationsTest extends TestCase
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertStatus(422);
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-out')->assertOk();
 
-        \Illuminate\Support\Carbon::setTestNow(\Illuminate\Support\Carbon::parse('2026-09-08 14:00:00', 'UTC')); // Tuesday 09:00 local
+        Carbon::setTestNow(Carbon::parse('2026-09-08 14:00:00', 'UTC')); // Tuesday 09:00 local
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertOk();
 
@@ -200,9 +207,9 @@ class TimeClockAutomationsTest extends TestCase
         $out = AutomationEvent::query()->withoutGlobalScopes()->where('event_key', 'time_clock.clocked_out')->orderByDesc('occurred_at')->first();
         $this->assertSame('person', $out->payload['ended_by']);
 
-        $keys = array_map(fn ($d) => $d->key, app(\App\Support\Modules\ModuleRegistry::class)->get('time_clock')->triggers);
+        $keys = array_map(fn ($d) => $d->key, app(ModuleRegistry::class)->get('time_clock')->triggers);
         $this->assertContains('time_clock.extended', $keys);
 
-        \Illuminate\Support\Carbon::setTestNow();
+        Carbon::setTestNow();
     }
 }
