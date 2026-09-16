@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0224',
+      date: '16 Sep 2026',
+      items: [
+        'Pages and posts now open their own screen inside EzBizi, with author and category read live from each website, values that belong to that one page, and free text fields that become shortcodes you can drop anywhere on it.',
+        'Four more search engine fields on a website, asked for by name, and a chat can be set to open with an automatic first reply. The automatic reply is off until you turn it on.',
+        'A website whose EzBizi token has been refused for a week stops drawing the chat and the form, and tells an administrator what stopped and where to fix it. A bad day at our end changes nothing, and the rest of the site keeps its values.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0223',
       date: '16 Sep 2026',
       items: [
