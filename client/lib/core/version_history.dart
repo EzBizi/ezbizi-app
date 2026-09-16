@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0228',
+      date: '16 Sep 2026',
+      items: [
+        'An automation can send an email, to the person the event was about.',
+        'An automation can send a WhatsApp message, using one of the templates Meta has approved.',
+        'A notification step can name which roles to reach, and a role that has since been deleted makes the step refuse rather than quietly notifying everybody.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0227',
       date: '16 Sep 2026',
       items: [
