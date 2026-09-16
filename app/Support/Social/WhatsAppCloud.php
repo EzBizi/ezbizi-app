@@ -99,6 +99,9 @@ final class WhatsAppCloud
      * organization's line by passing the wrong id.
      *
      * @param  array<int, string|int|float>  $parameters  fills {{1}}, {{2}} in order
+     * @param  string|null  $from  which of our numbers to send from, when the
+     *                             organization holds more than one. Required
+     *                             in that case: see numberToSendFrom().
      *
      * @throws RuntimeException when the tenant has no number, the recipient is
      *                          not a number we can be sure of, or Meta refuses
@@ -108,8 +111,9 @@ final class WhatsAppCloud
         string $recipient,
         array $parameters = [],
         string $language = 'en_US',
+        ?string $from = null,
     ): WhatsAppMessage {
-        $row = $this->rowFor($recipient, $template, 'template');
+        $row = $this->rowFor($recipient, $template, 'template', $from);
 
         return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
     }
@@ -238,8 +242,10 @@ final class WhatsAppCloud
      * link is a long meaningless token.
      *
      * @param  array<int, string|int|float>  $parameters  fills the BODY's {{1}}, {{2}}
+     * @param  string|null  $from  which of our numbers to send from, when the
+     *                             organization holds more than one
      *
-     * @throws RuntimeException on the same three cases as send()
+     * @throws RuntimeException on the same cases as send()
      */
     public function sendDocument(
         string $template,
@@ -248,8 +254,9 @@ final class WhatsAppCloud
         string $filename,
         array $parameters = [],
         string $language = 'en_US',
+        ?string $from = null,
     ): WhatsAppMessage {
-        $row = $this->rowFor($recipient, $template, 'document');
+        $row = $this->rowFor($recipient, $template, 'document', $from);
 
         return $this->deliver($row, [
             'messaging_product' => 'whatsapp',
@@ -279,22 +286,81 @@ final class WhatsAppCloud
     }
 
     /**
+     * WHICH of our numbers to send from, or a refusal to choose.
+     *
+     * ── This used to be `->first()` and that was a defect ────────
+     *
+     * One organization can hold several numbers - A1-Group holds two today,
+     * "EzBizi" and "EzBizi Reports" - and `first()` returned whichever sorted
+     * first, which was the wrong one for the caller that needed Reports.
+     *
+     * The failure had no symptom. The message sends, it arrives, the row says
+     * `sent`, and the only evidence of the mistake is the sender's name in a
+     * chat window nobody on our side is looking at. A financial report going
+     * out from the customer-facing line is not something anyone would notice
+     * until a customer asked about it.
+     *
+     * So: with more than one number and nothing said, this REFUSES. A default
+     * here would be a guess presented as a fact, and the cost of guessing wrong
+     * is invisible while the cost of refusing is a clear message at the call
+     * site. One number and nothing said is unambiguous, so that still works.
+     *
+     * `$from` is a phone number, however it is written - "+1 877 450-8572",
+     * "8774508572" - and not the display name, which anybody can rename.
+     */
+    private function numberToSendFrom(?string $from): WhatsAppNumber
+    {
+        $numbers = WhatsAppNumber::query()->orderBy('display_number')->get();
+
+        if ($numbers->isEmpty()) {
+            throw new RuntimeException(
+                'No WhatsApp number is attached to this organization, so there is nothing to '
+                .'send from.'
+            );
+        }
+
+        if ($from === null) {
+            if ($numbers->count() > 1) {
+                throw new RuntimeException(
+                    'This organization has more than one WhatsApp number ('
+                    .$numbers->pluck('display_number')->implode(', ')
+                    .'), so the one to send from has to be named.'
+                );
+            }
+
+            return $numbers->first();
+        }
+
+        $wanted = preg_replace('/\D+/', '', $from) ?? '';
+
+        $match = $numbers->first(
+            fn (WhatsAppNumber $n) => preg_replace('/\D+/', '', (string) $n->display_number) === $wanted,
+        );
+
+        if ($match === null) {
+            throw new RuntimeException(
+                'No WhatsApp number matching '.$from.' is attached to this organization. '
+                .'It holds: '.$numbers->pluck('display_number')->implode(', ').'.'
+            );
+        }
+
+        return $match;
+    }
+
+    /**
      * The row every outbound send starts from, written before the attempt.
      *
      * Shared by send() and sendDocument() rather than copied: the three facts
      * it encodes - provider id not display number, digits with no `+`, written
      * first - are the ones a second copy would drift on.
      */
-    private function rowFor(string $recipient, string $template, string $kind): WhatsAppMessage
-    {
-        $number = WhatsAppNumber::query()->first();
-
-        if ($number === null) {
-            throw new RuntimeException(
-                'No WhatsApp number is attached to this organization, so there is nothing to '
-                .'send from.'
-            );
-        }
+    private function rowFor(
+        string $recipient,
+        string $template,
+        string $kind,
+        ?string $from,
+    ): WhatsAppMessage {
+        $number = $this->numberToSendFrom($from);
 
         /*
          * Reused rather than rewritten, and from a Thumbtack class on purpose:

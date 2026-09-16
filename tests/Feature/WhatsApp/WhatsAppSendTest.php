@@ -31,6 +31,8 @@ class WhatsAppSendTest extends TestCase
 
     private const PHONE_ID = '1254820167721699';
 
+    private const REPORTS_PHONE_ID = '1366054836581646';
+
     private function numberBelongsTo(array $t): void
     {
         DB::table('whatsapp_numbers')->insert([
@@ -44,6 +46,20 @@ class WhatsAppSendTest extends TestCase
         ]);
 
         config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+    }
+
+    private function secondNumberBelongsTo(array $t): void
+    {
+        DB::table('whatsapp_numbers')->insert([
+            'id' => (string) Str::uuid(),
+            'organization_id' => $t['org']->id,
+            'phone_number_id' => self::REPORTS_PHONE_ID,
+            'waba_id' => '2086442795335686',
+            'display_number' => '+18774508572',
+            'display_name' => 'EzBizi Reports',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function metaAccepts(): void
@@ -286,5 +302,79 @@ class WhatsAppSendTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame(WhatsAppMessage::STATUS_QUEUED, $row->status);
         $this->assertSame('document', $row->kind);
+    }
+
+    public function test_it_refuses_to_choose_when_the_organization_holds_two_numbers(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->secondNumberBelongsTo($t);
+        $this->metaAccepts();
+
+        /*
+         * The defect this replaced. A1-Group really does hold two numbers -
+         * "EzBizi" and "EzBizi Reports" - and `->first()` returned whichever
+         * sorted first, which is the customer-facing line. A financial report
+         * would have gone out from the wrong sender, arrived fine, and been
+         * recorded as `sent`. Nothing on our side would ever have said so.
+         */
+        try {
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+                ->send('job_booked', '13057242199'));
+            $this->fail('sending with two numbers and no choice must refuse, not pick one');
+        } catch (RuntimeException $e) {
+            // The message has to name the options, or the caller cannot act on it.
+            $this->assertStringContainsString('+18778536971', $e->getMessage());
+            $this->assertStringContainsString('+18774508572', $e->getMessage());
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_naming_the_number_sends_from_that_one(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->secondNumberBelongsTo($t);
+        $this->metaAccepts();
+
+        // However it is written. Jose asks for "the EzBizi - Reports one" and
+        // a caller should not have to know its provider id to honour that.
+        $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199', [], 'en_US', '+1 (877) 450-8572'));
+
+        $this->assertSame(self::REPORTS_PHONE_ID, $row->phone_number_id);
+        $this->assertNotSame(self::PHONE_ID, $row->phone_number_id);
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), '/'.self::REPORTS_PHONE_ID.'/messages'));
+    }
+
+    public function test_a_number_we_do_not_hold_is_refused_rather_than_falling_back(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        // A typo in the caller's `from` must not quietly send from the one
+        // number we do have - that is the same silent-wrong-sender failure
+        // wearing a different hat.
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199', [], 'en_US', '+18889999999'));
+    }
+
+    public function test_one_number_and_no_choice_is_still_unambiguous(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        // The refusal is about ambiguity, not about ceremony. With a single
+        // number there is nothing to choose, so callers keep working.
+        $row = $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)
+            ->send('job_booked', '13057242199'));
+
+        $this->assertSame(self::PHONE_ID, $row->phone_number_id);
     }
 }
