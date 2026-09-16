@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Click a box on the call flow chart and a drawer opens the real settings for it, the same panel the settings rail shows, so the two cannot drift apart.',
         'The zoom readout on the call flow chart follows the canvas rather than the buttons.',
+        'The Send from list on a text step now shows only the lines approved for messaging, instead of offering ones the carrier would refuse.',
       ],
     ),
     VersionRelease(
