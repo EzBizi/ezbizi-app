@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0229',
+      date: '16 Sep 2026',
+      items: [
+        'A website that stops being recognised by EzBizi now raises an automation trigger, so you choose who hears about it and how, rather than the notice landing somewhere nobody looks.',
+        'Airtable and Workiz can be connected from Settings then Integrations, so a business can point EzBizi at its own figures.',
+        'Pages and posts open their own screen with shortcodes, author and category read live from each website, and text written once that can be used on as many pages as want it.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0228',
       date: '16 Sep 2026',
       items: [
