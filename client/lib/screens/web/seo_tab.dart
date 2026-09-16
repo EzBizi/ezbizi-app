@@ -9,6 +9,7 @@ import '../../widgets/async_body.dart';
 import 'content_tab.dart';
 import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/shortcode_button.dart';
 import '../../widgets/side_panel.dart';
 import 'hours.dart';
 
@@ -1213,25 +1214,8 @@ class _SiteDetailState extends State<_SiteDetail> {
   /// `[ezbizi_company_name]` in a monospace chip is about 190 logical pixels,
   /// so on a phone it would either overflow the row or squeeze the input it
   /// belongs to down to nothing.
-  Widget _withShortcode(ThemeData theme, Widget input, String code) {
-    final chip = _ShortcodeButton(code: code);
-
-    return LayoutBuilder(
-      builder: (context, constraints) => constraints.maxWidth >= 460
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: input),
-                const SizedBox(width: 8),
-                Padding(padding: const EdgeInsets.only(top: 2), child: chip),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [input, const SizedBox(height: 6), chip],
-            ),
-    );
-  }
+  Widget _withShortcode(ThemeData theme, Widget input, String code) =>
+      withShortcode(input, code);
 
   /// Two columns where there is room for two, one where there is not.
   ///
@@ -1590,7 +1574,7 @@ class _SiteDetailState extends State<_SiteDetail> {
           style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
         ),
         const SizedBox(height: 8),
-        _ShortcodeButton(code: snippet, label: 'Copy the snippet'),
+        ShortcodeButton(code: snippet, label: 'Copy the snippet'),
         const SizedBox(height: 16),
         const SelectableText(
           '<span data-ezbizi="phone">555-0100</span>',
@@ -1633,57 +1617,3 @@ class _SiteDetailState extends State<_SiteDetail> {
   }
 }
 
-/// A shortcode you click rather than select.
-///
-/// It shows the code itself rather than a copy icon beside a label, because the
-/// thing being copied is short, meaningful, and the only reason the control
-/// exists. Confirming in place — the code becomes "Copied" for a moment — keeps
-/// §6: a snackbar for this would be a notification about the thing you are
-/// looking at.
-class _ShortcodeButton extends StatefulWidget {
-  const _ShortcodeButton({required this.code, this.label});
-
-  final String code;
-
-  /// What to show instead of the code itself, for something too long to wear
-  /// as a label — the whole script tag, say.
-  final String? label;
-
-  @override
-  State<_ShortcodeButton> createState() => _ShortcodeButtonState();
-}
-
-class _ShortcodeButtonState extends State<_ShortcodeButton> {
-  bool _copied = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return OutlinedButton.icon(
-      onPressed: () async {
-        await Clipboard.setData(ClipboardData(text: widget.code));
-
-        if (!mounted) return;
-
-        setState(() => _copied = true);
-        await Future<void>.delayed(const Duration(milliseconds: 1200));
-
-        if (mounted) setState(() => _copied = false);
-      },
-      icon: Icon(_copied ? Icons.check : Icons.copy_outlined, size: 15),
-      label: Text(
-        _copied ? 'Copied' : (widget.label ?? widget.code),
-        style: TextStyle(
-          fontFamily: widget.label == null ? 'monospace' : null,
-          fontSize: 12,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        foregroundColor:
-            _copied ? theme.colorScheme.primary : theme.colorScheme.outline,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-      ),
-    );
-  }
-}

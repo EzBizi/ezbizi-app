@@ -69,7 +69,11 @@ final class SiteContent
                 'search' => $search === '' ? null : $search,
                 // Asking for the fields we draw keeps a post's whole rendered
                 // body off the wire; some of these run to megabytes.
-                '_fields' => 'id,date,modified,slug,status,type,link,title',
+                // author and categories ride along because a page's screen
+                // shows what the WEBSITE already says before EzBizi overrides
+                // anything — showing those boxes empty on a page that has an
+                // author says something false about the customer's own site.
+                '_fields' => 'id,date,modified,slug,status,type,link,title,author,categories',
             ]));
 
         if ($response->status() === 401 || $response->status() === 403) {
@@ -218,6 +222,11 @@ final class SiteContent
             'status' => (string) ($row['status'] ?? ''),
             'link' => (string) ($row['link'] ?? ''),
             'modified' => (string) ($row['modified'] ?? ''),
+
+            // WordPress's own ids. Resolved to names against the lists from
+            // /content/options, which is the only place the names exist.
+            'author' => isset($row['author']) ? (int) $row['author'] : null,
+            'categories' => array_map('intval', is_array($row['categories'] ?? null) ? $row['categories'] : []),
         ];
     }
 }
