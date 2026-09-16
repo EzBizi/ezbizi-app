@@ -520,4 +520,69 @@ class WebsiteEnquiriesTest extends TestCase
             'The greeting was sent again on a later message.',
         );
     }
+
+    /**
+     * The greeting must not count as somebody having answered.
+     *
+     * This is the defect that kept it switched off: an ADVERTISER row took a
+     * brand new enquiry out of the list a business uses to find the people
+     * nobody has replied to. Leads fixed the reading at 072cb313 and this is
+     * the half that has to be true on my side — the row is MARKED.
+     *
+     * Asserted on the lead's own cache rather than on the column, because the
+     * cache is what the unreplied filter actually reads. A test on
+     * `is_automatic` alone would pass while the filter still lied.
+     */
+    public function test_the_greeting_does_not_make_a_new_enquiry_look_answered(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $this->startChat($made['site']->public_key, 'hello i need a sweep')
+            ->assertCreated();
+
+        $this->inTenant($made['tenant']['org'], function () {
+            $lead = WebChat::query()->firstOrFail()->lead->refresh();
+
+            // Still unreplied: the newest row a PERSON was in is the visitor's.
+            $this->assertSame(LeadConversation::FROM_CONSUMER, $lead->last_contact_from);
+
+            // And the greeting is still the preview, because it IS the most
+            // recent thing said. Hiding it would be a different lie.
+            $this->assertSame('We have you — one moment.', $lead->last_contact_preview);
+
+            $this->assertTrue(
+                (bool) LeadConversation::query()
+                    ->where('text', 'We have you — one moment.')
+                    ->firstOrFail()
+                    ->is_automatic,
+            );
+        });
+    }
+
+    /** A person replying still counts, or the flag would have gone too far. */
+    public function test_a_real_reply_still_marks_the_lead_answered(): void
+    {
+        $made = $this->siteWithKey();
+        $this->greetWith($made, 'We have you — one moment.');
+
+        $started = $this->startChat($made['site']->public_key, 'hello')
+            ->assertCreated()
+            ->json();
+
+        $this->inTenant($made['tenant']['org'], function () use ($started) {
+            $chat = WebChat::query()->findOrFail($started['chat']);
+
+            app(WebsiteEnquiries::class)->say(
+                $chat,
+                'Morning — what is the address?',
+                LeadConversation::FROM_ADVERTISER,
+            );
+
+            $this->assertSame(
+                LeadConversation::FROM_ADVERTISER,
+                $chat->lead->refresh()->last_contact_from,
+            );
+        });
+    }
 }

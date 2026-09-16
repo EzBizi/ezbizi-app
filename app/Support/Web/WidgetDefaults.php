@@ -80,13 +80,17 @@ final class WidgetDefaults
              * field IS the setting, and the wording is the whole feature. A
              * greeting in the wrong voice is worse than none.
              *
-             * It also has a consequence nobody would choose by accident:
-             * "unreplied" in Leads means `last_contact_from = CONSUMER`, so an
-             * automatic answer takes every new chat OUT of the unreplied
-             * filter the instant it arrives. A real enquiry would look
-             * answered. Raised with the Leads module; until a conversation row
-             * can say it was automatic, this stays off unless a business types
-             * something into it deliberately.
+             * THE REASON IT WAS EMPTY IS GONE; the default has not moved. It
+             * used to take every new chat out of the unreplied filter in Leads,
+             * which was a defect and is fixed (072cb313 — the row is marked
+             * automatic and no longer counts as somebody answering).
+             *
+             * What remains is not a defect and not mine to decide: switching it
+             * on by default would put words nobody chose into the mouth of
+             * every business on the estate, at the next deploy, in EzBizi's
+             * voice rather than theirs. Jose asked for a greeting he could set,
+             * not for one. So it stays empty until somebody types into it, and
+             * turning it on is now free of consequences.
              */
             'auto_reply' => '',
             'error' => 'Sorry — that did not send. Please try again.',
