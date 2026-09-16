@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/client_platform.dart';
 import '../core/os_notifications.dart';
 import 'side_panel.dart';
 import 'tag.dart';
@@ -76,6 +77,29 @@ class _NotificationBellState extends State<NotificationBell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    /*
+     * ASK FOR PERMISSION AT SIGN-IN, EVERYWHERE EXCEPT A BROWSER.
+     *
+     * This used to be asked in ONE place: [_open], when somebody tapped the
+     * bell to open the panel. The consequence went unnoticed for two weeks —
+     * a person who never opened that panel was never asked, so `_permitted`
+     * stayed false and every OS notification was a silent no-op. The feature
+     * shipped on five platforms and was switched off for anybody who had not
+     * happened to click the right icon, which is most people: you open a
+     * notification list to read what you were told, and the whole point of
+     * this is to tell you without being opened.
+     *
+     * The user-gesture requirement that put it there is a WEB rule, and only
+     * a web rule. A browser can permanently blacklist an origin that asks on
+     * page load, so there the ask stays behind the tap in [_open]. Windows,
+     * macOS, Android and iOS have no such penalty and ask at first launch by
+     * convention — and this widget is built inside the signed-in shell, so
+     * "when this mounts" already means "just after somebody signed in", which
+     * is the moment an app is expected to ask.
+     */
+    if (!ClientPlatform.isWeb) unawaited(OsNotifications.enable());
+
     _refresh();
     _poll = Timer.periodic(_pollEvery, (_) => unawaited(_refresh()));
   }
@@ -156,10 +180,14 @@ class _NotificationBellState extends State<NotificationBell>
 
   /// Hand them to the operating system — see [OsNotifications].
   ///
-  /// Permission is never requested here. [enable] is called when somebody opens
-  /// the panel, and until they have, this quietly does nothing: a background
-  /// poll is not a user gesture, and asking from one is what gets an origin
-  /// permanently barred from ever asking again.
+  /// Permission is never requested HERE, on any platform: a background poll is
+  /// not a user gesture, and asking from one is what gets a browser origin
+  /// permanently barred from ever asking again. It is asked in [initState] off
+  /// the web, and from the tap in [_open] on it.
+  ///
+  /// So on the web this stays a no-op until somebody has opened the panel once.
+  /// That is a real limit rather than an oversight, and it is the browsers'
+  /// rule, not ours.
   Future<void> _announce(List<Map<String, dynamic>> arrivals) async {
     if (arrivals.isEmpty) return;
 

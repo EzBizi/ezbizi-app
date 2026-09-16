@@ -10,6 +10,7 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Access\AdministratorFloor;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Support\Facades\Cache;
 use App\Models\Company;
@@ -294,6 +295,7 @@ class ActionRunner
         private readonly DealtState $dealt,
         private readonly MailDispatcher $mail,
         private readonly WhatsAppCloud $whatsapp,
+        private readonly AdministratorFloor $administrators,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -338,6 +340,7 @@ class ActionRunner
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
+            'deactivate' => $this->deactivate($subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -705,6 +708,76 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Switch off whatever the rule was about — a company, franchise, user or customer.
+     *
+     * ONE ARM, FOUR ACTIONS. `ActionDefinition::type()` derives the execution
+     * type from everything after the first dot, so `company.deactivate` and
+     * `customer.deactivate` both arrive here as `deactivate` and the subject is
+     * what differs. That is the registry working as designed — `update_field`
+     * has served four modules the same way since it was written — and it is why
+     * this takes the SUBJECT rather than a model name from the action.
+     *
+     * ── The refusals, and why they are refusals rather than guards ──────
+     *
+     * ALREADY OFF is not a failure. A rule that fires twice on the same record
+     * should say "it was already off" and carry on, not red the run and count
+     * towards the five that auto-disable it.
+     *
+     * THE LAST ADMINISTRATOR is refused through `AdministratorFloor`, the same
+     * object the staff screen and account deletion ask, rather than a second
+     * count written here. The floor's own docblock says deactivating and
+     * demoting share one method so the two cannot drift; a third caller with its
+     * own arithmetic would be exactly that drift. Nobody being able to undo it -
+     * including the person it was done to - is worse from a rule than from a
+     * screen, because no one was standing there when it happened.
+     */
+    private function deactivate(?Model $subject): array
+    {
+        $type = 'deactivate';
+
+        if (! $subject instanceof Company
+            && ! $subject instanceof Franchise
+            && ! $subject instanceof User
+            && ! $subject instanceof Customer) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only switch off a company, a franchise, a person or '
+                    .'a customer, and this rule is about something else.',
+            ];
+        }
+
+        if ((bool) $subject->getAttribute('is_active') === false) {
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => 'It was already switched off, so nothing changed.',
+            ];
+        }
+
+        if ($subject instanceof User) {
+            try {
+                $this->administrators->assertNotTheLast($subject, 'is_active');
+            } catch (ValidationException $refusal) {
+                return [
+                    'type' => $type, 'ok' => false,
+                    'detail' => collect($refusal->errors())->flatten()->first()
+                        ?? $refusal->getMessage(),
+                ];
+            }
+        }
+
+        $subject->forceFill(['is_active' => false])->save();
+
+        $this->audit->log('automation.deactivated', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => 'Switched off '.class_basename($subject).' '
+                .json_encode((string) ($subject->getAttribute('name') ?? $subject->getKey())).'.',
+        ];
     }
 
     /**

@@ -50,6 +50,20 @@ final readonly class PostPayload
      * over HTTP later and has a handle rather than a payload. Meta reads the
      * type off the response headers, so the two answers have to be the same
      * answer - a second copy of this map is a second copy that drifts.
+     *
+     * `pdf` is here for WhatsApp, which takes a document by link and reads the
+     * type off these same headers. Served as the default it arrived as a
+     * broken attachment with no error at either end.
+     *
+     * THE DEFAULT IS STILL WRONG FOR TWO LIVE CASES and is left alone
+     * deliberately rather than fixed here. `heic` and `heif` are accepted
+     * uploads - they are in SocialMediaKind::BY_EXTENSION, so the composer's
+     * `mimes` rule lets them through - and neither is in this map, so both are
+     * currently served as `video/mp4`. `m4v` likewise. The right fix is to name
+     * every accepted extension and make the default REFUSE, since a confident
+     * wrong type is worse than a failure, but `mp4` itself relies on that
+     * default today, so the change has to enumerate before it can refuse. That
+     * belongs to whoever owns publishing rather than to a WhatsApp errand.
      */
     public static function mimeForExtension(string $extension): string
     {
@@ -60,6 +74,7 @@ final readonly class PostPayload
             'jpg', 'jpeg' => 'image/jpeg',
             'mov'         => 'video/quicktime',
             'webm'        => 'video/webm',
+            'pdf'         => 'application/pdf',
             default       => 'video/mp4',
         };
     }
