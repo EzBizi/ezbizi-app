@@ -90,6 +90,14 @@ class AutomationsController extends Controller
         // instead published none of them; the drift guard said so.
         'deactivate',
 
+        // Also shared, and NOT the same underneath: a job's assignment is a
+        // column with a reach rule, a vehicle's is a period that displaces the
+        // open one and emits twice. The arm routes on the subject and asks
+        // whoever owns each rule - Fleet's VehicleAssignments, and the User
+        // model's own canActOnFranchise.
+        'assign_to_user',
+        'unassign',
+
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
         // destination come from the rule rather than the record.
@@ -1485,6 +1493,17 @@ class AutomationsController extends Controller
              * subject - rather than a bespoke form for its own sake.
              */
             $type('whatsapp.send', 'Send a WhatsApp message'),
+
+            /*
+             * The person comes from a FIELD of the event, not a name typed once
+             * when the rule was written and still named a year later after they
+             * left. Declared module_only because both actions that derive to it
+             * are subject-bound - a job or a vehicle - and the subject is what
+             * the arm routes on.
+             */
+            $type('assign_to_user', 'Assign to a person', true, [
+                $parameter('user_field', 'Assign to the person in', 'trigger_field'),
+            ]),
 
             $type('email.send', 'Send an email', false, [
                 $parameter('to_field', 'Send to the address in', 'trigger_field'),

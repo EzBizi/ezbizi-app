@@ -5,6 +5,8 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Support\Fleet\VehicleAssignments;
+use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
 use Illuminate\Support\Facades\Mail;
 use App\Support\Automations\ActionRunner;
@@ -885,6 +887,73 @@ class AutomationEngineTest extends TestCase
         // written to, even though AutomationEvent has no is_active to set.
         $wrong = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $event));
         $this->assertFalse($wrong['ok']);
+    }
+
+    /**
+     * Unassigning asserts the ROW, because a call that returns is not a release.
+     *
+     * Fleet broke `release()` on purpose so it returned the open assignment
+     * WITHOUT closing it, and their six tests stayed green — the only unassign
+     * case asserted the refusal when nobody holds the keys, so nothing asserted
+     * that unassigning released anything. A hole they had carried for three
+     * weeks. This arm would have reported success and changed nothing, on a
+     * timer, with no failure anywhere to say so.
+     *
+     * So: `released_at` set and `openAssignment()` null. Never "the call came
+     * back".
+     */
+    public function test_unassigning_a_vehicle_actually_releases_the_keys(): void
+    {
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'vehicle.status_changed',
+            'payload' => ['after' => ['user_id' => $this->org['admin']->id]],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        // Built through the API: `vehicles` has NOT NULL columns the controller
+        // fills in (`number`, the derived label), so a hand-made row would be a
+        // vehicle the application cannot create.
+        $vehicleId = $this->as()->postJson('/api/v1/vehicles', [
+            // Left on the group rather than a franchise: a place belongs to a
+            // company and this fixture holds no company id. An organization
+            // vehicle also exercises the wider of Fleet's two reach branches.
+            'year' => 2022,
+            'make' => 'Ford',
+            'model' => 'Transit',
+            'plate' => 'KEY-0001',
+            'vin' => '1FTBW2CM5NKA09911',
+            'body_type' => 'van',
+            'fuel_type' => 'gas',
+            'ownership' => ['kind' => 'owned', 'counterparty' => 'Dealer Co', 'purchase_price_cents' => 100],
+        ])->assertCreated()->json('data.id');
+
+        [$vehicle, $assignment] = $this->inTenant(function () use ($vehicleId) {
+            $vehicle = Vehicle::findOrFail($vehicleId);
+
+            $held = app(VehicleAssignments::class)->assign($vehicle, $this->org['admin']);
+
+            return [$vehicle, $held];
+        });
+
+        $this->assertNotNull($this->inTenant(fn () => $vehicle->fresh()->openAssignment()),
+            'nothing is held, so the release below would prove nothing');
+
+        $result = $this->inTenant(fn () => $runner->run(['type' => 'unassign'], $event, $vehicle));
+
+        $this->assertTrue($result['ok'], $result['detail'] ?? '');
+
+        // THE ROW, not the return.
+        $this->assertNotNull($this->inTenant(fn () => $assignment->fresh()->released_at));
+        $this->assertNull($this->inTenant(fn () => $vehicle->fresh()->openAssignment()));
+
+        // Again on a van nobody drives: got what it asked for, not a failure.
+        $again = $this->inTenant(fn () => $runner->run(['type' => 'unassign'], $event, $vehicle->fresh()));
+        $this->assertTrue($again['ok']);
+        $this->assertStringContainsString('Nobody held', $again['detail']);
     }
 
     /**

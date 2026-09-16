@@ -10,6 +10,8 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Fleet\CannotAssignVehicle;
+use App\Support\Fleet\VehicleAssignments;
 use App\Support\Access\AdministratorFloor;
 use App\Support\Social\WhatsAppCloud;
 use Illuminate\Support\Facades\Cache;
@@ -296,6 +298,7 @@ class ActionRunner
         private readonly MailDispatcher $mail,
         private readonly WhatsAppCloud $whatsapp,
         private readonly AdministratorFloor $administrators,
+        private readonly VehicleAssignments $vehicleAssignments,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -341,6 +344,8 @@ class ActionRunner
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
             'deactivate' => $this->deactivate($subject),
+            'assign_to_user' => $this->assignToUser($action, $event, $subject),
+            'unassign' => $this->unassign($subject),
             'email.send' => $this->sendEmail($action, $event, $automation),
             'whatsapp.send' => $this->sendWhatsApp($action, $event),
             'sms.send' => $this->sendSms($action, $event, $automation),
@@ -708,6 +713,129 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Hand a job or a vehicle to the person the EVENT named.
+     *
+     * ONE ARM, TWO ACTIONS, and they are not the same underneath - which is the
+     * point of routing rather than copying. A job's assignment is a column with
+     * a reach rule; a vehicle's is an assignment PERIOD that has to displace the
+     * open one and emit twice. Fleet owns the second and now exposes it
+     * (VehicleAssignments, dab92dba), so this calls their code rather than
+     * carrying a second copy of it that drifts the first time they change one.
+     *
+     * THE ASSIGNEE COMES FROM A FIELD OF THE EVENT, the same shape the email and
+     * WhatsApp steps use. A rule hands the keys to the person the event was
+     * about - the one who reported the fault, the one who booked the job - not
+     * to somebody named once when the rule was written and still named a year
+     * later after they left.
+     *
+     * BOTH REACH CHECKS ARE ASKED OF WHOEVER OWNS THEM. Fleet's lives inside
+     * assign(), so this cannot forget it; a job's is `canActOnFranchise`, which
+     * is the User model's own answer rather than arithmetic repeated here.
+     */
+    private function assignToUser(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'assign_to_user';
+        $field = trim((string) ($action['user_field'] ?? ''));
+
+        if ($field === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step needs to know which field carries the person to assign.',
+            ];
+        }
+
+        $userId = $this->valueFromEvent($field, $event);
+
+        if (! is_string($userId) || trim($userId) === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => "This event carried nothing in \"{$field}\", so there was nobody to "
+                    .'assign.',
+            ];
+        }
+
+        $assignee = User::find($userId);
+
+        if ($assignee === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => "\"{$field}\" held ".json_encode($userId).', which is not somebody '
+                    .'who works here.',
+            ];
+        }
+
+        if ($subject instanceof Vehicle) {
+            try {
+                $this->vehicleAssignments->assign($subject, $assignee);
+            } catch (CannotAssignVehicle $refusal) {
+                return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+            }
+
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => "Handed the keys to {$assignee->name}.",
+            ];
+        }
+
+        if ($subject instanceof Job) {
+            if (! $assignee->canActOnFranchise($subject->franchise)) {
+                return [
+                    'type' => $type, 'ok' => false,
+                    'detail' => "{$assignee->name} is not assigned anywhere this job can be seen.",
+                ];
+            }
+
+            $subject->forceFill(['performed_by_user_id' => $assignee->getKey()])->save();
+            $this->audit->log('automation.assigned', $subject, metadata: ['to' => $assignee->getKey()]);
+
+            return [
+                'type' => $type, 'ok' => true,
+                'detail' => "Gave the job to {$assignee->name}.",
+            ];
+        }
+
+        return [
+            'type' => $type, 'ok' => false,
+            'detail' => 'This step can only assign a job or a vehicle, and this rule is about '
+                .'something else.',
+        ];
+    }
+
+    /**
+     * Take the keys back.
+     *
+     * `release()` answers NULL when nobody held them rather than throwing, and
+     * Fleet is right that null is what this arm wants: a rule unassigning a van
+     * nobody drives has got what it asked for. A person who pressed Unassign
+     * wants telling, which is why their controller turns the same null into a
+     * 422 and this does not.
+     */
+    private function unassign(?Model $subject): array
+    {
+        $type = 'unassign';
+
+        if (! $subject instanceof Vehicle) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only unassign a vehicle, and this rule is about '
+                    .'something else.',
+            ];
+        }
+
+        $released = $this->vehicleAssignments->release($subject);
+
+        $this->audit->log('automation.unassigned', $subject);
+
+        return [
+            'type' => $type,
+            'ok' => true,
+            'detail' => $released === null
+                ? 'Nobody held the keys, so nothing changed.'
+                : 'Took the keys back.',
+        ];
     }
 
     /**
