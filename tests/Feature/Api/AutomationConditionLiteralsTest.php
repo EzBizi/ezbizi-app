@@ -58,6 +58,13 @@ class AutomationConditionLiteralsTest extends TestCase
      * organization with no such rule is on this path, which is all of them but
      * one today. If this ever returns something for a field nobody named, every
      * message everywhere costs an extra Gmail round trip.
+     *
+     * THE SYMPTOM WOULD BE "EMAIL GOT SLOW", and it would appear nowhere near
+     * this file or the watcher - a mailbox sweep taking longer, with no error
+     * and nothing in a log. Written down here because the distance between the
+     * cause and the complaint is the whole problem: somebody would look at the
+     * provider, the queue and the network before either of the two files that
+     * decide it. Agreed in writing with the Email session, 2026-09-16.
      */
     public function test_a_field_nobody_asks_about_yields_nothing(): void
     {
