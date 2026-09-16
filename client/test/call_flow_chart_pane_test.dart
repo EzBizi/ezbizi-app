@@ -486,6 +486,110 @@ void main() {
     });
   });
 
+  /// Jose, 2026-09-16: "we need to be able to zoom in - out".
+  group('zoom', () {
+    testWidgets('the buttons move it and the canvas says where it is', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100);
+
+      expect(find.text('100%'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('125%'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Zoom out'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('100%'), findsOneWidget);
+    });
+
+    /// Repeated taps must not accumulate past the clamp. The scale is SET
+    /// rather than multiplied into the matrix for exactly this reason.
+    testWidgets('it stops at the ends instead of drifting past them', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100);
+
+      for (var i = 0; i < 12; i++) {
+        await tester.tap(find.byTooltip('Zoom in'));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('250%'),
+        findsOneWidget,
+        reason: 'Twelve taps of 1.25x would reach 1455% unclamped.',
+      );
+
+      for (var i = 0; i < 20; i++) {
+        await tester.tap(find.byTooltip('Zoom out'));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('40%'), findsOneWidget);
+    });
+
+    testWidgets('tapping the number puts it back', (tester) async {
+      await _pump(tester, width: 1100);
+
+      await tester.tap(find.byTooltip('Zoom in'));
+      await tester.pumpAndSettle();
+      expect(find.text('100%'), findsNothing);
+
+      await tester.tap(find.byTooltip('Reset the view'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('100%'), findsOneWidget);
+    });
+  });
+
+  /// Jose: "i also feel like we are missing stuff still like showing what
+  /// happens when someone does take the call, and afterwards".
+  ///
+  /// Phone emits `answered`, `recorded` and `wrap_up` now. Before this they
+  /// fell through to the unknown-kind circle — which is the right drawing for
+  /// a kind nobody has heard of and the wrong one for three we have.
+  testWidgets('the answered call and what follows it are drawn', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1100, graph: {
+      'nodes': [
+        {'id': 'caller', 'kind': 'caller', 'title': 'Caller',
+          'detail': 'Somebody dials.', 'state': 'ok'},
+        {'id': 'g1', 'kind': 'ring_group', 'title': 'Sales team',
+          'detail': 'Rings 3 people.', 'state': 'ok'},
+        {'id': 'answered', 'kind': 'answered', 'title': 'Somebody answers',
+          'detail': 'The call connects.', 'state': 'ok'},
+        {'id': 'recorded', 'kind': 'recorded', 'title': 'Recorded',
+          'detail': 'The line records and transcribes.', 'state': 'ok'},
+        {'id': 'wrap', 'kind': 'wrap_up', 'title': 'Saved to Records',
+          'detail': 'A call tag is required.', 'state': 'ok'},
+      ],
+      'edges': [
+        {'from': 'caller', 'to': 'g1', 'label': ''},
+        {'from': 'g1', 'to': 'answered', 'label': 'Answered'},
+        {'from': 'answered', 'to': 'recorded', 'label': ''},
+        {'from': 'recorded', 'to': 'wrap', 'label': ''},
+      ],
+    });
+
+    expect(find.byIcon(Icons.call_end_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.fiber_manual_record_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.assignment_turned_in_outlined), findsOneWidget);
+    expect(
+      find.byIcon(Icons.circle_outlined),
+      findsNothing,
+      reason: 'The control that distinguishes: this is the unknown-kind '
+          'fallback, and finding it here means one of the three has no entry '
+          'and the test above passed on the other two.',
+    );
+  });
+
   _pickerGroup();
 
   /// A painter is not repainted for free; a stale one draws yesterday's wires

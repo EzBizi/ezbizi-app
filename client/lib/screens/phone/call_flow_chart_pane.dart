@@ -589,6 +589,17 @@ IconData _iconFor(String kind) {
       return Icons.voicemail_outlined;
     case 'forward':
       return Icons.call_made;
+    // Jose: "i also feel like we are missing stuff still like showing what
+    // happens when someone does take the call, and afterwards". Phone emits
+    // these three now; without an entry here they fell through to the
+    // unknown-kind circle, which is the right drawing for a kind we have
+    // never heard of and the wrong one for three we have.
+    case 'answered':
+      return Icons.call_end_outlined;
+    case 'recorded':
+      return Icons.fiber_manual_record_outlined;
+    case 'wrap_up':
+      return Icons.assignment_turned_in_outlined;
     default:
       // Not a fault and not a guess. A kind this build has never heard of is
       // drawn plainly rather than given a verdict.
@@ -659,12 +670,34 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
     duration: const Duration(milliseconds: 1400),
   );
 
+  /// Jose: "we need to be able to zoom in - out".
+  ///
+  /// `InteractiveViewer` rather than a scale factor of my own: it already
+  /// does pinch, drag and trackpad, and `constrained: false` makes it the
+  /// panner too, which is what the two nested scroll views were for. Buttons
+  /// as well as gestures, because a canvas that only zooms by pinch does not
+  /// look like it zooms at all on a desktop with a mouse.
+  final TransformationController _view = TransformationController();
+
   bool _running = false;
 
   @override
   void dispose() {
     _pulse.dispose();
+    _view.dispose();
     super.dispose();
+  }
+
+  static const double _minZoom = 0.4;
+  static const double _maxZoom = 2.5;
+
+  double get _zoom => _view.value.getMaxScaleOnAxis();
+
+  void _zoomBy(double factor) {
+    final next = (_zoom * factor).clamp(_minZoom, _maxZoom);
+    // Set the scale outright rather than multiplying the matrix, so repeated
+    // taps cannot drift past the clamp by accumulating rounding.
+    setState(() => _view.value = Matrix4.identity()..scaleByDouble(next, next, next, 1));
   }
 
   /// Reduce-motion turns the flow off, and that is not only an accessibility
@@ -691,14 +724,21 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
 
     return ColoredBox(
       color: paper.ink,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-        child: SingleChildScrollView(
-          child: SizedBox(
-            width: geometry.size.width,
-            height: geometry.size.height,
-            child: Stack(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              transformationController: _view,
+              constrained: false,
+              minScale: _minZoom,
+              maxScale: _maxZoom,
+              boundaryMargin: const EdgeInsets.all(120),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: SizedBox(
+                  width: geometry.size.width,
+                  height: geometry.size.height,
+                  child: Stack(
               children: [
                 Positioned.fill(
                   child: AnimatedBuilder(
@@ -715,19 +755,97 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
                   ),
                 ),
                 for (final p in layout.placed)
-                  Positioned(
-                    left: geometry.topLeft[p.node.id]!.dx,
-                    top: geometry.topLeft[p.node.id]!.dy,
-                    width: _nodeWidth,
-                    child: _NodeTile(
-                      node: p.node,
-                      queue: widget.live?.forNode(p.node),
-                    ),
+                      Positioned(
+                        left: geometry.topLeft[p.node.id]!.dx,
+                        top: geometry.topLeft[p.node.id]!.dy,
+                        width: _nodeWidth,
+                        child: _NodeTile(
+                          node: p.node,
+                          queue: widget.live?.forNode(p.node),
+                        ),
+                      ),
+                  ],
                   ),
-              ],
+                ),
+              ),
             ),
           ),
-        ),
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: _ZoomBar(
+              paper: paper,
+              zoom: _zoom,
+              onIn: () => _zoomBy(1.25),
+              onOut: () => _zoomBy(0.8),
+              onReset: () =>
+                  setState(() => _view.value = Matrix4.identity()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Zoom, and the number, because a canvas that has been zoomed and cannot say
+/// so leaves somebody wondering whether the chart is wrong or the view is.
+class _ZoomBar extends StatelessWidget {
+  const _ZoomBar({
+    required this.paper,
+    required this.zoom,
+    required this.onIn,
+    required this.onOut,
+    required this.onReset,
+  });
+
+  final FlowCanvas paper;
+  final double zoom;
+  final VoidCallback onIn;
+  final VoidCallback onOut;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: paper.tile,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: paper.tileLine),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: onOut,
+            icon: const Icon(Icons.remove),
+            iconSize: 16,
+            color: paper.muted,
+            tooltip: 'Zoom out',
+          ),
+          GestureDetector(
+            onTap: onReset,
+            child: Tooltip(
+              message: 'Reset the view',
+              child: Text(
+                '${(zoom * 100).round()}%',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: paper.text,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onIn,
+            icon: const Icon(Icons.add),
+            iconSize: 16,
+            color: paper.muted,
+            tooltip: 'Zoom in',
+          ),
+        ],
       ),
     );
   }
@@ -760,6 +878,12 @@ class _NodeTile extends StatelessWidget {
         return 'Voicemail';
       case 'arrival':
         return 'Arrives';
+      case 'answered':
+        return 'Picked up';
+      case 'recorded':
+        return 'Recording';
+      case 'wrap_up':
+        return 'After the call';
       default:
         return '';
     }
