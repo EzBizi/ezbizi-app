@@ -11,6 +11,7 @@ import 'core/files.dart';
 import 'core/live_view_service.dart';
 import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
+import 'screens/leads_screen.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
 import 'core/remote_control_service.dart';
@@ -734,6 +735,42 @@ class _HomeShellState extends State<HomeShell> {
   /// usual outcome here is success.
   String? _confirmationNotice;
 
+  /// What a notification asked the destination to narrow to, if anything.
+  ///
+  /// Cleared by nothing on purpose: it is set when a notification navigates and
+  /// replaced the next time one does. Leaving it set means going back to Leads
+  /// by hand shows the same filter it last opened with, which matches the chip
+  /// the person can see selected.
+  String? _leadsFilter;
+
+  /// One module screen, with the one destination that accepts a filter.
+  ///
+  /// A special case at a single site rather than a third argument on every
+  /// builder in `moduleScreens`: the typedef is `(api, session)` across some
+  /// forty screens, and Dart will not accept the existing lambdas against a
+  /// signature with an extra optional parameter — so generalising costs forty
+  /// edits to serve one consumer. When a SECOND module wants to be opened
+  /// narrowed, that is the moment to change the typedef rather than add a
+  /// second branch here.
+  ///
+  /// The ValueKey is what makes it work twice. Every destination is built up
+  /// front and kept, so LeadsScreen applies `initialSource` in initState and
+  /// would never see a second, different filter — arriving from one chat
+  /// notification and then from a form one would leave the first filter in
+  /// place. Changing the key rebuilds the screen, which re-runs initState.
+  Widget _screenFor(String key, ModuleScreen screen) {
+    if (key == 'leads' && _leadsFilter != null) {
+      return LeadsScreen(
+        key: ValueKey(_leadsFilter),
+        api: widget.api,
+        session: widget.session,
+        initialSource: _leadsFilter,
+      );
+    }
+
+    return screen.build(widget.api, widget.session);
+  }
+
   void _show(_Rail rail, String id) => setState(() {
     _rail = rail;
     _selected = id;
@@ -939,7 +976,7 @@ class _HomeShellState extends State<HomeShell> {
             Destination(
               module.label,
               screen.icon,
-              screen.build(widget.api, widget.session),
+              _screenFor(module.key, screen),
               id: module.key,
             ),
     ];
@@ -1283,7 +1320,10 @@ class _HomeShellState extends State<HomeShell> {
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
                 // only needs to name one.
-                onOpenModule: (key) => _show(_Rail.modules, key),
+                onOpenModule: (key, filter) {
+                  setState(() => _leadsFilter = filter);
+                  _show(_Rail.modules, key);
+                },
               ),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is

@@ -8,10 +8,12 @@ use App\Models\AutomationEvent;
 use App\Models\AutomationVersion;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\Lead;
 use App\Models\Notification;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
+use App\Support\Automations\EventEmitter;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Settings\SettingsResolver;
@@ -78,6 +80,25 @@ class NotificationsTest extends TestCase
                 'organization_id' => $this->org['organization']->id,
                 'automation_id' => $w->id, 'version' => 1,
                 'actions' => [['type' => 'notify', 'message' => 'New job: {{ title }}']],
+                'created_at' => now(),
+            ]);
+
+            $w->forceFill(['active_version_id' => $v->id])->save();
+        });
+    }
+
+    private function ruleThatNotifiesOn(string $trigger): void
+    {
+        $this->inTenant(function () use ($trigger) {
+            $w = Automation::create([
+                'organization_id' => $this->org['organization']->id,
+                'name' => 'Tell someone', 'trigger_key' => $trigger, 'is_active' => true,
+            ]);
+
+            $v = AutomationVersion::create([
+                'organization_id' => $this->org['organization']->id,
+                'automation_id' => $w->id, 'version' => 1,
+                'actions' => [['type' => 'notify', 'message' => 'New Live Chat Lead']],
                 'created_at' => now(),
             ]);
 
@@ -341,6 +362,92 @@ class NotificationsTest extends TestCase
         // a job. The trigger `job.created` is declared by `jobs`, which is the
         // question actually being asked.
         $this->assertSame('jobs', $module);
+    }
+
+    public function test_a_website_chat_lead_carries_the_filter_that_opens_the_chat_list(): void
+    {
+        // Jose, 2026-09-16: it "should be leading me well to the leads tab and
+        // specifically to the chat sub tab". The module alone lands on a list
+        // of every source, which is where he was already looking.
+        $lead = $this->inTenant(fn () => Lead::create([
+            'organization_id' => $this->org['organization']->id,
+            'owning_franchise_id' => $this->org['franchise']->id,
+            'source' => 'website_chat',
+            // NOT NULL with no default — a lead always comes FROM somewhere and
+            // carries that system's own id.
+            'remote_id' => 'chat-1',
+            'contact_name' => 'Someone',
+            'received_at' => now(),
+        ]));
+
+        $this->inTenant(function () use ($lead) {
+            app(EventEmitter::class)->emit('lead.received', $lead, [
+                'after' => $lead->only(['source', 'contact_name']),
+            ]);
+        });
+
+        $this->ruleThatNotifiesOn('lead.received');
+        $this->drain();
+
+        $meta = $this->as($this->org['admin'])->getJson('/api/v1/notifications')
+            ->assertOk()->json('data.0.meta');
+
+        $this->assertSame('leads', $meta['module']);
+        // LITERAL. The value comes off the event payload the emitter already
+        // writes, so nothing here reads the leads table and the client fetches
+        // nothing extra.
+        $this->assertSame('website_chat', $meta['filter']);
+    }
+
+    public function test_a_module_that_narrows_by_nothing_ignores_a_source_in_its_payload(): void
+    {
+        /*
+         * THE CONTROL, and the first version of it was worthless.
+         *
+         * It used an ordinary job event, whose payload carries no `source` at
+         * all — so it returned null whether the module gate worked or not, and
+         * a sabotage removing the gate entirely passed it. It proved that jobs
+         * have no source, which nobody doubted.
+         *
+         * This one puts a `source` IN the payload of a non-leads event. Now the
+         * only thing that can suppress it is the module gate, which is the
+         * thing under test: `source` is not a reserved word, and handing any
+         * field of that name to a screen as a filter would narrow a list by a
+         * value that was never about narrowing.
+         */
+        $this->makeJob();
+        $job = $this->inTenant(fn () => Job::query()->firstOrFail());
+
+        $this->inTenant(fn () => app(EventEmitter::class)->emit('job.created', $job, [
+            'after' => ['source' => 'website_chat'],
+        ]));
+
+        $this->ruleThatNotifiesOn('job.created');
+        $this->drain();
+
+        $data = $this->as($this->org['admin'])->getJson('/api/v1/notifications')
+            ->assertOk()->json('data');
+
+        /*
+         * EVERY row, not `data.0`, and that mattered: the drain delivers both
+         * the job event the API raised and the one emitted above, so two
+         * notifications arrive in the same second and `data.0` is whichever
+         * sorted first. Asserting on it passed a sabotage that removed the
+         * module gate entirely — because the row it happened to read was the
+         * API's, whose payload has no `source` at all.
+         *
+         * A test that cannot say WHICH row it is looking at is not measuring
+         * the thing it names.
+         */
+        $metas = collect($data)->pluck('meta');
+
+        $this->assertNotEmpty($metas);
+        $this->assertContains('jobs', $metas->pluck('module')->all());
+        $this->assertSame(
+            [null],
+            $metas->pluck('filter')->unique()->values()->all(),
+            'jobs has not asked to be opened narrowed, so no job notification may carry a filter',
+        );
     }
 
     public function test_the_automations_key_names_a_module_that_exists(): void

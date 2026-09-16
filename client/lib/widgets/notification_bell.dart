@@ -48,7 +48,7 @@ class NotificationBell extends StatefulWidget {
   ///
   /// Optional so the bell keeps working in a test or any shell that has nowhere
   /// to send anybody. Null here means the old behaviour: tapping marks read.
-  final void Function(String moduleKey)? onOpenModule;
+  final void Function(String moduleKey, String? filter)? onOpenModule;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -373,8 +373,17 @@ class _NotificationBellState extends State<NotificationBell>
                                 as String?;
 
                         if (module != null && widget.onOpenModule != null) {
+                          // And what to narrow it to, when the destination
+                          // understands one. Jose asked for the Leads tab AND
+                          // its chat filter; the module alone lands you on a
+                          // list of every source, which is where you were
+                          // already looking.
+                          final filter =
+                              (current?['meta'] as Map<String, dynamic>?)?['filter']
+                                  as String?;
+
                           Navigator.of(context).pop();
-                          widget.onOpenModule!(module);
+                          widget.onOpenModule!(module, filter);
                           return;
                         }
 

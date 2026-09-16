@@ -32,6 +32,13 @@ class NotificationsController extends Controller
     /** Verified to name a real module by NotificationsTest. */
     private const AUTOMATIONS_MODULE = 'automations';
 
+    /**
+     * Module key => the payload field it opens narrowed by. See [filterFor].
+     *
+     * @var array<string, string>
+     */
+    private const MODULE_FILTERS = ['leads' => 'source'];
+
     public function __construct(private readonly ModuleRegistry $modules) {}
 
     /** GET /api/v1/notifications */
@@ -51,12 +58,13 @@ class NotificationsController extends Controller
          * table in the system, on the request the bell makes every sixty
          * seconds on every open client.
          */
-        $triggerKeys = AutomationEvent::query()
+        $events = AutomationEvent::query()
             ->whereIn('id', $rows->pluck('event_id')->filter()->unique())
-            ->pluck('event_key', 'id');
+            ->get(['id', 'event_key', 'payload'])
+            ->keyBy('id');
 
         $notifications = $rows->map(
-            fn (Notification $notification) => $this->present($notification, $triggerKeys),
+            fn (Notification $notification) => $this->present($notification, $events),
         );
 
         return response()->json([
@@ -194,9 +202,9 @@ class NotificationsController extends Controller
      * accepts a record to open within it yet. `subject.id` is in the payload
      * for whoever builds that.
      *
-     * @param  \Illuminate\Support\Collection<string, string>  $triggerKeys  event id => event_key
+     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events  keyed by id
      */
-    private function present(Notification $notification, $triggerKeys): array
+    private function present(Notification $notification, $events): array
     {
         return [
             'id' => $notification->id,
@@ -207,37 +215,70 @@ class NotificationsController extends Controller
                 'type' => $notification->subject_type ? class_basename($notification->subject_type) : null,
                 'id' => $notification->subject_id,
             ],
-            'meta' => ['module' => $this->moduleFor($notification, $triggerKeys)],
+            'meta' => $this->destination($notification, $events),
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
     }
 
     /**
-     * Where a notification points, or null when it points nowhere.
+     * Where a notification points: a module, and what to narrow it to.
      *
-     * @param  \Illuminate\Support\Collection<string, string>  $triggerKeys
+     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events
+     * @return array{module: ?string, filter: ?string}
      */
-    private function moduleFor(Notification $notification, $triggerKeys): ?string
+    private function destination(Notification $notification, $events): array
     {
-        $triggerKey = $notification->event_id === null
-            ? null
-            : $triggerKeys->get($notification->event_id);
+        $event = $notification->event_id === null ? null : $events->get($notification->event_id);
 
-        if ($triggerKey !== null) {
-            return $this->modules->moduleKeyOfTrigger($triggerKey);
+        $module = $event !== null
+            ? $this->modules->moduleKeyOfTrigger($event->event_key)
+            /*
+             * A notification that NAMES an automation is about that automation —
+             * "Automation switched off: Missed Call" is raised by the engine
+             * rather than by a trigger, so it carries no event to derive from.
+             *
+             * The key is written here rather than derived, deliberately after
+             * the `emits` mistake: this is not a guess about ownership, it is
+             * the meaning of the column. A test asserts it names a real module.
+             */
+            : ($notification->automation_id === null ? null : self::AUTOMATIONS_MODULE);
+
+        return ['module' => $module, 'filter' => $this->filterFor($module, $event)];
+    }
+
+    /**
+     * What the destination should open narrowed to, when it understands one.
+     *
+     * Jose, 2026-09-16: a lead notification should reach "the leads tab and
+     * specifically the chat sub tab". The Leads screen narrows by the lead's
+     * `source`, and the value is already in the event payload — `lead.received`
+     * emits `after.source` — so nothing here reads the leads table and the
+     * client fetches nothing extra.
+     *
+     * ── Why a map rather than "pass through any after.source" ────────
+     *
+     * Because `source` is not a reserved word. Another module's payload may
+     * carry a field of that name meaning something entirely different, and
+     * handing it to a screen as a filter would narrow a list by a value that
+     * was never about narrowing. The Leads screen ignores a source it does not
+     * recognise — measured and tested by whoever added `initialSource` — so the
+     * failure would be quiet, which is exactly the kind this module has spent
+     * the day removing.
+     *
+     * One entry, because one module has asked. A second adds a line here and
+     * declares which payload field it narrows by.
+     */
+    private function filterFor(?string $module, ?AutomationEvent $event): ?string
+    {
+        $field = self::MODULE_FILTERS[$module] ?? null;
+
+        if ($field === null || $event === null) {
+            return null;
         }
 
-        /*
-         * A notification that NAMES an automation is about that automation —
-         * "Automation switched off: Missed Call" is raised by the engine rather
-         * than by a trigger, so it carries no event to derive from.
-         *
-         * The key is written here rather than derived, and that is deliberate
-         * after the `emits` mistake: this is not a guess about ownership, it is
-         * the meaning of the column. A test asserts the key names a module that
-         * exists, so a rename cannot leave this pointing at nothing.
-         */
-        return $notification->automation_id === null ? null : self::AUTOMATIONS_MODULE;
+        $value = data_get($event->payload, "after.{$field}");
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }
