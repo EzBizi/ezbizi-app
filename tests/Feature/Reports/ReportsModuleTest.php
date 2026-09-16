@@ -56,13 +56,21 @@ class ReportsModuleTest extends TestCase
      * `implemented: true`, which would let a tenant save a rule that throws on
      * every run and then auto-disables itself.
      */
-    public function test_report_send_is_not_yet_in_the_implemented_list(): void
+    /*
+     * Was assertNotContains until 2026-09-16, and the flip is the guard doing
+     * its job rather than breaking. Automations built the arm - ActionRunner
+     * routes 'report.send' to sendReport() through SendSavedReport - so a
+     * catalogue still calling it unbuilt would tell a rule author the step
+     * does nothing, which is the exact lie this test was written to prevent
+     * in the other direction.
+     */
+    public function test_report_send_is_in_the_implemented_list(): void
     {
         $reflection = new \ReflectionClass(\App\Http\Controllers\Api\AutomationsController::class);
         $implemented = $reflection->getConstant('IMPLEMENTED_ACTIONS');
 
         $this->assertIsArray($implemented, 'IMPLEMENTED_ACTIONS was not readable');
-        $this->assertNotContains('report.send', $implemented);
+        $this->assertContains('report.send', $implemented);
     }
 
     public function test_the_glance_is_registered_and_keyed_to_the_module(): void
