@@ -245,6 +245,34 @@ function check($what, $got, $want) {
     echo "  FAIL  {$what}\n        want: ".var_export($want, true)."\n        got:  ".var_export($got, true)."\n";
 }
 
+/**
+ * A payload whose field list this build of the plugin has never seen.
+ *
+ * `tagline` is a field added to EzBizi after this plugin shipped; `template_1`
+ * is text a customer wrote once for the whole site; `about_us_field_1` is a
+ * paragraph they invented for one page. None of the three exists anywhere in
+ * the plugin's source, which is the point.
+ */
+function invented_payload() {
+    return json_encode([
+        'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
+        'fields' => [
+            ['key' => 'phone', 'label' => 'Phone number', 'hint' => '', 'shortcode' => '[ezbizi_phone]'],
+            ['key' => 'tagline', 'label' => 'Tagline', 'hint' => '', 'shortcode' => '[ezbizi_tagline]'],
+            ['key' => 'template_1', 'label' => 'Template 1', 'hint' => '', 'shortcode' => '[ezbizi_template_1]'],
+            ['key' => 'about_us_field_1', 'label' => 'About us - field 1', 'hint' => '', 'shortcode' => '[ezbizi_about_us_field_1]'],
+        ],
+        'values' => [
+            'phone' => '555-0100',
+            'tagline' => 'Not just our name.',
+            'template_1' => 'Licensed and insured since 1974.',
+        ],
+        'pages' => [
+            '/about-us' => ['about_us_field_1' => 'We have swept chimneys since 1974.'],
+        ],
+    ]);
+}
+
 function payload_json(array $values, array $pages = []) {
     return json_encode([
         'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
@@ -355,6 +383,53 @@ $_SERVER['REQUEST_URI'] = '/contact/?utm_source=x';
 check('trailing slash and query still match', ezbizi_value('phone'), '555-0999');
 $_SERVER['REQUEST_URI'] = '/about';
 check('another page gets the site value', ezbizi_value('phone'), '555-0100');
+
+echo PHP_EOL . "Keys this plugin has never heard of" . PHP_EOL;
+/*
+ * Jose asked whether the plugin had been updated for the new SEO fields, the
+ * page text and the templates. It has not, and the answer to whether it needs
+ * to be is here rather than in a sentence: the plugin registers a shortcode for
+ * every key the server sends, so a field invented in EzBizi this morning is a
+ * working shortcode this afternoon with nothing installed.
+ *
+ * None of the three keys below appears anywhere in this plugin's source.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => invented_payload()];
+ezbizi_payload(true);
+
+/*
+ * Registration happens on `init`, from whatever payload exists at that moment
+ * — which is a fact about the live plugin and not a quirk of this harness. A
+ * field invented in EzBizi becomes a shortcode on the NEXT request after the
+ * cache refreshes, not on the one that fetched it. Five minutes, not never,
+ * and worth knowing before somebody reports that their new field "did nothing"
+ * for a minute.
+ */
+do_action('init');
+
+check('a field added to EzBizi after this release is registered', isset($GLOBALS['sc']['ezbizi_tagline']), true);
+check('and renders', $GLOBALS['sc']['ezbizi_tagline']([]), 'Not just our name.');
+
+// A template is site-wide: the same words wherever it is pasted.
+$_SERVER['REQUEST_URI'] = '/anything-at-all';
+check('a template renders on any page', $GLOBALS['sc']['ezbizi_template_1']([]), 'Licensed and insured since 1974.');
+
+// A page's own text is the opposite: only where it belongs.
+$_SERVER['REQUEST_URI'] = '/about-us';
+check('a page field renders on its page', $GLOBALS['sc']['ezbizi_about_us_field_1']([]), 'We have swept chimneys since 1974.');
+
+$_SERVER['REQUEST_URI'] = '/contact';
+check('and nowhere else', $GLOBALS['sc']['ezbizi_about_us_field_1']([]), '');
+
+/*
+ * The control. Without it, "renders nothing elsewhere" would pass just as
+ * happily on a plugin that had never registered the shortcode at all — which
+ * is the failure being ruled out.
+ */
+check('the shortcode exists to be empty', isset($GLOBALS['sc']['ezbizi_about_us_field_1']), true);
+
+$_SERVER['REQUEST_URI'] = '/';
 
 echo "\nA failed API call must never blank a live page\n";
 reset_site();
