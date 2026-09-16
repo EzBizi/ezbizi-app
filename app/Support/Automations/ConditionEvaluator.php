@@ -143,6 +143,25 @@ class ConditionEvaluator
             'expected' => $expected,
             'actual'  => $after,
             'matched' => $matched,
+
+            /*
+             * WAS THE FIELD THERE AT ALL - which is not the same question as
+             * what its value was, and the run log could not tell them apart.
+             *
+             * A condition naming a field the event does not carry reads null and
+             * fails, and so does a condition whose value simply did not match.
+             * Both printed "the value at the time was nothing", so the two most
+             * different problems a rule can have looked identical to the person
+             * reading it.
+             *
+             * The cost, measured on one real rule: five versions over two weeks,
+             * every one skipping in silence. v1 named `from` and `Status` when
+             * the payload carries `from_address` and `subject`. v2 and v3 named
+             * `subject` for a word that is in the body. v4 named `message_id`,
+             * which exists and can never contain it. Four of those five were
+             * this question, and nothing on the screen asked it.
+             */
+            'carried' => $this->carries($field, $payload, $subject),
         ];
     }
 
@@ -178,6 +197,25 @@ class ConditionEvaluator
      * carries null means null, and must not fall through to the model and read
      * a stale value that the event did not describe.
      */
+    /**
+     * Whether this event carried the field, rather than what it held.
+     *
+     * The same three arms as {@see valueOf} and it must stay that way: if a
+     * value can be READ from somewhere, the field was carried, and a fourth arm
+     * added to one and not the other would make the run log say a field is
+     * missing while the condition reads it.
+     *
+     * The subject arm asks the attribute bag rather than `getAttribute`, which
+     * answers for accessors too. A rule naming a computed property is a
+     * different conversation; here the question is whether the RECORD holds it.
+     */
+    private function carries(string $field, array $payload, ?Model $subject): bool
+    {
+        return array_key_exists($field, $payload['after'] ?? [])
+            || array_key_exists($field, $payload)
+            || ($subject !== null && array_key_exists($field, $subject->getAttributes()));
+    }
+
     private function valueOf(string $field, array $payload, ?Model $subject): mixed
     {
         // Prefer the event's own after-value: the subject may have been changed

@@ -821,9 +821,24 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(comparison),
+                // TWO DIFFERENT PROBLEMS THAT LOOKED IDENTICAL. A field the
+                // event does not carry reads as nothing, and so does a value
+                // that simply did not match — and this line said the same words
+                // for both. One is a typo or a wrong field name and is fixed in
+                // seconds; the other means the rule is right and the data was
+                // not. A real rule went through five versions in two weeks,
+                // four of them the first problem, and the run log said "the
+                // value at the time was nothing" every time.
                 Text(
-                  'the value at the time was ${_shown(actual)}',
-                  style: Theme.of(context).textTheme.bodySmall,
+                  node['carried'] == false
+                      ? 'this event carries no field called “$field” — pick one '
+                            'from the list when you edit the rule'
+                      : 'the value at the time was ${_shown(actual)}',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: node['carried'] == false
+                        ? Theme.of(context).colorScheme.error
+                        : null,
+                  ),
                 ),
               ],
             ),

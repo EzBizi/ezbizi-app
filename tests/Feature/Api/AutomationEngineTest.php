@@ -693,6 +693,53 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * "No such field" and "the value did not match" stop looking identical.
+     *
+     * Both read null and both failed, and the run log said "the value at the
+     * time was nothing" for each — so a typo in a field name and a rule that is
+     * simply not true today were the same sentence on screen. One real rule went
+     * through five versions in two weeks and four of them were the first
+     * problem: `from` and `Status` when the payload carries `from_address` and
+     * `subject`, then `subject` twice for a word that lives in the body, then
+     * `message_id`, which exists and can never contain it.
+     *
+     * THE CONTROL IS THE SECOND HALF. A carried field whose value did not match
+     * must report carried TRUE — without that, this passes just as well against
+     * an implementation that reported every failing condition as missing, which
+     * would be the same defect pointing the other way.
+     */
+    public function test_the_trace_says_whether_the_event_carried_the_field_at_all(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'email.received',
+            'payload'         => [
+                'subject'      => 'New Call from CBUS (614) 597-4999',
+                'from_address' => 'notify@ringcentral.com',
+            ],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $trace = app(ConditionEvaluator::class)->evaluate(['all' => [
+            // Named by a real rule, and no email event has ever carried it.
+            ['field' => 'body_matched', 'op' => 'contains', 'value' => 'Missed'],
+            // Carried, and simply not true of this message.
+            ['field' => 'subject', 'op' => 'contains', 'value' => 'Missed'],
+        ]], $event, null)['trace'];
+
+        $this->assertFalse($trace['children'][0]['carried'],
+            'the event carries no body_matched, and the log must say so rather than "nothing"');
+
+        $this->assertTrue($trace['children'][1]['carried'],
+            'subject IS carried and merely did not match - reporting it missing would send '
+            .'somebody to fix a field name that is already right');
+
+        $this->assertFalse($trace['children'][0]['matched']);
+        $this->assertFalse($trace['children'][1]['matched']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose
