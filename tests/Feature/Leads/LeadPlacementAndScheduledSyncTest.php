@@ -360,6 +360,177 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         }
     }
 
+    /**
+     * Quota refusals stop the run; one account's own failure does not.
+     *
+     * Production, 2026-09-16: 2,033 refusals between 09:25 and 12:35, unbroken,
+     * about 690 an hour against a sustained rate of roughly 600 - essentially
+     * every call refused, and the command kept making them. The 15,000/day
+     * ceiling belongs to the DEVELOPER TOKEN, so once it is spent asking the
+     * next forty-eight accounts cannot succeed.
+     *
+     * What it costs is not politeness. While the window rolls over, the few
+     * operations that free up were being spent instantly by this command, so
+     * nothing else could get a call through - including the Ads report Jose
+     * had to film for Google.
+     *
+     * Asserted on the CALLS rather than on a log line, because a command that
+     * logs "stopping" and carries on would satisfy the log.
+     */
+    public function test_a_run_stops_once_google_is_refusing_on_quota(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        foreach (['1111111111', '2222222222', '3333333333', '4444444444', '5555555555'] as $id) {
+            $this->connection($t, $id);
+        }
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => [
+                    'code'    => 429,
+                    'status'  => 'RESOURCE_EXHAUSTED',
+                    'message' => 'Resource has been exhausted (e.g. check quota).',
+                ],
+            ], 429),
+        ]);
+
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $calls = 0;
+
+        Http::assertSent(function ($request) use (&$calls) {
+            if (str_contains($request->url(), 'googleads.googleapis.com')) {
+                $calls++;
+            }
+
+            return true;
+        });
+
+        $this->assertSame(
+            3,
+            $calls,
+            'five accounts, all refused on quota: the run must stop after three in a row '
+            .'rather than ask every one of them and then ask them all again for conversations',
+        );
+    }
+
+    /**
+     * And the sign is not flipped: ONE account failing still leaves the rest read.
+     *
+     * The bug this guards is the obvious over-correction - treating any refusal
+     * as "the token is spent" and abandoning forty-nine healthy accounts
+     * because one is suspended. Three DIFFERENT accounts refused back to back
+     * is the evidence, and a success in between resets it.
+     */
+    public function test_one_quota_refusal_between_healthy_accounts_stops_nothing(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        foreach (['1111111111', '2222222222', '3333333333'] as $id) {
+            $this->connection($t, $id);
+        }
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        $ok = fn (string $leadId) => Http::response(['results' => [[
+            'localServicesLead' => [
+                'id'               => $leadId,
+                'leadType'         => 'PHONE_CALL',
+                'leadStatus'       => 'ACTIVE',
+                'creationDateTime' => '2026-09-08 09:00:00',
+                'contactDetails'   => ['phoneNumber' => '+13055550101'],
+            ],
+        ]]], 200);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/v24/customers/2222222222/*' => Http::response([
+                'error' => ['code' => 429, 'status' => 'RESOURCE_EXHAUSTED'],
+            ], 429),
+            'googleads.googleapis.com/v24/customers/1111111111/*' => $ok('L-ONE'),
+            'googleads.googleapis.com/v24/customers/3333333333/*' => $ok('L-THREE'),
+        ]);
+
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $this->assertSame(
+            2,
+            $this->inTenant($t['org'], fn () => Lead::query()->count()),
+            'a single quota refusal in the middle must not abandon the account after it',
+        );
+    }
+
+    /**
+     * THREE SUSPENDED ACCOUNTS IN A ROW MUST NOT ABANDON THE FOURTH.
+     *
+     * The over-correction, and the one a sabotage caught: counting ANY failure
+     * towards the quota tally passes every test above, because none of them
+     * has three non-quota failures in a row. A-1 holds accounts Google calls
+     * deactivated, and three of them landing together is an ordinary Tuesday.
+     *
+     * Asserted on which customers were ASKED rather than on a count, so the
+     * order the run happens to choose cannot make it pass by luck.
+     */
+    public function test_three_non_quota_failures_in_a_row_do_not_stop_the_run(): void
+    {
+        $t = $this->provisionTenant('A1-Chimney');
+
+        $ids = ['1111111111', '2222222222', '3333333333', '4444444444'];
+
+        foreach ($ids as $id) {
+            $this->connection($t, $id);
+        }
+
+        config([
+            'services.google_ads.client_id'       => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret'   => 'client-secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version'         => 'v24',
+        ]);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at-fresh', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::response([
+                'error' => ['code' => 403, 'status' => 'PERMISSION_DENIED'],
+            ], 403),
+        ]);
+
+        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
+        $asked = [];
+
+        Http::assertSent(function ($request) use (&$asked) {
+            if (preg_match('#/customers/(\d+)/#', $request->url(), $m)) {
+                $asked[$m[1]] = true;
+            }
+
+            return true;
+        });
+
+        foreach ($ids as $id) {
+            $this->assertArrayHasKey(
+                $id,
+                $asked,
+                "account $id was never asked: a permission failure is about one account "
+                .'and must not be counted towards the developer token being spent',
+            );
+        }
+    }
+
     public function test_one_failing_account_does_not_stop_the_others(): void
     {
         $t = $this->provisionTenant('A1-Chimney');

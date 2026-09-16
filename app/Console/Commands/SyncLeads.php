@@ -53,6 +53,16 @@ class SyncLeads extends Command
 
     protected $description = 'Fetch Local Services enquiries for every connected Google Ads account';
 
+    /**
+     * How many accounts in a row must be refused on quota before the run stops.
+     *
+     * Three, not one: a single 429 can be one account's own rate limit, and
+     * abandoning fifty healthy accounts because of it would be the old bug
+     * with the sign flipped. Three DIFFERENT accounts refused back to back is
+     * a fact about the developer token, which is what the ceiling belongs to.
+     */
+    private const QUOTA_REFUSALS_BEFORE_STOPPING = 3;
+
     public function __construct(
         private readonly LocalServicesLeads $localServices,
         private readonly TenantContext $tenant,
@@ -121,6 +131,10 @@ class SyncLeads extends Command
         $messages = 0;
         $failed   = 0;
         $rested   = 0;
+
+        // Accounts actually reached, so the "not read" count in the log is the
+        // remainder rather than a guess.
+        $fetchedAccounts = 0;
 
         /*
          * Tiered, because Basic Access is 15,000 operations a day for the
@@ -229,6 +243,33 @@ class SyncLeads extends Command
             ];
         }
 
+        /*
+         * CONSECUTIVE QUOTA REFUSALS END THE RUN.
+         *
+         * "One account must not stop the other twenty-one" is right about an
+         * account-shaped failure and wrong about this one. The 15,000/day
+         * ceiling belongs to the DEVELOPER TOKEN, not to an account, so once
+         * it is spent every remaining account gets the same 429 - and the loop
+         * below happily asked all of them, then asked them all again for
+         * conversations.
+         *
+         * Production, 2026-09-16: 2,033 refusals between 09:25 and 12:35,
+         * unbroken, about 690 an hour against a sustained rate of roughly 600.
+         * Essentially every call refused, and the command kept making them.
+         *
+         * Three IN A ROW is the evidence, and it is evidence no single response
+         * carries: one 429 can be an account's own rate limit, but three
+         * different accounts refused back to back is a fact about the token.
+         * That is why the count is consecutive and a success resets it.
+         *
+         * What this buys is not politeness. While the window rolls over, the
+         * few operations that free up were being spent instantly by this
+         * command, so nothing else - the Ads report, a demo video, a person
+         * looking - could ever get a call through.
+         */
+        $quotaRefusals = 0;
+        $abandoned = false;
+
         foreach ($due as $item) {
             [$connection, $organization] = [$item['connection'], $item['organization']];
 
@@ -243,6 +284,7 @@ class SyncLeads extends Command
                 );
 
                 $fetched += $result['fetched'];
+                $quotaRefusals = 0;
             } catch (Throwable $e) {
                 /*
                  * One account must not stop the other twenty-one. A suspended
@@ -260,13 +302,37 @@ class SyncLeads extends Command
                     'provider'      => $connection->provider,
                     'reason'        => $e->getMessage(),
                 ]);
+
+                // The message is built in LocalServicesLeads::page() a few
+                // files away and says "(HTTP 429)". Matched rather than typed
+                // into a new exception class, because there is exactly one
+                // thrower and one reader of it.
+                $quotaRefusals = str_contains($e->getMessage(), '(HTTP 429)')
+                    ? $quotaRefusals + 1
+                    : 0;
+
+                if ($quotaRefusals >= self::QUOTA_REFUSALS_BEFORE_STOPPING) {
+                    $abandoned = true;
+
+                    Log::warning('Lead sync stopped early: Google is refusing on quota.', [
+                        'consecutive_refusals' => $quotaRefusals,
+                        'accounts_not_read'    => count($due) - $fetchedAccounts,
+                    ]);
+
+                    break;
+                }
             }
+
+            $fetchedAccounts++;
         }
 
         // The second pass, and the one that is allowed to fail. Every enquiry
         // is already filed by the time this runs.
         foreach ($due as $item) {
-            if (! $item['conversations']) {
+            // Conversations are detail; leads are people nobody has spoken to.
+            // If the token had nothing left for the leads it has nothing for
+            // these, and asking anyway is 51 more refusals.
+            if ($abandoned || ! $item['conversations']) {
                 continue;
             }
 
