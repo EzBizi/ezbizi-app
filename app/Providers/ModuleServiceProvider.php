@@ -1274,16 +1274,27 @@ class ModuleServiceProvider extends ServiceProvider
                          * must not write to them). There is no membership table,
                          * so "add to audience" has no row to create.
                          *
-                         * So this cannot be built as declared, and whether it
-                         * SHOULD be built is a consent question rather than a
-                         * code one — it is with Jose. Left declared and honest
-                         * rather than withdrawn, because withdrawing it would
-                         * decide that question by removing it.
+                         * **RULED 2026-09-16, Jose: no, and it needs an opt-in
+                         * tickbox.** An address that arrived as a website chat
+                         * or form enquiry may NOT be added to a mailing list
+                         * automatically. The person has to have agreed, and the
+                         * agreement has to be recorded.
+                         *
+                         * Which makes this blocked on something upstream rather
+                         * than on a decision. Measured the same day: `leads` has
+                         * no consent column and the widget form has no tickbox,
+                         * so there is nothing for this action to read. It stays
+                         * declared and unbuilt until there is.
+                         *
+                         * When it is built it takes the recorded agreement as a
+                         * PARAMETER and refuses without it — never inferring one
+                         * from the fact that somebody typed their address into a
+                         * contact form, which is the shape this ruling forbids.
                          */
                         description: 'Not built yet. It would add the person a rule fired about '
-                            .'to a mailing list. Nothing in EzBizi records that somebody agreed '
-                            .'to be mailed — only that they asked to stop — so what this should '
-                            .'do about that is still being decided.',
+                            .'to a mailing list, but only where they ticked a box agreeing to be '
+                            .'mailed — which nothing on the website asks yet. Somebody who sent '
+                            .'an enquiry has not agreed to marketing email.',
                     ),
                 ],
             ),
