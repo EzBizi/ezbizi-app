@@ -265,12 +265,22 @@ the manager when set; `leads:adopt-manager-clients` does it for grants that
 predate the column. 146-421-7121 is in no manager's tree and 403s to everybody;
 it is a dead row.
 
-**Crossing the ceiling on purpose, 2026-09-11.** One full day at sixty accounts
-read **14,889** requests on Google's own counter — 99.3% of the 15,000 ceiling,
-with no refusal. The fleet hovers just UNDER the line and stays there, which is
-the one outcome that earns nothing: Standard Access was refused on 2026-09-09
-for not exceeding it. Quiet accounts moved from a half hour to a quarter
-(+~1,150/day, about 107% of the ceiling) — the smallest lever that crosses.
+**Crossing the ceiling on purpose, 2026-09-11 — and stepping back, 2026-09-16.**
+One full day at sixty accounts read **14,889** requests on Google's own counter
+— 99.3% of the 15,000 ceiling, with no refusal. The fleet hovered just UNDER the
+line, which is the one outcome that earns nothing: Standard Access was refused
+on 2026-09-09 for not exceeding it. Quiet accounts moved from a half hour to a
+quarter (+~1,150/day, about 107% of the ceiling) — the smallest lever that
+crosses.
+
+It crossed, and the evidence now exists in Google's own logs: 2026-09-16
+produced **2,033 refusals between 09:25 and 12:35**, unbroken, ~690 an hour
+against a call rate of ~10.2 a minute. So the cadence went back to the half hour
+the same day. Jose: *"Reverse this so we have some leway, we already went over
+the threshhold so we are good with stepping back on it now."* The ~1,150/day it
+returns is the headroom the Ads report and a person looking at it come out of —
+at 107% every operation the day had was already promised to the sync, which is
+how an afternoon was lost to filming a demo video for Google.
 
 Read the daily figure from Google rather than modelling it. Arithmetic from the
 tiering rules said 16,704/day on 2026-09-10 while the counter said 12,361: runs

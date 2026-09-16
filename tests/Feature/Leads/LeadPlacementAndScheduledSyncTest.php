@@ -738,20 +738,26 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
 
         /*
-         * 12:15 - a quarter hour, and the case that discriminates.
+         * 12:15 - a quarter hour but NOT a half, which is the case that
+         * discriminates, and it must now REST.
          *
-         * Every other clock in this test passes under the OLD half-hour rule
-         * too: 12:07 rests either way, 12:30 is a quarter hour as well as a
-         * half. Only a quarter-hour mark that is NOT a half-hour one can tell
-         * the two apart, so without this the cadence could be changed back
-         * with nothing going red.
+         * Every other clock in this test passes under either rule: 12:07 rests
+         * both ways, 12:30 is read both ways. Only a quarter-hour mark that is
+         * not a half-hour one can tell them apart, so without this the cadence
+         * could be moved either direction with nothing going red. It asserted
+         * the opposite between 2026-09-11 and 2026-09-16, when the quarter
+         * hour was deliberate; see SyncLeads for why it was raised and why it
+         * came back.
+         *
+         * Ordering matters: nothing has read the quiet account yet, so this
+         * assertNotSent is about THIS tick rather than about the fake's
+         * whole history.
          */
         \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:15:00');
         $this->artisan('ezbizi:sync-leads')->assertSuccessful();
-        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
-        Http::assertNotSent(fn ($r) => $isConvRead($r, '3747134697'));
+        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
 
-        // 12:30 - also a quarter hour: the quiet account is read, once.
+        // 12:30 - a half hour: the quiet account is read, once.
         \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:30:00');
         $this->artisan('ezbizi:sync-leads')->assertSuccessful();
         Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));

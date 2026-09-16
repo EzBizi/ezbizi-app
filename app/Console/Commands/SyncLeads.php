@@ -150,41 +150,51 @@ class SyncLeads extends Command
          * an account that has produced nothing in thirty days is read once
          * per half hour and its conversations not at all, since it has no
          * lead to hang one on. With --days everything is read, every time.
-         * The quiet cadence became a quarter hour on 2026-09-11; see the
-         * block below it for why, and what going over costs.
+         * The quiet cadence was a quarter hour from 2026-09-11 to 2026-09-16;
+         * see the block below it for why it was raised and why it came back.
          */
         $minute   = now()->minute;
         $forced   = is_numeric($this->option('days'));
 
         /*
-         * A QUIET ACCOUNT IS ASKED EVERY QUARTER HOUR, not every half.
+         * A QUIET ACCOUNT IS ASKED EVERY HALF HOUR. Back to it, 2026-09-16.
          *
-         * Measured on 2026-09-11, one full day at sixty accounts: Google's own
-         * counter read 14,889 requests, 99.3% of the 15,000 Basic Access
-         * ceiling, with no refusal. The fleet sits just UNDER the line and
-         * stays there, and Standard Access was refused on 2026-09-09 for not
-         * exceeding it — so hovering is the one outcome that earns nothing.
-         * Jose, 2026-09-10: "i dont have any more producing accounts so what
-         * we need to do then is reduce the times."
+         * ── What the quarter hour was for, and why it is over ────
          *
-         * This adds about 1,150 requests a day (24 quiet accounts, 48 reads
-         * each becoming 96) and takes the fleet to roughly 107% of the
-         * ceiling. Deliberately the smallest lever that crosses: the cost of
-         * going over is that the day's quota runs out early, and everything
-         * stops until it resets at an hour Google does not document. At 107%
-         * that window is short; doubling the conversation cadence instead
-         * would have been 133% and hours of it.
+         * Measured 2026-09-11 at sixty accounts: Google's own counter read
+         * 14,889 requests, 99.3% of the 15,000 Basic Access ceiling, with no
+         * refusal. Standard Access had been refused on 2026-09-09 for not
+         * exceeding the limit, so sitting just under it earned nothing. The
+         * quiet cadence was raised to a quarter hour on purpose — about 1,150
+         * requests a day, roughly 107% of the ceiling — as the smallest lever
+         * that would cross the line the application needed crossed.
          *
-         * Nothing is LOST in that window. The lead read asks for everything
-         * since the newest lead already held, not since a cursor, so the first
-         * successful run afterwards collects what arrived meanwhile. The cost
-         * is delay, not absence — which is the only reason this is an
-         * acceptable thing to do on purpose.
+         * It crossed. 2026-09-16, production: 2,033 refusals between 09:25 and
+         * 12:35, unbroken, ~690 an hour against a call rate of ~10.2 a minute.
+         * The evidence the application wanted now exists in Google's own logs,
+         * and the argument no longer needs the cadence holding it up.
          *
-         * It also buys something real: a dormant account that starts producing
-         * is noticed in fifteen minutes rather than thirty.
+         * Jose, 2026-09-16: "Reverse this so we have some leway, we already
+         * went over the threshhold so we are good with stepping back on it
+         * now."
+         *
+         * ── What going back buys ─────────────────────────────────
+         *
+         * About 1,150 requests a day of headroom, which is what the reporting
+         * screen and a person looking at it have to come out of. Sitting at
+         * 107% meant every operation the day had was already promised to the
+         * sync, and the Ads report could not get a call through — which is how
+         * an afternoon was lost to filming a demo video for Google.
+         *
+         * ── What it costs ───────────────────────────────────────
+         *
+         * A dormant account that starts producing is noticed in thirty minutes
+         * rather than fifteen. Nothing is LOST either way: the lead read asks
+         * for everything since the newest lead already held, not since a
+         * cursor, so a later run collects what arrived meanwhile. Delay, not
+         * absence.
          */
-        $quietTick = $minute % 15 < 5;
+        $quietTick = $minute % 30 < 5;
         $tenMin    = $minute % 10 < 5;
 
         /*
