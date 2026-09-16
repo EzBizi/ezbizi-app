@@ -264,6 +264,18 @@ class SendSavedReportTest extends TestCase
      * their own cap are still one SES reputation — and nothing ingests bounce
      * or complaint notifications yet, so this cap is doing the work monitoring
      * would otherwise do.
+     *
+     * THIS TEST PASSED FOR MONTHS WHILE THE CAP DID NOTHING (2026-09-16), and
+     * that is worth knowing before trusting it. It runs on `CACHE_STORE=array`,
+     * where a missing key seeds and returns 1. Production runs the DATABASE
+     * store, where `Cache::increment` returns FALSE for a missing key — so the
+     * counter never started and `false > $allowance` never threw. Green here,
+     * inert there, and no amount of thoroughness in this file could reach it.
+     *
+     * Fixed in MailDispatcher at 84ee6cf9 by seeding with `Cache::add` first,
+     * and pinned against the database store in PlatformMailTest, which is where
+     * a store regression belongs. This assertion is about the CALLER: that a
+     * scheduled report is subject to the cap at all.
      */
     public function test_a_business_past_its_hourly_allowance_is_refused(): void
     {
