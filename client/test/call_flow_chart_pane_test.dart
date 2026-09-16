@@ -655,6 +655,35 @@ void main() {
       );
     });
 
+    /// THE ID THAT CAN TELL THE RAIL FROM A COPY OF IT.
+    ///
+    /// This drawer used to hold its own list of these words, and it disagreed
+    /// with the rail on four ids -- it said "Blocked numbers" for a section
+    /// called Blocked callers, and "Opening hours" for one called Hours. The
+    /// trail exists so somebody can go and FIND the section, so naming it
+    /// something the rail does not say is the one way this line can fail.
+    ///
+    /// The test above could never have caught it: `ring-groups` is an id where
+    /// the copy happened to match, so it passes against either source. `trust`
+    /// is spelled differently in the two, which is what makes it evidence.
+    testWidgets('the trail says what the rail says, not what we remember', (
+      tester,
+    ) async {
+      await _pump(tester, width: 1100, graph: graphWith(
+        {'pane': 'trust', 'id': 't-1'},
+      ));
+
+      await tester.tap(find.text('Ring Appointment'));
+      await tester.pump();
+
+      expect(
+        find.text('Settings › Phone › Trust & caller identity'),
+        findsOneWidget,
+        reason: 'A local list of labels would say "Trust" here, and pass every '
+            'other assertion in this file.',
+      );
+    });
+
     testWidgets('a step that is not a setting says so instead', (
       tester,
     ) async {
