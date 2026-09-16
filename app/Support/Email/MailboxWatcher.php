@@ -3,8 +3,10 @@
 namespace App\Support\Email;
 
 use App\Models\Mailbox;
+use App\Support\Automations\AutomationConditions;
 use App\Support\Automations\EventEmitter;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Polling ONE shared inbox, once — the half of the watcher that is not a loop.
@@ -76,6 +78,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class MailboxWatcher
 {
+    /** How many body words one organization's rules may ask to be tested. */
+    private const MAX_BODY_WORDS = 25;
+
     public function __construct(
         private readonly MailboxReaders $readers,
         private readonly EventEmitter $events,
@@ -222,7 +227,12 @@ final class MailboxWatcher
      */
     private function announce(Mailbox $mailbox, Arrivals $arrivals): PollResult
     {
-        $announced = $this->commit($mailbox, $arrivals->mark, $arrivals->messages);
+        // BEFORE the transaction, deliberately. Matching reads bodies from the
+        // mail service, and `commit` holds a row lock -- a provider having a
+        // slow minute must not hold that lock while it does.
+        $matched = $this->bodyMatches($mailbox, $arrivals->messages);
+
+        $announced = $this->commit($mailbox, $arrivals->mark, $arrivals->messages, $matched);
 
         return $announced === null ? PollResult::busy() : PollResult::announced($announced);
     }
@@ -231,14 +241,15 @@ final class MailboxWatcher
      * Write the events and the mark together, or write neither.
      *
      * @param  MessageSummary[]  $messages
+     * @param  array<string, string>  $matched  message id => the rule words found
      * @return int|null  how many were announced, or null when another sweep had
      *                   already moved the mark and this batch is theirs
      */
-    private function commit(Mailbox $mailbox, string $mark, array $messages): ?int
+    private function commit(Mailbox $mailbox, string $mark, array $messages, array $matched = []): ?int
     {
         $startedFrom = $mailbox->watch_mark;
 
-        return DB::transaction(function () use ($mailbox, $mark, $messages, $startedFrom) {
+        return DB::transaction(function () use ($mailbox, $mark, $messages, $matched, $startedFrom) {
             /*
              * Re-read under a row lock, and compared against what this poll
              * started from.
@@ -259,7 +270,11 @@ final class MailboxWatcher
             }
 
             foreach ($messages as $message) {
-                $this->events->emit('email.received', $row, $this->payload($row, $message));
+                $this->events->emit(
+                    'email.received',
+                    $row,
+                    $this->payload($row, $message, $matched[$message->id] ?? ''),
+                );
             }
 
             $row->standOn($mark);
@@ -269,6 +284,120 @@ final class MailboxWatcher
 
             return count($messages);
         });
+    }
+
+    /**
+     * Which of the organization's own rule words appear in each body.
+     *
+     * ── NOTHING IS READ UNLESS A RULE ASKED ──────────────────────
+     *
+     * `literalsFor` returns the literals this organization's active
+     * `email.received` rules compare `body_matched` against. No such rule means
+     * an empty list, and an empty list means this method makes NO provider call
+     * at all and every payload carries an empty string. So a tenant with no
+     * body rule pays nothing, reads nothing, and stores nothing -- the privacy
+     * property is not merely upheld there, it is untouched.
+     *
+     * ── WHY THIS COSTS A SECOND FETCH, AND WHY THAT IS NOT AVOIDABLE ──
+     *
+     * The sweep lists with `format=metadata` ({@see GmailMailboxReader}) -- the
+     * snippet Gmail returns there is Gmail's own, and the body is not in hand.
+     * Testing words against it would pass on IMAP, where the raw part IS held,
+     * and silently never match on Gmail. Every production mailbox today is
+     * Gmail, so that version of this feature would have looked built and done
+     * nothing. `open()` is therefore called per arrival, and only when words
+     * exist.
+     *
+     * ── A BODY THAT CANNOT BE READ MATCHES NOTHING ───────────────
+     *
+     * A failed open leaves the string empty rather than aborting the sweep. The
+     * arrival is still announced: "the mail arrived" is true regardless of
+     * whether we could look inside it, and a rule that does not fire is a
+     * better failure than mail that is never announced at all.
+     *
+     * @param  MessageSummary[]  $messages
+     * @return array<string, string>  message id => matched words, space-joined
+     */
+    private function bodyMatches(Mailbox $mailbox, array $messages): array
+    {
+        if ($messages === []) {
+            return [];
+        }
+
+        $words = AutomationConditions::literalsFor(
+            'email.received',
+            'body_matched',
+            (string) $mailbox->organization_id,
+        );
+
+        if ($words === []) {
+            return [];
+        }
+
+        /*
+         * REFUSED rather than truncated, and the count is in the log.
+         *
+         * Silently testing the first 25 of 40 words gives a rule that fires on
+         * some of its conditions and not others, with nothing anywhere saying
+         * which -- the rule author would be debugging their mail, not their
+         * rule. Refusing the whole set makes every one of those rules fail
+         * visibly and identically, which is the failure somebody can act on.
+         */
+        if (count($words) > self::MAX_BODY_WORDS) {
+            Log::warning('Too many body words to test on email.received.', [
+                'organization_id' => $mailbox->organization_id,
+                'words'           => count($words),
+                'limit'           => self::MAX_BODY_WORDS,
+            ]);
+
+            return [];
+        }
+
+        $reader = $this->readers->for($mailbox);
+        $found  = [];
+
+        foreach ($messages as $message) {
+            try {
+                $text = $this->bodyText($reader->open($mailbox, $message->id));
+            } catch (\Throwable) {
+                continue;
+            }
+
+            $hits = [];
+
+            foreach ($words as $word) {
+                if ($word !== '' && stripos($text, $word) !== false) {
+                    $hits[] = $word;
+                }
+            }
+
+            if ($hits !== []) {
+                $found[$message->id] = implode(' ', $hits);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The message as plain text, from the blocks the reader already built.
+     *
+     * Deliberately the SANITISED text rather than the raw part: it is what a
+     * person reading this message in EzBizi would see, so a rule matches what
+     * its author was looking at when they wrote it. Matching raw markup would
+     * hit words inside tags and URLs that are invisible on screen.
+     */
+    private function bodyText(MessageDetail $detail): string
+    {
+        $out = [];
+
+        foreach ($detail->blocks as $block) {
+            foreach ($block->spans as $span) {
+                $out[] = $span->text;
+            }
+        }
+
+        return implode(' ', $out);
     }
 
     /**
@@ -301,7 +430,7 @@ final class MailboxWatcher
      *
      * @return array<string, mixed>
      */
-    private function payload(Mailbox $mailbox, MessageSummary $message): array
+    private function payload(Mailbox $mailbox, MessageSummary $message, string $matched = ''): array
     {
         return [
             // The same two keys `email.mailbox_broken` uses, spelled the same
@@ -321,6 +450,28 @@ final class MailboxWatcher
             // the different question of when EzBizi noticed, and a rule about
             // office hours wants the first one.
             'received_at'  => $message->sentAt?->toIso8601String(),
+
+            /*
+             * WHICH OF THE RULE'S OWN WORDS WERE IN THE BODY. Never the body.
+             *
+             * The paragraph above still holds: not one character of the message
+             * is here. This is the rule's vocabulary reflected back -- the
+             * watcher tested the words the organization's own rules compare
+             * this field against, and lists the ones it found. A reader of an
+             * outbox row learns which of their words matched and nothing else
+             * about what the customer wrote.
+             *
+             * A SPACE-JOINED STRING, not a list, so `contains` works with the
+             * operator rule authors already use and the evaluator needs no
+             * array support.
+             *
+             * ALWAYS PRESENT, even empty, and that is not tidiness. The
+             * condition picker discovers fields from events it has SEEN. A key
+             * that appeared only once a rule already used it could never be
+             * picked in the first place -- the field would be invisible until
+             * somebody wrote the rule that needs it.
+             */
+            'body_matched' => $matched,
 
             // A header-level fact, and the one condition somebody reaches for
             // straight away: a photograph or a signed form arriving is a
