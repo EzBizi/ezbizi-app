@@ -694,10 +694,18 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
   double get _zoom => _view.value.getMaxScaleOnAxis();
 
   void _zoomBy(double factor) {
-    final next = (_zoom * factor).clamp(_minZoom, _maxZoom);
-    // Set the scale outright rather than multiplying the matrix, so repeated
-    // taps cannot drift past the clamp by accumulating rounding.
-    setState(() => _view.value = Matrix4.identity()..scaleByDouble(next, next, next, 1));
+    final current = _zoom;
+    final next = (current * factor).clamp(_minZoom, _maxZoom);
+    final applied = next / current;
+
+    // The factor actually applied is derived from the CLAMPED target rather
+    // than used raw, so repeated taps cannot accumulate past the ends -- and
+    // the existing matrix is kept rather than replaced, so zooming does not
+    // throw away a pan somebody just made.
+    if ((applied - 1).abs() < 0.0001) return;
+
+    _view.value = _view.value.clone()
+      ..scaleByDouble(applied, applied, applied, 1);
   }
 
   /// Reduce-motion turns the flow off, and that is not only an accessibility
@@ -727,6 +735,14 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
       child: Stack(
         children: [
           Positioned.fill(
+            // THE WHEEL WORKS AND IT IS InteractiveViewer THAT DOES IT.
+            // Phone flagged that a plain wheel event often pans rather than
+            // scales, so I wrote the test, saw it red, and added a Listener of
+            // my own -- then neutered that Listener and the test still passed.
+            // The wheel was never the defect: the READOUT was, because it was
+            // built from setState and the view also moves by wheel, pinch and
+            // drag. The Listener came out; a decoy that looks load-bearing is
+            // worse than no code at all.
             child: InteractiveViewer(
               transformationController: _view,
               constrained: false,
@@ -773,13 +789,19 @@ class _CanvasState extends State<_Canvas> with SingleTickerProviderStateMixin {
           Positioned(
             right: 12,
             bottom: 12,
-            child: _ZoomBar(
-              paper: paper,
-              zoom: _zoom,
-              onIn: () => _zoomBy(1.25),
-              onOut: () => _zoomBy(0.8),
-              onReset: () =>
-                  setState(() => _view.value = Matrix4.identity()),
+            // Rebuilt from the CONTROLLER rather than from setState, because
+            // the view also moves by pinch, drag and wheel -- none of which go
+            // through the buttons. Without this the readout says 100% while
+            // the canvas is at 160%, which is worse than having no readout.
+            child: AnimatedBuilder(
+              animation: _view,
+              builder: (context, _) => _ZoomBar(
+                paper: paper,
+                zoom: _zoom,
+                onIn: () => _zoomBy(1.25),
+                onOut: () => _zoomBy(0.8),
+                onReset: () => _view.value = Matrix4.identity(),
+              ),
             ),
           ),
         ],

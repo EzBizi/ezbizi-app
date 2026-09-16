@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/call_flow_chart.dart';
 import 'package:ezbizi_client/screens/phone/call_flow_chart_pane.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -532,6 +533,29 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('40%'), findsOneWidget);
+    });
+
+    /// Jose also asked for the mouse wheel. InteractiveViewer scales on a
+    /// trackpad pinch, and a plain wheel event is pan on some configurations
+    /// -- which for somebody with a mouse is the same as having no zoom at
+    /// all. Measured rather than assumed, because the two look identical in
+    /// the source.
+    testWidgets('the mouse wheel zooms rather than panning', (tester) async {
+      await _pump(tester, width: 1100);
+
+      final spot = tester.getCenter(find.byType(InteractiveViewer));
+      final mouse = TestPointer(1, PointerDeviceKind.mouse);
+
+      tester.binding.handlePointerEvent(mouse.hover(spot));
+      tester.binding.handlePointerEvent(mouse.scroll(const Offset(0, -220)));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('100%'),
+        findsNothing,
+        reason: 'A wheel that moves the view instead of scaling it leaves the '
+            'zoom at 100% -- which is what no zoom looks like to a mouse.',
+      );
     });
 
     testWidgets('tapping the number puts it back', (tester) async {
