@@ -12,7 +12,7 @@ class VersionHistory {
       date: '16 Sep 2026',
       items: [
         'An automation can send an email, to the person the event was about.',
-        'An automation can send a WhatsApp message, using one of the templates Meta has approved.',
+        'OS notifications now work outside the app window on Windows, Mac, Android and iPhone. Permission was only ever asked when somebody opened the notification panel, so anyone who never opened it was never asked and every desktop or phone notification quietly did nothing. The app still has to be running.',
         'A notification step can name which roles to reach, and a role that has since been deleted makes the step refuse rather than quietly notifying everybody.',
       ],
     ),
