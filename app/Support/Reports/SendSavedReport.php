@@ -11,6 +11,7 @@ use App\Support\Automations\EventScope;
 use App\Support\Mail\CannotSendMail;
 use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailStatus;
+use App\Support\Scoping\ViewScope;
 use RuntimeException;
 
 /**
@@ -55,60 +56,28 @@ use RuntimeException;
  * and the change is a policy about addresses rather than a change to the scope
  * guard — they answer different questions and fixing one will not fix the other.
  *
- * ── NOTHING CAN ACTUALLY SEND TODAY, and that is a ruling ───────
+ * ── WHOSE ADDRESS IT LEAVES FROM, and that has now moved twice ──
  *
  * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY
  * FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS,
- * ETC." The SERVICE, not the from-address — so `MailDispatcher::asTenant` now
- * refuses unconditionally and there is no identity state that lets a report
- * through.
+ * ETC." `asTenant` was retired and this class refused every send.
  *
- * This class is left intact rather than gutted. The scope guard, the
- * one-address-at-a-time rule and the audit row are all correct for whatever
- * transport replaces `asTenant`. Deleting the machinery would throw away three
- * rulings to save a file.
+ * Jose, 2026-09-16, reversing it: "Email ( the Ezbizi SES one, not the company
+ * one )". So a report leaves from EZBIZI's address, and the body says which
+ * business it is about.
  *
- * ── AND THE REPLACEMENT IS NOT MAILCHIMP, THOUGH EVERYONE SAID SO ──
+ * THE TWO RULINGS ARE NOT IN CONFLICT AND IT IS WORTH SAYING WHY, because
+ * reading them side by side they look it. `asTenant` put a TENANT's address on
+ * EzBizi's transport, which is a claim about who wrote the message.
+ * `platformForTenant` puts EZBIZI's address on it. The first was retired for
+ * impersonating the business; the second does not, so nothing here reopens the
+ * thing he closed.
  *
- * Three sessions, me included, repeated "both need the Mailchimp shape" — the
- * way a newsletter leaves through the tenant's own Mailchimp key and never
- * touches EzBizi's SES. The PRINCIPLE is right and the mechanism is wrong, and
- * nobody checked until somebody read the client:
- *
- * 1. `MailchimpClient::sendCampaign` has no attachment parameter, and
- *    `SavedReportMail::attachments()` returns the report as `text/csv`. The
- *    report IS the attachment.
- * 2. `recipientSegment()` builds from LIST MEMBERS — its own refusal reads
- *    "Nobody in this audience is currently subscribed." A company's accountant
- *    should not have to opt into marketing to receive a spreadsheet.
- * 3. The one that survives a workaround for the other two:
- *    `MailchimpSender` injects an unsubscribe footer into every campaign,
- *    custom HTML included. So a report would carry "Unsubscribe from these
- *    emails" under somebody's spreadsheet — a false compliance statement on
- *    transactional mail, and the accountant who clicks it to stop marketing
- *    silently stops receiving the report.
- *
- * The answer is the tenant's own SMTP, which carries attachments, reaches any
- * address, and is transactional by nature. It is wired: this class now calls
- * `MailDispatcher::throughTenantProvider()`, and it refuses for every business
- * until one connects a mail server — the settings screen for that is the SES
- * session's and is not built yet.
- *
- * ── DO NOT TEST THIS WITH `Mail::fake()` ────────────────────────
- *
- * `MailFake` has no `build()` override, so `__call` forwards `Mail::build()` to
- * the REAL manager. A test that fakes mail and reaches the dispatch would open
- * an ACTUAL SOCKET to whatever host its fixture named, silently, looking
- * exactly like a faked send. `smtpConfigFor()` is public and throws every
- * refusal without touching the network, so assert against that. Found by the
- * SES session before it could bite anybody, which is the only reason this
- * comment is a warning rather than an incident.
- *
- * I also deleted my own guard here, which used to refuse a tenant with no
- * sending identity before the loop. It was redundant once `asTenant` refused
- * everything — and worse than redundant: its sentence said "set one up under
- * Settings, Sending Identity", and that panel is being retired. Confident,
- * specific, wrong, and FIRST, which makes it the one somebody would read.
+ * Not `platform()` either: that one has no tenant lookup at all, on purpose, so
+ * sign-in and password-reset mail cannot accidentally start consulting one.
+ * This traffic is a tenant's, so it goes through the method that knows whose it
+ * is — which is what makes it countable and suppressible separately from an
+ * invitation. SES reputation is shared across every business on the platform.
  *
  * ── It is run as somebody, and that somebody matters ─────────────
  *
@@ -135,13 +104,10 @@ final class SendSavedReport
      * @throws RuntimeException when the rule's scope does not cover the report,
      *                          when it names nobody, or when NOTHING left the
      *                          building
-     * @throws CannotSendMail ALWAYS, at the first recipient, until a business
-     *                        connects its own email provider. Jose's ruling,
-     *                        2026-09-14: "EZBIZI EMAIL IS ONLY FOR EZBIZI
-     *                        ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET,
-     *                        VERIFICATIONS, ETC." `asTenant` now refuses
-     *                        unconditionally, so this method reaches the
-     *                        transport and is turned away there.
+     * @throws CannotSendMail when this business has spent its hourly allowance.
+     *                        A backstop counted across every rule it owns,
+     *                        because ten rules under their own caps are still
+     *                        one reputation.
      */
     public function send(SavedReport $report, array $recipients, Automation $rule, User $as): SentReport
     {
@@ -151,7 +117,37 @@ final class SendSavedReport
             throw new RuntimeException('This rule names nobody to send the report to.');
         }
 
-        $result = $this->runner->run($report->definition, $as);
+        /*
+         * ── RENDERED AT THE REPORT'S PLACE, NOT AT THE AUTHOR'S VIEW ──
+         *
+         * Automations asked who `$as` is when a rule fires at 3am, and the
+         * sharp half of their question was that the actor does not merely
+         * authorise the send — it decides WHAT THE REPORT CONTAINS.
+         *
+         * It did, and from the wrong thing. `run()` derived the scope from
+         * `ViewScope::forUser`, which reads the author's stored
+         * `navigation.scope` preference: the report rendered at whichever chip
+         * that person last clicked in their own top bar. A preference nobody
+         * thinks of as part of a report, deciding a report's figures, months
+         * later, silently.
+         *
+         * A saved report carries its own company or franchise. That is the
+         * answer to "what is this report about", it was chosen deliberately
+         * when the report was saved, and it does not move.
+         *
+         * THE PERSON IS STILL REQUIRED, as the reach floor rather than as the
+         * scope: `forStoredAutomationScope` refuses when the author no longer
+         * reaches the place the report names — "The automation creator no
+         * longer reaches its saved scope." Somebody who has moved from
+         * administrator to one branch stops being able to send an
+         * organization-wide report, which is the correct outcome and a legible
+         * one, rather than the report silently shrinking to their new reach.
+         */
+        $result = $this->runner->run($report->definition, $as, ViewScope::forStoredAutomationScope(
+            $as,
+            $report->franchise_id !== null ? ViewScope::FRANCHISE : ($report->company_id !== null ? ViewScope::COMPANY : null),
+            $report->franchise_id ?? $report->company_id,
+        ));
         $scope = $report->franchise ?? $report->company ?? $as->organization;
 
         $sent = [];
@@ -184,7 +180,7 @@ final class SendSavedReport
             }
 
             try {
-                $this->mail->throughTenantProvider($scope, new SavedReportMail($report, $result), $address);
+                $this->mail->platformForTenant($scope, new SavedReportMail($report, $result), $address);
                 $sent[] = $address;
             } catch (CannotSendMail $e) {
                 // NOT a per-address problem: the business has no mail server of

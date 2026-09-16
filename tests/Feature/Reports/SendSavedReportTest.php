@@ -2,14 +2,13 @@
 
 namespace Tests\Feature\Reports;
 
-use App\Models\AuditEvent;
+use App\Mail\SavedReportMail;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\SavedReport;
 use App\Models\SendingIdentity;
 use App\Support\Mail\CannotSendMail;
-use App\Support\Mail\MailDispatcher;
 use App\Support\Mail\MailTransport;
 use App\Support\Mail\SendingState;
 use App\Support\Reports\ReportCsv;
@@ -24,23 +23,41 @@ use Tests\TestCase;
 /**
  * `report.send` — running a saved report and mailing it.
  *
- * ── EVERY SEND IN HERE IS A REFUSAL, and the file says why ──────
+ * ── IT SENDS. THIS FILE SAID THE OPPOSITE FOR TWO DAYS ──────────
  *
- * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS ONLY
- * FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET, VERIFICATIONS,
- * ETC." So a report leaves through the BUSINESS's own mail server or not at
- * all, and nothing can connect one yet — that screen is the SES session's and
- * is next. Until it lands, "refused" is the correct outcome of every path here
- * rather than a broken test waiting to be fixed.
+ * Jose, 2026-09-14: "EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT
+ * RECOVERY, PASSWORD, RESET, VERIFICATIONS, ETC." Every path here refused, and
+ * the docblock that used to sit in this spot explained at length why refusing
+ * was correct rather than broken.
  *
- * ── DO NOT ADD A TEST THAT REACHES THE DISPATCH ────────────────
+ * Jose, 2026-09-16, reversing it: "Email ( the Ezbizi SES one, not the company
+ * one )". So the case this file spent two days pinning as impossible is the one
+ * it now has to prove.
  *
- * `MailFake` has no `build()` override, so `Mail::build()` forwards to the real
- * manager: a test that fakes mail and gets as far as sending would open an
- * ACTUAL SOCKET to whatever host its fixture named, looking exactly like a
- * faked send. `Mail::fake()` appears below only to prove nothing left; the
- * refusals are asserted against `MailDispatcher::smtpConfigFor()`, which
- * decides everything and touches no network.
+ * The two are not in conflict. `asTenant` put a TENANT's address on EzBizi's
+ * transport — a claim about who wrote the message — and stays retired.
+ * `platformForTenant` puts EZBIZI's address on it and the body says which
+ * business it is about.
+ *
+ * ── WHAT IS LEFT TO REFUSE ──────────────────────────────────────
+ *
+ * Three things, and none of them is the transport: a rule whose scope cannot
+ * read the report it names, a rule naming nobody, and a business past its
+ * hourly allowance. The first is a disclosure guard and fires before anything
+ * is rendered.
+ *
+ * ── A WARNING THAT NO LONGER APPLIES TO THIS PATH, KEPT ─────────
+ *
+ * `MailFake` has no `build()` override, so `Mail::build()` forwards to the REAL
+ * manager — a faked test that reached it would open an actual socket to
+ * whatever host a fixture named. That was live here while this class used
+ * `throughTenantProvider`, which builds a mailer per send. `platformForTenant`
+ * goes through the Mail facade and fakes properly, so `Mail::assertSent` below
+ * is honest.
+ *
+ * Kept because the trap is one method call away: anything that moves this class
+ * back onto a per-send mailer reinstates it silently, and a socket opened by a
+ * green test is not a thing anybody notices.
  */
 class SendSavedReportTest extends TestCase
 {
@@ -130,118 +147,6 @@ class SendSavedReportTest extends TestCase
         ));
     }
 
-    // ── nothing can send yet, and that is a ruling ─────────
-
-    /**
-     * THE ROW THAT DISTINGUISHES THE RULE FROM THE GUARD IT REPLACED.
-     *
-     * A tenant with its own VERIFIED sending address - the one case that used
-     * to work, and the only state whose refusal is new. The other three were
-     * already refused before Jose's ruling, so a test covering only those would
-     * pass against the old code unchanged and prove nothing about the change.
-     *
-     * That question - "would this have been green before my change?" - is the
-     * SES session's, asked of their own passing tests. It is sharper than the
-     * one that found my last defect, which was an absence a grep could reach.
-     */
-    public function test_a_verified_tenant_is_still_refused(): void
-    {
-        Mail::fake();
-
-        $tenant = $this->provisionTenant('Alpha');
-        $this->makeJob($tenant, 'Sweep');
-        $this->sendingIdentity($tenant, SendingState::Verified);
-
-        try {
-            $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-                $this->report($tenant),
-                ['owner@example.test'],
-                $this->rule($tenant),
-                $tenant['admin'],
-            ));
-
-            $this->fail('a verified tenant mailed a report through EzBizi');
-        } catch (CannotSendMail $e) {
-            $this->assertStringContainsString('its own mail server', $e->getMessage());
-        }
-
-        Mail::assertNothingSent();
-
-        // AND NO AUDIT ROW. The audit line sits after the loop, so a refusal at
-        // the first address never reaches it - but "never reaches it" is a
-        // claim about statement order, which is exactly the kind of claim that
-        // rots when somebody moves a line. `report.sent` naming recipients who
-        // were never written to would be a record that lies.
-        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => AuditEvent::query()
-            ->where('action', 'report.sent')->count()));
-    }
-
-    /**
-     * Every identity state, refused.
-     *
-     * Jose, 2026-09-14: "Email should not be sent as EzBizi, EZBIZI EMAIL IS
-     * ONLY FOR EZBIZI ACTIONS LIKE ACCOUNT RECOVERY, PASSWORD, RESET,
-     * VERIFICATIONS, ETC." The SERVICE rather than the from-address, so there
-     * is no configuration of anything that lets a report out.
-     */
-    public function test_no_identity_state_lets_a_report_out(): void
-    {
-        $states = [null, SendingState::Pending, SendingState::Failed, SendingState::Verified];
-
-        foreach ($states as $index => $state) {
-            Mail::fake();
-
-            $tenant = $this->provisionTenant('Tenant'.$index);
-            $this->makeJob($tenant, 'Sweep');
-
-            if ($state !== null) {
-                $this->sendingIdentity($tenant, $state);
-            }
-
-            try {
-                $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
-                    $this->report($tenant),
-                    ['owner@example.test'],
-                    $this->rule($tenant),
-                    $tenant['admin'],
-                ));
-
-                $this->fail('a report left with identity state '.($state?->value ?? 'none'));
-            } catch (CannotSendMail $e) {
-                // ignored: the refusal is the pass
-            }
-
-            Mail::assertNothingSent();
-        }
-    }
-
-    /**
-     * ASSERTED THROUGH `smtpConfigFor`, NEVER THROUGH `Mail::fake()`.
-     *
-     * `MailFake` has no `build()` override, so `__call` forwards `Mail::build()`
-     * to the real manager: a test that fakes mail and reaches the dispatch would
-     * open an ACTUAL SOCKET to whatever host its fixture named, silently, while
-     * looking like a faked send. The SES session found that before it could bite
-     * anybody and split the decision out so it can be asserted without a network.
-     *
-     * This is the caller's stake in it: every refusal a report can meet is
-     * decided here, so this is the thing worth pinning rather than the send.
-     */
-    public function test_the_refusal_is_decided_without_touching_the_network(): void
-    {
-        $tenant = $this->provisionTenant('Alpha');
-        $this->sendingIdentity($tenant, SendingState::Verified);
-
-        // A VerifiedDomain identity is the old EzBizi-SES path. It is exactly
-        // the row that used to send, and it must not produce a config.
-        $this->expectException(CannotSendMail::class);
-
-        $this->inTenant(
-            $tenant['org'],
-            fn () => app(MailDispatcher::class)->smtpConfigFor($tenant['org']),
-        );
-    }
-
     /**
      * THE SCOPE GUARD STILL FIRES FIRST, and the order is the point.
      *
@@ -268,6 +173,212 @@ class SendSavedReportTest extends TestCase
         } catch (RuntimeException $e) {
             $this->assertNotInstanceOf(CannotSendMail::class, $e);
         }
+    }
+
+    /**
+     * IT SENDS NOW, and that is a reversal rather than a new feature.
+     *
+     * Jose retired EzBizi's own mail for tenant traffic on 2026-09-14 and
+     * reversed it on 2026-09-16 — "Email ( the Ezbizi SES one, not the company
+     * one )". So the case this file spent a day asserting could NOT happen is
+     * the case that now has to.
+     *
+     * Kept as one test per fact rather than one big one, because "it sent" and
+     * "it sent to the right people" fail for different reasons.
+     */
+    public function test_a_report_is_run_and_mailed_to_the_named_people(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test', 'accountant@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $this->assertTrue($outcome->ok());
+        $this->assertSame(['owner@example.test', 'accountant@example.test'], $outcome->sent);
+
+        Mail::assertSent(SavedReportMail::class, 2);
+    }
+
+    /**
+     * THE AUTOMATIONS RULING, live again now that anything can send at all.
+     *
+     * Five recipients with one malformed must report OK and NAME the refused
+     * address. Failing the whole action for one bad address in five is how a
+     * rule that is working for four people auto-disables itself: the engine
+     * stops a rule after five consecutive failures, so a weekly report with one
+     * permanently-bad address would switch off after five weeks while four
+     * people were receiving it fine.
+     */
+    public function test_one_bad_address_does_not_fail_the_others(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['good@example.test', 'not-an-address', 'also-good@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $this->assertTrue($outcome->ok(), 'one bad address failed the whole send');
+        $this->assertSame(['good@example.test', 'also-good@example.test'], $outcome->sent);
+
+        // NAMED rather than counted: "one address failed" is not something
+        // anybody can act on.
+        $this->assertArrayHasKey('not-an-address', $outcome->refused);
+        $this->assertStringContainsString('not-an-address', $outcome->summary());
+    }
+
+    /** ok:false only when NOTHING left the building. */
+    public function test_a_send_where_every_address_is_refused_fails(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['not-an-address', 'also-not-one'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+    }
+
+    /**
+     * The hourly allowance is the one refusal left, and it is a BACKSTOP.
+     *
+     * Counted across every rule a business owns, because ten rules each under
+     * their own cap are still one SES reputation — and nothing ingests bounce
+     * or complaint notifications yet, so this cap is doing the work monitoring
+     * would otherwise do.
+     */
+    public function test_a_business_past_its_hourly_allowance_is_refused(): void
+    {
+        Mail::fake();
+        config(['mail.tenant_hourly_allowance' => 1]);
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->expectException(CannotSendMail::class);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['one@example.test', 'two@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+    }
+
+    /**
+     * NOTHING HERE CLAIMS ARRIVAL, and that is the vocabulary decision.
+     *
+     * EzBizi ingests no SES events — no SNS route, no bounce handler, measured
+     * rather than assumed — so delivered, bounced and opened are not facts it
+     * holds. A word that claimed arrival would be "reported success, delivered
+     * nothing" wearing a different hat.
+     */
+    public function test_the_outcome_never_claims_delivery(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        foreach (['delivered', 'arrived', 'received', 'read'] as $word) {
+            $this->assertStringNotContainsStringIgnoringCase(
+                $word,
+                $outcome->summary(),
+                'the summary claims something this application cannot observe',
+            );
+        }
+    }
+
+    /**
+     * A SCHEDULED REPORT RENDERS AT ITS OWN PLACE, NOT AT ITS AUTHOR'S VIEW.
+     *
+     * Automations asked who the actor is when a rule fires at 3am, and the
+     * sharp half was that the actor decided what the report CONTAINED. It did,
+     * and from `preferences['navigation.scope']` — the chip its author last
+     * clicked in their own top bar, months earlier, on a morning unrelated to
+     * the report.
+     *
+     * So this test puts the author's stored view at the ORGANIZATION and the
+     * report at ONE BRANCH, and the two disagree on purpose: before the fix the
+     * send carried both branches' jobs, which is a disclosure nobody chose and
+     * nothing in the output mentions.
+     *
+     * The CSV is the artefact, so the CSV is what is asserted — an outcome
+     * object saying "2 rows" would have been just as green either way.
+     */
+    public function test_a_send_renders_at_the_reports_place_not_the_authors_view(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Alpha Second');
+
+        $this->makeJob($tenant, 'Job in the report\'s branch');
+        $this->inTenant($tenant['org'], function () use ($other) {
+            $customer = Customer::factory()->create(['owning_franchise_id' => $other->id]);
+            Job::factory()->create([
+                'franchise_id' => $other->id,
+                'customer_id' => $customer->id,
+                'title' => 'Job somewhere else',
+            ]);
+        });
+
+        // The author is looking at the whole organization, which is the case
+        // the old code took its scope from.
+        $author = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $tenant['admin']->forceFill(['preferences' => ['navigation.scope' => 'organization']])->save();
+
+            return $tenant['admin']->fresh();
+        });
+
+        $report = $this->report($tenant, [
+            'company_id' => $tenant['company']->id,
+            'franchise_id' => $tenant['franchise']->id,
+        ]);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $report,
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $author,
+        ));
+
+        // The mailable carries the rendered ReportResult, so the ROWS are
+        // assertable directly - better than reaching into the attachment's
+        // bytes, which is an internal shape of Laravel's rather than of this
+        // report.
+        $sent = Mail::sent(SavedReportMail::class)->first();
+        $titles = json_encode($sent->result->rows);
+
+        $this->assertStringContainsString("Job in the report's branch", $titles);
+        $this->assertStringNotContainsString(
+            'Job somewhere else',
+            $titles,
+            "the report rendered at the author's view rather than its own place",
+        );
     }
 
     // ── the CSV ──────────────────────────────────────────────────

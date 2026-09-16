@@ -74,12 +74,12 @@ final class ReportRunner
     public const TIMEOUT_MS = 10000;
 
     private const OPERATORS = [
-        'eq'       => '=',
-        'ne'       => '!=',
-        'lt'       => '<',
-        'lte'      => '<=',
-        'gt'       => '>',
-        'gte'      => '>=',
+        'eq' => '=',
+        'ne' => '!=',
+        'lt' => '<',
+        'lte' => '<=',
+        'gt' => '>',
+        'gte' => '>=',
         'contains' => 'like',
     ];
 
@@ -97,18 +97,41 @@ final class ReportRunner
      * `$user->organization` means both callers behave identically, and the
      * organization can never arrive from a request payload.
      */
-    public function run(array $definition, User $user): ReportResult
+    /**
+     * @param  ViewScope|null  $at  the place to render AT, or null for the
+     *                              person's current view
+     *
+     * ── WHY A CALLER MAY NEED TO SAY WHERE ──────────────────────────
+     *
+     * `forUser` answers "what is this person looking at right now", and it
+     * answers it from `preferences['navigation.scope']` — a STORED UI
+     * PREFERENCE, which this class's own scoping docblock calls user input.
+     * For somebody pressing Run on a screen that is exactly right: the report
+     * should cover what they are looking at.
+     *
+     * For a SCHEDULED send it is wrong, and quietly. The report would render at
+     * whatever chip its author last clicked in their top bar, months ago, on a
+     * morning unrelated to the report — so the same rule produces different
+     * figures depending on a preference nobody thought of as part of it, and
+     * nothing on the way out says which.
+     *
+     * A saved report already carries its own place. `SendSavedReport` passes
+     * that, and the person is still required: they are the reach FLOOR, and
+     * `ViewScope::forStoredAutomationScope` refuses legibly when they no longer
+     * reach the place the report names.
+     */
+    public function run(array $definition, User $user, ?ViewScope $at = null): ReportResult
     {
-        return $this->tenant->run($user->organization, fn () => $this->build($definition, $user));
+        return $this->tenant->run($user->organization, fn () => $this->build($definition, $user, $at));
     }
 
-    private function build(array $definition, User $user): ReportResult
+    private function build(array $definition, User $user, ?ViewScope $at = null): ReportResult
     {
         $root = $definition['root'] ?? '';
         $rootResource = ReportMap::get($root)
             ?? throw new InvalidArgumentException("There is no reportable resource called '{$root}'.");
 
-        $view = ViewScope::forUser($user);
+        $view = $at ?? ViewScope::forUser($user);
         $organizationId = $this->tenant->idOrFail();
 
         $query = DB::table($rootResource['table']);
@@ -144,7 +167,7 @@ final class ReportRunner
                 }
 
                 $from = ReportMap::get($hop['from']);
-                $to   = ReportMap::get($hop['to']);
+                $to = ReportMap::get($hop['to']);
 
                 $query->leftJoin($to['table'], function (JoinClause $join) use (
                     $from, $to, $hop, $organizationId, $view, $user

@@ -121,11 +121,15 @@ class AirtableConnectController extends Controller
         }
 
         $connection->forceFill([
-            // Airtable's meta endpoint names tables but not the base itself, so
-            // the base id IS the name until somebody labels it. Deliberately
-            // not a guess assembled from table names: two bases with a
-            // "Companies" table would then look like the same thing.
-            'display_name' => $connection->display_name ?: $data['base_id'],
+            // Airtable's own name for the base - "Profit And Loss", "Deposit
+            // Jobs Tracker" - so a connection arrives already called something
+            // a person recognises rather than `appWhbwht0xgB5Yut`.
+            //
+            // Overwritten on every reconnect rather than kept, because this is
+            // what the PROVIDER calls it and the provider is allowed to change
+            // its mind. A tenant's own name lives in `label`, which is separate
+            // and never touched here.
+            'display_name' => $base['name'],
             'handle' => $data['base_id'],
         ]);
 

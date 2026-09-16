@@ -18,11 +18,17 @@ use RuntimeException;
  * caller happened to name, so each connection names ONE base and a business
  * connects as many as it uses.
  *
- * NOT because Airtable will tell us what the base is called. It will not: the
- * meta endpoint names the base's TABLES and never the base, so a connection is
- * displayed by its id until somebody labels it. I wrote the opposite here
- * first, from what I expected the endpoint to return rather than from what it
- * returned.
+ * And the name is Airtable's own. `GET /meta/bases` lists every base the token
+ * reaches, WITH its name — "Profit And Loss", "Deposit Jobs Tracker" — so a
+ * connection arrives already called something a person recognises.
+ *
+ * This paragraph said the opposite twice. First that Airtable would name the
+ * base, from what I assumed; then, correcting that, that it never would —
+ * because `/meta/bases/{id}/tables` returns table names and I generalised from
+ * the one endpoint I had called to the whole API. The deploy desk said "the
+ * meta API returns a base name if the connect flow can fetch it", I went to
+ * disagree, and they were right. A negative about an API is a claim about
+ * every endpoint in it, and I had asked one.
  *
  * ── THE TOKEN IS A HEADER, WHICH IS THE EASY CASE ───────────────
  *
@@ -53,7 +59,7 @@ final class AirtableBase
      * real and ungranted — see the 403/404 arm. An earlier version of this
      * paragraph claimed it did.
      *
-     * @return array{tables: list<string>}
+     * @return array{name: string, tables: list<string>}
      *
      * @throws AirtableRefused naming the field to look at, with a status and
      *                         never a body
@@ -100,7 +106,49 @@ final class AirtableBase
             throw AirtableRefused::base('That base has no tables this token can see.');
         }
 
-        return ['tables' => $tables];
+        return ['name' => $this->nameOf($token, $baseId) ?? $baseId, 'tables' => $tables];
+    }
+
+    /**
+     * What Airtable calls this base, or null if it will not say.
+     *
+     * A SEPARATE endpoint from the tables one, which is the whole reason this
+     * exists: `/meta/bases/{id}/tables` names tables, `/meta/bases` names
+     * bases. Asking the first and concluding the API had no base name is the
+     * mistake this method was written to undo.
+     *
+     * Failure is null rather than a throw. The grant has already been proved by
+     * the time this runs, so a hiccup here should cost a nice label and not a
+     * connection — the caller falls back to the base id, which is what the
+     * whole feature did before.
+     */
+    private function nameOf(string $token, string $baseId): ?string
+    {
+        $offset = null;
+
+        do {
+            try {
+                $response = Http::withToken($token)
+                    ->acceptJson()
+                    ->get(self::API.'/meta/bases', array_filter(['offset' => $offset]));
+            } catch (ConnectionException) {
+                return null;
+            }
+
+            if ($response->failed()) {
+                return null;
+            }
+
+            foreach ((array) ($response->json('bases') ?? []) as $base) {
+                if (($base['id'] ?? null) === $baseId) {
+                    return trim((string) ($base['name'] ?? '')) ?: null;
+                }
+            }
+
+            $offset = $response->json('offset');
+        } while ($offset !== null);
+
+        return null;
     }
 
     /**

@@ -133,6 +133,11 @@ class AirtableConnectTest extends TestCase
 
         $this->assertSame(self::BASE, $row->remote_id);
         $this->assertSame('pat_secret_value', $row->credentials['api_token']);
+
+        // Airtable's own name for it, not its id. The fixture lists another
+        // base first, so a reader that took the FIRST name rather than the
+        // MATCHING one would call this "Somebody else" and pass otherwise.
+        $this->assertSame('Profit And Loss', $row->display_name);
     }
 
     /**
@@ -230,13 +235,69 @@ class AirtableConnectTest extends TestCase
         )));
     }
 
+    /**
+     * NAMING IT HAS TO BE VISIBLE, or it is a write with no read.
+     *
+     * `rename` could already set a label; `index` never returned one, so
+     * naming a connection changed nothing anybody could see. An Airtable base
+     * displays as its id - `appadTMQltMGmGrse` tells nobody anything - which is
+     * exactly the case where a name matters most.
+     */
+    public function test_a_named_base_comes_back_with_its_name(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->fakeBase();
+
+        $id = $this->signedInAs($tenant['admin'])
+            ->postJson('/api/v1/social/airtable', [
+                'api_token' => 'pat_fine',
+                'base_id' => self::BASE,
+            ])
+            ->assertCreated()
+            ->json('data.id');
+
+        $this->signedInAs($tenant['admin'])
+            ->patchJson('/api/v1/social/connections/'.$id.'/label', [
+                'label' => 'Profit and Loss',
+            ])
+            ->assertOk();
+
+        $row = collect($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/social/connections?include=data_sources')
+            ->assertOk()
+            ->json('data'))
+            ->firstWhere('provider', 'airtable');
+
+        $this->assertSame('Profit and Loss', $row['label']);
+
+        // And Airtable's own name survives alongside the tenant's. Three names
+        // for one row is not redundancy: `label` is what this business calls
+        // it, `display_name` is what Airtable calls it, and `remote_id` is what
+        // identifies it when something is wrong.
+        $this->assertSame('Profit And Loss', $row['display_name']);
+    }
+
     private function fakeBase(): void
     {
-        Http::fake(['api.airtable.com/*' => Http::response([
-            'tables' => [
-                ['id' => 'tbl1', 'name' => 'NJ'],
-                ['id' => 'tbl2', 'name' => 'CT'],
-            ],
-        ])]);
+        Http::fake([
+            // The BASES endpoint names the base; the TABLES endpoint names its
+            // tables. Two different calls, which is the whole point - reading
+            // only the second is what made me write "Airtable will not tell us
+            // what a base is called" into a docblock.
+            'api.airtable.com/v0/meta/bases' => Http::response([
+                'bases' => [
+                    ['id' => 'appOTHER00000000', 'name' => 'Somebody else'],
+                    ['id' => self::BASE, 'name' => 'Profit And Loss'],
+                ],
+            ]),
+
+            'api.airtable.com/*' => Http::response([
+                'tables' => [
+                    ['id' => 'tbl1', 'name' => 'NJ'],
+                    ['id' => 'tbl2', 'name' => 'CT'],
+                ],
+            ]),
+        ]);
     }
 }
