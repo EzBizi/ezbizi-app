@@ -497,9 +497,37 @@ class AutomationsController extends Controller
         $fields = array_keys($fields);
         sort($fields);
 
+        /*
+         * ADDITIVE, keyed by field, and only for fields that have a closed set.
+         *
+         * `fields` stays a flat list of strings so a client that has not been
+         * updated is unaffected - this is a map beside it, not a change of shape.
+         * It answers the half of "people cannot guess them around" that the
+         * field picker left open: knowing the field is `source` does not tell
+         * anybody that the value they must type is `website_chat`.
+         *
+         * Values are DECLARED, never sampled. Reading them off recent events
+         * would leak what this tenant's records contain, and this endpoint has
+         * never returned a value - only which keys exist.
+         */
+        $values = [];
+
+        foreach (ActionRunner::valuesOn($this->registry->get($moduleKey)?->subject?->model) as $field => $set) {
+            if (! in_array($field, $fields, true)) {
+                continue;
+            }
+
+            $values[$field] = array_map(
+                fn (string $value, string $label) => ['value' => $value, 'label' => $label],
+                array_keys($set),
+                array_values($set),
+            );
+        }
+
         return response()->json(['data' => [
             'trigger' => $key,
             'fields' => $fields,
+            'values' => $values,
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
@@ -1325,7 +1353,40 @@ class AutomationsController extends Controller
             $type('update_field', 'Update a field'),
             $type('change_status', 'Change the status'),
             $type('webhook', 'Call a webhook'),
-            $type('notify', 'Send a notification'),
+            // DECLARED, not bespoke. The builder drew a hand-written Message box
+            // for this one action and posted {type, message} from a separate
+            // controller. That worked and it was a trap: `_payload()` switches to
+            // the generic branch the moment an action declares its first
+            // parameter, and the generic branch reads the parameter controllers -
+            // so declaring anything here without moving the form would have
+            // dropped the message the author had just typed and failed the save
+            // against a box they had filled in. Both halves are in one commit for
+            // that reason; do not split them.
+            $type('notify', 'Send a notification', false, [
+                $parameter('message', 'Message', 'rich_text'),
+
+                // Phrased as a DECLINE, and required: false so an untouched
+                // switch is simply absent. A positive key - "send an email" -
+                // would read as false on every rule saved before today and
+                // silence all of them on deploy. Unchecked means follow the
+                // organization; the organization setting stays the ceiling, so
+                // this can only ever narrow. Semantics agreed with Notifications
+                // and Settings; the dispatcher honours it at 27527d2f.
+                //
+                // AND IT IS SAVED EXPLICITLY, even when untouched. Every notify
+                // action carries `in_app_only: false` rather than omitting the
+                // key, and that is deliberate - do not trim it to narrow the
+                // payload. An omitted key is an absence with two causes nothing
+                // can tell apart: "authored before this parameter existed" and
+                // "authored after, and left alone". Those are the same thing
+                // only while the default never moves. The day unchecked is
+                // decided to mean something else, rules carrying an explicit
+                // false keep doing what their author chose and rules carrying
+                // nothing silently change meaning. `actions` is a record of what
+                // a rule does, not only an instruction, so it should say what
+                // was chosen. Notifications' argument, 2026-09-15.
+                $parameter('in_app_only', 'In-app only, do not email', 'boolean', false),
+            ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
             $type('message.mark_dealt', 'Mark an email dealt with'),

@@ -5,10 +5,12 @@ import '../core/files.dart';
 import '../core/session.dart';
 import '../core/timestamps.dart';
 import '../widgets/address_fields.dart';
+import '../core/cascade_words.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/sending_server_panel.dart';
 
 /// Settings, at whichever scope is selected (plan §6).
 ///
@@ -105,13 +107,16 @@ String? _notYetInEffect(Map<String, dynamic> setting) {
 /// organization chose. An admin who cannot tell "this franchise's own value"
 /// from "the company's, showing through" edits what they take to be the
 /// franchise and changes every place under that company.
-String provenanceSentence(Map<String, dynamic>? source) {
-  if (source == null) return 'EzBizi default';
-
-  return source['inherited'] == true
-      ? 'Inherited from ${source['name']}'
-      : 'Set here';
-}
+/// The WORDS come from core/cascade_words.dart; the shape is unpacked here.
+///
+/// They moved out on 2026-09-15, when the mail-server card arrived on this same
+/// screen carrying its own identical copy. Identical is the problem: two copies
+/// of a sentence drift on the day somebody improves one of them, and these two
+/// are drawn inches apart.
+String provenanceSentence(Map<String, dynamic>? source) => provenanceWords(
+      source == null ? null : source['name'] as String?,
+      inherited: source != null && source['inherited'] == true,
+    );
 
 /// True when the value on screen was chosen at the scope being looked at.
 bool sourceIsOwn(Map<String, dynamic>? source) =>
@@ -637,6 +642,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
         ?_businessAddressCard(context),
+
+        /*
+         * Self-contained on purpose: it fetches its own answer and holds its
+         * own state, so this screen needs one line rather than the loader,
+         * the field and the builder the deleted sending-identity card needed.
+         * Filtered by the search box the same way the others are.
+         */
+        if (_filter == _Filter.all &&
+            SendingServerPanel.matchesSearch(_search.text))
+          SendingServerPanel(api: widget.api, session: widget.session),
         ?organizationData,
       ],
     );

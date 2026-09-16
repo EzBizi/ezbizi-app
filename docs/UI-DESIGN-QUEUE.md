@@ -1,5 +1,31 @@
 # UI/UX — the queue, and what has been settled
 
+> **⚠ A STATUS IN THIS FILE IS A CLAIM ABOUT THE WORLD, AND FOUR OF THEM WERE FALSE ON
+> 2026-09-15.** Entry 18 read *DRAWN, awaiting Jose* hours after he picked and it shipped; Leads
+> connected accounts read *AWAITING JOSE* while the screen was built, grouped and searchable;
+> entries 7 and 8 read *DRAWN, with Jose* with 311 and 413 lines of the thing on main.
+>
+> **The cause is structural rather than carelessness.** CRAFT ships and tells UI/UX after, other
+> sessions build directly on his word, and nothing makes a row update itself. So the rot is the
+> normal state of this file, not an accident in it.
+>
+> **Before treating any row as open, spend one command proving it is:** find the file that would
+> exist if it were built. `grep -rln` on the feature, then `git log --oneline -1 --` on what comes
+> back. That is the whole check, and it would have caught all four.
+>
+> **And never put a gallery in front of Jose without running it first.** The worst outcome here is
+> not an untidy file — it is asking him to choose between six layouts for a problem somebody
+> solved and shipped while the row sat here saying it was waiting for him.
+
+> **REPORTING RULE, Jose 2026-09-15 (`CLAUDE.md` `0c90472e`, verified): replies to him are 3
+> bullets max** — final result, anything broken, anything he must do, a real question. His named
+> complaint is *"endless summaries replicated on all sessions"*. Peer messages, layout
+> measurements and these entries stay full-length; the constraint is only on what reaches him.
+>
+> **Scheduling reshaped the capacity settings screen** on his direct instruction and notified
+> UI/UX rather than queueing it — the approval flow working as written. Rides 0.0.0214. Not drawn
+> here; recorded so this queue does not read as if that screen is unchanged.
+
 Companion to `docs/MODULE-OWNERS.md`, written for the same reason and after the same
 failure: in ninety minutes on 2026-08-31 the Phone, Fleet, Customers and rules-desk
 sessions all ended, and four design briefs existed only in one session's context.
@@ -1211,7 +1237,7 @@ on main may have moved on.
 | ✅ | **Phone · Caller Identity & Trust** | **SHIPPED `cb27c68`.** Layout 1, built from the `d66bcef` pin. Merged with the existing Trust section as *Trust & caller identity*, absorbing Number quality, rail 14 → 13. This row read "being built, held by `ezbizi-0b`" for hours after it shipped, because the holder named in it stopped existing at a restart and a 🔨 cannot tell that from work in progress — the failure this table warns about, in the table. |
 | 🔨 | **Scheduling · Availability + Settings** | **Layout 7 approved, being built** (Overview + area rail — Jose's own combination of 1 and 2); Availability is **layout 4**. `docs/previews/scheduling-layouts.html` @ `560aed5`. Held by the Scheduling session. |
 | 📬 | **Fleet · vehicle Identity card** | **Layout 2 approved, handed to the deploy desk to route.** `docs/previews/fleet-identity-layouts.html` @ `560aed5`. The Fleet session that briefed it ended before it was drawn. **Not urgent** — nothing in Fleet is broken; the card works and the complaint was a long scroll at 375px. Fold it into the next Fleet work rather than staffing for it. |
-| ⏳ AWAITING JOSE | **Leads · connected accounts** | Six layouts in `docs/previews/leads-accounts-layouts.html` — 3 desktop, 3 mobile. Brief from the Google API session (`local_8111908f`), server done at `c55b3c33`. ~~**22 Google Ads accounts, one shown**: `leads_screen.dart:179` `_connectionFor` returns the first provider match.~~ **STRUCK 2026-09-15 — re-measured, and this is fixed.** `_connectionFor` is gone from that file (it survives only in a past-tense comment at `leads_screen.dart:266`, which records the same one-row failure hitting Thumbtack: one connect produced twelve businesses, eleven invisible, and disconnecting the visible one redrew the next — Jose reported the button as broken and had removed eight before anyone understood why). `_googleAdsAccounts` now returns every match and the whole list is passed through at line 792, so all 22 render. **The design question survives and is now sharper, not weaker:** twenty-two rows all render, so "which of these matter" is the whole problem rather than a refinement of it. I re-read the gallery against the current screen before this goes to Jose — six layouts drawn against "one shown" may be answering a question nobody has any more. **Two payload gaps found by reading it and raised with them:** `connectionState()` carries no `leads_franchise_id`, so the placement column cannot render on load; and nothing links a lead to the account that produced it, so no per-account count exists client-side or server-side. The count is not a decoration — it is what separates "2 accounts that matter from 20 quiet ones" from twenty-two identical rows, and layouts marked `needs the count` degrade honestly without it. Design builds it once picked. |
+| ✅ SHIPPED | **Leads · connected accounts** | **CLOSED 2026-09-15. It was built while this row said it was waiting on him, and both blockers recorded here are gone.** `docs/previews/leads-accounts-layouts.html` is a record rather than a decision now. Measured rather than assumed: `LeadsAccountsList` in `client/lib/widgets/leads_accounts.dart` renders **every** account, **grouped by lead count**, searchable, with placement editable in place — and search reaches THROUGH the fold, because a fold that hides a match hides rows from exactly the person who went looking. **Both payload gaps are closed:** placement renders, and `leads_count` is real server data (`LeadsController.php:924`), not a client-side guess — which was the whole question, since the count is what separates two accounts that matter from twenty quiet ones. Jose’s own sentence is in the widget’s docblock: *"no one will remember what the numbers mean"*, which is why a named row keeps its number too. **The lesson is the row, not the screen:** this sat marked as blocked on him through the day, and I nearly put six layouts in front of him for a problem that had been solved and shipped. A queue row is a claim about the world and goes stale exactly like any other. |
 | ✅ **REVERSED BY JOSE, 2026-09-09** | **Leads · four sources** | Desktop **3** + mobile **6**, the hybrid — `docs/previews/leads-sources-layouts.html`. He asked for *"a new sub tab in Leads"*; I shipped **1 / 4** (one list, source as a filter) in his absence and flagged it as one word to reverse. The word came: **3 and 6**, tabs with All in front. Built `4a0e0f2` — the source moved out of the filter row into a strip of its own, and nothing else changed: same row, same badges, same sources band, still ONE list. **The drawing was wrong about one thing and the build is not:** mobile option 6 had Thumbtack pushed off the end, because the HTML mock could not scroll. `TabBarLike` does, so every source has a tab at 352px. Losing a live source to a mock's limitation would have been a real gap, not a compromise he chose. **Two Alls now, deliberately** — the strip's tab and the filter row's chip, both meaning the unfiltered list; clearing the filters moves the strip too, or a tab stays lit describing something no longer on screen. Tested, and the test was sabotaged to prove it fails without it. |
 | ✅ APPROVED, **built by Leads** | **Leads · book a job from a lead** | Desktop **1** + mobile **4** — `docs/previews/leads-booking-layouts.html` @ `d1c69cb5`. Jose, 2026-09-08: *"as you recommend for the layouts"*. **Nothing is preselected when `customer_matches` is non-empty**, and Book stays disabled until answered — see the rule below. No match → straight to a new customer, no question. |
 | ✅ APPROVED, **built by Leads** | **Leads · read, star, note** | Desktop **1** + mobile **4** — `docs/previews/leads-triage-layouts.html` @ `18012c74`. Jose, 2026-09-08: *"2 - as u recommend"*. **Unread is WEIGHT, not a second dot** — the dot is unreplied and a leading-edge bar is banned, so the three marks live in three channels: weight (unread, yours), dot (unreplied, everyone's), star (everyone's). Filters narrow TOGETHER. On the same delegation the note gets an **author and an edited-at**, asked of Leads: a shared free-text field that cannot say who or when is one people stop trusting, and silent last-write-wins is the worse half. |
@@ -1441,7 +1467,9 @@ broken under it.
 The existing `shown` map solves this for filtering alone, on one rail. A green suite proves very
 little here; the test has to go red on an off-by-one.
 
-### 8 · Reports · the builder and the run view — **DRAWN, with Jose**
+### 8 · Reports · the builder and the run view — **SHIPPED**
+
+**Status corrected 2026-09-15 by measurement, not by news.** This read *DRAWN, with Jose* while `client/lib/screens/reports/report_builder.dart` was 413 lines on main, last touched by `341dc86f`. Built, shipped, and the row said it was waiting for him.
 
 `docs/previews/reports-builder-layouts.html`. Three desktop, three mobile, with two toggles:
 a person holding `reports.view` but not `reports.build`, and a report that returned no rows.
@@ -1493,7 +1521,9 @@ screen, which is correct — a builder is a new arrangement, not a state change 
 > and a human label becomes required rather than nice. It is one field in `ReportMap` and one
 > line in the controller at that point.
 
-### 7 · Organization · Brand colour picker — **DRAWN, with Jose**
+### 7 · Organization · Brand colour picker — **SHIPPED. Jose: desktop 1, mobile 6**
+
+**Status corrected 2026-09-15.** He picked these numbers earlier the same day and `client/lib/widgets/brand_colour_card.dart` is 311 lines on main (`bdb7702b`). The row still said *DRAWN, with Jose*.
 
 `docs/previews/brand-colour-picker-layouts.html`, committed `f38e797f`. Three desktop,
 three mobile, plus the "not set yet" state on a toggle. UI/UX designs AND builds this one;
@@ -2565,6 +2595,72 @@ because a pronoun resolved against whatever the reader was holding is how yester
 > send is not reported here yet."* Its removal condition is mechanical rather than a promise: the
 > same column that makes the sentence stop lying is the one that makes the failure states
 > renderable.
+>
+> **CLOSED `f8963636`.** The admission is now **derived** rather than removed by hand: it renders
+> only while the payload carries no outcome (`last_result`, a name anchored to the
+> `last_attempted_at` that already exists rather than invented). Whoever adds the first failure
+> state deletes the sentence by adding it. **Pinned both ways** — present in every state the card
+> can render, and gone the moment an outcome arrives; without the second half a card that always
+> renders it passes every entry of the first, which is the shape that suite had that morning. The
+> change immediately reddened a fixture keyed `last_result: 'marvellous'` — named for an unknown
+> field and asserting the opposite once that field was claimed. A note could not have found that.
+> Residual gap, written down at the test: a differently-named field is the old hole again. Client
+> 1826 green.
+>
+> **NARROWED AGAIN, 2026-09-15: four states, not seven — and the copy flow is parked.** SES read
+> the drawing against their own storage rather than against my description of it, which is the
+> instruction I gave them, and found three states that cannot be drawn truthfully:
+> `copied`, `inherited-and-copied`, `copied-then-that-mailbox-changed`. Building:
+> `nothing connected · set here, typed · inherited · saved, never tried`.
+>
+> Three reasons, stacking. **The facts are not stored** — `connectServer` writes host, port,
+> username, password, encryption and nothing else; I verified that in the source rather than
+> taking it, and the copy line would have to invent a mailbox, a date and an actor. **The
+> stale-copy line is not a missing column but a missing relationship** — comparing a credential
+> against the mailbox it came from needs a recorded source, and with none there is nothing to
+> compare against, so it cannot be derived at any cost. **And there is nothing to copy from:** a
+> deploy-desk measurement SES relays says 6 production mailboxes, 0 with a mail server, 0 with
+> credentials, all `gmail_workspace`, which carries no SMTP host — so the affordance would open
+> onto an empty list for every business that exists. *(That last figure is relayed through two
+> sessions and I did not measure it.)*
+>
+> **My own note argued the opposite and I reversed it.** It said the second fact row earns its
+> rent because the common state costs one line of *"Typed here"* while the rare state fails
+> silently. **That argument assumed the row sometimes says something else.** With copying parked
+> it cannot — and nothing records that a value was *typed* either, so a constant "Typed here"
+> is an assumption rendered as a fact on every identity forever, which is precisely what a
+> derived sentence exists to replace. **The row is now conditional rather than constant**
+> (`31086edf`) and renders nowhere today; switching the gallery to a copied state shows it
+> return. Verified by exercising it: two rows in the typed state, three in the copied one, in
+> both picked layouts.
+>
+> The two-labelled-facts shape itself is unchanged and is what gets built. It stops paying rent
+> while it has nothing to say.
+>
+> **BUILT `d2a256e1` — `client/lib/widgets/sending_server_panel.dart`. One finding, and it is in
+> MY drawing rather than their build.** The third rung of the cascade renders **`EzBizi default`**
+> when nothing is set at any scope, directly above *"Nothing is connected, so these are not going
+> out."*
+>
+> **The sentence is true — I verified it rather than assuming the worse case.** `asTenant()` is
+> retired and refuses unconditionally (Jose, 2026-09-14) and `throughTenantProvider()` throws when
+> the scope has no provider connected, so a tenant's report does **not** quietly leave as EzBizi.
+>
+> **The word above it is the problem.** `PlatformIdentity` calls itself *"the root of the cascade,
+> not a fallback beside it"* and the resolver's loop does end there — so "EzBizi default" is
+> correct about the cascade and wrong about this card. For every other setting it means *a value
+> applies and it is ours*; for this one it means *no value can apply to your content at all*.
+> Same words, opposite operational meaning, one line above a sentence that contradicts them — and
+> the misreading it invites is the one Jose has corrected **four times**. My own gallery header
+> argues against precisely this (*"never an implicit fallback, because with one nobody can tell by
+> looking which credential is actually in use"*) and then I wrote the implicit fallback into the
+> card.
+>
+> **Proposed: keep `Set here` and `Inherited from {name}` verbatim; the third rung becomes
+> `Not set anywhere`.** It diverges from the settings screen's dialect deliberately — the two
+> facts stay distinct, which is what that screen's docblock actually asks for, and the third stops
+> claiming a fallback this content cannot use. SES's call if they would rather vocabulary
+> consistency won.
 
 `docs/previews/sending-server-layouts.html`. The screen entry 15's state B has been pointing at
 with no destination. The fork landed: SES and Email settled that **a report must not go out
@@ -2727,6 +2823,84 @@ there, a glance persists exactly as long as the condition and clears itself, and
 to have decided the audience first. **3 pairs well with 2** — the glance is where you find out,
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
+
+### 18b · Communication · Call flow, after Jose saw it live — **A CHOSEN, B PARKED**
+
+Jose, 2026-09-15, on the running chart: *"looks amazing"*, with five asks. Two were Phone's data
+and are fixed in `5c033dda`: **one node per GROUP rather than per key**, so a second key reaching a
+team is a second arrow into one box; and **a queue per queueing group**, which answers his actual
+question — *"the everyone busy line seems to be coming out of last 5th button but in reality it
+applies to the entire group"*. It is per group, and the chart now says so.
+
+**SHIPPED in `c91caf98`:** *"should be white on white mode, dark on dark mode"*. The canvas was
+fixed-dark on purpose — n8n is dark in both, and a canvas is a drawing rather than a page — and he
+ruled the other way after seeing it running.
+
+> **A consequence of Phone's fix that neither of us flagged.** One node per group means two keys to
+> one team are two edges with **identical endpoints**: two wires on the same curve, two labels at
+> the same point. That is the label collision from his first screenshot, arriving from the opposite
+> cause. Parallel edges are now **one wire carrying both keys** — *Press 2 · No key pressed* —
+> which is also the truer sentence. Phone, plainly: *"my one box per team fix moved the collision
+> rather than removing it"*.
+>
+> **No group container, and the reason is the new data rather than taste.** With one node per group
+> and one queue each, a box around group-plus-queue restates the only pair of edges between them.
+> The drawing that confused him was the one with two boxes for one team, and that is gone. If a
+> group ever owns more than its queue, a container earns its place then.
+
+**THE TWO LARGEST ASKS, and he should pick ONE.** Half of each is the worst outcome.
+
+**A · Live calls on the chart** — *"see Live Calls flowing through the Node as well"*.
+
+Phone measured Twilio rather than reasoning about it. `current_size` on a queue is an exact live
+count of waiting callers, `average_wait_time` comes with it free, and the queue name maps
+one-to-one onto the new `queue-<groupNodeId>` nodes. So the offer is: **exact counts on queue
+nodes, a ringing-or-connected count for the line, and deliberately nothing anywhere else.**
+
+Nothing else is derivable. A call in the menu, a call ringing a group and a call holding are all
+`status = ringing` on the row, and Phone declined to add a per-step column on purpose: the existing
+status already goes stale when a final callback never arrives, which is why the pickup list carries
+a two-minute ceiling. Their sentence, and it is the right instinct: *"a tile reading 2 calls here
+about a call that ended on Tuesday is worse than a tile reading nothing."*
+
+One thing to build around: **a queue resource exists only once it has been used**, so that account
+has three queueing groups and one queue. **Absent means zero, not unknown** — the tile reads 0 and
+never dashes, and no group is missing a count.
+
+My shape: a count on the tile, and a brighter pulse on the wires leading out of it. **Not** a dot
+travelling along a wire — that implies we know the transit when we only know the state.
+
+**B · Editing from the chart** — *"it would also be nice to be able to change things from here,
+like clicking one of the nodes gives you the available options"*.
+
+**This reverses the read-only scope he set with "shows me"**, so it is a scope decision rather than
+a feature request. *"Click a node and change which group answers"* and *"click a node and edit the
+IVR prompt"* are very different amounts of work, and the difference is the whole question. It needs
+its own design round and its own gallery rather than being bolted onto a viewer.
+
+**Recommendation: A.** Small, exact where it matters, invents nothing, and it makes the chart
+answer a question the list cannot — *is anybody waiting right now*. B deserves to be designed
+rather than appended.
+
+> **DECIDED 2026-09-15: A is being built. B is parked and goes back to Jose as its own round.**
+>
+> He is away for the day and his standing word covers it — `docs/ACTIVE-CONSTRAINTS.md` §11,
+> relayed by the deploy desk: *decide as you would recommend, finish end to end, a question
+> addressed to him is not a reason to stop*. Only third-party sign-ins, spending money, and
+> what-the-business-wants questions actually need him. **B is arguably one of those** — it changes
+> what the screen is FOR — which is the reason it is parked rather than started, not deferred out
+> of caution.
+>
+> **A correction I made to my own ask before Phone built it.** I had said "one API call per line"
+> as though that were free. Thirteen lines polled every ten seconds is thirteen Twilio calls every
+> ten seconds, forever, for a pane that shows **one line at a time**. The endpoint takes the line:
+> `GET /phone/call-flow/live?line=<id>`, returning `on_line` plus a map of queue-node ids to
+> `waiting` and `average_wait_seconds`. A node absent from the map renders **0**, never dashes,
+> because a Twilio queue resource exists only once it has been used.
+>
+> **The one thing I asked Phone for rather than assumed:** what the payload says when Twilio is
+> slow or down. *"No queue is holding anybody"* and *"we could not ask"* are different facts, and
+> the tile must not draw the second as the first.
 
 ### 18 · Communication · Call flow as a chart — **SHIPPED. Jose: 1 and 6**
 

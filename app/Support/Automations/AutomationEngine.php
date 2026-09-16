@@ -9,6 +9,7 @@ use App\Models\AutomationVersion;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use App\Support\Audit\AuditLogger;
+use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Throwable;
@@ -27,6 +28,7 @@ class AutomationEngine
         private readonly ConditionEvaluator $conditions,
         private readonly ActionRunner $actions,
         private readonly AuditLogger $audit,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     /**
@@ -174,7 +176,9 @@ class AutomationEngine
                 $verdict = $this->conditions->evaluate($version->conditions, $event, $subject);
             } catch (Throwable $e) {
                 $this->record($automation, $version, $event, AutomationRun::FAILED, $started, error: $e->getMessage());
-                $automation->noteFailure();
+                if ($automation->noteFailure()) {
+                    $this->announceDisabled($automation);
+                }
                 return false;
             }
             if (! $verdict['matched']) {
@@ -261,9 +265,52 @@ class AutomationEngine
             'finished_at' => $pending ? null : now(),
         ])->save();
         if (! $pending) {
-            $failure ? $automation->noteFailure() : $automation->noteSuccess();
+            if ($failure) {
+                if ($automation->noteFailure()) {
+                    $this->announceDisabled($automation);
+                }
+            } else {
+                $automation->noteSuccess();
+            }
         }
         return true;
+    }
+
+    /**
+     * Tell the people who could fix it that a rule switched itself off.
+     *
+     * Two decisions, both mine, taken 2026-09-15 under ACTIVE-CONSTRAINTS section
+     * 11 because Jose was away and the alternative was leaving it silent.
+     *
+     * WHO: the automation itself is the subject, so audienceFor() reads
+     * CarriesAutomationScope and tells the people who STAND at that rule's scope
+     * - a franchise rule reaches that franchise, not the whole business. The
+     * failure being avoided is real and is why this sat unbuilt: a NULL subject
+     * falls through to EVERY ACTIVE USER, so one branch's broken rule would
+     * notify everybody. Passing the rule prevents it, using a scope contract
+     * that already existed rather than a second answer invented here.
+     *
+     * SOURCE system, NOT automation. notifications.automation_enabled is the
+     * switch for rules notifying PEOPLE - the notify action. A rule breaking is
+     * EzBizi talking about its own tool, not a rule firing. Filing it under
+     * automation would mean a business that muted chatty rules also muted the
+     * message saying one had died, which is the one they most need. Both
+     * channels off still silences it, and that is right: that switch says "do
+     * not contact us here", not "we do not care".
+     *
+     * EDGE, NOT LEVEL: noteFailure() returns true only on the transition, so
+     * this fires once. At level it would repeat for every event arriving while
+     * the rule sat disabled.
+     */
+    private function announceDisabled(Automation $automation): void
+    {
+        $this->notifications->dispatch(
+            title: "Automation switched off: {$automation->name}",
+            body: $automation->disabled_reason,
+            subject: $automation,
+            source: 'system',
+            automationId: (string) $automation->getKey(),
+        );
     }
 
     private function finishPending(AutomationEvent $event, string $reason, ?string $versionId = null): void

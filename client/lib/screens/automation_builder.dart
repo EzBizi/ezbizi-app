@@ -199,7 +199,6 @@ class _ActionRow {
         'value': value.text,
       },
       'webhook' => {'type': 'webhook', 'url': url.text.trim()},
-      'notify' => {'type': 'notify', 'message': message.text},
       // Phone actions take no form fields — the subject of the event is enough.
       'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
       _ => throw StateError(
@@ -343,6 +342,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   List<String> _triggerFields = const [];
   int? _fieldsSampled;
 
+  /// Value => label for fields whose set is fixed in code, keyed by field.
+  ///
+  /// A field with no entry keeps its text box: a dropdown over an open set
+  /// would be a shorter list pretending to be the whole one.
+  Map<String, List<({String value, String label})>> _fieldValues = const {};
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -374,6 +379,19 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _fieldsSampled = response.ok
           ? (response.data?['sampled'] as num?)?.toInt() ?? 0
           : null;
+      _fieldValues = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['values'] as Map? ?? const {}).entries)
+                entry.key.toString(): [
+                  for (final option in (entry.value as List? ?? const []))
+                    (
+                      value: (option['value'] ?? '').toString(),
+                      label: (option['label'] ?? '').toString(),
+                    ),
+                ],
+            }
+          : const {};
     });
   }
 
@@ -469,10 +487,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       row.field.text = action['field'] as String? ?? '';
       row.value.text = '${action['value'] ?? ''}';
       row.url.text = action['url'] as String? ?? '';
-      row.message.text = action['message'] as String? ?? '';
+      // `message` is no longer excluded: notify declares it as a parameter now,
+      // so a rule SAVED BEFORE THIS CHANGE - whose action is still
+      // {type: notify, message: "..."} on the wire - has to load into the
+      // parameter controller or editing an existing rule silently empties the
+      // box and saves it blank. The shape on the wire did not change, only
+      // which controller reads it.
       for (final entry in action.entries) {
         if (entry.key != 'type' &&
-            !const {'field', 'value', 'url', 'message'}.contains(entry.key)) {
+            !const {'field', 'value', 'url'}.contains(entry.key)) {
           row.parameter(entry.key).text = '${entry.value ?? ''}';
         }
       }
@@ -857,6 +880,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // the request is in flight is offering fields that cannot be read.
       _triggerFields = const [];
       _fieldsSampled = null;
+      _fieldValues = const {};
     });
 
     _loadTriggerFields();
@@ -1003,7 +1027,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               'the list.',
         'webhook' when action.url.text.trim().isEmpty =>
           'The webhook step needs an address to call.',
-        'notify' when action.message.text.trim().isEmpty =>
+        'notify' when action.parameter('message').text.trim().isEmpty =>
           'The notification step needs a message.',
         'sms.send' => _missingParameter(action, 'sms.send'),
         _ => null,
@@ -1646,6 +1670,43 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 )
+              : (arity == OperatorArity.one &&
+                        _fieldValues[row.field.text.trim()] != null)
+              // A CLOSED SET GETS A LIST, because nothing on this screen told
+              // anybody the value they had to type was `website_chat`. The
+              // field picker fixed half of "people cannot guess them around"
+              // and left the other half: knowing the field is `source` does not
+              // tell you what goes in the box beside it.
+              //
+              // Only for `is`. "is one of" takes several values separated by
+              // commas, and one dropdown cannot say two things - that case
+              // keeps the text box and lists the options underneath instead.
+              ? DropdownMenu<String>(
+                  initialSelection: row.value.text.trim().isEmpty
+                      ? null
+                      : row.value.text.trim(),
+                  enabled: !_busy,
+                  label: const Text('Value'),
+                  expandedInsets: EdgeInsets.zero,
+                  enableFilter: true,
+                  requestFocusOnTap: true,
+                  onSelected: _busy
+                      ? null
+                      : (chosen) => setState(
+                          () => row.value.text = chosen ?? '',
+                        ),
+                  dropdownMenuEntries: [
+                    for (final option in _fieldValues[row.field.text.trim()]!)
+                      DropdownMenuEntry<String>(
+                        value: option.value,
+                        // The wire name is shown as well as the plain one: a
+                        // rule saved before this existed reads back as the raw
+                        // value, and somebody comparing the two needs to see
+                        // they are the same thing.
+                        label: '${option.label}  (${option.value})',
+                      ),
+                  ],
+                )
               : TextField(
                   controller: row.value,
                   enabled: !_busy,
@@ -1656,7 +1717,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     // sent one string, the evaluator compares against a list, so
                     // the clause never matched anything.
                     helperText: arity == OperatorArity.many
-                        ? 'Separate them with commas'
+                        ? (_fieldValues[row.field.text.trim()] == null
+                              ? 'Separate them with commas'
+                              : 'Separate them with commas — '
+                                    '${_fieldValues[row.field.text.trim()]!.map((o) => o.value).join(', ')}')
                         : null,
                   ),
                 ),
@@ -1882,6 +1946,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
       'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
+      // Was the bespoke Message box below. It had to move in the same commit as
+      // the server declaring the parameter: _payload() flips to the generic
+      // branch on the first declared parameter and reads the PARAMETER
+      // controllers, so a hand-written box would have posted nothing.
+      'notify' => _parameterForm(row, widget.catalogue.actionType('notify')),
       _ => TextField(
         controller: row.message,
         enabled: !_busy,

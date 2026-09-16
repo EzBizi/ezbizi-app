@@ -42,6 +42,16 @@ use RuntimeException;
  */
 class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
 {
+    /**
+     * Said in the refusal when Google names the limit as the account's own.
+     *
+     * Read by SyncLeads to decide whether a 429 is evidence about the whole
+     * developer token or about one customer. Matched as text rather than given
+     * an exception class of its own because there is exactly one thrower and
+     * one reader; give it a class the day a third appears.
+     */
+    public const ACCOUNT_SCOPED = "This account's own rate limit.";
+
     private const TIMEOUT = 20;
 
     /**
@@ -745,16 +755,50 @@ class LocalServicesLeads implements ExplainsRefusal, LeadReplyChannel
             $error = (array) $response->json('error', []);
             $detail = is_string($error['message'] ?? null) ? (string) $error['message'] : '';
 
+            /*
+             * rateScope, because without it a night of 429s cannot be read.
+             *
+             * 2026-09-16: 2,033 refusals in three hours and nothing in the log
+             * said whether the limit was on one account or on the developer
+             * token - which is the difference between "click a different
+             * account" and "the day is spent". The scope had to be recovered
+             * by holding a mutex and having somebody load a screen by hand.
+             *
+             * Google sends it. It costs one line to keep, and it answers the
+             * question at 3am with nobody watching.
+             */
             Log::warning("Google refused a Local Services {$what} fetch.", [
                 'http_status' => $response->status(),
                 'google_status' => is_string($error['status'] ?? null) ? $error['status'] : null,
+                'rate_scope' => data_get($error, 'details.0.errors.0.details.quotaErrorDetails.rateScope'),
+                'retry_delay' => data_get($error, 'details.0.errors.0.details.quotaErrorDetails.retryDelay'),
                 'detail' => mb_substr($detail, 0, 300),
             ]);
 
+            /*
+             * The scope travels with the refusal, not just into the log.
+             *
+             * SyncLeads stops a run after three 429s in a row, on the reasoning
+             * that three DIFFERENT accounts refused back to back is a fact
+             * about the developer token. That reasoning fails if each of the
+             * three is hitting its OWN limit - then stopping starves the
+             * forty-eight behind them, every run, silently.
+             *
+             * Google is the only one who knows which it is, so the sentence
+             * carries it. Absent means count it: that keeps the brake working
+             * on a response that says nothing, which is the outage this was
+             * written during.
+             */
+            $accountScoped = data_get(
+                $error,
+                'details.0.errors.0.details.quotaErrorDetails.rateScope'
+            ) === 'ACCOUNT';
+
             throw new RuntimeException(sprintf(
-                'Google refused the %s request (HTTP %d).',
+                'Google refused the %s request (HTTP %d).%s',
                 $what,
                 $response->status(),
+                $accountScoped ? ' '.self::ACCOUNT_SCOPED : '',
             ));
         }
 

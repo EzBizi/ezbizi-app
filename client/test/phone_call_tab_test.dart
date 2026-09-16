@@ -278,6 +278,49 @@ void main() {
     expect(find.byKey(const Key('phone-call-history')), findsNothing);
   });
 
+  /// Do not disturb is RED, and available is not.
+  ///
+  /// Jose asked for it off a screenshot: the dot was drawn in
+  /// `onSurfaceVariant`, which is the colour of secondary TEXT — so the one
+  /// state that means "this person will not be rung" was the quietest ink on
+  /// the row and read as switched off rather than as unavailable.
+  ///
+  /// The second half is the control. Asserting only that a red dot exists
+  /// passes on a build that draws every dot red, which is a worse screen than
+  /// the one being fixed.
+  testWidgets('a teammate on Do not disturb gets a red dot', (tester) async {
+    await _pump(tester, view: CallView.team, size: const Size(900, 800));
+
+    final scheme = Theme.of(
+      tester.element(find.text('Bruno Vega')),
+    ).colorScheme;
+
+    Color? dotBeside(String name) {
+      final row = find.ancestor(
+        of: find.text(name),
+        matching: find.byType(Row),
+      );
+
+      return tester
+          .widget<Icon>(
+            find.descendant(of: row.first, matching: find.byIcon(Icons.circle)),
+          )
+          .color;
+    }
+
+    expect(
+      dotBeside('Bruno Vega'),
+      scheme.error,
+      reason: 'Do not disturb is not drawn in the error colour',
+    );
+
+    expect(
+      dotBeside('Jose Silva'),
+      isNot(scheme.error),
+      reason: 'every dot is red, so the colour says nothing',
+    );
+  });
+
   testWidgets('the pad stops shrinking before the other two do', (
     tester,
   ) async {
@@ -366,6 +409,59 @@ void main() {
       expect(find.byType(Dialog), findsNothing);
     },
   );
+
+  /// Paging a team, and being told who did not hear it.
+  ///
+  /// Both halves are one case on purpose: a page that reached nine of twelve
+  /// handsets is indistinguishable from a complete one at the speaking end,
+  /// and the names are the only thing that tells them apart.
+  testWidgets('a team is paged, and whoever missed it is named', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    addTearDown(device.dispose);
+    final seen = <http.Request>[];
+
+    await _pump(
+      tester,
+      device: device,
+      seen: seen,
+      size: const Size(900, 800),
+      groups: const [
+        {'id': 'rg-1', 'connection_id': 'pc-1', 'name': 'Front desk'},
+
+        // Another company's team. A page is a conference on ONE Twilio
+        // account, so this one is not reachable from this line and offering
+        // it would be a button that fails after the announcement started.
+        {'id': 'rg-9', 'connection_id': 'pc-9', 'name': 'Warehouse'},
+      ],
+    );
+
+    await _tap(tester, find.widgetWithText(OutlinedButton, 'Page'));
+    expect(find.text('Warehouse'), findsNothing);
+
+    await _tap(tester, find.widgetWithText(MenuItemButton, 'Front desk'));
+
+    final posted = seen.singleWhere(
+      (r) => r.method == 'POST' && r.url.path.endsWith('/phone/page'),
+    );
+    expect(jsonDecode(posted.body)['ring_group_id'], 'rg-1');
+
+    // The speaker's microphone is at the desk, so their leg is DIALLED rather
+    // than called — the same shape as picking up a parked caller.
+    expect(device.connectedTo, 'page:ezbizi-page-rg-1-1789500000');
+
+    expect(find.textContaining('Bruno Vega did not get it'), findsOneWidget);
+  });
+
+  /// The control. Without it the case above passes on a build that paints
+  /// Page unconditionally, which on an account with no teams is a button
+  /// whose menu is empty.
+  testWidgets('no Page button on a line with no team', (tester) async {
+    await _pump(tester, size: const Size(900, 800));
+
+    expect(find.widgetWithText(OutlinedButton, 'Page'), findsNothing);
+  });
 
   testWidgets('incoming is an in-page banner, not a dialog', (tester) async {
     final device = _FakeDevice();
@@ -1309,6 +1405,11 @@ void main() {
 }
 
 class _FakeDevice implements VoiceDevice {
+  /// Settable so a test can be a handset, where the OS rings and EzBizi must
+  /// not. Defaults to false, which is the desk case.
+  @override
+  bool ringsItself = false;
+
   // Android's Telecom account. Settable so a test can put the desk into the
   // one state a retry cannot fix, rather than only the happy one.
   @override
@@ -1418,6 +1519,7 @@ Future<void> _pump(
   WidgetTester tester, {
   List<Map<String, dynamic>> parked = const [],
   List<Map<String, dynamic>> ringing = const [],
+  List<Map<String, Object?>> groups = const [],
   CallView view = CallView.dial,
   Size size = const Size(1280, 900),
   List<Map<String, Object?>>? numbers,
@@ -1436,6 +1538,7 @@ Future<void> _pump(
     preferences: preferences,
     parked: parked,
     ringing: ringing,
+    groups: groups,
   );
   final api = ApiClient(
     client: MockClient((request) async {
@@ -1475,6 +1578,7 @@ MockClientHandler _handler({
   Map<String, Object?> preferences = const {},
   List<Map<String, dynamic>> parked = const [],
   List<Map<String, dynamic>> ringing = const [],
+  List<Map<String, Object?>> groups = const [],
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1541,6 +1645,24 @@ MockClientHandler _handler({
       return _json({'data': ringing});
     }
 
+    if (path.endsWith('/phone/ring-groups') && request.method == 'GET') {
+      return _json({'data': groups});
+    }
+
+    // The server connects the listeners and hands back the destination the
+    // speaker dials — see CallsController::page().
+    if (path.endsWith('/phone/page') && request.method == 'POST') {
+      return _json({
+        'data': {
+          'devices': 2,
+          'skipped': [
+            {'name': 'Bruno Vega', 'state': 'on_call'},
+          ],
+          'speak_to': 'page:ezbizi-page-rg-1-1789500000',
+        },
+      });
+    }
+
     if (path.endsWith('/phone/presence') && request.method == 'GET') {
       return _json({
         'data': [
@@ -1555,6 +1677,12 @@ MockClientHandler _handler({
             'name': 'Jose Silva',
             'state': 'registered',
             'updated_at': '2026-08-24T12:01:00+00:00',
+          },
+          {
+            'user_id': 'u-3',
+            'name': 'Bruno Vega',
+            'state': 'dnd',
+            'updated_at': '2026-08-24T12:02:00+00:00',
           },
         ],
       });

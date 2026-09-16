@@ -71,7 +71,14 @@ abstract class CallAlerts {
 class SystemCallAlerts implements CallAlerts {
   SystemCallAlerts();
 
-  final AudioPlayer _player = AudioPlayer();
+  /// LAZY, and that is load-bearing for every test that touches the desk.
+  ///
+  /// A field initializer runs before the constructor body, so building the
+  /// player here built it even for a service that replaces these alerts a line
+  /// later - and constructing an AudioPlayer calls a platform channel, which
+  /// throws MissingPluginException in a plain Dart test. `late final` defers it
+  /// to the first sound, which under a fake never comes.
+  late final AudioPlayer _player = AudioPlayer();
 
   /// Which call we are already ringing for, so a second notification for the
   /// same one does not restart the tone from the beginning every time the

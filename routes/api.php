@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
+use App\Http\Controllers\Api\AdsPerformanceController;
 use App\Http\Controllers\Api\AttachmentsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
@@ -100,10 +101,10 @@ use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
+use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
 use App\Http\Controllers\Api\ServicesController;
-use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\SmsCodesController;
 use App\Http\Controllers\Api\SocialAuthController;
@@ -135,6 +136,7 @@ use App\Http\Controllers\Api\VehicleOwnershipController;
 use App\Http\Controllers\Api\VehiclePaymentsController;
 use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
+use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
@@ -142,6 +144,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
 use App\Models\PlatformStaffLink;
 use App\Support\Auth\PasswordPolicy;
@@ -368,6 +371,29 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
 | list negotiations at all, so an outage here loses enquiries permanently.
 | Throttled generously for that reason: refusing a real event costs a lead.
 */
+/*
+| WhatsApp - Meta telling us a message arrived, or what became of one we sent.
+|
+| Two routes, and the GET is a handshake rather than a read: Meta calls it once
+| when somebody saves the callback URL and expects `hub.challenge` echoed back
+| as PLAIN TEXT. A JSON envelope fails it and the URL cannot be saved.
+|
+| The POST is authenticated by an HMAC of the RAW body in X-Hub-Signature-256,
+| so unlike Thumbtack's the body does carry proof of origin. It is still
+| unauthenticated in the session sense - Meta calls it, there is no user.
+|
+| Throttled generously for the same reason as Thumbtack: refusing a real
+| delivery loses a customer's message, and Meta disables a subscription that
+| keeps failing.
+*/
+Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify'])
+    ->middleware('throttle:60,1')
+    ->name('social.whatsapp.verify');
+
+Route::post('v1/social/whatsapp/webhook', WhatsAppWebhookController::class)
+    ->middleware('throttle:600,1')
+    ->name('social.whatsapp.webhook');
+
 Route::post('v1/social/thumbtack/webhook', ThumbtackWebhookController::class)
     ->middleware('throttle:600,1')
     ->name('social.thumbtack.webhook');
@@ -653,6 +679,18 @@ Route::prefix('v1')
         // permissions: one writes text nobody outside can see, the other speaks
         // in public under the organization's name. No `store` — every review is
         // fetched from Google, and one somebody typed in would be a fake.
+        // Google Ads spend and performance. Account and Campaign only - the
+        // two levels Google's Reporting Minimum Functionality is answered for.
+        // Adding an ad group, ad or keyword level here is not a route change,
+        // it is five more mandatory fields per level and a fresh submission.
+        // The connected accounts, from our own rows. Instant, and asks
+        // Google nothing - the screen lists these and loads ONE on demand.
+        Route::get('ads/accounts', [AdsPerformanceController::class, 'accounts']);
+        Route::get('ads/performance', [AdsPerformanceController::class, 'index']);
+        // A manager account: what everything beneath it spent. The one place a
+        // fan-out is still the answer, and it costs nothing until asked for.
+        Route::get('ads/rollup', [AdsPerformanceController::class, 'rollup']);
+
         Route::post('reviews/sync', [ReviewsController::class, 'sync']);
         Route::get('reviews', [ReviewsController::class, 'index']);
         Route::get('reviews/{review}', [ReviewsController::class, 'show']);
@@ -705,6 +743,15 @@ Route::prefix('v1')
         Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
         Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
         Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+        // The pages and posts on the site itself, read live through the account
+        // it handed us at pairing. Nothing stored, so nothing to keep in step.
+        Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
+
+        /*
+         * Before the {site}/content/{path} shape anybody adds later: a literal
+         * segment registered after a wildcard one is unreachable.
+         */
+        Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
         Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
         Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
         Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
@@ -1335,11 +1382,13 @@ Route::prefix('v1')
         // one up is not a route: the desk dials 'park:<queue>' like any other
         // destination, and the voice webhook bridges it.
         Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
+        Route::post('phone/page', [PhoneCallsController::class, 'page']);
         Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);
 
         // Pickup: what is ringing elsewhere, and taking one. {call} last, so
         // the literal paths above cannot be swallowed by the parameter.
         Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+        Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live']);
         Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
 
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);

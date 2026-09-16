@@ -43,6 +43,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
   final TextEditingController _token = TextEditingController();
   String? _disconnecting;
+  String? _confirmingDisconnect;
+  bool _managing = false;
   bool _connecting = false;
   String? _connectError;
   bool _showConnect = false;
@@ -268,6 +270,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         _stat(context, 'New client', totals['new_client']),
         _stat(context, 'Existing client', totals['existing_client']),
         _stat(context, 'Jobs booked', totals['jobs']),
+        _stat(context, 'Avg talk', _mmss(totals['avg_talk_seconds'])),
       ],
     );
   }
@@ -321,29 +324,6 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                     '${covered.join(', ')}.',
           style: theme.textTheme.bodySmall,
         ),
-        const SizedBox(height: 8),
-        // Each connected branch, with the way to remove it. This is the ONLY
-        // place a Workiz account's id is published: it is a data source, and
-        // the shared connections list excludes those on purpose, so without
-        // these chips a credential could be connected and never taken back.
-        if (accounts.isNotEmpty)
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final account in accounts)
-                InputChip(
-                  label: Text('${account['name']}'),
-                  onDeleted: _disconnecting == account['id']
-                      ? null
-                      : () => _disconnect('${account['id']}'),
-                  deleteIcon: const Icon(Icons.close, size: 16),
-                  tooltip: 'Disconnect ${account['name']}',
-                ),
-            ],
-          ),
-        const SizedBox(height: 8),
-        _connectControl(context),
         // A book nobody will ever read, named rather than absent. Jose,
         // 2026-09-15: "we dont pay the api access there". Saying "not
         // connected" would send somebody off to connect it.
@@ -369,6 +349,93 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
             ),
           ),
         ],
+
+        /*
+         * ── THE ACCOUNTS ARE SAID IN WORDS, MANAGED BEHIND A CLICK ──
+         *
+         * A row of chips sitting above a table reads as a FILTER - Jose's
+         * words: "they appear as if they were filters and people can get
+         * confused". They were never filters; they are the connection list,
+         * and their X disconnects a credential.
+         *
+         * So which accounts a number covers stays in the sentence above, where
+         * it belongs to the report, and the chips move behind this toggle,
+         * where they belong to setup. Nothing is hidden that the reader needs
+         * in order to read the numbers correctly.
+         *
+         * The chips cannot be dropped entirely: a Workiz connection is a data
+         * source, excluded from the shared connections list on purpose, so this
+         * is still the ONLY place its id is published and the only way one can
+         * be taken back.
+         */
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => setState(() => _managing = !_managing),
+            icon: Icon(
+              _managing ? Icons.expand_less : Icons.expand_more,
+              size: 18,
+            ),
+            label: Text(
+              _managing
+                  ? 'Hide Workiz accounts'
+                  : 'Manage Workiz accounts (${accounts.length})',
+            ),
+          ),
+        ),
+        if (_managing) ...[
+          // Each connected branch, with the way to remove it. This is the ONLY
+          // place a Workiz account's id is published: it is a data source, and
+          // the shared connections list excludes those on purpose, so without
+          // these chips a credential could be connected and never taken back.
+          if (accounts.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final account in accounts)
+                  if (_confirmingDisconnect == account['id'])
+                    // Confirmed IN PLACE rather than in a dialog, the same way
+                    // deleting a saved report is. The X used to disconnect on one
+                    // click, which is a poor trade: undoing it needs that
+                    // branch's Workiz token pasted again, and the token is not
+                    // something the app can show you.
+                    Wrap(
+                      spacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Disconnect ${account['name']}?',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        TextButton(
+                          onPressed: _disconnecting == account['id']
+                              ? null
+                              : () => _disconnect('${account['id']}'),
+                          child: const Text('Disconnect'),
+                        ),
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _confirmingDisconnect = null),
+                          child: const Text('Keep'),
+                        ),
+                      ],
+                    )
+                  else
+                    InputChip(
+                      label: Text('${account['name']}'),
+                      onDeleted: () => setState(
+                        () => _confirmingDisconnect = '${account['id']}',
+                      ),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      tooltip: 'Disconnect ${account['name']}',
+                    ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          _connectControl(context),
+        ],
       ],
     );
   }
@@ -378,8 +445,17 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   /// Straight through the shared connections endpoint, which already gates on
   /// this provider's own connect permission and needs nothing from here beyond
   /// the id.
+  ///
+  /// IT REMOVES EZBIZI'S STORED TOKEN AND NOTHING ELSE. No Workiz data is
+  /// touched, no job is deleted, nothing changes on their side — that branch
+  /// simply stops appearing in this report until somebody pastes its token
+  /// again. That is still worth a confirmation, because the token is write-only
+  /// once stored and nobody can read it back out of the app.
   Future<void> _disconnect(String id) async {
-    setState(() => _disconnecting = id);
+    setState(() {
+      _disconnecting = id;
+      _confirmingDisconnect = null;
+    });
 
     final response = await widget.api.delete('/social/connections/$id');
 
@@ -472,6 +548,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
           DataColumn(label: Text('New'), numeric: true),
           DataColumn(label: Text('Existing'), numeric: true),
           DataColumn(label: Text('Jobs'), numeric: true),
+          DataColumn(label: Text('Avg talk'), numeric: true),
           DataColumn(label: Text('')),
         ],
         rows: [
@@ -484,6 +561,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                 DataCell(Text('${person['new_client']}')),
                 DataCell(Text('${person['existing_client']}')),
                 DataCell(Text('${person['jobs']}')),
+                DataCell(Text(_mmss(person['avg_talk_seconds']))),
                 DataCell(Text(_onlyIn(person) ?? '')),
               ],
             ),
@@ -515,7 +593,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               '${person['answered']} answered of ${person['rang']} rung · '
               '${person['new_client']} new · '
               '${person['existing_client']} existing · '
-              '${person['jobs']} jobs',
+              '${person['jobs']} jobs · '
+              '${_mmss(person['avg_talk_seconds'])} avg talk',
               style: theme.textTheme.bodyMedium,
             ),
           ],
@@ -524,17 +603,38 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  /// Which system knows this name, when only one of them does.
+  /// Seconds as m:ss, and a DASH when there is no average at all.
   ///
-  /// Said rather than hidden, because the usual cause is the two systems
-  /// spelling one person differently and the reader is the only one who can
-  /// tell. Nothing here guesses.
+  /// Null means they answered nothing, which is not the same fact as averaging
+  /// zero seconds. Printing "0:00" would read as a measurement of a real call.
+  String _mmss(Object? seconds) {
+    if (seconds is! int) return '—';
+
+    final minutes = seconds ~/ 60;
+    final rest = (seconds % 60).toString().padLeft(2, '0');
+
+    return '$minutes:$rest';
+  }
+
+  /// Flagged only when Workiz has never heard of somebody who took calls.
+  ///
+  /// ONE DIRECTION, because only one is knowable here. `in_jobs` is asked of a
+  /// 30-day window of Workiz jobs, so a false answer means Workiz has no record
+  /// of that name at all — which usually means the two systems spell them
+  /// differently, and the reader is the only one who can tell.
+  ///
+  /// The reverse is deliberately NOT marked. This screen holds one day of
+  /// calls, so "Workiz knows them, RingCentral does not" cannot be told apart
+  /// from "they did not answer a phone today", and booking without answering is
+  /// a normal way to work.
+  ///
+  /// It used to say "calls only" / "Workiz only" off the DAY's rows, which
+  /// marked three people on the first live day who were in both systems and
+  /// had simply booked nothing that morning.
   String? _onlyIn(Map<String, dynamic> person) {
     final inCalls = person['in_calls'] == true;
     final inJobs = person['in_jobs'] == true;
 
-    if (inCalls && inJobs) return null;
-    if (inCalls) return 'calls only';
-    return 'Workiz only';
+    return inCalls && !inJobs ? 'not in Workiz' : null;
   }
 }

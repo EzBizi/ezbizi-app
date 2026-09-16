@@ -121,14 +121,57 @@ Future<void> release() async {
   // fixes, and it is invisible until they try.
   await _apply('alwaysOnTop', () => windowManager.setAlwaysOnTop(false));
   await _apply('preventClose', () => windowManager.setPreventClose(false));
-  await _apply('titleBar', () => windowManager.setTitleBarStyle(TitleBarStyle.normal));
+
+  // setClosable writes the CLASS style (GCL_STYLE / CS_NOCLOSE), which
+  // leaving fullscreen does not touch, so it is the one that may stay here.
   await _apply('closable', () => windowManager.setClosable(true));
-  await _apply('maximizable', () => windowManager.setMaximizable(true));
-  await _apply('minimizable', () => windowManager.setMinimizable(true));
-  await _apply('resizable', () => windowManager.setResizable(true));
-  // Fullscreen last: dropping it while still topmost repaints a topmost
-  // window at the restored size, which is the "cut image" artifact.
+
+  // ── LEAVING FULLSCREEN UNDOES ANY WINDOW STYLE SET BEFORE IT ──
+  //
+  // Jose clocked in and got a window with no caption at all — nothing to
+  // drag, minimize or close — and clocking out and in again cleared it.
+  //
+  // We build against window_manager 0.5.2 (pubspec.lock; 0.4.3 differs here
+  // and reading it would have given the wrong answer). Its restore-from-
+  // fullscreen branch ends:
+  //
+  //   SetWindowLongPtr(GWL_STYLE, g_style_before_fullscreen | (WS_THICKFRAME | WS_MAXIMIZEBOX));
+  //   ...
+  //   title_bar_style_ = g_title_bar_style_before_fullscreen;
+  //   SetWindowPos(..., SWP_FRAMECHANGED);
+  //
+  // Both saved values were captured on the way IN, i.e. from the locked
+  // window. lock() strips WS_MINIMIZEBOX and sets the title bar to hidden
+  // BEFORE going fullscreen, so the snapshot holds no minimize box and
+  // "hidden" — and the exit hands exactly that back, then recomputes the
+  // frame with it. Everything we restored above was overwritten a line later.
+  //
+  // Note what is NOT re-added on that line: WS_MINIMIZEBOX, WS_CAPTION,
+  // WS_SYSMENU. Only WS_THICKFRAME and WS_MAXIMIZEBOX are ORed back, which is
+  // why resize survived and minimize and the caption did not.
+  //
+  // The maximized branch above it neither restores title_bar_style_ nor uses
+  // the stale frame, which is why a second clock-in cycle appeared to repair
+  // it — the window came back zoomed and took the other path.
+  //
+  // So fullscreen goes here, and everything that writes GWL_STYLE or the
+  // title bar goes after it. Still after alwaysOnTop(false) for the original
+  // reason: dropping fullscreen while topmost repaints a topmost window at
+  // the restored size, which is the "cut image" artifact.
   await _apply('fullScreen', () => windowManager.setFullScreen(false));
+
+  await _apply('minimizable', () => windowManager.setMinimizable(true));
+  await _apply('maximizable', () => windowManager.setMaximizable(true));
+  await _apply('resizable', () => windowManager.setResizable(true));
+
+  // titleBar LAST, and it is load-bearing twice. The three setters above call
+  // SetWindowLong and nothing else — no frame change of their own — so the
+  // style bits they write are legal but undrawn until something asks Windows
+  // to recompute the non-client area. setTitleBarStyle ends in
+  // SetWindowPos(..., SWP_FRAMECHANGED), which is that ask. Move this line up
+  // and you do not only lose the caption: you silently lose the minimize box
+  // as well, with every setter above still returning success.
+  await _apply('titleBar', () => windowManager.setTitleBarStyle(TitleBarStyle.normal));
 }
 
 Future<void> raise() async {

@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.8.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -112,7 +112,8 @@ number, service area and booking link. These are values you have chosen to
 publish on your own public website.
 
 **The publishing account (optional capability, added in 1.1.0):** Once your
-token has been accepted, the plugin creates a WordPress user named
+token has been accepted — on the next content refresh, or the next time an
+administrator opens wp-admin — the plugin creates a WordPress user named
 "ezbizi-service" on a restricted role, generates an application password for it,
 and sends that application password to EzBizi so EzBizi can publish and edit
 content on this site on your behalf. The role can publish and edit posts and
@@ -121,6 +122,12 @@ plugins, edit themes, post unfiltered HTML, or delete anything. The application
 password is sent once, over HTTPS only, and is stored encrypted by EzBizi. If
 the handover fails the application password is deleted immediately rather than
 left active.
+
+**What EzBizi reads with that account (added in 1.3.0):** the list of your
+pages and posts — their titles, web addresses, url slugs, status (published,
+draft, and so on) and when each was last changed — so that you can see them in
+EzBizi under Web Management. It is read on demand when somebody opens that
+screen, nothing is copied or stored, and the text of a page is never requested.
 
 You can revoke it at any time: delete the "EzBizi" application password under
 Users, delete the ezbizi-service user, or deactivate this plugin — deactivation
@@ -144,7 +151,7 @@ refresh.
    again — if you lose it, issue a new one, which takes a moment.
 3. In WordPress, go to **Plugins → Add New → Upload Plugin**, choose the file,
    and activate it.
-4. Go to **Settings → EzBizi** and paste the token.
+4. Click **EzBizi** in the WordPress sidebar and paste the token.
 5. Put the shortcodes wherever the values belong.
 
 == Frequently Asked Questions ==
@@ -157,7 +164,7 @@ account and a registered website.
 = I changed a value in EzBizi and my site still shows the old one. =
 
 Values are cached for about five minutes. Press "Refresh now" on the
-**Settings → EzBizi** screen if you do not want to wait.
+**EzBizi** screen if you do not want to wait.
 
 = Can my subdomains show different details? =
 
@@ -187,6 +194,53 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.8.0 =
+* If EzBizi stops recognising this site's token for a week, the chat and
+  contact form stop showing rather than collecting messages nobody will
+  receive, and an administrator is told why. Your published values keep
+  working — a phone number that is a week old is still your phone number.
+
+= 1.7.1 =
+* The chat bubble sits higher, so it no longer lands on a sticky bar along the
+  bottom of the page.
+
+= 1.7.0 =
+* The live chat has been rebuilt. It now opens a proper panel with a coloured
+  header and a close button, and asks the visitor for a name and a phone or
+  email before the conversation starts, so a chat you miss is still somebody
+  you can call back.
+* Fixes the chat borrowing your theme's styling — the launcher and the message
+  box were taking their colours and shape from the page around them.
+* All of its wording is set in EzBizi, under Web Management, Marketing,
+  Widgets.
+
+= 1.6.0 =
+* The live chat bubble now appears on every page on its own. It floats in the
+  corner, so it was never something to paste onto each page by hand. Set its
+  position to "inline" if you would rather place it yourself with the shortcode
+  or the Elementor widget.
+* The contact form is unchanged: it appears where you put it.
+
+= 1.5.0 =
+* The live chat and contact form are now Elementor widgets. Search "EzBizi" in
+  the Elements panel and drag either one onto a page. The shortcodes
+  [ezbizi_chat] and [ezbizi_form] still work exactly as before.
+* The widgets no longer have an on/off switch in EzBizi. Putting one on a page
+  is what shows it, and taking it off the page is what hides it.
+
+= 1.4.0 =
+* EzBizi now has its own item in the WordPress sidebar instead of sitting
+  inside Settings, which is where people were looking for it.
+
+= 1.3.0 =
+* Your pages and posts are visible in EzBizi under Web Management, read from
+  this site when you open the screen. Nothing is copied or stored.
+* Fixes the publishing account never being created on most sites. It was only
+  attempted while a shortcode was being rendered, and the check it made was
+  about the request rather than about the site — so on an ordinary HTTPS site
+  it silently never happened. It is now also attempted when an administrator
+  opens wp-admin.
 
 = 1.2.0 =
 * Live chat and a contact form for your website. Both are off until you turn

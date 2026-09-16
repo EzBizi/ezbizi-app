@@ -258,6 +258,17 @@ class MobileVoiceDevice implements VoiceDevice {
   @override
   bool get supported => true;
 
+  /// THE HANDSET RINGS, and it does so before any of this runs.
+  ///
+  /// An incoming call arrives through CallKit on iOS and the
+  /// ConnectionService on Android, both of which ring the phone's own
+  /// ringtone and draw the system call screen. EzBizi playing its ringer on
+  /// top of that is two sounds for one call — and it is the wrong one of the
+  /// two to keep: a phone should ring like the phone it is, including when
+  /// its owner has set a ringtone, a vibration pattern, or silent.
+  @override
+  bool get ringsItself => true;
+
   @override
   bool get registered => _registered;
 

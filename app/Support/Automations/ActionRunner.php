@@ -9,6 +9,12 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
+use App\Models\Lead;
+use App\Support\Inventory\InventoryItemStatus;
+use App\Support\Inventory\InventoryUnit;
+use App\Support\Fleet\VehicleFuelType;
+use App\Support\Fleet\VehicleBodyType;
+use App\Models\InventoryItem;
 use App\Models\Mailbox;
 use App\Models\Organization;
 use App\Models\PhoneCall;
@@ -136,6 +142,93 @@ class ActionRunner
      * @param  class-string|null  $model
      * @return array<string, string> field => label, empty when nothing is writable
      */
+    /**
+     * The values a condition can be written against, for fields with a fixed set.
+     *
+     * Two shapes, and the difference is about DRIFT rather than style:
+     *
+     *   'field' => EnumClass::class   read at runtime from ::cases(). A module
+     *                                 adding a case is offered immediately and
+     *                                 cannot leave this list half-complete.
+     *   'field' => [value => label]   only where there is no enum to read - a
+     *                                 set of string constants - and then a test
+     *                                 pins it against the model so the same
+     *                                 drift fails loudly instead.
+     *
+     * ONLY FOR SETS FIXED IN CODE. Job status is deliberately absent: it is
+     * RENAMEABLE PER TENANT (SettingsController::renameJobStatuses), so the
+     * honest list is a settings read rather than a constant, and a hardcoded
+     * dropdown would show one business another business's words.
+     *
+     * A half-complete list is worse than a text box - it looks authoritative
+     * while quietly excluding the value somebody needed.
+     */
+    private const FIELD_VALUES = [
+        Lead::class => [
+            'source' => [
+                'local_services' => 'Google Local Services',
+                'thumbtack' => 'Thumbtack',
+                'website_chat' => 'Website live chat',
+                'website_form' => 'Website form',
+            ],
+            'status' => [
+                'new' => 'New',
+                'booked' => 'Booked',
+                'archived' => 'Archived',
+                'not_a_lead' => 'Not a real enquiry',
+            ],
+        ],
+        Vehicle::class => [
+            'body_type' => VehicleBodyType::class,
+            'fuel_type' => VehicleFuelType::class,
+            'status' => VehicleStatus::class,
+        ],
+        InventoryItem::class => [
+            'unit' => InventoryUnit::class,
+            'status' => InventoryItemStatus::class,
+        ],
+    ];
+
+    /**
+     * Words the humaniser gets wrong, and nothing else.
+     *
+     * `out_of_service` becomes "Out of service" on its own; `suv` becomes "Suv".
+     */
+    private const VALUE_LABELS = [
+        'suv' => 'SUV',
+        'ft' => 'Feet',
+        'in' => 'Inches',
+        'gal' => 'Gallons',
+        'lb' => 'Pounds',
+        'in_shop' => 'In the shop',
+    ];
+
+    /** @return array<string, array<string, string>> field => [value => label] */
+    public static function valuesOn(?string $model): array
+    {
+        if ($model === null || ! isset(self::FIELD_VALUES[$model])) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach (self::FIELD_VALUES[$model] as $field => $set) {
+            if (is_array($set)) {
+                $out[$field] = $set;
+
+                continue;
+            }
+
+            foreach ($set::cases() as $case) {
+                $value = (string) $case->value;
+                $out[$field][$value] = self::VALUE_LABELS[$value]
+                    ?? ucfirst(str_replace('_', ' ', $value));
+            }
+        }
+
+        return $out;
+    }
+
     public static function writableOn(?string $model): array
     {
         return $model === null ? [] : (self::WRITABLE[$model] ?? []);
@@ -361,10 +454,25 @@ class ActionRunner
      *
      * ── Every refusal is a run-log line, not an exception ───────
      *
-     * `asTenant` throws only when the resolved identity's TRANSPORT REQUIRES
-     * domain proof and the domain is unproven — NOT whenever a domain is
-     * unproven, which is what this paragraph used to say and what three
-     * sessions separately believed on 2026-09-14.
+     * STALE TWICE, NOW CORRECT AS OF 2026-09-15. `asTenant` THROWS
+     * UNCONDITIONALLY — a bare `throw new CannotSendMail(...)` with no branch
+     * above it, under Jose's ruling that EzBizi's own mail carries signing in,
+     * password resets and joining messages and nothing else.
+     *
+     * The two dead readings, kept because each was believed by several sessions
+     * and each is reachable from the method NAME: it does not throw "whenever a
+     * domain is unproven" (the original text), and it does not throw "only when
+     * the transport REQUIRES domain proof" (the first correction, true for one
+     * day). Read the method, never this paragraph — including this version of
+     * it. Mail is another module's and the answer has changed twice in as many
+     * days.
+     *
+     * WHY THE PLATFORM CHECK BELOW STAYS ANYWAY. It is redundant while the
+     * throw is unconditional, and it is what refuses if that policy is ever
+     * relaxed — which it may be, now that a business can connect its own mail
+     * server (fe37ad4a, d2a256e1). A guard deleted as redundant under a policy
+     * is armed to be missing when the policy moves. The rest of this paragraph
+     * describes the world it was written for and is why it must not go:
      *
      * The gap is the resolver, not the check. `SendingIdentityResolver::for()`
      * walks the cascade and, finding no row at any link, ends
@@ -1242,12 +1350,30 @@ class ActionRunner
 
         $title = $this->interpolate($message, $event, $subject);
 
+        /*
+         * NEGATIVE KEY, AND THAT IS NOT A STYLE CHOICE.
+         *
+         * An untouched switch posts a real `false`, so a positively-phrased key
+         * - `send_email` - would have read as "no email" on every rule that
+         * exists today and silenced all of them the moment it shipped. Unchecked
+         * here means FOLLOW THE ORGANIZATION, which is what `false` already
+         * means to the dispatcher.
+         *
+         * It only ever NARROWS. The company setting stays the ceiling: a rule
+         * may decline the email, never demand one the company has switched off.
+         * That direction matters more than it looks - inverted, a rule author
+         * would be able to overrule a company setting from a screen the company
+         * cannot see.
+         */
+        $inAppOnly = (bool) ($action['in_app_only'] ?? false);
+
         $sent = $this->notifications->dispatch(
             title: $title,
             body: $action['body'] ?? null,
             subject: $subject,
             source: 'automation',
             eventId: $event->getKey(),
+            inAppOnly: $inAppOnly,
         );
 
         return [
@@ -1266,8 +1392,16 @@ class ActionRunner
             // allows() is public for this. Asking it costs one settings read on
             // the zero path only, which is the path somebody is already staring
             // at because their rule looks broken.
+            //
+            // THE FLAG GOES TO BOTH CALLS. Ask allows() without it and a rule
+            // that declined the email, in a company with the bell off and email
+            // on, sends nobody a notification and then reports "nobody has reach
+            // over that record" - because allows() still sees a live email
+            // channel it is no longer allowed to use. The author would audit
+            // PERMISSIONS over a switch they set themselves one screen away.
+            // Notifications named this rather than leaving it in a diff.
             'detail' => $sent === 0
-                ? ($this->notifications->allows('automation', $subject)
+                ? ($this->notifications->allows('automation', $subject, $inAppOnly)
                     ? "Nobody has reach over that record, so there was no one to tell: {$title}"
                     : 'Automation notifications are switched off for this company, so nobody '
                         ."was told: {$title}")

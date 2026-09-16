@@ -139,6 +139,18 @@ class SeoFields
                 'hint' => '',
                 'requirement' => self::REQUIRED,
             ],
+            'country' => [
+                'label' => 'Country',
+                'hint' => 'Only needed if the site serves outside the United States.',
+                /*
+                 * Not part of the one-line address, deliberately: an American
+                 * business printing "United States" in its own footer reads
+                 * like a form somebody filled in badly. It is here because
+                 * JSON-LD addressCountry wants it and a site that trades across
+                 * a border needs to say which one.
+                 */
+                'requirement' => self::OPTIONAL,
+            ],
             'address' => [
                 'label' => 'Address, one line',
                 'hint' => 'Built from the parts above. This is what the footer renders.',
@@ -168,6 +180,61 @@ class SeoFields
                 'label' => 'Booking link',
                 'hint' => 'Where a "Book now" button should go.',
                 // Most companies take no online bookings at all.
+                'requirement' => self::OPTIONAL,
+            ],
+            /*
+             * Jose, 2026-09-16. Four he asked for by name; three are published
+             * facts like the rest, and the fourth is the one people paste
+             * wrong, which is why it says so in the hint.
+             */
+            'maps_url' => [
+                'label' => 'Google Maps link',
+                'hint' => 'The "Share" link from your Google listing, not the address bar.',
+                // A business with no Google listing yet has nothing to point at.
+                'requirement' => self::OPTIONAL,
+            ],
+            'timezone' => [
+                'label' => 'Time zone',
+                'hint' => 'Where this site\'s hours are local to, e.g. America/New_York.',
+                /*
+                 * Optional rather than required even though every site has
+                 * one: it earns its place next to the hours, and a site that
+                 * publishes hours without it is not wrong, only local.
+                 */
+                'requirement' => self::OPTIONAL,
+            ],
+            'tagline' => [
+                'label' => 'Tagline',
+                'hint' => 'The line that sits under the name. Yours, not a description of the trade.',
+                'requirement' => self::OPTIONAL,
+            ],
+            /*
+             * Three that earn their place on a PAGE rather than on a site.
+             *
+             * They are in the same catalogue as everything else because the
+             * plugin turns a catalogue key into a shortcode and there is no
+             * second mechanism — a page-only catalogue would be a second list
+             * to keep in step, and the first thing to fall out of step is the
+             * one nobody renders.
+             *
+             * Author and category are CHOSEN from the website's own lists
+             * rather than typed, and stored here. Nothing is written back to
+             * WordPress: the account we hold could set a post's author and
+             * deliberately does not.
+             */
+            'group' => [
+                'label' => 'Group',
+                'hint' => 'Your own label for organising pages. Usually set per page.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'author' => [
+                'label' => 'Author',
+                'hint' => 'Chosen from the people on this website. Usually set per page.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'category' => [
+                'label' => 'Category',
+                'hint' => 'Chosen from this website\'s categories. Usually set per page.',
                 'requirement' => self::OPTIONAL,
             ],
         ]);

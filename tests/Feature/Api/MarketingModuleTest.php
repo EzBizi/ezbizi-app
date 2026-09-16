@@ -96,7 +96,7 @@ class MarketingModuleTest extends TestCase
 
     public function test_the_tab_is_refused_to_a_role_the_organization_did_not_grant_it(): void
     {
-        $alpha  = $this->provisionTenant('Beta');
+        $alpha = $this->provisionTenant('Beta');
         $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
 
         $message = $this->signedInAs($viewer)
@@ -125,7 +125,7 @@ class MarketingModuleTest extends TestCase
      */
     public function test_a_role_the_organization_granted_it_reaches_the_tab(): void
     {
-        $alpha    = $this->provisionTenant('Gamma');
+        $alpha = $this->provisionTenant('Gamma');
         $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $this->signedInAs($marketer)->getJson(self::NEWSLETTER)->assertOk();
@@ -140,8 +140,8 @@ class MarketingModuleTest extends TestCase
      */
     public function test_the_tab_is_reachable_in_me_only_for_a_role_that_holds_it(): void
     {
-        $alpha    = $this->provisionTenant('Delta');
-        $viewer   = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
+        $alpha = $this->provisionTenant('Delta');
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['customers.view']);
         $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
 
         $this->assertFalse($this->marketingInMeFor($viewer)['reachable']);
@@ -207,7 +207,7 @@ class MarketingModuleTest extends TestCase
      */
     public function test_being_inside_marketing_grants_nothing(): void
     {
-        $alpha    = $this->provisionTenant('Theta');
+        $alpha = $this->provisionTenant('Theta');
         $marketer = $this->userWithRole($alpha, 'Marketer', ['marketing.view']);
 
         $modules = collect(
@@ -235,7 +235,7 @@ class MarketingModuleTest extends TestCase
      */
     public function test_a_child_is_reachable_without_the_parent(): void
     {
-        $alpha  = $this->provisionTenant('Iota');
+        $alpha = $this->provisionTenant('Iota');
         $caller = $this->userWithRole($alpha, 'Caller', ['web_management.view']);
 
         $modules = collect(
@@ -265,7 +265,7 @@ class MarketingModuleTest extends TestCase
     /** The automation builder groups its pickers the same way. */
     public function test_the_automation_catalogue_says_where_each_module_is_drawn(): void
     {
-        $alpha  = $this->provisionTenant('Lambda');
+        $alpha = $this->provisionTenant('Lambda');
         $caller = $this->userWithRole($alpha, 'Caller', [
             'reviews.view', 'marketing.view', 'automations.view',
         ]);
@@ -293,14 +293,14 @@ class MarketingModuleTest extends TestCase
     public function test_leads_moved_out_without_taking_its_permissions_with_it(): void
     {
         $registry = app(ModuleRegistry::class);
-        $leads    = $registry->get('leads');
+        $leads = $registry->get('leads');
 
         $this->assertNotNull($leads);
         $this->assertNull($leads->parent, 'Leads is a row of its own now.');
         $this->assertTrue($leads->sidebar);
 
         // The permission keys are unchanged, so no role gained or lost anything.
-        $alpha  = $this->provisionTenant('Mu');
+        $alpha = $this->provisionTenant('Mu');
         $caller = $this->userWithRole($alpha, 'Caller', ['leads.view']);
 
         $modules = collect(
@@ -380,7 +380,7 @@ class MarketingModuleTest extends TestCase
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
         $waiting = [];
-        $firing  = ['social.published', 'social.publish_failed'];
+        $firing = ['social.published', 'social.publish_failed'];
 
         $this->assertSame(
             [...$waiting, ...$firing],
@@ -507,7 +507,7 @@ class MarketingModuleTest extends TestCase
 
     public function test_the_endpoint_publishes_what_the_module_declared_and_invents_nothing(): void
     {
-        $alpha    = $this->provisionTenant('Zeta');
+        $alpha = $this->provisionTenant('Zeta');
         $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $body = $this->signedInAs($marketer)
@@ -522,10 +522,10 @@ class MarketingModuleTest extends TestCase
 
         $this->assertSame(
             array_map(fn (TriggerDefinition $t) => [
-                'key'         => $t->key,
-                'label'       => $t->label,
+                'key' => $t->key,
+                'label' => $t->label,
                 'description' => $t->description,
-                'raised'      => $t->isRaised,
+                'raised' => $t->isRaised,
             ], $module->triggers),
             $body['triggers'],
             'The endpoint and the registry disagree about what Newsletter raises.',
@@ -533,8 +533,8 @@ class MarketingModuleTest extends TestCase
 
         $this->assertSame(
             array_map(fn (ActionDefinition $a) => [
-                'key'         => $a->key,
-                'label'       => $a->label,
+                'key' => $a->key,
+                'label' => $a->label,
                 'description' => $a->description,
             ], $module->automationActions),
             $body['actions'],
@@ -554,7 +554,7 @@ class MarketingModuleTest extends TestCase
      */
     public function test_the_payload_flags_each_event_that_nothing_raises(): void
     {
-        $alpha    = $this->provisionTenant('Eta');
+        $alpha = $this->provisionTenant('Eta');
         $marketer = $this->userWithRole($alpha, 'Marketer', ['newsletter.view']);
 
         $triggers = $this->signedInAs($marketer)
@@ -570,7 +570,7 @@ class MarketingModuleTest extends TestCase
         // that answered true for everything would satisfy a loop and tell the
         // screen nothing.
         $this->assertSame([
-            'newsletter.sent'         => true,
+            'newsletter.sent' => true,
             'newsletter.unsubscribed' => true,
         ], collect($triggers)->pluck('raised', 'key')->all());
     }

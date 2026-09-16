@@ -54,8 +54,8 @@ class SendingServersApiTest extends TestCase
         $this->signedInAs($admin)
             ->putJson(self::PATH.'?'.http_build_query($this->scope($tenant)), $this->body())
             ->assertOk()
-            ->assertJsonPath('connected_here.host', 'smtp.example.test')
-            ->assertJsonPath('connected_here.has_password', true);
+            ->assertJsonPath('data.connected_here.host', 'smtp.example.test')
+            ->assertJsonPath('data.connected_here.has_password', true);
 
         $row = $this->inTenant($tenant['org'], fn () => SendingIdentity::query()
             ->where('scope_id', $tenant['company']->getKey())->first());
@@ -93,9 +93,9 @@ class SendingServersApiTest extends TestCase
 
         // And the control: the things that SHOULD come back do, so this test
         // cannot pass by the endpoint returning nothing at all.
-        $read->assertJsonPath('connected_here.username', 'info@a-1chimney.test')
-            ->assertJsonPath('connected_here.host', 'smtp.example.test')
-            ->assertJsonPath('connected_here.has_password', true);
+        $read->assertJsonPath('data.connected_here.username', 'info@a-1chimney.test')
+            ->assertJsonPath('data.connected_here.host', 'smtp.example.test')
+            ->assertJsonPath('data.connected_here.has_password', true);
     }
 
     public function test_the_permission_is_required(): void
@@ -219,10 +219,10 @@ class SendingServersApiTest extends TestCase
 
         $this->signedInAs($admin)->deleteJson(self::PATH.$franchise)
             ->assertOk()
-            ->assertJsonPath('connected_here', null)
+            ->assertJsonPath('data.connected_here', null)
             // Inherited from the company, not fallen back to EzBizi.
-            ->assertJsonPath('in_effect.from_address', 'info@a-1chimney.test')
-            ->assertJsonPath('in_effect.inherited', true);
+            ->assertJsonPath('data.in_effect.from_address', 'info@a-1chimney.test')
+            ->assertJsonPath('data.in_effect.inherited', true);
     }
 
     public function test_a_scope_with_nothing_connected_reports_the_platform_rather_than_an_error(): void
@@ -239,10 +239,10 @@ class SendingServersApiTest extends TestCase
         $this->signedInAs($admin)
             ->getJson(self::PATH.'?'.http_build_query($this->scope($tenant)))
             ->assertOk()
-            ->assertJsonPath('connected_here', null)
-            ->assertJsonPath('in_effect.transport', MailTransport::Platform->value)
-            ->assertJsonPath('in_effect.source_name', null)
-            ->assertJsonPath('in_effect.inherited', false);
+            ->assertJsonPath('data.connected_here', null)
+            ->assertJsonPath('data.in_effect.transport', MailTransport::Platform->value)
+            ->assertJsonPath('data.in_effect.source_name', null)
+            ->assertJsonPath('data.in_effect.inherited', false);
     }
 
     public function test_never_tried_is_derived_from_a_recorded_attempt(): void
@@ -268,7 +268,7 @@ class SendingServersApiTest extends TestCase
 
         $this->signedInAs($admin)->getJson(self::PATH.$query)
             ->assertOk()
-            ->assertJsonPath('connected_here.never_tried', true);
+            ->assertJsonPath('data.connected_here.never_tried', true);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             SendingIdentity::query()
@@ -280,7 +280,7 @@ class SendingServersApiTest extends TestCase
         // Goes false, and this is the assertion a missing column cannot satisfy.
         $this->signedInAs($admin)->getJson(self::PATH.$query)
             ->assertOk()
-            ->assertJsonPath('connected_here.never_tried', false);
+            ->assertJsonPath('data.connected_here.never_tried', false);
     }
 
     public function test_an_attempt_is_recorded_whatever_the_outcome(): void

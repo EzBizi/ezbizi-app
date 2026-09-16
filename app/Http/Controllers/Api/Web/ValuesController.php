@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebValue;
+use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
@@ -43,7 +44,7 @@ class ValuesController extends Controller
 
         return response()->json([
             'data' => [
-                'fields' => SeoFields::catalogue(),
+                'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
                 ...ValueResolver::forEditor(
                     $this->rows($site),
                     ValueResolver::inheritedRowsFor($site),
@@ -69,7 +70,34 @@ class ValuesController extends Controller
          * on a live page is indistinguishable from a value somebody forgot to
          * fill in.
          */
-        $unknown = array_diff(array_keys($input['values']), SeoFields::keys());
+        $path = $this->normalizePath($input['path'] ?? '');
+
+        /*
+         * Every key must be one this build knows how to render. An unknown key
+         * would be stored happily and then be a shortcode nobody wrote, which
+         * on a live page is indistinguishable from a value somebody forgot to
+         * fill in.
+         *
+         * The exception is a page's own free-text fields, which are invented by
+         * the customer and rendered because the plugin registers a shortcode
+         * for every key the server sends. They are only accepted ON a page: a
+         * site-wide `home_field_1` would be a shortcode whose name claims a
+         * page it does not belong to.
+         */
+        $unknown = array_values(array_filter(
+            array_diff(array_keys($input['values']), SeoFields::keys()),
+            fn (string $key) => ! (
+                ($path !== '' && PageFields::isCustomKey($key))
+                /*
+                 * A template is site-wide and only site-wide. Allowed on a page
+                 * it would be a shortcode meaning different things in different
+                 * places, which is exactly what somebody reaches for a template
+                 * to avoid — and they would find out by reading two pages side
+                 * by side rather than from any error.
+                 */
+                || ($path === '' && PageFields::isTemplateKey($key))
+            ),
+        ));
 
         if ($unknown !== []) {
             return response()->json([
@@ -77,7 +105,25 @@ class ValuesController extends Controller
             ], 422);
         }
 
-        $path = $this->normalizePath($input['path'] ?? '');
+        /*
+         * A ceiling, because every one of these is a shortcode the plugin
+         * registers on every page load of the customer's site.
+         */
+        $custom = array_filter(array_keys($input['values']), PageFields::isCustomKey(...));
+
+        if (count($custom) > PageFields::MAX_PER_PAGE) {
+            return response()->json([
+                'message' => 'A page can hold at most '.PageFields::MAX_PER_PAGE.' text fields.',
+            ], 422);
+        }
+
+        $templates = array_filter(array_keys($input['values']), PageFields::isTemplateKey(...));
+
+        if (count($templates) > PageFields::MAX_TEMPLATES) {
+            return response()->json([
+                'message' => 'A site can hold at most '.PageFields::MAX_TEMPLATES.' templates.',
+            ], 422);
+        }
 
         DB::transaction(function () use ($site, $path, $input): void {
             foreach ($input['values'] as $key => $value) {

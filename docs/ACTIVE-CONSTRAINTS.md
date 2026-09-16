@@ -421,3 +421,65 @@ reproduced. The correlation with the schema is strong; the causal chain has a ga
 in it and nobody has closed it.
 
 So: **check `DB_DATABASE` before concluding anything about this machine.**
+
+**COUNTER-EVIDENCE, added hours later, and it breaks the tidy half of this
+section.** Phone hit the identical 1698 twice - 335 errors, then 68 on the same
+suite and unchanged tree, then 364/364 clean minutes later - while running in
+their OWN schema throughout. They proved which schema by artefact rather than by
+reasoning about PHPUnit precedence: `phone_callbacks` is a table only their
+migration creates, and it exists in `ezbizi_testing_phone` and NOT in the bare
+`ezbizi_testing`. So the env var really did win, and an isolated schema produced
+1698 anyway.
+
+They named what keeps it from being a clean refutation, which is why it is worth
+believing: they cannot see whether another session is also in
+`ezbizi_testing_phone` (an `ezbizi_testing_phoneivr` exists, so somebody has
+worked this module from another seat), and **there are 58 `ezbizi_testing*`
+schemas**, every one running the full migration set on every `RefreshDatabase`.
+So whatever 1698 is, it happens on one MySQL under very heavy concurrent DDL.
+
+**1698 is an AUTH code and every theory anyone has offered is about something
+else** - which is usually the shape of a symptom nobody has found the cause of.
+Two sessions, two mechanisms proposed, both wrong or unproven, and SES's plain
+`mysql` CLI returning it once and never again is still unexplained.
+
+So the honest state: **§4 collisions are real and cost an hour today, AND they do
+not explain 1698.** If you see it, re-run before reporting; if it reproduces on a
+quiet tree, capture `SHOW PROCESSLIST` and the server error log at that moment -
+that is the evidence nobody has yet.
+
+## 11 · Jose is away from 2026-09-15 evening — decide and finish, do not wait
+
+His words, standing: *"coordinate everything with each other and the
+deployment lead session, make sure to finish END TO END since i wont be here
+and if u have a question do as you believe or recommend, dont wait for me.
+Make sure everything goes with the Organization - Company - Franchise Schema
+as well as with Automations and Roles-Permissions."*
+
+And separately: *"let the sessions know if they need to do anything to do it
+while im away, fix stuff, etc."*
+
+So: **a question addressed to Jose is not a reason to stop.** Decide it the way
+you would recommend it, write down what you decided and why, and keep going. If
+two sessions disagree, settle it between you; the deploy desk breaks ties. The
+only things that genuinely wait for him are the ones nobody here can do:
+signing in to a third-party account, paying for something, and answering a
+question about what the business WANTS rather than how it should work.
+
+**Releases keep running while he is away.** Hand the desk a SHA and a bullet;
+do not hold work back on the theory that nobody is watching. Eleven cuts went
+out today and each of them fixed something he had reported.
+
+Three things this file already says that matter more than usual tonight,
+because there is nobody to catch a bad one:
+
+- Gate the tree you COMMIT, and run `flutter analyze && flutter test` **last**,
+  after the final edit — a green run from before your last file is a claim
+  about a tree that no longer exists.
+- Say what your hand-over CARRIES, not what you meant it to carry. Read
+  `git show --numstat <sha>` before describing a commit; if the line count does
+  not match your sentence, the sentence is wrong.
+- Verify on the thing that runs — the box, the served page, the route cache —
+  not on a ref. `merged into main` and `live` are different facts, and today
+  one of them was reported as the other while a Google reviewer had directions
+  to the screen it affected.

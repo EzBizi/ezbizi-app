@@ -74,12 +74,12 @@ final class CallReconciliation
     }
 
     /**
-     * @param  list<array{from: ?string, queue: ?string, rang: list<string>, answered_by: ?string}>  $calls
+     * @param  list<array{from: ?string, queue: ?string, rang: list<string>, answered_by: ?string, talk_seconds?: ?int}>  $calls
      * @param  list<array{account: string, created_by: ?string, created_at: ?string}>  $jobs
      * @return array{
      *     day: string,
-     *     totals: array{calls: int, answered: int, reached_nobody: int, new_client: int, existing_client: int, jobs: int},
-     *     people: list<array{person: string, rang: int, answered: int, new_client: int, existing_client: int, jobs: int, in_calls: bool, in_jobs: bool}>
+     *     totals: array{calls: int, answered: int, reached_nobody: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int},
+     *     people: list<array{person: string, rang: int, answered: int, new_client: int, existing_client: int, jobs: int, avg_talk_seconds: ?int, in_calls: bool, in_jobs: bool}>
      * }
      */
     public function forDay(array $calls, array $jobs, string $day): array
@@ -88,6 +88,8 @@ final class CallReconciliation
 
         $rang = [];
         $answered = [];
+        $talkSeconds = [];
+        $talkCalls = [];
         $new = [];
         $existing = [];
 
@@ -121,6 +123,16 @@ final class CallReconciliation
 
             $answered[$who] = ($answered[$who] ?? 0) + 1;
 
+            // Averaged over ANSWERED calls only. A call nobody picked up has no
+            // talk time, and counting it as zero would drag every mean toward
+            // nothing while looking like a real measurement.
+            $talk = $call['talk_seconds'] ?? null;
+
+            if ($talk !== null) {
+                $talkSeconds[$who] = ($talkSeconds[$who] ?? 0) + (int) $talk;
+                $talkCalls[$who] = ($talkCalls[$who] ?? 0) + 1;
+            }
+
             // Attributed to whoever TOOK it. A call that rang four people was
             // one caller with one question, and counting it for all four would
             // make the day's new-client calls outnumber the day's calls.
@@ -142,6 +154,35 @@ final class CallReconciliation
             $made[$person] = ($made[$person] ?? 0) + 1;
         }
 
+        /*
+         * ── THE ROSTER IS THE WINDOW, NOT THE DAY ───────────────────
+         *
+         * `$jobs` is a 30-day window of Workiz jobs; `$booked` is the day's
+         * slice of it. "Does Workiz know this name" must be asked of the
+         * WINDOW. Asked of the day it answers "did they book anything today",
+         * which is a different question with the same shape.
+         *
+         * That mislabelled three people on the first live day. Jared Prescott,
+         * Jovanni Martin and Ranya Lara all answered calls, booked nothing that
+         * day, and were marked as though Workiz had never heard of them -
+         * which reads as a name spelled differently in the two systems, and
+         * invites somebody to go and "fix" a pair that was never broken.
+         *
+         * Measured 2026-09-15: of the 9 people RingCentral saw in 14 days, 8
+         * appear in Workiz spelled IDENTICALLY. The systems agree on names
+         * almost perfectly, so a marker firing six times in one day was never
+         * reporting what it claimed to.
+         */
+        $workizRoster = [];
+
+        foreach ($jobs as $job) {
+            $name = $this->canonical($job['created_by'] ?? null);
+
+            if ($name !== null) {
+                $workizRoster[$name] = true;
+            }
+        }
+
         $names = array_values(array_unique(array_merge(
             array_keys($rang),
             array_keys($answered),
@@ -161,11 +202,23 @@ final class CallReconciliation
                 'existing_client' => $existing[$name] ?? 0,
                 'jobs' => $made[$name] ?? 0,
 
-                // Which system knows this name. A person present on one side
-                // only is the signal that the two systems spell them
-                // differently, and the screen says so instead of guessing.
+                // Null rather than 0 when they answered nothing: "no average"
+                // and "an average of zero" are different facts, and the screen
+                // shows a dash for the first.
+                'avg_talk_seconds' => isset($talkCalls[$name]) && $talkCalls[$name] > 0
+                    ? (int) round($talkSeconds[$name] / $talkCalls[$name])
+                    : null,
+
+                // Whether WORKIZ HAS EVER HEARD OF THEM, over the whole
+                // window - not whether they booked today.
+                //
+                // Only this direction is asserted. The reverse ("Workiz knows
+                // them, RingCentral does not") would need a roster of callers
+                // and all this holds is one day of calls, so somebody who books
+                // jobs without answering phones - a normal way to work - must
+                // not be flagged as a mismatch.
                 'in_calls' => isset($rang[$name]) || isset($answered[$name]),
-                'in_jobs' => isset($made[$name]),
+                'in_jobs' => isset($workizRoster[$name]),
             ];
         }
 
@@ -178,6 +231,10 @@ final class CallReconciliation
                 'new_client' => $newTotal,
                 'existing_client' => $existingTotal,
                 'jobs' => count($booked),
+
+                'avg_talk_seconds' => array_sum($talkCalls) > 0
+                    ? (int) round(array_sum($talkSeconds) / array_sum($talkCalls))
+                    : null,
             ],
             'people' => $people,
         ];

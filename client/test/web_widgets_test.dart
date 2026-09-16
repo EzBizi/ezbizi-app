@@ -91,6 +91,8 @@ void main() {
         body = {
           'own': own,
           'config': {
+            // Every key WidgetDefaults::resolve() emits for chat. A fixture
+            // that carries fewer is a fixture agreeing with itself.
             'chat': {
               'enabled': true,
               'title': 'Talk to A-1',
@@ -98,6 +100,11 @@ void main() {
               'button': 'Chat',
               'placeholder': 'Type here',
               'position': 'bottom-right',
+              'lead_in': 'Quick details first, so we can get back to you.',
+              'name_label': 'Your name',
+              'contact_label': 'Phone or email',
+              'message_label': 'How can we help?',
+              'start': 'Start chat',
             },
             'form': {
               'enabled': true,
@@ -395,23 +402,48 @@ void main() {
     expect(find.textContaining('What needs doing?'), findsWidgets);
   });
 
-  /// Dressing a widget before switching it on is the ordinary order of doing
-  /// this, so the preview must not go blank during exactly those minutes.
-  testWidgets('a switched-off widget still draws, and says it is off', (
-    tester,
-  ) async {
+  /// The preview shows what a visitor meets FIRST, which is the three
+  /// questions and not the message thread.
+  ///
+  /// Jose compared ours to the chat on A1 Tools: that one asks who you are
+  /// before the conversation, ours opened straight into a message box, and a
+  /// chat with nobody's name on it cannot be answered if they close the tab.
+  /// The preview is where he checks that wording, so it has to be the step
+  /// the wording belongs to.
+  testWidgets('the preview asks before it chats', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    // The editable copy, drawn as the visitor will meet it.
+    expect(find.textContaining('Quick details first'), findsWidgets);
+    expect(find.text('Your name *'), findsOneWidget);
+    expect(find.text('Phone or email *'), findsOneWidget);
+    expect(find.text('How can we help? *'), findsOneWidget);
+    expect(find.text('Start chat'), findsWidgets);
+
+    // The control: the closed launcher is still previewed beside it, so these
+    // assertions are about the panel's contents rather than a blank pane.
+    expect(find.text('Chat'), findsWidgets);
+  });
+
+  /// There is no switch, and nothing may imply there is one.
+  ///
+  /// Jose removed both on 2026-09-15: putting the widget on a page is the
+  /// decision to show it. This is the version of the old test, inverted —
+  /// it used to tap the switch and assert the preview said "off on your site".
+  /// Every site had both switched off, so every site showed nothing, and the
+  /// only notice of that was a grey phrase in a preview that reads as styling.
+  testWidgets('nothing offers to switch a widget off', (tester) async {
     await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
 
     expect(find.text('Preview'), findsOneWidget);
 
-    // The fixture has both switched ON, so nothing should claim otherwise.
+    expect(find.byType(Switch), findsNothing);
+    expect(find.text('Show the chat bubble'), findsNothing);
+    expect(find.text('Show the contact form'), findsNothing);
     expect(find.text('off on your site'), findsNothing);
 
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-
-    // Off now — said once, and the chat is still drawn in both places.
-    expect(find.text('off on your site'), findsOneWidget);
+    // The control: the editor and the preview are both still drawn, so the
+    // assertions above are about an absent switch rather than an absent screen.
     expect(find.text('Talk to A-1'), findsNWidgets(2));
   });
 

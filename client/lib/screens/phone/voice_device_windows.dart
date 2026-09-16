@@ -75,6 +75,10 @@ class WindowsVoiceDevice implements VoiceDevice {
   @override
   bool get supported => true;
 
+  /// A WebView2 has no call UI of its own, so EzBizi rings.
+  @override
+  bool get ringsItself => false;
+
   @override
   bool get registered => _registered;
 

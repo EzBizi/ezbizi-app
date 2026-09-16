@@ -883,6 +883,40 @@ final class TwimlRenderer
         return (string) $response;
     }
 
+    /**
+     * What a paged handset does: join, muted, and wait to be spoken to.
+     *
+     * ── Why muted, and why the conference does not start ────────────
+     *
+     * A page is one direction. Unmuted, twelve phones in an office would page
+     * each other's room noise back at everybody, which is not a feature and is
+     * very hard to diagnose from the receiving end.
+     *
+     * `startConferenceOnEnter` false means the listeners' arrival does not
+     * begin anything — the page starts when the person SPEAKING joins, so
+     * whoever is called first does not sit in a live conference listening to
+     * the others being connected one at a time.
+     *
+     * An empty `waitUrl` is the difference between silence and Twilio's hold
+     * music. A handset that starts playing hold music because somebody is
+     * about to make an announcement is worse than one that stays quiet.
+     */
+    public function pageListener(string $conference): string
+    {
+        $response = new VoiceResponse;
+
+        $dial = $response->dial(null, ['timeLimit' => 300]);
+        $dial->conference($conference, [
+            'muted' => true,
+            'beep' => 'false',
+            'startConferenceOnEnter' => false,
+            'endConferenceOnExit' => false,
+            'waitUrl' => '',
+        ]);
+
+        return (string) $response;
+    }
+
     private function enqueue(
         VoiceResponse $response,
         PhoneNumber $number,
@@ -937,6 +971,26 @@ final class TwimlRenderer
         $attributes['ringTone'] = 'us';
 
         $dial = $response->dial(null, $attributes);
+
+        // ── SPEAKING A PAGE ─────────────────────────────────────────
+        //
+        // The pager joins the conference their own announcement is being made
+        // into. Same prefix trick as `park:` below, and for the same reason:
+        // the desk already knows how to place an outbound call, so a page is a
+        // destination rather than a second mechanism.
+        //
+        // `endConferenceOnExit` is what makes a page END. Hanging up is how
+        // somebody finishes speaking, and without this every phone that was
+        // paged would sit in a silent conference until Twilio timed it out.
+        if (str_starts_with($to, 'page:')) {
+            $dial->conference(substr($to, strlen('page:')), [
+                'beep' => 'false',
+                'startConferenceOnEnter' => true,
+                'endConferenceOnExit' => true,
+            ]);
+
+            return;
+        }
 
         // ── PICKING UP A PARKED CALL ────────────────────────────────
         //
@@ -1165,6 +1219,15 @@ final class TwimlRenderer
             string $title,
             string $detail,
             string $state = 'ok',
+
+            // WHAT THIS NODE IS ABOUT, when it is about something with an id.
+            //
+            // A ring group node and its queue both carry the group's id, which
+            // is what lets a live count be joined to the right box without the
+            // screen re-deriving my node ids — the ids are mine, and a second
+            // derivation of them somewhere else is the drift this module keeps
+            // paying for.
+            ?string $ref = null,
         ) use (&$nodes): string {
             $nodes[] = [
                 'id' => $id,
@@ -1172,6 +1235,7 @@ final class TwimlRenderer
                 'title' => $title,
                 'detail' => $detail,
                 'state' => $state,
+                'ref' => $ref,
             ];
 
             return $id;
@@ -1257,6 +1321,22 @@ final class TwimlRenderer
             && $connection !== null
             && DialPlan::batches($group, $connection) !== [];
 
+        // ONE NODE PER GROUP, not one per key.
+        //
+        // Jose, off the drawing: "Ring Existing Client" appeared twice, once
+        // for Press 2 and once for no key pressed — because a menu option
+        // carrying a ring group got its own node keyed by DIGIT, and on the
+        // live line key 2 points at the same group the line already rings. Two
+        // boxes for one team, and a reader counting teams counts wrong.
+        //
+        // Keyed by group id from here on, so a second route to the same team
+        // is a second ARROW into one box, which is what it is.
+        $byGroup = [];
+        $groups = ['answer' => $group];
+        if ($group !== null) {
+            $byGroup[(string) $group->id] = 'answer';
+        }
+
         $add(
             'answer',
             'ring_group',
@@ -1268,6 +1348,7 @@ final class TwimlRenderer
                 default => 'Whoever is on duty in that group is dialled.',
             },
             $reaches ? 'ok' : 'dead',
+            $group?->id === null ? null : (string) $group->id,
         );
 
         // ── The menu, where one call becomes several ────────────────
@@ -1355,10 +1436,21 @@ final class TwimlRenderer
                         continue;
                     }
 
+                    // Already drawn — the line's own group, or an earlier
+                    // key pointing at the same team. Another arrow into it.
+                    if (isset($byGroup[$optionGroupId])) {
+                        $link('menu', $byGroup[$optionGroupId], $label);
+
+                        continue;
+                    }
+
                     $optionGroup = PhoneRingGroup::query()->find($optionGroupId);
                     $usable = $optionGroup !== null
                         && $connection !== null
                         && DialPlan::batches($optionGroup, $connection) !== [];
+
+                    $byGroup[$optionGroupId] = $id;
+                    $groups[$id] = $optionGroup;
 
                     $add(
                         $id,
@@ -1368,6 +1460,7 @@ final class TwimlRenderer
                             ? 'This option points at a ring group that no longer exists.'
                             : ($usable ? 'Whoever is on duty in that group is dialled.' : 'Nobody in that group is available.'),
                         $usable ? 'ok' : 'dead',
+                        $optionGroup?->id === null ? null : (string) $optionGroup->id,
                     );
                 }
 
@@ -1383,17 +1476,50 @@ final class TwimlRenderer
 
         $fallback = trim((string) $number->resolved('fallback_number'));
 
-        if ($fallback !== '') {
-            $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
-            $link('answer', 'fallback', 'No answer');
-            $link('fallback', 'voicemail', 'No answer');
-        } elseif ($group !== null && $group->overflow === 'queue') {
-            $add('queue', 'queue', 'Hold in a queue', 'Callers wait and are told their place in line.');
-            $link('answer', 'queue', 'Everyone busy');
-            $link('queue', 'answer', 'Somebody free');
-            $link('queue', 'voicemail', 'Waited too long');
-        } else {
-            $link('answer', 'voicemail', 'No answer');
+        // EVERY GROUP HAS ITS OWN OVERFLOW, and its own queue.
+        //
+        // This used to draw one queue, hanging off the line's default group,
+        // while the menu's other groups had none — so "Everyone busy" looked
+        // like a property of one box when it is a setting on each team, and
+        // Jose read it exactly that way off the picture.
+        //
+        // They are genuinely separate queues: `PhoneRingGroup::queueName()` is
+        // named after the group, so somebody holding for Appointments is not
+        // in the same line as somebody holding for Existing Clients. One
+        // shared queue node would be a tidier drawing of a different system.
+        foreach ($groups as $nodeId => $team) {
+            if ($team === null) {
+                continue;
+            }
+
+            // A fallback number is the LINE's, and it is tried before any
+            // group overflow — so it belongs on the default group only.
+            if ($nodeId === 'answer' && $fallback !== '') {
+                $add('fallback', 'forward', 'Fall back to '.$fallback, 'Tried once if nobody in the group picks up.');
+                $link('answer', 'fallback', 'No answer');
+                $link('fallback', 'voicemail', 'No answer');
+
+                continue;
+            }
+
+            if ($team->overflow === 'queue') {
+                $queue = 'queue-'.$nodeId;
+                $add(
+                    $queue,
+                    'queue',
+                    'Hold in a queue',
+                    'Callers for '.$team->name.' wait and are told their place in line.',
+                    'ok',
+                    (string) $team->id,
+                );
+                $link($nodeId, $queue, 'Everyone busy');
+                $link($queue, $nodeId, 'Somebody free');
+                $link($queue, 'voicemail', 'Waited too long');
+
+                continue;
+            }
+
+            $link($nodeId, 'voicemail', 'No answer');
         }
 
         return ['nodes' => $nodes, 'edges' => $edges];

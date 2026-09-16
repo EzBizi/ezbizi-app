@@ -76,7 +76,7 @@ return [
     |
     */
     'google_mail' => [
-        'client_id'     => env('GOOGLE_MAIL_CLIENT_ID'),
+        'client_id' => env('GOOGLE_MAIL_CLIENT_ID'),
         'client_secret' => env('GOOGLE_MAIL_CLIENT_SECRET'),
 
         'redirect' => env('GOOGLE_MAIL_REDIRECT_URI')
@@ -85,8 +85,8 @@ return [
         // Service account for domain-wide delegation. Impersonates listed
         // Workspace mailboxes. Lives in .env, never on a tenant row.
         'workspace_client_email' => env('GOOGLE_MAIL_WORKSPACE_CLIENT_EMAIL'),
-        'workspace_private_key'  => env('GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY'),
-        'workspace_client_id'    => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
+        'workspace_private_key' => env('GOOGLE_MAIL_WORKSPACE_PRIVATE_KEY'),
+        'workspace_client_id' => env('GOOGLE_MAIL_WORKSPACE_CLIENT_ID'),
 
         // Google Workspace Marketplace listing. When set, Email settings
         // offers Admin install instead of (or before) pasting DWD scopes.
@@ -105,7 +105,7 @@ return [
     |
     */
     'microsoft_mail' => [
-        'client_id'     => env('MICROSOFT_MAIL_CLIENT_ID'),
+        'client_id' => env('MICROSOFT_MAIL_CLIENT_ID'),
         'client_secret' => env('MICROSOFT_MAIL_CLIENT_SECRET'),
         'redirect' => env('MICROSOFT_MAIL_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/email/microsoft/callback',
@@ -125,7 +125,7 @@ return [
     |
     */
     'pinterest' => [
-        'client_id'     => env('PINTEREST_CLIENT_ID'),
+        'client_id' => env('PINTEREST_CLIENT_ID'),
         'client_secret' => env('PINTEREST_CLIENT_SECRET'),
         'redirect' => env('PINTEREST_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/pinterest/callback',
@@ -136,7 +136,7 @@ return [
     | Three redirect URIs, registered character for character. No ads, no Messenger.
     */
     'meta' => [
-        'client_id'     => env('META_APP_ID'),
+        'client_id' => env('META_APP_ID'),
         'client_secret' => env('META_APP_SECRET'),
         'facebook_redirect' => env('META_FACEBOOK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/facebook/callback',
@@ -145,7 +145,7 @@ return [
         | calls it EzBizi-IG and gives it an Instagram app id and secret
         | separate from the Facebook ones. Same story as Threads below.
         */
-        'instagram_id'     => env('META_INSTAGRAM_APP_ID'),
+        'instagram_id' => env('META_INSTAGRAM_APP_ID'),
         'instagram_secret' => env('META_INSTAGRAM_APP_SECRET'),
         'instagram_redirect' => env('META_INSTAGRAM_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/instagram/callback',
@@ -155,21 +155,37 @@ return [
         | Threads request with the Facebook pair is rejected, so these are
         | separate keys rather than a reuse of the two above.
         */
-        'threads_id'     => env('META_THREADS_APP_ID'),
+        /*
+        | WhatsApp Business Platform — the Cloud API, on the same Meta app.
+        |
+        | The access token is a SYSTEM USER token, not the temporary one the
+        | dashboard shows next to the test number: that one expires in 24 hours
+        | and its expiry looks exactly like Meta refusing the message.
+        |
+        | The verify token is ours and arbitrary — we invent it, type it into
+        | the dashboard, and Meta hands it back on the subscription handshake.
+        | It authenticates nothing afterwards; the POST signature does that,
+        | using META_APP_SECRET above.
+        */
+        'whatsapp_version' => env('META_WHATSAPP_VERSION', 'v21.0'),
+        'whatsapp_token' => env('META_WHATSAPP_TOKEN'),
+        'whatsapp_verify_token' => env('META_WHATSAPP_VERIFY_TOKEN'),
+
+        'threads_id' => env('META_THREADS_APP_ID'),
         'threads_secret' => env('META_THREADS_APP_SECRET'),
         'threads_redirect' => env('META_THREADS_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/threads/callback',
     ],
 
     'linkedin' => [
-        'client_id'     => env('LINKEDIN_CLIENT_ID'),
+        'client_id' => env('LINKEDIN_CLIENT_ID'),
         'client_secret' => env('LINKEDIN_CLIENT_SECRET'),
         'redirect' => env('LINKEDIN_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/linkedin/callback',
     ],
 
     'tiktok' => [
-        'client_key'    => env('TIKTOK_CLIENT_KEY'),
+        'client_key' => env('TIKTOK_CLIENT_KEY'),
         'client_secret' => env('TIKTOK_CLIENT_SECRET'),
         'redirect' => env('TIKTOK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/tiktok/callback',
@@ -205,7 +221,7 @@ return [
     ],
 
     'youtube' => [
-        'client_id'     => env('YOUTUBE_CLIENT_ID'),
+        'client_id' => env('YOUTUBE_CLIENT_ID'),
         'client_secret' => env('YOUTUBE_CLIENT_SECRET'),
         'redirect' => env('YOUTUBE_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/youtube/callback',
@@ -219,13 +235,13 @@ return [
     | Application PINT-4039.
     */
     'thumbtack' => [
-        'client_id'     => env('THUMBTACK_CLIENT_ID'),
+        'client_id' => env('THUMBTACK_CLIENT_ID'),
         'client_secret' => env('THUMBTACK_CLIENT_SECRET'),
 
         // Named outright rather than derived from APP_URL, so staging and
         // production can hold different credentials at the same time -
         // Thumbtack issues staging keys against their own redirect URI.
-        'redirect'      => env('THUMBTACK_REDIRECT_URI')
+        'redirect' => env('THUMBTACK_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/thumbtack/callback',
 
         /*
@@ -240,7 +256,7 @@ return [
          * tenant can be moved.
          */
         'authorize_url' => env('THUMBTACK_AUTHORIZE_URL', 'https://auth.thumbtack.com/oauth2/auth'),
-        'token_url'     => env('THUMBTACK_TOKEN_URL', 'https://auth.thumbtack.com/oauth2/token'),
+        'token_url' => env('THUMBTACK_TOKEN_URL', 'https://auth.thumbtack.com/oauth2/token'),
 
         /*
          * The API host, which is NOT the auth host and switches per
@@ -308,7 +324,7 @@ return [
     ],
 
     'x' => [
-        'client_id'     => env('X_CLIENT_ID'),
+        'client_id' => env('X_CLIENT_ID'),
         'client_secret' => env('X_CLIENT_SECRET'),
         'redirect' => env('X_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/x/callback',
@@ -348,14 +364,14 @@ return [
     |
     */
     'business_profile' => [
-        'client_id'     => env('GBP_CLIENT_ID'),
+        'client_id' => env('GBP_CLIENT_ID'),
         'client_secret' => env('GBP_CLIENT_SECRET'),
         'redirect' => env('GBP_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/business-profile/callback',
     ],
 
     'google_ads' => [
-        'client_id'     => env('GOOGLE_ADS_CLIENT_ID'),
+        'client_id' => env('GOOGLE_ADS_CLIENT_ID'),
         'client_secret' => env('GOOGLE_ADS_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_ADS_REDIRECT_URI')
             ?: rtrim((string) env('APP_URL', 'http://localhost'), '/').'/api/v1/social/google-ads/callback',
@@ -385,7 +401,7 @@ return [
     'twilio' => [
         'platform_account_sid' => env('TWILIO_PLATFORM_ACCOUNT_SID'),
         'platform_api_key_sid' => env('TWILIO_PLATFORM_API_KEY_SID'),
-        'platform_api_secret'  => env('TWILIO_PLATFORM_API_SECRET'),
+        'platform_api_secret' => env('TWILIO_PLATFORM_API_SECRET'),
 
         // The parent account's own auth token.
         //
@@ -395,7 +411,7 @@ return [
         // real account with no token, and §5 needs that token to validate the
         // connection's webhooks. The same restriction is why key auth cannot
         // read into a subaccount, delete a key in one, or move a number out.
-        'platform_auth_token'  => env('TWILIO_PLATFORM_AUTH_TOKEN'),
+        'platform_auth_token' => env('TWILIO_PLATFORM_AUTH_TOKEN'),
 
         // The number EzBizi ITSELF texts from: verification codes to our own
         // users, on the platform account rather than any tenant's subaccount.
@@ -410,7 +426,7 @@ return [
         // Unset until a number is bought and registered as EzBizi, and the
         // feature is OFF rather than broken while it is unset — see
         // PlatformSms::configured().
-        'platform_sms_from'    => env('TWILIO_PLATFORM_SMS_FROM'),
+        'platform_sms_from' => env('TWILIO_PLATFORM_SMS_FROM'),
     ],
 
 ];

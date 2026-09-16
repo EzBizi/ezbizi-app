@@ -387,3 +387,83 @@ class EzBiziTheme {
     Color(0xFF12B5CB),
   ];
 }
+
+/// The call-flow canvas palette.
+///
+/// It WAS one fixed dark set, deliberately: a graph canvas is a drawing rather
+/// than a page, and n8n — the reference Jose sent — is dark in both. He looked
+/// at it running and ruled the other way: *"should be white on white mode,
+/// dark on dark mode"* (2026-09-15). So there are two, and the canvas follows
+/// the app like everything else.
+///
+/// Still declared here rather than in the screen. `theme_conventions_test`
+/// caught ten literals accumulating in that one file and was right to; a
+/// palette that is not theme-DERIVED still has to be one place.
+///
+/// Nothing outside the call-flow chart may use these. A second screen wanting
+/// "the canvas look" is the moment this stops being a canvas and starts being
+/// an unmanaged second theme.
+class FlowCanvas {
+  const FlowCanvas({
+    required this.ink,
+    required this.tile,
+    required this.tileLine,
+    required this.text,
+    required this.muted,
+    required this.accent,
+    required this.wire,
+    required this.amber,
+    required this.grid,
+  });
+
+  /// The ground the graph is drawn on.
+  final Color ink;
+
+  /// A node tile, and its outline when the node is ordinary.
+  final Color tile;
+  final Color tileLine;
+
+  final Color text;
+  final Color muted;
+
+  /// The entry node, and the energy travelling a live wire.
+  final Color accent;
+
+  /// A wire at rest.
+  final Color wire;
+
+  /// A return — the queue going back to the group it came from — and a step
+  /// that does nothing. Amber rather than red on purpose: neither is a call
+  /// failing.
+  final Color amber;
+
+  /// The dot grid. Barely there by design; it says "canvas" and nothing else.
+  final Color grid;
+
+  static const FlowCanvas light = FlowCanvas(
+    ink: Color(0xFFFBFDFD),
+    tile: Color(0xFFFFFFFF),
+    tileLine: Color(0xFFD2DCDF),
+    text: Color(0xFF0D1117),
+    muted: Color(0xFF5B6B73),
+    accent: Color(0xFF0F766E),
+    wire: Color(0xFFAEBFC4),
+    amber: Color(0xFF8A5A00),
+    grid: Color(0x14000000),
+  );
+
+  static const FlowCanvas dark = FlowCanvas(
+    ink: Color(0xFF1D2025),
+    tile: Color(0xFF2B2F36),
+    tileLine: Color(0xFF3A414A),
+    text: Color(0xFFE8EDF2),
+    muted: Color(0xFF9AA6B2),
+    accent: Color(0xFF5EEAD4),
+    wire: Color(0xFF4D5661),
+    amber: Color(0xFFD9A441),
+    grid: Color(0x14FFFFFF),
+  );
+
+  static FlowCanvas of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+}

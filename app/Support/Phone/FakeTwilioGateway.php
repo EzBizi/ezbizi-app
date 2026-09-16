@@ -392,6 +392,36 @@ final class FakeTwilioGateway implements TwilioGateway
     /** When set, createCall throws this message. */
     public ?string $failCreateCallWith = null;
 
+    /**
+     * Queue sizes a test can set, keyed by queue friendly name.
+     *
+     * Empty by default, which is the honest default: a group that has never
+     * held anybody has no queue on the account either.
+     *
+     * @var array<string, array{waiting: int, average_wait: int}>
+     */
+    public array $queues = [];
+
+    /**
+     * Set to make queueSizes() throw, so a test can be Twilio being down.
+     *
+     * "Nobody is waiting" and "we could not ask" are different facts and the
+     * endpoint has to tell them apart; without a way to fail here, only the
+     * happy half is reachable.
+     */
+    public ?string $failQueueSizesWith = null;
+
+    public function queueSizes(PhoneConnection $connection): array
+    {
+        $this->record(__FUNCTION__, [$connection->id]);
+
+        if ($this->failQueueSizesWith !== null) {
+            throw new RuntimeException($this->failQueueSizesWith);
+        }
+
+        return $this->queues;
+    }
+
     public function createCall(
         PhoneConnection $connection,
         string $from,

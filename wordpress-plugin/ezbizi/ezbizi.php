@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.2.0
+ * Version:           1.8.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.2.0';
+const EZBIZI_VERSION = '1.8.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -55,8 +55,34 @@ const EZBIZI_CACHE_TTL = 300;
 const EZBIZI_STALE_MAX = 3600;
 const EZBIZI_REFRESHING = 'ezbizi_refreshing';
 
+/*
+ * When EzBizi started REFUSING this site's token, as distinct from failing to
+ * answer. Cleared by any successful read.
+ *
+ * A 401 or 403 is the server saying it does not recognise this site any more.
+ * A timeout, a 500 or a DNS failure is us having a bad day, and a site must
+ * never hide anything because of that — those keep serving the last good
+ * payload exactly as before.
+ */
+const EZBIZI_REFUSED_SINCE = 'ezbizi_refused_since';
+
+/*
+ * How long a refusal has to last before the widgets stop drawing. Seven days.
+ *
+ * Not immediately, because rotating a token leaves a real gap while somebody
+ * pastes the new one, and the public key the widgets use is a separate
+ * credential that usually still works through it — blanking a working chat
+ * over a thirty-second gap would be the worse mistake.
+ *
+ * Not never, which is what it was: a site whose pairing has genuinely ended
+ * went on drawing a chat box on every page, and a visitor typing into it is
+ * being promised a conversation nobody is going to receive.
+ */
+const EZBIZI_REFUSED_MAX = 604800;
+
 require_once __DIR__ . '/service-account.php';
 require_once __DIR__ . '/enquiries.php';
+require_once __DIR__ . '/elementor.php';
 
 /**
  * The host this WordPress install answers on, in the form EzBizi stores.
@@ -178,7 +204,20 @@ function ezbizi_fetch() {
         ),
     ));
 
-    if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+    $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+
+    if ($code !== 200) {
+        /*
+         * Refused is not the same as unreachable, and only one of them is
+         * about this site. 401 and 403 are EzBizi saying it does not recognise
+         * the token; anything else is a bad day at our end and must change
+         * nothing here. Stamped once, so the clock measures how long the
+         * refusal has lasted rather than restarting on every page view.
+         */
+        if (($code === 401 || $code === 403) && ! get_option(EZBIZI_REFUSED_SINCE, false)) {
+            update_option(EZBIZI_REFUSED_SINCE, time(), false);
+        }
+
         /*
          * Cache the FAILURE briefly too. Without this, a site whose token was
          * revoked calls the API on every page view of every visitor — the
@@ -195,6 +234,9 @@ function ezbizi_fetch() {
     if (! is_array($payload) || ! isset($payload['values'])) {
         return get_option(EZBIZI_LAST_GOOD, $empty);
     }
+
+    // Answered, so whatever was wrong is over.
+    delete_option(EZBIZI_REFUSED_SINCE);
 
     // Stamped so ezbizi_payload() can tell "five minutes stale" from "this site
     // has had no successful read since March".
@@ -270,17 +312,36 @@ add_action('init', function () {
 // ── Settings ────────────────────────────────────────────────────────
 
 /*
- * Under Settings rather than a top-level menu, which is the directory's own
- * guidance for a plugin whose whole interface is one screen. The cost is that
- * it is not where somebody looks: A1 Tools puts itself in the sidebar, so the
- * first person to install this one went to the sidebar, found nothing, and
- * concluded the plugin had not worked.
+ * Its own item in the sidebar, next to A1 Tools. Jose, 2026-09-15.
  *
- * Being in the right place is worth nothing if it cannot be found, so the two
- * additions below carry the weight instead of moving the page.
+ * ── This reverses the previous decision, and the reason is worth keeping ──
+ *
+ * It used to sit under Settings, which is the directory's guidance for a plugin
+ * whose whole interface is one screen. The comment that lived here recorded the
+ * cost honestly and then declined to pay it: "the first person to install this
+ * one went to the sidebar, found nothing, and concluded the plugin had not
+ * worked." That person was the customer. A Settings link on the plugin row and
+ * an admin notice were added instead, and they were not enough — the evidence
+ * that they were not enough is that the same person asked for this again.
+ *
+ * The guidance is guidance rather than a rule, and it is aimed at sidebars
+ * crowded by plugins that each claim a row. This one is how a business connects
+ * its website to the system that runs it; the sibling it sits beside does the
+ * same job for the same people.
  */
 add_action('admin_menu', function () {
-    add_options_page('EzBizi', 'EzBizi', 'manage_options', 'ezbizi', 'ezbizi_settings_page');
+    add_menu_page(
+        'EzBizi',
+        'EzBizi',
+        'manage_options',
+        'ezbizi',
+        'ezbizi_settings_page',
+        // A globe, matching the Web Management tab this screen pairs with.
+        'dashicons-admin-site-alt3',
+        // Just below Settings, which is 80 — the neighbourhood somebody is in
+        // when they go looking for it, and where A1 Tools already sits.
+        81
+    );
 });
 
 /**
@@ -294,7 +355,7 @@ add_action('admin_menu', function () {
 add_filter('plugin_action_links_'.plugin_basename(__FILE__), function ($links) {
     array_unshift($links, sprintf(
         '<a href="%s">%s</a>',
-        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_url(admin_url('admin.php?page=ezbizi')),
         esc_html__('Settings', 'ezbizi')
     ));
 
@@ -316,14 +377,46 @@ add_action('admin_notices', function () {
 
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
 
-    // Not on its own settings page — the form is right there.
-    if ($screen && $screen->id === 'settings_page_ezbizi') {
+    /*
+     * Not on its own page — the form is right there.
+     *
+     * `toplevel_page_` and not `settings_page_`: WordPress names the screen
+     * after WHERE the menu item is, so moving the page out of Settings renamed
+     * its screen, and this guard went on matching a screen that no longer
+     * exists — nagging people while they stood on the form it was sending them
+     * to. Nothing in the harness fired admin_menu, so nothing saw it.
+     */
+    if ($screen && $screen->id === 'toplevel_page_ezbizi') {
         return;
     }
 
     $settings = ezbizi_settings();
 
     if ($settings['token'] !== '') {
+        /*
+         * A token that is present and refused is a different sentence from no
+         * token at all, and it has to be SAID: past the ceiling the chat and
+         * the form stop drawing, and a widget that vanishes without explanation
+         * reads as the plugin breaking rather than as the pairing ending.
+         */
+        $refused = function_exists('ezbizi_refused_for') ? ezbizi_refused_for() : 0;
+
+        if ($refused > EZBIZI_REFUSED_MAX) {
+            printf(
+                '<div class="notice notice-error"><p>%s <a href="%s">%s</a></p></div>',
+                esc_html(sprintf(
+                    /* translators: %s: how long, e.g. "8 days". */
+                    __(
+                        'EzBizi has been refusing this site\'s token for %s, so the chat and contact form have stopped showing. Your published values are unaffected. Issue a new site token in Web Management and paste it here.',
+                        'ezbizi'
+                    ),
+                    human_time_diff(time() - $refused)
+                )),
+                esc_url(admin_url('admin.php?page=ezbizi')),
+                esc_html__('Open EzBizi settings', 'ezbizi')
+            );
+        }
+
         return;
     }
 
@@ -333,7 +426,7 @@ add_action('admin_notices', function () {
             'EzBizi is active but not connected yet, so its shortcodes render nothing. Paste the site token from Web Management to finish.',
             'ezbizi'
         ),
-        esc_url(admin_url('options-general.php?page=ezbizi')),
+        esc_url(admin_url('admin.php?page=ezbizi')),
         esc_html__('Open EzBizi settings', 'ezbizi')
     );
 });

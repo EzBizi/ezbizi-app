@@ -467,19 +467,30 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
 
         Text('Live chat', style: theme.textTheme.titleSmall),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show the chat bubble'),
-          value: chat['enabled'] == true,
-          onChanged: widget.canEdit
-              ? (on) => _set('chat', 'enabled', on)
-              : null,
-        ),
         _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
         _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
         _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
         _text(theme, 'Box placeholder', chat['placeholder'],
             (v) => _set('chat', 'placeholder', v)),
+
+        // What the visitor is asked BEFORE the conversation starts. Without
+        // these three answers a chat arrives in Leads with nobody's name on
+        // it, and the only way to reply is to hope they come back.
+        _text(theme, 'Before they start', chat['lead_in'],
+            (v) => _set('chat', 'lead_in', v)),
+        _text(theme, 'Name question', chat['name_label'],
+            (v) => _set('chat', 'name_label', v)),
+        _text(theme, 'Contact question', chat['contact_label'],
+            (v) => _set('chat', 'contact_label', v)),
+        _text(theme, 'Message question', chat['message_label'],
+            (v) => _set('chat', 'message_label', v)),
+        _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
+
+        // Sent back the moment they press it. A real message on the thread, so
+        // whoever picks the conversation up in Leads can see what the person
+        // was already told. Leave it empty to send nothing.
+        _text(theme, 'Automatic first reply', chat['auto_reply'],
+            (v) => _set('chat', 'auto_reply', v)),
         _dropdown(
           theme,
           'Where it sits',
@@ -490,14 +501,6 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
         const Divider(height: 32),
         Text('Contact form', style: theme.textTheme.titleSmall),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Show the contact form'),
-          value: form['enabled'] == true,
-          onChanged: widget.canEdit
-              ? (on) => _set('form', 'enabled', on)
-              : null,
-        ),
         _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
         _text(theme, 'Thank you message', form['thanks'],
             (v) => _set('form', 'thanks', v)),
@@ -646,49 +649,129 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        _previewHeading(theme, 'Live chat', chat['enabled'] == true),
+        _previewHeading(theme, 'Live chat'),
         const SizedBox(height: 8),
         _mockPage(
           theme,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
+              // What a visitor meets first: the coloured header, then the
+              // three questions asked BEFORE the conversation. The message
+              // thread is only reached after those, so previewing the thread
+              // would show the screen almost nobody sees first.
               _mockPanel(
                 surface: surface,
                 radius: radius,
+                padding: EdgeInsets.zero,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _line(chat['title']),
-                      style: TextStyle(
-                        color: text,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      color: accent,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _line(chat['title']),
+                            style: TextStyle(
+                              color: onAccent,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          if (_line(chat['intro']).isNotEmpty)
+                            Text(
+                              _line(chat['intro']),
+                              style: TextStyle(
+                                color: onAccent.withValues(alpha: 0.9),
+                                fontSize: 12,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                    if (_line(chat['intro']).isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _line(chat['intro']),
-                        style: TextStyle(color: text, fontSize: 12),
-                      ),
-                    ],
-                    const SizedBox(height: 10),
-                    _mockInput(_line(chat['placeholder']), radius, text),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _mockButton(
-                        _line(chat['send']),
-                        accent,
-                        onAccent,
-                        radius,
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_line(chat['lead_in']).isNotEmpty) ...[
+                            Text(
+                              _line(chat['lead_in']),
+                              style: TextStyle(
+                                color: text.withValues(alpha: 0.85),
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          for (final ask in [
+                            chat['name_label'],
+                            chat['contact_label'],
+                            chat['message_label'],
+                          ]) ...[
+                            Text(
+                              '${_line(ask)} *',
+                              style: TextStyle(
+                                color: text,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            _mockInput('', radius, text),
+                            const SizedBox(height: 10),
+                          ],
+                          SizedBox(
+                            width: double.infinity,
+                            child: _mockButton(
+                              _line(chat['start']),
+                              accent,
+                              onAccent,
+                              radius,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
+              // What happens the instant they press it. Previewed because it
+              // is the only message on the thread nobody will proof-read
+              // before a stranger reads it.
+              if (_line(chat['auto_reply']).isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _mockPanel(
+                  surface: surface,
+                  radius: radius,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: _mockBubble(
+                          'Hello, I need…',
+                          accent,
+                          onAccent,
+                          radius,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _mockBubble(
+                        _line(chat['auto_reply']),
+                        const Color(0xFFF1F3F5),
+                        const Color(0xFF1B1B1B),
+                        radius,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
               const SizedBox(height: 8),
               // The closed bubble, which is what most visitors ever see of it.
               _mockButton(_line(chat['button']), accent, onAccent, radius),
@@ -696,7 +779,7 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           ),
         ),
         const SizedBox(height: 20),
-        _previewHeading(theme, 'Contact form', form['enabled'] == true),
+        _previewHeading(theme, 'Contact form'),
         const SizedBox(height: 8),
         _mockPage(
           theme,
@@ -746,28 +829,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 
   static String _line(Object? value) => '${value ?? ''}';
 
-  Widget _previewHeading(ThemeData theme, String label, bool on) {
-    /*
-     * A Wrap, not a Row. The pane is a fixed 360 and the pair here is a section
-     * name beside a sentence — "Contact form" and "off on your site" overflowed
-     * it by 6.6 pixels, which a widget test caught and an eye would not have.
-     * Wrapping keeps the whole sentence; ellipsising it would leave "off on
-     * your…" on the one line that has to be unambiguous.
-     */
-    return Wrap(
-      spacing: 8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(label, style: theme.textTheme.bodyMedium),
-        if (!on)
-          Text(
-            'off on your site',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.outline,
-            ),
-          ),
-      ],
-    );
+  /// Just the section name now.
+  ///
+  /// It used to carry "off on your site" beside it, because a widget could be
+  /// switched off while its editor sat there looking live. Jose removed the
+  /// switches on 2026-09-15 — placing the widget is what shows it — so there is
+  /// no off state left to announce.
+  Widget _previewHeading(ThemeData theme, String label) {
+    return Text(label, style: theme.textTheme.bodyMedium);
   }
 
   /// A stand-in for the customer's page, so the widget is not judged against
@@ -783,13 +852,30 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     );
   }
 
+  /// One message, leaning the way it came from.
+  Widget _mockBubble(String text, Color fill, Color ink, double radius) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 240),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: fill,
+        borderRadius: BorderRadius.circular(radius + 2),
+      ),
+      child: Text(text, style: TextStyle(color: ink, fontSize: 12)),
+    );
+  }
+
   Widget _mockPanel({
     required Color surface,
     required double radius,
     required Widget child,
+    // Zero for a panel that paints its own header to the edges, which cannot
+    // happen while the padding is on the outside.
+    EdgeInsets padding = const EdgeInsets.all(12),
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: padding,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(radius),

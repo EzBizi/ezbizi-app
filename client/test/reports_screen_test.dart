@@ -285,9 +285,10 @@ void main() {
   testWidgets('a person only one system knows is marked, never merged', (
     tester,
   ) async {
-    // RingCentral's "Adeline Pierre Louis-Aghaji" is Workiz's "Adeline
-    // Pierrelouis" and nothing joins them. A near-match rule would credit one
-    // person's work to another, so the screen SAYS which side knows them.
+    // Only one direction is knowable: this screen holds a 30-day Workiz roster
+    // and ONE day of calls. "Workiz has never heard of this name" is a real
+    // signal; "they took no calls today" is not, and booking without answering
+    // is a normal way to work.
     await _pumpReports(
       tester,
       reports: [_report],
@@ -299,7 +300,7 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
-    expect(find.text('calls only'), findsOneWidget);
+    expect(find.text('not in Workiz'), findsOneWidget);
   });
 
   testWidgets('the Workiz accounts the jobs column covers are named', (
@@ -317,8 +318,11 @@ void main() {
     await tester.pumpAndSettle();
 
     // The accounts are disjoint and the same people book into all of them, so
-    // a count that silently covers fewer is wrong rather than partial.
+    // a count that silently covers fewer is wrong rather than partial. This
+    // stays in the SENTENCE even with the chips collapsed - it belongs to the
+    // report, not to setup.
     expect(find.textContaining('Nationwide, NJ'), findsOneWidget);
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
   });
 
   testWidgets('a connected branch can be taken back from this screen', (
@@ -351,6 +355,13 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
+    // The chips are behind the toggle now: a row of them above the table read
+    // as a filter, and they are setup rather than part of the report.
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsNothing);
+
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
 
     await tester.tap(
@@ -359,6 +370,10 @@ void main() {
         matching: find.byIcon(Icons.close),
       ),
     );
+    await tester.pumpAndSettle();
+
+    // Through the confirmation, which is the only way it goes now.
+    await tester.tap(find.widgetWithText(TextButton, 'Disconnect'));
     await tester.pumpAndSettle();
 
     expect(deleted, 'id-Nationwide');
@@ -385,6 +400,75 @@ void main() {
       find.textContaining('Massachusetts is never included'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('average talk time shows, and a dash when there is none', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) => request.url.path.contains('experimental/calls')
+          ? _json(_callDay())
+          : null,
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2:28'), findsOneWidget); // 148s, the day's average
+    expect(find.text('3:05'), findsOneWidget); // 185s, Trey Brannan
+
+    // Ranya Lara answered nothing. No average is a different fact from an
+    // average of zero, and "0:00" would read as a real short call.
+    expect(find.text('—'), findsOneWidget);
+    expect(find.text('0:00'), findsNothing);
+  });
+
+  testWidgets('disconnecting a branch asks first', (tester) async {
+    // It used to go on one click. Undoing it needs that branch's Workiz token
+    // pasted again, and the token cannot be read back out of the app.
+    var deleted = false;
+
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          deleted = true;
+          return _json({
+            'data': {'id': 'x', 'problems': []},
+          });
+        }
+        if (request.url.path.contains('experimental/calls')) {
+          return _json(_callDay());
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(InputChip, 'Nationwide'),
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(deleted, isFalse, reason: 'the X disconnected without asking');
+    expect(find.text('Disconnect Nationwide?'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Keep'));
+    await tester.pumpAndSettle();
+
+    expect(deleted, isFalse);
+    expect(find.widgetWithText(InputChip, 'Nationwide'), findsOneWidget);
   });
 
   testWidgets('a refused Workiz account is named, not folded away', (
@@ -441,6 +525,12 @@ void main() {
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
 
+    // Behind the manage toggle now, with the chips - connecting is setup.
+    expect(find.text('Connect a Workiz account'), findsNothing);
+
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Connect a Workiz account'), findsOneWidget);
 
     await tester.tap(find.text('Connect a Workiz account'));
@@ -476,6 +566,9 @@ void main() {
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Experimental'));
     await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Manage Workiz accounts'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('Connect a Workiz account'));
     await tester.pumpAndSettle();
 
@@ -490,6 +583,64 @@ void main() {
       find.textContaining('Switch to the branch'),
       findsWidgets,
     );
+  });
+
+  testWidgets('a module registered inside Reports gets a chip', (
+    tester,
+  ) async {
+    // A module with parent: 'reports' gets NO sidebar row - _hasDestination in
+    // main.dart refuses every parented module by design, because it is meant to
+    // be drawn as a chip inside its parent. Google Ads shipped registered,
+    // permissioned, deployed and reachable by NOBODY, because this strip was
+    // three hardcoded entries. Its registry test asserted the parent, the
+    // label, the order and the permissions, and passed throughout.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      modules: const [
+        {
+          'key': 'ads_performance',
+          'label': 'Google Ads',
+          'reachable': true,
+          'parent': 'reports',
+        },
+      ],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Google Ads'), findsOneWidget);
+  });
+
+  testWidgets('a child module nobody can reach gets no chip', (tester) async {
+    // reachableModules is doing real work: ads_performance.view is a separate
+    // grant from reports.view and somebody can hold either without the other.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      modules: const [
+        {
+          'key': 'ads_performance',
+          'label': 'Google Ads',
+          'reachable': false,
+          'parent': 'reports',
+        },
+      ],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Google Ads'), findsNothing);
+  });
+
+  testWidgets('the screen does not say its own name twice', (tester) async {
+    // The shell draws this module's label above every screen (_titled ->
+    // ModulePageHeader), so a heading here made "Reports" appear twice. The
+    // heading now carries ONLY an open report's name, which is the thing the
+    // shell cannot know. Marketing has no heading of its own for this reason.
+    await _pumpReports(tester, reports: [_report]);
+
+    // EXACTLY ONE, and it is the chip. Asserting findsNothing was wrong: the
+    // chip legitimately carries that text, so the assertion has to count rather
+    // than forbid - otherwise it would go red on a correct screen.
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
   });
 
   testWidgets('without reports.build there is no Builder tab at all', (
@@ -576,6 +727,7 @@ Future<void> _pumpReports(
     'reports.export',
   ],
   List<Map<String, dynamic>> reports = const [],
+  List<Map<String, dynamic>> modules = const [],
   http.Response? Function(http.Request request)? onRequest,
   double width = 1280,
 }) async {
@@ -592,7 +744,7 @@ Future<void> _pumpReports(
 
       if (path.endsWith('/me')) {
         return _json({
-          'data': {..._me, 'permissions': permissions},
+          'data': {..._me, 'permissions': permissions, 'modules': modules},
         });
       }
 
@@ -696,6 +848,7 @@ Map<String, dynamic> _callDay({
           'new_client': 135,
           'existing_client': 66,
           'jobs': 66,
+          'avg_talk_seconds': 148,
         },
         'people': [
           {
@@ -705,6 +858,7 @@ Map<String, dynamic> _callDay({
             'new_client': 35,
             'existing_client': 14,
             'jobs': 16,
+            'avg_talk_seconds': 185,
             'in_calls': true,
             'in_jobs': true,
           },
@@ -715,6 +869,7 @@ Map<String, dynamic> _callDay({
             'new_client': 0,
             'existing_client': 1,
             'jobs': 0,
+            'avg_talk_seconds': null,
             'in_calls': true,
             'in_jobs': false,
           },

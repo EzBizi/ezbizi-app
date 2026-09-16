@@ -152,6 +152,140 @@ void main() {
     expect(g.skippedCount, 1);
   });
 
+  group('two keys reaching one team', () {
+    test('are one wire carrying both keys, not two wires on one curve', () {
+      final wires = mergeParallel(const [
+        FlowEdge(from: 'menu', to: 'g1', label: 'Press 1'),
+        FlowEdge(from: 'menu', to: 'g2', label: 'Press 2'),
+        FlowEdge(from: 'menu', to: 'g2', label: 'No key pressed'),
+      ]);
+
+      expect(
+        wires.length,
+        2,
+        reason: 'Three edges, two destinations. Two edges with identical '
+            'endpoints draw on exactly the same curve, so drawing both is two '
+            'labels at one point -- the collision this chart was just fixed '
+            'for, arriving by another door.',
+      );
+
+      final joined = wires.firstWhere((w) => w.edge.to == 'g2');
+
+      expect(joined.label, 'Press 2 \u00b7 No key pressed');
+      expect(
+        wires.firstWhere((w) => w.edge.to == 'g1').label,
+        'Press 1',
+        reason: 'A wire with one key must not gain a separator.',
+      );
+    });
+
+    test('an unlabelled edge contributes nothing to the join', () {
+      final wires = mergeParallel(const [
+        FlowEdge(from: 'a', to: 'b', label: ''),
+        FlowEdge(from: 'a', to: 'b', label: 'Press 9'),
+      ]);
+
+      expect(wires.single.label, 'Press 9');
+    });
+  });
+
+  /// Live counts (Jose: *"see Live Calls flowing through the Node as well"*).
+  ///
+  /// Three rules that are easy to get individually right and collectively
+  /// wrong, which is why they are one method rather than three call sites.
+  group('what a node may say about right now', () {
+    const queueNode = FlowNode(
+      id: 'queue-g1',
+      kind: 'queue',
+      title: 'Hold for Sales',
+      detail: '',
+      state: 'ok',
+      ref: 'g1',
+    );
+    const menuNode = FlowNode(
+      id: 'menu',
+      kind: 'menu',
+      title: 'Menu',
+      detail: '',
+      state: 'ok',
+    );
+
+    test('a queue Twilio told us about says its number', () {
+      const live = CallFlowLive(
+        onLine: 2,
+        queuesKnown: true,
+        queues: {'g1': QueueLive(waiting: 4, averageWaitSeconds: 73)},
+      );
+
+      expect(live.forNode(queueNode)!.waiting, 4);
+      expect(live.forNode(queueNode)!.averageWaitSeconds, 73);
+    });
+
+    /// A Twilio queue resource exists only once it has been used, so a group
+    /// that has never held anybody has no resource. Phone measured it: that
+    /// account has three queueing groups and one queue.
+    test('a queue absent from a KNOWN answer is zero, not unknown', () {
+      const live = CallFlowLive(onLine: 0, queuesKnown: true, queues: {});
+
+      expect(live.forNode(queueNode)?.waiting, 0);
+    });
+
+    /// The defect Phone found in their own first version: it returned an
+    /// empty map on failure, which is also what a quiet afternoon looks like
+    /// -- a row of confident zeroes at the exact moment it has no idea.
+    test('an answer we could not get is NOT zero', () {
+      const live = CallFlowLive(onLine: 0, queuesKnown: false, queues: {});
+
+      expect(
+        live.forNode(queueNode),
+        isNull,
+        reason: 'Zero here would draw "nobody is waiting" when the truth is '
+            '"we could not ask", and those are different facts.',
+      );
+    });
+
+    test('a node that is not a queue never has a count', () {
+      const live = CallFlowLive(
+        onLine: 9,
+        queuesKnown: true,
+        queues: {'g1': QueueLive(waiting: 4, averageWaitSeconds: 73)},
+      );
+
+      expect(
+        live.forNode(menuNode),
+        isNull,
+        reason: 'A call in the menu, ringing a group and holding are all '
+            '"ringing" on the row. A number here would be invented.',
+      );
+    });
+
+    test('the payload parses, keyed by ring group rather than node', () {
+      final live = CallFlowLive.fromJson(const {
+        'id': 'n-1',
+        'on_line': 2,
+        'queues': {
+          'g1': {'waiting': 4, 'average_wait_seconds': 73},
+        },
+        'queues_known': true,
+      })!;
+
+      expect(live.onLine, 2);
+      expect(
+        live.forNode(queueNode)!.waiting,
+        4,
+        reason: 'The join is node.ref -> queues[key]. Keying by node id would '
+            'mean rebuilding the whole graph on every ten-second poll.',
+      );
+    });
+
+    test('a payload with no queues_known is treated as not known', () {
+      final live = CallFlowLive.fromJson(const {'on_line': 1})!;
+
+      expect(live.queuesKnown, isFalse);
+      expect(live.forNode(queueNode), isNull);
+    });
+  });
+
   group('parsing', () {
     test('a row with no graph is not a graph', () {
       expect(CallFlowGraph.fromJson(null), isNull);
@@ -178,6 +312,69 @@ void main() {
       expect(g.deadCount, 0);
       expect(g.skippedCount, 0);
     });
+  });
+
+  /// THE SHAPE CHANGED UNDER ME, 2026-09-15 (`5c033dda`).
+  ///
+  /// Jose read the chart and asked why "everyone busy" appeared to come out of
+  /// the fifth menu key when it applies to the whole group. He was reading the
+  /// drawing correctly and the drawing was wrong, so Phone re-measured their own
+  /// renderer against the live line and changed two things:
+  ///
+  ///   * **one node per GROUP, not per key** — a second key reaching the same
+  ///     team is a second EDGE into one box, so a node can now have several
+  ///     inbound edges carrying different labels;
+  ///   * **every queueing group has its own queue**, `queue-<groupNodeId>` —
+  ///     three queueing groups is three `group ⇄ queue` pairs.
+  ///
+  /// The back-edge rule was written and tuned when a line had exactly one
+  /// queue. This is the test that says it still holds at three.
+  test('three queueing groups are three back-edges, not three more columns', () {
+    final layout = layOutFlow(graph(
+      [
+        ['caller'], ['arrival'], ['menu'],
+        ['g1'], ['g2'], ['g3'],
+        ['q1'], ['q2'], ['q3'],
+      ],
+      [
+        ['caller', 'arrival'], ['arrival', 'menu'],
+        ['menu', 'g1', 'Press 1'],
+        ['menu', 'g2', 'Press 2'],
+        ['menu', 'g3', 'Press 3'],
+        // The second route into a box Jose asked about: same target, another
+        // label, and it must not become a second node or another column.
+        ['menu', 'g2', 'No key pressed'],
+        ['g1', 'q1', 'Everyone busy'], ['q1', 'g1', 'try again'],
+        ['g2', 'q2', 'Everyone busy'], ['q2', 'g2', 'try again'],
+        ['g3', 'q3', 'Everyone busy'], ['q3', 'g3', 'try again'],
+      ],
+    ));
+
+    expect(
+      layout.back.map((e) => '${e.from}->${e.to}').toList(),
+      ['q1->g1', 'q2->g2', 'q3->g3'],
+      reason: 'One return per queue. Fewer means a queue was laid out as '
+          'progress and the chart grows a column per retry.',
+    );
+    expect(
+      layout.columns,
+      5,
+      reason: 'caller, arrival, menu, the groups, the queues. Three separate '
+          'queues share a column because they are the same distance from the '
+          'caller, not three columns in a row.',
+    );
+    expect(
+      layout.placed.length,
+      9,
+      reason: 'Nine nodes in, nine placed. A second edge into g2 must not '
+          'place it twice.',
+    );
+    expect(layout.find('g2')!.column, 3);
+    expect(
+      layout.find('q1')!.column,
+      layout.find('q3')!.column,
+      reason: 'Every queue is one step past its group, so they share a column.',
+    );
   });
 
   /// The four-node line, which is two of the thirteen: a spare number with no

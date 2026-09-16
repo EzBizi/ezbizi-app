@@ -70,6 +70,12 @@ IconData dashboardPanelIcon(String key) {
     'services': Icons.handyman_outlined,
     'email': Icons.inbox_outlined,
     'automations': Icons.bolt_outlined,
+    // A rising line, not a coin and not the clipboard Reports uses. The panel
+    // is about what the advertising DID over a range - spend beside clicks and
+    // conversions - and it must not be mistaken for its parent tab at a glance,
+    // which is what reusing assessment_outlined would do.
+    // Matches module_screens.dart, so the sidebar and the dashboard agree.
+    'ads_performance': Icons.show_chart_outlined,
     'reports': Icons.assessment_outlined,
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,

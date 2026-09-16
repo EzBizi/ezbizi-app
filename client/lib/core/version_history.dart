@@ -8,6 +8,105 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0224',
+      date: '16 Sep 2026',
+      items: [
+        'Pages and posts now open their own screen inside EzBizi, with author and category read live from each website, values that belong to that one page, and free text fields that become shortcodes you can drop anywhere on it.',
+        'Four more search engine fields on a website, asked for by name, and a chat can be set to open with an automatic first reply. The automatic reply is off until you turn it on.',
+        'A website whose EzBizi token has been refused for a week stops drawing the chat and the form, and tells an administrator what stopped and where to fix it. A bad day at our end changes nothing, and the rest of the site keeps its values.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0223',
+      date: '16 Sep 2026',
+      items: [
+        'An automation condition whose value can only be one of a fixed set is now chosen from a list instead of typed from memory.',
+        'Lead received now says it covers website live chat and website forms as well as Google Ads and Thumbtack, which it has done since 8 September while the description still named only two of the four.',
+        'When Google Ads refuses a report for being over quota, the screen now says whether the limit is on that one account or on EzBizi as a whole.',
+        'The lead sync stops asking once Google is refusing on the shared quota, rather than spending the rest of its run on calls that cannot succeed. A single account being rate limited on its own does not stop the others, and the sync picks up again on the next run with no leads lost.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0222',
+      date: '16 Sep 2026',
+      items: [
+        'Clocking in no longer leaves the desktop window without its title bar. The lock screen took the bar away and gave it back a moment too early, so the window came out of the lock screen with nothing to drag, minimize or close until you clocked out and in again.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0221',
+      date: '15 Sep 2026',
+      items: [
+        'Page every handset on a team at once from the Call tab. One person talks, the team hears it, and the announcement ends when the speaker hangs up. Anybody already on a call is skipped and named back to whoever paged, so you know who missed it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0220',
+      date: '15 Sep 2026',
+      items: [
+        'Live calls on the call flow chart: a queue node shows how many callers are holding on it and how long they have waited, and the header shows how many calls are on the line right now. Nodes that are not queues show no number rather than a guess, because a call in the menu, one ringing a group and one holding all look the same on the record.',
+        'An automation that switches itself off after repeated failure now notifies the people who can fix it, instead of only marking a card nobody was looking at.',
+        'The message on a notification step is now an ordinary field like every other action rather than the one hand-written box in the builder, and a step can be set to in-app only, so one rule can stop emailing without the business turning email off everywhere.',
+        'Tapping a slice of a pie chart shows what share it is, on phones and tablets as well as with a mouse.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0219',
+      date: '15 Sep 2026',
+      items: [
+        'The chat and contact form on your websites can reach EzBizi again. The browser was refusing to send the message before it ever left the page, so everything a visitor typed came back as our own did-not-send notice.',
+        'The chat bubble now appears by itself on every page of a website instead of only where somebody pasted it, and it no longer borrows the colours of the site it sits on.',
+        'Google Ads opens on yesterday rather than an empty range, with a search box for accounts and another for campaigns, sortable columns, and a total across every account under a manager. Accounts in the manager tree that EzBizi holds no token for are counted and named rather than left out of the total.',
+        'A Google Ads manager account now says on its own row that opening it reads every account beneath it, so the cost of the click is visible before it is made.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0218',
+      date: '15 Sep 2026',
+      items: [
+        'Google Ads now reports one account at a time instead of loading every connected account before it shows anything, and adds a chart, status filters and real date ranges.',
+        'The call flow chart draws one box per team rather than one per key, so a team reached by two keys is one box with two arrows into it, and every team has its own queue. Everyone busy no longer looks like it belongs to a single menu option.',
+        'The call flow chart follows light and dark mode instead of always being dark, and two keys reaching the same team are drawn as one wire carrying both labels.',
+        'The experimental call report loads its Workiz branches at the same time rather than one after another.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0217',
+      date: '15 Sep 2026',
+      items: [
+        'The chat and contact form now show on every website, with no switch to turn them on. They were off on every site, and on a site built with Elementor there was no way to place them at all - both now appear in the Elements panel as EzBizi Live Chat and EzBizi Contact Form.',
+        'Colleagues on Do not disturb now show a red dot on the Team list instead of a grey one.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0216',
+      date: '15 Sep 2026',
+      items: [
+        'Google Ads now appears as a tab inside Reports, and the Reports screen no longer shows its own name twice. The tab was registered and working but nothing drew it, so there was no way to open it.',
+        'The EzBizi plugin now has its own item in the WordPress menu instead of hiding under Settings, and the setup guide points at the new place.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0215',
+      date: '15 Sep 2026',
+      items: [
+        'Web Management: two new tabs, Pages and Posts, showing everything on your website - what is published, what is still a draft, and when each last changed. Read from the site itself every time, so it is never a stale copy.',
+        'Web Management: fixes the publishing account never being created on most websites. It was only attempted while a shortcode was being drawn, and the check it made was about the request rather than the site, so on an ordinary secure site it silently never happened.',
+        'The experimental call report now shows average talk time per person. Which Workiz accounts the numbers cover is stated in words, and connecting or disconnecting an account has moved behind Manage Workiz accounts - disconnecting now asks first.',
+        'New Google Ads tab under Reports: what each connected Google Ads account spent over a range, with clicks, impressions and conversions beside it, per account and per campaign. Accounts Google will not report on are listed rather than shown as zero spend.',
+        'A business can connect its own mail server, and saved reports and automation emails go out through it instead of not going out at all. The screen shows what is set up and when it was last tried, never whether a message arrived.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0214',
+      date: '15 Sep 2026',
+      items: [
+        'One ringtone per call, on every platform. The desktop, the browser and the phone each rang twice for a single call, in three different ways, which is why fixing one at a time never settled it. On a phone EzBizi now stays silent on purpose and lets the handset ring: if the app seems to have stopped ringing there, that is the fix.',
+        'Callers on hold can press 1 to be rung back instead of waiting, and are called automatically as soon as somebody is free.',
+        'Scheduling settings now open on a table of every service area and what each can take on each day of the week, instead of a summary of your slot pattern. A day you are closed shows a dash rather than a zero. The day editor is a row per day instead of a panel per day, so a week fits on one screen.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0213',
       date: '15 Sep 2026',
       items: [

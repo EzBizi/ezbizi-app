@@ -9,6 +9,8 @@ use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\User;
+use App\Models\Notification;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Automations\ConditionEvaluator;
@@ -607,6 +609,44 @@ class AutomationEngineTest extends TestCase
 
     // ── operability (§5.5) ───────────────────────────────────────
 
+    /**
+     * The people who could fix it are told, and only them.
+     *
+     * The reason this sat unbuilt is the assertion at the end: a null subject
+     * makes audienceFor() fall through to EVERY ACTIVE USER, so one branch's
+     * broken rule would notify a whole business. Passing the automation is what
+     * prevents that, and nothing else in this file would catch it going away.
+     */
+    public function test_switching_itself_off_tells_the_people_who_could_fix_it(): void
+    {
+        $automation = $this->automation('job.status_changed', null,
+            [['type' => 'webhook', 'url' => 'https://127.0.0.1/nope']]);
+
+        [, $job] = $this->makeJob();
+
+        foreach (['in_progress', 'completed', 'cancelled', 'scheduled', 'in_progress'] as $status) {
+            $this->as()->patchJson("/api/v1/jobs/{$job}", ['status' => $status])->assertOk();
+            $this->drain();
+        }
+
+        $rows = $this->inTenant(fn () => Notification::where('automation_id', $automation->id)->get());
+
+        $this->assertCount(1, $rows, 'once on the transition - not once per failing event while it sits off');
+        $this->assertStringContainsString($automation->name, (string) $rows->first()->title);
+
+        $this->assertNotNull($rows->first()->user_id, 'a notification with no recipient is not a notification');
+
+        // WHAT THIS TEST DOES NOT PROVE, said out loud so nobody reads it as
+        // cover it does not give: the rule here is ORGANISATION-scoped, so the
+        // people with reach over it and "every active user" are the same set.
+        // The scoping that matters - a FRANCHISE rule not reaching the whole
+        // business - needs a franchise-scoped automation and a user posted
+        // somewhere else, and this fixture has neither. An assertion comparing
+        // these two counts would pass either way and would only look like proof.
+        // The guard that does hold is announceDisabled() passing the automation
+        // as subject; delete that argument and audienceFor() broadcasts.
+    }
+
     public function test_an_automation_that_keeps_failing_disables_itself(): void
     {
         $automation = $this->automation('job.status_changed', null,
@@ -707,6 +747,69 @@ class AutomationEngineTest extends TestCase
                 null,
             )['matched'],
         );
+    }
+
+    /**
+     * The per-rule email decline reaches allows(), not only dispatch().
+     *
+     * THIS IS THE ASSERTION WORTH HAVING and it is not the obvious one. Wiring
+     * dispatch() alone looks correct from every angle: no row is written, no
+     * letter is sent, the rule behaves. The damage is in the SENTENCE. With the
+     * bell off, email on, and the rule declining email, dispatch() reaches
+     * nobody - and an allows() that was not told about the decline still sees a
+     * live email channel, answers true, and the run log says "nobody has reach
+     * over that record". The author then audits permissions over a switch they
+     * set themselves, one screen away.
+     *
+     * So this asserts which of the two sentences came back, because that is the
+     * only artefact that differs between wiring one call and wiring both.
+     * Notifications named the case rather than leaving it in a diff.
+     */
+    public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
+    {
+        $automation = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job', 'in_app_only' => true]]);
+
+        // The company rings no bells and does send mail. Without the flag
+        // reaching allows(), the live email channel makes it answer "true".
+        $this->inTenant(function () {
+            $settings = app(SettingsResolver::class);
+            $settings->set('notifications.in_app_enabled', $this->org['organization'], false);
+            $settings->set('notifications.email_enabled', $this->org['organization'], true);
+        });
+
+        $this->makeJob();
+        $this->drain();
+
+        $detail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertStringNotContainsString('reach', $detail,
+            'the rule declined the email itself - blaming reach sends the author to audit permissions');
+        $this->assertStringContainsString('switched off', $detail);
+
+        // THE CONTROL. Same company, same settings, same message - only the
+        // decline removed. Without this the test above could pass against an
+        // allows() that had simply started answering false for everything, and
+        // the assertion would look like proof of the flag when it was proof of
+        // nothing. This one must come back with the OTHER sentence.
+        $control = $this->automation('job.created', null,
+            [['type' => 'notify', 'message' => 'New job']]);
+
+        $this->makeJob();
+        $this->drain();
+
+        $controlDetail = $this->inTenant(fn () => AutomationRun::query()
+            ->where('automation_id', $control->id)
+            ->latest('started_at')
+            ->firstOrFail()
+            ->action_results[0]['detail'] ?? '');
+
+        $this->assertNotSame($detail, $controlDetail,
+            'both rules produced the same sentence, so the flag is not what decided it');
     }
 
     /**

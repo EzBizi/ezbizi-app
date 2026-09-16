@@ -549,9 +549,93 @@ void main() {
         ],
       },
       'actions': [
-        {'type': 'notify', 'message': 'It is done'},
+        // `in_app_only` rides on every notify action now: the switch is a
+        // DECLARED parameter, and the generic payload branch sends every declared
+        // parameter. false means "follow the organization", which is what these
+        // rules always did, so the behaviour is unchanged - the wire is not.
+        {'type': 'notify', 'message': 'It is done', 'in_app_only': false},
       ],
     });
+  });
+
+  /// The switch reaches the wire, and the step is still saveable without it.
+  ///
+  /// Two halves, and the second is the one that would have shipped broken: the
+  /// switch is `required: false`, so an untouched one must NOT count as a
+  /// missing parameter. A boolean that blocks the save when off makes the step
+  /// unusable by everybody who does not want the option.
+  testWidgets('the notify step can decline the email, and is saveable without it', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(onCreate: (body) => sent = body));
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Quietly');
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a notification'));
+    await _type(tester, 'Message', 'No email please');
+
+    // Untouched: the step is complete, because the switch is optional.
+    expect(_saveButton(tester).onPressed, isNotNull);
+
+    await _tap(tester, find.text('In-app only, do not email'));
+    await _tap(tester, find.text('Create automation'));
+
+    expect((sent!['actions'] as List).single, {
+      'type': 'notify',
+      'message': 'No email please',
+      'in_app_only': true,
+    });
+  });
+
+  /// A field with a fixed set is chosen, not typed.
+  ///
+  /// The field picker fixed half of "people cannot guess them around" and left
+  /// the other half: knowing the field is `source` tells nobody that the value
+  /// they must type is `website_chat`. Asserting the WIRE value rather than the
+  /// label, because the label is for the reader and the engine compares the
+  /// value - a dropdown that showed the right words and sent the wrong string
+  /// would look completely correct on screen.
+  testWidgets('a value with a fixed set is a dropdown, and sends the wire value', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(
+      onCreate: (body) => sent = body,
+      triggerFields: const ['source', 'contact_name'],
+      triggerFieldValues: const {
+        'source': [
+          {'value': 'local_services', 'label': 'Google Local Services'},
+          {'value': 'website_chat', 'label': 'Website live chat'},
+        ],
+      },
+    ));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Chat replies');
+    await _tap(tester, find.text('Created'));
+
+    await _tap(tester, find.text('Add a condition'));
+    await _type(tester, 'Field', 'source');
+
+    // The entries do not exist until the menu is open, which is also the point:
+    // before this change the same spot was a TextField and nothing listed the
+    // values at all.
+    await _tap(tester, find.byType(DropdownMenu<String>).last);
+    await _tap(tester, find.text('Website live chat  (website_chat)').last);
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send a notification'));
+    await _type(tester, 'Message', 'A chat came in');
+    await _tap(tester, find.text('Create automation'));
+
+    expect(
+      ((sent!['conditions'] as Map)['all'] as List).single,
+      {'field': 'source', 'op': 'eq', 'value': 'website_chat'},
+    );
   });
 
   testWidgets('a condition with no field cannot be saved', (tester) async {
@@ -741,7 +825,7 @@ void main() {
         ],
       },
       'actions': [
-        {'type': 'notify', 'message': 'Everyone should know.'},
+        {'type': 'notify', 'message': 'Everyone should know.', 'in_app_only': false},
       ],
     });
 
@@ -1437,6 +1521,7 @@ MockClientHandler _handler({
   // Null leaves the endpoint unanswered, which is what every test written
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
+  Map<String, List<Map<String, String>>>? triggerFieldValues,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
   // does not say produces an administrator — which is what every one of these
@@ -1468,6 +1553,7 @@ MockClientHandler _handler({
         'data': {
           'trigger': request.url.queryParameters['trigger'],
           'fields': triggerFields,
+          'values': triggerFieldValues ?? const {},
           'sampled': triggerFields.isEmpty ? 0 : 1,
         },
       });
@@ -1715,7 +1801,30 @@ const _catalogue = {
   'action_types': [
     {'key': 'update_field', 'label': 'Update a field'},
     {'key': 'webhook', 'label': 'Call a webhook'},
-    {'key': 'notify', 'label': 'Send a notification'},
+    // Mirrors AutomationsController::actionTypes(): notify DECLARES its message
+    // now rather than the builder drawing a bespoke box for it. Kept in step
+    // because the form is built from this, so a fixture still saying
+    // "no parameters" draws no field and the rule cannot be written at all.
+    {
+      'key': 'notify',
+      'label': 'Send a notification',
+      'parameters': [
+        {
+          'key': 'message',
+          'label': 'Message',
+          'kind': 'rich_text',
+          'required': true,
+          'nullable': false,
+        },
+        {
+          'key': 'in_app_only',
+          'label': 'In-app only, do not email',
+          'kind': 'boolean',
+          'required': false,
+          'nullable': false,
+        },
+      ],
+    },
   ],
   'timezones': [
     {'id': 'America/New_York', 'label': 'Eastern — New York'},

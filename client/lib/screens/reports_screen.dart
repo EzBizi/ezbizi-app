@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/module_screens.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
 import '../widgets/tab_bar_like.dart';
@@ -147,15 +148,54 @@ class _ReportsScreenState extends State<ReportsScreen> {
   /// every member of staff and how many calls they took, so a chip shown to
   /// somebody holding only `reports.view` would lead straight to a refusal.
   /// It stays on a phone because reading a table is not building one.
+  ///
+  /// ── THE MODULES DRAWN INSIDE THIS ONE ───────────────────────────
+  ///
+  /// A module with `parent: 'reports'` gets NO sidebar row — `_hasDestination`
+  /// in main.dart returns false for any parented module, by design, because it
+  /// is meant to appear as a chip inside its parent's screen. Nothing in the
+  /// client walks `childrenOf`; each parent draws its own children.
+  ///
+  /// So a hand-written strip silently swallows them. Google Ads shipped
+  /// registered, permissioned, deployed, with a working endpoint and a screen
+  /// in `moduleScreens` — and reachable by nobody, because this list was three
+  /// hardcoded entries. Its registry test asserted the parent, the label, the
+  /// order and the permissions, and passed the whole time.
+  ///
+  /// The loop is Marketing's, verbatim in shape. `reachableModules` is doing
+  /// real work rather than belt-and-braces: `ads_performance.view` is a
+  /// separate grant from `reports.view` and somebody can hold either without
+  /// the other.
+  List<(String, IconData, Widget Function()?)> _chips({
+    required bool canBuildHere,
+    required bool canExperiment,
+  }) {
+    final me = widget.session.me;
+
+    return [
+      ('Reports', Icons.list_alt_outlined, null),
+      if (canBuildHere) ('Builder', Icons.build_outlined, null),
+      if (canExperiment) ('Experimental', Icons.science_outlined, null),
+      if (me != null)
+        for (final module in me.reachableModules)
+          if (module.parent == 'reports')
+            if (moduleScreens[module.key] case final screen?)
+              (
+                module.label,
+                screen.icon,
+                () => screen.build(widget.api, widget.session),
+              ),
+    ];
+  }
+
   List<(String, IconData)> _chipLabels({
     required bool canBuildHere,
     required bool canExperiment,
   }) {
-    return [
-      ('Reports', Icons.list_alt_outlined),
-      if (canBuildHere) ('Builder', Icons.build_outlined),
-      if (canExperiment) ('Experimental', Icons.science_outlined),
-    ];
+    return _chips(
+      canBuildHere: canBuildHere,
+      canExperiment: canExperiment,
+    ).map((chip) => (chip.$1, chip.$2)).toList();
   }
 
   /// The chips shift when Builder is absent, so a stored index would point at
@@ -178,11 +218,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
             icon: const Icon(Icons.arrow_back),
             tooltip: 'All reports',
           ),
+        // ONLY the open report's name. The shell already draws this module's
+        // label above every screen (`_titled` -> ModulePageHeader), so a second
+        // "Reports" under the first was this screen saying its own name twice.
+        // Marketing has no heading of its own for exactly that reason.
         Expanded(
-          child: Text(
-            _open?.name ?? 'Reports',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          child: _open == null
+              ? const SizedBox.shrink()
+              : Text(
+                  _open!.name,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
         ),
         if (canBuildHere && _open == null && _chip == 0)
           FilledButton.icon(
@@ -203,6 +249,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final canExperiment = widget.session.me?.can('reports.build') ?? false;
     final canBuildHere =
         canExperiment && constraints.maxWidth >= ReportsScreen.buildAbove;
+
+    final chips = _chips(
+      canBuildHere: canBuildHere,
+      canExperiment: canExperiment,
+    );
+
+    // A module drawn inside this one carries its own builder. Checked before
+    // the switch so a child can never be shadowed by a built-in name.
+    if (_chip < chips.length) {
+      final build = chips[_chip].$3;
+
+      if (build != null) return build();
+    }
 
     switch (_chipName(
       canBuildHere: canBuildHere,

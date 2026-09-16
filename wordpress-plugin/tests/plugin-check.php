@@ -117,9 +117,21 @@ function apply_filters($hook, $value) {
 function plugin_basename($f) { return 'ezbizi/ezbizi.php'; }
 function admin_url($p = '') { return 'https://example.test/wp-admin/'.$p; }
 function get_current_screen() { return $GLOBALS['screen'] ?? null; }
+function human_time_diff($from, $to = 0) {
+    $d = abs(($to ?: time()) - $from);
+
+    return $d < 3600 ? intdiv($d, 60).' mins' : ($d < 86400 ? intdiv($d, 3600).' hours' : intdiv($d, 86400).' days');
+}
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
-function add_options_page() {}
+/*
+ * Records instead of discarding, because the menu is the thing being asserted.
+ * `add_options_page` is gone with the page that used it: a stub for a function
+ * the plugin no longer calls is a check that can never fail.
+ */
+function add_menu_page($page_title, $menu_title, $cap, $slug, $cb = '', $icon = '', $pos = null) {
+    $GLOBALS['menu'][] = compact('page_title', 'menu_title', 'cap', 'slug', 'cb', 'icon', 'pos');
+}
 function current_user_can() { return $GLOBALS['is_admin'] ?? true; }
 function settings_fields() {}
 function submit_button() {}
@@ -173,8 +185,20 @@ function add_role($slug, $label, $caps) {
 }
 function get_role($slug) { return $GLOBALS['roles'][$slug] ?? null; }
 
+/*
+ * Both halves of the real gate, so the harness can tell "this request is not
+ * SSL" from "the site owner switched application passwords off" -- which is the
+ * distinction the plugin now draws and the reason the pairing was silently
+ * never happening on ordinary HTTPS sites.
+ */
+function is_ssl() { return $GLOBALS['is_ssl'] ?? false; }
+function wp_get_environment_type() { return $GLOBALS['env_type'] ?? 'production'; }
+
 function wp_is_application_passwords_available() {
-    return $GLOBALS['app_passwords_on'] ?? true;
+    return (bool) apply_filters(
+        'wp_is_application_passwords_available',
+        is_ssl() || 'local' === wp_get_environment_type(),
+    );
 }
 
 class WP_Application_Passwords {
@@ -244,8 +268,24 @@ function reset_site() {
     $GLOBALS['roles'] = [];
     $GLOBALS['roles_assigned'] = [];
     $GLOBALS['app_passwords'] = [];
-    $GLOBALS['app_passwords_on'] = true;
+    // A cron or CLI request, which is where the pairing actually runs and where
+    // is_ssl() is false on a perfectly ordinary HTTPS site.
+    $GLOBALS['is_ssl'] = false;
+    $GLOBALS['env_type'] = 'production';
+    // A refusal one case dates must not decide the next one.
+    delete_option(EZBIZI_REFUSED_SINCE);
+    // A filter one case registers must not decide the next one.
+    unset($GLOBALS['filters']['wp_is_application_passwords_available']);
+    $GLOBALS['home'] = 'https://a-1chimney.com';
     $_SERVER['REQUEST_URI'] = '/';
+}
+
+/** The same payload with the chat placed inline rather than floating. */
+function widget_payload_at($position) {
+    $p = json_decode(widget_payload(), true);
+    $p['widgets']['chat']['position'] = $position;
+
+    return json_encode($p);
 }
 
 function widget_payload($enabled = true) {
@@ -371,6 +411,33 @@ delete_transient(EZBIZI_CACHE_KEY);
 ezbizi_payload(true);
 check('the page being viewed is never sent', str_contains($GLOBALS['last_url'], 'a-visitor-page'), false);
 
+echo "\nIt has its own place in the sidebar\n";
+/*
+ * Jose asked for this after installing the plugin and not finding it: A1 Tools
+ * is a sidebar item, so the sidebar is where he looked. Nothing here fired
+ * `admin_menu` before, which is how the page could sit in one menu while the
+ * links and the notice assumed another, with every check still green.
+ */
+do_action('admin_menu');
+
+// $item, not $menu: this file runs at global scope, where $menu IS
+// $GLOBALS['menu'] — the obvious name silently overwrote the recording.
+$item = $GLOBALS['menu'][0] ?? [];
+
+check('one item, in the sidebar', count($GLOBALS['menu'] ?? []), 1);
+check('under the slug everything links to', $item['slug'] ?? '', 'ezbizi');
+check('only for somebody who could use it', $item['cap'] ?? '', 'manage_options');
+check('drawing the settings form', $item['cb'] ?? '', 'ezbizi_settings_page');
+check('with an icon, not a blank square', str_starts_with($item['icon'] ?? '', 'dashicons-'), true);
+
+/*
+ * WordPress names a screen after WHERE its menu item is, so the id the notice
+ * stands down on is derived from the item registered above rather than typed
+ * out again. Moving the page a second time now fails this file instead of
+ * quietly nagging people who are standing on the form.
+ */
+$GLOBALS['own_screen'] = 'toplevel_page_' . ($item['slug'] ?? '');
+
 echo "\nAn installed plugin that is doing nothing says so\n";
 /*
  * Both halves of a real report: the plugin was installed on a-1chimney.com, no
@@ -389,7 +456,7 @@ do_action('admin_notices');
 $notice = ob_get_clean();
 
 check('an unconnected site is told so', str_contains($notice, 'not connected yet'), true);
-check('and given the way there', str_contains($notice, 'page=ezbizi'), true);
+check('and given the way there', str_contains($notice, 'admin.php?page=ezbizi'), true);
 
 reset_site();
 $GLOBALS['screen'] = null;
@@ -398,18 +465,44 @@ do_action('admin_notices');
 check('a connected site is not nagged', ob_get_clean(), '');
 
 $GLOBALS['opt']['ezbizi_token'] = '';
-$GLOBALS['screen'] = (object) ['id' => 'settings_page_ezbizi'];
+// The screen this plugin's own menu item creates, taken from that item.
+$GLOBALS['screen'] = (object) ['id' => $GLOBALS['own_screen']];
 ob_start();
 do_action('admin_notices');
 check('nor is somebody already on the form', ob_get_clean(), '');
 $GLOBALS['screen'] = null;
+
+echo PHP_EOL . "A connected site that is being refused is told why" . PHP_EOL;
+/*
+ * The widgets vanish past the ceiling. Vanishing without a sentence reads as
+ * the plugin breaking, and the person who could fix it is the one person
+ * looking at wp-admin.
+ */
+reset_site();
+$GLOBALS['screen'] = null;
+$GLOBALS['is_admin'] = true;
+update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 86400, false);
+ob_start();
+do_action('admin_notices');
+$refused_notice = ob_get_clean();
+
+check('it says the token is being refused', str_contains($refused_notice, 'refusing'), true);
+check('and that the published values are safe', str_contains($refused_notice, 'values are unaffected'), true);
+check('and where to fix it', str_contains($refused_notice, 'admin.php?page=ezbizi'), true);
+
+// A refusal that started an hour ago is a rotation in progress, not a fault.
+update_option(EZBIZI_REFUSED_SINCE, time() - 3600, false);
+ob_start();
+do_action('admin_notices');
+check('a fresh one says nothing yet', ob_get_clean(), '');
+delete_option(EZBIZI_REFUSED_SINCE);
 
 echo "\nThe plugin's own row offers a way in\n";
 $links = apply_filters(
     'plugin_action_links_ezbizi/ezbizi.php',
     ['<a href="#">Deactivate</a>']
 );
-check('a Settings link is added first', str_contains($links[0], 'page=ezbizi'), true);
+check('a Settings link is added first', str_contains($links[0], 'admin.php?page=ezbizi'), true);
 check('and Deactivate survives', count($links), 2);
 
 echo "\nA blank token field keeps the saved token\n";
@@ -504,11 +597,46 @@ check('deactivation revokes it', count($GLOBALS['app_passwords']), 0);
 
 echo PHP_EOL . "A site with application passwords switched off simply does not pair" . PHP_EOL;
 reset_site();
-$GLOBALS['app_passwords_on'] = false;
+// Switched off the way a site owner actually does it: a filter that refuses
+// whatever it is handed. Setting the flag alone only simulates a non-SSL
+// REQUEST, which is a different thing and must still pair.
+add_filter('wp_is_application_passwords_available', fn () => false);
 ok_response(['phone' => '555-0100']);
 $payload = ezbizi_fetch();
 check('no credential', count($GLOBALS['app_passwords']), 0);
 check('and the values still render', $payload['values']['phone'], '555-0100');
+
+echo PHP_EOL . "A cron read on an HTTPS site still pairs" . PHP_EOL;
+reset_site();
+// The state the pairing ACTUALLY runs in: WP-Cron or WP-CLI, where is_ssl() is
+// false on a perfectly ordinary HTTPS site. This returned "no application
+// passwords here" and skipped silently, forever, on a live install.
+$GLOBALS['is_ssl'] = false;
+$GLOBALS['home'] = 'https://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('a non-SSL request on an HTTPS site pairs', count($GLOBALS['app_passwords']), 1);
+
+echo PHP_EOL . "A site that is genuinely plain HTTP does not" . PHP_EOL;
+reset_site();
+$GLOBALS['is_ssl'] = false;
+$GLOBALS['home'] = 'http://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+check('no credential on a plain-HTTP site', count($GLOBALS['app_passwords']), 0);
+
+echo PHP_EOL . "An admin page load pairs a site with no shortcodes on it" . PHP_EOL;
+reset_site();
+// The gap this closes: ezbizi_service_link() otherwise runs only from a
+// content read, so a site with the plugin installed and the token pasted but
+// no shortcode placed never called home and never paired.
+$GLOBALS['is_ssl'] = true;
+$GLOBALS['home'] = 'https://a-1chimney.com';
+ok_response(['phone' => '555-0100']);
+check('nothing paired before the admin loads', count($GLOBALS['app_passwords']), 0);
+do_action('admin_init');
+check('the admin load pairs it', count($GLOBALS['app_passwords']), 1);
+check('and it is the service user', $GLOBALS['users'][0]->user_login, 'ezbizi-service');
 
 echo PHP_EOL . "EzBizi letting go revokes the key on the site too" . PHP_EOL;
 reset_site();
@@ -564,18 +692,24 @@ check('the fields still come from EzBizi', str_contains($forced, 'What needs doi
 check('and the button is too', str_contains($forced, '>Send it<'), true);
 check('the argument is ignored entirely', str_contains($forced, 'Override me'), false);
 
-echo PHP_EOL . "A widget switched off in EzBizi renders nothing" . PHP_EOL;
+echo PHP_EOL . "There is no off switch any more" . PHP_EOL;
+/*
+ * The inverse of the check that used to be here, and the reason is Jose's,
+ * 2026-09-15: "get rid of the switches, they should just be on". Putting the
+ * widget on a page is the decision to show it; a second switch that could blank
+ * something already placed did nothing but lose people's work silently.
+ *
+ * The payload below still SAYS enabled=false, because an older server sends
+ * that and so does a row saved before today. Rendering anyway is the whole
+ * point — this is what proves the gate is gone rather than merely untested.
+ */
 reset_site();
 $GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload(false)];
 ezbizi_fetch();
 $GLOBALS['is_admin'] = false;
-check('the form is absent', $GLOBALS['sc']['ezbizi_form']([]), '');
-check('and so is the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
-check(
-    'somebody who can fix it is told',
-    str_contains(($GLOBALS['is_admin'] = true) ? $GLOBALS['sc']['ezbizi_form']([]) : '', 'switched off'),
-    true
-);
+check('a visitor gets the form regardless', str_contains($GLOBALS['sc']['ezbizi_form']([]), 'What needs doing?'), true);
+check('and the chat', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
+check('and nothing mentions a switch', str_contains($GLOBALS['sc']['ezbizi_form']([]), 'switched off'), false);
 
 echo PHP_EOL . "A site with no browser key shows a visitor nothing" . PHP_EOL;
 reset_site();
@@ -585,6 +719,235 @@ $GLOBALS['is_admin'] = false;
 check('the form renders empty', $GLOBALS['sc']['ezbizi_form']([]), '');
 check('and so does the chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
 
+
+echo PHP_EOL . "A site EzBizi has stopped recognising stops asking for chats" . PHP_EOL;
+/*
+ * The deploy desk found this by looking at a site rather than at the code: the
+ * guard asked whether a public key was ABSENT, and a site whose token the
+ * server REJECTS still holds the last good payload, key and all. So a pairing
+ * that had ended went on drawing a chat box on every page, and a visitor
+ * typing into it is being promised a conversation nobody will receive.
+ *
+ * Refused and unreachable are different facts and only one of them is about
+ * the site, so they are tested apart.
+ */
+reset_site();
+delete_option(EZBIZI_REFUSED_SINCE);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+check('a good read leaves no mark', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+
+// Our bad day. It must change nothing about the site.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 500, 'body' => ''];
+ezbizi_fetch();
+check('a 500 is our problem, not theirs', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
+ezbizi_fetch();
+$first = (int) get_option(EZBIZI_REFUSED_SINCE, 0);
+check('a refusal is dated', $first > 0, true);
+
+// The clock measures how long it has lasted, so it must not restart.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 401, 'body' => ''];
+ezbizi_fetch();
+check('and dated once', (int) get_option(EZBIZI_REFUSED_SINCE, 0), $first);
+
+// A token being re-pasted leaves a gap of minutes. Nothing may disappear
+// during it: the public key the widgets use is a separate credential that
+// usually still works right through a rotation.
+$GLOBALS['is_admin'] = false;
+check('a fresh refusal hides nothing', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
+
+// A week of it is not a rotation. It is a pairing that ended.
+update_option(EZBIZI_REFUSED_SINCE, time() - EZBIZI_REFUSED_MAX - 60, false);
+check('a week of it draws no chat', $GLOBALS['sc']['ezbizi_chat']([]), '');
+check('and no form', $GLOBALS['sc']['ezbizi_form']([]), '');
+
+/*
+ * The values are a DIFFERENT question and must survive it. A phone number a
+ * week stale is still the right phone number; blanking a live page because we
+ * fell out with the account is the one thing this plugin has always refused to
+ * do.
+ */
+check('but the phone number still publishes', ezbizi_payload()['values']['phone'], '555-0100');
+
+// And it is over the moment the site is recognised again.
+delete_transient(EZBIZI_CACHE_KEY);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+check('a good read forgives it', get_option(EZBIZI_REFUSED_SINCE, 0), 0);
+check('and the chat comes back', str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'), true);
+
+echo PHP_EOL . "The chat asks who it is talking to" . PHP_EOL;
+/*
+ * Jose photographed the old one beside the chat on A1 Tools. Two differences
+ * mattered. It looked wrong — the theme was styling our launcher and our input,
+ * because we had set almost nothing and let somebody else's stylesheet decide.
+ * And it opened straight into a message box, so a chat arrived in Leads with
+ * nobody's name on it: the visitor types, closes the tab, and the only way to
+ * answer is to hope they come back.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+$chat_html = $GLOBALS['sc']['ezbizi_chat']([]);
+
+check('it asks for a name', str_contains($chat_html, 'name="name"'), true);
+check('and a way to reply', str_contains($chat_html, 'name="contact"'), true);
+check('and what they want', str_contains($chat_html, 'name="message"'), true);
+check('all three required', substr_count($chat_html, 'required'), 3);
+check('there is a way out of the panel', str_contains($chat_html, 'ezbizi-chat-close'), true);
+
+// The thread exists but is not what they meet first.
+check('the message box waits its turn', str_contains($chat_html, '<div class="ezbizi-chat-thread" hidden>'), true);
+
+/*
+ * The fix for what the photograph actually showed. A theme that sets
+ * `background` on inputs turned ours near-black; stating it is what stops
+ * that, and a widget living in somebody else's stylesheet has to state
+ * everything it cares about.
+ */
+check('the input states its own colours', str_contains($chat_html, 'background:#fff;color:#1b1b1b'), true);
+check('and the launcher its own shape', str_contains($chat_html, 'border-radius:999px'), true);
+
+// It must not be readable as HTML when it comes back from a stranger.
+check('replies are drawn as text', str_contains($chat_html, 'row.textContent=m.text'), true);
+check('and never as markup', str_contains($chat_html, 'row.innerHTML=m.text'), false);
+
+echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
+/*
+ * Found by the deploy desk: after the switches came off it fetched
+ * a-1chimney.com and there was no EzBizi markup on the page at all, because
+ * nothing hooked wp_footer and a bubble had to be pasted onto each page by
+ * hand. `position:fixed` and the separate `inline` option say what was
+ * intended; this is the half of Jose's complaint the switch removal did not
+ * reach.
+ */
+$footer = static function () {
+    unset($GLOBALS['ezbizi_chat_drawn']);
+    ob_start();
+    do_action('wp_footer');
+
+    return ob_get_clean();
+};
+
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+check('a visitor gets the bubble without anybody placing it', str_contains($footer(), 'Talk to A-1'), true);
+check('floating, not in the flow', str_contains($footer(), 'position:fixed'), true);
+
+// Placed already: the shortcode ran, so the footer must keep out. Two bubbles
+// on one page is two conversations, and the visitor picks one at random.
+unset($GLOBALS['ezbizi_chat_drawn']);
+// The shortcode RETURNS its markup; only the footer echoes. Counting the
+// buffer alone said 0 and passed for the wrong reason — it would have passed
+// just as well if the shortcode had drawn nothing at all.
+$placed = $GLOBALS['sc']['ezbizi_chat']([]);
+ob_start();
+do_action('wp_footer');
+$both = $placed . ob_get_clean();
+check('the placed one drew', substr_count($placed, 'id="ezbizi-chat-') >= 1, true);
+check('and the footer added no second', substr_count($both, 'id="ezbizi-chat-'), 1);
+
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload_at('inline')];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('inline means the site says where, so the footer keeps out', $footer(), '');
+
+// The control. Without it the two absences above would also pass on a plugin
+// whose footer hook was never registered at all.
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('the hook exists to be silent', str_contains($footer(), 'ezbizi-chat-'), true);
+
+echo PHP_EOL . "An unpaired site puts nothing in anybody's footer" . PHP_EOL;
+reset_site();
+ok_response(['phone' => '555-0100']);
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+check('no key, no bubble', $footer(), '');
+
+echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
+/*
+ * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
+ * found". The shortcodes had worked since 1.2.0 and that panel cannot see a
+ * shortcode — it lists registered Elementor widgets and nothing else. So on an
+ * Elementor site, which is most of them, we had no widget at all as far as
+ * anybody could tell.
+ *
+ * This runs LAST, and the no-Elementor case runs before the stub is loaded:
+ * once \Elementor\Widget_Base exists it cannot be made not to exist.
+ */
+$manager = null;
+do_action('elementor/widgets/register', $manager);
+check('a site without Elementor registers nothing, and does not fatal', $manager, null);
+
+require_once __DIR__ . '/elementor-stub.php';
+elementor_present();
+
+$manager = new Elementor_Widgets_Manager;
+do_action('elementor/widgets/register', $manager);
+
+check('both widgets are registered', count($manager->registered), 2);
+check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
+check('the chat too', isset($manager->registered['ezbizi-chat']), true);
+
+$chat = $manager->registered['ezbizi-chat'];
+$form = $manager->registered['ezbizi-form'];
+
+// The search that failed. Elementor matches the title and the keywords, so
+// this is the check that stands between us and "No widget found" again.
+check('the title says whose it is', str_contains($chat->get_title(), 'EzBizi'), true);
+check('and searching ezbizi finds it', in_array('ezbizi', $chat->get_keywords(), true), true);
+check('the form as well', in_array('ezbizi', $form->get_keywords(), true), true);
+
+// Nothing configurable: one notice pointing at the one place that decides.
+$chat->ezbizi_call_register_controls();
+check('one control, and it is the notice', count($chat->ezbizi_controls), 1);
+check(
+    'which names where the settings live',
+    str_contains($chat->ezbizi_controls['ezbizi_notice']['raw'] ?? '', 'Widgets'),
+    true
+);
+
+echo PHP_EOL . "The editor does not open chats by being opened" . PHP_EOL;
+/*
+ * The chat widget starts a conversation and polls every five seconds. Rendered
+ * live in the Elementor editor it would file real conversations against the
+ * customer's account every time somebody opened the page to move a heading, and
+ * those arrive in Leads looking like enquiries from nobody.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+elementor_present(true);
+ob_start();
+$chat->ezbizi_call_render();
+$editing = ob_get_clean();
+
+check('a placeholder, named', str_contains($editing, 'EzBizi Live Chat'), true);
+check('and no chat script', str_contains($editing, 'setInterval'), false);
+
+elementor_present(false);
+ob_start();
+$chat->ezbizi_call_render();
+$live = ob_get_clean();
+
+// The control: if render() were broken rather than merely guarded, the check
+// above would pass for the wrong reason.
+check('on a real page it is the widget', str_contains($live, 'Talk to A-1'), true);
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"

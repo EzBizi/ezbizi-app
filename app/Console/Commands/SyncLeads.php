@@ -53,6 +53,16 @@ class SyncLeads extends Command
 
     protected $description = 'Fetch Local Services enquiries for every connected Google Ads account';
 
+    /**
+     * How many accounts in a row must be refused on quota before the run stops.
+     *
+     * Three, not one: a single 429 can be one account's own rate limit, and
+     * abandoning fifty healthy accounts because of it would be the old bug
+     * with the sign flipped. Three DIFFERENT accounts refused back to back is
+     * a fact about the developer token, which is what the ceiling belongs to.
+     */
+    private const QUOTA_REFUSALS_BEFORE_STOPPING = 3;
+
     public function __construct(
         private readonly LocalServicesLeads $localServices,
         private readonly TenantContext $tenant,
@@ -122,6 +132,10 @@ class SyncLeads extends Command
         $failed   = 0;
         $rested   = 0;
 
+        // Accounts actually reached, so the "not read" count in the log is the
+        // remainder rather than a guess.
+        $fetchedAccounts = 0;
+
         /*
          * Tiered, because Basic Access is 15,000 operations a day for the
          * whole project and Standard was refused on 2026-09-09 for not yet
@@ -136,41 +150,51 @@ class SyncLeads extends Command
          * an account that has produced nothing in thirty days is read once
          * per half hour and its conversations not at all, since it has no
          * lead to hang one on. With --days everything is read, every time.
-         * The quiet cadence became a quarter hour on 2026-09-11; see the
-         * block below it for why, and what going over costs.
+         * The quiet cadence was a quarter hour from 2026-09-11 to 2026-09-16;
+         * see the block below it for why it was raised and why it came back.
          */
         $minute   = now()->minute;
         $forced   = is_numeric($this->option('days'));
 
         /*
-         * A QUIET ACCOUNT IS ASKED EVERY QUARTER HOUR, not every half.
+         * A QUIET ACCOUNT IS ASKED EVERY HALF HOUR. Back to it, 2026-09-16.
          *
-         * Measured on 2026-09-11, one full day at sixty accounts: Google's own
-         * counter read 14,889 requests, 99.3% of the 15,000 Basic Access
-         * ceiling, with no refusal. The fleet sits just UNDER the line and
-         * stays there, and Standard Access was refused on 2026-09-09 for not
-         * exceeding it — so hovering is the one outcome that earns nothing.
-         * Jose, 2026-09-10: "i dont have any more producing accounts so what
-         * we need to do then is reduce the times."
+         * ── What the quarter hour was for, and why it is over ────
          *
-         * This adds about 1,150 requests a day (24 quiet accounts, 48 reads
-         * each becoming 96) and takes the fleet to roughly 107% of the
-         * ceiling. Deliberately the smallest lever that crosses: the cost of
-         * going over is that the day's quota runs out early, and everything
-         * stops until it resets at an hour Google does not document. At 107%
-         * that window is short; doubling the conversation cadence instead
-         * would have been 133% and hours of it.
+         * Measured 2026-09-11 at sixty accounts: Google's own counter read
+         * 14,889 requests, 99.3% of the 15,000 Basic Access ceiling, with no
+         * refusal. Standard Access had been refused on 2026-09-09 for not
+         * exceeding the limit, so sitting just under it earned nothing. The
+         * quiet cadence was raised to a quarter hour on purpose — about 1,150
+         * requests a day, roughly 107% of the ceiling — as the smallest lever
+         * that would cross the line the application needed crossed.
          *
-         * Nothing is LOST in that window. The lead read asks for everything
-         * since the newest lead already held, not since a cursor, so the first
-         * successful run afterwards collects what arrived meanwhile. The cost
-         * is delay, not absence — which is the only reason this is an
-         * acceptable thing to do on purpose.
+         * It crossed. 2026-09-16, production: 2,033 refusals between 09:25 and
+         * 12:35, unbroken, ~690 an hour against a call rate of ~10.2 a minute.
+         * The evidence the application wanted now exists in Google's own logs,
+         * and the argument no longer needs the cadence holding it up.
          *
-         * It also buys something real: a dormant account that starts producing
-         * is noticed in fifteen minutes rather than thirty.
+         * Jose, 2026-09-16: "Reverse this so we have some leway, we already
+         * went over the threshhold so we are good with stepping back on it
+         * now."
+         *
+         * ── What going back buys ─────────────────────────────────
+         *
+         * About 1,150 requests a day of headroom, which is what the reporting
+         * screen and a person looking at it have to come out of. Sitting at
+         * 107% meant every operation the day had was already promised to the
+         * sync, and the Ads report could not get a call through — which is how
+         * an afternoon was lost to filming a demo video for Google.
+         *
+         * ── What it costs ───────────────────────────────────────
+         *
+         * A dormant account that starts producing is noticed in thirty minutes
+         * rather than fifteen. Nothing is LOST either way: the lead read asks
+         * for everything since the newest lead already held, not since a
+         * cursor, so a later run collects what arrived meanwhile. Delay, not
+         * absence.
          */
-        $quietTick = $minute % 15 < 5;
+        $quietTick = $minute % 30 < 5;
         $tenMin    = $minute % 10 < 5;
 
         /*
@@ -229,6 +253,33 @@ class SyncLeads extends Command
             ];
         }
 
+        /*
+         * CONSECUTIVE QUOTA REFUSALS END THE RUN.
+         *
+         * "One account must not stop the other twenty-one" is right about an
+         * account-shaped failure and wrong about this one. The 15,000/day
+         * ceiling belongs to the DEVELOPER TOKEN, not to an account, so once
+         * it is spent every remaining account gets the same 429 - and the loop
+         * below happily asked all of them, then asked them all again for
+         * conversations.
+         *
+         * Production, 2026-09-16: 2,033 refusals between 09:25 and 12:35,
+         * unbroken, about 690 an hour against a sustained rate of roughly 600.
+         * Essentially every call refused, and the command kept making them.
+         *
+         * Three IN A ROW is the evidence, and it is evidence no single response
+         * carries: one 429 can be an account's own rate limit, but three
+         * different accounts refused back to back is a fact about the token.
+         * That is why the count is consecutive and a success resets it.
+         *
+         * What this buys is not politeness. While the window rolls over, the
+         * few operations that free up were being spent instantly by this
+         * command, so nothing else - the Ads report, a demo video, a person
+         * looking - could ever get a call through.
+         */
+        $quotaRefusals = 0;
+        $abandoned = false;
+
         foreach ($due as $item) {
             [$connection, $organization] = [$item['connection'], $item['organization']];
 
@@ -243,6 +294,7 @@ class SyncLeads extends Command
                 );
 
                 $fetched += $result['fetched'];
+                $quotaRefusals = 0;
             } catch (Throwable $e) {
                 /*
                  * One account must not stop the other twenty-one. A suspended
@@ -260,13 +312,51 @@ class SyncLeads extends Command
                     'provider'      => $connection->provider,
                     'reason'        => $e->getMessage(),
                 ]);
+
+                /*
+                 * The message is built in LocalServicesLeads::page() a few
+                 * files away and says "(HTTP 429)". Matched rather than typed
+                 * into a new exception class, because there is exactly one
+                 * thrower and one reader of it.
+                 *
+                 * An ACCOUNT-scoped 429 does NOT count. Three different
+                 * accounts refused back to back is only evidence about the
+                 * developer token if the limits are the token's; if each one
+                 * is hitting its own, stopping here starves every account
+                 * behind them, every run, and the log would say "stopped on
+                 * quota" each time while nothing was wrong with the quota.
+                 *
+                 * A response that says nothing about scope still counts. That
+                 * is the outage this was written during, and a brake that
+                 * needs a field Google may omit is not a brake.
+                 */
+                $quotaRefusals = str_contains($e->getMessage(), '(HTTP 429)')
+                    && ! str_contains($e->getMessage(), LocalServicesLeads::ACCOUNT_SCOPED)
+                    ? $quotaRefusals + 1
+                    : 0;
+
+                if ($quotaRefusals >= self::QUOTA_REFUSALS_BEFORE_STOPPING) {
+                    $abandoned = true;
+
+                    Log::warning('Lead sync stopped early: Google is refusing on quota.', [
+                        'consecutive_refusals' => $quotaRefusals,
+                        'accounts_not_read'    => count($due) - $fetchedAccounts,
+                    ]);
+
+                    break;
+                }
             }
+
+            $fetchedAccounts++;
         }
 
         // The second pass, and the one that is allowed to fail. Every enquiry
         // is already filed by the time this runs.
         foreach ($due as $item) {
-            if (! $item['conversations']) {
+            // Conversations are detail; leads are people nobody has spoken to.
+            // If the token had nothing left for the leads it has nothing for
+            // these, and asking anyway is 51 more refusals.
+            if ($abandoned || ! $item['conversations']) {
                 continue;
             }
 

@@ -133,8 +133,17 @@ class Automation extends Model implements CarriesAutomationScope
      * an automation calling a webhook that has started returning 500 will
      * otherwise retry on every event forever, and the noise buries what broke.
      */
-    public function noteFailure(): void
+    /**
+     * Returns true only on the transition INTO disabled, never while disabled.
+     *
+     * The caller announces a rule switching itself off, and announcing is an
+     * edge: at level it would tell somebody once per failing event for as long
+     * as the rule stayed off.
+     */
+    public function noteFailure(): bool
     {
+        $wasOff = $this->disabled_at !== null;
+
         $this->consecutive_failures++;
 
         if ($this->consecutive_failures >= self::FAILURE_LIMIT) {
@@ -159,6 +168,8 @@ class Automation extends Model implements CarriesAutomationScope
         }
 
         $this->save();
+
+        return ! $wasOff && $this->disabled_at !== null;
     }
 
     public function noteSuccess(): void

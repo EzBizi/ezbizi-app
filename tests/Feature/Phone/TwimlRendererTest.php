@@ -1240,6 +1240,159 @@ class TwimlRendererTest extends TestCase
         );
     }
 
+    /**
+     * ONE BOX PER TEAM, however many keys reach it.
+     *
+     * Built to match a real line — +1 239 456-0829 — where key 2 points at the
+     * very group the line already rings. The chart drew "Ring Existing Client"
+     * twice, once for Press 2 and once for no key pressed, and Jose counted two
+     * teams off a picture of one.
+     *
+     * A second route to the same team is a second ARROW, not a second box.
+     */
+    public function test_a_key_pointing_at_the_lines_own_group_is_not_a_second_node(): void
+    {
+        $t = $this->provisionTenant();
+
+        $graph = $this->inTenant($t['org'], function () use ($t) {
+            [$number] = $this->lineWithAvailableDesk($t, record: false);
+            $group = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 2 for the desk.',
+                    'options' => [
+                        // The same group the line rings by default.
+                        ['digit' => '2', 'action' => 'ring_group', 'ring_group_id' => $group->id],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->graph($number->fresh());
+        });
+
+        $teams = array_values(array_filter(
+            $graph['nodes'],
+            static fn (array $n) => $n['kind'] === 'ring_group',
+        ));
+
+        $this->assertCount(
+            1,
+            $teams,
+            'the same team is drawn twice, so the chart shows two teams where there is one',
+        );
+
+        // And BOTH routes still arrive, which is what makes one box honest
+        // rather than merely tidier.
+        $into = [];
+        foreach ($graph['edges'] as $edge) {
+            if ($edge['to'] === $teams[0]['id']) {
+                $into[] = $edge['label'];
+            }
+        }
+
+        $this->assertContains('Press 2', $into);
+        $this->assertContains('No key pressed', $into);
+    }
+
+    /**
+     * EVERY GROUP HAS ITS OWN QUEUE, and the chart shows each one.
+     *
+     * The queue used to be drawn once, hanging off the line's default group,
+     * while the menu's other groups had none — so "Everyone busy" read as a
+     * property of one box when it is a setting on each team. Jose asked
+     * directly: does it apply to the whole group or not?
+     *
+     * They are separate queues, not one shared line: `queueName()` is named
+     * after the group, so somebody holding for Appointments is not standing
+     * behind somebody holding for Existing Clients.
+     */
+    public function test_each_queueing_group_gets_its_own_queue(): void
+    {
+        $t = $this->provisionTenant();
+
+        $graph = $this->inTenant($t['org'], function () use ($t) {
+            [$number, $user] = $this->lineWithAvailableDesk($t, record: false);
+            $line = PhoneRingGroup::query()->findOrFail($number->ring_group_id);
+            $line->forceFill(['overflow' => 'queue'])->save();
+
+            $second = PhoneRingGroup::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Appointment',
+                'mode' => 'simultaneous',
+                'timeout_seconds' => 30,
+                'member_user_ids' => [$user->id],
+                'member_role_ids' => [],
+                'overflow' => 'queue',
+            ]);
+
+            // A third that does NOT queue — the control. Without it, a build
+            // that gives every group a queue regardless passes.
+            $third = PhoneRingGroup::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Testing',
+                'mode' => 'simultaneous',
+                'timeout_seconds' => 30,
+                'member_user_ids' => [$user->id],
+                'member_role_ids' => [],
+                'overflow' => 'voicemail',
+            ]);
+
+            $flow = PhoneFlow::query()->create([
+                'connection_id' => $number->connection_id,
+                'name' => 'Main menu',
+                'nodes' => [
+                    'type' => 'menu',
+                    'prompt' => 'Press 1 or 3.',
+                    'options' => [
+                        ['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $second->id],
+                        ['digit' => '3', 'action' => 'ring_group', 'ring_group_id' => $third->id],
+                    ],
+                ],
+            ]);
+            $number->forceFill(['flow_id' => $flow->id])->save();
+
+            return (new TwimlRenderer)->graph($number->fresh());
+        });
+
+        $queues = array_values(array_filter(
+            $graph['nodes'],
+            static fn (array $n) => $n['kind'] === 'queue',
+        ));
+
+        $this->assertCount(
+            2,
+            $queues,
+            'the two queueing groups do not each have a queue, so "Everyone busy" '
+            .'points at one team while applying to another',
+        );
+
+        // Each queue is reached from its own team and returns to it.
+        foreach ($queues as $queue) {
+            $from = array_values(array_filter(
+                $graph['edges'],
+                static fn (array $e) => $e['to'] === $queue['id'] && $e['label'] === 'Everyone busy',
+            ));
+
+            $this->assertCount(1, $from, 'a queue is reached from more than one team');
+
+            $back = array_values(array_filter(
+                $graph['edges'],
+                static fn (array $e) => $e['from'] === $queue['id'] && $e['label'] === 'Somebody free',
+            ));
+
+            $this->assertSame(
+                $from[0]['from'],
+                $back[0]['to'],
+                'the queue returns callers to a different team than it took them from',
+            );
+        }
+    }
+
     private function lineWithAvailableDesk(array $tenant, bool $record): array
     {
         $connection = $this->connection($tenant);

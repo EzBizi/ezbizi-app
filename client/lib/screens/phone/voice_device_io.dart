@@ -67,6 +67,12 @@ class _SilentVoiceDevice implements VoiceDevice {
   @override
   bool get supported => false;
 
+  /// Nothing rings here at all — there is no device. False rather than
+  /// true because the question is "does the platform ring INSTEAD of
+  /// us", and here nobody does.
+  @override
+  bool get ringsItself => false;
+
   @override
   bool get registered => false;
 

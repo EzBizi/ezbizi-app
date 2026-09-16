@@ -585,10 +585,14 @@ Map<String, dynamic> _lead(
   String? category = 'xcat:service_area_business_home_inspector',
   bool unread = false,
   bool starred = false,
+  bool canReply = false,
   String? note,
 }) => {
   'id': id,
   'is_unread': unread,
+  // Defaults to false so every existing fixture keeps its old meaning: a row
+  // nobody can reply to, which is what a CALL is and what most of these are.
+  'can_reply': canReply,
   'starred': starred,
   'note': note,
   'note_by': null,
@@ -707,36 +711,83 @@ void _triageTests() {
   });
 }
 
-/// Approved desktop layout 1: the dot is the only mark for unreplied and it
-/// is on the left; when the business sent last the preview says "You:".
+/// The dot is UNREAD; replied-or-not is a badge, and only where a reply is
+/// possible. Jose's ruling, 2026-09-15 — see `_row` for why the old meaning was
+/// the confusing one.
 void _conversationRowTests() {
-  testWidgets('they spoke last gets the dot; you spoke last gets "You:" and '
-      'no dot', (tester) async {
+  testWidgets('the dot is unread, not unreplied', (tester) async {
     await _pump(
       tester,
       leads: [
+        // READ, and the enquirer spoke last. Under the OLD rule this row HAD a
+        // dot; under the new one it must not.
+        //
+        // It is first on purpose: a desktop auto-selects the first row and
+        // selecting marks a lead read, so an UNREAD row in this position would
+        // lose the state under test before the assertion ran. That is what
+        // failed the first draft of this test.
         _lead(
           'lead-1',
-          'Dana Whitfield',
+          'R. Okonkwo',
           from: 'CONSUMER',
           channel: 'MESSAGE',
           preview: 'Can you come out Thursday morning?',
+          canReply: true,
         ),
+        // UNREAD, and the business already replied. Under the OLD rule this row
+        // had no dot; it must have one now. The two rows together are what make
+        // this test able to tell the rules apart - either alone passes under
+        // both.
         _lead(
           'lead-2',
-          'R. Okonkwo',
+          'Dana Whitfield',
           from: 'ADVERTISER',
-          channel: 'PHONE_CALL',
-          preview: 'Call · 1:08',
+          channel: 'MESSAGE',
+          preview: 'Thursday works, see you at 9.',
+          unread: true,
+          canReply: true,
         ),
       ],
       connections: _connected,
     );
 
-    expect(find.byKey(const ValueKey('unreplied-lead-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('unreplied-lead-2')), findsNothing);
-    expect(find.textContaining('You: Call · 1:08'), findsOneWidget);
-    expect(find.textContaining('Can you come out Thursday'), findsOneWidget);
+    expect(find.byKey(const ValueKey('unread-lead-2')), findsOneWidget);
+    expect(find.byKey(const ValueKey('unread-lead-1')), findsNothing);
+    expect(find.textContaining('You: Thursday works'), findsOneWidget);
+  });
+
+  testWidgets('the reply badge is drawn only where a reply is possible', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'Dana Whitfield',
+            from: 'CONSUMER', channel: 'MESSAGE',
+            preview: 'Can you come out Thursday morning?', canReply: true),
+        _lead('lead-2', 'R. Okonkwo',
+            from: 'ADVERTISER', channel: 'MESSAGE',
+            preview: 'Booked you for Tuesday.', canReply: true),
+        // A CALL. Nobody can reply to it, so it carries NO reply badge at all —
+        // not "Replied", which would claim a duty was discharged that never
+        // existed.
+        _lead('lead-3', 'T. Bergqvist',
+            from: 'CONSUMER', channel: 'PHONE_CALL', preview: 'Call · 1:08'),
+      ],
+      connections: _connected,
+    );
+
+    expect(find.byKey(const ValueKey('reply-badge-lead-1')), findsOneWidget);
+    expect(find.text('Awaiting reply'), findsOneWidget);
+
+    expect(find.byKey(const ValueKey('reply-badge-lead-2')), findsOneWidget);
+    expect(find.text('Replied'), findsOneWidget);
+
+    expect(
+      find.byKey(const ValueKey('reply-badge-lead-3')),
+      findsNothing,
+      reason: 'a call has no reply box, so it is neither replied nor awaiting one',
+    );
   });
 
   testWidgets('the badge says Call or Text, never Google\'s word', (

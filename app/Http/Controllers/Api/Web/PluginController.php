@@ -7,6 +7,7 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
@@ -75,7 +76,13 @@ class PluginController extends Controller
                     'label' => $site->label,
                     'company' => $site->company?->name,
                 ],
-                'fields' => SeoFields::catalogue(),
+                /*
+                 * The site's own invented page fields ride along, because the
+                 * plugin registers a shortcode for every key in this list —
+                 * which is what makes `[ezbizi_home_field_1]` work on the
+                 * customer's page with no plugin release.
+                 */
+                'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
 
                 /*
                  * So the chat and form shortcodes can post as this site without

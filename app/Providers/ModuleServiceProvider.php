@@ -3,20 +3,26 @@
 namespace App\Providers;
 
 use App\Models\Automation;
+use App\Models\BusinessLocation;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
-use App\Models\BusinessLocation;
+use App\Models\InspectionReport;
+use App\Models\InspectionRun;
 use App\Models\InventoryItem;
 use App\Models\Job;
 use App\Models\Lead;
-use App\Models\Newsletter;
 use App\Models\MonitoredDevice;
+use App\Models\Newsletter;
 use App\Models\Organization;
 use App\Models\Review;
 use App\Models\Service;
+use App\Models\TrainingAssignment;
+use App\Models\TrainingAttempt;
+use App\Models\TrainingProgress;
 use App\Models\User;
 use App\Models\Vehicle;
+use App\Models\WebSite;
 use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\AutomationSubject;
 use App\Support\Modules\ModuleDefinition;
@@ -972,8 +978,8 @@ class ModuleServiceProvider extends ServiceProvider
                  * job's franchise and falling back to the customer's.
                  */
                 emits: [
-                    \App\Models\InspectionRun::class,
-                    \App\Models\InspectionReport::class,
+                    InspectionRun::class,
+                    InspectionReport::class,
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -1318,7 +1324,7 @@ class ModuleServiceProvider extends ServiceProvider
                  * website, so a rule can send nj.a-1chimney.com's enquiries to
                  * the New Jersey branch and leave the rest alone.
                  */
-                subject: new AutomationSubject(\App\Models\WebSite::class, 'Website'),
+                subject: new AutomationSubject(WebSite::class, 'Website'),
                 /*
                  * Both record types this module hands to events->emit(),
                  * not just the subject. WebSite carries the two triggers
@@ -1334,8 +1340,8 @@ class ModuleServiceProvider extends ServiceProvider
                  * organization.
                  */
                 emits: [
-                    \App\Models\WebSite::class,
-                    \App\Models\Lead::class,
+                    WebSite::class,
+                    Lead::class,
                 ],
                 triggers: [
                     new TriggerDefinition(
@@ -1817,10 +1823,24 @@ class ModuleServiceProvider extends ServiceProvider
                         // 2026-09-08 — somebody building a rule off the old
                         // wording would reasonably conclude it did not cover
                         // their Thumbtack enquiries, and quietly not build it.
-                        description: 'An enquiry arrived from a connected account — Google Ads or '
-                            .'Thumbtack. It carries the contact details as the enquirer gave them, '
-                            .'which source and location it came through, and when it arrived — not '
-                            .'yet what it is about.',
+                        // FOUR SOURCES, AND THE SAME MISTAKE TWICE. The note
+                        // above records Thumbtack being added while this
+                        // sentence still said "advertising", so a rule author
+                        // would conclude it did not cover them. Website chat
+                        // has raised this since 2026-09-08 and the sentence
+                        // still named two sources - measured on the box: 1992
+                        // local_services, 4 thumbtack, 4 website_chat, all on
+                        // this trigger. Forms take the same path and have had
+                        // no submission yet. A description is the only thing a
+                        // rule author has to go on, so it has to list what
+                        // ACTUALLY raises this, and name the values a condition
+                        // is written against.
+                        description: 'An enquiry arrived — from Google Ads, from Thumbtack, or '
+                            .'from the business\'s own website as a live chat or a form. It '
+                            .'carries the contact details as the enquirer gave them, which source '
+                            .'and location it came through, and when it arrived — not yet what it '
+                            .'is about. Narrow it with a condition on "source": local_services, '
+                            .'thumbtack, website_chat or website_form.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.contact_received',
@@ -1910,24 +1930,24 @@ class ModuleServiceProvider extends ServiceProvider
              * reason, and the reason survives the change of audience.
              */
             new ModuleDefinition(
-                key:     'reviews',
-                label:   'Reviews',
+                key: 'reviews',
+                label: 'Reviews',
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
-                parent:  'marketing',
+                parent: 'marketing',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'review.received',
+                        key: 'review.received',
                         label: 'Review received',
                         description: 'A new review arrived on a connected Business Profile. It '
                             .'carries the rating, the text as the reviewer wrote it, and which '
                             .'location it is about.',
                     ),
                     new TriggerDefinition(
-                        key:   'review.reply_published',
+                        key: 'review.reply_published',
                         label: 'Reply published',
                         // The distinction somebody will get wrong. Drafting
                         // produces text; publishing is the moment it becomes
@@ -1937,7 +1957,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'not raise this — only publication does.',
                     ),
                     new TriggerDefinition(
-                        key:   'review.reply_failed',
+                        key: 'review.reply_failed',
                         label: 'Reply failed to publish',
                         description: 'Google refused a reply somebody tried to publish. It carries '
                             .'the reason, and the wording is kept rather than retried silently, so '
@@ -1946,7 +1966,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 automationActions: [
                     new ActionDefinition(
-                        key:   'review.draft_reply',
+                        key: 'review.draft_reply',
                         label: 'Draft a reply',
                         description: 'Writes a suggested reply to the review that triggered the '
                             .'rule and leaves it waiting for a person. It does not publish, and '
@@ -1992,13 +2012,13 @@ class ModuleServiceProvider extends ServiceProvider
              * is what this paragraph is.
              */
             new ModuleDefinition(
-                key:     'business_profile',
-                label:   'Business Profile',
+                key: 'business_profile',
+                label: 'Business Profile',
                 auditActionPrefixes: ['business_location'],
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
-                parent:  'marketing',
+                parent: 'marketing',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which
@@ -2011,7 +2031,7 @@ class ModuleServiceProvider extends ServiceProvider
                 ),
                 triggers: [
                     new TriggerDefinition(
-                        key:   'business_location.changed_on_google',
+                        key: 'business_location.changed_on_google',
                         label: 'Changed on Google',
                         description: 'A connected listing changed on Google without the change '
                             .'being made here — its name, phone, address, category, or whether '
@@ -2019,7 +2039,7 @@ class ModuleServiceProvider extends ServiceProvider
                             .'what they were before.',
                     ),
                     new TriggerDefinition(
-                        key:   'business_location.franchise_set',
+                        key: 'business_location.franchise_set',
                         label: 'Location assigned to a branch',
                         description: 'Somebody said which franchise answers for a listing. It is '
                             .'a deliberate act rather than part of a sync, and the sync never '
@@ -2413,9 +2433,9 @@ class ModuleServiceProvider extends ServiceProvider
                  * three, which is the whole reason it exists.
                  */
                 emits: [
-                    \App\Models\TrainingProgress::class,
-                    \App\Models\TrainingAttempt::class,
-                    \App\Models\TrainingAssignment::class,
+                    TrainingProgress::class,
+                    TrainingAttempt::class,
+                    TrainingAssignment::class,
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
@@ -2729,7 +2749,7 @@ class ModuleServiceProvider extends ServiceProvider
                 auditActionPrefixes: ['report'],
                 actions: ['view', 'build', 'export'],
                 actionRequires: [
-                    'build'  => ['reports.view'],
+                    'build' => ['reports.view'],
                     'export' => ['reports.view'],
                 ],
                 automationActions: [
@@ -2776,6 +2796,48 @@ class ModuleServiceProvider extends ServiceProvider
                     ),
                 ],
                 rolesGroup: ModuleDefinition::ROLES_TAB,
+            ),
+
+            /*
+             * ── Google Ads: what the advertising costs ──────────
+             *
+             * A tab inside Reports, not Marketing. Jose's call, 2026-09-15:
+             * "It is clearly not supposed to be in Marketing." Marketing is
+             * what the business SAYS about itself - its listing, its reviews,
+             * its posts. This is a measurement of what that cost, which is the
+             * same kind of thing as every other report.
+             *
+             * Account and Campaign levels, and nothing lower. The scope is a
+             * compliance position rather than a backlog: Google's Reporting
+             * Minimum Functionality applies to each level of the hierarchy a
+             * tool DISPLAYS, so adding an ad group, ad or keyword here would
+             * make R.40, R.50, R.70, R.100 and R.130 apply, each with its own
+             * mandatory fields, and oblige two weeks' notice to Google before
+             * the change takes effect.
+             *
+             * `view` alone. The figures are Google's and are read live rather
+             * than stored, so the usual four actions would offer three that
+             * cannot exist.
+             *
+             * Its own permission rather than borrowing `reports.view`: what the
+             * business spends on advertising is a different grant from what it
+             * measures internally, and an organization that wants one without
+             * the other should not have to choose.
+             */
+            new ModuleDefinition(
+                key: 'ads_performance',
+                label: 'Google Ads',
+                parent: 'reports',
+                actions: ['view'],
+                automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
+                    .'trigger to fire on: the figures are read from Google when somebody opens '
+                    .'the screen and are never stored, so no row is created, changed or removed. '
+                    .'And an action would have to WRITE to the Google Ads API - change a budget, '
+                    .'pause a campaign - which is exactly what we have told Google this product '
+                    .'cannot do, in the Standard Access answer and in the OAuth justification. '
+                    .'This stops being true the day spend is stored or watched: an alert on a '
+                    .'campaign passing a threshold is a real trigger, and it needs this line '
+                    .'removed rather than reworded.',
             ),
         ];
     }

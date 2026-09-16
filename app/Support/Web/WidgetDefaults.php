@@ -31,25 +31,65 @@ final class WidgetDefaults
      * @param  string|null  $brand  the customer's own colour, when we know it
      * @return array<string, mixed>
      */
+    /**
+     * Built by `resolve()` so there is exactly one shape.
+     *
+     * It used to assemble chat/form/style itself, which meant a site with no
+     * saved config took a different code path from one with a saved config —
+     * and the day the two shapes diverged, the no-config path was missing a key
+     * the other one had. A default is a saved config with nothing in it, so it
+     * is now literally that.
+     */
     public static function all(?string $brand = null): array
     {
-        return [
-            'chat' => self::chat(),
-            'form' => self::form(),
-            'style' => self::style($brand),
-        ];
+        return self::resolve([], $brand);
     }
 
     /** @return array<string, mixed> */
     public static function chat(): array
     {
         return [
-            'enabled' => false,
             'title' => 'Chat with us',
-            'intro' => 'Ask us anything — we will reply here.',
+            'intro' => 'We are online and ready to help.',
             'button' => 'Chat',
             'placeholder' => 'Type a message',
             'send' => 'Send',
+            /*
+             * Asked before the conversation rather than after it.
+             *
+             * A chat that opens straight into a message box produces a Lead
+             * with nobody's name on it: the visitor types, closes the tab, and
+             * the only way to answer is to hope they come back. Three answers,
+             * asked once, make every chat somebody who can be called back.
+             */
+            'lead_in' => 'Quick details first, so we can get back to you if we are disconnected.',
+            'name_label' => 'Your name',
+            'contact_label' => 'Phone or email',
+            'message_label' => 'How can we help?',
+            'start' => 'Start chat',
+            /*
+             * Sent back the instant somebody starts a chat.
+             *
+             * A visitor who types a question and watches nothing happen has no
+             * way to tell a business that is closed from a widget that is
+             * broken, and they close the tab. This is a real message on the
+             * thread rather than something the widget draws locally, so it is
+             * in Leads too and staff can see exactly what the person was told.
+             *
+             * Empty by default, and that is not a switch in disguise — the
+             * field IS the setting, and the wording is the whole feature. A
+             * greeting in the wrong voice is worse than none.
+             *
+             * It also has a consequence nobody would choose by accident:
+             * "unreplied" in Leads means `last_contact_from = CONSUMER`, so an
+             * automatic answer takes every new chat OUT of the unreplied
+             * filter the instant it arrives. A real enquiry would look
+             * answered. Raised with the Leads module; until a conversation row
+             * can say it was automatic, this stays off unless a business types
+             * something into it deliberately.
+             */
+            'auto_reply' => '',
+            'error' => 'Sorry — that did not send. Please try again.',
             'away' => 'We are not at the desk right now, but leave a message and we will come back to you.',
             'position' => 'bottom-right',
         ];
@@ -59,7 +99,6 @@ final class WidgetDefaults
     public static function form(): array
     {
         return [
-            'enabled' => false,
             'button' => 'Send',
             'thanks' => 'Thank you — we will be in touch shortly.',
             'error' => 'Sorry — that did not send. Please try again.',
@@ -130,19 +169,44 @@ final class WidgetDefaults
 
         return [
             'chat' => [
-                'enabled' => (bool) ($chat['enabled'] ?? false),
+                /*
+                 * `enabled` is sent, always true, and means nothing.
+                 *
+                 * Jose removed the switches on 2026-09-15: "get rid of the
+                 * switches, they should just be on". Placing the widget on a
+                 * page is the decision to show it, and a second invisible
+                 * switch that can blank something you deliberately placed has
+                 * one failure mode — the one it produced, where every site was
+                 * built correctly and nothing appeared anywhere.
+                 *
+                 * The key stays on the wire because plugin 1.4.0 and earlier
+                 * render nothing when it is absent, and those are installed on
+                 * real sites. Dropping it would black out every widget on any
+                 * site that had not updated yet. Remove it when no install
+                 * below 1.5.0 is left; `plugin_version` comes in on every
+                 * payload request, so that is a question we can answer.
+                 */
+                'enabled' => true,
                 'title' => self::text($chat['title'] ?? '', 80),
                 'intro' => self::text($chat['intro'] ?? '', 300),
                 'button' => self::text($chat['button'] ?? '', 40),
                 'placeholder' => self::text($chat['placeholder'] ?? '', 80),
                 'send' => self::text($chat['send'] ?? '', 40),
                 'away' => self::text($chat['away'] ?? '', 300),
+                'lead_in' => self::text($chat['lead_in'] ?? '', 200),
+                'name_label' => self::text($chat['name_label'] ?? '', 40),
+                'contact_label' => self::text($chat['contact_label'] ?? '', 40),
+                'message_label' => self::text($chat['message_label'] ?? '', 60),
+                'start' => self::text($chat['start'] ?? '', 40),
+                'auto_reply' => self::text($chat['auto_reply'] ?? '', 500),
+                'error' => self::text($chat['error'] ?? '', 200),
                 'position' => in_array($chat['position'] ?? '', ['bottom-right', 'bottom-left', 'inline'], true)
                     ? $chat['position']
                     : 'bottom-right',
             ],
             'form' => [
-                'enabled' => (bool) ($form['enabled'] ?? false),
+                // Always on; see the note above.
+                'enabled' => true,
                 'button' => self::text($form['button'] ?? '', 40),
                 'thanks' => self::text($form['thanks'] ?? '', 300),
                 'error' => self::text($form['error'] ?? '', 300),

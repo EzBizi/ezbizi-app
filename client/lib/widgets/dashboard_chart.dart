@@ -125,10 +125,11 @@ class _DashboardChartState extends State<DashboardChart> {
     // over. Fixed anyway, because it is one line and the coupling is the same
     // family as everything else this file has been wrong about: a value I
     // invented for the drawing leaking into a decision about the data.
-    final named = (presentation == 'pie' || presentation == 'bar'
-            ? allSlices.map((slice) => slice.label)
-            : parsedSeries.map((row) => row.label))
-        .any((label) => label.isNotEmpty);
+    final named =
+        (presentation == 'pie' || presentation == 'bar'
+                ? allSlices.map((slice) => slice.label)
+                : parsedSeries.map((row) => row.label))
+            .any((label) => label.isNotEmpty);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -197,15 +198,41 @@ class _DashboardChartState extends State<DashboardChart> {
         onExit: (_) {
           if (_hovered != null) setState(() => _hovered = null);
         },
-        child: Stack(
-          children: [
-            Positioned.fill(child: CustomPaint(painter: painter)),
-            if (_hovered != null && _hovered! < slices.length)
-              _tooltipFor(slices, _hovered!),
-          ],
+        // Touch gets the same answer by tapping, added 2026-09-15 after
+        // shipping hover alone. `MouseRegion` never fires on a phone, so the
+        // share was a number only a mouse could see.
+        //
+        // Safe to claim the tap: the card's reorder drag is bound to its GRIP
+        // (`_GripDrag` in dashboard_grid.dart), not to the whole card, so
+        // nothing else wants this gesture. Checked before adding it rather
+        // than after.
+        //
+        // A tap on the wedge already showing CLOSES it, because touch has no
+        // `onExit` — without that the tooltip is a thing you can open and not
+        // put away.
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (details) =>
+              _tapAt(details.localPosition, constraints.biggest, slices),
+          child: Stack(
+            children: [
+              Positioned.fill(child: CustomPaint(painter: painter)),
+              if (_hovered != null && _hovered! < slices.length)
+                _tooltipFor(slices, _hovered!),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  void _tapAt(Offset position, Size size, List<_Slice> slices) {
+    final found = _sliceAt(position, size, slices);
+
+    setState(() {
+      _hovered = found == _hovered ? null : found;
+      _pointer = position;
+    });
   }
 
   void _moveTo(Offset position, Size size, List<_Slice> slices) {
@@ -353,7 +380,7 @@ int? _sliceAt(Offset point, Size size, List<_Slice> slices) {
   // Wedges start at twelve o'clock, which is -pi/2 in canvas angles.
   var fromStart =
       math.atan2(point.dy - geometry.center.dy, point.dx - geometry.center.dx) +
-          math.pi / 2;
+      math.pi / 2;
   while (fromStart < 0) {
     fromStart += 2 * math.pi;
   }
@@ -420,10 +447,7 @@ List<_Slice> _foldTail(List<_Slice> slices) {
   final tail = slices.skip(identities);
   final total = tail.fold<double>(0, (sum, s) => sum + s.total);
 
-  return [
-    ...slices.take(identities),
-    _Slice('${tail.length} more', total),
-  ];
+  return [...slices.take(identities), _Slice('${tail.length} more', total)];
 }
 
 /// One colour per slot, and **never the same colour twice**.
@@ -455,10 +479,7 @@ List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
   // A mid neutral in either theme: half way between ink and paper.
   final neutral = Color.lerp(scheme.onSurface, scheme.surface, 0.55)!;
 
-  return [
-    ...palette,
-    for (var i = palette.length; i < slots; i++) neutral,
-  ];
+  return [...palette, for (var i = palette.length; i < slots; i++) neutral];
 }
 
 /// Eight categorical hues in a fixed order, per mode. NOT theme roles.
@@ -509,28 +530,27 @@ List<Color> _colorsFor(ColorScheme scheme, {required int slots}) {
 /// That is not an oversight and not a contradiction of "dark is its own
 /// steps" — the green was validated in both modes and needed no separate step.
 /// Noted because "eight per mode" reads as sixteen distinct colours.*
-List<Color> _palette(ColorScheme scheme) =>
-    scheme.brightness == Brightness.dark
-        ? const [
-            Color(0xFF3987E5), // blue
-            Color(0xFFD95926), // orange
-            Color(0xFF199E70), // aqua
-            Color(0xFFC98500), // yellow
-            Color(0xFFD55181), // magenta
-            Color(0xFF008300), // green
-            Color(0xFF9085E9), // violet
-            Color(0xFFE66767), // red
-          ]
-        : const [
-            Color(0xFF2A78D6), // blue
-            Color(0xFFEB6834), // orange
-            Color(0xFF1BAF7A), // aqua
-            Color(0xFFEDA100), // yellow
-            Color(0xFFE87BA4), // magenta
-            Color(0xFF008300), // green
-            Color(0xFF4A3AA7), // violet
-            Color(0xFFE34948), // red
-          ];
+List<Color> _palette(ColorScheme scheme) => scheme.brightness == Brightness.dark
+    ? const [
+        Color(0xFF3987E5), // blue
+        Color(0xFFD95926), // orange
+        Color(0xFF199E70), // aqua
+        Color(0xFFC98500), // yellow
+        Color(0xFFD55181), // magenta
+        Color(0xFF008300), // green
+        Color(0xFF9085E9), // violet
+        Color(0xFFE66767), // red
+      ]
+    : const [
+        Color(0xFF2A78D6), // blue
+        Color(0xFFEB6834), // orange
+        Color(0xFF1BAF7A), // aqua
+        Color(0xFFEDA100), // yellow
+        Color(0xFFE87BA4), // magenta
+        Color(0xFF008300), // green
+        Color(0xFF4A3AA7), // violet
+        Color(0xFFE34948), // red
+      ];
 
 /// Whether this presentation has anything to draw. THE definition, once.
 ///
@@ -546,12 +566,15 @@ List<Color> _palette(ColorScheme scheme) =>
 /// this say do not, so a chart went into the tree and then declined to paint.
 /// The stricter rule is the right one — a box with categories and nothing in
 /// them should draw no chart — so it is the one that survived.
-bool _drawable(String presentation, List<_Slice> slices, List<_Series> series) =>
-    switch (presentation) {
-      'pie' || 'bar' => slices.any((s) => s.total > 0),
-      'line' || 'timeline' => series.any((s) => s.points.isNotEmpty),
-      _ => false,
-    };
+bool _drawable(
+  String presentation,
+  List<_Slice> slices,
+  List<_Series> series,
+) => switch (presentation) {
+  'pie' || 'bar' => slices.any((s) => s.total > 0),
+  'line' || 'timeline' => series.any((s) => s.points.isNotEmpty),
+  _ => false,
+};
 
 List<_Slice> _readSlices(List<dynamic>? raw) {
   if (raw == null) return const [];
@@ -625,6 +648,7 @@ class _DashboardChartPainter extends CustomPainter {
   });
 
   final String presentation;
+
   /// What is DRAWN — folded to eight identities and a tail.
   final List<_Slice> slices;
 
@@ -801,8 +825,8 @@ class _DashboardChartPainter extends CustomPainter {
       final x = maxMs == minMs
           ? inner.center.dx
           : inner.left +
-              ((point.at.millisecondsSinceEpoch - minMs) / (maxMs - minMs)) *
-                  inner.width;
+                ((point.at.millisecondsSinceEpoch - minMs) / (maxMs - minMs)) *
+                    inner.width;
       final y = maxValue <= 0
           ? inner.bottom
           : inner.bottom - (point.value / maxValue) * inner.height;
@@ -826,10 +850,7 @@ class _DashboardChartPainter extends CustomPainter {
           ..lineTo(at(points.first).dx, inner.bottom)
           ..close();
 
-        canvas.drawPath(
-          fill,
-          Paint()..color = color.withValues(alpha: 0.18),
-        );
+        canvas.drawPath(fill, Paint()..color = color.withValues(alpha: 0.18));
       }
 
       canvas.drawPath(
