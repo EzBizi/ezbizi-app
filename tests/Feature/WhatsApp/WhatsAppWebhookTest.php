@@ -259,6 +259,56 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertNotNull($fresh->delivered_at);
     }
 
+    public function test_a_failure_records_metas_reason_and_not_just_the_status(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+
+        $sent = $this->inTenant($t['org'], fn () => WhatsAppMessage::create([
+            'organization_id' => $t['org']->id,
+            'phone_number_id' => self::PHONE_ID,
+            'direction' => WhatsAppMessage::DIRECTION_OUT,
+            'counterparty' => '13057242199',
+            'wamid' => 'wamid.OUTFREE',
+            'status' => WhatsAppMessage::STATUS_SENT,
+            'body' => 'Free text, sent after the window closed.',
+        ]));
+
+        /*
+         * The real payload, from production on 2026-09-16.
+         *
+         * A free-text message sent 75 minutes after the 24-hour window closed
+         * came back HTTP 200 WITH A MESSAGE ID, so the row was written `sent`
+         * and the send returned normally. Meta failed it asynchronously and
+         * said why only here. Without the reason the row says `failed` and
+         * nothing distinguishes "outside the window" from "the number is
+         * wrong" or "we are out of credit" - three problems with three
+         * different fixes.
+         */
+        $json = json_encode(['entry' => [['changes' => [['value' => [
+            'metadata' => ['phone_number_id' => self::PHONE_ID],
+            'statuses' => [[
+                'id' => 'wamid.OUTFREE',
+                'status' => 'failed',
+                'errors' => [['code' => 131047, 'title' => 'Re-engagement message']],
+            ]],
+        ]]]]]]);
+
+        $this->deliverSigned($json)->assertOk()->assertJsonPath('data.handled', 1);
+
+        $fresh = $this->inTenant($t['org'], fn () => $sent->fresh());
+
+        $this->assertSame(WhatsAppMessage::STATUS_FAILED, $fresh->status);
+        $this->assertSame('Re-engagement message', $fresh->status_reason);
+
+        // A failure must not be stamped as delivered on the way past. The
+        // writer filters nulls, so a careless change that stamped now() on
+        // every status would leave a failed message looking delivered.
+        $this->assertNull($fresh->delivered_at);
+        $this->assertNull($fresh->read_at);
+    }
+
     public function test_a_status_for_a_message_we_never_sent_invents_nothing(): void
     {
         $t = $this->provisionTenant('A1-Group');
