@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0223',
+      date: '16 Sep 2026',
+      items: [
+        'An automation condition whose value can only be one of a fixed set is now chosen from a list instead of typed from memory.',
+        'When Google Ads refuses a report for being over quota, the screen now says whether the limit is on that one account or on EzBizi as a whole.',
+        'The lead sync stops asking once Google is refusing everything on quota, rather than spending the rest of its run on calls that cannot succeed. It picks up again on the next run and no leads are lost.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0222',
       date: '16 Sep 2026',
       items: [
