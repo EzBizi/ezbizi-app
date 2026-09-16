@@ -11,6 +11,9 @@ class VersionHistory {
       version: '0.0.0229',
       date: '16 Sep 2026',
       items: [
+        'An automation can reply to a website live chat enquiry, and a reply a rule sends no longer makes a brand new enquiry look answered.',
+        'An automation can resend or withdraw an invitation, hand a job or vehicle to somebody, take vehicle keys back, and switch off a company, branch, person or customer.',
+        'Update a field now offers the status and summary on a lead. It was offered on leads with nothing it could set.',
         'A website that stops being recognised by EzBizi now raises an automation trigger, so you choose who hears about it and how, rather than the notice landing somewhere nobody looks.',
         'Airtable and Workiz can be connected from Settings then Integrations, so a business can point EzBizi at its own figures.',
         'Pages and posts open their own screen with shortcodes, author and category read live from each website, and text written once that can be used on as many pages as want it.',
