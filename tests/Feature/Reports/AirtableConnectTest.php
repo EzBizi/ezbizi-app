@@ -133,6 +133,11 @@ class AirtableConnectTest extends TestCase
 
         $this->assertSame(self::BASE, $row->remote_id);
         $this->assertSame('pat_secret_value', $row->credentials['api_token']);
+
+        // Airtable's own name for it, not its id. The fixture lists another
+        // base first, so a reader that took the FIRST name rather than the
+        // MATCHING one would call this "Somebody else" and pass otherwise.
+        $this->assertSame('Profit And Loss', $row->display_name);
     }
 
     /**
@@ -266,20 +271,33 @@ class AirtableConnectTest extends TestCase
 
         $this->assertSame('Profit and Loss', $row['label']);
 
-        // And the base id survives alongside it. The name is what a person
-        // recognises; the id is what identifies it to Airtable when something
-        // is wrong, so replacing one with the other loses the half you need
-        // at exactly the moment you need it.
-        $this->assertSame(self::BASE, $row['display_name']);
+        // And Airtable's own name survives alongside the tenant's. Three names
+        // for one row is not redundancy: `label` is what this business calls
+        // it, `display_name` is what Airtable calls it, and `remote_id` is what
+        // identifies it when something is wrong.
+        $this->assertSame('Profit And Loss', $row['display_name']);
     }
 
     private function fakeBase(): void
     {
-        Http::fake(['api.airtable.com/*' => Http::response([
-            'tables' => [
-                ['id' => 'tbl1', 'name' => 'NJ'],
-                ['id' => 'tbl2', 'name' => 'CT'],
-            ],
-        ])]);
+        Http::fake([
+            // The BASES endpoint names the base; the TABLES endpoint names its
+            // tables. Two different calls, which is the whole point - reading
+            // only the second is what made me write "Airtable will not tell us
+            // what a base is called" into a docblock.
+            'api.airtable.com/v0/meta/bases' => Http::response([
+                'bases' => [
+                    ['id' => 'appOTHER00000000', 'name' => 'Somebody else'],
+                    ['id' => self::BASE, 'name' => 'Profit And Loss'],
+                ],
+            ]),
+
+            'api.airtable.com/*' => Http::response([
+                'tables' => [
+                    ['id' => 'tbl1', 'name' => 'NJ'],
+                    ['id' => 'tbl2', 'name' => 'CT'],
+                ],
+            ]),
+        ]);
     }
 }
