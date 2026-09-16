@@ -5,6 +5,9 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use App\Mail\AutomationMessage;
+use Illuminate\Support\Facades\Mail;
+use App\Support\Automations\ActionRunner;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
@@ -737,6 +740,88 @@ class AutomationEngineTest extends TestCase
 
         $this->assertFalse($trace['children'][0]['matched']);
         $this->assertFalse($trace['children'][1]['matched']);
+    }
+
+    /**
+     * The address comes from the EVENT, and a rule cannot name one.
+     *
+     * `sms.send` takes a typed destination and that is fine — the line and the
+     * A2P registration there are the tenant's own, so texting whoever they like
+     * is their consequence on their asset. This action sends on EzBizi's
+     * transport and EzBizi's sending identity, shared by every tenant, where one
+     * business's complaint rate suppresses sign-in and password-reset delivery
+     * for all of them. So the rule picks WHICH FIELD carries the address.
+     *
+     * THE THIRD CASE IS THE ONE THAT MATTERS. `valueFromEvent` reads the payload
+     * ONLY, unlike the condition evaluator, which falls through to the subject
+     * model. Falling through here would let a rule address mail to whatever
+     * attribute of the subject happened to share a name — an address the event
+     * never mentioned, which is exactly the reach this refuses. The subject
+     * below carries an `email` the payload does not, and it must not be used.
+     */
+    public function test_an_email_step_can_only_write_to_an_address_the_event_carried(): void
+    {
+        Mail::fake();
+
+        // Built through the API like makeJob() does, because `customers` has
+        // NOT NULL columns with no defaults that the controller fills in - a
+        // hand-made row here would be testing a customer the app cannot create.
+        $customerId = $this->as()->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $this->org['franchise']->id,
+            'name' => 'Subject Holder',
+            'email' => 'subject-model@example.test',
+        ])->assertCreated()->json('data.id');
+
+        $customer = $this->inTenant(fn () => Customer::findOrFail($customerId));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'email.received',
+            'payload'         => ['from_address' => 'enquirer@example.test', 'subject' => 'Hello'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $runner = app(ActionRunner::class);
+
+        $carried = $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => 'from_address', 'subject' => 'Re: {{ subject }}', 'body' => 'Thanks.'],
+            $event, null,
+        ));
+        $this->assertTrue($carried['ok'], $carried['detail'] ?? '');
+        $this->assertStringContainsString('enquirer@example.test', $carried['detail']);
+
+        $absent = $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => 'nothing_here', 'subject' => 'x', 'body' => 'y'],
+            $event, null,
+        ));
+        $this->assertFalse($absent['ok']);
+        $this->assertStringContainsString('nothing_here', $absent['detail'],
+            'the refusal must name the field - "no address" and "that field is not an address" '
+            .'send somebody to two different places');
+
+        // THE CONTROL FOR THE READ PATH: the subject HAS an email, the payload
+        // does not carry one, and the action must still refuse.
+        $fromSubject = $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => 'email', 'subject' => 'x', 'body' => 'y'],
+            $event, $customer,
+        ));
+        $this->assertFalse($fromSubject['ok'],
+            'reading the subject model would email an address the event never named');
+
+        // EXACTLY ONE, and to the address the EVENT carried. Counting is what
+        // makes the two refusals mean something: assertNothingSent() would have
+        // been wrong here - the first case is supposed to send - and asserting
+        // only that something was sent would pass if all three had gone out.
+        Mail::assertSent(AutomationMessage::class, 1);
+        Mail::assertSent(
+            AutomationMessage::class,
+            fn ($mail) => $mail->hasTo('enquirer@example.test'),
+        );
+        Mail::assertNotSent(
+            AutomationMessage::class,
+            fn ($mail) => $mail->hasTo('subject-model@example.test'),
+        );
     }
 
     /**

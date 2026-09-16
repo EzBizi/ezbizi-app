@@ -10,6 +10,9 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use Illuminate\Support\Facades\Cache;
+use App\Models\Company;
+use App\Mail\AutomationMessage;
 use App\Support\Inventory\InventoryItemStatus;
 use App\Support\Inventory\InventoryUnit;
 use App\Support\Fleet\VehicleFuelType;
@@ -96,6 +99,18 @@ class ActionRunner
      *
      * @var array<class-string<Model>, array<string, string>> model => field => label
      */
+    /**
+     * Per rule, per hour. SES keeps a larger cap across the whole business.
+     *
+     * The arithmetic rather than a feeling: a runaway CASCADE is already bounded
+     * by ACTION_BUDGET (50 actions per event) and MAX_DEPTH, so one event cannot
+     * produce unbounded mail. This is for volume across many events - a rule on
+     * job.status_changed for a company doing fifty jobs a day sits around two an
+     * hour, so this leaves two orders of magnitude of headroom and still stops a
+     * loop between two rules or a sync restating a thousand records.
+     */
+    private const EMAILS_PER_RULE_PER_HOUR = 100;
+
     private const WRITABLE = [
         Job::class => [
             'title' => 'Title',
@@ -320,6 +335,7 @@ class ActionRunner
             'voicemail.mark_dealt' => $this->markVoicemailDealt($event, $subject),
             'message.mark_dealt' => $this->markMessageDealt($event, $subject),
             'missed.create_job' => $this->createJobFromMissed($event, $subject),
+            'email.send' => $this->sendEmail($action, $event, $automation),
             'sms.send' => $this->sendSms($action, $event, $automation),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
@@ -685,6 +701,134 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * EzBizi's own mail, carrying words a tenant wrote, to somebody the EVENT named.
+     *
+     * ── Why the recipient is a field and not an address ──────
+     *
+     * `sms.send` takes a typed destination, and it is the one action anybody
+     * would have copied to build this. On SMS that is fine: the line and the
+     * reputation are the tenant's own Twilio number and their own A2P
+     * registration, so texting whoever they like is their consequence on their
+     * asset. Here the transport and the sending identity are EzBizi's, shared by
+     * every tenant, and a rule that can email an arbitrary address is a spam
+     * cannon with the platform's reputation behind it - one business's complaint
+     * rate suppresses sign-in and password-reset delivery for all of them.
+     *
+     * So the author picks WHICH FIELD OF THE EVENT carries the address, from the
+     * same list the condition builder offers. A rule can write to the customer
+     * the event is about. It cannot write to somebody named in the rule.
+     *
+     * ── Two caps, doing two different jobs ──────
+     *
+     * This one is PER RULE and its whole point is the sentence it writes: a rule
+     * that quietly half-sent for an hour is the failure this module has spent
+     * the week removing. SES keeps a second, larger cap across the whole
+     * business, because ten rules just under this one are still a thousand
+     * messages. Theirs is the backstop; this one is what somebody reads.
+     *
+     * Counted BEFORE the attempt and never given back. A message that reached
+     * SES and bounced has already spent the reputation the cap protects, so a
+     * rule failing every time must still run out.
+     */
+    private function sendEmail(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'email.send';
+        $field = trim((string) ($action['to_field'] ?? ''));
+        $subject = trim((string) ($action['subject'] ?? ''));
+
+        if ($field === '' || $subject === '' || trim((string) ($action['body'] ?? '')) === '') {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step needs a field to send to, a subject and a message.',
+            ];
+        }
+
+        $to = $this->valueFromEvent($field, $event);
+
+        if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+            return [
+                'type' => $type, 'ok' => false,
+                // Names the field, because "no address" and "that field held
+                // something that is not an address" send somebody to two
+                // different places - the rule, or the record.
+                'detail' => $to === null || $to === ''
+                    ? "This event carried nothing in \"{$field}\", so there was no address to send to."
+                    : "\"{$field}\" held ".json_encode($to).', which is not an email address.',
+            ];
+        }
+
+        if ($automation !== null && ! $this->withinRuleAllowance($automation)) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This rule has sent '.self::EMAILS_PER_RULE_PER_HOUR.' emails in the last '
+                    .'hour, which is its limit. It will send again on the hour.',
+            ];
+        }
+
+        try {
+            $this->mail->platformForTenant(
+                $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
+                new AutomationMessage(
+                    subjectLine: $this->interpolate($subject, $event, null),
+                    body: $this->interpolate((string) $action['body'], $event, null),
+                    businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
+                ),
+                $to,
+            );
+        } catch (CannotSendMail $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.emailed', $event, metadata: ['to' => $to]);
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$to}: {$subject}"];
+    }
+
+    /**
+     * The field's value from the EVENT only - never from the subject model.
+     *
+     * {@see ConditionEvaluator::valueOf} falls through to the subject when the
+     * payload does not carry a field, which is right for a condition: the rule
+     * is asking about a record. It is wrong HERE. Falling through would let a
+     * rule address mail to whatever attribute of the subject happened to share a
+     * name, which is an address the event never mentioned - exactly the reach
+     * this action exists to refuse.
+     */
+    private function valueFromEvent(string $field, AutomationEvent $event): mixed
+    {
+        $payload = $event->payload ?? [];
+
+        return $payload['after'][$field] ?? $payload[$field] ?? null;
+    }
+
+    private function withinRuleAllowance(Automation $automation): bool
+    {
+        $key = 'automation-email:'.$automation->getKey().':'.now()->format('YmdH');
+
+        // add() is the atomic one: two workers draining the outbox at once would
+        // both read 0 and both write 1 with get()/put().
+        Cache::add($key, 0, now()->addHours(2));
+
+        return Cache::increment($key) <= self::EMAILS_PER_RULE_PER_HOUR;
+    }
+
+    /** The Organization, Company or Franchise the rule belongs to. */
+    private function scopeModelFor(?Automation $automation): ?Model
+    {
+        if ($automation === null) {
+            return null;
+        }
+
+        [$type, $id] = $automation->automationScope();
+
+        return match ($type) {
+            'company' => Company::find($id),
+            'franchise' => Franchise::find($id),
+            default => $automation->organization()->withoutGlobalScopes()->first(),
+        };
     }
 
     private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array

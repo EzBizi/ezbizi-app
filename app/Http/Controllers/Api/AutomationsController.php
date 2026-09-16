@@ -77,6 +77,7 @@ class AutomationsController extends Controller
         // Email's, three segments in the module so it does not arrive here as a
         // bare `mark_dealt` in the namespace every module shares.
         'message.mark_dealt',
+        'email.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
@@ -1395,6 +1396,34 @@ class AutomationsController extends Controller
             // rule, because this action is deliberately not bound to the
             // record the event was about — there is nothing to read them from
             // when the trigger is an email arriving.
+            /*
+             * EzBizi's own mail, carrying words a tenant wrote.
+             *
+             * Jose reversed the September ruling on 2026-09-16 and was explicit
+             * about which mail he meant: "Email ( the Ezbizi SES one, not the
+             * company one )". Several docblocks and three memories still argue
+             * the other way; they are the history of a decision taken the other
+             * direction, not instruction.
+             *
+             * THE RECIPIENT IS A FIELD OF THE EVENT, never an address typed on
+             * the rule, and that is the difference between this and `sms.send`
+             * directly below. On SMS the line and the reputation are the
+             * tenant's own Twilio number and their own A2P registration, so
+             * texting whoever they like is their consequence on their asset. On
+             * EzBizi's SES it is everybody's - one business's complaint rate
+             * suppresses sign-in and password-reset mail for every tenant. The
+             * two actions differ ON PURPOSE. Do not "fix" the inconsistency.
+             *
+             * No attachment parameter, and deliberately none rather than one
+             * that is accepted and ignored: an attachment from ezbizi.com on a
+             * message a tenant composed is a phishing vector wearing our domain.
+             */
+            $type('email.send', 'Send an email', false, [
+                $parameter('to_field', 'Send to the address in', 'trigger_field'),
+                $parameter('subject', 'Subject', 'text'),
+                $parameter('body', 'Message', 'rich_text'),
+            ]),
+
             $type('sms.send', 'Send a message', true, [
                 $parameter('number_id', 'Send from', 'phone_number'),
                 $parameter('to', 'Send to', 'text'),

@@ -217,6 +217,11 @@ class _ActionRow {
     'notify',
     'voicemail.mark_dealt',
     'missed.create_job',
+    // Generic rather than module_only, so it is offered through _genericItem -
+    // which gates on THIS set. Declared server-side without adding it here and
+    // the picker would have shown "Needs a newer version of the app" on a build
+    // that has the form, with nothing to explain it.
+    'email.send',
   };
 
   void dispose() {
@@ -1965,6 +1970,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
       'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
+      'email.send' => _parameterForm(row, widget.catalogue.actionType('email.send')),
       // Was the bespoke Message box below. It had to move in the same commit as
       // the server declaring the parameter: _payload() flips to the generic
       // branch on the first declared parameter and reads the PARAMETER
@@ -2053,6 +2059,40 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                       () => row.parameter(definition.parameters[i].key).text =
                           id ?? '',
                     ),
+            )
+          // WHICH FIELD OF THE EVENT CARRIES THE ADDRESS, from the same list
+          // the condition builder offers. Not a typed address: on EzBizi's own
+          // sending identity a rule that can email anywhere is a spam cannon
+          // with the whole platform's reputation behind it. `sms.send` takes a
+          // typed destination and that is deliberate — the line there is the
+          // tenant's own.
+          else if (definition.parameters[i].kind == 'trigger_field')
+            DropdownMenu<String>(
+              initialSelection:
+                  row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              enabled: !_busy && _triggerFields.isNotEmpty,
+              label: Text(definition.parameters[i].label),
+              expandedInsets: EdgeInsets.zero,
+              enableFilter: true,
+              requestFocusOnTap: true,
+              helperText: _triggerFields.isEmpty
+                  ? (_trigger == null
+                        ? 'Choose what sets the rule off first.'
+                        : 'Nothing of this kind has happened here yet, so there '
+                              'are no fields to choose from.')
+                  : null,
+              onSelected: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+              dropdownMenuEntries: [
+                for (final field in _triggerFields)
+                  DropdownMenuEntry<String>(value: field, label: field),
+              ],
             )
           else if (definition.parameters[i].kind == 'boolean')
             // A yes/no answer, drawn as a switch.
