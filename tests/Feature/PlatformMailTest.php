@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use RuntimeException;
@@ -566,6 +567,121 @@ class PlatformMailTest extends TestCase
         // Names the size, because "too large" alone gives somebody nothing to
         // aim at when they go to narrow the report.
         $this->assertMatchesRegularExpression('/\d+\.\dMB/', $refused->getMessage());
+    }
+
+    public function test_an_automation_email_goes_out_as_ezbizi_not_as_the_tenant(): void
+    {
+        /*
+         * THE case that distinguishes the reversal from the thing it reversed.
+         * Jose, 2026-09-16: "Email ( the Ezbizi SES one, not the company one )".
+         *
+         * A VERIFIED tenant identity is set up here on purpose. If this path
+         * ever consulted the cascade — which is what asTenant did and was
+         * retired for — this message would leave as info@a-1chimney.com. It must
+         * leave as EzBizi even though the tenant is fully configured, because
+         * the ruling is about whose transport carries it and the answer is ours.
+         */
+        $this->tenantIdentity(SendingState::Verified);
+
+        Mail::fake();
+
+        $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+            $this->company,
+            new PlatformNotice,
+            'customer@example.test',
+        ));
+
+        Mail::assertSent(
+            PlatformNotice::class,
+            fn (PlatformNotice $m) => $m->hasFrom('noreply@ezbizi.test'),
+        );
+    }
+
+    public function test_a_business_is_capped_per_hour_on_ezbizis_own_address(): void
+    {
+        /*
+         * The backstop, and it is NOT the cap somebody reads about. Automations
+         * enforces 100 per rule per hour with a legible line in the run log.
+         * This counts the whole business across every rule, because the thing
+         * being protected is shared SES reputation and ten rules at 99 each
+         * would pass their cap and still be a thousand messages.
+         *
+         * Same shape as the report size limit against the Email module's 3MB
+         * ceiling: the caller's number is the one a person reads, and this one
+         * exists so the platform is not relying on every caller to have
+         * remembered.
+         */
+        config(['mail.tenant_hourly_allowance' => 3]);
+        Cache::flush();
+        Mail::fake();
+
+        $send = fn () => $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+            $this->company,
+            new PlatformNotice,
+            'customer@example.test',
+        ));
+
+        // The control: everything up to the allowance goes. Without this the
+        // test below passes against a build that refuses the first one.
+        for ($i = 0; $i < 3; $i++) {
+            $send();
+        }
+
+        Mail::assertSentCount(3);
+
+        $refused = null;
+
+        try {
+            $send();
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'The allowance was exceeded and nothing refused.');
+        $this->assertStringContainsString('automated emails in the last hour', $refused->getMessage());
+
+        // Nothing left after the refusal — the send is not attempted and then
+        // apologised for.
+        Mail::assertSentCount(3);
+
+        // And the way out is named, because a cap with no remedy is a dead end.
+        $this->assertStringContainsString('its own mail server', $refused->getMessage());
+    }
+
+    public function test_the_cap_counts_a_business_and_not_the_whole_platform(): void
+    {
+        /*
+         * The case that can tell a per-TENANT counter from a global one. A
+         * global counter passes the test above just as happily and would stop
+         * one busy business from sending everybody else's automated mail — a
+         * refusal nobody could act on, in a shared resource nobody can see.
+         */
+        config(['mail.tenant_hourly_allowance' => 1]);
+        Cache::flush();
+        Mail::fake();
+
+        $other = app(ProvisionOrganization::class)(
+            organizationName: 'Everdoors',
+            administrator: ['name' => 'Ev', 'email' => 'ev@everdoors.test', 'password' => 'a-real-password'],
+            companyName: 'Everdoors Co',
+            franchiseName: 'Hartford',
+        );
+
+        $send = fn ($org, $company) => app(TenantContext::class)->run(
+            $org,
+            fn () => app(MailDispatcher::class)->platformForTenant(
+                $company,
+                new PlatformNotice,
+                'customer@example.test',
+            ),
+        );
+
+        $send($this->org, $this->company);
+
+        // A-1 Chimney has spent its allowance. Everdoors has not.
+        $send($other['organization'], $other['company']);
+
+        Mail::assertSentCount(2);
     }
 
     public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void

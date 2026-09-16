@@ -2,6 +2,7 @@
 
 namespace App\Support\Mail;
 
+use App\Mail\AutomationMessage;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Organization;
@@ -12,24 +13,36 @@ use App\Support\Email\ImapReplySender;
 use App\Support\Email\RemoteHostGuard;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Mail\Mailable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 
 /**
  * The one place a message is given a From, and the one place that is refused.
  *
- * ── Two doors, and they are different on purpose ─────────────────
+ * ── FOUR doors, and the differences are the whole design ─────────
  *
- * `platform()` is for anything EzBizi says to somebody as EzBizi: invitations,
- * password resets, every HR message. The owner was explicit about why —
- * "they are signing into our platform, it is the duty of the organizations to
- * explain how our software works to their employees" — so those never carry a
- * tenant's address, however the tenant has configured themselves. There is no
- * tenant lookup on that path at all, which is stronger than a lookup that
- * happens to be skipped: there is nothing to accidentally start consulting.
+ * This paragraph said "two doors" and described asTenant as the tenant path
+ * until 2026-09-16. Both halves went stale from changes made in this same file,
+ * which is why it now lists what exists rather than what it was designed as.
  *
- * `asTenant()` is for content the CUSTOMER authors — the newsletter the Marketing
- * module will eventually send. It resolves the §6 cascade, and it refuses when
- * the identity it lands on has not proved its domain.
+ * `platform()` — anything EzBizi says as EzBizi: invitations, password resets,
+ * every HR message. Jose: "they are signing into our platform, it is the duty of
+ * the organizations to explain how our software works to their employees." It
+ * takes NO scope, and that is load bearing: there is no tenant lookup on this
+ * path to accidentally start consulting.
+ *
+ * `platformForTenant()` — EzBizi's transport and From, carrying words a tenant
+ * wrote. Added when he reversed the September ruling: "Email ( the Ezbizi SES
+ * one, not the company one )". Separate from platform() so this traffic is
+ * countable and capped without touching mechanism mail.
+ *
+ * `throughTenantProvider()` — the tenant's OWN mail server. Our SES is not in
+ * the path at all. Reports and inspection reports go here.
+ *
+ * `asTenant()` — RETIRED, refuses unconditionally. It put a TENANT's address on
+ * OUR transport, which is a claim about who is writing that the transport
+ * cannot back. Kept as a refusal rather than deleted, so a caller gets a
+ * sentence instead of a fatal.
  *
  * ── Why the refusal is a throw ───────────────────────────────────
  *
@@ -128,6 +141,122 @@ class MailDispatcher
             .'password resets and joining messages, and only those.',
             $this->resolver->for($scope),
         );
+    }
+
+    /**
+     * EzBizi's transport and EzBizi's From, carrying words a TENANT wrote.
+     *
+     * Jose reversed the September ruling on 2026-09-16 and drew the line in his
+     * own words — "Email ( the Ezbizi SES one, not the company one )" — so an
+     * automation may now send on the platform's identity. That is the opposite
+     * of what {@see asTenant} was retired for and it does not reopen it:
+     * asTenant put a TENANT's address on our transport, which is a claim about
+     * who is writing. This puts EZBIZI's address on it and says in the body who
+     * actually wrote.
+     *
+     * ── Why this is not just platform() ──────────────────────────
+     *
+     * platform() has no tenant lookup in it at all, and its docblock argues that
+     * this is stronger than a lookup which happens to be skipped: there is
+     * nothing to accidentally start consulting. Sign-in, password-reset and
+     * invitation mail keep that property. This method is where a scope is known,
+     * so tenant-authored traffic is countable and suppressible on its own rather
+     * than being indistinguishable from an invitation.
+     *
+     * That separation is not tidiness. SES reputation is shared across the whole
+     * platform, so one business's complaint rate can suppress everybody's
+     * sign-in mail — and today NOTHING receives SES bounce or complaint
+     * notifications and NOTHING consults a suppression list. Measured, not
+     * assumed: no route, no table, no check. Until that exists, the cap below
+     * and the refusals in {@see AutomationMessage} are doing the work
+     * monitoring would otherwise do.
+     *
+     * @param  Organization|Company|Franchise  $scope
+     *
+     * @throws CannotSendMail when this business has sent its hourly allowance
+     */
+    public function platformForTenant(Model $scope, Mailable $message, string|array $to): void
+    {
+        $this->withinHourlyAllowance($scope);
+
+        $identity = $this->platform->identity();
+
+        /*
+         * Attribution WITHOUT a header the recipient can read.
+         *
+         * SES message tags need a configuration set to reach CloudWatch, and
+         * naming one that does not exist gets the message REJECTED — so the
+         * header only goes on when one is configured. Nothing is configured
+         * today, which is why this is a condition rather than a constant.
+         *
+         * No X-EzBizi-Tenant header: a recipient reads headers, and an internal
+         * id in one is a leak that buys us nothing we cannot get from the
+         * counter below.
+         */
+        $configurationSet = (string) config('mail.ses_configuration_set', '');
+
+        if ($configurationSet !== '') {
+            $message->withSymfonyMessage(function ($symfony) use ($configurationSet, $scope) {
+                $symfony->getHeaders()->addTextHeader('X-SES-CONFIGURATION-SET', $configurationSet);
+                $symfony->getHeaders()->addTextHeader(
+                    'X-SES-MESSAGE-TAGS',
+                    'source=automation,scope='.$this->resolver->scopeTypeOf($scope),
+                );
+            });
+        }
+
+        $this->handOver($identity, $message, $to);
+    }
+
+    /**
+     * Has this business already sent everything it may in the last hour?
+     *
+     * A BACKSTOP, not the main cap. Automations enforces 100 per rule per hour
+     * with a legible refusal in the run log, which is where somebody looking at
+     * a rule will find out why. This counts the whole business across every
+     * rule, because the thing being protected is shared SES reputation and ten
+     * rules at 99 each would pass their cap and still be a thousand messages.
+     *
+     * Same shape as the report size limit and the Email module's 3MB ceiling:
+     * the caller's number is the one a person reads, and this one exists so the
+     * platform is not relying on every caller to have remembered.
+     *
+     * Deliberately generous. A refusal here is a customer's automation not
+     * firing, so the number is set where no honest rule reaches it and a loop
+     * still stops. Config, so it can be moved without a deploy.
+     */
+    private function withinHourlyAllowance(Model $scope): void
+    {
+        $allowance = (int) config('mail.tenant_hourly_allowance', 500);
+
+        if ($allowance <= 0) {
+            return;
+        }
+
+        $key = 'mail:tenant-hour:'.$this->resolver->scopeTypeOf($scope)
+            .':'.$scope->getKey().':'.now()->format('YmdH');
+
+        /*
+         * Counted BEFORE the send and never rolled back on failure. A message
+         * that reached SES and bounced has already cost the reputation this
+         * protects, so a failed send has to count — the alternative is a loop
+         * that fails every time and is therefore never capped.
+         */
+        $sent = Cache::increment($key);
+
+        if ($sent === 1) {
+            Cache::put($key, 1, now()->addHours(2));
+        }
+
+        if ($sent > $allowance) {
+            throw new CannotSendMail(sprintf(
+                'This business has sent %d automated emails in the last hour, which is the '
+                .'most EzBizi sends on its own address for one business. Nothing was sent. '
+                .'Automations that email a lot of people need the business to have its own '
+                .'mail server connected under Settings, Mail server for sending.',
+                $allowance,
+            ));
+        }
     }
 
     /**
