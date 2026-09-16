@@ -203,6 +203,42 @@ void main() {
       expect(_sent, isEmpty);
     });
 
+    test('isRegistered stays false when the server refuses the token', () async {
+      // The flag the bell reads to stop drawing its own notification. It must
+      // mean "the server accepted our token", not "we have one" — a token the
+      // server never received is a device the server cannot reach, and
+      // suppressing on the strength of one trades a visible duplicate for
+      // silence.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns('a-real-token');
+
+      final api = ApiClient(
+        client: MockClient((request) async {
+          _sent.add({'path': request.url.path, 'body': request.body});
+          return http.Response('{"message":"nope"}', 500);
+        }),
+      );
+
+      await PushRegistration.start(api);
+
+      expect(_sent, hasLength(1), reason: 'it tried');
+      expect(PushRegistration.isRegistered, isFalse);
+    });
+
+    test('isRegistered becomes true only after an accepted POST', () async {
+      // The control. Without it the test above passes against a flag that is
+      // never set at all, which would suppress nothing and leave the duplicate
+      // in place.
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      mockApns('a-real-token');
+
+      expect(PushRegistration.isRegistered, isFalse, reason: 'before');
+
+      await PushRegistration.start(_api());
+
+      expect(PushRegistration.isRegistered, isTrue, reason: 'after');
+    });
+
     test('the apns channel is not touched on android', () async {
       // The control that keeps the two halves apart. Android must never reach
       // the Apple channel, and the reverse is already covered above.

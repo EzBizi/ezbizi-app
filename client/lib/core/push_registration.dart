@@ -48,6 +48,22 @@ class PushRegistration {
   static bool _androidListening = false;
   static bool _appleListening = false;
 
+  /// Has this device told the server where to reach it?
+  ///
+  /// Read by the bell, which stops drawing its own OS notification once this
+  /// is true — otherwise every notification appears TWICE while the app is
+  /// open: once from the poll seeing a new row, once from the push. Measured
+  /// on a real handset as two records in the shade, `tag=null` beside
+  /// `tag=FCM-Notification:`.
+  ///
+  /// Set only after the POST is ACCEPTED, not after a token is obtained. A
+  /// token the server never received is a device the server cannot reach, and
+  /// suppressing the local notification on the strength of one would be
+  /// silence rather than a duplicate.
+  static bool get isRegistered => _registered;
+
+  static bool _registered = false;
+
   /// Lets a test start from nothing. Static listener state outlives a test
   /// otherwise, and the second test of a pair then measures the first one's
   /// handler.
@@ -55,6 +71,7 @@ class PushRegistration {
   static void resetForTest() {
     _androidListening = false;
     _appleListening = false;
+    _registered = false;
   }
 
   /// Registers the current token, and keeps registering it when it rotates.
@@ -172,6 +189,10 @@ class PushRegistration {
 
     if (!response.ok) {
       debugPrint('push: register failed ${response.statusCode}');
+
+      return;
     }
+
+    _registered = true;
   }
 }
