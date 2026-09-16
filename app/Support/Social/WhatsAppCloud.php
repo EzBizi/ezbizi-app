@@ -109,41 +109,7 @@ final class WhatsAppCloud
         array $parameters = [],
         string $language = 'en_US',
     ): WhatsAppMessage {
-        $number = WhatsAppNumber::query()->first();
-
-        if ($number === null) {
-            throw new RuntimeException(
-                'No WhatsApp number is attached to this organization, so there is nothing to '
-                .'send from.'
-            );
-        }
-
-        /*
-         * Reused rather than rewritten, and from a Thumbtack class on purpose:
-         * it already returns null instead of guessing, and a second normaliser
-         * is a second set of rules about what "10 digits" means. A wrong number
-         * here sends a customer's booking confirmation to a stranger's handset.
-         */
-        $e164 = ThumbtackAssociatePhoneNumbers::e164($recipient);
-
-        if ($e164 === null) {
-            throw new RuntimeException(
-                'That is not a phone number WhatsApp can be sent to, so nothing was sent.'
-            );
-        }
-
-        $row = WhatsAppMessage::create([
-            'organization_id' => $number->organization_id,
-            'phone_number_id' => $number->phone_number_id,
-            'direction' => WhatsAppMessage::DIRECTION_OUT,
-            // Meta wants the digits without the `+`, and every inbound `from`
-            // it sends us is in that shape too - so both directions of a
-            // conversation key the same way and thread together.
-            'counterparty' => ltrim($e164, '+'),
-            'status' => WhatsAppMessage::STATUS_QUEUED,
-            'kind' => 'template',
-            'template_name' => $template,
-        ]);
+        $row = $this->rowFor($recipient, $template, 'template');
 
         return $this->sendTemplate($row, $template, $language, array_map('strval', $parameters));
     }
@@ -241,6 +207,120 @@ final class WhatsAppCloud
             'to' => $row->counterparty,
             'type' => 'text',
             'text' => ['preview_url' => false, 'body' => $text],
+        ]);
+    }
+
+    /**
+     * A PDF (or any document) attached to a template, by link. Row and all.
+     *
+     * ── Why this is a TEMPLATE and not a document message ────────
+     *
+     * Meta does have a plain `type: document` message, and it is the obvious
+     * thing to reach for. It is also free-form, which means it is refused
+     * outside the 24-hour window exactly like `sendText` is. A scheduled
+     * financial report is by definition business-initiated, so the plain
+     * document message would work when tested right after somebody wrote in,
+     * and fail every Monday morning it actually ran.
+     *
+     * A document rides as the template's HEADER instead. That needs a template
+     * whose header format is DOCUMENT - a TEXT-header template cannot carry
+     * one, and Meta refuses the send rather than dropping the attachment.
+     *
+     * ── By link, so there is no upload step ──────────────────────
+     *
+     * Meta fetches the URL itself. It must be publicly reachable and it must
+     * answer `application/pdf`; a login page or an HTML error page is fetched
+     * happily and arrives as a broken attachment. The alternative is uploading
+     * for a media id first, which is a second call and an id that expires.
+     *
+     * `filename` is what the recipient sees and what they get if they save it.
+     * Left out, WhatsApp shows the URL's last path segment, which for a signed
+     * link is a long meaningless token.
+     *
+     * @param  array<int, string|int|float>  $parameters  fills the BODY's {{1}}, {{2}}
+     *
+     * @throws RuntimeException on the same three cases as send()
+     */
+    public function sendDocument(
+        string $template,
+        string $recipient,
+        string $link,
+        string $filename,
+        array $parameters = [],
+        string $language = 'en_US',
+    ): WhatsAppMessage {
+        $row = $this->rowFor($recipient, $template, 'document');
+
+        return $this->deliver($row, [
+            'messaging_product' => 'whatsapp',
+            'to' => $row->counterparty,
+            'type' => 'template',
+            'template' => [
+                'name' => $template,
+                'language' => ['code' => $language],
+                'components' => [
+                    [
+                        'type' => 'header',
+                        'parameters' => [[
+                            'type' => 'document',
+                            'document' => ['link' => $link, 'filename' => $filename],
+                        ]],
+                    ],
+                    ...($parameters === [] ? [] : [[
+                        'type' => 'body',
+                        'parameters' => array_map(
+                            fn ($p) => ['type' => 'text', 'text' => (string) $p],
+                            array_values($parameters),
+                        ),
+                    ]]),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * The row every outbound send starts from, written before the attempt.
+     *
+     * Shared by send() and sendDocument() rather than copied: the three facts
+     * it encodes - provider id not display number, digits with no `+`, written
+     * first - are the ones a second copy would drift on.
+     */
+    private function rowFor(string $recipient, string $template, string $kind): WhatsAppMessage
+    {
+        $number = WhatsAppNumber::query()->first();
+
+        if ($number === null) {
+            throw new RuntimeException(
+                'No WhatsApp number is attached to this organization, so there is nothing to '
+                .'send from.'
+            );
+        }
+
+        /*
+         * Reused rather than rewritten, and from a Thumbtack class on purpose:
+         * it already returns null instead of guessing, and a second normaliser
+         * is a second set of rules about what "10 digits" means. A wrong number
+         * here sends a customer's booking confirmation to a stranger's handset.
+         */
+        $e164 = ThumbtackAssociatePhoneNumbers::e164($recipient);
+
+        if ($e164 === null) {
+            throw new RuntimeException(
+                'That is not a phone number WhatsApp can be sent to, so nothing was sent.'
+            );
+        }
+
+        return WhatsAppMessage::create([
+            'organization_id' => $number->organization_id,
+            'phone_number_id' => $number->phone_number_id,
+            'direction' => WhatsAppMessage::DIRECTION_OUT,
+            // Meta wants the digits without the `+`, and every inbound `from`
+            // it sends us is in that shape too - so both directions of a
+            // conversation key the same way and thread together.
+            'counterparty' => ltrim($e164, '+'),
+            'status' => WhatsAppMessage::STATUS_QUEUED,
+            'kind' => $kind,
+            'template_name' => $template,
         ]);
     }
 

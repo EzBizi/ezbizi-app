@@ -200,4 +200,91 @@ class WhatsAppSendTest extends TestCase
                 && $p[1] === ['type' => 'text', 'text' => '4182.6'];
         });
     }
+
+    public function test_a_document_rides_as_a_template_header_not_as_a_document_message(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->sendDocument(
+            'report_document',
+            '13057242199',
+            'https://app.ezbizi.com/reports/week-37.pdf',
+            'A-1 Chimney week 37.pdf',
+            ['Sep 8 - Sep 14', 'A-1 Chimney'],
+        ));
+
+        Http::assertSent(function ($request) {
+            $body = $request->data();
+
+            /*
+             * The assertion that can distinguish. Meta HAS a `type: document`
+             * message and it is the obvious thing to build - but it is
+             * free-form, so it is refused outside the 24-hour window exactly
+             * like text is. A scheduled report is always outside it. Sending
+             * one would pass any test written right after a customer messaged
+             * in, and fail every Monday it actually ran.
+             */
+            if (($body['type'] ?? null) !== 'template') {
+                return false;
+            }
+
+            $header = $body['template']['components'][0];
+
+            return $header['type'] === 'header'
+                && $header['parameters'][0]['type'] === 'document'
+                && $header['parameters'][0]['document']['link'] === 'https://app.ezbizi.com/reports/week-37.pdf'
+                // The name the recipient sees and saves. Left out, WhatsApp
+                // shows the URL's last path segment, which for a signed link
+                // is a meaningless token.
+                && $header['parameters'][0]['document']['filename'] === 'A-1 Chimney week 37.pdf';
+        });
+    }
+
+    public function test_the_document_body_parameters_follow_the_header(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+        $this->metaAccepts();
+
+        $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->sendDocument(
+            'report_document', '13057242199', 'https://x/y.pdf', 'y.pdf', ['week 37', 'A-1'],
+        ));
+
+        Http::assertSent(function ($request) {
+            $components = $request->data()['template']['components'];
+
+            // Order matters to Meta: header first, then body. A body component
+            // sitting first is refused rather than reordered.
+            return $components[0]['type'] === 'header'
+                && $components[1]['type'] === 'body'
+                && $components[1]['parameters'][0]['text'] === 'week 37';
+        });
+    }
+
+    public function test_a_document_send_writes_its_row_before_the_attempt_too(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->numberBelongsTo($t);
+
+        Http::fake(fn () => throw new ConnectionException('timed out'));
+
+        try {
+            $this->inTenant($t['org'], fn () => app(WhatsAppCloud::class)->sendDocument(
+                'report_document', '13057242199', 'https://x/y.pdf', 'y.pdf',
+            ));
+        } catch (RuntimeException) {
+            // expected
+        }
+
+        // The same outbox guarantee as send(). Both now go through one row
+        // builder, and this is what proves the document path did not grow its
+        // own copy that forgets to write first.
+        $row = WhatsAppMessage::query()->withoutGlobalScopes()->first();
+
+        $this->assertNotNull($row);
+        $this->assertSame(WhatsAppMessage::STATUS_QUEUED, $row->status);
+        $this->assertSame('document', $row->kind);
+    }
 }
