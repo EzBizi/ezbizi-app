@@ -12,6 +12,7 @@ class VersionHistory {
       date: '16 Sep 2026',
       items: [
         'An automation rule can now test words against the body of an arriving email - the words the rule itself already contains, never the message. This is what a Missed Call rule needs, because RingCentral writes Status: Missed in the body and nowhere else.',
+        'When an automation does not run, the log now says whether the arriving event carried that field at all, instead of reporting a wrong field name and a value that did not match in the same words. Five versions of one rule failed silently for the same reason and it was unreadable every time.',
         'Disconnecting an advertising account now takes its enquiries off the Leads list until it is connected again. Nothing is deleted, and reconnecting brings them back.',
         'Templates on a website: text written once and used on as many pages as want it.',
         'All inboxes shows a count rather than repeating the list of mailboxes below it.',
