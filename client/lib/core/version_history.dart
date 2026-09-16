@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0231',
+      date: '16 Sep 2026',
+      items: [
+        'Clicking a New Live Chat Lead notification now opens Leads already narrowed to website chat, instead of the dashboard.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0230',
       date: '16 Sep 2026',
       items: [
