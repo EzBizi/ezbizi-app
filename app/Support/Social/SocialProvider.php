@@ -219,6 +219,29 @@ enum SocialProvider: string
      *
      * The rule is that the permission follows the module that USES the
      * connection, because that is who can tell whether it is the right account.
+     *
+     * ── Several of these arms are not Marketing's to decide ─────────
+     *
+     * The file is Marketing's; `leads.edit`, `reviews.edit`, `reports.build`
+     * and `newsletter.send` are those modules' semantics sitting in it. That is
+     * deliberate — ONE place answers "what does Connect need", and a second map
+     * elsewhere is a second map that drifts into a wrong control on a
+     * customer's screen with nothing failing. **Changing an arm is its own
+     * module's to make, and an edit here from another module is not a stranger
+     * in this file.** Reports moved the Airtable arm on 2026-09-16 by applying
+     * the rule above rather than inventing one, which is the mechanism working.
+     *
+     * ── What makes an arm go wrong, and it is not this file changing ─
+     *
+     * An arm names a permission that opened the reading screen WHEN IT WAS
+     * WRITTEN. The screen can move behind a narrower grant later and nothing
+     * here fails: per-tab permissions (2026-09-17) put every module's panes
+     * behind `{module}.{tab}.view`, so an arm naming `{module}.edit` can now be
+     * held by somebody who cannot open the tab that reads the account. Airtable
+     * was exactly that and was caught. **When a module declares tabs, re-read
+     * its arm here** — the drift is silent in both directions, offering Connect
+     * to somebody who cannot see what it connects, and refusing it to the
+     * person who reads the thing every day.
      */
     public function connectPermission(): string
     {
