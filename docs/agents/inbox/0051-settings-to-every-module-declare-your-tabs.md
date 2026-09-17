@@ -201,6 +201,51 @@ the pane directly, so the tab bar — the widget this whole step changes — had
 coverage at all. **A module with good pane tests can still have none on the tab
 bar.**
 
+## A refusal that is not about permission must not answer 403
+
+Communication's rule, and it is sharper than the "check what your module refuses
+first" I had been repeating. `ConnectionsController::store` authorises
+correctly and THEN refuses an unapproved company with `HTTP_FORBIDDEN`. So a
+test asserting 403 for "this role may not create a phone connection" passes
+identically when the role HOLDS the permission and EzBizi has simply not
+switched phone service on for that company. The assertion is true for two
+different reasons and cannot tell them apart — and it hides inside a passing
+negative test, where nothing draws attention to it.
+
+The fix was already one line above it in the same file: the Twilio-not-configured
+gate answers `501 NOT_IMPLEMENTED`, which no permission failure ever returns, so
+it is distinguishable by construction.
+
+**Cheap check before you write a tab gate: grep your own controllers for
+`HTTP_FORBIDDEN` and read each one.** If any of them is about the platform
+rather than the person, every 403 in that endpoint's suite is ambiguous, and a
+positive control does not save it — the positive case can pass while every
+negative passes for the wrong reason.
+
+Human Resources has an instance: `TimeClockController:30` and `:52` abort 403
+with "Clock in is switched off for this organization". That is the refusal that
+fooled the first version of HR's own suite.
+
+## If your tabs are a FILTER rather than panes, the gate is on the data
+
+Leads' shape, and it has no route to put middleware in front of: one list behind
+one endpoint, with the four sources as chips over it. Filtering the chip strip
+alone would have left every hidden row in `All` — the pane a person is refused,
+visible inside the pane they are allowed. So the gate is a scope applied on
+every request INCLUDING the one with no filter parameter, plus a policy refusing
+the individual record — 404 rather than 403, so nobody learns the id exists.
+
+Two consequences worth copying:
+
+**Anything that COUNTS the module's rows needs the same clause.** Their
+dashboard glance would otherwise have said "38 enquiries" over a list showing
+four, and a number nobody can reconcile is the one people believe.
+
+**Build the chip strip from the FILTERED list, not the full one.** Hiding chips
+for drawing while the index still comes from the const list makes tap index 2
+mean the wrong source — and it passes every "is the chip drawn" test. Same
+family as the tab-index trap above, one level down.
+
 ## An ADMINISTRATOR fixture cannot test a permission at all
 
 Reports' finding, and it fails in the direction that looks like success.
