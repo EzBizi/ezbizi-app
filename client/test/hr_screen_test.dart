@@ -90,6 +90,70 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
+  /// The module granted, and not one tab inside it.
+  ///
+  /// Not a hypothetical and not a stale fixture. Measured 2026-09-17 against
+  /// the server: `hr.view` is offered in the roles editor as its own tick,
+  /// beside the seven tabs and independent of them, and a user holding exactly
+  /// `hr.view` comes back from PermissionCatalogue::modulesFor as
+  /// `reachable: true`. Human Resources is in their navigation and every tab
+  /// inside it is filtered out.
+  ///
+  /// The migration that introduced per-tab grants gave all seven to every role
+  /// that already held `hr.view`, so nobody lost a tab that morning — but it
+  /// cannot reach a role created after it ran, and ticking the module without
+  /// ticking a tab makes this.
+  ///
+  /// Before this, the answer was a blank pane: no chips, no content, nothing
+  /// logged, and a person deciding the product is broken when it is doing what
+  /// somebody configured.
+  testWidgets('hr.view with no tab granted says so instead of drawing nothing', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(me: {..._me, 'permissions': const ['hr.view']}),
+    );
+
+    expect(_chips(tester), isEmpty);
+    expect(
+      find.text('No part of Human Resources has been opened to you yet.'),
+      findsOneWidget,
+    );
+
+    // Names the place, and says it is not theirs to change — the two things a
+    // person in this state cannot work out from an empty screen.
+    expect(
+      find.textContaining('Settings › Roles & permissions'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('nothing here is broken'), findsOneWidget);
+  });
+
+  /// And one tab is enough to be an ordinary screen again.
+  ///
+  /// The control for the test above: without it, a bug that drew the empty
+  /// state whenever anything was missing would pass it. This is also the case
+  /// Jose asked for — "i want them to see their work hours, but not the
+  /// onboarding information".
+  testWidgets('one tab granted draws that tab and nothing else', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        me: {..._me, 'permissions': const ['hr.view', 'hr.records.view']},
+      ),
+    );
+
+    expect(_chips(tester), ['Records']);
+    expect(
+      find.text('No part of Human Resources has been opened to you yet.'),
+      findsNothing,
+    );
+    expect(find.text('Jose Silva'), findsOneWidget);
+  });
+
   /// Certifications is a sentence on the one HR card, not a fifth panel.
   testWidgets('the certifications sentence is on the one HR card', (
     tester,

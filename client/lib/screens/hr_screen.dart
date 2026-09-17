@@ -190,8 +190,70 @@ class _HrScreenState extends State<HrScreen> {
     _shown.add(tab);
   });
 
+  /// `hr.view` and not one tab inside it — a blank module, said out loud.
+  ///
+  /// ── This state is reachable by a role somebody makes tomorrow ────
+  ///
+  /// Measured on 2026-09-17 rather than assumed: `hr.view` is offered in the
+  /// roles editor as its own tick, beside the seven tabs and independent of
+  /// them, and a user holding exactly `hr.view` comes back from
+  /// `PermissionCatalogue::modulesFor` as `reachable: true`. So Human Resources
+  /// is in their navigation and every tab inside it is filtered out — a pane
+  /// with nothing in it and no error anywhere.
+  ///
+  /// The migration that introduced tabs granted all seven to every role that
+  /// already held `hr.view`, so nobody lost a tab that morning. It cannot cover
+  /// a role created after it ran, and an administrator who ticks Human
+  /// Resources without ticking a tab has made exactly this.
+  ///
+  /// So the screen says which of the two it is. A blank pane reads as broken
+  /// software and sends somebody hunting through a product that is working as
+  /// configured; this names the cause and the place it is changed, and — the
+  /// part that matters for the person reading it — says plainly that they
+  /// cannot fix it themselves.
+  Widget _noTabGranted(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'No part of Human Resources has been opened to you yet.',
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'The tabs inside this module are granted one at a time — Work '
+                'Hours, Records, Onboarding and the rest — and none of them is '
+                'on your role.',
+                style: theme.textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Somebody who can edit roles adds them under Settings › Roles & '
+                'permissions. This is not something you can turn on for '
+                'yourself, and nothing here is broken.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_tabs.isEmpty) return _noTabGranted(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
