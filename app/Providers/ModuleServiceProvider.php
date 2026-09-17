@@ -1902,6 +1902,42 @@ class ModuleServiceProvider extends ServiceProvider
                  * automations keyed on `lead.*` are untouched.
                  */
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                /*
+                 * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
+                 * be able to grant access by sub tab as well ... so this applies
+                 * to every tab and it's sub tabs".
+                 *
+                 * The keys are the WIRE VALUES of `leads.source`, not prettier
+                 * names, because the same four strings are the query parameter,
+                 * the column and the client's chip list. A fifth spelling here
+                 * would be a fifth thing to keep in step, and the one that drifts
+                 * is always the one only a permission reads.
+                 *
+                 * The labels are the words the chip strip actually draws -
+                 * "Google", not "Google Ads"; "Chat", not "Website chat" -
+                 * copied from `_sourceChips` rather than written fresh. An
+                 * administrator who ticks a name they cannot then find on screen
+                 * has been told the name wrongly, and nothing errors.
+                 *
+                 * ── These are not tabs the way HR's are ──────────────
+                 *
+                 * HR's tabs are panes behind their own routes, so a route-level
+                 * `permission:` gate is the whole enforcement. Leads has ONE
+                 * list and one endpoint; the chips are a filter on it. Hiding a
+                 * chip while `All` still returns Thumbtack rows would be a
+                 * decoration rather than a permission - the pane a person is
+                 * refused would be visible in the pane they are allowed.
+                 *
+                 * So the gate is a DATA filter in LeadsController, applied to
+                 * every request including All, and `show()` refuses a single
+                 * lead of a source the reader cannot see. See visibleSources().
+                 */
+                tabs: [
+                    new TabDefinition('local_services', 'Google'),
+                    new TabDefinition('thumbtack', 'Thumbtack'),
+                    new TabDefinition('website_chat', 'Chat'),
+                    new TabDefinition('website_form', 'Forms'),
+                ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
                  * THREE record types, not one, and the other two are why this
@@ -2722,6 +2758,31 @@ class ModuleServiceProvider extends ServiceProvider
                 // stays a human act. The exemption is about actions only — the
                 // trigger below is not a rule writing a rule, it is a clock.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+                /*
+                 * TWO TABS, AND THEY ARE TWO DIFFERENT THINGS TO BE TRUSTED WITH.
+                 *
+                 * Jose, 2026-09-17, relayed with the rest: *"i should be able to
+                 * grant access by sub tab as well ... so this applies to every
+                 * tab and it's sub tabs"*.
+                 *
+                 * The split here is not cosmetic. BUILD is a construction
+                 * surface — the catalogue tells somebody every trigger and
+                 * action this installation can perform, which is a map of the
+                 * whole system. YOUR AUTOMATIONS is a reading surface, and a run
+                 * log names the records a rule touched, which is the disclosure
+                 * half: a person who may read runs can learn about records they
+                 * could not open directly.
+                 *
+                 * Labels are the tab bar's own words, copied from
+                 * automations_screen.dart rather than written fresh — an
+                 * administrator who ticks a name and then cannot find that tab
+                 * has been handed a checkbox for something they were told the
+                 * wrong name for, and nothing errors.
+                 */
+                tabs: [
+                    new TabDefinition('rules', 'Your automations'),
+                    new TabDefinition('build', 'Build'),
+                ],
                 emits: [Automation::class],
                 triggers: [
                     /*

@@ -1721,12 +1721,31 @@ Route::prefix('v1')
         //
         // The catalogue route sits BEFORE the resource, or /automations/catalogue
         // binds as an automation id and 404s.
-        Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
-        // Before the resource for the same reason catalogue is — `trigger-fields`
-        // would otherwise bind as an automation id and 404.
-        Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
-        // Before the resource for the third time, same trap.
-        Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
+        /*
+         * THE BUILD TAB'S OWN ENDPOINTS, gated as the tab is.
+         *
+         * These three are what the builder is made of and nothing else uses
+         * them: the catalogue is a map of every trigger and action this
+         * installation can perform, `trigger-fields` reports what an event
+         * carries, and the templates list is Meta's approved set. A hidden tab
+         * whose endpoints still answer is a decoration, and the URL is one paste
+         * away from anybody who has ever seen the pane.
+         *
+         * NOT APPLIED TO THE REST OF THE BLOCK. `index`, `show`, `runs`,
+         * `update` and `destroy` serve the LIST tab — switching a rule off and
+         * reading its runs are things a person may do without being allowed to
+         * write one — and they already answer to AutomationPolicy. A blanket
+         * middleware here would take the list away from everybody who was only
+         * ever meant to lose the builder.
+         */
+        Route::middleware('permission:automations.build.view')->group(function () {
+            Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
+            // Before the resource for the same reason catalogue is —
+            // `trigger-fields` would otherwise bind as an automation id and 404.
+            Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
+            // Before the resource for the third time, same trap.
+            Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
+        });
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
         // Separate from `test` on purpose: that one rehearses and performs
