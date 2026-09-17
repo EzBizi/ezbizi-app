@@ -427,6 +427,38 @@ grants every tab to every role already holding the module's view, and it is
 runs after your declaration. If your tabs land in a later deploy than that
 migration, copy it with a new timestamp; do not edit the spent one.
 
+**WRITE YOUR OWN COPY ANYWAY, AND DO NOT LET IT RE-DERIVE.** Inspection's
+argument, and it is stronger than the instruction above. 090000 is
+registry-derived AT EXECUTION: run it against a tree that does not yet carry
+your declaration and it grants nothing for your module, marks itself run, and
+never looks again. Your declaration then arrives and every existing role holds
+none of your tab keys — and the client filters on exactly those, so every tab
+vanishes at once, silently, in the direction nobody notices.
+
+Not hypothetical: their declaration was blocked out of main for hours by another
+module's uncommitted lines while 090000 sat Pending and deployable.
+
+So their copy hard-codes its own keys with `insertOrIgnore` rather than reading
+the registry, because **a copy that re-derives inherits the failure it insures
+against.** And they tested it against the PIVOT rather than the console output,
+because a migration that inserts nothing prints the same DONE as one that works.
+
+## A dirty shared file blocks everybody's merge, not just yours
+
+`git merge` refuses to touch a file with uncommitted changes. So while any
+session holds `routes/api.php` or `app/Providers/ModuleServiceProvider.php`
+dirty, nobody else can land their tabs — two modules queued behind that today,
+and the deploy desk held five branches for the same reason. **Commit those two
+files promptly rather than across a gate run**; a green suite you are still
+holding is somebody else's blocked merge.
+
+## A branch behind main fails peer tests for the wrong reason
+
+Inspection nearly reported having broken three peer suites. Their branch was 58
+commits behind, and the tests passed on main. **The control run is what separates
+staleness from breakage**, and a stale branch's red looks exactly like your
+change's red.
+
 The reason this matters more than it looks: a permission split fails silently in
 exactly one direction. Granting too much gets reported by whoever sees a pane
 they should not. NARROWING is somebody opening your module on Thursday to find
