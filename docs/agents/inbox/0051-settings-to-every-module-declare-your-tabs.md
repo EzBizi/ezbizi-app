@@ -106,6 +106,13 @@ prefix, and gating it refused a branch manager mid-invitation. Both were caught
 by existing suites within a minute. For routes like these the tab gate belongs
 beside the split already inside the controller, not in front of it.
 
+**The shape that proves it, from Clock In, once they moved their platform
+refusal off 403:** one test, one endpoint, three assertions — somebody without
+the tab gets 403 with `code: permission_denied`; somebody WITH the tab in an
+organization that has the feature switched off gets 409; then the switch goes on
+and the granted one gets through. The third line is the one that matters, and it
+is the one a permission suite never writes on its own.
+
 **Write the positive control first.** A role holding `hr.hours.view` was refused
 with *"Clock in is switched off for this organization"* — §2.1's platform layer
 answering before any permission is consulted. A suite of 403 assertions with no
