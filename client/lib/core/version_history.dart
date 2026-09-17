@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0234',
+      date: '17 Sep 2026',
+      items: [
+        'Work Hours is a week rather than a day: everyone in one list with their hours, searchable, with a green dot beside whoever is on the clock, and each person opening to their clock in-outs grouped by day with a total, days worked and an average. A day nobody worked still gets a heading rather than vanishing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0233',
       date: '17 Sep 2026',
       items: [
