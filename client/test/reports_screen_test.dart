@@ -36,7 +36,7 @@ void main() {
     await _pumpReports(
       tester,
       reports: [],
-      permissions: const ['reports.view'],
+      permissions: _runner,
     );
 
     expect(find.text('No reports built yet.'), findsOneWidget);
@@ -57,7 +57,7 @@ void main() {
     await _pumpReports(
       tester,
       reports: [_report],
-      permissions: const ['reports.view'],
+      permissions: _runner,
     );
 
     expect(find.text('New report'), findsNothing);
@@ -156,7 +156,7 @@ void main() {
     await _pumpReports(
       tester,
       reports: [_report],
-      permissions: const ['reports.view'],
+      permissions: _runner,
     );
 
     // Same rule as New report: absent, not disabled.
@@ -656,7 +656,7 @@ void main() {
     await _pumpReports(
       tester,
       reports: [_report],
-      permissions: const ['reports.view'],
+      permissions: _runner,
     );
 
     expect(find.widgetWithText(ChoiceChip, 'Reports'), findsOneWidget);
@@ -724,7 +724,78 @@ void main() {
     expect(find.text('New report'), findsNothing);
     expect(find.textContaining('built on a computer'), findsOneWidget);
   });
+  // ── each tab is its own grant (Jose, 2026-09-17) ───────────────
+
+  testWidgets('the Experimental chip needs its own grant, not reports.build', (
+    tester,
+  ) async {
+    // The carve-out Jose asked for: this person builds reports and is not
+    // thereby owed the pane that names every colleague's call performance.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [
+        'reports.view',
+        'reports.build',
+        'reports.library.view',
+        'reports.builder.view',
+      ],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+  });
+
+  testWidgets('the library chip is absent without the library grant', (
+    tester,
+  ) async {
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [
+        'reports.view',
+        'reports.build',
+        'reports.builder.view',
+      ],
+    );
+
+    // Absent, not disabled — the same rule as New report. A chip leading to a
+    // refusal tells somebody the app is for other people.
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsOneWidget);
+  });
+
+  testWidgets('a session that has not loaded yet draws no tabs', (
+    tester,
+  ) async {
+    // Absent `/me` answers NO. A null session is a load that has not finished,
+    // and the safe reading of "I do not know yet" is to draw nothing rather
+    // than everything — the failure here is silent and in the open direction.
+    await _pumpReports(
+      tester,
+      reports: [_report],
+      permissions: const [],
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'Reports'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Experimental'), findsNothing);
+  });
 }
+
+/// Somebody who may read reports and not build them.
+///
+/// Holds every TAB, because that is where the grant migration leaves an
+/// existing role: whoever could open the module keeps all of its panes, and an
+/// administrator narrows from there. Withholding `reports.build` is the whole
+/// point of the fixture, and keeping the tabs is what makes the Builder chip's
+/// absence a statement about the capability rather than about the tab.
+const _runner = [
+  'reports.view',
+  'reports.library.view',
+  'reports.builder.view',
+  'reports.experimental.view',
+];
 
 Future<void> _pumpReports(
   WidgetTester tester, {
@@ -732,6 +803,14 @@ Future<void> _pumpReports(
     'reports.view',
     'reports.build',
     'reports.export',
+
+    // The tabs, since 2026-09-17. Every chip is its own grant now, and a
+    // fixture without them draws a screen with no tabs at all — which is the
+    // correct behaviour and would make almost every test here assert the
+    // absence of something for the wrong reason.
+    'reports.library.view',
+    'reports.builder.view',
+    'reports.experimental.view',
   ],
   List<Map<String, dynamic>> reports = const [],
   List<Map<String, dynamic>> modules = const [],

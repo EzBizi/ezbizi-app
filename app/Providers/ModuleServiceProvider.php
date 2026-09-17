@@ -2891,6 +2891,46 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
                 actions: ['view', 'build', 'export'],
+
+                /*
+                 * ── THE TABS, and what a tab grant MEANS here ───────
+                 *
+                 * Jose, 2026-09-17: "i should be able to grant access by sub
+                 * tab as well ... so this applies to every tab and it's sub
+                 * tabs".
+                 *
+                 * In most modules a tab grant reads as "which pane opens". In
+                 * this one the panes are the same capability aimed at different
+                 * data, so it reads as WHICH FIGURES A ROLE MAY SEE - a
+                 * stronger claim, and the reason Experimental is the tab worth
+                 * having. It names every person who answered a phone, how long
+                 * they spent on it and how much of their work became jobs. That
+                 * is personnel performance, and somebody who builds reports
+                 * about jobs has no automatic business reading it.
+                 *
+                 * Labels copied from the chips in reports_screen.dart, not
+                 * written fresh: an administrator who ticks a box and then
+                 * cannot find a tab by that name has been told the name wrongly
+                 * and nothing errors.
+                 *
+                 * ── The other doors were checked, not assumed ───────
+                 *
+                 * A tab that hides figures is worth nothing if the same numbers
+                 * come out of another pane. Measured 2026-09-17: the report
+                 * builder reads ReportMap, which holds EzBizi's own records
+                 * only - no RingCentral calls, no Workiz jobs, and by written
+                 * commitment to Google no ads_performance resource. Profit and
+                 * loss is read live from Airtable and is its own module with
+                 * its own grant. So no tab here can be reached around by
+                 * building a report, and that is a fact about ReportMap rather
+                 * than about these three keys: it stops being true the day
+                 * anything external is stored in a resource the builder offers.
+                 */
+                tabs: [
+                    new TabDefinition('library', 'Reports'),
+                    new TabDefinition('builder', 'Builder'),
+                    new TabDefinition('experimental', 'Experimental'),
+                ],
                 actionRequires: [
                     'build' => ['reports.view'],
                     'export' => ['reports.view'],

@@ -55,7 +55,11 @@ class ExperimentalCallReportApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $builder = $this->userWithRole($tenant, 'Analyst', ['reports.build', 'reports.view']);
+        $builder = $this->userWithRole($tenant, 'Analyst', [
+            'reports.build',
+            'reports.view',
+            'reports.experimental.view',
+        ]);
 
         $this->notConnected();
 
