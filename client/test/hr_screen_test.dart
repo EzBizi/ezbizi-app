@@ -524,7 +524,7 @@ void main() {
       tester,
       _handler(
         onPostPerson: (path) => posted = path,
-        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset']},
+        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view']},
       ),
     );
 
@@ -552,7 +552,7 @@ void main() {
       tester,
       _handler(
         onPostPerson: (path) => posted = path,
-        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset']},
+        me: {..._me, 'permissions': ['hr.view', 'hr.edit', 'hr.security.reset', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view']},
       ),
     );
 
@@ -1249,7 +1249,7 @@ const _me = {
   // What the Records tab actually exercises. It held `hr.view` alone while the
   // screen checked nothing, so tests drove Deactivate and Change their role
   // through a role that could do neither.
-  'permissions': ['hr.view', 'hr.create', 'hr.edit'],
+  'permissions': ['hr.view', 'hr.create', 'hr.edit', 'hr.dashboard.view', 'hr.hours.view', 'hr.onboarding.view', 'hr.records.view', 'hr.invitations.view', 'hr.pto.view', 'hr.contracts.view'],
   'modules': [
     {'key': 'hr', 'label': 'Human Resources', 'available': true, 'reachable': true},
   ],

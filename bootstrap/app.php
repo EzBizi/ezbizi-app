@@ -26,6 +26,11 @@ return Application::configure(basePath: dirname(__DIR__))
             // yet (TODO #22).
             'verified'     => App\Http\Middleware\RequireVerifiedEmail::class,
 
+            // One permission key, asked in front of a route group. Written
+            // for per-tab grants (2026-09-17): a tab a role may not open must
+            // not merely be hidden, or the URL is the permission.
+            'permission'   => App\Http\Middleware\RequirePermission::class,
+
             // The two halves of §6's security policy that are enforced per
             // REQUEST rather than at sign-in. Both read a setting against the
             // caller's organization, and both do so through a helper that enters
