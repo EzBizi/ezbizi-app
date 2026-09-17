@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Access\Refusal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -303,6 +304,30 @@ class HrPeopleTest extends TestCase
 
     // ── the module gate ──────────────────────────────────────────
 
+    /**
+     * Two layers refuse this route, and a bare 403 stopped telling them apart.
+     *
+     * Since per-tab permissions (2026-09-17) `permission:hr.records.view`
+     * middleware sits in front of `UserPolicy::viewAny`, which asks for
+     * `hr.view`. The middleware is now STRICTLY STRONGER on this route:
+     * `PermissionCatalogue::withImpliedView` adds `hr.view` beside any granted
+     * `hr.*` key, so everybody who passes the gate passes the policy, and the
+     * policy's refusal is unreachable here except for a role assembled outside
+     * the editor.
+     *
+     * So each refusal below names the layer that answered. Two reasons. It
+     * stops this test quietly becoming vacuous — a bare 403 would keep passing
+     * if the policy were deleted, because the gate would answer anyway. And it
+     * stops the reverse: `hr/onboardings` and `hr/people/scope-options` are
+     * deliberately OUTSIDE the gated group (an employee fills in their own
+     * form; the invite helper is needed by `hr.create` without records), so
+     * there the policy is the only thing standing, and it must not rot behind
+     * a middleware that never covered it.
+     *
+     * Clock In raised the general shape on 2026-09-17: a 403 that asserts only
+     * its status cannot distinguish "may not" from "switched off", and theirs
+     * answers a platform fact with a permission's code today.
+     */
     public function test_the_records_tab_needs_its_own_permission(): void
     {
         $alpha  = $this->provisionTenant('Alpha');
@@ -310,15 +335,22 @@ class HrPeopleTest extends TestCase
 
         $outsider = $this->userWithRole($alpha, 'Outsider', ['customers.view']);
 
-        $this->signedInAs($outsider)->getJson('/api/v1/hr/people')->assertForbidden();
+        // The TAB GATE, not the policy — it is in front and answers first.
+        $this->signedInAs($outsider)->getJson('/api/v1/hr/people')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'permission_denied')
+            ->assertJsonPath('message', Refusal::permission('open this tab')->message());
 
         $reader = $this->userWithRole($alpha, 'Reader', ['hr.view', 'hr.records.view']);
 
         $this->signedInAs($reader)->getJson('/api/v1/hr/people')->assertOk();
 
-        // Reading is not editing.
+        // Reading is not editing — and THIS one is the policy, past the gate,
+        // which is what makes it the half of this test that still distinguishes
+        // two layers rather than one.
         $this->signedInAs($reader)
             ->patchJson("/api/v1/hr/people/{$person->id}", ['is_active' => false])
-            ->assertForbidden();
+            ->assertForbidden()
+            ->assertJsonMissingPath('code');
     }
 }

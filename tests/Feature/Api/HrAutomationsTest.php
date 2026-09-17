@@ -311,7 +311,7 @@ class HrAutomationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
 
         $builder = $this->userWithRole($alpha, 'Rule builder', [
-            'automations.view', 'automations.create', 'jobs.view',
+            'automations.view', 'automations.create', 'automations.build.view', 'jobs.view',
         ]);
 
         $modules = $this->modulesInCatalogue($builder);
@@ -448,7 +448,7 @@ class HrAutomationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
 
         $hr = $this->userWithRole($alpha, 'People manager', [
-            'automations.view', 'automations.create', 'hr.view',
+            'automations.view', 'automations.create', 'automations.build.view', 'hr.view',
         ]);
 
         $catalogue = $this->catalogue($hr);
@@ -476,7 +476,7 @@ class HrAutomationsTest extends TestCase
     public function test_each_hr_action_reports_whether_it_is_actually_built(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $hr    = $this->userWithRole($alpha, 'People manager', ['automations.view', 'hr.view']);
+        $hr    = $this->userWithRole($alpha, 'People manager', ['automations.view', 'automations.build.view', 'hr.view']);
 
         $module = collect($this->catalogue($hr)['modules'])->firstWhere('key', 'hr');
 
