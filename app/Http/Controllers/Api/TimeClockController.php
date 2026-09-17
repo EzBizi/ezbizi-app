@@ -37,6 +37,28 @@ class TimeClockController extends Controller
         ]);
     }
 
+    /**
+     * GET /api/v1/hr/time-clock/week — the Work Hours screen (2026-09-17).
+     *
+     * Same two gates as the day list: `hr.view` and the organization switch.
+     */
+    public function week(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', TimeClockShift::class);
+
+        $user = $request->user();
+
+        if (! $this->timeClock->organizationEnabled($user->organization)) {
+            abort(403, 'Clock in is switched off for this organization.');
+        }
+
+        $on = $request->query('on');
+
+        return response()->json([
+            'data' => $this->timeClock->weekList($user, is_string($on) ? $on : null),
+        ]);
+    }
+
     public function clockIn(Request $request): JsonResponse
     {
         return response()->json([

@@ -47,6 +47,39 @@ class PushSender
 
     private const TIMEOUT = 15;
 
+    /**
+     * The Android notification channel these arrive on.
+     *
+     * ── Why naming it matters, and it is not cosmetic ────────────────
+     *
+     * Without it FCM delivers on `fcm_fallback_notification_channel`, its own
+     * generic default — measured on a real handset by the Android module, in
+     * the notification shade, not inferred. On Android 8 and later the CHANNEL
+     * is what a person sees in Settings and what they mute, so a fallback
+     * channel means EzBizi notifications cannot be tuned separately from
+     * anything else and appear under a name nobody chose. It is invisible until
+     * somebody tries to turn one off, which is the worst moment to discover it.
+     *
+     * ── The string is duplicated across two languages, deliberately ──
+     *
+     * `client/lib/core/os_notifications.dart` creates a channel with this exact
+     * id for LOCAL notifications. The two must match or a person ends up with
+     * two EzBizi entries in Settings — one for notifications raised while the
+     * app is open and one for those that wake it — which is worse than the
+     * single generic entry this replaces.
+     *
+     * There is no shared source between a PHP sender and a Dart client, so the
+     * duplication is real and the comment is the only thing holding them
+     * together. Changing one means changing the other.
+     *
+     * ── Safe to send before the channel exists ───────────────────────
+     *
+     * FCM falls back to the manifest default, or to its own, for a channel the
+     * app has not created. So this degrades to exactly today's behaviour rather
+     * than to silence, and starts working the moment the client declares it.
+     */
+    private const ANDROID_CHANNEL = 'ezbizi_notifications';
+
     public function __construct(private readonly ApnsSender $apns) {}
 
     /**
@@ -169,6 +202,7 @@ class PushSender
                             'title' => $title,
                             'body' => $body,
                         ]),
+                        'android' => ['notification' => ['channel_id' => self::ANDROID_CHANNEL]],
                     ],
                 ]);
         } catch (ConnectionException $exception) {

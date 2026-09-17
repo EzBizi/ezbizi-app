@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AutomationEvent;
 use App\Models\DeviceToken;
 use App\Models\Notification;
 use App\Support\Modules\ModuleRegistry;
@@ -28,18 +29,43 @@ use Illuminate\Validation\Rule;
  */
 class NotificationsController extends Controller
 {
+    /** Verified to name a real module by NotificationsTest. */
+    private const AUTOMATIONS_MODULE = 'automations';
+
+    /**
+     * Module key => the payload field it opens narrowed by. See [filterFor].
+     *
+     * @var array<string, string>
+     */
+    private const MODULE_FILTERS = ['leads' => 'source'];
+
     public function __construct(private readonly ModuleRegistry $modules) {}
 
     /** GET /api/v1/notifications */
     public function index(Request $request): JsonResponse
     {
         $base = Notification::query()->where('user_id', $request->user()->getKey());
-        $notifications = (clone $base)
+        $rows = (clone $base)
             ->when($request->boolean('unread_only'), fn ($q) => $q->whereNull('read_at'))
             ->latest('created_at')
             ->limit(min((int) $request->query('limit', 50), 200))
-            ->get()
-            ->map(fn (Notification $notification) => $this->present($notification));
+            ->get();
+
+        /*
+         * The trigger key of every event behind this page, in ONE query.
+         *
+         * Asked per notification it would be an N+1 against the fastest-growing
+         * table in the system, on the request the bell makes every sixty
+         * seconds on every open client.
+         */
+        $events = AutomationEvent::query()
+            ->whereIn('id', $rows->pluck('event_id')->filter()->unique())
+            ->get(['id', 'event_key', 'payload'])
+            ->keyBy('id');
+
+        $notifications = $rows->map(
+            fn (Notification $notification) => $this->present($notification, $events),
+        );
 
         return response()->json([
             'data' => $notifications,
@@ -143,26 +169,42 @@ class NotificationsController extends Controller
     /**
      * One notification, with somewhere to go.
      *
-     * ── `meta.module`, replacing a `meta.route` that was always null ──
+     * ── Derived from the TRIGGER, after `emits` got it wrong ─────────
      *
-     * The old key promised a path and delivered nothing on every notification
-     * ever sent, and nothing in the client read it. Clicking a notification
-     * marked it read and left you exactly where you were — which for "New Live
-     * Chat Lead" means being told about a lead and given no way to open it.
+     * The first version of this read `ModuleDefinition::emits` — "every model
+     * this module passes to events->emit()" — and asked which module emits the
+     * subject's class. It shipped, and clicking "New Live Chat Lead" opened the
+     * DASHBOARD.
      *
-     * A MODULE KEY rather than a path, because that is the unit the client can
-     * actually act on: the shell selects a module by id, and no module today
-     * accepts a record to open within it. Deep-linking to the individual lead
-     * is a per-module change owned by each of those modules, not something this
-     * controller can invent — so this goes as far as the shell can go and no
-     * further, rather than shipping a path nobody honours. The record's id is
-     * already in `subject.id` for whoever builds that next.
+     * `emits` is not an ownership map and never claimed to be. TWO modules emit
+     * `Lead` (`web_management` and `leads`), so the answer was decided by
+     * registry iteration order and came back `web_management`. Worse, it was
+     * wrong even where it looked unambiguous: `Job` is emitted only by `leads`,
+     * because the `leads` module raises job events — so a job notification
+     * would have opened Leads rather than Jobs, with nothing to tell anybody it
+     * had. I derived from a source that answers a neighbouring question.
      *
-     * Null is an ordinary answer, not a gap: a notification about an
-     * Organization, or one with no subject, has nowhere more specific to go
-     * than where you already are.
+     * The trigger is the source that answers THIS one. `lead.received` is
+     * declared by `leads` and `job.created` by `jobs`, because a module
+     * declares the events it raises — and a notification raised by `notify`
+     * carries the event that caused it. One module per trigger, by
+     * construction, so there is no order to depend on.
+     *
+     * ── Why there is no fall-back to the class ───────────────────────
+     *
+     * Because the class answer was wrong in both directions above, and a
+     * fallback that is wrong is worse than none: it takes somebody somewhere
+     * confidently. A notification with no event is left unclickable unless it
+     * names an automation, which is the one case where the destination is a
+     * fact about the row rather than a guess — see below.
+     *
+     * A MODULE KEY, not a path: the shell selects a module by id and no module
+     * accepts a record to open within it yet. `subject.id` is in the payload
+     * for whoever builds that.
+     *
+     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events  keyed by id
      */
-    private function present(Notification $notification): array
+    private function present(Notification $notification, $events): array
     {
         return [
             'id' => $notification->id,
@@ -173,13 +215,70 @@ class NotificationsController extends Controller
                 'type' => $notification->subject_type ? class_basename($notification->subject_type) : null,
                 'id' => $notification->subject_id,
             ],
-            'meta' => [
-                'module' => $notification->subject_type === null
-                    ? null
-                    : $this->modules->moduleKeyOfModel($notification->subject_type),
-            ],
+            'meta' => $this->destination($notification, $events),
             'read_at' => $notification->read_at?->toIso8601String(),
             'created_at' => $notification->created_at->toIso8601String(),
         ];
+    }
+
+    /**
+     * Where a notification points: a module, and what to narrow it to.
+     *
+     * @param  \Illuminate\Support\Collection<string, AutomationEvent>  $events
+     * @return array{module: ?string, filter: ?string}
+     */
+    private function destination(Notification $notification, $events): array
+    {
+        $event = $notification->event_id === null ? null : $events->get($notification->event_id);
+
+        $module = $event !== null
+            ? $this->modules->moduleKeyOfTrigger($event->event_key)
+            /*
+             * A notification that NAMES an automation is about that automation —
+             * "Automation switched off: Missed Call" is raised by the engine
+             * rather than by a trigger, so it carries no event to derive from.
+             *
+             * The key is written here rather than derived, deliberately after
+             * the `emits` mistake: this is not a guess about ownership, it is
+             * the meaning of the column. A test asserts it names a real module.
+             */
+            : ($notification->automation_id === null ? null : self::AUTOMATIONS_MODULE);
+
+        return ['module' => $module, 'filter' => $this->filterFor($module, $event)];
+    }
+
+    /**
+     * What the destination should open narrowed to, when it understands one.
+     *
+     * Jose, 2026-09-16: a lead notification should reach "the leads tab and
+     * specifically the chat sub tab". The Leads screen narrows by the lead's
+     * `source`, and the value is already in the event payload — `lead.received`
+     * emits `after.source` — so nothing here reads the leads table and the
+     * client fetches nothing extra.
+     *
+     * ── Why a map rather than "pass through any after.source" ────────
+     *
+     * Because `source` is not a reserved word. Another module's payload may
+     * carry a field of that name meaning something entirely different, and
+     * handing it to a screen as a filter would narrow a list by a value that
+     * was never about narrowing. The Leads screen ignores a source it does not
+     * recognise — measured and tested by whoever added `initialSource` — so the
+     * failure would be quiet, which is exactly the kind this module has spent
+     * the day removing.
+     *
+     * One entry, because one module has asked. A second adds a line here and
+     * declares which payload field it narrows by.
+     */
+    private function filterFor(?string $module, ?AutomationEvent $event): ?string
+    {
+        $field = self::MODULE_FILTERS[$module] ?? null;
+
+        if ($field === null || $event === null) {
+            return null;
+        }
+
+        $value = data_get($event->payload, "after.{$field}");
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 }

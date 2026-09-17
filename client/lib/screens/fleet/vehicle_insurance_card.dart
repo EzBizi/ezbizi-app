@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
 import 'vehicle_papers.dart';
 
@@ -41,8 +42,7 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
   String? _error;
 
   bool get _canEdit => widget.session.me!.can('fleet_management.edit');
-  bool get _financials =>
-      widget.session.me!.can('fleet_management.financials');
+  bool get _financials => widget.session.me!.can('fleet_management.financials');
 
   List<Map<String, dynamic>> get _policies {
     final rows = fleetMaps(widget.vehicle['insurance_policies']);
@@ -138,8 +138,9 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
         final aOpen = a['ended_on'] == null ? 0 : 1;
         final bOpen = b['ended_on'] == null ? 0 : 1;
         if (aOpen != bOpen) return aOpen.compareTo(bOpen);
-        return fleetDay(b['started_on'] as String?)
-            .compareTo(fleetDay(a['started_on'] as String?));
+        return fleetDay(
+          b['started_on'] as String?,
+        ).compareTo(fleetDay(a['started_on'] as String?));
       });
 
     return FleetSectionCard(
@@ -234,7 +235,13 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
       children: [
         fleetField(_carrier, 'Carrier', enabled: !_busy),
         fleetField(_policyNumber, 'Policy number', enabled: !_busy),
-        fleetField(_coverage, 'Coverage', enabled: !_busy, minLines: 2, maxLines: 4),
+        fleetField(
+          _coverage,
+          'Coverage',
+          enabled: !_busy,
+          minLines: 2,
+          maxLines: 4,
+        ),
         fleetCalendarDay(
           _startedOn,
           'Started on',
@@ -269,17 +276,14 @@ class _VehicleInsuranceCardState extends State<VehicleInsuranceCard> {
             keyboard: const TextInputType.numberWithOptions(decimal: true),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _premiumPeriod,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Premium period'),
-            items: [
+          SearchPickerField<String>(
+            value: _premiumPeriod,
+            label: 'Premium period',
+            options: [
               for (final t in fleetPremiumPeriods)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                SearchOption(value: t.$1, label: t.$2),
             ],
-            onChanged: _busy
-                ? null
-                : (v) => setState(() => _premiumPeriod = v),
+            onChanged: _busy ? null : (v) => setState(() => _premiumPeriod = v),
           ),
         ],
         const SizedBox(height: 12),

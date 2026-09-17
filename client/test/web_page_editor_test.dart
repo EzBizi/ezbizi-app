@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/web/page_editor.dart';
 import 'package:ezbizi_client/widgets/shortcode_button.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -77,7 +78,7 @@ void main() {
                 'label': 'Group',
                 'hint': 'Your own label.',
                 'requirement': 'optional',
-                'section': 'general',
+                'section': 'page',
                 'shortcode': '[ezbizi_group]',
               },
               {
@@ -85,7 +86,7 @@ void main() {
                 'label': 'Author',
                 'hint': 'From the website.',
                 'requirement': 'optional',
-                'section': 'general',
+                'section': 'page',
                 'shortcode': '[ezbizi_author]',
               },
               {
@@ -93,7 +94,7 @@ void main() {
                 'label': 'Category',
                 'hint': 'From the website.',
                 'requirement': 'optional',
-                'section': 'general',
+                'section': 'page',
                 'shortcode': '[ezbizi_category]',
               },
               ...extraFields,
@@ -179,7 +180,7 @@ void main() {
           'label': 'About us — field 1',
           'hint': '',
           'requirement': 'optional',
-          'section': 'general',
+          'section': 'page',
           'shortcode': '[ezbizi_about_us_field_1]',
           'path': '/about-us',
         },
@@ -188,7 +189,7 @@ void main() {
           'label': 'About us — field 3',
           'hint': '',
           'requirement': 'optional',
-          'section': 'general',
+          'section': 'page',
           'shortcode': '[ezbizi_about_us_field_3]',
           'path': '/about-us',
         },
@@ -214,7 +215,7 @@ void main() {
           'label': 'About us — field 1',
           'hint': '',
           'requirement': 'optional',
-          'section': 'general',
+          'section': 'page',
           'shortcode': '[ezbizi_about_us_field_1]',
           'path': '/about-us',
         },
@@ -230,7 +231,7 @@ void main() {
 
     // Opened, because a dropdown draws its options only when somebody asks
     // for them — asserting on the closed control would pass on an empty list.
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.byType(SearchPickerField<String>).first);
     await tester.pumpAndSettle();
 
     expect(find.text("Pat O'Brien"), findsWidgets);

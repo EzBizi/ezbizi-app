@@ -1,11 +1,13 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
+
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
@@ -129,6 +131,22 @@ class _ActionRow {
   /// Meta numbers positionally and "{{1}} owes {{3}}" is a three-parameter
   /// template with a gap. Deriving it would be right on every template anybody
   /// tested and wrong on the one with a hole in it, at send time.
+  /// The recipient KIND while the box is empty, and only then.
+  ///
+  /// The kind is derived from the stored value so a saved rule opens on the
+  /// right one with no second thing to keep in step. That works for every value
+  /// except the empty one, which belongs to all three — so choosing "an address
+  /// I type" cleared the box and the control snapped straight back to a person.
+  /// Remembered here while it is empty and forgotten the moment it is not.
+  String? recipientKind;
+
+  /// An address being typed for a recipient LIST, before it is added.
+  ///
+  /// Held per row rather than in the stored value: half a typed address is not
+  /// a recipient, and putting it in the list would send to it on save.
+  final pendingAddress = TextEditingController();
+
+  String whatsAppFrom = '';
   String whatsAppTemplate = '';
   int whatsAppParameters = 0;
   final List<TextEditingController> whatsAppValues = [];
@@ -190,6 +208,18 @@ class _ActionRow {
         // string only because every parameter shares one map of text
         // controllers; sending that string would hand the runner one role id
         // with commas in it, which matches nothing and tells nobody.
+        // A recipient LIST is an array on the wire, like roles. Held as a
+        // comma-joined string only because every parameter shares one map of
+        // text controllers.
+        if (field.kind == 'recipient_list') {
+          payload[field.key] = [
+            for (final one in value.split(','))
+              if (one.trim().isNotEmpty) one.trim(),
+          ];
+
+          continue;
+        }
+
         if (field.kind == 'roles') {
           payload[field.key] = [
             for (final id in value.split(','))
@@ -224,6 +254,7 @@ class _ActionRow {
       'webhook' => {'type': 'webhook', 'url': url.text.trim()},
       'whatsapp.send' => {
         'type': 'whatsapp.send',
+        'from': whatsAppFrom,
         'template': whatsAppTemplate,
         'to_field': parameter('to_field').text.trim(),
         'parameters': [
@@ -261,6 +292,7 @@ class _ActionRow {
     value.dispose();
     url.dispose();
     message.dispose();
+    pendingAddress.dispose();
     for (final c in whatsAppValues) {
       c.dispose();
     }
@@ -365,8 +397,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// than replaced with a sentence of mine: they know which it is and I do not,
   /// and "nothing approved yet" is what Jose sees today because `report_summary`
   /// is still PENDING with Meta.
-  List<({String name, int parameters, String preview})> _whatsAppTemplates =
-      const [];
+  /// Approved templates GROUPED BY SENDING NUMBER.
+  ///
+  /// Meta's endpoint changed shape when it turned out a template is approved per
+  /// WABA and our two numbers sit on different ones — so a flat list was showing
+  /// one number's templates and silently hiding the other's. The client kept
+  /// parsing the old flat shape, which is why the Template menu rendered a row
+  /// of blank entries rather than nothing: every row had no `name`.
+  List<({String from, String label, List<({String name, int parameters, String preview})> templates})>
+      _whatsAppNumbers = const [];
   String? _whatsAppBecause;
 
   Future<void> _loadWhatsAppTemplates() async {
@@ -376,14 +415,22 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     setState(() {
       // `response.data` IS the `data` value, not the envelope — so the list is
       // here and `because` is a sibling of it, read off the body.
-      _whatsAppTemplates = response.ok
+      _whatsAppNumbers = response.ok
           ? [
               for (final row in (response.data as List? ?? const []))
                 if (row is Map<String, dynamic>)
                   (
-                    name: (row['name'] ?? '').toString(),
-                    parameters: (row['parameters'] as num?)?.toInt() ?? 0,
-                    preview: (row['preview'] ?? '').toString(),
+                    from: (row['from'] ?? '').toString(),
+                    label: (row['label'] ?? row['from'] ?? '').toString(),
+                    templates: [
+                      for (final t in (row['templates'] as List? ?? const []))
+                        if (t is Map<String, dynamic>)
+                          (
+                            name: (t['name'] ?? '').toString(),
+                            parameters: (t['parameters'] as num?)?.toInt() ?? 0,
+                            preview: (t['preview'] ?? '').toString(),
+                          ),
+                    ],
                   ),
             ]
           : const [];
@@ -442,6 +489,22 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// would be a shorter list pretending to be the whole one.
   Map<String, List<({String value, String label})>> _fieldValues = const {};
 
+  /// One real example per field, for the preview under a message box.
+  ///
+  /// Only holds fields whose record this person reaches — the server decides
+  /// that, and a field can be offered with no example beside it. So an absent
+  /// entry means "not yours to see", never "this field does not exist".
+  Map<String, String> _fieldSamples = const {};
+
+  /// Where this rule applies, in the stored shape the catalogue hands out:
+  /// `organization`, `company:<id>` or `franchise:<id>`.
+  ///
+  /// Null on a NEW rule until somebody chooses, and null means the field is not
+  /// sent — which is what lets the server scope the rule to the view it was
+  /// written in. Defaulting to `organization` here would put every rule back to
+  /// applying across the whole business, this time explicitly.
+  String? _place;
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -486,6 +549,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 ],
             }
           : const {};
+      _fieldSamples = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['samples'] as Map? ?? const {}).entries)
+                entry.key.toString(): entry.value.toString(),
+            }
+          : const {};
     });
   }
 
@@ -504,6 +574,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _name.text = editing['name'] as String? ?? '';
       _description.text = editing['description'] as String? ?? '';
       _trigger = editing['trigger_key'] as String?;
+      // AN EXISTING RULE ALWAYS RESTATES ITS SCOPE, "everywhere" included.
+      // There is no view to fall back on when saving one, so silence would let
+      // a save re-scope a rule to wherever the person happened to be standing.
+      final scope = editing['scope'] as Map?;
+      _place = scope == null || scope['type'] == null
+          ? 'organization'
+          : '${scope['type']}:${scope['id']}';
       _adoptActions(editing['actions']);
       _adoptSchedule(editing['schedule']);
       _adoptConditions(editing['conditions']);
@@ -976,6 +1053,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _triggerFields = const [];
       _fieldsSampled = null;
       _fieldValues = const {};
+      _fieldSamples = const {};
     });
 
     _loadTriggerFields();
@@ -1170,6 +1248,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // rule, and every run already recorded would describe something it no
       // longer does. The API refuses the field outright.
       if (!_isEdit) 'trigger_key': _trigger,
+      // Only when somebody chose, or when editing a rule that already has one.
+      // An untouched picker on a NEW rule leaves the field out entirely and the
+      // server scopes it to the view it was written in — the difference between
+      // "apply this everywhere" and "nobody said".
+      if (_place != null) ...{
+        'scope_type': _place == 'organization' ? null : _place!.split(':').first,
+        'scope_id': _place == 'organization' ? null : _place!.split(':').last,
+      },
       // Sent on create AND on edit: retiming a rule is the one thing about a
       // scheduled rule that can legitimately change without it becoming a
       // different rule. The server recomputes the next run from it.
@@ -1317,32 +1403,60 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       1,
       'Name it',
       'What you will see in the list, and in every run it records.',
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _name,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'Tell the office when a job is completed',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _name,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'Tell the office when a job is completed',
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: TextField(
-              controller: _description,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'What it is for (optional)',
-                hintText: 'Why this rule exists, for whoever reads it next',
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _description,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'What it is for (optional)',
+                    hintText: 'Why this rule exists, for whoever reads it next',
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          if (widget.catalogue.places.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SearchPickerField<String>(
+              value: _place,
+              label: 'Where it applies',
+              // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
+              // scopes to wherever the person is standing, and a control that
+              // acts without being touched has to say so — otherwise a rule's
+              // reach is decided by a chip in the top bar that nobody would
+              // ever connect to it.
+              helperText: _place == null
+                  ? 'Left alone, it applies where you are now. A company also '
+                        'covers everything under it.'
+                  : 'A company covers its franchises, its sub companies and '
+                        'theirs.',
+              helperMaxLines: 3,
+              options: [
+                for (final place in widget.catalogue.places)
+                  SearchOption(value: place.key, label: place.label),
+              ],
+              onChanged: _busy ? null : (value) => setState(() => _place = value),
+            ),
+          ],
         ],
       ),
     );
@@ -1524,13 +1638,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           const SizedBox(height: 12),
           Text('Day of the month', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 6),
-          DropdownMenu<int>(
-            initialSelection: _scheduleDayOfMonth,
-            dropdownMenuEntries: [
-              for (var d = 1; d <= 31; d++)
-                DropdownMenuEntry(value: d, label: '$d'),
-            ],
-            onSelected: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+          SizedBox(
+            width: 200,
+            child: SearchPickerField<int>(
+              value: _scheduleDayOfMonth,
+              label: 'Day of the month',
+              options: [
+                for (var d = 1; d <= 31; d++)
+                  SearchOption(value: d, label: '$d'),
+              ],
+              onChanged: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1556,15 +1674,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: DropdownMenu<String>(
-                width: double.infinity,
-                initialSelection: _scheduleZone,
-                label: const Text('Timezone'),
-                dropdownMenuEntries: [
+              child: SearchPickerField<String>(
+                value: _scheduleZone,
+                label: 'Timezone',
+                options: [
                   for (final zone in zones)
-                    DropdownMenuEntry(value: zone.key, label: zone.label),
+                    SearchOption(value: zone.key, label: zone.label),
                 ],
-                onSelected: (z) => setState(() => _scheduleZone = z),
+                onChanged: (z) => setState(() => _scheduleZone = z),
               ),
             ),
           ],
@@ -1745,25 +1862,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         const SizedBox(width: 8),
         Expanded(
           flex: 3,
-          child: DropdownButtonFormField<String>(
-            initialValue: row.op,
-            // Without this the button sizes itself to its widest option and
-            // overflows the column it was given — "is not one of" does not fit
-            // a third of a narrow window, and the ellipsis on the item below
-            // only takes effect once the button fills its box.
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Is', isDense: true),
-            items: [
+          child: SearchPickerField<String>(
+                   value: row.op,
+                   label: 'Is',
+                   isDense: true,
+                   options: [
               for (final operator in widget.catalogue.operators)
-                DropdownMenuItem(
-                  value: operator.key,
-                  child: Text(operator.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: operator.key, label: operator.label),
             ],
-            onChanged: _busy
+                   onChanged: _busy
                 ? null
                 : (value) => setState(() => row.op = value ?? row.op),
-          ),
+                 ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -2061,14 +2171,20 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // branch on the first declared parameter and reads the PARAMETER
       // controllers, so a hand-written box would have posted nothing.
       'notify' => _parameterForm(row, widget.catalogue.actionType('notify')),
-      _ => TextField(
-        controller: row.message,
-        enabled: !_busy,
-        decoration: const InputDecoration(
-          labelText: 'Message',
-          isDense: true,
-          helperText: 'Use {{ title }} to include a field from the record.',
-        ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: row.message,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: 'Message',
+              isDense: true,
+              helperText: _variableHint(),
+            ),
+          ),
+          _variableTools(row.message),
+        ],
       ),
     };
   }
@@ -2110,16 +2226,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             // A line is picked from the ones this company holds. The value
             // stored is an id, and asking somebody to type one is asking them
             // to fail — which is what a plain text field here would do.
-            DropdownButtonFormField<String>(
-              initialValue:
-                  row.parameter(definition.parameters[i].key).text.isEmpty
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
                   ? null
                   : row.parameter(definition.parameters[i].key).text,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: definition.parameters[i].label,
-                isDense: true,
-                helperText: _lines.isNotEmpty
+              label: definition.parameters[i].label,
+              helperText: _lines.isNotEmpty
                     ? 'Only lines approved for messaging are listed.'
                     : _linesHeld == 0
                     ? 'No phone lines on this company yet.'
@@ -2130,13 +2242,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : 'This company has $_linesHeld phone '
                           '${_linesHeld == 1 ? 'line' : 'lines'}, and none are '
                           'approved for text messaging yet.',
-              ),
-              items: [
+              isDense: true,
+              options: [
                 for (final line in _lines)
-                  DropdownMenuItem(
-                    value: line.$1,
-                    child: Text(line.$2, overflow: TextOverflow.ellipsis),
-                  ),
+                  SearchOption(value: line.$1, label: line.$2),
               ],
               onChanged: _busy
                   ? null
@@ -2155,11 +2264,48 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // field of the event, or an address somebody types. Jose asked for
           // the first and last on 2026-09-16; the middle one is what the step
           // shipped with.
-          else if (definition.parameters[i].kind == 'recipient')
+          else if (definition.parameters[i].kind == 'report')
+            DropdownMenu<String>(
+              initialSelection:
+                  row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              enabled: !_busy && widget.catalogue.reports.isNotEmpty,
+              label: Text(definition.parameters[i].label),
+              expandedInsets: EdgeInsets.zero,
+              enableFilter: true,
+              requestFocusOnTap: true,
+              helperText: widget.catalogue.reports.isEmpty
+                  ? 'No saved reports yet. Save one from Reports first.'
+                  : null,
+              onSelected: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+              dropdownMenuEntries: [
+                for (final report in widget.catalogue.reports)
+                  DropdownMenuEntry<String>(
+                    value: report.key,
+                    label: report.label,
+                  ),
+              ],
+            )
+          else if (definition.parameters[i].kind == 'recipient_list')
+            _recipientList(
+              row,
+              definition.parameters[i].key,
+              definition.parameters[i].label,
+            )
+          else if (definition.parameters[i].kind == 'recipient' ||
+              definition.parameters[i].kind == 'phone_recipient' ||
+              definition.parameters[i].kind == 'person_or_field')
             _recipientPicker(
               row,
               definition.parameters[i].key,
               definition.parameters[i].label,
+              definition.parameters[i].kind,
             )
           else if (definition.parameters[i].kind == 'trigger_field')
             _triggerFieldPicker(
@@ -2219,9 +2365,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : null,
                 helperText: definition.parameters[i].nullable
                     ? 'Leave blank to clear it.'
+                    : definition.parameters[i].variables
+                    ? _variableHint()
                     : null,
               ),
             ),
+          if (definition.parameters[i].variables)
+            _variableTools(row.parameter(definition.parameters[i].key)),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
         ],
       ],
@@ -2286,80 +2436,379 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  /// Who an email goes to: somebody here, a field of the event, or a typed address.
+  /// Who an email goes to: KIND FIRST, then one control that fits that kind.
   ///
-  /// The TEXT BOX is the value, and the menu beside it fills it in. That way
-  /// typing an address is not a special case bolted onto a dropdown — it is the
-  /// ordinary thing, and choosing is the shortcut. A DropdownMenu that also
-  /// accepted free text would have to guess whether half-typed text was a choice
-  /// or a value, and guesses like that are how a field silently discards what
-  /// somebody typed.
+  /// It was a single box with everything in one menu — every person plus every
+  /// field of the event. That overflows: thirteen people and ten fields already
+  /// fills the screen, and a hundred employees makes it unusable. Jose said so
+  /// while it was still small enough to work, which is the only time this kind
+  /// of thing gets fixed.
   ///
-  /// A person is stored as `user:<id>`, never as their address, so the rule
-  /// follows them when they change it and refuses when they leave.
-  Widget _recipientPicker(_ActionRow row, String key, String label) {
+  /// So: choose what KIND of address, then answer one question. A typed address
+  /// gets a box. A person gets a SEARCHABLE list, because scrolling a hundred
+  /// names is the same problem again. A field of the event keeps its own list,
+  /// which is neither of the two Jose named but is what the step shipped with
+  /// and what his live rule uses — removing it would break a saved rule.
+  ///
+  /// THE STORED VALUE IS UNCHANGED: `user:<id>`, a literal address, or a field
+  /// name. The kind is DERIVED from what is stored rather than kept beside it,
+  /// so a rule saved before this screen existed opens on the right kind and
+  /// there is no second thing to keep in step.
+  Widget _recipientPicker(_ActionRow row, String key, String label, String kindOf) {
     final controller = row.parameter(key);
+    final value = controller.text.trim();
+    final kind = _recipientKindOf(row, value, kindOf);
 
-    final choices = <CatalogueChoice>[
-      ...widget.catalogue.people,
-      for (final field in _triggerFields)
-        CatalogueChoice(key: field, label: 'From the event: $field'),
-    ];
+    // What each step is actually asking for differs, so the choices do too.
+    // An assignment wants a PERSON and cannot use a typed anything; a text
+    // wants a number; an email wants an address. Same control, three vocabularies.
+    final wantsPhone = kindOf == 'phone_recipient';
+    final typedAllowed = kindOf != 'person_or_field';
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final people = widget.catalogue.people
+        .where((p) => kindOf == 'person_or_field'
+            ? true
+            : (wantsPhone ? p.hasPhone : p.hasEmail))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: TextField(
+        SearchPickerField<String>(
+          value: kind,
+          label: label,
+          isDense: true,
+          options: [
+            const SearchOption(value: 'person', label: 'Somebody who works here'),
+            if (typedAllowed)
+              SearchOption(value: 'typed', label: wantsPhone
+                    ? 'A number I type'
+                    : 'An address I type'),
+            SearchOption(value: 'field', label: kindOf == 'person_or_field'
+                  ? 'Whoever the event names'
+                  : wantsPhone
+                      ? 'A number from the event'
+                      : 'An address from the event'),
+          ],
+          onChanged: _busy
+              ? null
+              : (chosen) => setState(() {
+                  row.recipientKind = chosen;
+                  controller.text = '';
+                }),
+        ),
+        const SizedBox(height: 10),
+        if (kind == 'person')
+          DropdownMenu<String>(
+            initialSelection: value.isEmpty ? null : value,
+            enabled: !_busy,
+            label: const Text('Search people'),
+            expandedInsets: EdgeInsets.zero,
+            enableFilter: true,
+            requestFocusOnTap: true,
+            helperText: people.isEmpty
+                // Says WHICH is missing rather than "nobody found": with only an
+                // email on file somebody is a valid choice for an email step and
+                // not for a text, and that is a thing to go and fix.
+                ? (wantsPhone
+                    ? 'Nobody here has a phone number on their account yet.'
+                    : 'Nobody here has an email address on their account yet.')
+                : 'Type to search. If their details change it follows them.',
+            onSelected: _busy
+                ? null
+                : (chosen) => setState(() => controller.text = chosen ?? ''),
+            dropdownMenuEntries: [
+              for (final person in people)
+                DropdownMenuEntry<String>(value: person.key, label: person.label),
+            ],
+          )
+        else if (kind == 'field')
+          _triggerFieldPicker(
+            row,
+            key,
+            kindOf == 'person_or_field'
+                ? 'Which field names the person'
+                : wantsPhone
+                    ? 'Which field carries the number'
+                    : 'Which field carries the address',
+          )
+        else
+          TextField(
             controller: controller,
             enabled: !_busy,
+            keyboardType:
+                wantsPhone ? TextInputType.phone : TextInputType.emailAddress,
             decoration: InputDecoration(
-              labelText: label,
+              labelText: wantsPhone ? 'Phone number' : 'Email address',
               isDense: true,
-              helperText: _describeRecipient(controller.text.trim()),
+              helperText: wantsPhone
+                  ? 'Goes to this number every time.'
+                  : 'Goes to this address every time.',
             ),
           ),
+        if (kind == 'person' && value.isNotEmpty && !_personIsKnown(value))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'The person this was set to no longer works here, so nothing '
+              'would be sent.',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// SEVERAL recipients, because a report goes to the people who read it.
+  ///
+  /// The other sends address one person; this one usually addresses a handful,
+  /// and one bad address among five must not stop the other four — which is why
+  /// the runner treats partial failure as a success and why this control lets
+  /// somebody add and remove rather than retype a list.
+  ///
+  /// Stored as a comma-joined string because every parameter shares one map of
+  /// text controllers; the payload splits it into the array the runner reads.
+  /// Each entry is the same `user:<id>` or literal address the single-recipient
+  /// control stores, so one resolver serves both.
+  Widget _recipientList(_ActionRow row, String key, String label) {
+    final controller = row.parameter(key);
+
+    final chosen = controller.text
+        .split(',')
+        .map((one) => one.trim())
+        .where((one) => one.isNotEmpty)
+        .toList();
+
+    String labelFor(String stored) {
+      if (!stored.startsWith('user:')) return stored;
+
+      final person =
+          widget.catalogue.people.where((p) => p.key == stored).firstOrNull;
+
+      // A person who has left keeps their id on screen rather than vanishing:
+      // a chip that disappeared would look like somebody removed it.
+      return person?.label ?? '$stored (no longer here)';
+    }
+
+    void store(List<String> next) =>
+        setState(() => controller.text = next.join(','));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        if (chosen.isEmpty)
+          Text(
+            'Nobody yet. Add the people who should receive it.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        if (chosen.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final one in chosen)
+                InputChip(
+                  label: Text(labelFor(one)),
+                  onDeleted: _busy
+                      ? null
+                      : () => store([...chosen]..remove(one)),
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: DropdownMenu<String>(
+                enabled: !_busy,
+                label: const Text('Add somebody who works here'),
+                expandedInsets: EdgeInsets.zero,
+                enableFilter: true,
+                requestFocusOnTap: true,
+                onSelected: _busy
+                    ? null
+                    : (added) {
+                        if (added == null || chosen.contains(added)) return;
+                        store([...chosen, added]);
+                      },
+                dropdownMenuEntries: [
+                  for (final person in widget.catalogue.people.where((p) => p.hasEmail))
+                    DropdownMenuEntry<String>(
+                      value: person.key,
+                      label: person.label,
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        PopupMenuButton<String>(
-          enabled: !_busy && choices.isNotEmpty,
-          tooltip: 'Choose a person or a field',
-          icon: const Icon(Icons.arrow_drop_down_circle_outlined),
-          onSelected: (chosen) => setState(() => controller.text = chosen),
-          itemBuilder: (context) => [
-            for (final choice in choices)
-              PopupMenuItem(value: choice.key, child: Text(choice.label)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: row.pendingAddress,
+                enabled: !_busy,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Or an address outside the business',
+                  isDense: true,
+                  helperText: 'An accountant, say. Press add.',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Add this address',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: _busy
+                  ? null
+                  : () {
+                      final typed = row.pendingAddress.text.trim();
+
+                      if (typed.isEmpty || chosen.contains(typed)) return;
+
+                      store([...chosen, typed]);
+                      row.pendingAddress.clear();
+                    },
+            ),
           ],
         ),
       ],
     );
   }
 
-  /// Says which of the three a stored value is, so nobody has to know the syntax.
-  String _describeRecipient(String value) {
-    if (value.isEmpty) {
-      return 'Type an address, or choose a person or a field of the event.';
+  /// Which of the three a stored value is. Derived, never stored beside it.
+  /// What to say under a box the runner substitutes `{{ field }}` in.
+  ///
+  /// NAMES REAL FIELDS rather than saying variables exist. "Use {{ title }}"
+  /// was already under two boxes and told nobody which words work here — and a
+  /// name that does not resolve becomes an empty string with no error, so a
+  /// guess costs a message with a hole in it that nobody can explain. These are
+  /// the same names the "only if" dropdown lists, because they come from the
+  /// same event.
+  String _variableHint() {
+    if (_triggerFields.isEmpty) {
+      return _trigger == null
+          ? 'Choose what sets the rule off and the fields you can drop in appear here.'
+          : 'Use {{ field }} to drop in a detail. Nothing of this kind has '
+                'happened here yet, so there are no names to suggest.';
     }
 
-    if (value.startsWith('user:')) {
-      final person = widget.catalogue.people
-          .where((p) => p.key == value)
-          .firstOrNull;
+    final shown = _triggerFields.take(4).join(', ');
 
-      return person == null
-          // The person is gone from the list — left, switched off, or lost their
-          // address. Said here rather than at run time, where it would be a
-          // failed step somebody reads days later.
-          ? 'This person no longer works here, so nothing would be sent.'
-          : 'Goes to ${person.label}. If they change their address it follows them.';
-    }
-
-    if (value.contains('@')) return 'Goes to this address every time.';
-
-    return _triggerFields.contains(value)
-        ? 'Goes to whatever this event carries in “$value”.'
-        : 'Not an address, and this event does not carry a field called “$value”.';
+    return _triggerFields.length > 4
+        ? 'Drop in a detail with {{ }} — $shown and ${_triggerFields.length - 4} more.'
+        : 'Drop in a detail with {{ }} — $shown.';
   }
+
+  /// The catalogue and the preview that sit under a box taking `{{ }}`.
+  ///
+  /// Two complaints, one control. A name typed from memory that does not exist
+  /// becomes an empty string with no error, so the chips insert the real name
+  /// and nobody has to remember it; and a message that reads fine in the
+  /// builder can still arrive with a hole in it, so the preview shows what a
+  /// recipient would actually get.
+  ///
+  /// THE PREVIEW IS BUILT THE WAY THE RUNNER BUILDS IT — an unknown name goes
+  /// to an empty string here too, deliberately. A preview that left `{{oops}}`
+  /// on screen would be kinder and would hide the exact failure this exists to
+  /// show: the gap is what the customer sees.
+  ///
+  /// A field the server sent no example for is one whose record this person
+  /// does not reach. It still gets a chip, because the field is real and the
+  /// rule will resolve it when it runs; what it cannot have is a preview.
+  Widget _variableTools(TextEditingController controller) {
+    if (_triggerFields.isEmpty) return const SizedBox.shrink();
+
+    final typed = controller.text;
+    final used = RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false)
+        .allMatches(typed)
+        .map((m) => m.group(1)!)
+        .toList();
+
+    final preview = typed.replaceAllMapped(
+      RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false),
+      (m) => _fieldSamples[m.group(1)!] ?? '',
+    );
+
+    // Nothing to preview against: every name used is one this person cannot see
+    // an example of, so a preview would be the message with its values deleted.
+    final canPreview = used.isNotEmpty &&
+        used.any((field) => _fieldSamples.containsKey(field));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final field in _triggerFields)
+                ActionChip(
+                  label: Text(
+                    _fieldSamples[field] == null
+                        ? field
+                        : '$field — ${_fieldSamples[field]}',
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _busy
+                      ? null
+                      : () => _insertVariable(controller, field),
+                ),
+            ],
+          ),
+          if (canPreview) ...[
+            const SizedBox(height: 6),
+            Text(
+              'They will read: $preview',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Put `{{ field }}` where the cursor is, not at the end.
+  ///
+  /// A chip that appended would make writing a sentence around a variable a
+  /// retyping exercise, which is how a catalogue ends up unused.
+  void _insertVariable(TextEditingController controller, String field) {
+    final selection = controller.selection;
+    final text = controller.text;
+    final at = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : text.length;
+
+    controller.value = TextEditingValue(
+      text: text.replaceRange(at, end, '{{$field}}'),
+      selection: TextSelection.collapsed(offset: at + field.length + 4),
+    );
+  }
+
+  String _recipientKindOf(_ActionRow row, String value, String kindOf) {
+    // A value decides its own kind. Only the empty one has to be remembered,
+    // because it is the one value that could be any of the three.
+    if (value.startsWith('user:')) return 'person';
+    // An assignment names a person or a field and never a typed value, so a
+    // non-empty value there can only be a field.
+    if (kindOf != 'person_or_field') {
+      if (kindOf == 'phone_recipient'
+          ? RegExp(r'^[+0-9][0-9 ()\-.]*$').hasMatch(value)
+          : value.contains('@')) {
+        return 'typed';
+      }
+    }
+
+    if (value.isNotEmpty) return 'field';
+
+    return row.recipientKind ?? 'person';
+  }
+
+  bool _personIsKnown(String value) =>
+      widget.catalogue.people.any((p) => p.key == value);
 
   /// WHICH FIELD OF THE EVENT carries the address or number.
   ///
@@ -2406,52 +2855,77 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// wrong at send time on the one with a hole. The save is refused when a blank
   /// is empty for the same reason — Meta would catch it, in the run log, later.
   Widget _whatsAppForm(_ActionRow row) {
-    if (_whatsAppTemplates.isEmpty) {
+    if (_whatsAppNumbers.isEmpty) {
       return _note(
         _whatsAppBecause ??
             'No WhatsApp templates are available for this business yet.',
       );
     }
 
+    // A TEMPLATE IS APPROVED PER NUMBER, not per business. Meta approves against
+    // the WABA behind a number and ours sit on different ones, so "which
+    // template" cannot be asked before "from which number" — a flat list showed
+    // one number's templates and silently hid the other's.
+    final from = row.whatsAppFrom.isEmpty && _whatsAppNumbers.length == 1
+        ? _whatsAppNumbers.single.from
+        : row.whatsAppFrom;
+
+    final number = _whatsAppNumbers.where((n) => n.from == from).firstOrNull;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<String>(
-          initialValue: row.whatsAppTemplate.isEmpty
-              ? null
-              : row.whatsAppTemplate,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Template',
+        if (_whatsAppNumbers.length > 1) ...[
+          SearchPickerField<String>(
+            value: from.isEmpty ? null : from,
+            label: 'Send from',
+            helperText: 'Templates are approved per number, so this decides '
+                  'which are available.',
             isDense: true,
-            helperText: 'Only templates Meta has approved are listed.',
+            options: [
+              for (final n in _whatsAppNumbers)
+                SearchOption(value: n.from, label: '${n.label} · ${n.from}'),
+            ],
+            onChanged: _busy
+                ? null
+                : (chosen) => setState(() {
+                    row.whatsAppFrom = chosen ?? '';
+                    // The template belonged to the old number and may not exist
+                    // on the new one.
+                    row.whatsAppTemplate = '';
+                    row.whatsAppParameters = 0;
+                    for (final c in row.whatsAppValues) {
+                      c.dispose();
+                    }
+                    row.whatsAppValues.clear();
+                  }),
           ),
-          items: [
-            for (final template in _whatsAppTemplates)
-              DropdownMenuItem(
-                value: template.name,
-                child: Text(
-                  template.preview.isEmpty
-                      ? template.name
-                      : '${template.name} — ${template.preview}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+          const SizedBox(height: 10),
+        ],
+        SearchPickerField<String>(
+          value: row.whatsAppTemplate.isEmpty ? null : row.whatsAppTemplate,
+          label: 'Template',
+          helperText: 'Only templates Meta has approved are listed.',
+          isDense: true,
+          options: [
+            for (final t in number?.templates ?? const [])
+              SearchOption(value: t.name, label: t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}'),
           ],
           onChanged: _busy
               ? null
               : (chosen) => setState(() {
+                  row.whatsAppFrom = from;
                   row.whatsAppTemplate = chosen ?? '';
 
-                  final picked = _whatsAppTemplates
+                  final picked = (number?.templates ?? const [])
                       .where((t) => t.name == chosen)
                       .firstOrNull;
 
+                  // FROM THE SERVER, never counted from the preview: Meta
+                  // numbers positionally and "{{1}} owes {{3}}" is three with a
+                  // gap.
                   row.whatsAppParameters = picked?.parameters ?? 0;
 
-                  // Rebuilt rather than resized: a leftover controller from a
-                  // previous template would carry its value into a blank that
-                  // means something else.
                   for (final c in row.whatsAppValues) {
                     c.dispose();
                   }
@@ -2464,7 +2938,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                 }),
         ),
         const SizedBox(height: 10),
-        _triggerFieldPicker(row, 'to_field', 'Send to the number in'),
+        _recipientPicker(row, 'to_field', 'Send to', 'phone_recipient'),
         for (var i = 0; i < row.whatsAppValues.length; i++) ...[
           const SizedBox(height: 10),
           TextField(
@@ -2473,13 +2947,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             decoration: InputDecoration(
               labelText: 'Blank ${i + 1}',
               isDense: true,
-              helperText: 'Use {{ field }} to take it from the record.',
+              helperText: _variableHint(),
             ),
           ),
+          _variableTools(row.whatsAppValues[i]),
         ],
       ],
     );
   }
+
 
   /// Which field, and what to set it to.
   ///
@@ -2544,33 +3020,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: DropdownButtonFormField<String>(
-            // Null for anything the subject does not have, because the dropdown
-            // asserts on a value with no matching item — and a saved rule can
-            // legitimately carry one, from before any of this was checked.
-            initialValue: known ? current : null,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Field',
-              isDense: true,
-              helperText: known || current.isEmpty
-                  ? 'On ${_article(subject.label)} — whichever one the event '
-                        'was about.'
-                  : null,
-              // Named, not silently dropped. Somebody chose that value, or the
-              // server stored it, and a box that just went blank is the thing
-              // people file bugs about.
-              errorText: known || current.isEmpty
-                  ? null
-                  : '“$current” is not something a rule may set on '
-                        '${_article(subject.label)}.',
-            ),
-            items: [
+          child: SearchPickerField<String>(
+            // Null for anything the subject does not have, because the picker
+            // shows nothing for a value with no matching option — and a saved
+            // rule can legitimately carry one, from before any of this was
+            // checked.
+            value: known ? current : null,
+            label: 'Field',
+            isDense: true,
+            helperText: known || current.isEmpty
+                ? 'On ${_article(subject.label)} — whichever one the event '
+                      'was about.'
+                : null,
+            // Named, not silently dropped. Somebody chose that value, or the
+            // server stored it, and a box that just went blank is the thing
+            // people file bugs about.
+            errorText: known || current.isEmpty
+                ? null
+                : '“$current” is not something a rule may set on '
+                      '${_article(subject.label)}.',
+            options: [
               for (final field in fields)
-                DropdownMenuItem(
-                  value: field.key,
-                  child: Text(field.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: field.key, label: field.label),
             ],
             onChanged: _busy
                 ? null
@@ -2585,11 +3056,49 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     );
   }
 
-  Widget _valueBox(_ActionRow row) => TextField(
-    controller: row.value,
-    enabled: !_busy,
-    decoration: const InputDecoration(labelText: 'Set to', isDense: true),
-  );
+  /// What to set the field to — a list when the field HAS a list.
+  ///
+  /// It was a text box for everything, including a status. The values have been
+  /// served since the condition dropdowns landed, keyed by field, and this side
+  /// never read them — so a rule could set a lead's status to "Booked" and skip
+  /// for ever because the stored value is `booked`. That is the exact complaint
+  /// that started the value pickers, surviving in the other half of the screen.
+  ///
+  /// Anything with an open set keeps its text box: a shorter list pretending to
+  /// be the whole one is worse than typing.
+  Widget _valueBox(_ActionRow row) {
+    final options = _fieldValues[row.field.text.trim()];
+
+    if (options == null) {
+      return TextField(
+        controller: row.value,
+        enabled: !_busy,
+        decoration: const InputDecoration(labelText: 'Set to', isDense: true),
+      );
+    }
+
+    return DropdownMenu<String>(
+      initialSelection: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
+      enabled: !_busy,
+      label: const Text('Set to'),
+      expandedInsets: EdgeInsets.zero,
+      enableFilter: true,
+      requestFocusOnTap: true,
+      onSelected: _busy
+          ? null
+          : (chosen) => setState(() => row.value.text = chosen ?? ''),
+      dropdownMenuEntries: [
+        for (final option in options)
+          DropdownMenuEntry<String>(
+            value: option.value,
+            // The wire name is shown too: a rule saved before this reads back as
+            // the raw value, and somebody comparing the two needs to see they
+            // are the same thing.
+            label: '${option.label}  (${option.value})',
+          ),
+      ],
+    );
+  }
 
   Widget _note(String text) => Builder(
     builder: (context) =>

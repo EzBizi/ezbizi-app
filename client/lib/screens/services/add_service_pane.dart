@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../inventory/inventory_place_fields.dart';
 import '../inventory/item_pane.dart';
 
@@ -214,46 +216,26 @@ class _AddServicePaneState extends State<AddServicePane> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String?>(
-                        initialValue: _groupId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Group'),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('No group'),
-                          ),
+                      SearchPickerField<String?>(
+                        value: _groupId,
+                        label: 'Group',
+                        options: [
+                          const SearchOption(value: null, label: 'No group'),
                           for (final row in _groups)
-                            DropdownMenuItem(
-                              value: row['id'] as String?,
-                              child: Text(
-                                row['name'] as String? ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
                         ],
                         onChanged: _busy
                             ? null
                             : (v) => setState(() => _groupId = v),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String?>(
-                        initialValue: _labelId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Label'),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('No label'),
-                          ),
+                      SearchPickerField<String?>(
+                        value: _labelId,
+                        label: 'Label',
+                        options: [
+                          const SearchOption(value: null, label: 'No label'),
                           for (final row in _labels)
-                            DropdownMenuItem(
-                              value: row['id'] as String?,
-                              child: Text(
-                                row['name'] as String? ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
                         ],
                         onChanged: _busy
                             ? null

@@ -2,6 +2,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/inspection/builder_tab.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -115,8 +116,8 @@ void main() {
     await tester.ensureVisible(condField);
     await tester.pumpAndSettle();
 
-    final picker = tester.widget<DropdownButtonFormField<String>>(condField);
-    expect(picker.initialValue, isNull, reason: 'no condition yet');
+    final picker = tester.widget<SearchPickerField<String>>(condField);
+    expect(picker.value, isNull, reason: 'no condition yet');
 
     // And how it prints, which defaults to a plain line so no existing report
     // is restyled.
@@ -125,7 +126,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<DropdownButtonFormField<String>>(print).initialValue,
+      tester.widget<SearchPickerField<String>>(print).value,
       'text',
     );
   });

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/logo_badge.dart';
 import '../../widgets/numbered_step.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';
@@ -1262,36 +1264,30 @@ class _ContractDesignerState extends State<ContractDesigner> {
           children: [
             Expanded(
               flex: 3,
-              child: DropdownButtonFormField<String>(
-                initialValue: widget.vocabulary.knowsType(question.type ?? '')
+              child: SearchPickerField<String>(
+                       value: widget.vocabulary.knowsType(question.type ?? '')
                     ? question.type
                     : null,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Kind of answer',
-                  isDense: true,
-                  helperMaxLines: 3,
-                  // Fixed once published, and the reason is worth saying rather
-                  // than greying a control and leaving somebody to guess.
-                  helperText: question.published
+                       label: 'Kind of answer',
+                       // Fixed once published, and the reason is worth saying rather
+                       // than greying a control and leaving somebody to guess.
+                       helperText: question.published
                       ? 'Fixed — answers have already been stored as this kind. '
                             'Retire it and add a new question instead.'
                       : null,
-                ),
-                items: [
+                       helperMaxLines: 3,
+                       isDense: true,
+                       options: [
                   for (final type in widget.vocabulary.types)
-                    DropdownMenuItem(
-                      value: type.key,
-                      child: Text(type.label, overflow: TextOverflow.ellipsis),
-                    ),
+                    SearchOption(value: type.key, label: type.label),
                 ],
-                onChanged: enabled && !question.published
+                       onChanged: enabled && !question.published
                     ? (value) => setState(() {
                         question.type = value;
                         if (value != 'date') question.isExpiry = false;
                       })
                     : null,
-              ),
+                     ),
             ),
             const SizedBox(width: 14),
             Expanded(

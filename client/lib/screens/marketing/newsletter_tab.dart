@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../email/message_html.dart';
@@ -349,18 +350,18 @@ class _NewsletterTabState extends State<NewsletterTab> {
             child: _all.isEmpty
                 ? Text('No newsletters in $_viewName yet.')
                 : DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
+                    child: SearchPickerField<String>(
                       value: _selectedId,
-                      isExpanded: true,
-                      items: [
+                      border: InputBorder.none,
+                      isDense: true,
+                      options: [
                         for (final n in _all)
-                          DropdownMenuItem(
+                          SearchOption(
                             value: n.id,
-                            child: Text(
-                              '${n.subject}  ·  ${n.statusWord}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            // The subject searches; the state is what you read
+                            // once you have found it.
+                            label: n.subject,
+                            detail: n.statusWord,
                           ),
                       ],
                       onChanged: (id) {

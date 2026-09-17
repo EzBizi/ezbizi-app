@@ -661,6 +661,45 @@ class SocialPublishingTest extends TestCase
         $this->assertNull(Publishers::refusalFor(SocialProvider::InstagramProfessional));
     }
 
+    /**
+     * Every extension the composer accepts has a type, and nothing is guessed.
+     *
+     * The loop is the guard, not the decoration: the upload rule is built from
+     * SocialMediaKind::extensions(), so an extension added there and forgotten
+     * here used to be served as `video/mp4` - which is how an iPhone .heic
+     * photo reached Instagram as a video.
+     */
+    public function test_every_accepted_extension_has_its_own_type_and_nothing_is_guessed(): void
+    {
+        foreach (SocialMediaKind::extensions() as $extension) {
+            $mime = PostPayload::mimeForExtension($extension);
+
+            $expected = SocialMediaKind::forFile('x.'.$extension) === SocialMediaKind::Image ? 'image/' : 'video/';
+            $this->assertStringStartsWith($expected, $mime, $extension.' is served as '.$mime);
+        }
+
+        $this->assertSame('image/heic', PostPayload::mimeForExtension('HEIC'));
+        $this->assertSame('image/heif', PostPayload::mimeForExtension('heif'));
+        $this->assertSame('video/mp4', PostPayload::mimeForExtension('mp4'));
+        $this->assertSame('video/mp4', PostPayload::mimeForExtension('m4v'));
+        $this->assertSame('application/pdf', PostPayload::mimeForExtension('pdf'));
+
+        $this->expectException(SocialPublishFailed::class);
+        $this->expectExceptionMessage('.tiff');
+        PostPayload::mimeForExtension('tiff');
+    }
+
+    public function test_a_handoff_serves_a_heic_photo_as_a_photo(): void
+    {
+        $this->reachable();
+
+        $handoff = MediaHandoff::hold(new PostPayload(filePath: $this->temp('heic', 'HEICBYTES')));
+
+        $this->get($handoff->url)->assertOk()->assertHeader('Content-Type', 'image/heic');
+
+        $handoff->release();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

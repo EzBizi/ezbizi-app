@@ -1915,6 +1915,76 @@ than 30 days") is the honest weaker claim that ships instead. Do not draw a red
 
 ---
 
+### 20 · HR · Work Hours — **BRIEF, not yet drawn** (from Clock In, 2026-09-17)
+
+Jose asked for this screen in his own words on 2026-09-17, in the Clock In
+session. It names new elements (a sidebar, a search field, an expanding row),
+so it is UI/UX's to draw and build. Quoted rather than paraphrased, because the
+detail is his:
+
+> * First i should only see 1 per user, as u can see for example i appear
+>   multiple times as Jose Luis Demasi, instead make it so if i click the user
+>   it expands and shows all the clock in and outs
+> * I also want to see the amount of hours
+> * overall i want a better UI Design, i want to see the profile picture on the
+>   left side before the name as well
+> * green clock in indicator, red clock out indicator next to the hours
+> * also move the work hours tab next to dashboard so it's second in place.
+> * for the ui i would like to have a left sidebar with every user, ( search bar
+>   on top ) so when u click a user it shows you the history for the week, total
+>   hours, days worked, avg/day, it should also always show me the week i'm in
+>   from Sunday to Saturday ( so for example when i enter today, i should see the
+>   record from sunday till today but nothing before sunday, ( this should be
+>   modifiable for each organization so they can choose how they count their
+>   days, but for now that is the default )
+
+**Already done by Clock In at `e5c3ecff`, so do not redo it:** the rename to
+**Work Hours** (`time_clock.tab`, en + es), the tab moved second in
+`hr_screen.dart`, and the whole data layer. The screen currently on that tab is
+still the old one-day list; replacing it is the build.
+
+**The endpoint is `GET /api/v1/hr/time-clock/week?on=YYYY-MM-DD`** (`hr.view`
+plus the organization Clock in switch; `on` is ANY date inside the week wanted,
+omit for this week). It answers:
+
+```
+data: {
+  week_start, week_end,        // YYYY-MM-DD, inclusive
+  starts_on,                   // 'sunday' by default, org setting
+  timezone, timezone_label,
+  people: [{
+    id, name, is_active, has_avatar,
+    total_seconds, days_worked, average_seconds,
+    open,                      // clocked in right now
+    shifts: [{ id, date, clocked_in, clocked_out, clocked_in_at, clocked_out_at,
+               duration_seconds, open, ended_by, outside_schedule, extensions }]
+  }]
+}
+```
+
+Five things worth knowing before drawing it:
+
+- **Everybody in reach is in `people`**, including anyone who worked nothing
+  that week (zero totals, empty `shifts`). A name missing from a sidebar reads
+  as "not on the team", which is not what "did not clock in" means.
+- **`clocked_in` / `clocked_out` are already formatted** in the organization's
+  clock and 12/24h setting. `clocked_in_at` / `clocked_out_at` are the UTC
+  instants if you need them. Do not format from the device.
+- **An open shift reports the time worked SO FAR** in `duration_seconds`, not
+  null, because it is summed into the total shown beside it. `open: true` says
+  it is still running — that is the green indicator Jose asks for.
+- **`has_avatar`** says whether to fetch `GET /api/v1/users/{id}/avatar`; fall
+  back to initials rather than requesting one that is not there.
+- **Copy already exists** as `time_clock.total`, `time_clock.days_worked`,
+  `time_clock.average_per_day`, `time_clock.search_people`,
+  `time_clock.no_hours`, `time_clock.this_week` (en + es, migration
+  `2026_09_17_100000_work_hours_copy.php`). Ask Clock In for more rather than
+  hardcoding English.
+
+Week navigation is not in Jose's list. The tab it replaces has day arrows, so
+dropping the ability to look back at all would lose something he has today —
+worth one of the options showing how you would move between weeks.
+
 ## Naming, because it will bite whoever reads this
 
 Two adjacent dashboard panels must not share a word for different facts. HR's
@@ -2823,6 +2893,200 @@ there, a glance persists exactly as long as the condition and clears itself, and
 to have decided the audience first. **3 pairs well with 2** — the glance is where you find out,
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
+
+### 22 · App-wide · Popup dropdowns → search pickers — **DONE, AND PINNED AT ZERO**
+
+Jose, 2026-09-17, on a twelve-name person dropdown running off the bottom of the window:
+
+> *"this sort of popup dropdown are terrible ui design, anything that offers users should be a search
+> bar picker instead. So i want you to go and find every single use of this sort of dropdown in the
+> app and replace it."*
+
+**`client/lib/widgets/search_picker.dart`** is the replacement. `SearchPickerField` shows the search
+box only when the list is long enough to need one (`searchFrom`, default 8), which is what makes
+"every single use" uniformly right: some of these offer twelve people, some offer *Everyone at once /
+In order*, and a search box over two options asks somebody to type where they could have pointed.
+
+**Every `DropdownButtonFormField` and every bare `DropdownButton` in the app is gone.** The nine
+remaining `DropdownMenu`s all set `enableFilter: true` — they are already a search bar picker
+wearing Flutter's name for one — and are deliberately left.
+
+`client/test/no_popup_dropdown_test.dart` holds the count at zero, because "every single use" decays:
+the next form somebody writes reaches for the control Flutter documents, not the one this app chose.
+It matches a USE (`DropdownButtonFormField<` or `(`), never the bare name, which appears in
+search_picker's own explanation of what it replaced — **a guard that read the word would go red on
+the prose describing its own subject, and the cheapest fix for that is to delete the explanation.**
+
+> **THE TRANSFORMER, AND THE FOUR TIMES IT GUESSED.** Hand-anchoring on whitespace failed twice on
+> indentation, so the job became a script that balances brackets:
+> `<scratchpad>/swap.py` (session-local; rewrite it rather than hunt for it). It was right about
+> roughly seventy files and wrong about seven, in four separate ways, and the pattern in the four is
+> worth more than the script:
+>
+> 1. `Text(x, overflow: ...)` — the regex stopped at the only closing paren, so the second argument
+>    became part of the label. ~40 files, full revert.
+> 2. A `//` comment the splitter could not see, and an `items:` that was not a literal list. ~40
+>    files, full revert.
+> 3. `Text('${_money(x.toInt())}')` — the non-greedy capture stopped at the paren INSIDE the string
+>    interpolation. The guard added after (1) asked whether the captured label held a top-level
+>    comma; a TRUNCATED label holds no comma, so the guard waved it through. **The guard was aimed
+>    one shape beside the thing that breaks.** It now requires the capture to be *balanced*, which is
+>    the property the comma check was assuming and could not establish.
+> 4. **The dangerous one.** `find_calls` skipped strings but never learned about comments.
+>    `numbers_pane.dart` has `// The chosen item's text can grow` above three of its four dropdowns;
+>    the apostrophe in *item's* opened a string that closed four fields later, so the call's "end"
+>    landed past two whole widgets and they were deleted with it. **`flutter analyze` was clean** —
+>    what remained compiled perfectly. Two settings had simply stopped existing on the screen, and
+>    the only thing that said a word was `phone_screen_test` tapping *"Nobody — go straight to
+>    voicemail"*.
+>
+> **A green analyze is evidence that what remains compiles. It is no evidence at all that what was
+> removed was meant to go.** Every mass rewrite from here needs a count of the thing it claims to
+> preserve, not a compile.
+>
+> Nothing broken ever reached a commit, and every file was verified to contain my own
+> `SearchPickerField` before being reverted — checked, not assumed, in a tree ten sessions share.
+
+**What the control gained on the way, each because a real call site needed it and not in advance:**
+`helperText` / `helperMaxLines` (several dropdowns explain what a choice MEANS), `border` and
+`isDense` (so a swapped field keeps its frame), `errorText` (the automation field picker NAMES a
+stored value it cannot offer instead of going quietly blank), a nullable `value` (ten lists offer a
+row that means *nothing chosen* — "Not set", "Nobody has the keys" — which somebody picks on
+purpose), and an optional `child` for a richer row, where `label` stays required because **a row with
+an icon in it has no string to filter on, and a picker filtering on the wrong words looks perfectly
+correct while hiding the thing somebody typed the name of.**
+
+**Ten other modules' test files drove the old control** — tapping `DropdownButtonFormField`, reading
+`.items`, reaching through the FormField for the `DropdownButton` underneath. They were pointed at
+the new control and kept asserting the same things: an option's `enabled`, the order of the scopes,
+the five kinds of question the server declares, the disabled "already onboarding" row, the Workspace
+directory that stays unlisted until somebody searches it.
+
+**One judgement made without him, flagged in his three bullets:** short fixed-enum lists get the same
+control with no search box rather than a search box over two options. If he would rather every one of
+them carried a search field, that is a one-line change to `searchFrom`.
+
+### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
+
+`docs/previews/pto-balances-layouts.html`. Approved by Jose 2026-09-17 — *"PTO Balances is good we
+should add that to Human Resources Tab"* — from a real production suggestion. Toula Elwell at
+A1-Group, 2026-09-08, her spelling kept:
+
+> *"a part for us where we can see howq much paidf pto we all have and when it can be used"*
+
+**Two asks in that sentence, and the second is the hard one.** *"we ALL have"* is a view across
+people rather than self-service. *"when it can be USED"* is a waiting period rather than a number
+— so on a screen called balances, **the date is often the answer and the number is the
+decoration**. Every layout gives the date its own box rather than a footnote.
+
+> **THE EMPTY STATE IS THE COMMON STATE, and that is what shapes all six.** HR measured
+> production: **one of eleven contract templates mentions PTO, the other ten are silent**. So
+> *"this organization has not set up paid time off"* is probably the FIRST thing most people ever
+> see here. *(Their count is of tenant rows and is relayed — I verified the models and the
+> employment-events migration they name, not the eleven.)*
+>
+> Two consequences drawn rather than described. **State A is organization-wide, not one quiet
+> row** — I drew it per-person first, which made the common case look like an edge case in my own
+> gallery after I had written the warning saying it was not. And **the remedy belongs to somebody
+> else**: it is set on a contract template, so state A says who can change it instead of offering
+> a button most readers cannot use.
+
+**The five states are switchable on every layout**, because a layout that only reads well at "6
+days available" is a layout for the rarest case. **D is the one worth clicking**: nobody on the
+books before the employment-events table has a start date, the migration deliberately refused to
+invent them, so eligibility is genuinely unanswerable for those people. It says so. Being told you
+may book when your contract says otherwise is worse than being told we cannot tell.
+
+**Recommendation: 3 and 6.**
+
+**3 is the table**, and it is the only layout that already has a column for the number nobody can
+compute yet. Nothing in EzBizi records a day off — HR measured that too — so whether a balance
+can say "2 taken" is undecided and sits between Scheduling and HR. **Taken** is drawn as an em
+dash in every row: present, empty, honest. The day that is settled the column fills and nothing
+moves, which is the constraint HR asked me to design for. It is also the densest, sorts by "when",
+and answers "who becomes eligible in January" at a glance.
+
+**Its cost is state A, the common one** — five columns of em dashes is a lot of furniture around
+one sentence. So in state A the table is **replaced wholesale** by the notice rather than drawn
+empty. Worth knowing that my note claimed this before the drawing did it; caught by reading my own
+prose back against my own screen.
+
+**2 is the one worth arguing for, and its case is weaker than I first wrote it.** A card per
+person puts the states side by side. I argued that from *Sam-no-policy beside Jon-no-start-date
+beside Maria-waiting* — and **HR corrected it: all four PTO settings are organization-scoped, so
+"no policy" empties every row at once and is never one person's state beside somebody else's.** A
+third of the mix I was selling cannot occur, and my fixture drew it anyway until they said so. Not
+checkable from here (their settings block rather than a tenant row, and not on main yet), so
+relayed — and it **strengthens** the recommendation rather than weakening it.
+
+**Where this leans next, and why it makes 3 safer still.** A-1's paperwork is per-ROLE rather than
+per-company — that is what "one of eleven" means, and the one is Project Manager. So a per-person
+override over the organization default is likely the next thing, and then a roster genuinely does
+show six days beside zero beside two. The table takes that without moving; a card wall would want
+re-reading.
+
+**6 on the phone**: one list, you inside it rather than above it, each row carrying its state in
+words. It is the only phone option where *"we all have"* is the whole screen rather than a section
+of it, which is her phrasing. **5 hides the across-people view behind a tab**, which is the ask.
+
+### 20b · HR · Work Hours, the drawing — **DRAWN, awaiting Jose**
+
+Companion to **entry 20 above**, which is Clock In's brief and holds Jose's requirements verbatim. Numbered 20b rather than 20 because two headings with one number is how a reader ends up quoting the wrong half.
+
+`docs/previews/work-hours-layouts.html`. Brief from the Clock In session.
+
+> **A WARNING THAT WAS TRUE FOR ABOUT A MINUTE, LEFT HERE BECAUSE THE HABIT IS WORTH MORE THAN
+> THE TIDINESS.** This entry said the brief was not on main. It was not, when I grepped: `c97efb35`
+> was still only on `session/clock-in`, and I read it with `git show` to draw from. The deploy desk
+> merged it minutes later, in the same minute my own commit is stamped. **So the claim was stale
+> rather than wrong** — which is the failure I have corrected in four other rows this week, arriving
+> in mine. The brief is at line 1918 and both entries survived the merge with nothing dropped.
+>
+> The predicted conflict was real and the desk resolved it keeping both sides. That part of the
+> warning earned its place.
+
+**Already built by Clock In (`e5c3ecff`) — do not redo:** the rename to Work Hours (en + es), the
+tab moved second beside Dashboard, and the whole data layer
+(`GET /api/v1/hr/time-clock/week?on=YYYY-MM-DD`). The old one-day list still renders on that tab;
+replacing it is the build.
+
+> **HIS LIST CONTAINS TWO DIFFERENT SCREENS, AND THAT IS THE DECISION.** His first bullet asks for
+> *one expanding row per user* — a single list you open in place. His last asks for *a left
+> sidebar of users with the week beside it*. Both are reasonable, they answer different questions,
+> and building one does not give you the other. Options 1–3 are the three honest readings.
+
+**Recommendation: 1 and 5.**
+
+**1 is the only option that satisfies BOTH bullets.** The sidebar is one row per person — which
+is his first complaint, that he appears several times today — and selecting somebody shows every
+clock in and out grouped by day, which is the expansion he asked for. 2 and 3 each satisfy one
+bullet and not the other. 1 also builds his last sentence literally: search on top, avatar before
+the name, total/days/average, the week he is in.
+
+**3 is the one worth arguing for anyway.** It is the only layout that answers *"did everybody do
+their hours"* without clicking six people, which is the Friday question, and the only one showing
+the SHAPE of a week. Its cost is his first bullet: a cell holds a total rather than the punches,
+so reading the actual times needs a second layer.
+
+**5 over 4 on the phone, and it is a deliberate break from pairing.** A sidebar on a 380px screen
+is just a list, so the two-pane idea buys nothing there — while expanding in place is what every
+other list in the app does, keeps the totals on screen while you compare, and is his first bullet
+natively. 4 exists if matching the desktop shape matters more than that.
+
+**Drawn to respect four facts from the brief rather than invented:** everybody in reach is listed
+**including people who worked nothing** (greyed, never dropped — a missing name reads as "not on
+the team"); an open shift reports time **so far** and is the green indicator; times arrive
+**already formatted** in the organization's clock, so nothing formats from the device; and Sunday
+is a **default rather than a rule**, so the header reads `starts_on`.
+
+**Week navigation is not on his list and every option draws it.** The tab this replaces has day
+arrows, so shipping without it would remove something he has today. Worth a word from him if he
+would rather it went.
+
+**One thing to ask Clock In rather than compute here:** option 6's team numbers — who is on the
+clock, who has no hours, the team total — are not in the payload. Summing them client-side is a
+second place that can disagree with the server the day the rules change. If 6 is picked, that is
+a request to them, not arithmetic here.
 
 ### 19 · Communication · Editing from the call flow — **DRAWN, awaiting Jose**
 

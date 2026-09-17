@@ -8,6 +8,90 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0238',
+      date: '17 Sep 2026',
+      items: [
+        'Typing into a website form question keeps the letters in that question. Every keystroke used to rebuild the box, so the rest of what you typed landed in another field.',
+        'Every popup dropdown in the app is now a list you can search. On short lists it still just opens, so nothing asks you to type where you could point.',
+        'Inspections now have a Flow view beside the phone preview in the Builder, drawn the same way as the call flow chart. It shows the order a technician walks the screens in, and marks any screen that can never be shown - a condition asking about an answer that has not been given yet looks identical to a working one in the list.',
+        'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
+        'A role can be given single tabs inside a module rather than the whole module. Human Resources is the first, and nobody loses a tab they could open before.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0237',
+      date: '17 Sep 2026',
+      items: [
+        'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
+        'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
+        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0236',
+      date: '17 Sep 2026',
+      items: [
+        'A website General tab shows the website settings again. It had filled with a text box for every field on every page, plus Group, Author and Category, which mean nothing for a whole site.',
+        'Three website fields you could not see before: City link, State link and Website address.',
+        'Paid time off. Turn it on for the business, set how many days a year, how long somebody waits before using them, and whether unused days carry over. Everybody can see their own balance; seeing anybody else needs the HR permission. Off until you set it up, so nothing changes for anyone today.',
+        'Twenty screens moved off the old popup dropdown to a list you can search.',
+        'A desktop notification now carries its own icon rather than looking one up.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0235',
+      date: '17 Sep 2026',
+      items: [
+        'An inspection is drawn as the shape somebody walks through, rather than as a list of questions.',
+        'Emailing a report to a customer is back, rebuilt rather than restored.',
+        'A picker you can search, on the screen that needed it.',
+        'Work Hours reads in Spanish everywhere, including the week arrows and the still-clocked-in row.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0234',
+      date: '17 Sep 2026',
+      items: [
+        'Work Hours is a week rather than a day: everyone in one list with their hours, searchable, with a green dot beside whoever is on the clock, and each person opening to their clock in-outs grouped by day with a total, days worked and an average. A day nobody worked still gets a heading rather than vanishing.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0233',
+      date: '17 Sep 2026',
+      items: [
+        'Scheduling settings open again. The pane went grey, rail and all, because the server sent each service area week in a shape the screen could not read.',
+        'Clock in-out is now Work Hours, and sits beside Dashboard.',
+        'Work Hours knows the week for each person: hours worked, days worked, and an average per day, counted from whichever day your organization starts its week on. Everybody is listed, including anyone who worked nothing.',
+        'A variable in an automation email or WhatsApp message now carries its value. It was always blank, and every variable box now says which names work.',
+        'A text message from a rule can name the caller.',
+        'A quotation mark typed into a rule no longer arrives as a string of symbols.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0232',
+      date: '16 Sep 2026',
+      items: [
+        'A rule that sends email can no longer exceed its hourly limit if the counter behind that limit stops working.',
+        'The run log for a rule that sends a report now names who did not get it, and says so when mail is going nowhere at all. It used to print Sent to 2 people on a machine where nothing had left.',
+        'A WhatsApp step now says it handed the message over rather than that it sent it, and records which message it was. Meta returns success for messages it refuses seconds later, so the old line went green above something that never arrived.',
+        'Work schedules now follow the clock of the branch or company they belong to, so the end-of-shift reminder and the automatic clock-out happen at the right hour. A schedule saved with a fixed offset kept no daylight saving, which put every reminder an hour late through the summer.',
+        'When Google stops answering, the Leads screen says so. A dead sync used to look exactly like a quiet afternoon, and the list refreshing itself every twenty seconds made that worse rather than better.',
+        'A photo taken on an iPhone now posts to Facebook and Instagram as a photo. It was being sent as a video file, which is not what it is. The same applies to heif photos and m4v videos.',
+        'An automation can send a saved report to a list of people.',
+        'A rule can be run for real from its own menu, instead of waiting for the event to happen.',
+        'Every step in a rule now offers the right kind of choice: people are searchable, a value with a fixed set is chosen rather than typed, a text step lists only lines approved for messaging, and a WhatsApp step asks which number to send from when a business has more than one.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0231',
+      date: '16 Sep 2026',
+      items: [
+        'A scheduled report now covers the place it was saved for. It used to be rendered at whatever view its author happened to have selected in their top bar, so the same report could carry another branch figures without saying so.',
+        'Airtable bases and Workiz accounts can be given a name, and arrive named instead of showing their internal id.',
+        'Clicking a New Live Chat Lead notification now opens Leads already narrowed to website chat, instead of the dashboard.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0230',
       date: '16 Sep 2026',
       items: [

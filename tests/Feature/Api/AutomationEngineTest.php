@@ -5,6 +5,13 @@ namespace Tests\Feature\Api;
 use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\AutomationEvent;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
+use App\Models\SavedReport;
 use App\Models\Lead;
 use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
@@ -12,6 +19,7 @@ use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
 use Illuminate\Support\Facades\Mail;
 use App\Support\Automations\ActionRunner;
+use App\Support\Phone\TwilioGateway;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
@@ -74,9 +82,9 @@ class AutomationEngineTest extends TestCase
         return $this->withHeader('Authorization', "Bearer {$token}");
     }
 
-    private function automation(string $trigger, ?array $conditions, array $actions): Automation
+    private function automation(string $trigger, ?array $conditions, array $actions, ?string $author = null): Automation
     {
-        return $this->inTenant(function () use ($trigger, $conditions, $actions) {
+        return $this->inTenant(function () use ($trigger, $conditions, $actions, $author) {
             $automation = Automation::create([
                 'organization_id' => $this->org['organization']->id,
                 'name'            => "When {$trigger}",
@@ -90,6 +98,9 @@ class AutomationEngineTest extends TestCase
                 'version'         => 1,
                 'conditions'      => $conditions,
                 'actions'         => $actions,
+                // A version is immutable once written, so an author cannot be
+                // added afterwards — which is why it is an argument here.
+                'created_by'      => $author,
                 'created_at'      => now(),
             ]);
 
@@ -889,6 +900,12 @@ class AutomationEngineTest extends TestCase
         // written to, even though AutomationEvent has no is_active to set.
         $wrong = $this->inTenant(fn () => $runner->run(['type' => 'deactivate'], $event, $event));
         $this->assertFalse($wrong['ok']);
+
+        // THE SENTENCE, not just the refusal. `ok:false` here is produced by the
+        // guard AND by the arm accepting the subject and failing afterwards on a
+        // model with no `is_active` — so asserting the refusal alone stays green
+        // in exactly the case where the guard has stopped guarding.
+        $this->assertStringContainsString('is about something else', $wrong['detail']);
     }
 
     /**
@@ -1153,6 +1170,413 @@ class AutomationEngineTest extends TestCase
         $gone = $send('user:'.$admin->id);
         $this->assertFalse($gone['ok']);
         $this->assertStringContainsString('no longer works here', $gone['detail']);
+    }
+
+    /**
+     * "Run it now" really sends; "Test" still does not.
+     *
+     * The pair is the assertion. A test that only proved run-now sends would
+     * pass just as well against a build where the rehearsal had started sending
+     * too - which is the failure that matters, because somebody presses Test
+     * expecting nothing to leave the building.
+     */
+    public function test_run_now_really_sends_and_test_still_does_not(): void
+    {
+        Mail::fake();
+
+        $automation = $this->automation('job.created', null, [[
+            'type' => 'email.send',
+            'to_field' => 'someone@example.test',
+            'subject' => 'It ran',
+            'body' => 'Hello.',
+        ]]);
+
+        $this->makeJob();
+        $this->drain();
+
+        Mail::fake(); // ignore anything the ordinary delivery just did
+
+        $this->as()->postJson("/api/v1/automations/{$automation->id}/test")->assertOk();
+        Mail::assertNothingSent();
+
+        $this->as()->postJson("/api/v1/automations/{$automation->id}/run-now")
+            ->assertOk()
+            ->assertJsonPath('data.matched', true);
+
+        Mail::assertSent(AutomationMessage::class, 1);
+
+        // NO RUN ROW, and that is the design rather than a gap: automation_runs
+        // is unique on (event_id, automation_version_id), and the common case
+        // for this button is an event the rule has already handled. What makes
+        // the send attributable is the audit trail.
+        $audited = $this->inTenant(fn () => AuditEvent::where('action', 'automation.run_now')->exists());
+
+        $this->assertTrue($audited, 'a real send somebody triggered has to be attributable');
+    }
+
+    /**
+     * A report step refuses for three different reasons, in three sentences.
+     *
+     * They send somebody to three different places — take the rule over, fix the
+     * rule's scope, come back later — so catching them as one `Throwable` and
+     * rendering one sentence would be the run log lying about which errand it
+     * is. Two of the three are asserted here; the allowance one is SES's and
+     * covered on their side.
+     *
+     * THE AUTHOR CASE IS THE ONE WORTH HAVING. A rule fires with nobody at a
+     * screen, so `send()` renders against the rule's AUTHOR as a reach floor. If
+     * they have left, the honest answer is a refusal naming what to do — not a
+     * substitute actor, which would render somebody else's figures under a rule
+     * they never saw.
+     */
+    public function test_a_report_step_says_which_of_its_refusals_happened(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key' => 'automation.schedule_reached',
+            'payload' => [],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $automation = $this->automation('automation.schedule_reached', null, []);
+
+        // A report that does not exist, and a rule that names nobody: two of the
+        // arm's own refusals, before the sender is reached at all.
+        $missing = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => (string) Str::uuid7(), 'to' => ['x@example.test']],
+            $event, null, false, $automation,
+        ));
+
+        $this->assertFalse($missing['ok']);
+        $this->assertStringContainsString('no longer exists', $missing['detail']);
+
+        $report = $this->inTenant(fn () => SavedReport::create([
+            'organization_id' => $this->org['organization']->id,
+            'name' => 'Weekly numbers',
+            'definition' => ['rows' => 'jobs'],
+        ]));
+
+        $nobody = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => $report->id, 'to' => ['not-an-address']],
+            $event, null, false, $automation,
+        ));
+
+        $this->assertFalse($nobody['ok']);
+        $this->assertStringContainsString('nobody to send', $nobody['detail']);
+
+        // THE CONTROL: the two refusals above must not both be "the report does
+        // not exist". Different sentences for different errands is the point.
+        $this->assertNotSame($missing['detail'], $nobody['detail']);
+
+        Mail::assertNothingSent();
+    }
+
+    /**
+     * THE SUCCESS LINE IS THE CALLEE'S, NOT OURS.
+     *
+     * `SentReport` carries two things a recipient count cannot say: `refused` is
+     * a map of address => why, and `transportDelivers` is false on a box whose
+     * mail goes nowhere. This arm first hand-rolled its own sentence from a
+     * count and an implode — which printed the REASONS while dropping the
+     * addresses, and said "Sent to 2 people" on a deployment where nothing left
+     * the building. That is the exact failure `SentReport` was written to
+     * prevent, missed by the caller it was written for.
+     *
+     * Nothing above reaches a successful send, so the wrong sentence was
+     * invisible to this suite. Asserted here on the transport wording, which a
+     * count of recipients can never produce: MAIL_MAILER is `array` under test,
+     * so `delivers()` is false and the honest line says so.
+     */
+    public function test_a_sent_report_says_what_the_sender_says(): void
+    {
+        Mail::fake();
+
+        $runner = app(ActionRunner::class);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'automation.schedule_reached',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        // A rule fires with nobody at a screen, so the send renders as the rule's
+        // AUTHOR, which is why one is named here.
+        $automation = $this->automation(
+            'automation.schedule_reached', null, [], $this->org['admin']->id,
+        );
+
+        $report = $this->inTenant(fn () => SavedReport::create([
+            'organization_id' => $this->org['organization']->id,
+            'name'            => 'Weekly numbers',
+            'definition'      => [
+                'root'    => 'jobs',
+                'columns' => [['resource' => 'jobs', 'column' => 'title']],
+                'filters' => [],
+            ],
+        ]));
+
+        $sent = $this->inTenant(fn () => $runner->run(
+            ['type' => 'report.send', 'report_id' => $report->id, 'to' => ['owner@example.test']],
+            $event, null, false, $automation->fresh(),
+        ));
+
+        $this->assertTrue($sent['ok'], $sent['detail']);
+        $this->assertStringContainsString('Weekly numbers', $sent['detail']);
+        $this->assertStringContainsString('does not deliver', $sent['detail']);
+    }
+
+    /**
+     * The WhatsApp arm had no test at all, which is how its run-log line came to
+     * claim an outcome it cannot know.
+     *
+     * Meta returns HTTP 200 and a wamid for a message it will then refuse — the
+     * webhook flips the row to `failed` with a reason seconds later (measured by
+     * the Meta session, dba98c6c). A run-log line is written once and never
+     * revisited, so `status: sent` would sit there green forever above a message
+     * that never arrived. The sentence stops at the handoff.
+     *
+     * The other half is the number: a template is approved per WABA and a
+     * business can hold numbers on more than one, so the arm must send from the
+     * one the RULE names and not from whichever row comes back first.
+     */
+    public function test_a_whatsapp_step_names_the_template_and_claims_no_outcome(): void
+    {
+        $this->inTenant(fn () => DB::table('whatsapp_numbers')->insert([
+            'id'              => (string) Str::uuid(),
+            'organization_id' => $this->org['organization']->id,
+            'phone_number_id' => '1254820167721699',
+            'waba_id'         => '1052799931072265',
+            'display_number'  => '+18778536971',
+            'created_at'      => now(),
+            'updated_at'      => now(),
+        ]));
+
+        config(['services.meta.whatsapp_token' => 'a-token-for-the-fake']);
+
+        Http::fake(fn () => Http::response(['messages' => [['id' => 'wamid.ACCEPTED']]]));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['title' => 'Chimney sweep'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'whatsapp.send',
+            'template' => 'job_booked',
+            'to_field' => '+1 305 724 2199',
+            // A VARIABLE, resolved off the event. This arm passed null for the
+            // record too, so every {{...}} in a template parameter went out
+            // blank — a template whose whole job is to carry the specifics.
+            'parameters' => ['{{title}}'],
+            // THE NUMBER A PERSON PICKED, which is the display number. The
+            // provider id is Meta's and appears only in the URL below.
+            'from'     => '+18778536971',
+        ], $event, null, false, null));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+        $this->assertStringContainsString('job_booked', $result['detail']);
+
+        // THE POINT. Any of these words would be a claim about a message Meta
+        // has not finished deciding about.
+        foreach (['delivered', 'arrived', 'received', 'status: sent'] as $word) {
+            $this->assertStringNotContainsStringIgnoringCase($word, $result['detail']);
+        }
+
+        // THE LINK TO THE LIVE OUTCOME. `action_results` is cast to array and
+        // written wholesale, so this persists with no migration — and it is the
+        // only way a run recorded tonight can ever be joined to the status the
+        // webhook maintains. Recorded without it, that join is unrecoverable.
+        $this->assertNotNull($result['message_id']);
+        $this->assertDatabaseHas('whatsapp_messages', ['id' => $result['message_id']]);
+
+        // Sent to the PROVIDER ID behind the number the rule named: the display
+        // number is what a person chooses and must never reach Meta's URL — and
+        // carrying the RESOLVED parameter, not the braces the author typed.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699')
+            && str_contains(json_encode($request->data()), 'Chimney sweep')
+            && ! str_contains(json_encode($request->data()), '{{'));
+    }
+
+    /**
+     * A COUNTER THAT IS NOT COUNTING MUST NOT READ AS PERMISSION.
+     *
+     * `Cache::increment()` returns int|false, and `false <= 100` is TRUE in PHP:
+     * the int is cast to bool and the comparison succeeds. So a broken counter
+     * read as "well within the allowance" and let the rule send without limit —
+     * fail-open on the one guard between a loop and EzBizi's SES reputation,
+     * which every tenant shares and which no later fix gives back.
+     *
+     * The harness cannot produce this: `CACHE_STORE=array` in phpunit.xml always
+     * increments, so the branch is unreachable through the pipeline and the
+     * facade is faked instead. Production is `database`, measured on the box.
+     *
+     * The sentence is asserted as DIFFERENT from the allowance one. Both stop
+     * the send; telling somebody they have sent a hundred emails when the cache
+     * is broken sends them to a run log looking for ninety-nine that never
+     * happened.
+     */
+    public function test_a_broken_email_counter_refuses_rather_than_sending(): void
+    {
+        Mail::fake();
+
+        Cache::shouldReceive('add')->andReturnTrue();
+        Cache::shouldReceive('increment')->andReturnFalse();
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['email' => 'owner@example.test'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'email.send',
+            'to_field' => 'owner@example.test',
+            'subject'  => 'Your job is booked',
+            'body'     => 'Thanks.',
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $this->assertFalse($result['ok']);
+        $this->assertStringContainsString('not answering', $result['detail']);
+        $this->assertStringNotContainsString('which is its limit', $result['detail']);
+
+        Mail::assertNothingSent();
+    }
+
+    /**
+     * `{{ field }}` in an email and in a WhatsApp parameter resolves.
+     *
+     * Both arms passed `null` where every other arm passes the record, so the
+     * `?->` short-circuited and every variable became an empty string. Nothing
+     * threw and nothing was logged: the rule author typed `{{customer_name}}`,
+     * read their test email, and saw a sentence with a hole in it.
+     *
+     * The event half matters as much as the record half. `triggerFields()`
+     * derives the "only if" dropdown from the EVENT's payload, so the names a
+     * person has just been shown are event field names — and before this they
+     * could test a field they could not mention.
+     *
+     * Asserted on values that only the real source can produce: the subject line
+     * comes off the record, the body off the payload. A fix that threaded the
+     * record and forgot the event would pass the first and fail the second.
+     */
+    public function test_a_variable_resolves_from_the_record_and_from_the_event(): void
+    {
+        Mail::fake();
+
+        // THROUGH THE ENDPOINT, because `customers` has NOT NULL columns the app
+        // fills and a hand-made row does not (`number` is the one that bites).
+        $customerId = $this->as()->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $this->org['franchise']->id,
+            'name'                => 'Marta Ruiz',
+            'email'               => 'marta@example.test',
+        ])->assertCreated()->json('data.id');
+
+        $customer = $this->inTenant(fn () => Customer::findOrFail($customerId));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['title' => 'Chimney sweep', 'email' => 'marta@example.test'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'email.send',
+            'to_field' => 'email',
+            'subject'  => 'Hello {{name}}',
+            'body'     => 'Your "{{title}}" is booked. Anything else, {{name}}?',
+        ], $event, $customer, false, $this->automation('job.created', null, [])));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+
+        // THE RENDERED MESSAGE, not the constructor arguments: the properties are
+        // private and what matters is what arrives, footer and all.
+        Mail::assertSent(AutomationMessage::class, function ($mail) {
+            $mail->assertHasSubject('Hello Marta Ruiz');       // off the RECORD
+            // QUOTED ON PURPOSE. The plain-text view was `{{ $body }}` until
+            // 2026-09-17 and HTML-escaped a typed " into &quot; in a text/plain
+            // message. The mail module fixed it and pins the thing that makes it
+            // safe — that there is no HTML part. This asserts the other end of
+            // the same property: what a rule author typed is what arrives.
+            $mail->assertSeeInText('Your "Chimney sweep" is booked'); // off the EVENT
+            $mail->assertSeeInText('Anything else, Marta Ruiz?');
+
+            return true;
+        });
+    }
+
+    /**
+     * The missed-call text can name the number that called.
+     *
+     * The SMS arm was the last one sending `{{...}}` out as braces — `$body`
+     * went from the action straight to Twilio. It is also the arm Jose's own
+     * Missed Call rule ends with, so the rule that finally matched would have
+     * texted somebody the literal characters `{{from_address}}`.
+     *
+     * ASSERTED ON WHAT LEFT THE BUILDING. The refusal messages say nothing
+     * about the body, so a test that stopped at `ok:false` would pass against
+     * an arm that never substituted anything. Twilio's own request is the
+     * artefact.
+     */
+    public function test_a_text_message_resolves_its_variables(): void
+    {
+        $number = $this->inTenant(function () {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id'   => $this->org['organization']->id,
+                'auth_token' => 'auto-auth',
+                'status'     => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            return PhoneNumber::factory()->create([
+                'connection_id'        => $connection->id,
+                'scope_type'           => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id'             => $this->org['organization']->id,
+                'e164'                 => '+12035553100',
+                'label'                => 'Front desk',
+                'sms_outbound_allowed' => true,
+            ]);
+        });
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'email.received',
+            'payload'         => ['from_address' => 'notify@ringcentral.com'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $ran = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'      => 'sms.send',
+            'number_id' => $number->id,
+            'to'        => '+13057242199',
+            'body'      => 'Missed call, see {{from_address}}',
+        ], $event, null, false, $this->automation('email.received', null, [])));
+
+        $this->assertTrue($ran['ok'], $ran['detail']);
+
+        // WHAT WAS HANDED TO TWILIO, not what the arm said it did. The refusal
+        // and success sentences both say nothing about the body, so a test
+        // stopping at ok:true passes against an arm that substituted nothing.
+        $sent = collect(app(TwilioGateway::class)->calls)
+            ->firstWhere('method', 'sendMessage');
+
+        $this->assertNotNull($sent, 'nothing was handed to Twilio');
+        $this->assertStringContainsString('notify@ringcentral.com', end($sent['args']));
+        $this->assertStringNotContainsString('{{', end($sent['args']));
     }
 
     /**

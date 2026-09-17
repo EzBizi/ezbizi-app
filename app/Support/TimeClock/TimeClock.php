@@ -313,16 +313,41 @@ final class TimeClock
      */
     private function scheduleFor(User $user): ?array
     {
-        if (is_array($user->work_schedule)) {
-            return $user->work_schedule;
-        }
-
         $assignment = $user->assignments()->orderBy('created_at')->first();
         $scope = match ($assignment?->scopeType()) {
             Assignment::SCOPE_FRANCHISE => $assignment->assignedFranchise,
             Assignment::SCOPE_COMPANY => $assignment->assignedCompany,
             default => null,
         } ?? $user->organization;
+
+        /*
+         * ── The clock is the PLACE's, read now; never the stored one ──
+         *
+         * `work_schedule.timezone` is a record of where somebody stood when
+         * they saved it. It is NOT the clock the shift runs on, and reading it
+         * as one cost Jose an hour on 2026-09-16: his row still said
+         * `Etc/GMT+5` from before the platform default became
+         * `America/New_York`, a fixed offset keeps no daylight saving, and so
+         * his 17:00 resolved to 18:00 Eastern. Every reminder and every
+         * automatic clock-out ran an hour late, and every morning punch was
+         * flagged as outside schedule.
+         *
+         * A snapshot cannot be right: correcting a place's timezone has to move
+         * the people who work there, and a person assigned somewhere else again
+         * works on the new place's clock. So the zone is resolved here, through
+         * the same cascade the business-hours fallback below already uses, and
+         * the same answer serves both.
+         */
+        $timezone = (string) $this->settings->get('timezone', $scope);
+
+        if (is_array($user->work_schedule)) {
+            return [
+                'timezone' => $timezone,
+                'days' => is_array($user->work_schedule['days'] ?? null)
+                    ? $user->work_schedule['days']
+                    : [],
+            ];
+        }
 
         $hours = $this->settings->get('ops.business_hours', $scope);
 
@@ -338,9 +363,193 @@ final class TimeClock
                 : null;
         }
 
+        return ['timezone' => $timezone, 'days' => $days];
+    }
+
+    /**
+     * One week of shifts, grouped by person, with the hours totalled.
+     *
+     * The day list answers "who was in on this date". Work Hours asks the other
+     * question — what each person worked this week — so the shape is one entry
+     * per person in reach rather than one per punch, and EVERYBODY in reach is
+     * listed, including somebody who worked nothing. A name missing from the
+     * list would read as "not on the team" when it means "did not clock in".
+     *
+     * `?on=` is any date inside the week wanted; the window comes from the
+     * organization's `time_clock.week_starts_on`, so an organization counting
+     * from Thursday gets Thursday to Wednesday.
+     *
+     * @return array{
+     *     week_start: string,
+     *     week_end: string,
+     *     starts_on: string,
+     *     timezone: string,
+     *     timezone_label: string,
+     *     days: list<array{date: string, weekday: string, label: string, in_future: bool}>,
+     *     people: list<array<string, mixed>>
+     * }
+     */
+    public function weekList(User $actor, ?string $on): array
+    {
+        $view = ViewScope::forUser($actor);
+        $tz = (string) $this->settings->get('timezone', $view->settingsScope());
+        $timeFormat = (string) $this->settings->get('time_format', $view->settingsScope());
+        $startsOn = (string) $this->settings->get('time_clock.week_starts_on', $actor->organization);
+
+        $locale = (string) $this->settings->get('locale', $view->settingsScope());
+        $dateFormat = (string) $this->settings->get('date_format', $view->settingsScope());
+
+        $weekStart = $this->weekStart($this->resolveDate($on, $tz), $tz, $startsOn);
+        $weekEnd = $weekStart->copy()->addDays(7);
+
+        $shifts = TimeClockShift::query()
+            ->where('clocked_in_at', '>=', $weekStart->copy()->utc())
+            ->where('clocked_in_at', '<', $weekEnd->copy()->utc())
+            ->whereHas('user', fn (Builder $users) => $users->where(
+                fn (Builder $q) => $this->visibleTo($q, $actor)
+            ))
+            ->orderBy('clocked_in_at')
+            ->get()
+            ->groupBy('user_id');
+
+        $people = User::query()
+            ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active', 'avatar_path']);
+
         return [
-            'timezone' => (string) $this->settings->get('timezone', $scope),
-            'days' => $days,
+            'week_start' => $weekStart->toDateString(),
+            'week_end' => $weekStart->copy()->addDays(6)->toDateString(),
+            'starts_on' => $startsOn,
+            'timezone' => $tz,
+            'timezone_label' => SettingRegistry::timezoneLabel($tz),
+            'days' => $this->weekDays($weekStart, $tz, $locale, $dateFormat),
+            'people' => $people
+                ->map(fn (User $person) => $this->presentWeekPerson(
+                    $person,
+                    $shifts->get($person->getKey()) ?? collect(),
+                    $tz,
+                    $timeFormat,
+                ))
+                ->all(),
+        ];
+    }
+
+    /**
+     * The start of the week `$date` falls in, in this organization's reckoning.
+     *
+     * Carbon's own `startOfWeek()` is deliberately not used: it answers for the
+     * locale, and this has to answer for a setting somebody chose.
+     */
+    private function weekStart(string $date, string $tz, string $startsOn): Carbon
+    {
+        // Carbon numbers Sunday 0 through Saturday 6, which is the order below.
+        $order = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        $target = (int) array_search($startsOn, $order, true);
+        $local = Carbon::parse($date, $tz)->startOfDay();
+
+        return $local->subDays(((int) $local->dayOfWeek - $target + 7) % 7);
+    }
+
+    /**
+     * The seven headings of the week, named and in order.
+     *
+     * Here rather than on the client for the reason the clock times are: the
+     * weekday name is words, the app ships in two languages, and there is no
+     * shared date formatter on that side — `hours_pane.dart` and `web/hours.dart`
+     * each carry their own English `['Monday', ...]`, and a third copy in a
+     * screen that ships in Spanish would simply be wrong.
+     *
+     * Every day is here, including the ones nobody worked. A day with no shifts
+     * still needs a heading to say so, and deriving it by walking dates from
+     * `week_start` would mean the client guessing both the length of a week and
+     * the name of a day.
+     *
+     * `in_future` is the one fact the client cannot work out for itself. A day
+     * is in the future against TODAY IN THE ORGANIZATION'S CLOCK, and the only
+     * today the client has is the device's — which is the whole error this
+     * module spent a day on. Whether a screen then hides those days is its own
+     * decision; this only says which they are.
+     *
+     * @return list<array{date: string, weekday: string, label: string, in_future: bool}>
+     */
+    private function weekDays(Carbon $weekStart, string $tz, string $locale, string $dateFormat): array
+    {
+        $today = Carbon::now($tz)->toDateString();
+        $days = [];
+
+        for ($offset = 0; $offset < 7; $offset++) {
+            $day = $weekStart->copy()->addDays($offset);
+
+            $days[] = [
+                'date' => $day->toDateString(),
+                // Today is not the future. A week gone by has none of these; a
+                // week ahead is all of them.
+                'in_future' => $day->toDateString() > $today,
+                // The English key, untranslated, for anything that has to branch
+                // on the day rather than print it.
+                'weekday' => strtolower($day->locale('en')->isoFormat('dddd')),
+                // Month before day where the organization writes dates that way,
+                // so a heading does not contradict every other date on screen.
+                'label' => $day->locale($locale)->isoFormat(
+                    str_starts_with($dateFormat, 'M') ? 'dddd, MMM D' : 'dddd D MMM'
+                ),
+            ];
+        }
+
+        return $days;
+    }
+
+    /**
+     * One person and their week.
+     *
+     * An open shift counts the time worked SO FAR rather than reporting null
+     * the way the day list does, because the number beside it here is part of a
+     * total: a running shift contributing nothing would make today read as zero
+     * hours until somebody clocked out.
+     *
+     * @param  iterable<TimeClockShift>  $shifts
+     */
+    private function presentWeekPerson(User $person, iterable $shifts, string $tz, string $timeFormat): array
+    {
+        $now = now();
+        $total = 0;
+        $days = [];
+        $open = false;
+        $rows = [];
+
+        foreach ($shifts as $shift) {
+            $isOpen = $shift->clocked_out_at === null;
+            $seconds = ($isOpen ? $now : $shift->clocked_out_at)->getTimestamp()
+                - $shift->clocked_in_at->getTimestamp();
+
+            $total += $seconds;
+            $open = $open || $isOpen;
+            $date = Carbon::parse($shift->clocked_in_at)->timezone($tz)->toDateString();
+            $days[$date] = true;
+
+            $row = $this->presentShift($shift, $tz, $timeFormat);
+            unset($row['user']);
+            $row['date'] = $date;
+            $row['duration_seconds'] = $seconds;
+            $rows[] = $row;
+        }
+
+        $worked = count($days);
+
+        return [
+            'id' => $person->id,
+            'name' => $person->name,
+            'is_active' => (bool) $person->is_active,
+            'has_avatar' => $person->avatar_path !== null,
+            'total_seconds' => $total,
+            'days_worked' => $worked,
+            // Over the days actually WORKED, not over seven: "six hours a day
+            // when I am in" is the useful average, and dividing by a fixed week
+            // would report every part-timer as failing.
+            'average_seconds' => $worked === 0 ? 0 : intdiv($total, $worked),
+            'open' => $open,
+            'shifts' => $rows,
         ];
     }
 

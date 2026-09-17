@@ -8,8 +8,9 @@ import 'hr/contracts_tab.dart';
 import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
+import 'hr/pto_tab.dart';
 import 'hr/records_tab.dart';
-import 'hr/time_clock_tab.dart';
+import 'hr/work_hours_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
 /// organization has turned Clock in on.
@@ -97,38 +98,83 @@ class _HrScreenState extends State<HrScreen> {
   /// — see [_shown] — which is why the third element is a function and not a
   /// widget.
   List<(String, IconData, Widget Function())> get _tabs => [
+    for (final tab in _declaredTabs)
+      if (_mayOpen(tab.$1)) (tab.$2, tab.$3, tab.$4),
+  ];
+
+  /// Every tab this screen has, with the permission key that opens it.
+  ///
+  /// ── Why the key is in the list rather than checked at each site ──
+  ///
+  /// Jose, 2026-09-17: "i want them to see their work hours, but not the
+  /// onboarding information". Each of these is now granted separately, as
+  /// `hr.<key>.view` — declared in ModuleServiceProvider, drawn in the roles
+  /// editor under a Tabs heading, and enforced by the controllers behind them.
+  ///
+  /// THE KEYS HERE AND THE TABS DECLARED IN THE REGISTRY ARE THE SAME SEVEN,
+  /// and nothing mechanical can check that from this side: the registry is PHP
+  /// and this is Dart. What keeps them together is that a key with no
+  /// declaration grants nothing — so the tab silently disappears for everyone
+  /// rather than appearing for everyone, which is the safe direction of that
+  /// mistake and the one somebody notices.
+  ///
+  /// The labels are UiStrings/literals unchanged from before, and the registry
+  /// copies them rather than the reverse: an administrator ticking "Work Hours"
+  /// must find a tab with that word on it.
+  List<(String, String, IconData, Widget Function())> get _declaredTabs => [
     (
+      'dashboard',
       'Dashboard',
       Icons.insights_outlined,
       () => DashboardTab(api: widget.api, session: widget.session),
     ),
+    if (_showClockInOut)
+      (
+        'hours',
+        UiStrings.t('time_clock.tab'),
+        Icons.schedule_outlined,
+        () => WorkHoursTab(api: widget.api),
+      ),
     (
+      'onboarding',
       'Onboarding',
       Icons.how_to_reg_outlined,
       () => OnboardingTab(api: widget.api, session: widget.session),
     ),
     (
+      'records',
       'Records',
       Icons.folder_shared_outlined,
       () => RecordsTab(api: widget.api, session: widget.session),
     ),
     (
+      'invitations',
       'Invitations',
       Icons.mail_outline,
       () => InvitationsTab(api: widget.api, session: widget.session),
     ),
     (
+      'pto',
+      'Paid time off',
+      Icons.beach_access_outlined,
+      () => PtoTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'contracts',
       'Contracts',
       Icons.description_outlined,
       () => ContractsTab(api: widget.api, session: widget.session),
     ),
-    if (_showClockInOut)
-      (
-        UiStrings.t('time_clock.tab'),
-        Icons.schedule_outlined,
-        () => TimeClockTab(api: widget.api),
-      ),
   ];
+
+  /// May this person open one named tab?
+  ///
+  /// Absent `/me` answers NO rather than yes. The screen is reached only with a
+  /// session, so a null here is a load that has not finished or a state nobody
+  /// designed — and the safe reading of "I do not know yet" is to draw nothing,
+  /// not to draw everything.
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('hr.$tab.view') ?? false;
 
   /// Chip rule (design §4 / §9): org switch on and `hr.view`. Absent
   /// `time_clock` on `/me` is `organizationEnabled: false`.

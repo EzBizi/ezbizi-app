@@ -342,9 +342,14 @@ class AutomationEngine
         array $trace = [],
         array $results = [],
         ?string $error = null,
+        // Only runNow() passes true: the run happened because somebody pressed
+        // a button rather than because the engine delivered an event. The
+        // ACTIONS were real either way; this marks how it was started.
+        bool $isTest = false,
     ): bool {
         try {
             AutomationRun::create([
+                'is_test' => $isTest,
                 'organization_id' => $event->organization_id,
                 'automation_id' => $automation->getKey(),
                 'automation_version_id' => $version->getKey(),
@@ -404,6 +409,73 @@ class AutomationEngine
      * §5.5 test mode. The conditions are evaluated for real — that is the part
      * people get wrong — and the actions report what they would have done.
      */
+    /**
+     * Run the rule against a real event FOR REAL, because somebody pressed it.
+     *
+     * ── Why this exists beside rehearse() rather than as a flag on it ──────
+     *
+     * `rehearse()` performs nothing and reports what it WOULD do, which is the
+     * right default and useless for the question Jose actually has: "does the
+     * email arrive". Waiting for a missed call to happen in order to find out
+     * whether a rule works is how a rule sits broken for two weeks, which is
+     * exactly what happened to the one that started all of this.
+     *
+     * SEPARATE METHOD, NOT `isTest: false` ON THE OTHER ONE. A boolean deciding
+     * whether real texts and real emails go out is one wrong argument away from
+     * a rehearsal that sends, and the two calls would be indistinguishable at a
+     * glance. This one is named for what it does.
+     *
+     * ── What it deliberately does NOT do ──────
+     *
+     * IT WRITES NO RUN ROW, and that is forced rather than chosen.
+     * `automation_runs` is UNIQUE on (event_id, automation_version_id) - the
+     * index the at-least-once outbox depends on - so a second row for an event
+     * this rule has already handled cannot exist. And the common case IS an
+     * event already handled: somebody presses this to try the rule against the
+     * last real thing that happened. `record()` swallows the collision and
+     * returns false, so calling it here would silently record nothing while
+     * reporting success.
+     *
+     * What IS durable: the controller writes `automation.run_now` to the audit
+     * log with the event id, and every arm writes its own audit entry for what
+     * it did. So a real send is attributable; it simply is not in the DELIVERY
+     * ledger, because it was not a delivery. The results come back to the caller
+     * to be shown immediately, which is the point of pressing it.
+     *
+     * The cascade budget and depth cap still apply through `run()`, so a rule
+     * that fires other rules cannot be made to run away by pressing a button.
+     */
+    public function runNow(Automation $automation, AutomationEvent $event): array
+    {
+        return $this->tenant->run($event->organization, function () use ($automation, $event) {
+            $version = $automation->activeVersion ?? $automation->versions()->first();
+
+            $subject = $this->subjectOf($event);
+            $verdict = $this->conditions->evaluate($version?->conditions, $event, $subject);
+
+            $results = [];
+
+            if ($verdict['matched']) {
+                foreach ($version?->actions ?? [] as $actionIndex => $action) {
+                    $results[] = $this->actions->run(
+                        $action,
+                        $event,
+                        $subject,
+                        isTest: false,
+                        automation: $automation,
+                        actionIndex: $actionIndex,
+                    );
+                }
+            }
+
+            return [
+                'matched' => $verdict['matched'],
+                'condition_trace' => $verdict['trace'],
+                'did' => $results,
+            ];
+        });
+    }
+
     public function rehearse(Automation $automation, AutomationEvent $event): array
     {
         return $this->tenant->run($event->organization, function () use ($automation, $event) {

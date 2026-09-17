@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import 'client_platform.dart';
+
 /// A notification the operating system shows, rather than the bell (plan §12).
 ///
 /// ── Why there is no conditional import here ──────────────────────
@@ -50,6 +52,66 @@ class OsNotifications {
   /// showing nothing.
   static const String _windowsGuid = '8F3A6C21-4D7E-4B90-9E52-1C6A0B7D4E38';
 
+  /// The icon Windows draws on the toast, declared in pubspec.yaml.
+  ///
+  /// ── Why a path and not the .ico the app already has ──────────────
+  ///
+  /// The plugin writes this into
+  /// `HKCU\Software\Classes\AppUserModelId\EzBizi.DesktopClient\IconUri` —
+  /// measured in its own source, not inferred — and WINDOWS opens that file,
+  /// later, when it draws the toast. So it has to be a real file that outlives
+  /// the call. `windows/runner/resources/app_icon.ico` is compiled into
+  /// ezbizi.exe as a resource and is not a file on disk at all, which is why
+  /// the obvious candidate is the wrong one.
+  ///
+  /// Null when it cannot be found, and that is deliberately not an error: the
+  /// registry value is simply not written, Windows falls back to the generic
+  /// icon, and the toast still appears. An icon is worth exactly nothing next
+  /// to the notification itself.
+  ///
+  /// Public only so a test can load this exact key through `rootBundle`. The
+  /// failure it guards is a silent one: drop the line from pubspec.yaml, or
+  /// rename the file, and nothing throws — `installedAssetPath` finds no file,
+  /// returns null, and the toast goes back to the generic icon it had before
+  /// anybody noticed. Naming the same string from both sides is what makes
+  /// that visible.
+  @visibleForTesting
+  static const String windowsIconAsset = 'assets/logo/app-icon-120.png';
+
+  /// The same icon, carried ON the toast instead of looked up from the registry.
+  ///
+  /// ── Why both, when one of them ought to be enough ────────────────
+  ///
+  /// `iconPath` is the registry route: the plugin writes it to
+  /// `...\AppUserModelId\EzBizi.DesktopClient\IconUri` and Windows is supposed
+  /// to find it from there. That route was set up correctly and measured
+  /// correct — the value present, the file at the end of it on disk, the name
+  /// beside it in the same key rendering fine on the toast — and Windows drew
+  /// no icon anyway. A registration that is right and does not take is not
+  /// something this code can argue with.
+  ///
+  /// `appLogoOverride` does not ask Windows to resolve anything: the image is
+  /// named in the toast's own XML, per notification, and appears in the banner
+  /// and in the notification centre entry behind it. So the two are not
+  /// belt-and-braces for the same mechanism — one is an app-identity lookup and
+  /// the other is a picture in this specific toast, and only the second is
+  /// under our control at the moment we show it.
+  ///
+  /// Resolved once: it is the same file every time, and `existsSync` inside
+  /// [ClientPlatform.installedAssetPath] is a disk hit that has no business
+  /// running on every notification.
+  static final WindowsImage? _windowsLogo = () {
+    final path = ClientPlatform.installedAssetPath(windowsIconAsset);
+
+    return path == null
+        ? null
+        : WindowsImage(
+            Uri.file(path, windows: true),
+            altText: 'EzBizi',
+            placement: WindowsImagePlacement.appLogoOverride,
+          );
+  }();
+
   static bool _initialised = false;
   static bool _permitted = false;
 
@@ -67,20 +129,22 @@ class OsNotifications {
       if (!_initialised) {
         _initialised =
             await _plugin.initialize(
-              settings: const InitializationSettings(
+              settings: InitializationSettings(
                 // The launcher icon, which every Flutter Android project has
                 // already. A dedicated white-on-transparent status bar icon
                 // would look better on Android and is the kind of asset that
                 // needs a designer, not a developer inventing one.
-                android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+                android: const AndroidInitializationSettings(
+                  '@mipmap/ic_launcher',
+                ),
                 // Permission flags are all false: this class asks below, from
                 // a tap, and asking twice would show the person two prompts.
-                iOS: DarwinInitializationSettings(
+                iOS: const DarwinInitializationSettings(
                   requestAlertPermission: false,
                   requestBadgePermission: false,
                   requestSoundPermission: false,
                 ),
-                macOS: DarwinInitializationSettings(
+                macOS: const DarwinInitializationSettings(
                   requestAlertPermission: false,
                   requestBadgePermission: false,
                   requestSoundPermission: false,
@@ -89,11 +153,14 @@ class OsNotifications {
                   appName: 'EzBizi',
                   appUserModelId: 'EzBizi.DesktopClient',
                   guid: _windowsGuid,
+                  iconPath: ClientPlatform.installedAssetPath(
+                    windowsIconAsset,
+                  ),
                 ),
-                linux: LinuxInitializationSettings(
+                linux: const LinuxInitializationSettings(
                   defaultActionName: 'Open EzBizi',
                 ),
-                web: WebInitializationSettings(),
+                web: const WebInitializationSettings(),
               ),
             ) ??
             false;
@@ -130,8 +197,21 @@ class OsNotifications {
         id: id,
         title: title,
         body: body,
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
+        // No `windows:` details, and the sound is the reason that is a
+        // decision rather than an omission. The plugin serialises audio as
+        // `audio?.buildXml(builder)` — a null one writes no `<audio>` element
+        // at all, and a toast without that element plays the Windows default
+        // notification sound. Passing WindowsNotificationAudio.preset(...) to
+        // say so out loud would emit `<audio src="ms-winsoundevent:
+        // Notification.Default">`, which is the same sound named twice and one
+        // more thing to keep in step with whatever the person chose in
+        // Settings. Silence would need an explicit `silent="true"`, so there is
+        // no way to end up quiet by accident here.
+        notificationDetails: NotificationDetails(
+          windows: WindowsNotificationDetails(
+            images: <WindowsImage>[?_windowsLogo],
+          ),
+          android: const AndroidNotificationDetails(
             'ezbizi_notifications',
             'EzBizi notifications',
             channelDescription:

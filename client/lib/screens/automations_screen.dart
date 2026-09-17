@@ -244,6 +244,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
     final description = automation['description'] as String?;
+    final scope = (automation['scope'] as Map?)?['label'] as String?;
 
     return Card(
       child: Padding(
@@ -266,6 +267,12 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       Tag(live ? 'Live' : 'Off', warn: !live),
                       if (disabledReason != null)
                         const Tag('Auto-disabled', warn: true),
+                      // WHERE IT APPLIES. At the organization every rule in the
+                      // business is listed, so without this a rule for one
+                      // company is indistinguishable from one that runs
+                      // everywhere — which is exactly how Jose came to switch
+                      // his attention to a rule that was not his branch's.
+                      if (scope != null) Tag(scope),
                     ],
                   ),
                 ),
@@ -299,6 +306,14 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     const PopupMenuItem(
                       value: 'runs',
                       child: Text('Run history'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'run_now',
+                      // Distinct from "Test against a real event", which
+                      // rehearses and performs nothing. This one really sends,
+                      // so the wording has to say so before it is pressed
+                      // rather than after.
+                      child: Text('Run it now for real'),
                     ),
                     // A rehearsal is authorized as `update`, not `view` —
                     // AutomationsController::test — because rehearsing is part
@@ -497,6 +512,8 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         await _showRuns(automation);
       case 'test':
         await _test(automation);
+      case 'run_now':
+        await _runNow(automation);
       case 'delete':
         await _delete(automation);
     }
@@ -548,6 +565,100 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     }
 
     _load();
+  }
+
+  /// Run it for real, after saying plainly that it will.
+  ///
+  /// "Test against a real event" rehearses and performs nothing, which is the
+  /// right default and does not answer "does the email actually arrive". A rule
+  /// provable only by waiting for a missed call is a rule that sits broken for a
+  /// fortnight — which is what happened to the one that started this.
+  ///
+  /// CONFIRMED FIRST, and the confirmation names the consequence rather than
+  /// asking "are you sure": the steps really run, so real messages go to real
+  /// people. Somebody who wanted the rehearsal and pressed this by mistake has
+  /// one chance to notice, and "are you sure" would not give them one.
+  Future<void> _runNow(Map<String, dynamic> automation) async {
+    final go = await showSidePanel<bool>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Run it now for real',
+        width: 480,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Run it for real'),
+          ),
+        ],
+        child: const Text(
+          'This runs the steps against the most recent real event — for real. '
+          'Any emails, texts or messages go to the people the rule names, the '
+          'same as if the event had just happened. '
+          'To see what it WOULD do without sending anything, close this and '
+          'choose "Test against a real event" instead.',
+        ),
+      ),
+    );
+
+    if (go != true || !mounted) return;
+
+    final response = await widget.api.post(
+      '/automations/${automation['id']}/run-now',
+      {},
+    );
+
+    if (!mounted) return;
+
+    await showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: response.ok ? 'It ran' : 'Could not run it',
+        width: 480,
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+        child: response.ok
+            ? _ranResult(response.data as Map<String, dynamic>)
+            : ErrorNote(response.message),
+      ),
+    );
+  }
+
+  Widget _ranResult(Map<String, dynamic> data) {
+    final matched = data['matched'] as bool? ?? false;
+    final did = List<Map<String, dynamic>>.from(data['did'] as List? ?? []);
+
+    if (!matched) {
+      return const Text(
+        'The conditions did not match that event, so no step ran. Open Run '
+        'history to see which clause failed and what value it read.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final step in did) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _verdictIcon(context, step['ok'] as bool? ?? false),
+              const SizedBox(width: 8),
+              Expanded(child: Text('${step['detail'] ?? step['type'] ?? ''}')),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (did.isEmpty) const Text('The rule matched but has no steps to run.'),
+      ],
+    );
   }
 
   Future<void> _test(Map<String, dynamic> automation) async {

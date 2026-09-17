@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
 
 /// Current person plus history. Assign / Unassign only with `assign` (spec §9).
@@ -156,16 +157,15 @@ class _VehicleAssignmentCardState extends State<VehicleAssignmentCard> {
           ],
           if (_canAssign) ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              key: ValueKey(_pick),
-              initialValue: _pick,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Person'),
-              items: [
+            SearchPickerField<String>(
+              value: _pick,
+              label: 'Person',
+              hint: 'Choose somebody',
+              options: [
                 for (final d in _drivers)
-                  DropdownMenuItem(
+                  SearchOption(
                     value: d['id'] as String,
-                    child: Text(d['name'] as String? ?? d['id'] as String),
+                    label: d['name'] as String? ?? d['id'] as String,
                   ),
               ],
               onChanged: _busy ? null : (v) => setState(() => _pick = v),

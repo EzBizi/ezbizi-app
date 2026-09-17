@@ -10,6 +10,8 @@ use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Support\Reports\SendSavedReport;
+use App\Models\SavedReport;
 use App\Support\Leads\LeadReplies;
 use App\Models\Invitation;
 use App\Support\Hr\CannotActOnInvitation;
@@ -326,6 +328,7 @@ class ActionRunner
         private readonly VehicleAssignments $vehicleAssignments,
         private readonly InvitationActions $invitations,
         private readonly LeadReplies $leadReplies,
+        private readonly SendSavedReport $reports,
         private readonly ReportPdf $reportPdf,
     ) {}
 
@@ -376,15 +379,16 @@ class ActionRunner
             'resend' => $this->resendInvitation($subject),
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
-            'email.send' => $this->sendEmail($action, $event, $automation),
-            'whatsapp.send' => $this->sendWhatsApp($action, $event),
-            'sms.send' => $this->sendSms($action, $event, $automation),
+            'report.send' => $this->sendReport($action, $event, $automation),
+            'email.send' => $this->sendEmail($action, $event, $automation, $subject),
+            'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
+            'sms.send' => $this->sendSms($action, $event, $automation, $subject),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
-            'inspection_report.email' => $this->emailInspectionReport($action, $subject),
+            'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -566,64 +570,10 @@ class ActionRunner
      * record, resolved when the rule fires, which is the only address the
      * subject of the document has consented to be at.
      */
-    private function emailInspectionReport(array $action, ?Model $subject): array
+    private function emailInspectionReport(array $action, ?Model $subject, ?Automation $automation): array
     {
         $type = 'inspection_report.email';
 
-        /*
-         * -- HELD BY JOSE'S RULING OF 2026-09-14, AND THIS IS THE REAL LEVER --
-         *
-         * His words, to the Automations session, who asked directly whether
-         * they covered this action. He answered yes:
-         *
-         *     "no ezbizi SES is to be used only for EZBIZI Related actions like
-         *      notificaitons, account creation, password, resets, etc
-         *      at least for now."
-         *
-         * THE PLATFORM CHECK BELOW DOES NOT COVER THIS, and believing it did is
-         * the mistake this comment exists to prevent. That check reads the FROM
-         * LINE and refuses when the resolved identity is EzBizi. But
-         * MailDispatcher::handOver() ends:
-         *
-         *     Mail::mailer($this->platform->mailerName())->to($to)->send($message);
-         *
-         * EVERY message leaves over the platform mailer. A verified tenant
-         * identity changes from() and replyTo() and nothing else - the
-         * transport, the SES reputation and the 50,000/day quota belong to
-         * EzBizi either way. So a fully configured branch would still have
-         * mailed a member of the public over EzBizi SES, which is what the
-         * ruling forbids, and no From-line guard can see it.
-         *
-         * WHY THE REFUSAL IS HERE AND NOT IN THE CONST. Dropping
-         * inspection_report.email from AutomationsController::IMPLEMENTED_ACTIONS
-         * stops anybody building a NEW rule and leaves this arm running every
-         * rule already saved - it would look like a fix and not be one. The
-         * Automations session made that point and it is right.
-         *
-         * WHY IT IS FIRST, BEFORE ANY LOOKUP. Until somebody configures a
-         * sending identity the Platform check below refuses everything anyway,
-         * so this was latent rather than live: production holds two
-         * organizations and zero rows in sending_identities. The hazard is the
-         * SEQUENCE. "Configure a sending identity for A-1 Group" sits on Jose's
-         * list because I put it there, and the moment he does it a guard
-         * written for a different question stops refusing and this starts
-         * sending - silently, correctly by its own lights, against a ruling
-         * made after it shipped. A refusal that depends on nothing cannot be
-         * switched on by somebody changing unrelated configuration.
-         *
-         * TO LIFT IT: delete this block. Everything below is intact and still
-         * tested. The condition to check first is whether mail can leave over a
-         * transport that is not EzBizi - a per-tenant MAILER, rather than the
-         * per-tenant From line that exists today.
-         */
-        return [
-            'type' => $type,
-            'ok' => false,
-            'detail' => 'Emailing inspection reports to customers is switched off. The '
-                .'EzBizi mail service carries EzBizi messages only - sign-ins, password '
-                .'resets and account notices - and a report to a customer would go out '
-                .'over it however this branch is configured.',
-        ];
 
         if (! $subject instanceof InspectionReport) {
             return [
@@ -659,39 +609,37 @@ class ActionRunner
         }
 
         /*
-         * REFUSE RATHER THAN SEND AS EZBIZI, and this is not what asTenant does
-         * on its own.
+         * EZBIZI SENDS IT, AND THE BODY SAYS WHO WROTE IT.
          *
-         * `MailIdentityResolver::for()` falls back to the PLATFORM identity when
-         * no row exists at any level of the cascade, and that identity is
-         * Verified with a transport whose `requiresDomainProof()` is false — so
-         * `canSend()` is true and `asTenant` hands the message over happily. A
-         * tenant who has configured nothing would have their customer receive an
-         * inspection report from EzBizi's address.
+         * This used to refuse when the resolved identity was EzBizi, on the
+         * reasoning that a customer told their chimney was swept has no
+         * relationship with us and should not learn which software the company
+         * runs. Jose reversed that on 2026-09-16, in his own words asking for
+         * automation actions on "Email ( the Ezbizi SES one, not the company
+         * one )". So the condition the old guard refused on is now the
+         * INTENDED one, and leaving it would have refused every send: every
+         * organization resolves to Platform while sending_identities is empty.
          *
-         * That is wrong twice: the customer has no relationship with us, and it
-         * discloses which software the company runs to somebody who was only
-         * told their chimney was swept. `MailTransport::Platform`'s own label is
-         * the word "EzBizi".
+         * `platformForTenant` rather than `platform`, and the distinction is
+         * the dispatcher's: platform() has no tenant lookup at all, which is
+         * what keeps sign-in and password-reset mail separable. This one knows
+         * the scope, so tenant-authored traffic is countable and suppressible
+         * on its own rather than being indistinguishable from an invitation —
+         * which matters because SES reputation is shared platform-wide and
+         * nothing yet consults a bounce or complaint list.
          *
-         * This is the first caller of asTenant, so nothing has needed the
-         * distinction before. Refusing here is deliberately a decision of THIS
-         * action rather than a change to the shared dispatcher — the newsletter
-         * may reasonably want a different answer, and that is Marketing's call
-         * to make when it arrives.
+         * `asTenant` is NOT the method any more. It was retired to an
+         * unconditional throw: it put a TENANT's address on our transport,
+         * which is a claim about who is writing. This puts EZBIZI's address on
+         * it, and `companyName` below is what makes the body say who actually
+         * did the work.
          */
-        if ($this->mail->identityFor($scope)->transport === MailTransport::Platform) {
-            return [
-                'type' => $type,
-                'ok' => false,
-                'detail' => 'This branch has not set up its own sending address, and a '
-                    .'report must not reach a customer from the EzBizi address. Set one '
-                    .'up under Settings, Sending Identity.',
-            ];
+        if ($automation !== null && ($refusal = $this->ruleAllowanceRefusal($automation)) !== null) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
         try {
-            $this->mail->asTenant(
+            $this->mail->platformForTenant(
                 $scope,
                 new InspectionReportMail(
                     report: $subject,
@@ -743,6 +691,126 @@ class ActionRunner
         return $report->organization_id === null
             ? null
             : Organization::query()->find($report->organization_id);
+    }
+
+    /**
+     * Email a saved report to the people who read it.
+     *
+     * ── THE ACTOR PROBLEM, AND WHAT IT TURNED OUT TO BE ──────
+     *
+     * `send()` takes a `User $as`, and a rule fires at 3am with nobody behind
+     * it. Asking Reports which user to pass turned up something worse than the
+     * question: their runner took its SCOPE from `ViewScope::forUser`, which
+     * reads the chip that person last clicked in their own top bar. So a
+     * scheduled report rendered at a view chosen months earlier for unrelated
+     * reasons, and the same rule produced different figures depending on it.
+     *
+     * Fixed on their side (081ee5be): a saved report carries its own place and
+     * the run uses that. The author is now only a REACH FLOOR - and if they
+     * have lost reach over the report's place, or left, it refuses rather than
+     * quietly rendering a smaller report. Which was the direction I had wrong:
+     * I expected a demoted author to keep rendering wide, and it would have
+     * SHRUNK. Nobody notices a number getting smaller.
+     *
+     * So the author is the rule's author, and the failure that matters is
+     * caught as `AuthorizationException`.
+     *
+     * ── THREE REFUSALS, THREE ERRANDS ──────
+     *
+     *   AuthorizationException  the author cannot reach the report's place
+     *   RuntimeException        the RULE's scope cannot read the report it names
+     *   CannotSendMail          this business is past its hourly allowance
+     *
+     * Caught apart rather than as one `Throwable`, because they send somebody to
+     * three different places and only the middle one is fixable in the rule.
+     *
+     * ── PARTIAL FAILURE IS A SUCCESS ──────
+     *
+     * One permanently-bad address among five must not fail the action: five
+     * consecutive failures switch a rule off, so a weekly report would go dark
+     * after five weeks while four people were reading it fine. `ok()` is false
+     * only when NOTHING left the building.
+     */
+    private function sendReport(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'report.send';
+
+        if ($automation === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'This step can only run as part of a saved rule.',
+            ];
+        }
+
+        $report = SavedReport::find((string) ($action['report_id'] ?? ''));
+
+        if ($report === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The report this step names no longer exists.',
+            ];
+        }
+
+        $recipients = [];
+
+        foreach ((array) ($action['to'] ?? []) as $stored) {
+            $one = $this->contactFromStored(trim((string) $stored), $event, 'email');
+
+            if (is_string($one) && filter_var($one, FILTER_VALIDATE_EMAIL) !== false) {
+                $recipients[] = $one;
+            }
+        }
+
+        $recipients = array_values(array_unique($recipients));
+
+        if ($recipients === []) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'Nobody this step names has an email address, so there was nobody to '
+                    .'send the report to.',
+            ];
+        }
+
+        $author = $automation->activeVersion?->created_by !== null
+            ? User::find($automation->activeVersion->created_by)
+            : null;
+
+        if ($author === null) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule no longer works here, so the report '
+                    .'cannot be sent. Open the rule and save it again to take it over.',
+            ];
+        }
+
+        try {
+            $result = $this->reports->send($report, $recipients, $automation, $author);
+        } catch (AuthorizationException) {
+            return [
+                'type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule can no longer see everything the '
+                    .'report covers, so it was not sent. Open the rule and save it again to take '
+                    .'it over.',
+            ];
+        } catch (CannotSendMail $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        } catch (RuntimeException $refusal) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
+
+        $this->audit->log('automation.report_sent', $report, metadata: ['to' => $recipients]);
+
+        return [
+            'type' => $type,
+            // Partial failure is a success. See the docblock.
+            'ok' => $result->ok(),
+            // THE CALLEE WRITES THIS LINE, not us. `refused` is a map of
+            // address => why, so imploding it prints the reasons and drops the
+            // addresses; and `transportDelivers` is false on a box whose mail
+            // goes nowhere, which a count of recipients cannot say. Both are
+            // already said correctly by summary(), which exists for this.
+            'detail' => '"'.$report->name.'". '.$result->summary(),
+        ];
     }
 
     /**
@@ -950,7 +1018,10 @@ class ActionRunner
             ];
         }
 
-        $userId = $this->valueFromEvent($field, $event);
+        // A person chosen in the rule, or a field of the event carrying an id.
+        $userId = str_starts_with($field, self::RECIPIENT_USER)
+            ? substr($field, strlen(self::RECIPIENT_USER))
+            : $this->valueFromEvent($field, $event);
 
         if (! is_string($userId) || trim($userId) === '') {
             return [
@@ -1130,7 +1201,7 @@ class ActionRunner
      * nothing was sent, because for that case it would be false. Their words
      * say what happened; mine would be a guess about which branch threw.
      */
-    private function sendWhatsApp(array $action, AutomationEvent $event): array
+    private function sendWhatsApp(array $action, AutomationEvent $event, ?Model $subject = null): array
     {
         $type = 'whatsapp.send';
         $template = trim((string) ($action['template'] ?? ''));
@@ -1143,13 +1214,16 @@ class ActionRunner
             ];
         }
 
-        $to = $this->valueFromEvent($field, $event);
+        $to = $this->contactFromStored($field, $event, 'phone');
 
         if (! is_string($to) || trim($to) === '') {
             return [
                 'type' => $type, 'ok' => false,
-                'detail' => "This event carried nothing in \"{$field}\", so there was no number to "
-                    .'send to.',
+                'detail' => str_starts_with($field, self::RECIPIENT_USER)
+                    ? 'The person this step sends to no longer works here, or has no phone '
+                        .'number, so there was nobody to send to.'
+                    : "This event carried nothing in \"{$field}\", so there was no number to "
+                        .'send to.',
             ];
         }
 
@@ -1157,7 +1231,7 @@ class ActionRunner
         // "+1 305 724 2199" alike, and refuses what it cannot be sure of rather
         // than guessing - so cleaning it here would only give it worse input.
         $parameters = array_map(
-            fn ($value) => $this->interpolate((string) $value, $event, null),
+            fn ($value) => $this->interpolate((string) $value, $event, $subject),
             array_values((array) ($action['parameters'] ?? [])),
         );
 
@@ -1167,6 +1241,13 @@ class ActionRunner
                 $to,
                 $parameters,
                 (string) ($action['language'] ?? 'en_US'),
+                // WHICH NUMBER, because a template is approved per WABA and a
+                // business can hold numbers on more than one. Meta's send()
+                // refuses rather than guessing when it is not named, which is
+                // right and is why the rule has to carry it.
+                ($action['from'] ?? null) !== null && $action['from'] !== ''
+                    ? (string) $action['from']
+                    : null,
             );
         } catch (RuntimeException $refusal) {
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
@@ -1183,8 +1264,25 @@ class ActionRunner
             // The NUMBER a customer sees is EzBizi's, not this business's, so the
             // line does not say "your WhatsApp". Said plainly because a rule
             // author reading it needs to know which number replies come back to.
-            'detail' => "Sent the \"{$template}\" template to {$row->counterparty} from EzBizi's "
-                ."WhatsApp number (status: {$row->status}).",
+            //
+            // AND IT STOPS AT THE HANDOFF. `$row->status` is `sent` here and the
+            // webhook may flip it to `failed` seconds later — Meta returns 200
+            // and a wamid for a message it will refuse, measured at dba98c6c. A
+            // run-log line is written once and never revisited, so printing a
+            // status that expires would leave a green line above a message that
+            // never arrived. The row keeps the outcome; this sentence does not
+            // claim one.
+            'detail' => "Handed the \"{$template}\" template to WhatsApp for {$row->counterparty}, "
+                ."from EzBizi's number. WhatsApp accepts or refuses it afterwards.",
+            // THE LINK, so a reader can show the outcome without this row ever
+            // being rewritten: the sentence above is a true-forever snapshot of
+            // the handoff, and `whatsapp_messages` carries the live status the
+            // webhook maintains. Stored only for WhatsApp, because it is the
+            // only send whose outcome changes AFTER the action returns — EzBizi
+            // ingests no SES events, so an email arm has nothing to point at.
+            // Cheap now and unrecoverable later: a run recorded without it can
+            // never be joined to its message.
+            'message_id' => $row->id,
         ];
     }
 
@@ -1218,7 +1316,7 @@ class ActionRunner
      * SES and bounced has already spent the reputation the cap protects, so a
      * rule failing every time must still run out.
      */
-    private function sendEmail(array $action, AutomationEvent $event, ?Automation $automation): array
+    private function sendEmail(array $action, AutomationEvent $event, ?Automation $automation, ?Model $record = null): array
     {
         $type = 'email.send';
         $field = trim((string) ($action['to_field'] ?? ''));
@@ -1248,20 +1346,18 @@ class ActionRunner
             ];
         }
 
-        if ($automation !== null && ! $this->withinRuleAllowance($automation)) {
-            return [
-                'type' => $type, 'ok' => false,
-                'detail' => 'This rule has sent '.self::EMAILS_PER_RULE_PER_HOUR.' emails in the last '
-                    .'hour, which is its limit. It will send again on the hour.',
-            ];
+        if ($automation !== null && ($refusal = $this->ruleAllowanceRefusal($automation)) !== null) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
         try {
             $this->mail->platformForTenant(
                 $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
                 new AutomationMessage(
-                    subjectLine: $this->interpolate($subject, $event, null),
-                    body: $this->interpolate((string) $action['body'], $event, null),
+                    // $record, not $subject: in THIS arm `$subject` is the email's
+                    // subject line. The record the rule fired on is the other one.
+                    subjectLine: $this->interpolate($subject, $event, $record),
+                    body: $this->interpolate((string) $action['body'], $event, $record),
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                 ),
                 $to,
@@ -1311,18 +1407,36 @@ class ActionRunner
      */
     private function emailRecipient(string $stored, AutomationEvent $event): mixed
     {
+        return $this->contactFromStored($stored, $event, 'email');
+    }
+
+    /**
+     * The same three sources, for whichever contact detail the step needs.
+     *
+     * A step that texts and a step that emails ask the same question - who -
+     * and differ only in which column answers it. Two resolvers would be two
+     * places to fix the day a fourth source is added.
+     */
+    private function contactFromStored(string $stored, AutomationEvent $event, string $column): mixed
+    {
         if (str_starts_with($stored, self::RECIPIENT_USER)) {
             $user = User::query()
                 ->where('is_active', true)
                 ->find(substr($stored, strlen(self::RECIPIENT_USER)));
 
-            return $user?->email;
+            return $user?->getAttribute($column);
         }
 
-        // A literal address is stored as itself. Checked before the event,
-        // because a payload key will never look like an address and an address
-        // is never a payload key - so the test cannot be ambiguous.
-        if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+        // A literal value is stored as itself. Checked before the event, because
+        // a payload key never looks like an address or a phone number and
+        // neither ever looks like a payload key - so the test cannot be
+        // ambiguous. A number is anything with a digit and no letters; a field
+        // name has letters and no leading +.
+        if ($column === 'email') {
+            if (filter_var($stored, FILTER_VALIDATE_EMAIL) !== false) {
+                return $stored;
+            }
+        } elseif (preg_match('/^[+0-9][0-9 ()\-.]*$/', $stored) === 1) {
             return $stored;
         }
 
@@ -1346,15 +1460,59 @@ class ActionRunner
         return $payload['after'][$field] ?? $payload[$field] ?? null;
     }
 
-    private function withinRuleAllowance(Automation $automation): bool
+    /**
+     * Why this rule may not send another email, or null if it may.
+     *
+     * ── A COUNTER THAT IS NOT COUNTING MUST NOT READ AS PERMISSION ──────
+     *
+     * `Cache::increment()` returns int|false, and `false <= 100` is TRUE in
+     * PHP — bool wins the comparison and the int is cast, so a counter that
+     * stopped working would have read as "well within the allowance" and let a
+     * rule send without limit. Fail-open on the one guard standing between a
+     * loop between two rules and EzBizi's own SES reputation, which is shared
+     * by every tenant and is not something a later fix gives back.
+     *
+     * So a non-int refuses, and says something DIFFERENT from the allowance
+     * sentence. Both stop the send; only one of them is a fact about this rule,
+     * and telling somebody they have sent a hundred emails when the cache is
+     * broken sends them to read a run log looking for ninety-nine sends that
+     * never happened.
+     *
+     * The test harness cannot reach this: `CACHE_STORE=array` in phpunit.xml
+     * always increments. Production is `database`, measured on the box.
+     */
+    private function ruleAllowanceRefusal(Automation $automation): ?string
     {
         $key = 'automation-email:'.$automation->getKey().':'.now()->format('YmdH');
 
         // add() is the atomic one: two workers draining the outbox at once would
         // both read 0 and both write 1 with get()/put().
+        //
+        // AND IT IS WHAT MAKES THE COUNTER EXIST. `DatabaseStore::increment`
+        // returns FALSE for a key that is not there, and production runs
+        // CACHE_STORE=database. A limiter that increments without seeding first
+        // never counts anything at all — measured on a fresh key:
+        //
+        //     array      1, 2, 3
+        //     database   false, false, false
+        //
+        // So this line is not only about two workers racing. Removing it does
+        // not make the limiter slightly wrong; it makes it stop counting, and
+        // the refusal below would then be the only thing standing there.
         Cache::add($key, 0, now()->addHours(2));
 
-        return Cache::increment($key) <= self::EMAILS_PER_RULE_PER_HOUR;
+        $sent = Cache::increment($key);
+
+        if (! is_int($sent)) {
+            return 'The counter that keeps this rule from sending too many emails is not '
+                .'answering, so nothing was sent. Nobody has been emailed twice; try the rule '
+                .'again, and tell somebody if it keeps saying this.';
+        }
+
+        return $sent <= self::EMAILS_PER_RULE_PER_HOUR
+            ? null
+            : 'This rule has sent '.self::EMAILS_PER_RULE_PER_HOUR.' emails in the last hour, '
+                .'which is its limit. It will send again on the hour.';
     }
 
     /** The Organization, Company or Franchise the rule belongs to. */
@@ -1373,7 +1531,7 @@ class ActionRunner
         };
     }
 
-    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array
+    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation, ?Model $subject = null): array
     {
         $type = 'sms.send';
 
@@ -1398,8 +1556,19 @@ class ActionRunner
             ];
         }
 
-        $to = trim((string) ($action['to'] ?? ''));
-        $body = trim((string) ($action['body'] ?? ''));
+        // Resolved the same three ways as the email step: a person here, a
+        // field of the event, or a number typed in. It was typed-only, which
+        // asked somebody to keep a phone number correct inside a rule for
+        // years.
+        $to = trim((string) $this->contactFromStored(
+            trim((string) ($action['to'] ?? '')), $event, 'phone',
+        ));
+        // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
+        // sending {{...}} out as braces: a missed-call text that cannot name the
+        // number that called is the rule Jose has been running for two weeks.
+        // Emptiness is judged AFTER substitution, because a body that is nothing
+        // but an unresolved field is an empty text message, not a message.
+        $body = trim($this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
 
         if ($to === '' || $body === '') {
             return [
@@ -2113,17 +2282,34 @@ class ActionRunner
     }
 
     /**
-     * `{{ field }}` from the subject, and nothing else.
+     * `{{ field }}` from the record, then from the event, and nothing else.
      *
      * Not a template engine, deliberately. Tenant-authored strings evaluated as
      * code is remote code execution wearing a friendly name; this only ever
-     * substitutes attribute values, and an unknown field becomes an empty string
-     * rather than an error nobody can act on.
+     * substitutes values that are already in hand.
+     *
+     * ── WHY THE EVENT IS READ AND NOT ONLY THE RECORD ──────
+     *
+     * The condition builder offers the rule author the EVENT's fields — that is
+     * what `triggerFields()` derives and what the "only if" dropdown lists. So
+     * the names a person has just been shown, and has already typed once into a
+     * condition, are event field names. Resolving only the record's attributes
+     * meant the field somebody was invited to test could not be inserted into
+     * the message about it, with no hint that the two lists differed.
+     *
+     * Same precedence as a recipient field, for the same reason: an update
+     * carries `after`, a flat event carries its keys at the top.
+     *
+     * AN UNKNOWN FIELD STILL BECOMES AN EMPTY STRING rather than an error. A
+     * half-written message that goes out beats a rule that fails at 3am over a
+     * typo — but it is also why the builder has to show which names exist,
+     * because a silent blank is the one failure a person reads and cannot
+     * explain.
      */
     private function interpolate(string $template, AutomationEvent $event, ?Model $subject): string
     {
-        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject) {
-            $value = $subject?->getAttribute($m[1]);
+        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event) {
+            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
 
             return is_scalar($value) ? (string) $value : '';
         }, $template);

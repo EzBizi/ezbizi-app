@@ -94,6 +94,7 @@ class PermissionAction {
     required this.label,
     required this.grantable,
     this.requires = const [],
+    this.tab = false,
   });
 
   /// The permission key itself, which is what gets stored and sent.
@@ -132,6 +133,22 @@ class PermissionAction {
   /// screen says what is missing and never ticks it for them.
   final List<String> requires;
 
+  /// Whether this opens a TAB inside the module rather than permitting an act.
+  ///
+  /// Added 2026-09-17, when tabs became grantable one at a time. The editor
+  /// draws the two under separate headings: "Work Hours" and "Edit" answer
+  /// different questions, and eleven checkboxes in one flat list is what the
+  /// screen looked like before somebody had to read it.
+  ///
+  /// The SERVER decides this, and the client must not sniff it from the key's
+  /// shape. `hr.security.reset` is dotted too and is not a tab, so counting
+  /// dots would file it under the wrong heading — which is a claim about
+  /// authority made by a regular expression.
+  ///
+  /// Absent counts as false: a server that does not say is describing the flat
+  /// list this screen drew before tabs existed.
+  final bool tab;
+
   factory PermissionAction.fromJson(Map<String, dynamic> json) =>
       PermissionAction(
         key: json['key'] as String,
@@ -139,6 +156,7 @@ class PermissionAction {
         label: json['label'] as String? ?? json['key'] as String,
         grantable: json['grantable'] != false,
         requires: (json['requires'] as List?)?.cast<String>() ?? const [],
+        tab: json['tab'] == true,
       );
 }
 

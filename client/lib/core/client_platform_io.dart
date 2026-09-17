@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 /// Platform identity everywhere that is not a browser. See client_platform.dart.
 ///
@@ -19,6 +19,35 @@ String platformName() {
     return Platform.operatingSystem;
   } catch (_) {
     return '';
+  }
+}
+
+/// An asset's real path on disk. See client_platform.dart.
+///
+/// `data/flutter_assets` beside the executable is the Windows and Linux layout,
+/// and the only one this needs: the single caller is the Windows toast icon.
+/// macOS buries the same folder inside the .app bundle and Android and iOS do
+/// not expose assets as files at all, so on those the lookup simply finds
+/// nothing — which is why this ends in `existsSync` rather than in a switch on
+/// the operating system. A layout that changes under us then degrades to null
+/// instead of handing Windows a path to a file that is not there, and a
+/// registry entry pointing at nothing is exactly the bug this is fixing.
+String? installedAssetPath(String assetKey) {
+  try {
+    final separator = Platform.pathSeparator;
+    final directory = File(Platform.resolvedExecutable).parent.path;
+    final file = File(
+      [
+        directory,
+        'data',
+        'flutter_assets',
+        ...assetKey.split('/'),
+      ].join(separator),
+    );
+
+    return file.existsSync() ? file.path : null;
+  } catch (_) {
+    return null;
   }
 }
 

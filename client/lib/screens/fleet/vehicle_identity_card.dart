@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
 import 'vehicle_card.dart';
 
@@ -348,23 +349,20 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
   Widget _menu(
     String label,
     String? value,
-    List<DropdownMenuItem<String>> items,
+    List<SearchOption<String>> items,
     void Function(String?)? onChanged, {
     Key? fieldKey,
     String? helper,
   }) {
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: DropdownButtonFormField<String>(
+      child: SearchPickerField<String>(
         key: fieldKey,
-        initialValue: value,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: label,
-          helperText: helper,
-          helperMaxLines: 3,
-        ),
-        items: items,
+        value: value,
+        label: label,
+        helperText: helper,
+        helperMaxLines: 3,
+        options: items,
         onChanged: onChanged,
       ),
     );
@@ -412,7 +410,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _status,
               [
                 for (final t in fleetStatuses)
-                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                  SearchOption(value: t.$1, label: t.$2),
               ],
               enabled ? (v) => setState(() => _status = v ?? _status) : null,
               fieldKey: ValueKey('status-$_status'),
@@ -425,7 +423,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _bodyType,
               [
                 for (final t in fleetBodyTypes)
-                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                  SearchOption(value: t.$1, label: t.$2),
               ],
               enabled
                   ? (v) => setState(() => _bodyType = v ?? _bodyType)
@@ -437,7 +435,7 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _fuelType,
               [
                 for (final t in fleetFuelTypes)
-                  DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                  SearchOption(value: t.$1, label: t.$2),
               ],
               enabled
                   ? (v) => setState(() => _fuelType = v ?? _fuelType)
@@ -451,12 +449,12 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _companyId ?? fleetOrgValue,
               [
                 if (_atOrganization)
-                  DropdownMenuItem(
+                  SearchOption(
                     value: fleetOrgValue,
-                    child: Text(_me.organization.name),
+                    label: _me.organization.name,
                   ),
                 for (final c in _me.companiesInView)
-                  DropdownMenuItem(value: c.id, child: Text(c.name)),
+                  SearchOption(value: c.id, label: c.name),
               ],
               enabled
                   ? (v) => setState(() {
@@ -474,12 +472,12 @@ class _VehicleIdentityCardState extends State<VehicleIdentityCard> {
               _me.organization.franchiseLabel,
               _franchiseId ?? fleetGeneralValue,
               [
-                const DropdownMenuItem(
+                const SearchOption(
                   value: fleetGeneralValue,
-                  child: Text(fleetGeneralLabel),
+                  label: fleetGeneralLabel,
                 ),
                 for (final f in _places)
-                  DropdownMenuItem(value: f.id, child: Text(f.name)),
+                  SearchOption(value: f.id, label: f.name),
               ],
               enabled
                   ? (v) => setState(

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/search_picker.dart';
 import 'settings_pane.dart';
 
 /// Phone › Team — who your people are, as far as the phone system is concerned.
@@ -294,29 +295,24 @@ class _TeamTabState extends State<TeamTab> {
           const SizedBox(width: 12),
           Expanded(
             flex: 3,
-            child: DropdownButtonFormField<String?>(
+            child: SearchPickerField<String?>(
               key: Key('number:${person.userId}'),
-              initialValue: _numberOf[person.userId],
-              isExpanded: true,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              items: [
+              value: _numberOf[person.userId],
+              border: const OutlineInputBorder(),
+              isDense: true,
+              options: [
                 // Named rather than blank, because an empty option reads as
                 // "not loaded" and this is a real, common answer.
-                const DropdownMenuItem<String?>(
-                  child: Text('Whichever line is selected'),
+                const SearchOption<String?>(
+                  value: null,
+                  label: 'Whichever line is selected',
                 ),
                 for (final line in _lines)
-                  DropdownMenuItem<String?>(
+                  SearchOption<String?>(
                     value: line.id,
-                    child: Text(
-                      line.label.isEmpty
-                          ? formatPhoneNumber(line.e164)
-                          : '${line.label} · ${formatPhoneNumber(line.e164)}',
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    label: line.label.isEmpty
+                        ? formatPhoneNumber(line.e164)
+                        : '${line.label} · ${formatPhoneNumber(line.e164)}',
                   ),
               ],
               onChanged: _canEdit

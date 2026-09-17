@@ -203,7 +203,37 @@ final class WhatsAppCloud
         return $out;
     }
 
-    /** Free text, which Meta accepts only inside the 24-hour window. */
+    /**
+     * Free text, which Meta accepts only inside the 24-hour window.
+     *
+     * ── Outside the window this SUCCEEDS and then fails ──────────
+     *
+     * Measured 2026-09-16, because Jose asked whether the template rule was
+     * really as absolute as it sounds. A plain text sent 75 minutes after the
+     * window closed came back **HTTP 200 with a message id**, so `deliver()`
+     * wrote `status = sent` and returned normally. Meta failed it
+     * asynchronously and said so only on the webhook:
+     *
+     *     status         failed
+     *     status_reason  Re-engagement message
+     *
+     * So the refusal is NOT a thrown exception and there is nothing here to
+     * catch. The synchronous answer is an acknowledgement that the request was
+     * well formed, not a statement that the message will be delivered - and a
+     * caller that reports "sent" off this method's return value reports a
+     * success that is already wrong by the time anybody reads it.
+     *
+     * This is why the automation action uses `send()` and templates. A rule
+     * fires when a job is booked or an invoice goes unpaid, which is never
+     * inside the window, and a free-text action would have passed every test
+     * anyone wrote - the API says 200 - while silently failing in production.
+     *
+     * No window check is done here on purpose. Our own `whatsapp_messages`
+     * inbound rows only go back to the day the webhook was wired, so a local
+     * clock would refuse conversations Meta would have allowed, and a false
+     * refusal on a live reply screen is worse than a recorded failure. The
+     * webhook is the authority and it records the real outcome.
+     */
     public function sendText(WhatsAppMessage $row, string $text): WhatsAppMessage
     {
         return $this->deliver($row, [

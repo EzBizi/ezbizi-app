@@ -86,9 +86,8 @@ class SchedulingAreasController extends Controller
      * that is simply missing.
      *
      * @param  \Illuminate\Support\Collection<int, ServiceAreaSlot>  $slots
-     * @return array<int, int|null>
      */
-    private function week($slots): array
+    private function week($slots): \stdClass
     {
         $byDay = $slots->groupBy('weekday');
 
@@ -102,7 +101,19 @@ class SchedulingAreasController extends Controller
                 : (int) $day->sum('max_jobs');
         }
 
-        return $out;
+        // CAST, and it is the whole bug this method once shipped. Keys 0..6 in
+        // order make this a PHP LIST, and json_encode writes a list as a JSON
+        // ARRAY — `[null,2,2,2,2,2,1]`, not `{"0":null,"1":2,...}`. The client
+        // reads it as a map keyed by weekday, so every area threw a cast error
+        // and the whole Settings pane rendered grey.
+        //
+        // Neither test could see it. PHP treats `$week['1']` and `$week[1]` as
+        // the same key, so a decoded array satisfied the server assertion; and
+        // the widget fixture was written to the shape I MEANT rather than the
+        // one the server sent, so it agreed with itself. The test below now
+        // asserts this is not a list, which is the one thing that separates
+        // them.
+        return (object) $out;
     }
 
     /** POST /api/v1/scheduling/areas */

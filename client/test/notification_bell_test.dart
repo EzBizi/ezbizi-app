@@ -67,6 +67,7 @@ void main() {
     // Until 2026-09-16 this did nothing but mark it read. Being told "New Live
     // Chat Lead" and given no way to open the lead is the whole complaint.
     final opened = <String>[];
+    String? filter;
 
     await _pumpWithItem(
       tester,
@@ -76,11 +77,14 @@ void main() {
         'title': 'New Live Chat Lead',
         'body': null,
         'subject': {'type': 'Lead', 'id': 'lead-1'},
-        'meta': {'module': 'leads'},
+        'meta': {'module': 'leads', 'filter': 'website_chat'},
         'read_at': null,
         'created_at': '2026-09-16T12:00:00+00:00',
       },
-      onOpenModule: opened.add,
+      onOpenModule: (m, f) {
+        opened.add(m);
+        filter = f;
+      },
     );
 
     await tester.tap(find.byIcon(Icons.notifications_none));
@@ -90,6 +94,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(opened, ['leads']);
+    // The chat filter travels with the module. Without it the tap lands on a
+    // list of every source, which is where the person already was.
+    expect(filter, 'website_chat');
   });
 
   testWidgets('a notification about nothing openable navigates nowhere', (
@@ -110,11 +117,11 @@ void main() {
         'title': 'Your trial ends tomorrow',
         'body': null,
         'subject': {'type': null, 'id': null},
-        'meta': {'module': null},
+        'meta': {'module': null, 'filter': null},
         'read_at': null,
         'created_at': '2026-09-16T12:00:00+00:00',
       },
-      onOpenModule: opened.add,
+      onOpenModule: (m, f) => opened.add(m),
     );
 
     await tester.tap(find.byIcon(Icons.notifications_none));
@@ -133,7 +140,7 @@ void main() {
 Future<void> _pumpWithItem(
   WidgetTester tester, {
   required Map<String, dynamic> item,
-  required void Function(String) onOpenModule,
+  required void Function(String, String?) onOpenModule,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {

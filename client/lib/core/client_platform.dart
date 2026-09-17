@@ -43,6 +43,21 @@ class ClientPlatform {
   /// installer that does not exist, so this distinction is not cosmetic.
   static bool get isWeb => name == 'web';
 
+  /// Where an asset of this build actually sits on disk, or null.
+  ///
+  /// Almost nothing needs this — a Flutter app reads its assets through
+  /// `rootBundle` and never learns a path. The exception is handing a file to
+  /// something OUTSIDE the process: Windows stores the toast icon as a path in
+  /// the registry and opens it itself, at display time, so a byte array from
+  /// the bundle is no use and the file has to be somewhere Windows can reach.
+  ///
+  /// Null on the web, and null for any platform whose layout this does not
+  /// know — which is the honest answer rather than a plausible-looking path
+  /// that does not exist. A caller passes it straight through to whatever
+  /// wanted the file and gets today's behaviour back when it is null.
+  static String? installedAssetPath(String assetKey) =>
+      impl.installedAssetPath(assetKey);
+
   /// Reload the app from the server. Web only.
   ///
   /// Returns whether it could — false everywhere except a browser, so a caller

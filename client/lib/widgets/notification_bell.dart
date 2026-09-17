@@ -48,7 +48,7 @@ class NotificationBell extends StatefulWidget {
   ///
   /// Optional so the bell keeps working in a test or any shell that has nowhere
   /// to send anybody. Null here means the old behaviour: tapping marks read.
-  final void Function(String moduleKey)? onOpenModule;
+  final void Function(String moduleKey, String? filter)? onOpenModule;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -209,6 +209,37 @@ class _NotificationBellState extends State<NotificationBell>
   /// rule, not ours.
   Future<void> _announce(List<Map<String, dynamic>> arrivals) async {
     if (arrivals.isEmpty) return;
+
+    /*
+     * NOT WHEN THIS DEVICE IS ALREADY BEING PUSHED TO.
+     *
+     * Both paths became correct at the same time and nobody had seen them
+     * together. The Android module measured two records in the shade for one
+     * notification — `tag=null` from this poll, `tag=FCM-Notification:` from
+     * the server's push — so every notification appeared twice for anybody
+     * with EzBizi OPEN, which is most of a working day. A closed app got one,
+     * because nothing is polling.
+     *
+     * The push is the better of the two to keep: it arrives whether the app is
+     * open or shut, and it is the one that carries the notification channel a
+     * person can mute.
+     *
+     * ── Why the flag is "the server accepted our token" ──────────────
+     *
+     * Not "we have a token" and not "this platform supports push". A token the
+     * server never received is a device the server cannot reach, and
+     * suppressing on the strength of one would trade a visible duplicate for
+     * silence — which is the failure this module has spent a week removing.
+     *
+     * If the flag is ever wrong, it is wrong in the safe direction: false
+     * means both fire and somebody sees two, which is visible and harmless.
+     * The unsafe reading would have been "do not push to an active session",
+     * where a stale signal shows nothing at all.
+     *
+     * Web, Windows, macOS and Linux have no push registration, so this is
+     * always false there and the local notification stays their only one.
+     */
+    if (PushRegistration.isRegistered) return;
 
     // A rule that fires across a whole franchise can land a dozen at once, and
     // a dozen toasts is not twelve times as informative as one — it is a wall
@@ -373,8 +404,17 @@ class _NotificationBellState extends State<NotificationBell>
                                 as String?;
 
                         if (module != null && widget.onOpenModule != null) {
+                          // And what to narrow it to, when the destination
+                          // understands one. Jose asked for the Leads tab AND
+                          // its chat filter; the module alone lands you on a
+                          // list of every source, which is where you were
+                          // already looking.
+                          final filter =
+                              (current?['meta'] as Map<String, dynamic>?)?['filter']
+                                  as String?;
+
                           Navigator.of(context).pop();
-                          widget.onOpenModule!(module);
+                          widget.onOpenModule!(module, filter);
                           return;
                         }
 

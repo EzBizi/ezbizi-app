@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
 import 'item_pane.dart';
 
@@ -344,21 +346,12 @@ class _SalePaneState extends State<SalePane> {
                       child: LinearProgressIndicator(),
                     )
                   else
-                    DropdownButtonFormField<String>(
-                      initialValue: _locationId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Fulfill from',
-                      ),
-                      items: [
+                    SearchPickerField<String>(
+                      value: _locationId,
+                      label: 'Fulfill from',
+                      options: [
                         for (final loc in _locations)
-                          DropdownMenuItem(
-                            value: loc['id'] as String?,
-                            child: Text(
-                              loc['name'] as String? ?? '',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          SearchOption(value: loc['id'] as String?, label: loc['name'] as String? ?? ''),
                       ],
                       onChanged: _busy
                           ? null

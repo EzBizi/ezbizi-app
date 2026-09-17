@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/tags_pane.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -26,7 +27,7 @@ void main() {
   ) async {
     await _pump(tester, wrapUpSeconds: 60);
 
-    final dropdown = tester.widget<DropdownButton<int>>(
+    final dropdown = tester.widget<SearchPickerField<int>>(
       find.byKey(const ValueKey('wrap-up-seconds')),
     );
 
@@ -60,7 +61,7 @@ void main() {
   ) async {
     await _pump(tester, wrapUpSeconds: 0);
 
-    final dropdown = tester.widget<DropdownButton<int>>(
+    final dropdown = tester.widget<SearchPickerField<int>>(
       find.byKey(const ValueKey('wrap-up-seconds')),
     );
 
@@ -76,7 +77,7 @@ void main() {
   ) async {
     await _pump(tester, permissions: const ['phone.view']);
 
-    final dropdown = tester.widget<DropdownButton<int>>(
+    final dropdown = tester.widget<SearchPickerField<int>>(
       find.byKey(const ValueKey('wrap-up-seconds')),
     );
 

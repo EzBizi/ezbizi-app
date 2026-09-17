@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Console\Commands\SyncLeads;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
@@ -25,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rule;
@@ -254,6 +256,21 @@ class LeadsController extends Controller
                 'current_page' => $leads->currentPage(),
                 'last_page' => $leads->lastPage(),
                 'connections' => $this->connectionState(),
+                /*
+                 * "Google is refusing, so enquiries are late" - or null.
+                 *
+                 * The Leads screen re-reads itself every twenty seconds now, so
+                 * a stalled sync looks exactly like a quiet afternoon: the same
+                 * list, refreshed, over and over. On 2026-09-16 that quiet
+                 * afternoon was four hours of enquiries not arriving, and the
+                 * only place it was written down was a log.
+                 *
+                 * SyncLeads sets the key when it abandons a run on quota; it
+                 * expires on its own. Read rather than derived here: the
+                 * controller cannot ask Google without spending the quota that
+                 * is already gone.
+                 */
+                'sync_delayed_since' => Cache::get(SyncLeads::STALLED_KEY),
             ],
         ]);
     }

@@ -9,6 +9,7 @@ use App\Support\Access\AdministratorFloor;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Hr\PtoPolicy;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
 use App\Support\Scoping\ViewScope;
@@ -421,6 +422,102 @@ class HrPeopleController extends Controller
      *   the unassigned     only if you reach the whole organization, because
      *                      there is no smaller place to check them against
      */
+    /**
+     * GET /api/v1/hr/pto — what people are allowed, and when they may use it.
+     *
+     * From Toula Elwell's suggestion (A1-Group, 2026-09-08): "how much paid pto
+     * we all have and when it can be used". Layout is Jose's pick of 2026-09-17
+     * (desktop 1, phone 4) from docs/previews/pto-balances-layouts.html.
+     *
+     * ── YOUR OWN BALANCE IS NOT AN HR PERMISSION ─────────────────
+     *
+     * Everybody signed in gets their own row. `hr.view` adds everybody else's.
+     *
+     * TODAY THAT HALF HAS NO DOOR, and saying so here is the point. The only
+     * screen that calls this lives in the Human Resources tab, and
+     * `PermissionCatalogue` marks a module reachable only for somebody holding
+     * `{module}.view` — so a technician without `hr.view` cannot open the tab
+     * and never reaches the row this endpoint would happily give them. The
+     * split is not decoration: it means the day a self-service surface exists
+     * — Your account is the obvious one — it works without touching this, and
+     * nobody has to loosen a permission to get there. But it is groundwork,
+     * not a shipped capability, and a reader who assumed otherwise would be
+     * describing a feature that has no way in.
+     *
+     * Forced by the design rather than chosen beside it: the phone layout leads
+     * with YOU and puts the team under a heading below, and the person who
+     * wrote the suggestion is an office employee asking about her own days.
+     * Gating the whole screen on `hr.view` would have answered "how much do we
+     * all have" only for the managers — the half of her sentence she could
+     * already get by asking one.
+     *
+     * AND THE NAIVE VERSION LEAKS. Reusing the people query for everybody,
+     * which is the obvious way to write this, hands a technician the
+     * administrator's leave balance: `constrainToVisiblePeople` is about REACH,
+     * and an organization-level assignment reaches everyone. Reach is not
+     * permission — they are two rules, and only one of them is about whether
+     * you may read somebody's row. Proved by sabotage; the test says so in
+     * those words.
+     */
+    public function pto(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        $policy = app(PtoPolicy::class);
+
+        $people = $actor->can('viewAny', User::class)
+            ? User::query()
+                ->with('role:id,name')
+                ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get()
+            // Not a query narrowed to one row — the actor themselves, so that
+            // somebody with no HR permission is never filtered out of their own
+            // answer by a reach rule that was never about them.
+            : collect([$actor]);
+
+        return response()->json([
+            // The organization's own answer, sent once rather than repeated per
+            // row: "this company has not set up paid time off" is a state of
+            // the whole screen. The settings are organization-scoped, so it can
+            // never be one person's state beside somebody else's.
+            // Read off one person's answer rather than the settings
+            // directly: these six are organization-scoped, so every row carries
+            // the same ones, and one reader means the units cannot disagree
+            // with the dates computed from them.
+            'policy' => collect($policy->for($actor))
+                ->only([
+                    'enabled', 'allowance', 'allowance_period',
+                    'waiting', 'waiting_unit', 'carry_over',
+                ])
+                ->all(),
+
+            // Which row is the reader's, so the phone layout leads with it
+            // instead of the client guessing from a name.
+            'me' => $actor->getKey(),
+
+            'data' => $people->map(function (User $person) use ($policy) {
+                $answer = $policy->for($person);
+
+                return [
+                    'id' => $person->getKey(),
+                    'name' => $person->name,
+                    'role' => $person->role?->name,
+                    'allowance' => $answer['allowance'],
+                    'started_on' => $answer['started_on'],
+                    'eligible_from' => $answer['eligible_from'],
+                    'eligible' => $answer['eligible'],
+
+                    // Reserved and honest: nothing records a day off yet, so
+                    // null rather than 0 — zero would claim they have taken
+                    // none, null says we do not keep it. The drawn column shows
+                    // an em dash until something does.
+                    'taken' => null,
+                ];
+            })->values(),
+        ]);
+    }
+
     private function visibleTo(Builder $query, User $actor): void
     {
         // Delegated to ScopeReach — this predicate is also what Monitoring's

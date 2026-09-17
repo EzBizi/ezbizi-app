@@ -9,6 +9,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'onboarding_form.dart';
@@ -589,19 +590,16 @@ class _StartPanelState extends State<_StartPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _invitationId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Who is this for',
-                border: OutlineInputBorder(),
-                helperMaxLines: 3,
-                helperText:
-                    'One of the invitations you have sent. They do not have to '
-                    'have accepted it yet — you can fill in your half before '
-                    'they arrive.',
-              ),
-              items: _subjects(),
+            SearchPickerField<String>(
+              value: _invitationId,
+              label: 'Who is this for',
+              border: const OutlineInputBorder(),
+              helperMaxLines: 3,
+              helperText:
+                  'One of the invitations you have sent. They do not have to '
+                  'have accepted it yet — you can fill in your half before '
+                  'they arrive.',
+              options: _subjects(),
               onChanged: _busy
                   ? null
                   : (v) => setState(() => _invitationId = v),
@@ -615,27 +613,22 @@ class _StartPanelState extends State<_StartPanel> {
               ),
             ],
             const SizedBox(height: 18),
-            DropdownButtonFormField<String>(
-              initialValue: _contractId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Contract',
-                border: OutlineInputBorder(),
-                helperText: 'What they will be asked, and what they will sign.',
-              ),
-              items: [
+            SearchPickerField<String>(
+              value: _contractId,
+              label: 'Contract',
+              border: const OutlineInputBorder(),
+              helperText: 'What they will be asked, and what they will sign.',
+              options: [
                 for (final contract in _contracts)
-                  DropdownMenuItem(
-                    value: contract['id'] as String?,
-                    child: Text(
-                      [
+                  if (contract['id'] is String)
+                    SearchOption(
+                      value: contract['id'] as String,
+                      label: [
                         contract['name'] as String? ?? '',
                         if (contract['version'] != null)
                           'version ${contract['version']}',
                       ].join(' · '),
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
               ],
               onChanged: _busy ? null : (v) => setState(() => _contractId = v),
             ),
@@ -657,7 +650,7 @@ class _StartPanelState extends State<_StartPanel> {
     );
   }
 
-  List<DropdownMenuItem<String>> _subjects() {
+  List<SearchOption<String>> _subjects() {
     String nameOf(Map<String, dynamic> row) => [
       row['first_name'],
       row['last_name'],
@@ -671,19 +664,20 @@ class _StartPanelState extends State<_StartPanel> {
         // hand out: there the absence would hide a fact worth knowing, and here
         // the Invitations tab is already the place those rows are read.
         if (invitation['status'] != 'revoked' &&
-            invitation['status'] != 'abandoned')
-          DropdownMenuItem(
-            value: invitation['id'] as String?,
+            invitation['status'] != 'abandoned' &&
+            invitation['id'] is String)
+          SearchOption(
+            value: invitation['id'] as String,
             enabled: !_already(invitation['id'] as String?),
-            child: Text(
-              [
-                nameOf(invitation).isEmpty
-                    ? invitation['email'] as String? ?? ''
-                    : '${nameOf(invitation)} (${invitation['email']})',
-                if (_already(invitation['id'] as String?)) 'already onboarding',
-              ].join(' — '),
-              overflow: TextOverflow.ellipsis,
-            ),
+            // One string rather than a name with the address as a second
+            // line: two people can share a name, so the address is part of
+            // WHICH invitation this is, and search has to match it.
+            label: [
+              nameOf(invitation).isEmpty
+                  ? invitation['email'] as String? ?? ''
+                  : '${nameOf(invitation)} (${invitation['email']})',
+              if (_already(invitation['id'] as String?)) 'already onboarding',
+            ].join(' — '),
           ),
     ];
   }

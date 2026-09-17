@@ -2,8 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Assignment;
+use Illuminate\Support\Str;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Automation;
+use App\Support\Automations\EventScope;
+use App\Support\Scoping\ViewScope;
 use App\Models\Role;
+use App\Models\SavedReport;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
@@ -105,6 +112,7 @@ class AutomationsController extends Controller
         'resend',
         'revoke',
         'reply',
+        'report.send',
 
         // Not subject-bound: it exists so a rule on something with no phone in
         // it — an email arriving — can still send a text, so the line and the
@@ -402,14 +410,62 @@ class AutomationsController extends Controller
                  */
                 'people' => User::query()
                     ->where('is_active', true)
-                    ->whereNotNull('email')
+                    ->where(fn ($q) => $q->whereNotNull('email')->orWhereNotNull('phone'))
                     ->orderBy('name')
-                    ->get(['id', 'name', 'email'])
+                    ->get(['id', 'name', 'email', 'phone'])
                     ->map(fn (User $u) => [
                         'id' => 'user:'.$u->id,
-                        'label' => trim($u->name.' — '.$u->email),
+                        'label' => trim($u->name.' — '.($u->email ?: $u->phone)),
+                        // WHICH CONTACT THEY HAVE, so a step that texts does not
+                        // offer somebody with only an email and a step that
+                        // emails does not offer somebody with only a phone. One
+                        // list, filtered by what the step needs, rather than two
+                        // lists to keep in step.
+                        'has_email' => $u->email !== null && $u->email !== '',
+                        'has_phone' => $u->phone !== null && $u->phone !== '',
                     ])
                     ->all(),
+
+                /*
+                 * Saved reports a rule can send. Name only - a report's
+                 * DEFINITION says which columns and filters a business uses,
+                 * which is more than a permission about writing rules should
+                 * carry.
+                 *
+                 * Scoped by the ordinary tenant scope, so somebody only sees
+                 * their own organization's. Whether the RULE may send a given
+                 * report is a separate question SendSavedReport answers at run
+                 * time against the rule's scope, and it refuses rather than
+                 * rendering something the rule could not otherwise read.
+                 */
+                'reports' => SavedReport::query()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn (SavedReport $r) => ['id' => $r->id, 'label' => $r->name])
+                    ->all(),
+
+                /*
+                 * WHERE A RULE CAN BE POINTED, in this person's own reach.
+                 *
+                 * id/label like every other list here, and the id is the stored
+                 * shape — `organization`, `company:<uuid>`, `franchise:<uuid>` —
+                 * so the builder posts back what it was given rather than
+                 * assembling a scope out of two fields and getting the pairing
+                 * wrong. `reachableCompanies` and `reachableFranchises` are §4's
+                 * own answer, so somebody cannot point a rule at a place they
+                 * cannot see.
+                 */
+                'places' => array_merge(
+                    [['id' => 'organization', 'label' => 'Everywhere in this business']],
+                    $request->user()->reachableCompanies()
+                        ->sortBy('name')
+                        ->map(fn (Company $c) => ['id' => 'company:'.$c->id, 'label' => $c->name.' and everything under it'])
+                        ->values()->all(),
+                    $request->user()->reachableFranchises()
+                        ->sortBy('name')
+                        ->map(fn (Franchise $f) => ['id' => 'franchise:'.$f->id, 'label' => $f->name])
+                        ->values()->all(),
+                ),
 
                 'roles' => Role::query()
                     ->orderBy('name')
@@ -547,11 +603,13 @@ class AutomationsController extends Controller
             Refusal::permission('see what this event carries')->message(),
         );
 
-        $events = AutomationEvent::query()
+        $recent = AutomationEvent::query()
             ->where('event_key', $key)
             ->latest('occurred_at')
             ->limit(self::FIELD_SAMPLE)
-            ->pluck('payload');
+            ->get(['payload', 'subject_type', 'subject_id']);
+
+        $events = $recent->pluck('payload');
 
         $fields = [];
 
@@ -605,11 +663,85 @@ class AutomationsController extends Controller
             'trigger' => $key,
             'fields' => $fields,
             'values' => $values,
+            'samples' => $this->samplesFor($recent, $fields, $request->user()),
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
             'sampled' => $events->count(),
         ]]);
+    }
+
+    /**
+     * One real example per field, from an event THIS person could already read.
+     *
+     * ── THIS REVERSES A RULE THAT WAS WRITTEN ON PURPOSE ──────
+     *
+     * The `values` map above says, in its own comment: "Values are DECLARED,
+     * never sampled. Reading them off recent events would leak what this
+     * tenant's records contain." That reasoning was right for `values`, which
+     * feeds a dropdown of every allowed value and had no reason to touch a
+     * record at all.
+     *
+     * It is not right for a preview, and Jose asked for the preview by name:
+     * *"I should have a preview and catalog of variables, so for example if i
+     * put {{title}} i should be able to see what that will turn out as"*. An
+     * example that is not a real value cannot answer that question — a rule
+     * author reading `Your [title] is booked` learns the brackets work, not
+     * whether their field resolves. A blank is the failure this whole evening
+     * was about, and it is invisible until a customer receives it.
+     *
+     * ── WHAT MAKES IT SAFE IS THE REACH CHECK, NOT THE TRUNCATION ──────
+     *
+     * The module gate above decides whether somebody may know a field EXISTS.
+     * It is per-module, so on its own it would show a franchise manager a value
+     * from another franchise's record — a leak inside a module they can open.
+     * So each candidate event is asked whose record it is, through the same
+     * `ScopeReach` the notification audience uses. One answer, two readers.
+     *
+     * An event with no subject is organization-level, and `covers()` is asked
+     * about the organization rather than waved through.
+     *
+     * @param  \Illuminate\Support\Collection<int, AutomationEvent>  $events
+     * @param  list<string>  $fields
+     * @return array<string, string>
+     */
+    private function samplesFor($events, array $fields, ?User $viewer): array
+    {
+        if ($viewer === null || $fields === []) {
+            return [];
+        }
+
+        $reach = app(ScopeReach::class);
+        $samples = [];
+
+        foreach ($events as $event) {
+            $subject = $event->subject_type !== null && $event->subject_id !== null
+                ? $event->subject()->first()
+                : null;
+
+            [$type, $id] = $subject instanceof CarriesAutomationScope
+                ? $subject->automationScope()
+                : [null, null];
+
+            if (! $reach->covers($viewer, $type ?? Assignment::SCOPE_ORGANIZATION, $id ?? $this->tenant->idOrFail())) {
+                continue;
+            }
+
+            $payload = is_array($event->payload) ? $event->payload : [];
+            $flat = array_merge($payload, is_array($payload['after'] ?? null) ? $payload['after'] : []);
+
+            foreach ($fields as $field) {
+                // FIRST ONE WINS, so the preview reads as one coherent record
+                // rather than a sentence assembled from three different jobs.
+                if (array_key_exists($field, $samples) || ! is_scalar($flat[$field] ?? null)) {
+                    continue;
+                }
+
+                $samples[$field] = Str::limit((string) $flat[$field], 60);
+            }
+        }
+
+        return $samples;
     }
 
     /**
@@ -712,11 +844,43 @@ class AutomationsController extends Controller
     {
         $this->authorize('viewAny', Automation::class);
 
+        /*
+         * WHAT REACHES THIS VIEW, which is not the same as what exists.
+         *
+         * Jose was standing in one company and reading another company's rule:
+         * *"it's applying for everything and im seeing it on any company"*. The
+         * list showed every rule in the organization, so a franchise manager saw
+         * rules that will never run on their work and could switch them off for
+         * everybody.
+         *
+         * Asked through the SAME `coversScope` the engine asks, from the other
+         * end — the engine holds an event and wants its rules, this holds a view
+         * and wants the rules that reach it. A second derivation here would
+         * eventually show a rule that does not run, or hide one that does, and
+         * neither would look like a bug from the screen.
+         *
+         * An organization-wide rule stays visible everywhere, because it DOES
+         * act there; the tag is what says so.
+         */
+        $view = ViewScope::forUser($request->user());
+        $chain = EventScope::chainFor(
+            $view->type === ViewScope::ORGANIZATION ? null : $view->type,
+            $view->id,
+        );
+
         $automations = Automation::query()
             ->with('activeVersion')
             ->withCount(['runs'])
             ->orderBy('name')
             ->get()
+            ->filter(fn (Automation $a) => $view->type === ViewScope::ORGANIZATION
+                // AT THE TOP, EVERYTHING IS LISTED — including a rule for one
+                // franchise, which does not "reach" the organization view and
+                // would vanish under the same test the narrower views use. The
+                // person standing at the organization is the one who has to be
+                // able to find every rule in the business.
+                || $a->coversScope($view->type, $view->id, companyChain: $chain))
+            ->values()
             ->map(fn (Automation $a) => $this->present($a));
 
         return response()->json(['data' => $automations]);
@@ -755,13 +919,43 @@ class AutomationsController extends Controller
 
         $input = $this->validated($request);
 
-        $automation = DB::transaction(function () use ($input, $request) {
+        /*
+         * A RULE BELONGS WHERE IT WAS MADE.
+         *
+         * Jose, 2026-09-17: *"i made an automation for a-1chimney, but it's
+         * applying for everything and im seeing it on any company"*. The engine
+         * was never the problem — `coversScope` has honoured company and
+         * franchise since it was written. What was missing is that nothing ever
+         * SET a scope: the builder does not send one, so every rule was stored
+         * with a null scope, which means organization-wide, which means every
+         * company in the business.
+         *
+         * So the default is now the view the person is standing in. Somebody
+         * looking at one franchise who writes a rule has said which franchise
+         * it is for by being there — the same way a job they create belongs to
+         * the place they made it, rather than to the whole organization.
+         *
+         * AN EXPLICIT SCOPE STILL WINS, including an explicit null: the key
+         * being PRESENT is what distinguishes "make this one apply everywhere"
+         * from "the builder said nothing".
+         */
+        $view = ViewScope::forUser($request->user());
+
+        $scopeType = array_key_exists('scope_type', $input)
+            ? $input['scope_type']
+            : ($view->type === ViewScope::ORGANIZATION ? null : $view->type);
+
+        $scopeId = array_key_exists('scope_type', $input)
+            ? ($input['scope_id'] ?? null)
+            : ($view->type === ViewScope::ORGANIZATION ? null : $view->id);
+
+        $automation = DB::transaction(function () use ($input, $request, $scopeType, $scopeId) {
             $automation = Automation::create([
                 'name' => $input['name'],
                 'description' => $input['description'] ?? null,
                 'trigger_key' => $input['trigger_key'],
-                'scope_type' => $input['scope_type'] ?? null,
-                'scope_id' => $input['scope_id'] ?? null,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
                 // Off until somebody switches it on. A rule that starts firing
                 // the instant it is saved will fire before it has been read back.
                 'is_active' => false,
@@ -920,6 +1114,53 @@ class AutomationsController extends Controller
         }
 
         return response()->json(['data' => $this->engine->rehearse($automation, $event)]);
+    }
+
+    /**
+     * POST /api/v1/automations/{automation}/run-now
+     *
+     * Run it FOR REAL against a real event, because somebody pressed the button.
+     *
+     * `test` rehearses and performs nothing, which is the right default and does
+     * not answer the question somebody actually has: does the email arrive. A
+     * rule that can only be proved by waiting for a missed call is a rule that
+     * sits broken for a fortnight - which is what happened to the one that
+     * started this.
+     *
+     * A SEPARATE ROUTE RATHER THAN A FLAG ON `test`, so that a real send is
+     * never one wrong argument away from a rehearsal, and so the permission can
+     * differ if it ever needs to.
+     *
+     * REQUIRES `update`, not `view`. Pressing this sends real emails and real
+     * texts on the business's behalf; somebody who may only read the rule must
+     * not be able to fire it.
+     */
+    public function runNow(Request $request, Automation $automation): JsonResponse
+    {
+        $this->assertMine($automation);
+        $this->authorize('update', $automation);
+
+        $input = $request->validate([
+            'event_id' => ['nullable', 'uuid'],
+        ]);
+
+        $event = ($input['event_id'] ?? null) !== null
+            ? AutomationEvent::findOrFail($input['event_id'])
+            : AutomationEvent::where('event_key', $automation->trigger_key)
+                ->latest('occurred_at')
+                ->first();
+
+        if ($event === null) {
+            return response()->json([
+                'message' => "Nothing has triggered '{$automation->trigger_key}' yet, so there "
+                    .'is no real event to run this against. Create or change a record first.',
+                'code' => 'no_event_to_test',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $this->audit->log('automation.run_now', $automation, metadata: ['event_id' => $event->getKey()]);
+
+        return response()->json(['data' => $this->engine->runNow($automation, $event)]);
     }
 
     /** GET /api/v1/automations/{automation}/runs */
@@ -1412,12 +1653,18 @@ class AutomationsController extends Controller
     /** @return list<array{key:string,label:string,module_only:bool,parameters:array}> */
     private function actionTypes(): array
     {
-        $parameter = static fn (string $key, string $label, string $kind, bool $required = true, bool $nullable = false): array => [
+        // `variables` says this box is one the runner substitutes {{ field }} in.
+        // DECLARED RATHER THAN ASSUMED, because it is not true of every text box:
+        // update_field's value is written as typed, and a builder that offered
+        // {{ }} there would be promising something the runner does not do. The
+        // flag names exactly the parameters ActionRunner::interpolate() reaches.
+        $parameter = static fn (string $key, string $label, string $kind, bool $required = true, bool $nullable = false, bool $variables = false): array => [
             'key' => $key,
             'label' => $label,
             'kind' => $kind,
             'required' => $required,
             'nullable' => $nullable,
+            'variables' => $variables,
         ];
         $type = static fn (string $key, string $label, bool $moduleOnly = false, array $parameters = []): array => [
             'key' => $key,
@@ -1440,7 +1687,7 @@ class AutomationsController extends Controller
             // against a box they had filled in. Both halves are in one commit for
             // that reason; do not split them.
             $type('notify', 'Send a notification', false, [
-                $parameter('message', 'Message', 'rich_text'),
+                $parameter('message', 'Message', 'rich_text', variables: true),
 
                 // Phrased as a DECLINE, and required: false so an untouched
                 // switch is simply absent. A positive key - "send an email" -
@@ -1535,12 +1782,29 @@ class AutomationsController extends Controller
              * are subject-bound - a job or a vehicle - and the subject is what
              * the arm routes on.
              */
+            /*
+             * The recipients are a LIST, unlike every other send: a report goes
+             * to the people who read it, which is usually several. Partial
+             * failure is a success - one permanently-bad address among five
+             * must not switch the rule off after five weeks while four people
+             * are reading it fine.
+             */
+            $type('report.send', 'Send a saved report', true, [
+                $parameter('report_id', 'Which report', 'report'),
+                $parameter('to', 'Send to', 'recipient_list'),
+            ]),
+
             $type('lead.reply', 'Reply to the lead', true, [
-                $parameter('message', 'Message', 'rich_text'),
+                $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
 
             $type('assign_to_user', 'Assign to a person', true, [
-                $parameter('user_field', 'Assign to the person in', 'trigger_field'),
+                // A PERSON OR A FIELD. It was field-only, which meant a rule
+                // could hand work to whoever the event named and could not hand
+                // it to a named person - "when a job is created, give it to
+                // Dana" was unbuildable. `person_or_field` offers both and
+                // stores the same `user:<id>` the other steps use.
+                $parameter('user_field', 'Assign to', 'person_or_field'),
             ]),
 
             $type('email.send', 'Send an email', false, [
@@ -1556,14 +1820,19 @@ class AutomationsController extends Controller
                 // leave; an address copied at build time would keep mailing a
                 // mailbox nobody reads.
                 $parameter('to_field', 'Send to', 'recipient'),
-                $parameter('subject', 'Subject', 'text'),
-                $parameter('body', 'Message', 'rich_text'),
+                $parameter('subject', 'Subject', 'text', variables: true),
+                $parameter('body', 'Message', 'rich_text', variables: true),
             ]),
 
             $type('sms.send', 'Send a message', true, [
                 $parameter('number_id', 'Send from', 'phone_number'),
-                $parameter('to', 'Send to', 'text'),
-                $parameter('body', 'Message', 'text'),
+                // WAS FREE TEXT, asking somebody to type a phone number into a
+                // rule that will run for years. Same three sources as the email
+                // step - somebody here, a field of the event, or a number typed
+                // - because "who does this go to" is one question and the only
+                // difference is which column answers it.
+                $parameter('to', 'Send to', 'phone_recipient'),
+                $parameter('body', 'Message', 'text', variables: true),
             ]),
         ];
     }
@@ -1728,6 +1997,29 @@ class AutomationsController extends Controller
         }, $actions);
     }
 
+    /**
+     * What to write on a rule's chip: a place, or "Everywhere".
+     *
+     * A DELETED COMPANY STILL GETS A WORD. `scope_id` outlives the row it
+     * points at, and a chip reading "Company" with no name is at least honest;
+     * an empty chip reads as an organization-wide rule, which is the one thing
+     * it definitely is not.
+     */
+    private function scopeLabel(Automation $automation): string
+    {
+        if ($automation->scope_type === null) {
+            return 'Everywhere';
+        }
+
+        $name = $automation->scope_type === 'company'
+            ? Company::query()->whereKey($automation->scope_id)->value('name')
+            : Franchise::query()->whereKey($automation->scope_id)->value('name');
+
+        return $name ?? ($automation->scope_type === 'company'
+            ? 'A company that no longer exists'
+            : 'A place that no longer exists');
+    }
+
     private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
@@ -1740,6 +2032,11 @@ class AutomationsController extends Controller
             'scope' => [
                 'type' => $automation->scope_type,
                 'id' => $automation->scope_id,
+                // THE NAME, because an id on a chip tells nobody anything. At
+                // the organization every rule in the business is listed, so the
+                // only thing separating one company's rule from another's is
+                // this word.
+                'label' => $this->scopeLabel($automation),
             ],
             // Surfaced rather than buried: a rule that switched itself off after
             // repeated failure must say so where somebody will see it.

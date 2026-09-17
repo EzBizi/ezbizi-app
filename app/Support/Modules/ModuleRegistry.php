@@ -156,35 +156,6 @@ class ModuleRegistry
         return null;
     }
 
-    /**
-     * Which module owns a record type, for a notification that wants somewhere
-     * to send you.
-     *
-     * DERIVED from `emits`, which each module already declares as "every model
-     * this module passes to events->emit()". A notification's subject is
-     * exactly such a model — `notify` hands the dispatcher the event's subject
-     * — so the mapping already exists and this only reads it. A hand-written
-     * table of class => module beside it would be a second answer to a question
-     * already answered, and the two would part company the first time a module
-     * started emitting something new.
-     *
-     * Null for a subject no module claims, which is a real and permanent case
-     * rather than a gap: a notification about an Organization, or one with no
-     * subject at all, has nowhere more specific to go than where you already
-     * are. The bell leaves those unclickable rather than inventing a
-     * destination.
-     */
-    public function moduleKeyOfModel(string $class): ?string
-    {
-        foreach ($this->modules as $moduleKey => $module) {
-            if (in_array($class, $module->emits, true)) {
-                return $moduleKey;
-            }
-        }
-
-        return null;
-    }
-
     /** Every permission key across every module — what the sync command writes. */
     public function allPermissionKeys(): array
     {

@@ -242,10 +242,57 @@ class MailDispatcher
          * protects, so a failed send has to count — the alternative is a loop
          * that fails every time and is therefore never capped.
          */
+        /*
+         * SEEDED WITH add() BEFORE INCREMENTING, and that is the whole bug fix.
+         *
+         * This was `$sent = Cache::increment($key)` with a `$sent === 1` seed
+         * underneath it, which works on the ARRAY store and does nothing at all
+         * on the DATABASE store — which is what production runs. Laravel's
+         * DatabaseStore::incrementOrDecrement returns FALSE for a missing key
+         * rather than creating it, so the seed never ran, the key never existed,
+         * every later increment returned false too, and `false > $allowance` is
+         * false. The cap never fired. Measured on a real cache table:
+         *
+         *     array      increments 1,2,3 => 1, 2, 3
+         *     database   increments 1,2,3 => false, false, false
+         *
+         * Three passing tests exercised it, all on the array store, all green.
+         * Found by the Reports session reading the store rather than the tests.
+         *
+         * add() creates only when the key is missing and behaves the same on
+         * every store, so the counter now starts wherever it runs.
+         */
+        Cache::add($key, 0, now()->addHours(2));
+
         $sent = Cache::increment($key);
 
-        if ($sent === 1) {
-            Cache::put($key, 1, now()->addHours(2));
+        /*
+         * A SEPARATE SENTENCE FROM THE ALLOWANCE ONE, deliberately.
+         *
+         * If the counter still cannot answer, we do not know how much this
+         * business has sent — which is not the same fact as knowing it has sent
+         * too much. Telling somebody they have sent 500 emails when nothing
+         * counted sends them hunting for 499 that never happened; the Automations
+         * session hit the identical shape in their own limiter and split the two
+         * sentences for the same reason.
+         *
+         * REFUSED rather than allowed, and it is a real trade. Refusing stops a
+         * customer's automation; allowing means the only thing standing between
+         * a loop between two rules and the SES reputation every tenant shares is
+         * a counter that has just admitted it is not counting. Nothing ingests
+         * bounce or complaint events yet, so there is no second line of defence
+         * to fall back on.
+         */
+        // `! is_int` rather than `=== false`, taken from the Automations session's
+        // own limiter: false is what the database store returns today, and the
+        // question being asked is "did this counter give me a number", which is
+        // the property that has to hold on a store nobody has tried yet.
+        if (! is_int($sent)) {
+            throw new CannotSendMail(
+                'EzBizi could not check how much automated email this business has already '
+                .'sent, so nothing was sent rather than risk sending too much. This is a '
+                .'fault on our side, not a setting to change — it should clear on its own.',
+            );
         }
 
         if ($sent > $allowance) {

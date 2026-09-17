@@ -23,11 +23,11 @@ class TimeClockUiStringsTest extends TestCase
             UiString::query()->where('key', 'time_clock.clock_out')->where('locale', 'en')->value('text'),
         );
         $this->assertSame(
-            'Clock in–out',
+            'Work Hours',
             UiString::query()->where('key', 'time_clock.tab')->where('locale', 'en')->value('text'),
         );
         $this->assertSame(
-            'Entrada y salida',
+            'Horas de trabajo',
             UiString::query()->where('key', 'time_clock.tab')->where('locale', 'es')->value('text'),
         );
     }
@@ -36,6 +36,7 @@ class TimeClockUiStringsTest extends TestCase
     {
         foreach ([
             'time_clock.reminder_title', 'time_clock.reminder_body', 'time_clock.extend',
+            'time_clock.previous_week', 'time_clock.next_week', 'time_clock.still_in',
             'time_clock.lock_sentence', 'time_clock.sign_out', 'time_clock.auto',
             'time_clock.outside', 'time_clock.day_off', 'time_clock.work_schedule',
             'time_clock.not_scheduled', 'time_clock.overnight', 'time_clock.exempt_on',
@@ -48,5 +49,27 @@ class TimeClockUiStringsTest extends TestCase
             'Extend {minutes} min',
             UiString::query()->where('key', 'time_clock.extend')->where('locale', 'en')->value('text'),
         );
+    }
+
+    /**
+     * What the one-day list took with it, and what survived it (2026-09-17).
+     *
+     * The second half is the half worth having: four refusal sentences are
+     * unreferenced by any call site and are KEPT, because they are the only
+     * Spanish those sentences have. A later tidy-up reading only unused
+     * would delete them, and this says no.
+     */
+    public function test_the_day_lists_copy_is_retired_and_the_refusals_are_not(): void
+    {
+        foreach (['time_clock.empty', 'time_clock.times_in', 'time_clock.in'] as $gone) {
+            $this->assertSame(0, UiString::query()->where('key', $gone)->count(), $gone);
+        }
+
+        foreach ([
+            'time_clock.already_in', 'time_clock.not_in', 'time_clock.off',
+            'time_clock.not_scheduled', 'time_clock.auto', 'time_clock.outside',
+        ] as $kept) {
+            $this->assertSame(2, UiString::query()->where('key', $kept)->count(), $kept);
+        }
     }
 }

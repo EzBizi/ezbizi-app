@@ -6,6 +6,7 @@ import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';
@@ -249,20 +250,17 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   ),
                 TextField(
                   controller: _title,
-                  decoration: const InputDecoration(labelText: 'What is the job'),
+                  decoration: const InputDecoration(
+                    labelText: 'What is the job',
+                  ),
                   enabled: editable,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _statuses.contains(_status) ? _status : null,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: _statusChoices
-                      .map(
-                        (s) => DropdownMenuItem(
-                          value: s.value,
-                          child: Text(s.label),
-                        ),
-                      )
+                SearchPickerField<String>(
+                  value: _statuses.contains(_status) ? _status : null,
+                  label: 'Status',
+                  options: _statusChoices
+                      .map((s) => SearchOption(value: s.value, label: s.label))
                       .toList(),
                   onChanged: editable
                       ? (v) => setState(() => _status = v ?? _status)

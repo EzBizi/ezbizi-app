@@ -38,6 +38,11 @@ class TimeClockScheduleStampsTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
+        // The PLACE's clock is what a schedule is read in (2026-09-16). These
+        // cases were written when the stored zone drove it, so the place now
+        // says what they always meant: a UTC-5 place. Expectations unchanged.
+        app(TenantContext::class)->run($alpha['org'], fn () => app(SettingsResolver::class)
+            ->set('timezone', $alpha['org'], 'Etc/GMT+5'));
         $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
         $person = $this->inTenant($alpha['org'], function () use ($person) {
             $person->forceFill(['work_schedule' => ['timezone' => 'Etc/GMT+5', 'days' => self::WEEK]])->save();
@@ -127,6 +132,38 @@ class TimeClockScheduleStampsTest extends TestCase
     private function open(array $alpha, User $person): ?TimeClockShift
     {
         return $this->inTenant($alpha['org'], fn () => TimeClockShift::openFor($person));
+    }
+
+    /**
+     * A stored schedule zone is a RECORD of where it was set, not the clock the
+     * shift runs on (2026-09-16: Jose's row still said Etc/GMT+5 from before the
+     * platform default became America/New_York, so his 17:00 resolved to 18:00
+     * Eastern and every reminder and auto clock-out ran an hour late).
+     */
+    public function test_a_stale_stored_zone_does_not_move_the_scheduled_end(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->enableClockIn($alpha['org']);
+        app(TenantContext::class)->run($alpha['org'], fn () => app(SettingsResolver::class)
+            ->set('timezone', $alpha['org'], 'America/New_York'));
+
+        $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
+        $this->inTenant($alpha['org'], fn () => $person->forceFill(['work_schedule' => [
+            // A fixed offset, one hour behind Eastern in September.
+            'timezone' => 'Etc/GMT+5',
+            'days' => self::WEEK,
+        ]])->save());
+
+        // Wednesday 2026-09-16, 14:00 UTC = 10:00 Eastern (EDT, UTC-4).
+        Carbon::setTestNow(Carbon::parse('2026-09-16 14:00:00', 'UTC'));
+
+        $block = $this->signedInAs($person->fresh())
+            ->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
+
+        // 17:00 Eastern, not the 22:00Z the stored offset would have given.
+        $this->assertSame('2026-09-16T21:00:00Z', $block['scheduled_end_at']);
+        $this->assertSame(['start' => '08:00', 'end' => '17:00'], $block['today']);
+        $this->assertFalse($this->inTenant($alpha['org'], fn () => TimeClockShift::openFor($person))->outside_schedule);
     }
 
     private function enableClockIn(Organization $org): void

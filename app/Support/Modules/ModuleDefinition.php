@@ -29,6 +29,19 @@ final class ModuleDefinition
     public const DEFAULT_ACTIONS = ['view', 'create', 'edit', 'delete'];
 
     /**
+     * Declared actions PLUS one per tab, which is why it is assigned rather
+     * than promoted.
+     *
+     * Every consumer reads this one list -- the roles editor, `materialise()`,
+     * `ezbizi:sync-permissions` -- so merging here is what makes a tab a real,
+     * storable, grantable permission without a second code path that could
+     * disagree with the first.
+     *
+     * @var string[]
+     */
+    public readonly array $actions;
+
+    /**
      * Where this module appears in the roles editor, which must match the
      * sidebar a person actually sees.
      *
@@ -47,7 +60,32 @@ final class ModuleDefinition
         public readonly string $key,
         public readonly string $label,
         /** @var string[] permission actions, e.g. ['view','create'] */
-        public readonly array $actions = self::DEFAULT_ACTIONS,
+        array $actions = self::DEFAULT_ACTIONS,
+        /**
+         * The tabs INSIDE this module that can be granted one at a time.
+         *
+         * Added 2026-09-17 on Jose's instruction. The rule directly above --
+         * "the tab IS the view permission" -- still holds for the module's own
+         * place in the sidebar; what changed is that a module's INTERNAL tabs
+         * were covered by that one grant too, so seeing a dispatcher's own
+         * hours meant handing them everybody's contracts and onboarding
+         * paperwork.
+         *
+         * Each one contributes an action, so `TabDefinition('hours', 'Work
+         * hours')` on `hr` produces `hr.hours.view` and nothing else in the
+         * system needs teaching -- moduleOf, withImpliedView, materialise and
+         * ezbizi:sync-permissions all already handle a dotted action, because
+         * `monitoring.cameras.view` and `fleet.specs.view` have existed since
+         * those modules shipped.
+         *
+         * Declaring tabs is NOT optional once a screen has them, but nothing
+         * here can check that: the tabs live in a Flutter widget this class
+         * cannot see. What it can check is that the two lists do not drift once
+         * declared, which is ModuleTabsTest's job.
+         *
+         * @var TabDefinition[]
+         */
+        public readonly array $tabs = [],
         /**
          * Permissions an action cannot work without, as full keys.
          *
@@ -265,6 +303,47 @@ final class ModuleDefinition
                 .'permission (§4), so a module without one cannot be reached or granted.'
             );
         }
+
+        /*
+         * Tabs become actions HERE, so that there is one list and not two.
+         *
+         * A separate `tabPermissionKeys()` would have meant every consumer
+         * choosing whether to ask for it -- and the one that forgot would
+         * refuse to store a tab grant, or draw a checkbox that cannot be saved,
+         * without anything failing at boot. `materialise()` checks membership
+         * of `actions`, so a tab missing from it is a permission the roles
+         * editor can offer and the save then rejects.
+         */
+        $seenTab = [];
+
+        foreach ($tabs as $tab) {
+            if (! $tab instanceof TabDefinition) {
+                throw new InvalidArgumentException(
+                    "Module '{$key}' declares a tab that is not a TabDefinition. A bare string "
+                    .'would carry no label, and the label is the word an administrator reads '
+                    .'while deciding whether to tick it.'
+                );
+            }
+
+            if (isset($seenTab[$tab->key])) {
+                throw new InvalidArgumentException(
+                    "Module '{$key}' declares tab '{$tab->key}' twice."
+                );
+            }
+
+            if (in_array($tab->action(), $actions, true)) {
+                throw new InvalidArgumentException(
+                    "Module '{$key}' declares both a tab '{$tab->key}' and an action "
+                    ."'{$tab->action()}'. They are the same permission key, and only one of "
+                    .'them carries a label.'
+                );
+            }
+
+            $seenTab[$tab->key] = true;
+            $actions[] = $tab->action();
+        }
+
+        $this->actions = $actions;
 
         // `array` cannot say "array of what", so it is said here. A bare string
         // used to be legal and is exactly the regression to catch: it would

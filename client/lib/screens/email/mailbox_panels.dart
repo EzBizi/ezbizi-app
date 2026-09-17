@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';
@@ -149,14 +151,22 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
         return;
       }
 
-      _directory = [
-        for (final entry in (response.data is List ? response.data as List : const []))
-          if (entry is Map<String, dynamic>)
-            _DirectoryEntry(
-              address: entry['address'] as String? ?? '',
-              name: entry['name'] as String? ?? '',
-            ),
-      ].where((e) => e.address.isNotEmpty && !_isGoogleTestAlias(e.address)).toList();
+      _directory =
+          [
+                for (final entry
+                    in (response.data is List
+                        ? response.data as List
+                        : const []))
+                  if (entry is Map<String, dynamic>)
+                    _DirectoryEntry(
+                      address: entry['address'] as String? ?? '',
+                      name: entry['name'] as String? ?? '',
+                    ),
+              ]
+              .where(
+                (e) => e.address.isNotEmpty && !_isGoogleTestAlias(e.address),
+              )
+              .toList();
     });
   }
 
@@ -183,9 +193,7 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     final response = await widget.api.post('/email/mailboxes', {
       'scope_type': me.scope.type,
       'scope_id': me.scope.id ?? me.organization.id,
-      'address': _fromDirectory
-          ? (_pickedAddress ?? '')
-          : _address.text.trim(),
+      'address': _fromDirectory ? (_pickedAddress ?? '') : _address.text.trim(),
       'display_name': _displayName.text.trim(),
       'provider': provider.value,
       if (provider.needsHost && _server.currentState != null)
@@ -229,13 +237,13 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
     final matches = query.isEmpty
         ? const <_DirectoryEntry>[]
         : _directory
-            .where(
-              (e) =>
-                  e.address.contains(query) ||
-                  e.name.toLowerCase().contains(query),
-            )
-            .take(40)
-            .toList();
+              .where(
+                (e) =>
+                    e.address.contains(query) ||
+                    e.name.toLowerCase().contains(query),
+              )
+              .take(40)
+              .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -249,8 +257,8 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
             hintText: 'info@',
             helperText: _pickedAddress == null
                 ? 'Type part of an address. Only addresses on the connected '
-                    'Workspace can be opened this way. Pick a shared inbox — '
-                    'do not pick a person\'s own mailbox.'
+                      'Workspace can be opened this way. Pick a shared inbox — '
+                      'do not pick a person\'s own mailbox.'
                 : '$_pickedAddress is selected.',
             helperMaxLines: 3,
             suffixIcon: _pickedAddress == null
@@ -333,7 +341,8 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: _saving ||
+          onPressed:
+              _saving ||
                   provider == null ||
                   _loadingDirectory ||
                   (_fromDirectory && _pickedAddress == null)
@@ -392,16 +401,12 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                 'Close this and open it again.',
               )
             else
-              DropdownButtonFormField<String>(
-                initialValue: provider?.value,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Mail service'),
-                items: [
+              SearchPickerField<String>(
+                value: provider?.value,
+                label: 'Mail service',
+                options: [
                   for (final option in widget.providers)
-                    DropdownMenuItem(
-                      value: option.value,
-                      child: Text(option.label, overflow: TextOverflow.ellipsis),
-                    ),
+                    SearchOption(value: option.value, label: option.label),
                 ],
                 onChanged: _saving
                     ? null
@@ -564,8 +569,16 @@ class _MailServerFieldsState extends State<_MailServerFields> {
     // is what the great majority of providers publish; a stored port that is no
     // longer on the server's list would otherwise sit in the box as a selection
     // the dropdown cannot even show.
-    _imapPort = _port('imap_port', widget.imapPorts, widget.imapPorts.lastOrNull);
-    _smtpPort = _port('smtp_port', widget.smtpPorts, widget.smtpPorts.firstOrNull);
+    _imapPort = _port(
+      'imap_port',
+      widget.imapPorts,
+      widget.imapPorts.lastOrNull,
+    );
+    _smtpPort = _port(
+      'smtp_port',
+      widget.smtpPorts,
+      widget.smtpPorts.firstOrNull,
+    );
 
     _imapEncryption = _encryption('imap_encryption', _tls);
     _smtpEncryption = _encryption('smtp_encryption', _starttls);
@@ -643,8 +656,15 @@ class _MailServerFieldsState extends State<_MailServerFields> {
       // it. The R7 tests assert no overflow at 375 and a control mutation
       // confirms they would notice one.
       _twoUp(
-        _portField(widget.imapPorts, _imapPort, (v) => setState(() => _imapPort = v)),
-        _encryptionField(_imapEncryption, (v) => setState(() => _imapEncryption = v)),
+        _portField(
+          widget.imapPorts,
+          _imapPort,
+          (v) => setState(() => _imapPort = v),
+        ),
+        _encryptionField(
+          _imapEncryption,
+          (v) => setState(() => _imapEncryption = v),
+        ),
       ),
       const SizedBox(height: 12),
       TextFormField(
@@ -676,8 +696,15 @@ class _MailServerFieldsState extends State<_MailServerFields> {
       // an incoming row that wraps and an outgoing row that does not would be
       // two answers to one layout question.
       _twoUp(
-        _portField(widget.smtpPorts, _smtpPort, (v) => setState(() => _smtpPort = v)),
-        _encryptionField(_smtpEncryption, (v) => setState(() => _smtpEncryption = v)),
+        _portField(
+          widget.smtpPorts,
+          _smtpPort,
+          (v) => setState(() => _smtpPort = v),
+        ),
+        _encryptionField(
+          _smtpEncryption,
+          (v) => setState(() => _smtpEncryption = v),
+        ),
       ),
       const SizedBox(height: 12),
       TextFormField(
@@ -709,26 +736,23 @@ class _MailServerFieldsState extends State<_MailServerFields> {
       return const SizedBox.shrink();
     }
 
-    return DropdownButtonFormField<int>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Port'),
-      items: [
-        for (final port in ports)
-          DropdownMenuItem(value: port, child: Text('$port')),
+    return SearchPickerField<int>(
+      value: value,
+      label: 'Port',
+      options: [
+        for (final port in ports) SearchOption(value: port, label: '$port'),
       ],
       onChanged: widget.enabled ? onChanged : null,
     );
   }
 
   Widget _encryptionField(String value, ValueChanged<String> onChanged) =>
-      DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        decoration: const InputDecoration(labelText: 'Encryption'),
-        items: const [
-          DropdownMenuItem(value: _tls, child: Text('TLS')),
-          DropdownMenuItem(value: _starttls, child: Text('STARTTLS')),
+      SearchPickerField<String>(
+        value: value,
+        label: 'Encryption',
+        options: const [
+          SearchOption(value: _tls, label: 'TLS'),
+          SearchOption(value: _starttls, label: 'STARTTLS'),
         ],
         onChanged: widget.enabled ? (v) => onChanged(v ?? value) : null,
       );
@@ -1038,7 +1062,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
           : null;
       _scopes = [
         for (final scope
-            in (data is Map<String, dynamic> ? data['scopes'] : null) as List? ??
+            in (data is Map<String, dynamic> ? data['scopes'] : null)
+                    as List? ??
                 const [])
           if (scope is String) scope,
       ];
@@ -1047,7 +1072,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
       // abandoned ten minutes ago — so a second press would be told about the
       // first one's success and close on it.
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
-      _asksLeft = widget.waitAtMost.inMilliseconds ~/
+      _asksLeft =
+          widget.waitAtMost.inMilliseconds ~/
           (widget.pollEvery.inMilliseconds == 0
               ? 1
               : widget.pollEvery.inMilliseconds);
@@ -1120,7 +1146,9 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
     }
 
     final data = response.data;
-    final state = data is Map<String, dynamic> ? data['state'] as String? : null;
+    final state = data is Map<String, dynamic>
+        ? data['state'] as String?
+        : null;
     final message = data is Map<String, dynamic>
         ? data['message'] as String?
         : null;
@@ -1224,9 +1252,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
   /// no provider to ask. Nothing in this file spells "Google".
   String get _serviceLabel => widget.provider?.label ?? 'the mail service';
 
-  static String _minutes(Duration d) => d.inMinutes == 1
-      ? 'a minute'
-      : '${d.inMinutes} minutes';
+  static String _minutes(Duration d) =>
+      d.inMinutes == 1 ? 'a minute' : '${d.inMinutes} minutes';
 
   /// The two answers this panel acts on. Anything else the server sends — its
   /// own "still going", or a word a newer server has invented — is read as not
@@ -1289,7 +1316,9 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
             ]
           : [
               TextButton(
-                onPressed: _busy ? null : () => Navigator.of(context).maybePop(),
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).maybePop(),
                 child: const Text('Cancel'),
               ),
 
@@ -1402,14 +1431,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_error != null) ...[
-          ErrorNote(_error!),
-          const SizedBox(height: 16),
-        ],
-        if (_notice != null) ...[
-          _Note(_notice!),
-          const SizedBox(height: 16),
-        ],
+        if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 16)],
+        if (_notice != null) ...[_Note(_notice!), const SizedBox(height: 16)],
         TextField(
           controller: _credential,
           autofocus: true,
@@ -1469,14 +1492,8 @@ class _ConnectMailboxPanelState extends State<ConnectMailboxPanel> {
   Widget _signInInstead() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (_error != null) ...[
-        ErrorNote(_error!),
-        const SizedBox(height: 16),
-      ],
-      if (_notice != null) ...[
-        _Note(_notice!),
-        const SizedBox(height: 16),
-      ],
+      if (_error != null) ...[ErrorNote(_error!), const SizedBox(height: 16)],
+      if (_notice != null) ...[_Note(_notice!), const SizedBox(height: 16)],
       Text(
         'EzBizi will open $_serviceLabel in a window of its own, where you sign '
         'in and allow it to read this address. Your password is typed on their '
@@ -1566,7 +1583,9 @@ class _Working extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.5,
+          ),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -1626,8 +1645,9 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
   Future<void> _signIn() async {
     final domain = _domain.text.trim().replaceFirst(RegExp(r'^@'), '');
     if (domain.isEmpty) {
-      setState(() => _error =
-          'Type the company domain, for example a-1chimney.com.');
+      setState(
+        () => _error = 'Type the company domain, for example a-1chimney.com.',
+      );
       return;
     }
 
@@ -1687,7 +1707,8 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
       _step = _Step.waiting;
       _window = window;
       _flow = data is Map<String, dynamic> ? data['flow'] as String? : null;
-      _asksLeft = widget.waitAtMost.inMilliseconds ~/
+      _asksLeft =
+          widget.waitAtMost.inMilliseconds ~/
           (widget.pollEvery.inMilliseconds == 0
               ? 1
               : widget.pollEvery.inMilliseconds);
@@ -1726,7 +1747,9 @@ class _ConnectWorkspacePanelState extends State<ConnectWorkspacePanel> {
     if (!mounted || _step != _Step.waiting) return;
 
     final data = response.data;
-    final state = data is Map<String, dynamic> ? data['state'] as String? : null;
+    final state = data is Map<String, dynamic>
+        ? data['state'] as String?
+        : null;
 
     if (state == 'connected') {
       _window?.close();

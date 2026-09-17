@@ -9,6 +9,7 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/social_network_mark.dart';
 import '../widgets/tab_bar_like.dart';
@@ -28,10 +29,34 @@ import '../widgets/tab_bar_like.dart';
 /// whole module exists to avoid: a screen that quietly shows nothing while an
 /// enquiry sits unanswered.
 class LeadsScreen extends StatefulWidget {
-  const LeadsScreen({super.key, required this.api, required this.session});
+  const LeadsScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    this.initialSource,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Which source strip entry to open on, for arriving from a notification.
+  ///
+  /// `initialSource` and NOT `initialTab`, which is what it was asked for as.
+  /// The strip is drawn with `TabBarLike` and looks like tabs, but it is a
+  /// FILTER: there is no TabController and no tab views, only `_source`
+  /// narrowing one list. A parameter called `initialTab` invites an index and
+  /// tab semantics, and the value that actually belongs here is the source as
+  /// the API spells it -- `website_chat`, the same string `_sourceChips` and
+  /// the `source` column use.
+  ///
+  /// Null keeps the default, which is All and is the right default for
+  /// somebody opening Leads to look at their leads. Nothing was tried and
+  /// removed here; the screen simply had no reason to start narrowed until a
+  /// notification wanted to say "this enquiry, from this source".
+  ///
+  /// A source the strip does not know is ignored rather than drawn: an unknown
+  /// value would otherwise select nothing and read as an empty inbox.
+  final String? initialSource;
 
   @override
   State<LeadsScreen> createState() => _LeadsScreenState();
@@ -51,6 +76,15 @@ class _LeadsScreenState extends State<LeadsScreen> {
 
   List<Map<String, dynamic>> _leads = [];
   List<Map<String, dynamic>> _connections = [];
+
+  /// When Google last refused the scheduled fetch on quota, or null.
+  ///
+  /// The list refreshes itself every twenty seconds now, so a stalled sync
+  /// looks exactly like a quiet afternoon - the same rows, re-read, over and
+  /// over. On 2026-09-16 that quiet afternoon was four hours of enquiries not
+  /// arriving, found only because somebody opened the Ads report for an
+  /// unrelated reason.
+  String? _delayedSince;
 
   /// The open Connected sources panel, when there is one. A panel is its own
   /// route: the screen's setState does not reach it, so a row disconnected
@@ -164,6 +198,21 @@ class _LeadsScreenState extends State<LeadsScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Set BEFORE the first _load(), not through _setSource() after it. That
+    // would fire a second request and show the unfiltered list first, so
+    // arriving from a notification would flash every source's leads and then
+    // narrow -- which reads as the screen changing its mind.
+    //
+    // Checked against the strip rather than trusted: a source it does not know
+    // would select nothing and draw as an empty inbox, which is the one thing
+    // this screen exists to avoid.
+    final wanted = widget.initialSource;
+
+    if (wanted != null && _sourceChips.any((c) => c.$1 == wanted)) {
+      _source = wanted;
+    }
+
     _load();
     _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
@@ -211,6 +260,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
+      _delayedSince = meta['sync_delayed_since'] as String?;
       _total = (meta['total'] as num?)?.toInt() ?? _leads.length;
       _connections = List<Map<String, dynamic>>.from(
         (meta['connections'] as List? ?? const []).cast<Map<String, dynamic>>(),
@@ -366,23 +416,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ),
                 ),
               );
-              DropdownButton<String> status({required bool expanded}) =>
-                  DropdownButton<String>(
+              // `expanded` used to mean the dropdown's own isExpanded. It
+              // now means "somebody else is bounding my width": the picker is
+              // an InputDecorator, and an InputDecorator in a Row with no
+              // width constraint ASSERTS rather than shrinking to fit, which
+              // a DropdownButton never did.
+              Widget status({required bool expanded}) => SizedBox(
+                width: expanded ? null : 180,
+                child: SearchPickerField<String>(
                     value: _status,
-                    isExpanded: expanded,
-                    underline: const SizedBox.shrink(),
-                    items: [
+                    border: InputBorder.none,
+                    isDense: true,
+                    options: [
                       for (final entry in _statuses.entries)
-                        DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
+                        SearchOption(value: entry.key, label: entry.value),
                     ],
                     onChanged: (value) {
                       setState(() => _status = value ?? '');
                       _load();
                     },
-                  );
+                  ),
+              );
               final fetch = FilledButton.tonalIcon(
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing
@@ -865,6 +919,20 @@ class _LeadsScreenState extends State<LeadsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('Connected sources', style: theme.textTheme.bodyMedium),
+              // Said HERE rather than as a banner: this is the line a person
+              // already reads to learn where enquiries come from, so it is
+              // where "they are not coming right now" belongs. A dismissible
+              // banner would be dismissed once and never seen again on the
+              // day it mattered.
+              if (_delayedSince != null)
+                Text(
+                  'Google is refusing our requests, so new enquiries are '
+                  'delayed. Nothing is lost — they arrive when it clears.',
+                  key: const ValueKey('sync-delayed'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
               Text(
                 _sourcesSummary(),
                 key: const ValueKey('sources-summary'),

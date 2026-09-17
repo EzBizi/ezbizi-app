@@ -448,7 +448,7 @@ not explain 1698.** If you see it, re-run before reporting; if it reproduces on 
 quiet tree, capture `SHOW PROCESSLIST` and the server error log at that moment -
 that is the evidence nobody has yet.
 
-## 11 · Jose is away from 2026-09-15 evening — decide and finish, do not wait
+## 11 · Jose is away (2026-09-15 evening, again 2026-09-16) — decide and finish
 
 His words, standing: *"coordinate everything with each other and the
 deployment lead session, make sure to finish END TO END since i wont be here
@@ -458,6 +458,10 @@ as well as with Automations and Roles-Permissions."*
 
 And separately: *"let the sessions know if they need to do anything to do it
 while im away, fix stuff, etc."*
+
+And again on 2026-09-16 evening: *"let all the sessions know if they need to
+deploy stuff or want to work on stuff to go ahead and do it, etc."* Same
+standing word, said twice. It is not a one-night exception.
 
 So: **a question addressed to Jose is not a reason to stop.** Decide it the way
 you would recommend it, write down what you decided and why, and keep going. If
@@ -522,3 +526,78 @@ prints when the system is broken, not when it is healthy.
 No grace period was added back to soften this, deliberately. A grace period is
 exactly what Jose just removed, and trading his rule for protection against a
 bug nobody has written is the wrong way round.
+
+## 13 · The Mac relay moves. Find it, do not wait for it
+
+2026-09-16, second time: `ssh mac` failed with *"cannot reach the Mac relay —
+is the Mac mini awake?"* and the Mac was awake the whole time. It had taken a
+new DHCP address. `~/.ssh/config` now points at **10.1.10.187**; it was
+10.1.10.116, and before that the `.local` name that stopped resolving on
+2026-09-09. Each move has cost a release its Apple half.
+
+**Do not ask whether it is awake. Find it.** Three commands, about a minute:
+
+    arp -a | grep 10.1.10.                     # every host the LAN has seen
+    # then, for each, does it answer on 22:
+    Test-NetConnection -ComputerName <ip> -Port 22 -InformationLevel Quiet
+    ssh -i ~/.ssh/a1tools_mac joseluisdemasi@<ip> 'scutil --get LocalHostName'
+
+The last one is what identifies it — `Joses-Mac-mini` — rather than guessing
+from an adjacent address. Two other hosts on this LAN answer on 22 and neither
+is the Mac, so port 22 alone is not the test.
+
+**Then check the thing release.sh checks**, because reachable is not usable:
+
+    ssh mac "security find-identity -v -p codesigning | grep -c 'Apple Distribution.*2CMZQR34RL'"
+
+**And do not stop the whole cut for it.** `--only web,windows,android` ships
+the three that do not need a Mac; `--only ios,macos` builds the other two
+against the SAME pinned SHA afterwards. One version, two passes, nothing lost.
+
+**One trap in that second pass.** A completed release removes its pinned
+worktree from git but can leave the DIRECTORY behind. The Apple pass then finds
+`/h/Development/wt/release-<sha>` present, cannot read a SHA from it, and
+refuses with *"existing release worktree has a different SHA"* — which reads
+like a version mismatch and is really an orphaned folder. `git worktree list`
+will not show it. Check the artefacts are already in `Distribution/`, then
+remove the directory.
+
+## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
+
+Measured on the box, 2026-09-17:
+
+    plugin_version 1.9.1   110 sites, all seen in the last 30 minutes
+    plugin_version 1.10.0    0 sites
+
+    service_capabilities, identical on all 110:
+      read, upload_files, edit_posts, edit_published_posts, publish_posts,
+      edit_pages, edit_published_pages, publish_pages
+
+No `update_plugins`, no `activate_plugins`, no `install_plugins`. The service
+credentials EzBizi holds can write CONTENT on a customer site and nothing else.
+So "roll the plugin out to the estate" is not a command anybody here can run,
+and the absence is a design property rather than a gap to fill: an integration
+that can install code on 110 businesses' websites is a different and much
+larger thing than one that can edit their pages.
+
+1.10.0 is published on wordpress.org (slug `ezbizi`). The plugin sets no
+`auto_update_plugin` filter, so each site sees it at its own next version check
+and installs it only if that site has auto-updates on; the rest need somebody to
+press Update.
+
+**THE HALF-SHIPPED STATE THAT FOLLOWS.** The two halves of a feature ship
+through two different channels at two different speeds. 6bd90848 put City link,
+State link and Website address into EzBizi and went live in 0.0.0237 within the
+hour; 1.10.0 is what RENDERS them and is on zero sites. So the fields are
+fillable today and do nothing on any customer site, and "those three fields are
+back" is true of our side only.
+
+Before saying a web feature is live, ask which half you measured. `web_sites`
+answers it directly:
+
+    SELECT plugin_version, COUNT(*) FROM web_sites GROUP BY plugin_version;
+
+**OPEN, FOR JOSE.** Whether the plugin should opt into WordPress auto-updates.
+That would close the gap permanently and it means EzBizi code installing itself
+on 110 customer sites unattended — a decision about other businesses' property,
+not a deployment call, so it waits for him even under §11. Raised 2026-09-17.

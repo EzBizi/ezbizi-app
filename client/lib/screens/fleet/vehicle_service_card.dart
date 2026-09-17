@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
 import 'vehicle_papers.dart';
 
@@ -41,8 +42,11 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
 
   List<Map<String, dynamic>> get _visits {
     final rows = [...fleetMaps(widget.vehicle['service_visits'])];
-    rows.sort((a, b) => fleetDay(b['occurred_on'] as String?)
-        .compareTo(fleetDay(a['occurred_on'] as String?)));
+    rows.sort(
+      (a, b) => fleetDay(
+        b['occurred_on'] as String?,
+      ).compareTo(fleetDay(a['occurred_on'] as String?)),
+    );
     return rows;
   }
 
@@ -94,20 +98,18 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
       _error = null;
     });
 
-    final response = await widget.api.post(
-      '/vehicles/${widget.vehicle['id']}/service',
-      {
-        'kind': _kind,
-        'occurred_on': _occurredOn.text.trim(),
-        'odometer_miles': ?odometer,
-        if (_performedBy.text.trim().isNotEmpty)
-          'performed_by': _performedBy.text.trim(),
-        if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
-        if (_nextOn.text.trim().isNotEmpty)
-          'next_service_on': _nextOn.text.trim(),
-        'next_service_miles': ?nextMiles,
-      },
-    );
+    final response = await widget.api
+        .post('/vehicles/${widget.vehicle['id']}/service', {
+          'kind': _kind,
+          'occurred_on': _occurredOn.text.trim(),
+          'odometer_miles': ?odometer,
+          if (_performedBy.text.trim().isNotEmpty)
+            'performed_by': _performedBy.text.trim(),
+          if (_notes.text.trim().isNotEmpty) 'notes': _notes.text.trim(),
+          if (_nextOn.text.trim().isNotEmpty)
+            'next_service_on': _nextOn.text.trim(),
+          'next_service_miles': ?nextMiles,
+        });
 
     if (!mounted) return;
 
@@ -197,13 +199,12 @@ class _VehicleServiceCardState extends State<VehicleServiceCard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _kind,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Kind'),
-          items: [
+        SearchPickerField<String>(
+          value: _kind,
+          label: 'Kind',
+          options: [
             for (final t in fleetServiceKinds)
-              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              SearchOption(value: t.$1, label: t.$2),
           ],
           onChanged: _busy ? null : (v) => setState(() => _kind = v ?? _kind),
         ),

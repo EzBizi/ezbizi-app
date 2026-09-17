@@ -338,11 +338,11 @@ Future<void> _mode(WidgetTester tester, String label) async {
 
 /// Open a DropdownMenu and choose one of its entries by label.
 Future<void> _pick(WidgetTester tester, Key menu, String label) async {
-  await tester.tap(find.descendant(of: find.byKey(menu), matching: find.byType(TextField)));
+  await tester.tap(find.byKey(menu));
   await tester.pumpAndSettle();
 
-  // The menu draws its entries in an overlay, so the label exists twice once
-  // it is open — in the field and in the list. `.last` is the list.
+  // The picker opens a dialog, so the label exists twice once it is open — in
+  // the field behind and in the list. `.last` is the list.
   await tester.tap(find.text(label).last);
   await tester.pumpAndSettle();
 }

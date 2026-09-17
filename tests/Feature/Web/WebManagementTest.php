@@ -792,7 +792,15 @@ class WebManagementTest extends TestCase
             )->assertOk()->content(),
         };
 
-        $this->assertStringContainsString('"values":{}', $json,
+        /*
+         * `{` rather than `{}`, because the three endpoints now differ and
+         * both answers are correct: the panel and the plugin derive
+         * website_url from the host, so their map is never empty, while the
+         * public one deliberately omits it and stays empty. What all three owe
+         * is an OBJECT — which is the thing that broke the panel — so that is
+         * what is asserted, and `"values":[]` is still refused below.
+         */
+        $this->assertStringContainsString('"values":{', $json,
             'An empty values map encoded as a JSON array, which the client cannot cast to a Map.');
         $this->assertStringContainsString('"pages":{}', $json,
             'An empty pages map encoded as a JSON array.');
@@ -812,11 +820,24 @@ class WebManagementTest extends TestCase
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
             ->assertOk()->content();
 
+        /*
+         * `website_url` is derived from the host on every read, so a populated
+         * site carries it too. Asserted as a SUBSTRING of the object rather
+         * than the whole map, because the point of this test is the {} vs []
+         * encoding and pinning the exact contents would make it fail for every
+         * field anybody ever adds.
+         */
         // Populated was never broken; this holds the fix to not breaking it.
-        $this->assertStringContainsString('"values":{"phone":"555-0100"}', $json);
+        $this->assertStringContainsString('"values":{"phone":"555-0100","website_url":"https:\\/\\/a-1chimney.com\\/"}', $json);
         $this->assertStringContainsString('"pages":{}', $json);
     }
 
+    /**
+     * `values` can no longer come back EMPTY — every site derives its own
+     * website_url — so the assertion is that it is an OBJECT, which is the
+     * thing that broke the panel. Kept rather than deleted: retiring it would
+     * retire the guard against a map encoding as an array.
+     */
     public function test_saving_the_first_value_returns_an_object_too(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -831,7 +852,10 @@ class WebManagementTest extends TestCase
                 'values' => ['phone' => ''],
             ])
             ->assertOk()
-            ->assertSee('"values":{}', escape: false);
+            // An object, not an array. It is no longer EMPTY — website_url is
+            // derived from the host on every read — and the encoding is what
+            // this test has always been about.
+            ->assertSee('"values":{"', escape: false);
     }
 
     /**
@@ -888,26 +912,53 @@ class WebManagementTest extends TestCase
     }
 
     /**
-     * Every field belongs to a section the editor knows how to show.
+     * Every field is REACHABLE by some screen.
      *
-     * The screen draws one section at a time and filters on this attribute, so
-     * a field with a section nothing lists is a field nobody can reach — a
-     * phone number that silently stops being editable is precisely the failure
-     * this module exists to prevent.
+     * It used to say "belongs to a listed section", and the reason was right:
+     * the site's screen draws one section at a time and filters on this
+     * attribute, so a field in a section nothing draws is a field nobody can
+     * edit — a phone number that silently stops being editable is exactly the
+     * failure this module exists to prevent.
+     *
+     * Two sections are now deliberately NOT tabs. `page` is drawn by a page's
+     * own screen and `template` by the Templates tab, each asking by name. They
+     * were general until Jose opened General and found every page's text fields
+     * piled into the site's own screen, which is the opposite failure: not
+     * unreachable, but reachable from somewhere it does not belong.
+     *
+     * So the list below is the whole set of places a field can be drawn, and
+     * adding to it is the deliberate act it should be — a new section with no
+     * screen still fails here.
      */
-    public function test_every_field_belongs_to_a_listed_section(): void
+    public function test_every_field_is_reachable_by_some_screen(): void
     {
-        $sections = array_column(SeoFields::sections(), 'key');
+        $tabs = array_column(SeoFields::sections(), 'key');
 
-        $this->assertNotEmpty($sections);
+        $this->assertNotEmpty($tabs);
+
+        $drawn = [
+            ...$tabs,
+            // A page's own screen asks for these by name.
+            SeoFields::PAGE,
+            // The Templates tab asks for these by name.
+            SeoFields::TEMPLATE,
+        ];
 
         foreach (SeoFields::catalogue() as $field) {
             $this->assertContains(
                 $field['section'],
-                $sections,
-                "{$field['key']} is in a section the editor does not list.",
+                $drawn,
+                "{$field['key']} is in a section no screen draws.",
             );
         }
+
+        /*
+         * And the two that are not tabs must STAY not tabs: listing one would
+         * put a page's fields back on the site's screen, which is the defect
+         * this pair of rules exists to prevent in both directions.
+         */
+        $this->assertNotContains(SeoFields::PAGE, $tabs);
+        $this->assertNotContains(SeoFields::TEMPLATE, $tabs);
     }
 
     /**
@@ -1114,7 +1165,17 @@ class WebManagementTest extends TestCase
             ->getJson("/api/v1/web/sites/{$branch['data']['id']}/values")
             ->assertOk()->json('data');
 
-        $this->assertSame([], (array) $body['values'], 'The branch has set nothing.');
+        /*
+         * Only the derived one. website_url comes from the branch's OWN host,
+         * so it is correctly the branch's own answer rather than something
+         * inherited — and it is the only thing in here, which is what "the
+         * branch has set nothing" now looks like.
+         */
+        $this->assertSame(
+            ['website_url' => 'https://nj.a-1chimney.com/'],
+            (array) $body['values'],
+            'The branch has set something of its own.',
+        );
         $this->assertSame('A-1 Chimney', $body['inherited']['company_name']);
     }
 
@@ -1414,5 +1475,84 @@ class WebManagementTest extends TestCase
             // incomplete overnight.
             $this->assertNotSame('required', $fields[$key]['requirement']);
         }
+    }
+
+    /**
+     * The three Jose asked for on 2026-09-17, and the one that fills itself.
+     *
+     * Pinned by KEY and shortcode: the key is what a customer pastes into a
+     * page, so renaming one breaks every site already publishing it.
+     */
+    public function test_the_link_fields_are_offered_with_their_shortcodes(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $fields = collect(
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+                ->assertOk()
+                ->json('data.fields')
+        )->keyBy('key');
+
+        foreach ([
+            'city_link' => '[ezbizi_city_link]',
+            'state_link' => '[ezbizi_state_link]',
+            'website_url' => '[ezbizi_website_url]',
+        ] as $key => $shortcode) {
+            $this->assertTrue($fields->has($key), "The $key field is not offered.");
+            $this->assertSame($shortcode, $fields[$key]['shortcode']);
+            $this->assertNotSame('required', $fields[$key]['requirement']);
+        }
+    }
+
+    /**
+     * The website address fills itself in, from the host rather than a row.
+     *
+     * Nobody should type their own web address into their own website: it is
+     * one fact kept in two places, and the typed one goes stale the day a
+     * domain changes.
+     */
+    public function test_the_website_address_is_filled_in_from_the_host(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+
+        $panel = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/values")
+            ->assertOk();
+
+        $this->assertSame('https://nj.a-1chimney.com/', $panel->json('data.values.website_url'));
+
+        // And the website itself is told, or the shortcode renders nothing.
+        $plugin = $this->pluginRead($site['token'], 'nj.a-1chimney.com')->assertOk();
+
+        $this->assertSame('https://nj.a-1chimney.com/', $plugin->json('values.website_url'));
+
+        // Nothing was stored for it: there is no row to go stale.
+        $this->inTenant($tenant['org'], function () {
+            $this->assertDatabaseMissing('web_values', ['key' => 'website_url']);
+        });
+    }
+
+    /**
+     * THE one I nearly broke. A key scraped from page source must not name the
+     * business it belongs to, so the public endpoint does not derive the host
+     * even though the other two do.
+     */
+    public function test_the_browser_endpoint_still_does_not_name_the_host(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+        $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+
+        $json = $this->getJson(
+            '/api/v1/web/public/values?key='.$site['data']['public_key'],
+        )->assertOk()->content();
+
+        $this->assertStringNotContainsString('a-1chimney.com', $json);
+        $this->assertStringNotContainsString('website_url":"http', $json);
     }
 }

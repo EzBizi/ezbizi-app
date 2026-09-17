@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/settings_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -81,7 +82,7 @@ void main() {
     expect(reads, 1);
     expect(find.text('Inherited from Everdoors'), findsOneWidget);
 
-    await tester.tap(find.byType(DropdownMenu<Object>));
+    await tester.tap(find.byType(SearchPickerField<Object>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('24h').last);
     await tester.pump();
@@ -120,8 +121,8 @@ void main() {
     // comes from. Source is the half the client could not have worked out.
     expect(
       tester
-          .widget<DropdownMenu<Object>>(find.byType(DropdownMenu<Object>))
-          .initialSelection,
+          .widget<SearchPickerField<Object>>(find.byType(SearchPickerField<Object>))
+          .value,
       '24h',
     );
     expect(find.text('Set here'), findsOneWidget);
@@ -153,7 +154,7 @@ void main() {
 
     expect(find.text('English'), findsWidgets);
     expect(find.text('en'), findsNothing);
-    expect(find.byType(DropdownMenu<Object>), findsOneWidget);
+    expect(find.byType(SearchPickerField<Object>), findsOneWidget);
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 

@@ -76,6 +76,19 @@
             </intent-filter>
         </service>
 
+        <!-- Which channel FCM uses when a payload names none.
+
+             The server names `ezbizi_notifications` explicitly, so this is the
+             backstop for anything that does not - and for older senders. It is
+             only half the job: this says WHICH channel, and MainActivity.kt
+             makes sure that channel EXISTS. Without the second half FCM falls
+             back to fcm_fallback_notification_channel exactly as if this line
+             were absent, which is how it is possible to "fix" this and see no
+             change at all. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ezbizi_notifications" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

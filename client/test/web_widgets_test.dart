@@ -638,4 +638,168 @@ void main() {
 
     expect(field.enabled, isFalse);
   });
+
+  /// A coarse check that the questions are wired up. The GUARD is the focus
+  /// test at the bottom of this file, which was written last and is the only
+  /// one of five attempts that fails against the bug.
+  ///
+  /// What Jose photographed: typing "First name" left "Fi" in the box and the
+  /// rest somewhere else. The row was a TextFormField whose KEY contained its
+  /// own text, so every keystroke wrote back, the parent rebuilt, the key was
+  /// now different, and Flutter threw the field away and built a new one —
+  /// losing focus once per character.
+  ///
+  /// I tried to reproduce that by typing character by character and it PASSED
+  /// against the broken shape: `enterText` writes to whichever editable the
+  /// harness finds, so it never experiences the focus loss a keyboard does.
+  /// Both behavioural tests below pass against the bug, which makes them
+  /// descriptions rather than guards, and they are kept only as coarse checks
+  /// that the box is wired up at all.
+  ///
+  /// FOUR ATTEMPTS COULD NOT FAIL AGAINST IT, and they are listed because the
+  /// next person will reach for one of them: typing character by character
+  /// passes, because `enterText` writes to whichever editable the harness finds;
+  /// asserting a controller passes, because TextFormField builds a
+  /// controller-driven TextField underneath; counting them passes for the same
+  /// reason; comparing the element across a keystroke passes too.
+  ///
+  /// The fifth works, and it is at the bottom of this file. The deploy desk
+  /// pointed at `structure_canvas_test`, which already inspects where focus
+  /// actually sits — so the question to ask was not what the WIDGET looks like
+  /// after a keystroke but where FOCUS is, which is the thing the bug destroys.
+  /// Verified by putting the original shape back and watching it fail with
+  /// "Focus left the question after one character."
+  testWidgets('a question is driven by its own controller', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final questions = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Question',
+    );
+
+    expect(questions, findsWidgets);
+
+    for (final element in questions.evaluate()) {
+      expect(
+        (element.widget as TextField).controller,
+        isNotNull,
+        reason: 'A question rebuilt from initialValue loses text on rebuild.',
+      );
+    }
+
+    // Both questions from the fixture are on screen and wired up. This is the
+    // whole claim — see the docblock for why it is not more.
+    expect(questions.evaluate().length, 2);
+
+    final box = find.widgetWithText(TextField, 'Question').first;
+
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+
+    // Emptied first: the fixture's question already says something, and
+    // appending to it would have been a test of my own arithmetic.
+    await tester.enterText(box, '');
+    await tester.pumpAndSettle();
+
+    for (final letter in 'First name'.split('')) {
+      await tester.enterText(box, _typed(tester, box) + letter);
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      _typed(tester, box),
+      'First name',
+      reason: 'Characters went somewhere other than the box being typed into.',
+    );
+  });
+
+  /// The bug the old key was PUT there to fix, which the fix must not bring
+  /// back: remove the first question and the second must not inherit its text.
+  testWidgets('removing a question does not move its text into another', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final before = find
+        .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
+        .evaluate()
+        .map((e) => (e.widget as TextField).controller?.text)
+        .toList();
+
+    expect(before.length, greaterThan(1), reason: 'The fixture needs two questions.');
+
+    await tester.tap(find.byTooltip('Remove').first);
+    await tester.pumpAndSettle();
+
+    final after = find
+        .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
+        .evaluate()
+        .map((e) => (e.widget as TextField).controller?.text)
+        .toList();
+
+    expect(after.length, before.length - 1);
+    expect(
+      after.first,
+      before[1],
+      reason: 'The surviving row wears the text of the row that was removed.',
+    );
+  });
+
+  /// THE FIFTH ATTEMPT, on the deploy desk's suggestion: assert the FOCUS NODE
+  /// across a keystroke rather than the element.
+  ///
+  /// The bug loses focus once per character, so this asks the question the
+  /// other four asked sideways — after typing into the box, is focus still in
+  /// the box? The helper shape is the one `structure_canvas_test` already uses
+  /// for tab order.
+  testWidgets('focus stays in the question being typed into', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final box = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Question',
+    ).first;
+
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+
+    expect(_focusIsIn(tester, box), isTrue, reason: 'Tapping did not focus it.');
+
+    await tester.enterText(box, 'F');
+    await tester.pumpAndSettle();
+
+    expect(
+      _focusIsIn(tester, box),
+      isTrue,
+      reason: 'Focus left the question after one character.',
+    );
+  });
+}
+
+/// What the box actually contains, read from its controller rather than from
+/// the widget tree's text — a stale render would otherwise pass.
+String _typed(WidgetTester tester, Finder box) =>
+    tester.widget<TextField>(box).controller?.text ?? '';
+
+/// Whether focus currently sits inside the widget this finder names.
+///
+/// Borrowed in shape from `structure_canvas_test`, which uses it for tab order.
+/// The node is private to the framework's own field, so what is asserted is
+/// that focus is somewhere INSIDE the control — which is the whole of what a
+/// person typing needs to be true.
+bool _focusIsIn(WidgetTester tester, Finder finder) {
+  final focused = FocusManager.instance.primaryFocus?.context;
+  final targets = finder.evaluate().toSet();
+
+  if (focused == null || targets.isEmpty) return false;
+
+  var inside = false;
+
+  focused.visitAncestorElements((element) {
+    if (!targets.contains(element)) return true;
+
+    inside = true;
+
+    return false;
+  });
+
+  return inside;
 }

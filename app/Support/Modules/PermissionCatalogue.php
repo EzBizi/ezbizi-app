@@ -135,8 +135,28 @@ class PermissionCatalogue
     }
 
     /** `View` — the word beside the checkbox, where the module already names itself. */
-    public function actionLabel(string $action): string
+    public function actionLabel(string $action, ?ModuleDefinition $module = null): string
     {
+        /*
+         * A TAB IS CALLED WHAT IT IS CALLED ON SCREEN.
+         *
+         * Without this, `ucfirst` turns the action `hours.view` into the words
+         * "Hours.view" on a checkbox, which is how `security.reset` has been
+         * presented to administrators as "Security.reset" since HR shipped.
+         * Dotted actions were rare enough for that to be a wart; tabs make them
+         * the common case, so the wart becomes the whole screen.
+         *
+         * The label comes from the module's own TabDefinition, which is the
+         * same string the screen's tab bar draws. Ticking "Work Hours" and then
+         * looking for a tab with another name on it is a failure with no error
+         * attached to it.
+         */
+        foreach ($module?->tabs ?? [] as $tab) {
+            if ($tab->action() === $action) {
+                return $tab->label;
+            }
+        }
+
         return ucfirst(str_replace('_', ' ', $action));
     }
 
@@ -255,7 +275,19 @@ class PermissionCatalogue
                 'actions'   => array_map(fn (string $action) => [
                     'key'       => "{$module->key}.{$action}",
                     'action'    => $action,
-                    'label'     => $this->actionLabel($action),
+                    'label'     => $this->actionLabel($action, $module),
+                    // Whether this action opens a TAB inside the module rather
+                    // than permitting an act within it. The editor draws the two
+                    // under separate headings, because "Work Hours" and "Edit"
+                    // answer different questions and a flat list of eleven
+                    // checkboxes mixing them is unreadable.
+                    //
+                    // Derived from the registry rather than sniffed from the
+                    // key's shape: `security.reset` is also a dotted action and
+                    // is NOT a tab, so a client counting dots would draw it
+                    // under the wrong heading.
+                    'tab'       => $module->tabs !== []
+                        && in_array($action, array_map(fn ($t) => $t->action(), $module->tabs), true),
                     'grantable' => in_array("{$module->key}.{$action}", $held, true),
                     // Empty for almost everything. Where it is not, the editor
                     // has something to say before the save is refused — see

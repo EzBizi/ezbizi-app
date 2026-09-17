@@ -1,0 +1,102 @@
+# Declare your module's tabs — per-tab permissions, and yours is next
+
+From the Settings module, `local_2d6b6362-5989-4500-b19c-f5baa53fe518`,
+2026-09-17. Addressed to **every module with tabs**, and to whoever picks up the
+ones with no session. Also in the inbox so it survives the sessions that are not
+running right now.
+
+## What Jose asked for, in his words
+
+> "right now let's say that i wanted to give dispatchers access to the work
+> hours tab inside human resources, right now there is no way for me to do that,
+> i can only allow access to the whole tab ... i should be able to grant access
+> by sub tab as well, so for example i want them to see their work hours, but
+> not the onboarding information, etc — **so this applies to every tab and it's
+> sub tabs**"
+
+And when asked whether it was finished: *"do it for all modules., go ahead."*
+
+This overturns a stated decision, by the person whose decision it was. The
+registry used to say: *"One module means one set of actions across all five tabs
+(§4: the tab IS the view permission)."* It no longer does.
+
+## The mechanism is already in, and it is small — `08d98e07`
+
+A tab becomes the action `{tab}.view`, so Work Hours is `hr.hours.view`. Nothing
+else needs teaching: `moduleOf()` still answers `hr`, `withImpliedView()` still
+adds `hr.view` beside it, `materialise()` still finds it,
+`ezbizi:sync-permissions` still writes the row, and the roles editor already
+draws it under a **Tabs** heading with its real name.
+
+Human Resources is done end to end as the worked example. Read it before
+starting: `ModuleServiceProvider` (HR's block), `routes/api.php` (the HR
+group), `client/lib/screens/hr_screen.dart`, `tests/Feature/Api/HrTabPermissionsTest.php`.
+
+## Your four steps
+
+**1. Declare them** in your `ModuleDefinition`, in the order the screen draws
+them:
+
+```php
+tabs: [
+    new TabDefinition('dashboard', 'Dashboard'),
+    new TabDefinition('hours', 'Work Hours'),
+],
+```
+
+The label must be **the word the tab bar actually shows**, copied from your
+screen rather than written fresh. An administrator who ticks "Work Hours" and
+then cannot find a tab with that name has been handed a checkbox for something
+whose name they were told wrongly, and nothing errors.
+
+**2. Filter your screen's tab list** on `me.permissions.contains('<module>.<tab>.view')`.
+`hr_screen.dart` has the shape: one list carrying the key beside the label, and
+a `_mayOpen` helper. Absent `/me` answers NO, not yes.
+
+**3. Gate the endpoints.** `permission:<module>.<tab>.view` middleware over the
+route group — registered in `bootstrap/app.php`, used in the HR block. A hidden
+tab whose endpoints still answer is not a permission, it is a decoration, and
+the URL is one paste away from anybody who has ever seen the pane.
+
+**4. Update your fixtures.** Every test whose role holds `<module>.view` and
+then opens a gated route needs the tab key too. HR's cost 15 lines.
+
+## The two things that will bite you, both found in HR
+
+**A route that serves two audiences cannot take a blanket middleware.**
+`hr/onboardings` must answer an employee with NO HR permission — they are the
+person filling their own form in, and an empty list is not a refusal.
+`hr/people/scope-options` is the INVITE form's helper despite its `people`
+prefix, and gating it refused a branch manager mid-invitation. Both were caught
+by existing suites within a minute. For routes like these the tab gate belongs
+beside the split already inside the controller, not in front of it.
+
+**Write the positive control first.** A role holding `hr.hours.view` was refused
+with *"Clock in is switched off for this organization"* — §2.1's platform layer
+answering before any permission is consulted. A suite of 403 assertions with no
+"this person CAN reach it" case would have read that as the feature working
+perfectly.
+
+## Nobody may lose a tab they had this morning
+
+`database/migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php`
+grants every tab to every role already holding the module's view, and it is
+**derived from the registry** — so it covers your module automatically if it
+runs after your declaration. If your tabs land in a later deploy than that
+migration, copy it with a new timestamp; do not edit the spent one.
+
+The reason this matters more than it looks: a permission split fails silently in
+exactly one direction. Granting too much gets reported by whoever sees a pane
+they should not. NARROWING is somebody opening your module on Thursday to find
+the tab they used on Wednesday simply gone, with nothing logged and no error to
+quote.
+
+## Modules with tabs, as measured
+
+hr (done), inspection, inventory, marketing, phone, reports, scheduling,
+services, training, leads, automations, web, suggestions, organization,
+development, email. If your screen has a tab bar and is not on that list, it is
+yours to add.
+
+Tell me when yours is in and I will keep the count. Nothing here needs my
+approval — it is your module, your carve-outs, and I cannot know them.

@@ -1024,17 +1024,53 @@ Route::prefix('v1')
         // The same block /me carries, for the once-a-minute poll (design 2026-09-08 §3.12).
         Route::get('time-clock/me', [TimeClockController::class, 'me']);
 
-        // Clock in–out chip on Human Resources. `hr.view` plus the org switch;
-        // `?on=` is a calendar date in the current view timezone (design §9).
-        Route::get('hr/time-clock', [TimeClockController::class, 'index']);
+        /*
+         * ── The Work Hours tab, and only this tab ──
+         *
+         * Per-tab grants, 2026-09-17. The four `time-clock/*` routes ABOVE are
+         * deliberately outside this group: they are the punch clock in the top
+         * bar, which everybody with an account uses on themselves, and gating
+         * them behind an HR tab would stop people clocking in.
+         *
+         * These two are the pane that shows everybody's week.
+         */
+        Route::middleware('permission:hr.hours.view')->group(function () {
+            // Clock in–out chip on Human Resources. `?on=` is a calendar date in
+            // the current view timezone (design §9).
+            Route::get('hr/time-clock', [TimeClockController::class, 'index']);
+
+            // Work Hours: one week, grouped by person, with totals (2026-09-17).
+            Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
+        });
 
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
         // headcount on somebody's main dashboard are the same code.
-        Route::get('hr/dashboard', [HrDashboardController::class, 'index']);
+        Route::middleware('permission:hr.dashboard.view')
+            ->get('hr/dashboard', [HrDashboardController::class, 'index']);
 
+        /*
+         * UNGATED, and it is not an oversight: `scope-options` is the INVITE
+         * form's helper, not the Records tab's, despite sitting under
+         * `hr/people`. Gating it behind `hr.records.view` refused a branch
+         * manager with `hr.create` who was inviting somebody, which
+         * HrInvitationsTest caught within a minute of the gate landing.
+         *
+         * It is also self-limiting by construction — it answers with exactly
+         * the scopes and roles the CALLER may already assign, which is what its
+         * test is named for — so there is nothing behind it that a tab grant
+         * would be protecting.
+         */
         Route::get('hr/people/scope-options', [HrPeopleController::class, 'scopeOptions']);
-        Route::get('hr/people', [HrPeopleController::class, 'index']);
+
+        Route::middleware('permission:hr.records.view')
+            ->get('hr/people', [HrPeopleController::class, 'index']);
+
+        // Deliberately NOT behind the hr.view policy the rest of this group
+        // leans on: everybody may read their own paid time off, and `hr.view`
+        // is what adds everybody else's. The controller makes that split —
+        // see HrPeopleController::pto.
+        Route::get('hr/pto', [HrPeopleController::class, 'pto']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
@@ -1049,13 +1085,15 @@ Route::prefix('v1')
         Route::post('hr/people/{user}/totp/reset', [HrPeopleController::class, 'resetTotp']);
         Route::post('hr/people/{user}/reset-link', [HrPeopleController::class, 'resetLink']);
 
-        Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
-        Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
+        Route::middleware('permission:hr.invitations.view')->group(function () {
+            Route::get('hr/invitations', [HrInvitationsController::class, 'index']);
+            Route::post('hr/invitations', [HrInvitationsController::class, 'store']);
         // Resend and revoke, one at a time. The owner was explicit that there is
         // no bulk form of either, and there is no route here that could become
         // one without somebody adding it deliberately.
-        Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
-        Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
+            Route::post('hr/invitations/{invitation}/resend', [HrInvitationsController::class, 'resend']);
+            Route::delete('hr/invitations/{invitation}', [HrInvitationsController::class, 'destroy']);
+        });
 
         // The Contracts tab — the template designer, and the schema every other
         // HR tab is built on (EZBIZI-HR-PLAN.md).
@@ -1116,6 +1154,23 @@ Route::prefix('v1')
         // and amending a signed one are separate, consequential acts, and an
         // endpoint that also saves answers would let somebody do either by
         // pressing save.
+        /*
+         * NO `permission:hr.onboarding.view` HERE, and the reason is the whole
+         * shape of this endpoint.
+         *
+         * An employee with no HR permission at all must reach their OWN
+         * onboarding — they are the person filling it in — and
+         * HrOnboardingTest pins it: "the employee needs no permission and a
+         * stranger needs both", with an empty list rather than a refusal for
+         * somebody who has none. A middleware over this route takes a person's
+         * own paperwork away from them.
+         *
+         * So the Onboarding tab's gate belongs inside the controller, beside
+         * the split that already exists there, and it is HR's to place. Same
+         * carve-out as `hr/pto` twenty lines up. Two routes in this module
+         * serve two audiences through one URL, and a blanket gate cannot tell
+         * them apart.
+         */
         Route::get('hr/onboardings', [HrOnboardingsController::class, 'index']);
         Route::post('hr/onboardings', [HrOnboardingsController::class, 'store']);
         Route::get('hr/onboardings/{onboarding}', [HrOnboardingsController::class, 'show']);
@@ -1467,6 +1522,7 @@ Route::prefix('v1')
         Route::delete('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'destroy']);
         Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover']);
         Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover']);
+        Route::get('inspections/{inspection_definition}/graph', [InspectionDefinitionsController::class, 'graph']);
         Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish']);
         Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish']);
         Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show']);
@@ -1691,6 +1747,10 @@ Route::prefix('v1')
         Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
+        // Separate from `test` on purpose: that one rehearses and performs
+        // nothing, this one really sends. A flag shared between them would put
+        // a real send one wrong argument away from a rehearsal.
+        Route::post('automations/{automation}/run-now', [AutomationsController::class, 'runNow']);
         Route::post('automations/{automation}/activate/{version}', [AutomationsController::class, 'activateVersion']);
         Route::apiResource('automations', AutomationsController::class)->except(['store'])
             ->parameters(['automations' => 'automation']);

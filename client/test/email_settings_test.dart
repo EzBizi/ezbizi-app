@@ -10,6 +10,7 @@ import 'package:ezbizi_client/screens/email/email_screen.dart';
 import 'package:ezbizi_client/screens/email/mailbox_settings.dart';
 import 'package:ezbizi_client/screens/email/settings_tab.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -1959,7 +1960,7 @@ void main() {
 
     await _tap(
       tester,
-      find.widgetWithText(DropdownButtonFormField<String>, 'Mail service'),
+      find.widgetWithText(SearchPickerField<String>, 'Mail service'),
     );
     await _tap(tester, find.text('Google Workspace').last);
 

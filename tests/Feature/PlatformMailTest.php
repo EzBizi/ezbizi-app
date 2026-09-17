@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AutomationMessage;
 use App\Models\Company;
 use App\Models\Invitation;
 use App\Models\Organization;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use RuntimeException;
+use Symfony\Component\Mime\Email;
 use Tests\TestCase;
 
 /**
@@ -648,6 +650,114 @@ class PlatformMailTest extends TestCase
         $this->assertStringContainsString('its own mail server', $refused->getMessage());
     }
 
+    public function test_the_cap_fires_on_the_cache_store_production_actually_runs(): void
+    {
+        /*
+         * THE test that would have caught it, and the reason the other two did
+         * not: they run on the ARRAY store and production runs DATABASE.
+         *
+         * Laravel's DatabaseStore::incrementOrDecrement returns FALSE for a
+         * missing key rather than creating it. The first version of this cap did
+         * `$sent = Cache::increment($key)` and seeded on `$sent === 1`, so on the
+         * database store the seed never ran, the key never existed, every later
+         * increment returned false as well, and `false > $allowance` is false.
+         * The cap never fired in production. Measured:
+         *
+         *     array      increments 1,2,3 => 1, 2, 3
+         *     database   increments 1,2,3 => false, false, false
+         *
+         * Three tests exercised the cap and all three were green. Found by the
+         * Reports session reading the STORE rather than the coverage.
+         *
+         * So this one pins the behaviour where it actually has to hold. It is
+         * the same assertion as the array-store test above and that duplication
+         * is the point: the bug was entirely in which store answered.
+         */
+        config([
+            'cache.default' => 'database',
+            'mail.tenant_hourly_allowance' => 2,
+        ]);
+
+        Cache::store('database')->flush();
+        Mail::fake();
+
+        $send = fn () => $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+            $this->company,
+            new PlatformNotice,
+            'customer@example.test',
+        ));
+
+        // The control, and it is doing real work here: if the counter never
+        // starts, these pass AND the refusal below never comes. Both halves are
+        // needed to tell a working counter from an absent one.
+        $send();
+        $send();
+
+        Mail::assertSentCount(2);
+
+        $refused = null;
+
+        try {
+            $send();
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull(
+            $refused,
+            'The cap did not fire on the database store — which is the store production runs, '
+            .'and the exact way this shipped broken with three green tests.',
+        );
+
+        $this->assertStringContainsString('automated emails in the last hour', $refused->getMessage());
+
+        Mail::assertSentCount(2);
+    }
+
+    public function test_a_counter_that_cannot_answer_refuses_in_its_own_words(): void
+    {
+        /*
+         * A DIFFERENT FACT FROM "you have sent too much", and it gets a different
+         * sentence. If the counter cannot answer we do not know what this
+         * business has sent — telling them they have sent 500 emails sends them
+         * hunting for 499 that never happened. The Automations session hit the
+         * identical shape in their own limiter and split the sentences for the
+         * same reason.
+         *
+         * Refused rather than allowed: nothing ingests SES bounce or complaint
+         * events, so this cap is the only thing between a loop between two rules
+         * and the reputation every tenant shares. A counter admitting it cannot
+         * count is not a reason to stop counting.
+         */
+        config(['mail.tenant_hourly_allowance' => 100]);
+        Mail::fake();
+
+        // A store whose increment never answers — which is precisely what the
+        // database store did for a missing key before the add() seed.
+        Cache::shouldReceive('add')->andReturn(true);
+        Cache::shouldReceive('increment')->andReturn(false);
+
+        $refused = null;
+
+        try {
+            $this->inTenant(fn () => app(MailDispatcher::class)->platformForTenant(
+                $this->company,
+                new PlatformNotice,
+                'customer@example.test',
+            ));
+        } catch (CannotSendMail $e) {
+            $refused = $e;
+        }
+
+        $this->assertNotNull($refused, 'An uncountable send was allowed through.');
+
+        // The sentence names the real fault and does NOT invent a number.
+        $this->assertStringContainsString('could not check how much', $refused->getMessage());
+        $this->assertStringNotContainsString('in the last hour', $refused->getMessage());
+
+        Mail::assertNothingSent();
+    }
+
     public function test_the_cap_counts_a_business_and_not_the_whole_platform(): void
     {
         /*
@@ -682,6 +792,84 @@ class PlatformMailTest extends TestCase
         $send($other['organization'], $other['company']);
 
         Mail::assertSentCount(2);
+    }
+
+    public function test_an_automation_body_arrives_as_the_author_typed_it(): void
+    {
+        /*
+         * The view was `{{ $body }}`, which HTML-escapes — in a text/plain
+         * email. Every quote and ampersand a rule author typed arrived mangled:
+         *
+         *     typed      Your "sweep" is booked. Don't forget & keys.
+         *     delivered  Your &quot;sweep&quot; is booked. Don&#039;t forget &amp; keys.
+         *
+         * Found by the Automations session from the far side of the envelope,
+         * which is the only side it is visible from — nothing in this module
+         * reads a delivered body.
+         *
+         * Asserted on the RENDERED MIME rather than on the view, because the
+         * escape happens in Blade and a test that called the view directly
+         * would reproduce the bug rather than catch it.
+         */
+        $composed = $this->composedAutomation("Your \"sweep\" is booked. Don't forget & keys.");
+
+        $this->assertStringContainsString('Your "sweep" is booked.', $composed);
+        $this->assertStringContainsString("Don't forget & keys.", $composed);
+
+        $this->assertStringNotContainsString('&quot;', $composed);
+        $this->assertStringNotContainsString('&amp;', $composed);
+        $this->assertStringNotContainsString('&#039;', $composed);
+    }
+
+    public function test_an_automation_message_has_no_html_part(): void
+    {
+        /*
+         * THIS is what makes the unescaped body safe, and it is not the view.
+         *
+         * text/plain has no markup context, so an escape there protects nothing
+         * and only corrupts apostrophes. Add an ->html() alternative and the
+         * same tenant-authored body becomes markup in a rendering context —
+         * which is the injection the escape would genuinely have been for.
+         *
+         * So the guard lives on the property that actually holds the safety.
+         * Adding an HTML part goes red here, and whoever adds it has to make a
+         * decision about escaping rather than inherit one made when the only
+         * part was plain text.
+         */
+        $message = $this->renderedAutomation('Anything at all.');
+
+        $this->assertNull(
+            $message->getHtmlBody(),
+            'AutomationMessage grew an HTML part. The body is a tenant-authored string '
+            .'rendered unescaped, which is safe in text/plain and is an injection in '
+            .'markup — decide about escaping before this test is changed.',
+        );
+
+        // The control: there IS a text part, so this cannot pass by the message
+        // having rendered nothing.
+        $this->assertNotNull($message->getTextBody());
+    }
+
+    /** The message as Symfony built it, composed locally and sent nowhere. */
+    private function renderedAutomation(string $body): Email
+    {
+        $message = new AutomationMessage('A subject', $body, 'A-1 Chimney');
+        $message->from('noreply@ezbizi.test', 'EzBizi');
+
+        $mailer = Mail::build(['transport' => 'array']);
+        $mailer->to('customer@example.test')->send($message);
+
+        return collect($mailer->getSymfonyTransport()->messages())
+            ->last()
+            ->getOriginalMessage();
+    }
+
+    private function composedAutomation(string $body): string
+    {
+        // quoted-printable wraps long lines with a trailing "=", so the raw MIME
+        // cannot be searched for a sentence directly. The decoded text body is
+        // what a recipient actually reads, and it is what these assert on.
+        return (string) $this->renderedAutomation($body)->getTextBody();
     }
 
     public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void

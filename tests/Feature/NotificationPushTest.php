@@ -114,7 +114,13 @@ class NotificationPushTest extends TestCase
 
         Http::assertSent(fn ($request) => str_contains($request->url(), 'messages:send')
             && $request['message']['token'] === 'token-admin-phone'
-            && $request['message']['notification']['title'] === 'New Live Chat Lead');
+            && $request['message']['notification']['title'] === 'New Live Chat Lead'
+            // Named, or FCM delivers on its own generic fallback channel —
+            // measured on a real handset. On Android 8+ the channel is what a
+            // person sees in Settings and what they MUTE, so a fallback means
+            // EzBizi cannot be tuned separately from anything else. Invisible
+            // until somebody tries to turn one off.
+            && $request['message']['android']['notification']['channel_id'] === 'ezbizi_notifications');
     }
 
     public function test_one_person_with_two_handsets_is_one_person_told(): void

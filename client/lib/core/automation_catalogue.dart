@@ -62,6 +62,7 @@ class CatalogueActionParameter {
     required this.kind,
     required this.required,
     required this.nullable,
+    required this.variables,
   });
 
   final String key;
@@ -69,6 +70,14 @@ class CatalogueActionParameter {
   final String kind;
   final bool required;
   final bool nullable;
+
+  /// Whether the runner substitutes `{{ field }}` in this box.
+  ///
+  /// Declared by the server rather than guessed from the kind: it is true of a
+  /// message and false of `update_field`'s value, which is written as typed. A
+  /// builder that offered variables everywhere would promise something the
+  /// runner does not do in most of the places it was offered.
+  final bool variables;
 
   static CatalogueActionParameter? tryFrom(Object? json) {
     if (json is! Map || json['key'] is! String) return null;
@@ -79,6 +88,7 @@ class CatalogueActionParameter {
       kind: json['kind'] as String? ?? 'text',
       required: json['required'] == true,
       nullable: json['nullable'] == true,
+      variables: json['variables'] == true,
     );
   }
 }
@@ -338,6 +348,8 @@ class AutomationCatalogue {
     required this.scheduleKinds,
     this.roles = const [],
     this.people = const [],
+    this.reports = const [],
+    this.places = const [],
     this.actionBudget,
   });
 
@@ -358,7 +370,18 @@ class AutomationCatalogue {
       // Active people with an address, for an email step's "Send to". The key
       // already carries the `user:` prefix the runner reads, so the client never
       // constructs it and cannot construct it wrongly.
-      people: _list(json['people'], CatalogueChoice.tryFromIdLabel),
+      reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
+      places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
+      people: [
+        for (final row in (json['people'] as List? ?? const []))
+          if (row is Map<String, dynamic> && row['id'] is String)
+            (
+              key: row['id'] as String,
+              label: (row['label'] ?? row['id']).toString(),
+              hasEmail: row['has_email'] == true,
+              hasPhone: row['has_phone'] == true,
+            ),
+      ],
       actionBudget: (json['limits'] as Map?)?['action_budget'] as int?,
     );
   }
@@ -368,8 +391,25 @@ class AutomationCatalogue {
   /// The roles a notification step may narrow to. Empty narrows nothing.
   final List<CatalogueChoice> roles;
 
-  /// People an email step can be addressed to. Keys carry the `user:` prefix.
-  final List<CatalogueChoice> people;
+  /// People a step can be addressed to, and which contact details they have.
+  ///
+  /// One list rather than two, filtered by what the step needs: a texting step
+  /// must not offer somebody with only an email, and an emailing step must not
+  /// offer somebody with only a phone. Two lists would be two things to keep in
+  /// step the day somebody's details change.
+  final List<({String key, String label, bool hasEmail, bool hasPhone})> people;
+
+  /// Saved reports a rule can send. Name only — a report's definition says which
+  /// columns and filters a business uses, which is more than a permission about
+  /// writing rules should carry.
+  final List<CatalogueChoice> reports;
+
+  /// Where a rule can be pointed, in this person's own reach.
+  ///
+  /// The id is the STORED shape — `organization`, `company:<id>`,
+  /// `franchise:<id>` — so the builder hands back what it was given instead of
+  /// assembling a scope from two fields and mispairing them.
+  final List<CatalogueChoice> places;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still
