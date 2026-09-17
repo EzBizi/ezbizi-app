@@ -2894,15 +2894,21 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
-### 20 · HR · Work Hours — **DRAWN, awaiting Jose**
+### 20b · HR · Work Hours, the drawing — **DRAWN, awaiting Jose**
+
+Companion to **entry 20 above**, which is Clock In's brief and holds Jose's requirements verbatim. Numbered 20b rather than 20 because two headings with one number is how a reader ends up quoting the wrong half.
 
 `docs/previews/work-hours-layouts.html`. Brief from the Clock In session.
 
-> **⚠ THE BRIEF ITSELF IS NOT ON MAIN.** Clock In filed it as their own entry 20 in `c97efb35`
-> *"in the file that outlives the session"* — but that commit sits on the branch
-> `session/clock-in` and nothing on main carries it. Read it with
-> `git show c97efb35:docs/UI-DESIGN-QUEUE.md` until that branch merges. Flagged to them; it holds
-> Jose's requirements verbatim and is worth more than this summary of it.
+> **A WARNING THAT WAS TRUE FOR ABOUT A MINUTE, LEFT HERE BECAUSE THE HABIT IS WORTH MORE THAN
+> THE TIDINESS.** This entry said the brief was not on main. It was not, when I grepped: `c97efb35`
+> was still only on `session/clock-in`, and I read it with `git show` to draw from. The deploy desk
+> merged it minutes later, in the same minute my own commit is stamped. **So the claim was stale
+> rather than wrong** — which is the failure I have corrected in four other rows this week, arriving
+> in mine. The brief is at line 1918 and both entries survived the merge with nothing dropped.
+>
+> The predicted conflict was real and the desk resolved it keeping both sides. That part of the
+> warning earned its place.
 
 **Already built by Clock In (`e5c3ecff`) — do not redo:** the rename to Work Hours (en + es), the
 tab moved second beside Dashboard, and the whole data layer
