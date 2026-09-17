@@ -2917,6 +2917,37 @@ class ModuleServiceProvider extends ServiceProvider
              * measures internally, and an organization that wants one without
              * the other should not have to choose.
              */
+            /*
+             * Profit & Loss - a tenant's own accounting sheet, read live out
+             * of Airtable.
+             *
+             * ITS OWN PERMISSION, which is the reason it is a module at all
+             * rather than a report type in the builder. The sheet holds
+             * payroll, owner distributions and franchise royalties, by name
+             * and by person. Somebody who measures jobs and calls should not
+             * acquire that with the same grant, and an organization wanting
+             * one without the other should not have to choose. Same shape as
+             * Google Ads beside it, for the same reason. Jose's call,
+             * 2026-09-17, asked before building.
+             *
+             * `view` alone. The figures live in somebody else's spreadsheet
+             * and are read when the screen opens - EzBizi stores none of them,
+             * so create, update and delete would offer three actions that
+             * cannot exist.
+             */
+            new ModuleDefinition(
+                key: 'profit_loss',
+                label: 'Profit & Loss',
+                parent: 'reports',
+                actions: ['view'],
+                automationExemptBecause: 'Nothing here is a record. The figures are read from '
+                    .'the Airtable base a business connected, when somebody opens the screen, and are '
+                    .'never stored, so no row is ever created, changed or removed for a trigger '
+                    .'to fire on. This stops being true the day a week is cached or watched: '
+                    .'an alert on a branch going into loss is a real trigger, and it needs this '
+                    .'line removed rather than reworded.',
+            ),
+
             new ModuleDefinition(
                 key: 'ads_performance',
                 label: 'Google Ads',

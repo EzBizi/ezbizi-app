@@ -99,6 +99,32 @@ final class AirtablePnl
     }
 
     /**
+     * Every week this table holds, in the order the rows arrive.
+
+     * Not sorted. The labels are free text a person typed — "7 Sep - 13 Sep",
+     * with the year nowhere in them — so there is nothing here to sort BY, and
+     * imposing alphabetical order would put April first and look deliberate.
+     * The sheet's own row order is the only ordering that exists.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<string>
+     */
+    public function weeks(array $rows): array
+    {
+        $weeks = [];
+
+        foreach ($rows as $row) {
+            $week = trim((string) ($row['Week'] ?? ''));
+
+            if ($week !== '' && ! in_array($week, $weeks, true)) {
+                $weeks[] = $week;
+            }
+        }
+
+        return $weeks;
+    }
+
+    /**
      * One week, read as money rather than as rows.
      *
      * @param  list<array<string, mixed>>  $rows  every row of the table
@@ -193,14 +219,30 @@ final class AirtablePnl
             $costs = (float) ((int) round(($costs ?? 0) * 100 + $category['total'] * 100) / 100);
         }
 
+        $complete = $inWeek !== [] && $income !== null && $costs !== null;
+
+        /*
+         * AN INCOMPLETE WEEK CARRIES NO FIGURES AT ALL, not the half it has.
+         *
+         * A week with income entered and a cost category still empty has a
+         * perfectly readable income number, and handing it out is the failure
+         * this class exists to avoid wearing its most convincing disguise: the
+         * figure is real, it is correctly summed, and it is half an answer.
+         * Anything downstream showing "income $52,055" beside a blank profit
+         * invites the subtraction to be done by eye.
+         *
+         * `categories` still carries the detail, so a caller that genuinely
+         * wants to show what HAS been entered can, deliberately and by name.
+         */
+        if (! $complete) {
+            $income = null;
+            $costs = null;
+        }
+
         return [
             'week' => $week,
 
-            // Complete means every category this week mentions has at least one
-            // line. A category present in the base and empty this week is the
-            // "nobody has filled it in yet" case, and it is why nothing here
-            // falls back to zero.
-            'complete' => $inWeek !== [] && $income !== null && $costs !== null,
+            'complete' => $complete,
 
             'income' => $income,
             'costs' => $costs,

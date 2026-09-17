@@ -95,6 +95,7 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
@@ -810,6 +811,17 @@ Route::prefix('v1')
         */
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
+
+        /*
+         * Profit & Loss, read live from a tenant's own Airtable base. Before
+         * `reports/{id}` for the same reason as everything above it.
+         *
+         * `profit_loss.view`, NOT `reports.view` - the sheet carries payroll
+         * and owner distributions by name, so it is a separate grant from
+         * measuring jobs and calls. Jose's call, 2026-09-17.
+         */
+        Route::get('reports/profit-loss/sources', [ProfitLossController::class, 'sources']);
+        Route::get('reports/profit-loss', [ProfitLossController::class, 'show']);
 
         Route::get('reports/fields', [ReportsController::class, 'fields']);
         Route::post('reports/{id}/run', [ReportsController::class, 'run']);

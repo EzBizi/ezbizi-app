@@ -76,6 +76,10 @@ IconData dashboardPanelIcon(String key) {
     // which is what reusing assessment_outlined would do.
     // Matches module_screens.dart, so the sidebar and the dashboard agree.
     'ads_performance': Icons.show_chart_outlined,
+    // A ledger rather than a chart or a currency symbol: the tab holds a
+    // business's own books read out of its accounting sheet. Matches
+    // module_screens.dart, so the sidebar and the dashboard agree.
+    'profit_loss': Icons.account_balance_outlined,
     'reports': Icons.assessment_outlined,
     'reviews': Icons.reviews_outlined,
     'leads': Icons.person_search_outlined,
