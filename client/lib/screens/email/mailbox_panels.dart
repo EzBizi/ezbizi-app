@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'consent_window.dart';

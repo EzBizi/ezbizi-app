@@ -659,7 +659,20 @@ Future<void> _pumpForm(WidgetTester tester, MockClientHandler handler) async {
 Future<void> _pumpTab(
   WidgetTester tester,
   MockClientHandler handler, {
-  List<String> permissions = const ['hr.view', 'hr.create', 'hr.edit'],
+  // Per-tab grants arrived in `08d98e07`: a chip needs `hr.<tab>.view` as well
+  // as the module, so a default of module-only now draws no chips at all.
+  List<String> permissions = const [
+    'hr.view',
+    'hr.create',
+    'hr.edit',
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
+  ],
 }) async {
   final api = ApiClient(client: MockClient(_withMe(handler, permissions)));
   final session = Session(api);
@@ -681,6 +694,15 @@ Future<void> _pumpHr(WidgetTester tester, MockClientHandler handler) async {
     'hr.view',
     'hr.create',
     'hr.edit',
+    // And the per-tab grants (`08d98e07`), without which the whole strip is
+    // empty and the Records chip this test taps does not exist.
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
   ])));
   final session = Session(api);
 

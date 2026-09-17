@@ -17,23 +17,19 @@ import 'package:flutter_test/flutter_test.dart';
 /// `search_picker.dart`'s own explanation of what it replaced and in several
 /// comments recording why a screen is shaped the way it is. A guard that
 /// scanned for the word would go red on the prose describing its own subject,
-/// and the fix for that would be to delete the explanation.
+/// and the cheapest fix for that would be to delete the explanation.
 void main() {
   test('nothing in the app opens a popup dropdown any more', () {
     final offenders = <String>[];
 
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) continue;
-
+    for (final file in _dartFiles()) {
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
-        final line = lines[i];
-        if (line.trimLeft().startsWith('//') ||
-            line.trimLeft().startsWith('///')) {
-          continue;
-        }
-        if (line.contains('DropdownButtonFormField<') ||
-            line.contains('DropdownButtonFormField(')) {
+        if (_isComment(lines[i])) continue;
+        if (lines[i].contains('DropdownButtonFormField<') ||
+            lines[i].contains('DropdownButtonFormField(') ||
+            lines[i].contains('DropdownButton<') ||
+            lines[i].contains('DropdownButton(')) {
           offenders.add('${file.path}:${i + 1}');
         }
       }
@@ -48,4 +44,54 @@ void main() {
           'is also the right control for three fixed choices.',
     );
   });
+
+  /// `DropdownMenu` is the one member of the family that can already be what he
+  /// asked for: with `enableFilter: true` it IS a search bar picker, wearing
+  /// Flutter's name for one. Nine of them are, and they are left alone.
+  ///
+  /// Without it, it is the same popup in a text field's clothing — which is
+  /// worse than the plain dropdown, because it looks like something you can
+  /// type into and is not.
+  test('a DropdownMenu that cannot be filtered is a popup dropdown', () {
+    final offenders = <String>[];
+
+    for (final file in _dartFiles()) {
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (_isComment(lines[i])) continue;
+        if (!lines[i].contains('DropdownMenu<') &&
+            !lines[i].contains('DropdownMenu(')) {
+          continue;
+        }
+
+        // The argument list, near enough: far enough to clear a long entries
+        // list, and it is only ever read for one flag.
+        final end = (i + 30).clamp(0, lines.length);
+        final body = lines.sublist(i, end).join('\n');
+        if (!body.contains('enableFilter: true')) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'Either set enableFilter: true and requestFocusOnTap: true, or use '
+          'SearchPickerField.',
+    );
+  });
+}
+
+Iterable<File> _dartFiles() sync* {
+  for (final entry in Directory('lib').listSync(recursive: true)) {
+    if (entry is File && entry.path.endsWith('.dart')) yield entry;
+  }
+}
+
+bool _isComment(String line) {
+  final trimmed = line.trimLeft();
+
+  return trimmed.startsWith('//') || trimmed.startsWith('*');
 }

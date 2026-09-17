@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Hours — when a line is open, in its own wall clock.
 ///

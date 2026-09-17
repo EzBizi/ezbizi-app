@@ -9,6 +9,7 @@ import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/lead_thread.dart';
 import '../widgets/leads_accounts.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/social_network_mark.dart';
 import '../widgets/tab_bar_like.dart';
@@ -415,23 +416,27 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         ),
                 ),
               );
-              DropdownButton<String> status({required bool expanded}) =>
-                  DropdownButton<String>(
+              // `expanded` used to mean the dropdown's own isExpanded. It
+              // now means "somebody else is bounding my width": the picker is
+              // an InputDecorator, and an InputDecorator in a Row with no
+              // width constraint ASSERTS rather than shrinking to fit, which
+              // a DropdownButton never did.
+              Widget status({required bool expanded}) => SizedBox(
+                width: expanded ? null : 180,
+                child: SearchPickerField<String>(
                     value: _status,
-                    isExpanded: expanded,
-                    underline: const SizedBox.shrink(),
-                    items: [
+                    border: InputBorder.none,
+                    isDense: true,
+                    options: [
                       for (final entry in _statuses.entries)
-                        DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        ),
+                        SearchOption(value: entry.key, label: entry.value),
                     ],
                     onChanged: (value) {
                       setState(() => _status = value ?? '');
                       _load();
                     },
-                  );
+                  ),
+              );
               final fetch = FilledButton.tonalIcon(
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing

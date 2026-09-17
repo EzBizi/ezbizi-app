@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 
 import '../../core/api_client.dart';
@@ -8,6 +7,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// The test builder — the right half of layout 8's storyboard
 /// (`docs/previews/training-layouts.html`, task-15 brief), and also its own

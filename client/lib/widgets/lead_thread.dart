@@ -11,6 +11,7 @@ import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
+import 'search_picker.dart';
 import 'side_panel.dart';
 
 /// What was said on one enquiry: every call and message, oldest first.
@@ -473,20 +474,24 @@ class _LeadThreadState extends State<LeadThread> {
                 ),
               ),
               if (widget.onStatusChanged != null)
-                DropdownButton<String>(
-                  value: _statuses.containsKey(lead['status'])
-                      ? lead['status'] as String
-                      : 'new',
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    for (final e in _statuses.entries)
-                      DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  ],
-                  onChanged: (v) {
-                    if (v != null && v != lead['status']) {
-                      widget.onStatusChanged!(v);
-                    }
-                  },
+                SizedBox(
+                  width: 170,
+                  child: SearchPickerField<String>(
+                    value: _statuses.containsKey(lead['status'])
+                        ? lead['status'] as String
+                        : 'new',
+                    border: InputBorder.none,
+                    isDense: true,
+                    options: [
+                      for (final e in _statuses.entries)
+                        SearchOption(value: e.key, label: e.value),
+                    ],
+                    onChanged: (v) {
+                      if (v != null && v != lead['status']) {
+                        widget.onStatusChanged!(v);
+                      }
+                    },
+                  ),
                 ),
             ],
           ),

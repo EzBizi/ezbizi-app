@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Tags — what calls get counted by.
 ///
@@ -332,20 +333,26 @@ class _TagsPaneState extends State<TagsPane> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                DropdownButton<int>(
-                  key: const ValueKey('wrap-up-seconds'),
-                  value: _wrapUpSeconds,
-                  onChanged: _canEdit && !_savingRule && _connectionId != null
-                      ? (value) => value == null ? null : _setWrapUp(value)
-                      : null,
-                  items: const [
-                    DropdownMenuItem(value: 0, child: Text('None')),
-                    DropdownMenuItem(value: 15, child: Text('15 seconds')),
-                    DropdownMenuItem(value: 30, child: Text('30 seconds')),
-                    DropdownMenuItem(value: 60, child: Text('1 minute')),
-                    DropdownMenuItem(value: 120, child: Text('2 minutes')),
-                    DropdownMenuItem(value: 300, child: Text('5 minutes')),
-                  ],
+                SizedBox(
+                  width: 150,
+                  child: SearchPickerField<int>(
+                    key: const ValueKey('wrap-up-seconds'),
+                    value: _wrapUpSeconds,
+                    border: InputBorder.none,
+                    isDense: true,
+                    onChanged:
+                        _canEdit && !_savingRule && _connectionId != null
+                        ? (value) => value == null ? null : _setWrapUp(value)
+                        : null,
+                    options: const [
+                      SearchOption(value: 0, label: 'None'),
+                      SearchOption(value: 15, label: '15 seconds'),
+                      SearchOption(value: 30, label: '30 seconds'),
+                      SearchOption(value: 60, label: '1 minute'),
+                      SearchOption(value: 120, label: '2 minutes'),
+                      SearchOption(value: 300, label: '5 minutes'),
+                    ],
+                  ),
                 ),
               ],
             ),

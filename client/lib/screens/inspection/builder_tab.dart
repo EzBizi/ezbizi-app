@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
+import '../../widgets/search_picker.dart';
 import 'inspection_flow.dart';
 import 'option.dart';
 import '../../widgets/tag.dart';

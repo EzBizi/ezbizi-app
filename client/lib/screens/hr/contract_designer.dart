@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 
 import '../../core/api_client.dart';
 import '../../core/contracts.dart';
@@ -8,6 +7,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/logo_badge.dart';
 import '../../widgets/numbered_step.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import '../../widgets/tag.dart';

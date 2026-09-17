@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
 
 /// The work on a job: who it is assigned to, who did it, the service lines,

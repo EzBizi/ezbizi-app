@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
@@ -11,6 +10,7 @@ import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 

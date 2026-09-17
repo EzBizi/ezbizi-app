@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/search_picker.dart';
 import '../core/api_client.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
@@ -11,6 +10,7 @@ import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
 import '../widgets/refused.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 import 'jobs/job_detail_panel.dart';
@@ -269,39 +269,56 @@ class _JobsScreenState extends State<JobsScreen> {
                 ),
               ),
               if (_statuses.isNotEmpty)
-                DropdownMenu<String?>(
-                  initialSelection: _status,
-                  label: const Text('Status'),
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: null, label: 'Any status'),
-                    ..._statusChoices.map(
-                      (s) => DropdownMenuEntry(value: s.value, label: s.label),
-                    ),
-                  ],
-                  onSelected: (value) {
-                    setState(() => _status = value);
-                    _load();
-                  },
+                SizedBox(
+                  width: 220,
+                  child: SearchPickerField<String?>(
+                    value: _status,
+                    label: 'Status',
+                    options: [
+                      const SearchOption<String?>(
+                        value: null,
+                        label: 'Any status',
+                      ),
+                      ..._statusChoices.map(
+                        (s) => SearchOption<String?>(
+                          value: s.value,
+                          label: s.label,
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _status = value);
+                      _load();
+                    },
+                  ),
                 ),
               // The same control as status, for the same reason: it sits in
               // this Wrap rather than opening over the form, and its choices
               // are discovered from the rows already on screen rather than
               // fetched, since every job already carries its role (Task 5).
               if (_roles.isNotEmpty)
-                DropdownMenu<String?>(
-                  initialSelection: _roleId,
-                  label: const Text('Role'),
-                  dropdownMenuEntries: [
-                    const DropdownMenuEntry(value: null, label: 'Any role'),
-                    ..._roles.entries.map(
-                      (role) =>
-                          DropdownMenuEntry(value: role.key, label: role.value),
-                    ),
-                  ],
-                  onSelected: (value) {
-                    setState(() => _roleId = value);
-                    _load();
-                  },
+                SizedBox(
+                  width: 220,
+                  child: SearchPickerField<String?>(
+                    value: _roleId,
+                    label: 'Role',
+                    options: [
+                      const SearchOption<String?>(
+                        value: null,
+                        label: 'Any role',
+                      ),
+                      ..._roles.entries.map(
+                        (role) => SearchOption<String?>(
+                          value: role.key,
+                          label: role.value,
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _roleId = value);
+                      _load();
+                    },
+                  ),
                 ),
             ],
           ),

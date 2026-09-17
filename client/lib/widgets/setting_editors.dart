@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/job_status.dart';
 import '../core/timestamps.dart';
+import 'search_picker.dart';
 import 'side_panel.dart';
 
 /// Editors for the settings that have a shape (plan §6, §2.1 layer 5).
@@ -75,27 +76,31 @@ class TimeField extends StatelessWidget {
             '${(m % 60).toString().padLeft(2, '0')}',
     ];
 
-    // Anything set through the API can sit off the quarter hour. Dropping it
-    // from the list would make the dropdown throw on a value it is meant to be
-    // showing, so it joins the list in its right place instead.
+    // Anything set through the API can sit off the quarter hour. The picker
+    // draws whichever option matches its value and NOTHING when none does, so
+    // dropping this one would leave the field blank on exactly the setting it
+    // is meant to be showing. It joins the list in its right place instead.
+    //
+    // (It used to be worse and louder: the dropdown this replaced asserted on
+    // a value with no item, so the same omission crashed rather than blanked.)
     if (!slots.contains(value)) {
       slots
         ..add(value)
         ..sort();
     }
 
-    return DropdownButton<String>(
-      value: value,
-      isDense: true,
-      underline: const SizedBox.shrink(),
-      onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
-      items: [
-        for (final slot in slots)
-          DropdownMenuItem(
-            value: slot,
-            child: Text(formats.formatWallClock(slot)),
-          ),
-      ],
+    return SizedBox(
+      width: 130,
+      child: SearchPickerField<String>(
+        value: value,
+        isDense: true,
+        border: InputBorder.none,
+        onChanged: enabled ? (v) => v == null ? null : onChanged(v) : null,
+        options: [
+          for (final slot in slots)
+            SearchOption(value: slot, label: formats.formatWallClock(slot)),
+        ],
+      ),
     );
   }
 }

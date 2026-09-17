@@ -1,4 +1,3 @@
-import '../../widgets/search_picker.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,7 @@ import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/tag.dart';
 
 /// The key on the control that answers one question.

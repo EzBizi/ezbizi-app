@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/shortcode_button.dart';
 
 /// One page of a customer's website, and everything EzBizi publishes onto it.

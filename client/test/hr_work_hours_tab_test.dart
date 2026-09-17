@@ -503,7 +503,22 @@ Map<String, Object?> _me({required Map<String, Object?> timeClock}) => {
   'email': 'jose@example.com',
   'has_avatar': false,
   'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['hr.view', 'hr.create', 'hr.edit'],
+  // Per-tab grants arrived in `08d98e07`: a chip now needs `hr.<tab>.view` as
+  // well as the module. Listed one by one rather than with a wildcard, because
+  // the point of that change is that a tab nobody granted does not appear, and
+  // a fixture that granted everything by pattern could never show that.
+  'permissions': [
+    'hr.view',
+    'hr.create',
+    'hr.edit',
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
+  ],
   'modules': [
     {
       'key': 'hr',

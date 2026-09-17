@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'item_pane.dart';
 
 /// Issue stock in the 75% pane, posted on save.

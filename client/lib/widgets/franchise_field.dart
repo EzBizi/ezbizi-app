@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/search_picker.dart';
 
 import '../core/session.dart';
+import '../widgets/search_picker.dart';
 
 /// Picking a place, when several of them share a name (plan §3).
 ///

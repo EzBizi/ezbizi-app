@@ -2894,50 +2894,77 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
-### 22 · App-wide · Popup dropdowns → search pickers — **20 OF 56 DONE**
+### 22 · App-wide · Popup dropdowns → search pickers — **DONE, AND PINNED AT ZERO**
 
 Jose, 2026-09-17, on a twelve-name person dropdown running off the bottom of the window:
 
-> *"this sort of popup dropdown are terrible ui design, anything that offers users should be a
-> search bar picker instead. So i want you to go and find every single use of this sort of dropdown
-> in the app and replace it."*
+> *"this sort of popup dropdown are terrible ui design, anything that offers users should be a search
+> bar picker instead. So i want you to go and find every single use of this sort of dropdown in the
+> app and replace it."*
 
-**`client/lib/widgets/search_picker.dart`** is the replacement, shipped in `89324380`.
-**`SearchPickerField` shows the search box only when the list is long enough to need one**
-(`searchFrom`, default 8). That is what makes "replace every single use" uniformly right: 58 of
-these offer people, vehicles and locations and want search; 44 offer *Everyone at once / In order*,
-where a search box asks somebody to type where they could have pointed.
+**`client/lib/widgets/search_picker.dart`** is the replacement. `SearchPickerField` shows the search
+box only when the list is long enough to need one (`searchFrom`, default 8), which is what makes
+"every single use" uniformly right: some of these offer twelve people, some offer *Everyone at once /
+In order*, and a search box over two options asks somebody to type where they could have pointed.
 
-**Done: 20 files, `2b8faf72`.** Inventory, Jobs, Services, Web, Fleet, Marketing, Phone numbers and
-ring groups, and several shared widgets.
+**Every `DropdownButtonFormField` and every bare `DropdownButton` in the app is gone.** The nine
+remaining `DropdownMenu`s all set `enableFilter: true` — they are already a search bar picker
+wearing Flutter's name for one — and are deliberately left.
 
-> **THE METHOD, AND THE TWO TIMES IT WENT WRONG, because the next person will reach for the same
-> tool.** Hand-anchoring on exact whitespace failed twice on indentation alone, so the job is a
-> transformer that balances brackets:
-> `C:/Users/.../scratchpad/swap.py` (session-local; rewrite it rather than hunt for it).
+`client/test/no_popup_dropdown_test.dart` holds the count at zero, because "every single use" decays:
+the next form somebody writes reaches for the control Flutter documents, not the one this app chose.
+It matches a USE (`DropdownButtonFormField<` or `(`), never the bare name, which appears in
+search_picker's own explanation of what it replaced — **a guard that read the word would go red on
+the prose describing its own subject, and the cheapest fix for that is to delete the explanation.**
+
+> **THE TRANSFORMER, AND THE FOUR TIMES IT GUESSED.** Hand-anchoring on whitespace failed twice on
+> indentation, so the job became a script that balances brackets:
+> `<scratchpad>/swap.py` (session-local; rewrite it rather than hunt for it). It was right about
+> roughly seventy files and wrong about seven, in four separate ways, and the pattern in the four is
+> worth more than the script:
 >
-> **It guessed twice and both times cost a full revert of ~40 files.** `Text(x, overflow: ...)` —
-> the pattern stops at the only closing paren, so the second argument arrived as part of the label
-> and the files stopped compiling. Then a `//` comment inside a call, which the splitter could not
-> see and ran into the next argument, and an `items:` built by something other than a literal list,
-> which emitted `options: ,`. Its own docstring said it should refuse what it does not understand;
-> it did not, and enforcing that is the whole fix. **Nothing was committed either time**, and every
-> modified file was verifiably mine before reverting — checked, not assumed, in a shared tree.
+> 1. `Text(x, overflow: ...)` — the regex stopped at the only closing paren, so the second argument
+>    became part of the label. ~40 files, full revert.
+> 2. A `//` comment the splitter could not see, and an `items:` that was not a literal list. ~40
+>    files, full revert.
+> 3. `Text('${_money(x.toInt())}')` — the non-greedy capture stopped at the paren INSIDE the string
+>    interpolation. The guard added after (1) asked whether the captured label held a top-level
+>    comma; a TRUNCATED label holds no comma, so the guard waved it through. **The guard was aimed
+>    one shape beside the thing that breaks.** It now requires the capture to be *balanced*, which is
+>    the property the comma check was assuming and could not establish.
+> 4. **The dangerous one.** `find_calls` skipped strings but never learned about comments.
+>    `numbers_pane.dart` has `// The chosen item's text can grow` above three of its four dropdowns;
+>    the apostrophe in *item's* opened a string that closed four fields later, so the call's "end"
+>    landed past two whole widgets and they were deleted with it. **`flutter analyze` was clean** —
+>    what remained compiled perfectly. Two settings had simply stopped existing on the screen, and
+>    the only thing that said a word was `phone_screen_test` tapping *"Nobody — go straight to
+>    voicemail"*.
+>
+> **A green analyze is evidence that what remains compiles. It is no evidence at all that what was
+> removed was meant to go.** Every mass rewrite from here needs a count of the thing it claims to
+> preserve, not a compile.
+>
+> Nothing broken ever reached a commit, and every file was verified to contain my own
+> `SearchPickerField` before being reverted — checked, not assumed, in a tree ten sessions share.
 
-**REMAINING 36, and they are three different jobs rather than one queue:**
+**What the control gained on the way, each because a real call site needed it and not in advance:**
+`helperText` / `helperMaxLines` (several dropdowns explain what a choice MEANS), `border` and
+`isDense` (so a swapped field keeps its frame), `errorText` (the automation field picker NAMES a
+stored value it cannot offer instead of going quietly blank), a nullable `value` (ten lists offer a
+row that means *nothing chosen* — "Not set", "Nobody has the keys" — which somebody picks on
+purpose), and an optional `child` for a richer row, where `label` stays required because **a row with
+an icon in it has no string to filter on, and a picker filtering on the wrong words looks perfectly
+correct while hiding the thing somebody typed the name of.**
 
-- **31 · an item child is not a plain `Text`** — a `Row` with an icon, a two-line child. These need
-  a person to say **what the search text is**, because a rich child has no single string in it and
-  guessing gives you a list that filters on the wrong words while looking right. `SearchOption`
-  would gain an optional `child` for display beside `label` for searching.
-- **5 · their tests drive the old control** — tapping `DropdownButtonFormField` and reading
-  `.items`: fleet, hr onboarding, automations, phone general, inspection builder. The source change
-  is trivial; the tests encode other modules' intent and deserve their own pass.
-- **4 · `items:` is not a literal list** — built by a `.map()` or a helper.
+**Ten other modules' test files drove the old control** — tapping `DropdownButtonFormField`, reading
+`.items`, reaching through the FormField for the `DropdownButton` underneath. They were pointed at
+the new control and kept asserting the same things: an option's `enabled`, the order of the scopes,
+the five kinds of question the server declares, the disabled "already onboarding" row, the Workspace
+directory that stays unlisted until somebody searches it.
 
-**One judgement made without him, flagged in his three bullets:** the short fixed-enum dropdowns get
-the same control with no search box rather than a search box over two options. If he would rather
-every one of them carried a search field, that is a one-line change to `searchFrom`.
+**One judgement made without him, flagged in his three bullets:** short fixed-enum lists get the same
+control with no search box rather than a search box over two options. If he would rather every one of
+them carried a search field, that is a one-line change to `searchFrom`.
 
 ### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
 
