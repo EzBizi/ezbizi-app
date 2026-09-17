@@ -1083,6 +1083,40 @@ void main() {
     expect(find.textContaining('Last one seen: Marta Ruiz'), findsOneWidget);
   });
 
+  /// A TEMPLATE FILLS THE FORM AND SAVES NOTHING.
+  ///
+  /// Jose, 2026-09-17: *"i want to have Templates as well ... so people can
+  /// easily select them and apply them."*
+  ///
+  /// The half worth asserting is the one that is easy to get wrong: applying a
+  /// template must not create anything. A version that saved directly would
+  /// look identical here — a rule appears — and would have switched something
+  /// on that nobody read first.
+  testWidgets('a template fills the builder in and creates nothing by itself', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithTemplates(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
+    await _tap(tester, find.text('Tell the office about website chats only').last);
+
+    // The name, the trigger, the condition and the step all arrive together.
+    expect(
+      find.widgetWithText(TextField, 'Tell the office about website chats only'),
+      findsOneWidget,
+    );
+    expect(find.text('Somebody is chatting on the website.'), findsOneWidget);
+
+    // AND NOTHING WAS SAVED. The person still has to press the button.
+    expect(sent, isNull);
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -2426,6 +2460,26 @@ const _catalogue = {
 /// written before schedules keeps the vocabulary it was written against — a
 /// trigger appearing in a picker it did not have changes what "the first row"
 /// means in half a dozen assertions.
+Map<String, dynamic> _catalogueWithTemplates() => {
+  ...Map<String, dynamic>.from(_catalogue),
+  'templates': const [
+    {
+      'key': 'website-chat-only',
+      'name': 'Tell the office about website chats only',
+      'description': 'Narrowed to the live chat on your own website.',
+      'trigger_key': 'customer.created',
+      'conditions': {
+        'all': [
+          {'field': 'source', 'op': 'eq', 'value': 'website_chat'},
+        ],
+      },
+      'actions': [
+        {'type': 'notify', 'message': 'Somebody is chatting on the website.'},
+      ],
+    },
+  ],
+};
+
 Map<String, dynamic> _catalogueWithPlaces() => {
   ...Map<String, dynamic>.from(_catalogue),
   'places': const [

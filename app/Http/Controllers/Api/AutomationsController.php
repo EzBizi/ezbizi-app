@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Automation;
+use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
 use App\Support\Scoping\ViewScope;
 use App\Models\Role;
@@ -466,6 +467,24 @@ class AutomationsController extends Controller
                         ->map(fn (Franchise $f) => ['id' => 'franchise:'.$f->id, 'label' => $f->name])
                         ->values()->all(),
                 ),
+
+                /*
+                 * READY-MADE RULES, filtered to what this person could build.
+                 *
+                 * A template naming a trigger whose module this person cannot
+                 * open would apply cleanly and then save into a 403 — worse than
+                 * not being offered, because it looks like the app changed its
+                 * mind. `modulesInReach` is the same answer the trigger list
+                 * above is filtered by, so the two cannot disagree.
+                 */
+                'templates' => array_values(array_filter(
+                    AutomationTemplates::all(),
+                    fn (array $template) => in_array(
+                        $this->registry->moduleKeyOfTrigger($template['trigger_key']),
+                        $this->modulesInReach($request),
+                        true,
+                    ),
+                )),
 
                 'roles' => Role::query()
                     ->orderBy('name')
