@@ -242,6 +242,26 @@ enum SocialProvider: string
      * its arm here** — the drift is silent in both directions, offering Connect
      * to somebody who cannot see what it connects, and refusing it to the
      * person who reads the thing every day.
+     *
+     * ── Re-read does NOT mean narrow, and the test is not the screen ─
+     *
+     * Two corrections from Leads, who re-read theirs and correctly left it
+     * alone (`4120aaf0`).
+     *
+     * **A tab key can be WIDER than the module action it replaces.** Every
+     * dispatcher holds `leads.local_services.view` after the migration that
+     * shipped with the split, so moving that arm to the tab key would have
+     * handed the connecting of an advertising account to every dispatcher.
+     * "Re-read your arm" reads as a prompt to narrow; it is a prompt to
+     * MEASURE, and the answer is sometimes wider and sometimes unchanged.
+     *
+     * **And the test is not "can they open the screen".** It is: is anybody
+     * better off once it is connected? Workiz and Airtable moved because the
+     * connection's only purpose was a screen the connector could not open —
+     * connect it and nobody gains. A Google Ads account connected by somebody
+     * who never watches the Google tab still delivers every enquiry to the
+     * people who do, still fires the automations, still books the work. The
+     * control works; it is simply not for the connector's own reading.
      */
     public function connectPermission(): string
     {
