@@ -797,6 +797,12 @@ Route::prefix('v1')
          * Goes when the Experimental report does.
          */
         Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
+
+        /*
+         * The audio of one call, proxied because RingCentral serves it from a
+         * different host and requires our account token - see the action.
+         */
+        Route::get('reports/experimental/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording']);
         Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
 
         /*

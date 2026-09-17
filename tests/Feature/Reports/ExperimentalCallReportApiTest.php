@@ -302,6 +302,112 @@ class ExperimentalCallReportApiTest extends TestCase
 
     // ── fixtures ─────────────────────────────────────────────────
 
+    // ── the calls behind the numbers ─────────────────────────────
+
+    /**
+     * THE CALLS THEMSELVES TRAVEL, so a person's row can be opened.
+     *
+     * Jose, 2026-09-17: "arrow on side, when clicked, open list of calls with
+     * recordings for that person, so i can see more details". The aggregate
+     * columns cannot answer that on their own.
+     *
+     * Sent FLAT rather than nested under each person: a queue call rings
+     * several people, and nesting would send the same call once per person —
+     * the same double-count the `rang` column exists to warn about, arriving
+     * as bytes.
+     */
+    public function test_the_calls_behind_the_numbers_are_in_the_payload(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $calls = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/reports/experimental/calls?day=2026-09-14')
+            ->assertOk()
+            ->json('calls');
+
+        $this->assertCount(1, $calls);
+        $this->assertSame('Trey Brannan', $calls[0]['answered_by']);
+        $this->assertSame('rec-9', $calls[0]['recording_id']);
+        $this->assertSame('PERRON,NICOLE', $calls[0]['caller_label']);
+
+        // The names in the drill-down are canonicalised the same way the
+        // columns are. Left raw, a call would sit under a row labelled with a
+        // different spelling of the same person.
+        $this->assertContains('Trey Brannan', $calls[0]['rang']);
+    }
+
+    // ── the recording ────────────────────────────────────────────
+
+    public function test_a_recording_needs_the_same_permission_as_the_report(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        $runner = $this->userWithRole($tenant, 'Runner', ['reports.view']);
+
+        $this->signedInAs($runner)
+            ->get('/api/v1/reports/experimental/calls/rec-9/recording')
+            ->assertForbidden();
+    }
+
+    /**
+     * A 403 FROM RINGCENTRAL NAMES THE MISSING PERMISSION.
+     *
+     * Measured against the live account on 2026-09-17: the recordings exist
+     * and the audio returns 403 `ReadCallRecording`, because EzBizi's
+     * RingCentral app was never granted that scope. Nothing in this codebase
+     * fixes it.
+     *
+     * So the refusal has to say where the fix is. "RingCentral refused (403)"
+     * reads as a broken build and sends somebody into the wrong repository for
+     * an afternoon.
+     */
+    public function test_a_recording_refused_for_permission_says_where_the_fix_is(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/recording/*' => Http::response(['message' => 'forbidden'], 403),
+        ]);
+
+        $message = $this->signedInAs($tenant['admin'])
+            ->get('/api/v1/reports/experimental/calls/rec-9/recording')
+            ->assertStatus(502)
+            ->json('message');
+
+        $this->assertStringContainsString('ReadCallRecording', $message);
+
+        // And it says the change is not here, which is the actionable half.
+        $this->assertStringContainsString('developer console', $message);
+    }
+
+    public function test_a_recording_that_loads_comes_back_as_audio(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connected($tenant);
+
+        Http::fake([
+            '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
+            '*/recording/*' => Http::response('ID3-and-then-some', 200, [
+                'Content-Type' => 'audio/mpeg',
+            ]),
+        ]);
+
+        $response = $this->signedInAs($tenant['admin'])
+            ->get('/api/v1/reports/experimental/calls/rec-9/recording')
+            ->assertOk();
+
+        $this->assertSame('audio/mpeg', $response->headers->get('Content-Type'));
+
+        // Inline, not an attachment: one click must not drop customer call
+        // audio into somebody's Downloads folder.
+        $this->assertSame('inline', $response->headers->get('Content-Disposition'));
+        $this->assertSame('ID3-and-then-some', $response->getContent());
+    }
+
     private function notConnected(): void
     {
         config([
@@ -335,6 +441,15 @@ class ExperimentalCallReportApiTest extends TestCase
                     'startTime' => '2026-09-14T13:21:11.795Z',
                     'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
                     'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],
+                    // Present on 175 of 250 real inbound calls, measured
+                    // 2026-09-17. Its ABSENCE is equally ordinary, which is why
+                    // recording_id is nullable rather than assumed.
+                    'recording' => [
+                        'id' => 'rec-9',
+                        'type' => 'Automatic',
+                        'contentUri' => 'https://media.ringcentral.test/restapi/v1.0/account/1/recording/rec-9/content',
+                    ],
+
                     'legs' => [
                         ['legType' => 'Accept', 'result' => 'Accepted', 'to' => ['name' => 'Main - IVR']],
                         ['legType' => 'Accept', 'result' => 'Accepted', 'to' => ['name' => 'A1 - New Client']],

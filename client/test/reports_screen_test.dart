@@ -421,8 +421,15 @@ void main() {
 
     // Ranya Lara answered nothing. No average is a different fact from an
     // average of zero, and "0:00" would read as a real short call.
-    expect(find.text('—'), findsOneWidget);
+    //
+    // findsWidgets rather than findsOneWidget since 2026-09-17: she now shows
+    // a dash in TWO columns, avg talk and conversion, and both are right. The
+    // rule this test protects is that an absent value is never rendered as a
+    // zero — counting dashes was a proxy for it that a new column invalidates
+    // without anything being wrong.
+    expect(find.text('—'), findsWidgets);
     expect(find.text('0:00'), findsNothing);
+    expect(find.text('0%'), findsNothing);
   });
 
   testWidgets('disconnecting a branch asks first', (tester) async {

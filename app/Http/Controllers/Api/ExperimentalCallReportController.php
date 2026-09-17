@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Response as Status;
 
 /**
  * One day of A-1's calls against the jobs they became (TEMPORARY).
@@ -74,6 +75,51 @@ class ExperimentalCallReportController extends Controller
             'reason' => 'Workiz API access is not paid for on that account, so it has no token and never will under the current subscription.',
         ],
     ];
+
+    /**
+     * GET /api/v1/reports/experimental/calls/{recording}/recording
+     *
+     * The audio of one call, proxied.
+     *
+     * ── WHY THIS IS A PROXY AND NOT A LINK ──────────────────────
+     *
+     * RingCentral's `contentUri` points at media.ringcentral.com and needs our
+     * account's bearer token. A browser following it unauthenticated gets 401;
+     * putting the token in the URL to fix that would hand every listener the
+     * whole account, in a string that lands in browser history and any log
+     * that records URLs. So the audio comes through here, where the gate is
+     * the same one that guards the report.
+     *
+     * ── IT CURRENTLY REFUSES, AND THAT IS A FACT ABOUT THE APP ──
+     *
+     * Measured 2026-09-17: the recordings exist - 175 of 250 inbound calls
+     * over three days carry one - and fetching the audio returns 403
+     * `ReadCallRecording`. EzBizi's RingCentral app has not been granted that
+     * permission. Nothing in code fixes it; somebody adds the scope to the app
+     * in RingCentral's console and this starts working unchanged.
+     *
+     * Until then the refusal SAYS THAT, rather than arriving as a dead player
+     * that sends somebody looking for a bug in EzBizi.
+     */
+    public function recording(Request $request, string $recording, RingCentralCallLog $calls): mixed
+    {
+        $this->authorize('createOnOrganization', SavedReport::class);
+
+        try {
+            $audio = $calls->recording($recording);
+        } catch (RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], Status::HTTP_BAD_GATEWAY);
+        }
+
+        return response($audio['body'], 200, [
+            'Content-Type' => $audio['type'],
+
+            // Inline: this is played in place, not downloaded. A download
+            // disposition would put customer call audio in the Downloads
+            // folder of anybody who clicked once.
+            'Content-Disposition' => 'inline',
+        ]);
+    }
 
     public function show(Request $request, RingCentralCallLog $calls, WorkizJobs $workiz, CallReconciliation $reconcile): JsonResponse
     {
