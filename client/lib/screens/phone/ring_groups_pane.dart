@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Ring groups — who a line rings, and what happens when
 /// nobody picks up.
@@ -485,12 +484,12 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             const SizedBox(height: 12),
 
             if (_connections.length > 1) ...[
-              DropdownButtonFormField<String>(
-                initialValue: draft.connectionId,
-                decoration: const InputDecoration(labelText: 'Phone account'),
-                items: [
+              SearchPickerField<String>(
+                value: draft.connectionId,
+                label: 'Phone account',
+                options: [
                   for (final conn in _connections)
-                    DropdownMenuItem(value: conn.id, child: Text(conn.label)),
+                    SearchOption(value: conn.id, label: conn.label),
                 ],
                 onChanged: _saving
                     ? null

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/web/page_editor.dart';
 import 'package:ezbizi_client/widgets/shortcode_button.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -230,7 +231,7 @@ void main() {
 
     // Opened, because a dropdown draws its options only when somebody asks
     // for them — asserting on the closed control would pass on an empty list.
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.byType(SearchPickerField<String>).first);
     await tester.pumpAndSettle();
 
     expect(find.text("Pat O'Brien"), findsWidgets);

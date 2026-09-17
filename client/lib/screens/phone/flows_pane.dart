@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › IVR menus — the menu a caller hears.
 ///
@@ -572,26 +571,20 @@ class _FlowsPaneState extends State<FlowsPane> {
 
             if (option.action == 'extension') ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              SearchPickerField<String>(
                 key: ValueKey('extension:$index'),
-                initialValue:
-                    _extensions.any((e) => e.extension == option.extension)
+                value: _extensions.any((e) => e.extension == option.extension)
                     ? option.extension
                     : null,
-                decoration: const InputDecoration(
-                  labelText: 'Which extension',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
+                label: 'Which extension',
+                border: OutlineInputBorder(),
+                isDense: true,
                 // The extensions somebody actually holds, not free digits: the
                 // renderer looks these up, and digits nobody holds make a key
                 // that says "there is no extension" to every caller.
-                items: [
+                options: [
                   for (final e in _extensions)
-                    DropdownMenuItem(
-                      value: e.extension,
-                      child: Text('${e.extension} · ${e.name}'),
-                    ),
+                    SearchOption(value: e.extension, label: '${e.extension} · ${e.name}'),
                 ],
                 onChanged: (v) => setState(() => option.extension = v ?? ''),
               ),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -645,22 +647,15 @@ class _AddSiteFormState extends State<_AddSiteForm> {
             if (me.offersCompanyChoice)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: DropdownButtonFormField<String>(
-                  initialValue: _companyId,
-                  // The form sits in the 288px rail now. Without this a company
-                  // name wider than the rail overflows the row instead of
-                  // ellipsizing.
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Company'),
-                  items: [
+                child: SearchPickerField<String>(
+                         value: _companyId,
+                         label: 'Company',
+                         options: [
                     for (final company in me.companiesInView)
-                      DropdownMenuItem(
-                        value: company.id,
-                        child: Text(company.name),
-                      ),
+                      SearchOption(value: company.id, label: company.name),
                   ],
-                  onChanged: (value) => setState(() => _companyId = value),
-                ),
+                         onChanged: (value) => setState(() => _companyId = value),
+                       ),
               ),
             TextField(
               controller: _host,

@@ -7,6 +7,7 @@ import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'condition.dart';
 import 'option.dart';
 import 'photo_field.dart';
@@ -595,28 +596,24 @@ class _NewInspectionTabState extends State<NewInspectionTab> {
         final options = [for (final o in choices) o.value];
         final current = _fields[key]?.text ?? '';
 
-        return DropdownButtonFormField<String>(
-          key: widgetKey,
-          initialValue: options.contains(current) && current != '' ? current : null,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label),
-          items: [
+        return SearchPickerField<String>(
+                 key: widgetKey,
+                 value: options.contains(current) && current != '' ? current : null,
+                 label: label,
+                 options: [
             for (final choice in choices)
-              DropdownMenuItem(value: choice.value, child: Text(choice.label)),
+              SearchOption(value: choice.value, label: choice.label),
             // An answer already given against an option since removed. Dropping
             // it silently would change a saved answer by redrawing the screen.
             if (current != '' && !options.contains(current))
-              DropdownMenuItem(
-                value: current,
-                child: Text('$current — no longer offered'),
-              ),
+              SearchOption(value: current, label: '$current — no longer offered'),
           ],
-          onChanged: (value) {
+                 onChanged: (value) {
             _fields[key]?.text = value ?? '';
             setState(() {});
             _save();
           },
-        );
+               );
 
       case 'divider':
         // A heading between fields. Not a control, so it takes no key and

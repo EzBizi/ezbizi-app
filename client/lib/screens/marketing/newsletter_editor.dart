@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
 import 'clock_label.dart';
 import '../../core/session.dart';
 import '../../core/timestamps.dart';
@@ -514,15 +515,13 @@ class _NewsletterEditorState extends State<NewsletterEditor> {
               'company connected.',
             )
           else
-            DropdownButtonFormField<String>(
-              initialValue: widget.audienceId,
-              decoration: const InputDecoration(labelText: 'Mailing list', isDense: true),
-              items: [
+            SearchPickerField<String>(
+              value: widget.audienceId,
+              label: 'Mailing list',
+              isDense: true,
+              options: [
                 for (final a in widget.audiences)
-                  DropdownMenuItem(
-                    value: a.id,
-                    child: Text('${a.name} · ${a.where}'),
-                  ),
+                  SearchOption(value: a.id, label: '${a.name} · ${a.where}'),
               ],
               onChanged: widget.onAudience,
             ),

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/session.dart';
+import '../../widgets/search_picker.dart';
 import 'item_pane.dart';
 
 /// Company and General / franchise, locked to the current view.

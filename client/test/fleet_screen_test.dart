@@ -7,6 +7,7 @@ import 'package:ezbizi_client/main.dart';
 import 'package:ezbizi_client/screens/fleet_screen.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -292,7 +293,7 @@ void main() {
     expect(find.text('A-1 Group'), findsWidgets);
     expect(find.textContaining('General'), findsWidgets);
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.byType(SearchPickerField<String>).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('A-1 Chimney').last);
     await tester.pumpAndSettle();
@@ -312,7 +313,7 @@ void main() {
     await tester.tap(find.text('Add vehicle'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.byType(SearchPickerField<String>).first);
     await tester.pumpAndSettle();
 
     expect(find.text('Everdoors'), findsWidgets);

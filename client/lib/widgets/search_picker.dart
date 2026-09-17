@@ -35,6 +35,7 @@ class SearchOption<T> {
     required this.value,
     required this.label,
     this.detail,
+    this.child,
     this.enabled = true,
   });
 
@@ -46,6 +47,16 @@ class SearchOption<T> {
   /// A second line — a number, a place, a role. Searched as well, because
   /// people look things up by whatever they remember about them.
   final String? detail;
+
+  /// A richer row than a line of text -- an icon beside a name, two lines with
+  /// different weights.
+  ///
+  /// **[label] is still required when this is set, and it is not decoration:**
+  /// it is what search matches on. A row with an icon has no single string in
+  /// it, so something has to say which words the list filters by, and a picker
+  /// that filters on the wrong words looks perfectly correct while hiding the
+  /// thing somebody typed the name of.
+  final Widget? child;
 
   final bool enabled;
 }
@@ -278,8 +289,10 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                             dense: true,
                             selected: o.value == widget.value,
                             enabled: o.enabled,
-                            title: Text(o.label),
-                            subtitle: o.detail == null ? null : Text(o.detail!),
+                            title: o.child ?? Text(o.label),
+                            subtitle: o.detail == null || o.child != null
+                                ? null
+                                : Text(o.detail!),
                             onTap: () =>
                                 Navigator.of(context).pop(_Picked<T>(o.value)),
                           ),

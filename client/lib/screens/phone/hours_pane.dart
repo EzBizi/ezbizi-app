@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
@@ -321,23 +323,13 @@ class _HoursPaneState extends State<HoursPane> {
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          // A dropdown sizes itself to its WIDEST menu item unless told not
-          // to, so one long label pushes the whole control past the screen —
-          // 185px past it at 375, which is how the Arizona label broke a
-          // phone. isExpanded makes it fit its parent and ellipsise instead,
-          // which is why the labels could later be spelled out from "no DST"
-          // to "no daylight saving" without the width coming back — the test
-          // at 375 is what says so rather than the reasoning.
-          isExpanded: true,
-          initialValue: draft.timezone,
-          decoration: const InputDecoration(
-            labelText: 'Clock these hours run on',
-            border: OutlineInputBorder(),
-          ),
-          items: [
+        SearchPickerField<String>(
+          value: draft.timezone,
+          label: 'Clock these hours run on',
+          border: OutlineInputBorder(),
+          options: [
             for (final zone in zonesFor(draft.timezone))
-              DropdownMenuItem(value: zone, child: Text(_zoneLabel(zone))),
+              SearchOption(value: zone, label: _zoneLabel(zone)),
           ],
           onChanged: (v) => setState(() => draft.timezone = v ?? 'UTC'),
         ),

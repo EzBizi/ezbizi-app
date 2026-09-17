@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/general_pane.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -80,12 +81,12 @@ void main() {
       reason: 'the screen never said whose settings these are',
     );
     expect(
-      find.widgetWithText(DropdownButtonFormField<String>, 'Company'),
+      find.widgetWithText(SearchPickerField<String>, 'Company'),
       findsNothing,
       reason: 'a dropdown with one entry is a decision nobody is making',
     );
     expect(
-      find.widgetWithText(DropdownButtonFormField<String>, 'Line'),
+      find.widgetWithText(SearchPickerField<String>, 'Line'),
       findsNothing,
       reason: 'the line picker is what made this a per-number editor',
     );
@@ -96,7 +97,7 @@ void main() {
     await _pump(tester, companies: 2);
 
     expect(
-      find.widgetWithText(DropdownButtonFormField<String>, 'Company'),
+      find.widgetWithText(SearchPickerField<String>, 'Company'),
       findsOneWidget,
     );
   });

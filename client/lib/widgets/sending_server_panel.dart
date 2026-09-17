@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/search_picker.dart';
-
 import '../core/api_client.dart';
 import '../core/cascade_words.dart';
 import '../core/session.dart';
+import '../widgets/search_picker.dart';
 
 /// Where a business connects the mail server its own mail goes out through.
 ///
@@ -501,18 +500,18 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
       Row(
         children: [
           Expanded(
-            child: DropdownButtonFormField<int>(
-              initialValue: _port,
-              decoration: const InputDecoration(labelText: 'Port'),
-              // 587 and 465 only, matching the server. 25 is relay rather than
-              // submission and accepting it would let this form reach a class
-              // of machine the submission ports do not.
-              items: const [
-                DropdownMenuItem(value: 587, child: Text('587 — STARTTLS')),
-                DropdownMenuItem(value: 465, child: Text('465 — TLS')),
+            child: SearchPickerField<int>(
+                     value: _port,
+                     label: 'Port',
+                     // 587 and 465 only, matching the server. 25 is relay rather than
+                     // submission and accepting it would let this form reach a class
+                     // of machine the submission ports do not.
+                     options: const [
+                SearchOption(value: 587, label: '587 — STARTTLS'),
+                SearchOption(value: 465, label: '465 — TLS'),
               ],
-              onChanged: (value) => setState(() => _port = value ?? 587),
-            ),
+                     onChanged: (value) => setState(() => _port = value ?? 587),
+                   ),
           ),
           const SizedBox(width: 12),
           Expanded(

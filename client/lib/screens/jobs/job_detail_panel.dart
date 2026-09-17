@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';

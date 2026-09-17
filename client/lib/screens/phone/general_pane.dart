@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › General — what answers a call, set in one place.
 ///
@@ -242,18 +243,15 @@ class _GeneralPaneState extends State<GeneralPane> {
         // the company is stated rather than offered — a dropdown with one
         // entry is a decision nobody is making.
         if (_companies.length > 1)
-          DropdownButtonFormField<String>(
-            initialValue: _companyId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Company',
-              border: OutlineInputBorder(),
-              helperText: 'These settings apply to every line this company '
+          SearchPickerField<String>(
+            value: _companyId,
+            label: 'Company',
+            helperText: 'These settings apply to every line this company '
                   'has.',
-            ),
-            items: [
+            border: OutlineInputBorder(),
+            options: [
               for (final company in _companies)
-                DropdownMenuItem(value: company.id, child: Text(company.name)),
+                SearchOption(value: company.id, label: company.name),
             ],
             onChanged: (id) {
               setState(() => _companyId = id);
@@ -306,20 +304,15 @@ class _GeneralPaneState extends State<GeneralPane> {
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          initialValue: _afterHours,
-          decoration: const InputDecoration(
-            labelText: '4. Out of hours',
-            border: OutlineInputBorder(),
-            helperText: 'Used by the CLOSED branch above.',
-          ),
-          items: const [
-            DropdownMenuItem(value: 'voicemail', child: Text('Take a voicemail')),
-            DropdownMenuItem(value: 'forward', child: Text('Forward the call')),
-            DropdownMenuItem(
-              value: 'closed',
-              child: Text('Say it is closed and hang up'),
-            ),
+        SearchPickerField<String>(
+          value: _afterHours,
+          label: '4. Out of hours',
+          helperText: 'Used by the CLOSED branch above.',
+          border: OutlineInputBorder(),
+          options: const [
+            SearchOption(value: 'voicemail', label: 'Take a voicemail'),
+            SearchOption(value: 'forward', label: 'Forward the call'),
+            SearchOption(value: 'closed', label: 'Say it is closed and hang up'),
           ],
           onChanged: (v) => setState(() => _afterHours = v ?? 'voicemail'),
         ),
@@ -475,22 +468,19 @@ class _GeneralPaneState extends State<GeneralPane> {
     // dropdown throw rather than fall back to None.
     final selected = items.any((i) => i.id == value) ? value : null;
 
-    return DropdownButtonFormField<String?>(
-      initialValue: selected,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label,
-        helperText: helper,
-        helperMaxLines: 3,
-        border: const OutlineInputBorder(),
-      ),
-      items: [
-        DropdownMenuItem<String?>(value: null, child: Text(none)),
+    return SearchPickerField<String?>(
+             value: selected,
+             label: label,
+             helperText: helper,
+             helperMaxLines: 3,
+             border: const OutlineInputBorder(),
+             options: [
+        SearchOption(value: null, label: none),
         for (final item in items)
-          DropdownMenuItem<String?>(value: item.id, child: Text(item.name)),
+          SearchOption(value: item.id, label: item.name),
       ],
-      onChanged: onChanged,
-    );
+             onChanged: onChanged,
+           );
   }
 }
 

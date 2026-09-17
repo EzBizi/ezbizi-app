@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../widgets/search_picker.dart';
-
 import '../core/api_client.dart';
 import '../core/job_status.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
+import '../widgets/search_picker.dart';
 import 'calendar_day_field.dart';
 import 'franchise_field.dart';
 import 'lead_thread.dart';

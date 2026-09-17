@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'item_pane.dart';
 
 /// Add is the same 75% pane as a location, not a modal.

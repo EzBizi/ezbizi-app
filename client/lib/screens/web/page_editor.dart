@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
@@ -473,22 +475,19 @@ class _PageEditorState extends State<PageEditor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: withShortcode(
-        DropdownButtonFormField<String>(
-        initialValue: names.contains(current) ? current : null,
-        decoration: InputDecoration(
-          labelText: '${field['label']}',
+        SearchPickerField<String>(
+          value: names.contains(current) ? current : null,
+          label: '${field['label']}',
           isDense: true,
           helperText: stored.isEmpty && current.isNotEmpty
               // Said out loud, so nobody reads the website's own answer as
               // something EzBizi has been told to publish.
               ? 'From the website. Change it to publish something else.'
               : '${field['hint']}',
-        ),
-        items: [
-          const DropdownMenuItem(value: '', child: Text('Not set')),
-          for (final name in names)
-            DropdownMenuItem(value: name, child: Text(name)),
-        ],
+          options: [
+            const SearchOption(value: '', label: 'Not set'),
+            for (final name in names) SearchOption(value: name, label: name),
+          ],
           onChanged: !widget.canEdit
               ? null
               : (value) => setState(() => _edits[key] = value ?? ''),

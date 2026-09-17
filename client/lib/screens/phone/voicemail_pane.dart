@@ -1,10 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../widgets/search_picker.dart';
-
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/search_picker.dart';
 import 'settings_pane.dart';
 
 /// Phone › Settings › Voicemail — the greeting, not the messages.

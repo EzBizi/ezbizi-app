@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Web Management → Widgets: how a site's chat bubble and contact form look,
 /// and what the form asks.
@@ -1113,22 +1114,18 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: DropdownButtonFormField<String>(
-        // Sizes to its slot and ellipsises, rather than to its longest option.
-        // Without it the button keeps its intrinsic width and overflows the row
-        // by 13px once a pane is dragged narrow — which nothing could do until
-        // the panes became draggable.
-        isExpanded: true,
-        initialValue: options.contains(value) ? value : options.first,
-        decoration: InputDecoration(labelText: label, isDense: true),
-        items: [
+      child: SearchPickerField<String>(
+               value: options.contains(value) ? value : options.first,
+               label: label,
+               isDense: true,
+               options: [
           for (final option in options)
-            DropdownMenuItem(value: option, child: Text(option)),
+            SearchOption(value: option, label: option),
         ],
-        onChanged: widget.canEdit
+               onChanged: widget.canEdit
             ? (chosen) => chosen == null ? null : onChanged(chosen)
             : null,
-      ),
+             ),
     );
   }
 }
@@ -1184,26 +1181,21 @@ class _FieldList extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 2,
-                  child: DropdownButtonFormField<String>(
-                    // See the note on the other one: sizes to its slot, so a
-                    // narrowed pane ellipsises instead of overflowing.
-                    isExpanded: true,
-                    initialValue: types.contains(fields[i]['type'])
+                  child: SearchPickerField<String>(
+                           value: types.contains(fields[i]['type'])
                         ? '${fields[i]['type']}'
                         : types.first,
-                    decoration: const InputDecoration(
-                      labelText: 'Answer',
-                      isDense: true,
-                    ),
-                    items: [
+                           label: 'Answer',
+                           isDense: true,
+                           options: [
                       for (final type in types)
-                        DropdownMenuItem(value: type, child: Text(type)),
+                        SearchOption(value: type, label: type),
                     ],
-                    onChanged: canEdit
+                           onChanged: canEdit
                         ? (value) =>
                             value == null ? null : _replace(i, 'type', value)
                         : null,
-                  ),
+                         ),
                 ),
                 IconButton(
                   tooltip: 'Remove',
