@@ -279,6 +279,56 @@ void main() {
     );
   });
 
+  /// NO USER-FACING STRING IN THIS SCREEN IS WRITTEN HERE.
+  ///
+  /// Clock In found two hardcoded English tags in this file, reported it
+  /// clean on the strength of a grep for `text:` and `Text(`, and that grep
+  /// could not see a `tooltip:` -- so there were five. **The fix is not a
+  /// better pattern.** A pattern only knows the shapes somebody thought of,
+  /// and the next bare string will arrive in a shape neither of us listed.
+  ///
+  /// So this looks at the STRINGS rather than at the parameters holding them:
+  /// any literal that reads as a sentence, wherever it sits. A key has no
+  /// space; a duration format starts with a digit or a brace; prose does not.
+  test('no sentence is hardcoded in this screen', () {
+    final source = File(
+      'lib/screens/hr/work_hours_tab.dart',
+    ).readAsStringSync();
+
+    // Doc comments and comments are prose by design.
+    final code = source
+        .split('\n')
+        .where((line) {
+          final t = line.trimLeft();
+
+          return !t.startsWith('///') && !t.startsWith('//');
+        })
+        .join('\n');
+
+    final prose = RegExp("'([A-Za-z][A-Za-z]* [a-z][A-Za-z ,.]*)'");
+    final found = prose
+        .allMatches(code)
+        .map((m) => m.group(1)!)
+        .toSet();
+
+    // The three awaiting `b166aae1`, which adds the keys AND the Dart
+    // fallbacks. Using them before it merges would render the raw key as a
+    // tooltip, which is worse than English. They come out of this list and
+    // out of the screen in the same commit.
+    const pending = {
+      'Previous week',
+      'Next week',
+      'still clocked in',
+    };
+
+    expect(
+      found.difference(pending),
+      isEmpty,
+      reason: 'A sentence written here ships English to a Spanish '
+          'organization. It belongs in UiStrings, and Clock In adds the row.',
+    );
+  });
+
   test('the tab names no weekday of its own', () {
     final source = File('lib/screens/hr/work_hours_tab.dart').readAsStringSync();
 
