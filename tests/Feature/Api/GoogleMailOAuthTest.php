@@ -181,7 +181,26 @@ class GoogleMailOAuthTest extends TestCase
 
         $this->signedInAs($reader)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
-            ->assertForbidden();
+            ->assertForbidden()
+            // And it says WHICH refusal, which is the half that cannot rot.
+            //
+            // Both causes available to this request answer 403: the missing
+            // `email.edit`, which is what this test is about, and the
+            // `email.settings.view` tab in front of the route. Holding the tab
+            // in the fixture above keeps them apart today -- but that is a rule
+            // somebody has to remember, and a fixture tidied in a year turns
+            // this green assertion into one that measures the wrong thing
+            // silently. The sentence cannot be confused: the tab refuses with
+            // "permission to open this tab" and MailboxAccess with this.
+            //
+            // The shape came from the Web Management session, 2026-09-17,
+            // who found it in their own WebTenantIsolationTest: where a refusal
+            // has more than one possible cause, assert something the other
+            // causes cannot produce.
+            ->assertJsonPath(
+                'message',
+                fn (string $said) => str_contains($said, 'connect this inbox'),
+            );
 
         $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.settings.view', 'email.edit']);
 
@@ -956,7 +975,13 @@ class GoogleMailOAuthTest extends TestCase
 
         $this->signedInAs($reader)
             ->getJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/status")
-            ->assertForbidden();
+            ->assertForbidden()
+            // Names the refusal rather than its status -- see the note on the
+            // first of these. A tab refusal says "open this tab".
+            ->assertJsonPath(
+                'message',
+                fn (string $said) => str_contains($said, 'connect this inbox'),
+            );
 
         $this->signedInAs($t['admin'])
             ->getJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/status")

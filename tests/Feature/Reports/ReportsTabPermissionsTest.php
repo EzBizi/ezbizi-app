@@ -173,6 +173,83 @@ class ReportsTabPermissionsTest extends TestCase
     }
 
     /**
+     * A TAB GRANT NARROWS. IT NEVER WIDENS.
+     *
+     * Settings read the new gate as letting somebody with the tab and without
+     * `reports.build` into the Experimental pane, which would put an affordance
+     * and its gate in disagreement: they could read the report and not connect
+     * the Workiz account it reads from.
+     *
+     * Measured here rather than argued: the controller still calls
+     * `authorize('createOnOrganization')`, which SavedReportPolicy maps to
+     * `reports.build`. So the tab is an AND on top of the capability, not an
+     * alternative to it, and the pane needs both.
+     *
+     * This is the assertion that would go red if a later change ever made the
+     * route gate the only one — which is the version of this where the tab
+     * silently becomes a way IN rather than a way to withhold.
+     */
+    public function test_the_tab_alone_does_not_open_the_pane_without_the_capability(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $watcher = $this->userWithRole($tenant, 'Watcher', [
+            'reports.view',
+            'reports.experimental.view',
+        ]);
+
+        $this->signedInAs($watcher)
+            ->getJson('/api/v1/reports/experimental/calls')
+            ->assertForbidden();
+    }
+
+    /**
+     * READING PROFIT & LOSS AND CONNECTING ITS BASE ARE ONE GRANT.
+     *
+     * Reading a base needs `profit_loss.view`. Connecting one needs
+     * `reports.build`, because SocialProvider's Airtable arm says so — written
+     * before Profit & Loss was a module of its own, when the only thing reading
+     * a base was going to be a report.
+     *
+     * So the two grants come apart in both directions, and this asserts the
+     * live behaviour rather than the behaviour I would choose. It is here so
+     * that whoever settles it has the measurement instead of a description, and
+     * so that changing the permission has to change a test that says why.
+     */
+    public function test_reading_profit_and_loss_and_connecting_a_base_are_different_grants(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $accountant = $this->userWithRole($tenant, 'Accountant', ['profit_loss.view']);
+
+        // Faked, because past the permission gate this controller VERIFIES the
+        // base with Airtable. Without this the test reaches the real API from
+        // a permission suite, which is the trap the RingCentral control here
+        // already caught once.
+        Http::fake(['api.airtable.com/*' => Http::response([], 401)]);
+
+        // Reads the figures.
+        $this->signedInAs($accountant)
+            ->getJson('/api/v1/reports/profit-loss/sources')
+            ->assertOk();
+
+        // ...and may connect the base they read FROM, which is the half that
+        // was wrong until today: Connect asked for `reports.build`, so the
+        // person who reads the figures every week could not attach a new base
+        // and somebody who could never open them was offered the button.
+        //
+        // Not asserting 200 - there is no Airtable to verify against here, and
+        // a stubbed success would be testing Http::fake. What is asserted is
+        // that the refusal is no longer the PERMISSION one.
+        $this->signedInAs($accountant)
+            ->postJson('/api/v1/social/airtable', [
+                'api_token' => 'pat_whatever',
+                'base_id' => 'appWhbwht0xgB5Yut',
+            ])
+            ->assertStatus(422);
+    }
+
+    /**
      * CONNECTING WORKIZ FROM INTEGRATIONS IS NOT THE EXPERIMENTAL TAB.
      *
      * The same controller action is registered twice: once under
