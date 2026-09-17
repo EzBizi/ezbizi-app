@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0233',
+      date: '17 Sep 2026',
+      items: [
+        'Clock in-out is now Work Hours, and sits beside Dashboard.',
+        'Work Hours knows the week for each person: hours worked, days worked, and an average per day, counted from whichever day your organization starts its week on. Everybody is listed, including anyone who worked nothing.',
+        'A variable in an automation email or WhatsApp message now carries its value. It was always blank, and every variable box now says which names work.',
+        'A text message from a rule can name the caller.',
+        'A quotation mark typed into a rule no longer arrives as a string of symbols.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0232',
       date: '16 Sep 2026',
       items: [
