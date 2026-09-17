@@ -25,11 +25,30 @@ class AirtableConnectTest extends TestCase
 
     // ── the gate ─────────────────────────────────────────────────
 
-    public function test_somebody_without_reports_build_cannot_connect_a_base(): void
+    /**
+     * CONNECT FOLLOWS THE SCREEN THAT READS IT, which is `profit_loss.view`.
+     *
+     * This asked for `reports.build` until 2026-09-17, and its name said so.
+     * The permission moved when Profit & Loss became a module of its own: the
+     * two had come apart in both directions, so an accountant who reads the
+     * figures every week could not attach a base, and somebody holding
+     * `reports.build` was offered Connect for figures they cannot open.
+     *
+     * The role below deliberately holds `reports.build` as well as the two it
+     * had. Without that this test would still pass and would no longer be
+     * testing anything: a role with neither permission is refused whichever
+     * rule is in force, and the case that distinguishes them is somebody who
+     * holds the OLD one and not the new.
+     */
+    public function test_reports_build_alone_cannot_connect_a_base(): void
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $runner = $this->userWithRole($tenant, 'Runner', ['reports.view', 'marketing.edit']);
+        $runner = $this->userWithRole($tenant, 'Runner', [
+            'reports.view',
+            'reports.build',
+            'marketing.edit',
+        ]);
 
         $this->signedInAs($runner)
             ->postJson('/api/v1/social/airtable', [
