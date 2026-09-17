@@ -109,9 +109,11 @@ class FlowEdge {
 
 /// A graph, with its nodes indexed and its counts ready.
 class CallFlowGraph {
-  CallFlowGraph({required this.nodes, required this.edges, String? entry})
-    : entry = entry ?? entryId,
-      _byId = {for (final n in nodes) n.id: n};
+  CallFlowGraph({
+    required this.nodes,
+    required this.edges,
+    required this.entry,
+  }) : _byId = {for (final n in nodes) n.id: n};
 
   final List<FlowNode> nodes;
   final List<FlowEdge> edges;
@@ -119,15 +121,20 @@ class CallFlowGraph {
 
   /// Where the walk begins, which is not the same word in every module.
   ///
-  /// Phone's is `caller` and always was. Inspection's is `start`, and it is a
-  /// field rather than a second constant because the ONE thing the layout does
-  /// with it is measure distance from it -- and a layout that silently used
-  /// Phone's id would place every inspection node in column zero and draw a
-  /// perfectly tidy picture of nothing.
+  /// Phone's is `caller` and Inspection's is `start`. **Required, with no
+  /// default**, and that is Phone's own argument: a default of `caller` works
+  /// for whoever did not pass one, so renaming Phone's entry node would keep
+  /// inspections drawing correctly and silently stop working for Phone — the
+  /// module that owns the word would be the one it broke.
+  ///
+  /// The ONE thing the layout does with this is measure distance from it, so
+  /// an entry that names no node places every box in column zero: a perfectly
+  /// tidy picture of nothing, with no error anywhere.
+  ///
+  /// It is also why `caller` does not appear in this file any more. A shared
+  /// canvas holding one caller's vocabulary is the leak the seam exists to
+  /// prevent.
   final String entry;
-
-  /// Phone's entry, and the default for a graph that does not say.
-  static const String entryId = 'caller';
 
   FlowNode? node(String id) => _byId[id];
 
@@ -143,7 +150,12 @@ class CallFlowGraph {
 
   List<FlowEdge> out(String id) => [for (final e in edges) if (e.from == id) e];
 
-  static CallFlowGraph? fromJson(Map<String, dynamic>? json) {
+  /// [entry] is the id of the node the walk begins at, which the caller knows
+  /// and this cannot see: the payload does not name it.
+  static CallFlowGraph? fromJson(
+    Map<String, dynamic>? json, {
+    required String entry,
+  }) {
     if (json == null) return null;
 
     final rawNodes = json['nodes'];
@@ -162,6 +174,7 @@ class CallFlowGraph {
         for (final e in rawEdges)
           if (e is Map<String, dynamic>) FlowEdge.fromJson(e),
       ],
+      entry: entry,
     );
   }
 }
@@ -211,7 +224,7 @@ class FlowLayout {
 
 /// Place every node in a column by its distance from the caller.
 ///
-/// Breadth-first from [CallFlowGraph.entryId], so a node's column is the
+/// Breadth-first from [CallFlowGraph.entry], so a node's column is the
 /// fewest keypresses a caller could be from it — which is the order somebody
 /// reads the chart in.
 ///

@@ -219,10 +219,77 @@ enum SocialProvider: string
      *
      * The rule is that the permission follows the module that USES the
      * connection, because that is who can tell whether it is the right account.
+     *
+     * ── Several of these arms are not Marketing's to decide ─────────
+     *
+     * The file is Marketing's; `leads.edit`, `reviews.edit`, `reports.build`
+     * and `newsletter.send` are those modules' semantics sitting in it. That is
+     * deliberate — ONE place answers "what does Connect need", and a second map
+     * elsewhere is a second map that drifts into a wrong control on a
+     * customer's screen with nothing failing. **Changing an arm is its own
+     * module's to make, and an edit here from another module is not a stranger
+     * in this file.** Reports moved the Airtable arm on 2026-09-16 by applying
+     * the rule above rather than inventing one, which is the mechanism working.
+     *
+     * ── What makes an arm go wrong, and it is not this file changing ─
+     *
+     * An arm names a permission that opened the reading screen WHEN IT WAS
+     * WRITTEN. The screen can move behind a narrower grant later and nothing
+     * here fails: per-tab permissions (2026-09-17) put every module's panes
+     * behind `{module}.{tab}.view`, so an arm naming `{module}.edit` can now be
+     * held by somebody who cannot open the tab that reads the account. Airtable
+     * was exactly that and was caught. **When a module declares tabs, re-read
+     * its arm here** — the drift is silent in both directions, offering Connect
+     * to somebody who cannot see what it connects, and refusing it to the
+     * person who reads the thing every day.
+     *
+     * ── Re-read does NOT mean narrow, and the test is not the screen ─
+     *
+     * Two corrections from Leads, who re-read theirs and correctly left it
+     * alone (`4120aaf0`).
+     *
+     * **A tab key can be WIDER than the module action it replaces.** Every
+     * dispatcher holds `leads.local_services.view` after the migration that
+     * shipped with the split, so moving that arm to the tab key would have
+     * handed the connecting of an advertising account to every dispatcher.
+     * "Re-read your arm" reads as a prompt to narrow; it is a prompt to
+     * MEASURE, and the answer is sometimes wider and sometimes unchanged.
+     *
+     * **And the test is not "can they open the screen".** It is: is anybody
+     * better off once it is connected? Workiz and Airtable moved because the
+     * connection's only purpose was a screen the connector could not open —
+     * connect it and nobody gains. A Google Ads account connected by somebody
+     * who never watches the Google tab still delivers every enquiry to the
+     * people who do, still fires the automations, still books the work. The
+     * control works; it is simply not for the connector's own reading.
      */
     public function connectPermission(): string
     {
         return match ($this) {
+            /*
+             * RE-READ AFTER LEADS DECLARED TABS (2026-09-17), and deliberately
+             * left at the module's edit. Marketing raised it; this is the
+             * answer, written here so the next person does not raise it again.
+             *
+             * Leads' four tabs are not panes behind their own routes - they are
+             * a filter over ONE list, and the Connected sources panel they
+             * would have to be inside sits ABOVE that list, at module level. So
+             * a narrower arm would name a grant that does not gate the surface
+             * this button is drawn on.
+             *
+             * And the Airtable test does not catch here. Workiz and Airtable
+             * moved because their connection's ONLY purpose was a screen the
+             * connector could not open - connect it and nobody is any better
+             * off. A Google Ads account connected by somebody who does not
+             * watch the Google tab still delivers every enquiry to the people
+             * who do, still fires the automations, still books the work. The
+             * control works; it is simply not for their own reading.
+             *
+             * The direction that WOULD be wrong is the other one: `leads.
+             * local_services.view` is held by every dispatcher after the
+             * migration, and connecting an advertising account is not a
+             * dispatcher's act.
+             */
             self::GoogleAds => 'leads.edit',
             self::Thumbtack => 'leads.edit',
             self::GoogleBusinessProfile => 'reviews.edit',

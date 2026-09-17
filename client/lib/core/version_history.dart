@@ -15,7 +15,11 @@ class VersionHistory {
         'Every popup dropdown in the app is now a list you can search. On short lists it still just opens, so nothing asks you to type where you could point.',
         'Inspections now have a Flow view beside the phone preview in the Builder, drawn the same way as the call flow chart. It shows the order a technician walks the screens in, and marks any screen that can never be shown - a condition asking about an answer that has not been given yet looks identical to a working one in the list.',
         'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
-        'A role can be given single tabs inside a module rather than the whole module. Human Resources is the first, and nobody loses a tab they could open before.',
+        'A role can be given single tabs inside a module rather than the whole module, and the sub tabs inside those. Nobody loses a tab they could open before, and a module with no tab opened to you now says so rather than showing a blank pane.',
+        'The phone stays registered. A desk left open all day keeps ringing, instead of going quiet after an hour.',
+        'Pressing Tab moves to the next field, instead of jumping out to the sidebar and the lists beside it.',
+        'The call flow chart redraws as soon as you change something from it.',
+        'Work Hours reads newest day first and stops at today, rather than listing days nobody has worked yet.',
       ],
     ),
     VersionRelease(

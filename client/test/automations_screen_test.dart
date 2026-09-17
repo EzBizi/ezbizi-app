@@ -450,7 +450,7 @@ void main() {
     testWidgets('is refused the controls it cannot use, and told why', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       // Still on screen. Hiding it is not compliance — somebody looking for
       // "New automation" and not finding it concludes the app is broken.
@@ -479,7 +479,7 @@ void main() {
     testWidgets('sees the reason inside the row menu, not a grey line', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       await _tap(tester, find.byType(PopupMenuButton<String>));
 
@@ -504,7 +504,7 @@ void main() {
     testWidgets('cannot reach the builder by opening the tab directly', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       await _tap(tester, find.text('Build'));
 
@@ -605,7 +605,7 @@ void main() {
   /// label, because the label is for the reader and the engine compares the
   /// value - a dropdown that showed the right words and sent the wrong string
   /// would look completely correct on screen.
-  testWidgets('a value with a fixed set is a dropdown, and sends the wire value', (
+  testWidgets('a value with a fixed set is a picker, and sends the wire value', (
     tester,
   ) async {
     Map<String, dynamic>? sent;
@@ -628,10 +628,12 @@ void main() {
     await _tap(tester, find.text('Add a condition'));
     await _type(tester, 'Field', 'source');
 
-    // The entries do not exist until the menu is open, which is also the point:
-    // before this change the same spot was a TextField and nothing listed the
-    // values at all.
-    await _tap(tester, find.byType(DropdownMenu<String>).last);
+    // The options do not exist until the picker is open, which is also the
+    // point: before this change the same spot was a TextField and nothing
+    // listed the values at all.
+    // The LAST picker in the condition row is the value: the field picker sits
+    // before it, and both are the same widget type now.
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await _tap(tester, find.text('Website live chat  (website_chat)').last);
 
     await _tap(tester, find.text('Add a step'));
@@ -1016,6 +1018,71 @@ void main() {
     expect(sent!['scope_id'], 'f-1');
   });
 
+  /// A TAB SOMEBODY MAY NOT OPEN IS NOT DRAWN, and the one they may still is.
+  ///
+  /// Jose, 2026-09-17: *"i should be able to grant access by sub tab as well"*.
+  /// Build hands somebody the catalogue — a map of every trigger and action
+  /// this installation can perform — so it is a separate grant from reading the
+  /// rules that already exist.
+  ///
+  /// THE POSITIVE HALF IS THE ONE THAT MATTERS. A screen that drew nothing at
+  /// all would pass an assertion that only checked Build was gone, and a rule
+  /// reader losing their rules is the failure nobody reports as a permission
+  /// change — they report that their automations have disappeared.
+  testWidgets('without the build grant the tab is gone and the list remains', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        permissions: const ['automations.view', 'automations.rules.view'],
+      ),
+    );
+
+    expect(find.text('Build'), findsNothing);
+    expect(find.text('Chase completions'), findsOneWidget);
+  });
+
+  /// THE CATALOGUE ANSWERS THE QUESTION A PICKER CANNOT.
+  ///
+  /// Jose, 2026-09-17: *"i set website_chat manually cause i knew it, but i
+  /// dont know the rest ... give me a catalog as well to see them all"*. A
+  /// picker answers "what goes in THIS box", which requires already knowing
+  /// which field to hang it off; this answers "what is there at all".
+  ///
+  /// Asserted on a field with a closed set AND one without, because the two
+  /// say different things and a catalogue that only listed the closed ones
+  /// would leave somebody believing the others do not exist.
+  testWidgets('the catalogue lists every field and the values it allows', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        triggerFields: const ['source', 'contact_name'],
+        triggerFieldValues: const {
+          'source': [
+            {'value': 'website_chat', 'label': 'Website live chat'},
+            {'value': 'thumbtack', 'label': 'Thumbtack'},
+          ],
+        },
+        fieldSamples: const {'contact_name': 'Marta Ruiz'},
+      ),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+
+    await _tap(tester, find.textContaining('What this event carries'));
+
+    // The closed set, both values, with the wire name beside the plain one.
+    expect(find.text('Website live chat - website_chat'), findsOneWidget);
+    expect(find.text('Thumbtack - thumbtack'), findsOneWidget);
+
+    // And the open field, named, with a real example rather than nothing.
+    expect(find.textContaining('Last one seen: Marta Ruiz'), findsOneWidget);
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -1060,7 +1127,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Set to'),
-        matching: find.byType(DropdownMenu<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -1973,6 +2040,11 @@ MockClientHandler _handler({
   // tests was written against.
   List<String> permissions = const [
     'automations.view',
+    // The two TABS, since 2026-09-17. Absent, the screen draws no tab bar and
+    // no panes — which is correct behaviour and would red every test here for a
+    // reason that has nothing to do with what each one is about.
+    'automations.rules.view',
+    'automations.build.view',
     'automations.create',
     'automations.edit',
     'automations.delete',

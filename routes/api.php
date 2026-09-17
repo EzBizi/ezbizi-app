@@ -734,30 +734,53 @@ Route::prefix('v1')
         // unlike the public `web/plugin/values` further up this file, because
         // it hands over code rather than a company's data.
         Route::get('web/plugin', [WebSitesController::class, 'downloadPlugin']);
-        Route::apiResource('web/sites', WebSitesController::class)
-            ->parameters(['sites' => 'site']);
-        Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
-        // The browser key. Separate from the token above because they are different
-        // credentials with different blast radii — see rotatePublicKey.
-        Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
-        // The site the company's others inherit from, per key, wherever they
-        // say nothing themselves. `edit` gates it: choosing the primary changes
-        // what every other site publishes.
-        Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
-        Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
-        Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
-        // The pages and posts on the site itself, read live through the account
-        // it handed us at pairing. Nothing stored, so nothing to keep in step.
-        Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
 
         /*
-         * Before the {site}/content/{path} shape anybody adds later: a literal
-         * segment registered after a wildcard one is unreachable.
+         * NO TAB GATE ON `web/sites` ITSELF, and it is not an oversight.
+         *
+         * Both tabs draw the same rail of hosts from `GET web/sites` —
+         * seo_tab.dart:143 and widgets_tab.dart:59 — so a gate naming either
+         * tab takes the rail away from the other, and the pane behind it is an
+         * empty list rather than a refusal anybody can read. It stays on
+         * `web_management.view`/`.edit` as before, and the per-record policies
+         * keep doing their job.
+         *
+         * Everything BELOW is single-tab, measured by grepping the client for
+         * each endpoint's consumers rather than by reading the URL:
+         *   values, content, content/options, token, public-key, primary
+         *                                   → seo_tab, page_editor, templates_pane
+         *   widgets (show/update/destroy)   → widgets_tab, and nothing else
          */
-        Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
-        Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
-        Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
-        Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+        Route::apiResource('web/sites', WebSitesController::class)
+            ->parameters(['sites' => 'site']);
+
+        Route::middleware('permission:web_management.seo.view')->group(function () {
+            Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
+            // The browser key. Separate from the token above because they are different
+            // credentials with different blast radii — see rotatePublicKey.
+            Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
+            // The site the company's others inherit from, per key, wherever they
+            // say nothing themselves. `edit` gates it: choosing the primary changes
+            // what every other site publishes.
+            Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
+            Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
+            Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+            // The pages and posts on the site itself, read live through the account
+            // it handed us at pairing. Nothing stored, so nothing to keep in step.
+            Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
+
+            /*
+             * Before the {site}/content/{path} shape anybody adds later: a literal
+             * segment registered after a wildcard one is unreachable.
+             */
+            Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
+        });
+
+        Route::middleware('permission:web_management.widgets.view')->group(function () {
+            Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
+            Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
+            Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+        });
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
         Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
         Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);
@@ -775,13 +798,45 @@ Route::prefix('v1')
         Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
         Route::apiResource('inventory/sales', InventorySalesController::class)
             ->only(['index', 'store', 'show']);
+        /*
+         * The two Services chips gate the WRITES only. Both read paths below
+         * serve an audience outside the chip that would otherwise gate them,
+         * so gating them would refuse somebody doing a job they are entitled
+         * to do, and it would do it silently — an empty menu, not an error.
+         *
+         *  - `GET services` is the catalogue Jobs prices a line out of, in
+         *    client/lib/screens/jobs/job_lines_tab.dart. A dispatcher who
+         *    never opens the Services screen still has to read it.
+         *  - `GET services/groups` and `GET services/labels` are read by the
+         *    CATALOGUE chip's own pickers (add_service_pane, service_pane) as
+         *    much as by Settings. Behind `services.settings.view` they would
+         *    empty the group and label menus for somebody holding Catalogue.
+         *
+         * Same shape as `hr/people/scope-options`: a route with two audiences
+         * keeps its gate beside the split already inside it — here the
+         * existing ServicePolicy check, which is still `services.view` — and
+         * not in front of the group. Hiding the chip hides the SCREEN; the
+         * catalogue stays readable where another module legitimately needs it.
+         */
         Route::get('services/groups', [ServiceGroupsController::class, 'index']);
-        Route::post('services/groups', [ServiceGroupsController::class, 'store']);
-        Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
         Route::get('services/labels', [ServiceLabelsController::class, 'index']);
-        Route::post('services/labels', [ServiceLabelsController::class, 'store']);
-        Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
-        Route::apiResource('services', ServicesController::class);
+
+        Route::middleware('permission:services.settings.view')->group(function () {
+            Route::post('services/groups', [ServiceGroupsController::class, 'store']);
+            Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
+            Route::post('services/labels', [ServiceLabelsController::class, 'store']);
+            Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
+        });
+
+        // Declared before the index/show pair so `services/groups` and
+        // `services/labels` are never swallowed by `services/{service}`.
+        Route::middleware('permission:services.catalogue.view')->group(function () {
+            Route::apiResource('services', ServicesController::class)
+                ->only(['store', 'update', 'destroy']);
+        });
+
+        Route::apiResource('services', ServicesController::class)
+            ->only(['index', 'show']);
 
         /*
          * Reports — a builder over the ReportMap
@@ -1787,12 +1842,31 @@ Route::prefix('v1')
         //
         // The catalogue route sits BEFORE the resource, or /automations/catalogue
         // binds as an automation id and 404s.
-        Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
-        // Before the resource for the same reason catalogue is — `trigger-fields`
-        // would otherwise bind as an automation id and 404.
-        Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
-        // Before the resource for the third time, same trap.
-        Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
+        /*
+         * THE BUILD TAB'S OWN ENDPOINTS, gated as the tab is.
+         *
+         * These three are what the builder is made of and nothing else uses
+         * them: the catalogue is a map of every trigger and action this
+         * installation can perform, `trigger-fields` reports what an event
+         * carries, and the templates list is Meta's approved set. A hidden tab
+         * whose endpoints still answer is a decoration, and the URL is one paste
+         * away from anybody who has ever seen the pane.
+         *
+         * NOT APPLIED TO THE REST OF THE BLOCK. `index`, `show`, `runs`,
+         * `update` and `destroy` serve the LIST tab — switching a rule off and
+         * reading its runs are things a person may do without being allowed to
+         * write one — and they already answer to AutomationPolicy. A blanket
+         * middleware here would take the list away from everybody who was only
+         * ever meant to lose the builder.
+         */
+        Route::middleware('permission:automations.build.view')->group(function () {
+            Route::get('automations/catalogue', [AutomationsController::class, 'catalogue']);
+            // Before the resource for the same reason catalogue is —
+            // `trigger-fields` would otherwise bind as an automation id and 404.
+            Route::get('automations/trigger-fields', [AutomationsController::class, 'triggerFields']);
+            // Before the resource for the third time, same trap.
+            Route::get('automations/whatsapp-templates', WhatsAppTemplatesController::class);
+        });
         Route::get('automations/{automation}/runs', [AutomationsController::class, 'runs']);
         Route::post('automations/{automation}/test', [AutomationsController::class, 'test']);
         // Separate from `test` on purpose: that one rehearses and performs

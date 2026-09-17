@@ -1382,6 +1382,40 @@ class ModuleServiceProvider extends ServiceProvider
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
                 /*
+                 * ── Two tabs, and deliberately only two ──
+                 *
+                 * The labels are web_screen.dart's own words. The strip there
+                 * is a fixed list of exactly these two, so there is nothing to
+                 * copy wrongly and nothing else to declare.
+                 *
+                 * WHY THIS IS A REAL GRANT rather than granularity for its own
+                 * sake: SEO is what the website SAYS — the phone number, the
+                 * licence, the address, the copy on each page. Widgets is what
+                 * a visitor can START on it, and every conversation begun there
+                 * becomes a lead. "Whoever writes the site's copy may not
+                 * reconfigure the thing that captures enquiries" is a sentence
+                 * somebody says out loud, which is the test the brief sets.
+                 *
+                 * NOT DECLARED, on purpose: General, Pages, Posts, Templates,
+                 * Content and Hours are panes of a rail INSIDE the SEO tab, not
+                 * tabs. Six more keys would produce a roles editor nobody can
+                 * read, to express a distinction nobody has asked for — the
+                 * same reason Communication left their fifteen-pane Settings
+                 * rail as one `phone.edit`.
+                 *
+                 * THE BROWSER KEY DOES NOT GET A TAB EITHER, and Settings was
+                 * right to ask. Re-issuing it is already `web_management.edit`
+                 * and the button is drawn only behind `canEdit`, so "may look
+                 * at the site" and "may reissue the credential the plugin
+                 * authenticates with" are ALREADY two grants. A tab key is a
+                 * visibility toggle by design; hanging a credential rotation on
+                 * one would be the weaker half of a gate that already holds.
+                 */
+                tabs: [
+                    new TabDefinition('seo', 'SEO'),
+                    new TabDefinition('widgets', 'Widgets'),
+                ],
+                /*
                  * This module was automation-exempt on the grounds that
                  * "nothing here happens on its own". That stopped being true
                  * when the chat and form widgets shipped: a visitor starting a
@@ -1810,6 +1844,23 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
+                /*
+                 * Labels copied from the chip bar in
+                 * client/lib/screens/services_screen.dart, not written fresh — an
+                 * administrator who ticks a name and then cannot find a chip called
+                 * that has been handed a checkbox for the wrong thing, and nothing
+                 * errors.
+                 *
+                 * What these two gate is deliberately NOT everything behind them.
+                 * See the services block in routes/api.php: the catalogue list and
+                 * the group and label lists stay on plain `services.view`, because
+                 * Jobs prices a line out of the catalogue and the Catalogue chip's
+                 * own pickers read the taxonomy. Only WRITES sit behind a chip.
+                 */
+                tabs: [
+                    new TabDefinition('catalogue', 'Catalogue'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 subject: new AutomationSubject(Service::class, 'Service'),
                 /*
                  * No `automationActions`, and that is a ruling rather than an
@@ -1902,6 +1953,42 @@ class ModuleServiceProvider extends ServiceProvider
                  * automations keyed on `lead.*` are untouched.
                  */
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                /*
+                 * THE SOURCES, GRANTED SEPARATELY - Jose, 2026-09-17: "i should
+                 * be able to grant access by sub tab as well ... so this applies
+                 * to every tab and it's sub tabs".
+                 *
+                 * The keys are the WIRE VALUES of `leads.source`, not prettier
+                 * names, because the same four strings are the query parameter,
+                 * the column and the client's chip list. A fifth spelling here
+                 * would be a fifth thing to keep in step, and the one that drifts
+                 * is always the one only a permission reads.
+                 *
+                 * The labels are the words the chip strip actually draws -
+                 * "Google", not "Google Ads"; "Chat", not "Website chat" -
+                 * copied from `_sourceChips` rather than written fresh. An
+                 * administrator who ticks a name they cannot then find on screen
+                 * has been told the name wrongly, and nothing errors.
+                 *
+                 * ── These are not tabs the way HR's are ──────────────
+                 *
+                 * HR's tabs are panes behind their own routes, so a route-level
+                 * `permission:` gate is the whole enforcement. Leads has ONE
+                 * list and one endpoint; the chips are a filter on it. Hiding a
+                 * chip while `All` still returns Thumbtack rows would be a
+                 * decoration rather than a permission - the pane a person is
+                 * refused would be visible in the pane they are allowed.
+                 *
+                 * So the gate is a DATA filter in LeadsController, applied to
+                 * every request including All, and `show()` refuses a single
+                 * lead of a source the reader cannot see. See visibleSources().
+                 */
+                tabs: [
+                    new TabDefinition('local_services', 'Google'),
+                    new TabDefinition('thumbtack', 'Thumbtack'),
+                    new TabDefinition('website_chat', 'Chat'),
+                    new TabDefinition('website_form', 'Forms'),
+                ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
                  * THREE record types, not one, and the other two are why this
@@ -2582,6 +2669,50 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
+                 * Three tabs, each NAMING an action this module already has
+                 * rather than minting a new one (Jose, 2026-09-17: "i should be
+                 * able to grant access by sub tab as well ... this applies to
+                 * every tab and it's sub tabs").
+                 *
+                 * Training's tabs were three separate grants before that ask
+                 * existed, so the only thing missing was the LABEL: the roles
+                 * editor rendered them "View training" / "Monitor training" /
+                 * "Manage training", and an administrator hunting for the box
+                 * that opens the Dashboard had to infer which one it was.
+                 * `action:` supplies the name without a second key.
+                 *
+                 * ── Why these must never MINT, if you are about to change it ──
+                 *
+                 * Dropping `action:` makes `TabDefinition` mint `{key}.view`, so
+                 * a `dashboard` tab becomes `training.dashboard.view` sitting
+                 * beside `training.monitor`: two names for one authority. An
+                 * administrator could then grant the tab without the read and
+                 * get a Dashboard that opens and then refuses every request
+                 * inside it — an affordance without its gate, a state this
+                 * product cannot otherwise reach, and nothing would report it.
+                 *
+                 * The other way round is worse. `monitor` is a DISCLOSURE
+                 * boundary, not a visibility toggle: it decides who may read
+                 * named people's results, and this module shipped two
+                 * cross-franchise disclosures learning to hold that line
+                 * (task-11 review). A tab grant is "visibility only,
+                 * deliberately" by `TabDefinition`'s own docblock, which is the
+                 * right weight for Work Hours and the wrong weight for this.
+                 *
+                 * `TrainingModuleTest::test_every_tab_names_an_existing_action_and_mints_nothing`
+                 * pins it. `ModuleDefinition` also refuses a named action the
+                 * module does not declare, at boot.
+                 *
+                 * The client needs nothing: `training_screen.dart` already omits
+                 * a tab from `_tabs` when its permission is absent, and the keys
+                 * it reads are unchanged by naming.
+                 */
+                tabs: [
+                    new TabDefinition('learn', 'Learn', action: 'view'),
+                    new TabDefinition('dashboard', 'Dashboard', action: 'monitor'),
+                    new TabDefinition('settings', 'Settings', action: 'manage'),
+                ],
+                /*
                  * `assign` DELIBERATELY declares no `actionRequires`, and the
                  * history is worth keeping because the obvious reading is wrong.
                  *
@@ -2722,6 +2853,31 @@ class ModuleServiceProvider extends ServiceProvider
                 // stays a human act. The exemption is about actions only — the
                 // trigger below is not a rule writing a rule, it is a clock.
                 automationExemptBecause: 'An automation that could write automations would escape the loop guards.',
+                /*
+                 * TWO TABS, AND THEY ARE TWO DIFFERENT THINGS TO BE TRUSTED WITH.
+                 *
+                 * Jose, 2026-09-17, relayed with the rest: *"i should be able to
+                 * grant access by sub tab as well ... so this applies to every
+                 * tab and it's sub tabs"*.
+                 *
+                 * The split here is not cosmetic. BUILD is a construction
+                 * surface — the catalogue tells somebody every trigger and
+                 * action this installation can perform, which is a map of the
+                 * whole system. YOUR AUTOMATIONS is a reading surface, and a run
+                 * log names the records a rule touched, which is the disclosure
+                 * half: a person who may read runs can learn about records they
+                 * could not open directly.
+                 *
+                 * Labels are the tab bar's own words, copied from
+                 * automations_screen.dart rather than written fresh — an
+                 * administrator who ticks a name and then cannot find that tab
+                 * has been handed a checkbox for something they were told the
+                 * wrong name for, and nothing errors.
+                 */
+                tabs: [
+                    new TabDefinition('rules', 'Your automations'),
+                    new TabDefinition('build', 'Build'),
+                ],
                 emits: [Automation::class],
                 triggers: [
                     /*

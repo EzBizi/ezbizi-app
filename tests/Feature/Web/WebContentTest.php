@@ -27,6 +27,7 @@ class WebContentTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Web Editor', [
             'web_management.view', 'web_management.edit',
+            'web_management.seo.view', 'web_management.widgets.view',
         ]);
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
@@ -193,7 +194,7 @@ class WebContentTest extends TestCase
         ['site' => $site, 'tenant' => $tenant] = $this->site();
         $this->wordpressReturns([]);
 
-        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $this->signedInAs($viewer)
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/content?type=page")
@@ -202,6 +203,7 @@ class WebContentTest extends TestCase
         $other = $this->provisionTenant('Beta');
         $stranger = $this->userWithRole($other, 'Web Editor', [
             'web_management.view', 'web_management.edit',
+            'web_management.seo.view', 'web_management.widgets.view',
         ]);
 
         $this->signedInAs($stranger)

@@ -308,6 +308,9 @@ class _FakeDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// Settable so a test can be a handset, where the OS rings and EzBizi

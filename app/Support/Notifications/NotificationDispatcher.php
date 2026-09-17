@@ -101,14 +101,16 @@ class NotificationDispatcher
         ?string $eventId = null,
         bool $inAppOnly = false,
         array $roleIds = [],
+        array $userIds = [],
     ): int {
         if (! $this->allows($source, $subject, $inAppOnly)) {
             return 0;
         }
 
-        $recipients = $this->narrowToRoles(
+        $recipients = $this->narrowToChosen(
             $onlyTo !== null ? collect([$onlyTo]) : $this->audienceFor($subject),
             $roleIds,
+            $userIds,
         );
 
         if ($recipients->isEmpty()) {
@@ -427,9 +429,30 @@ class NotificationDispatcher
      * @param  string[]  $roleIds  empty narrows nothing
      * @return Collection<int, User>
      */
-    private function narrowToRoles(Collection $recipients, array $roleIds): Collection
+    private function narrowToChosen(Collection $recipients, array $roleIds, array $userIds = []): Collection
     {
-        if ($roleIds === []) {
+        if ($roleIds === [] && $userIds === []) {
+            return $recipients;
+        }
+
+        /*
+         * A UNION, NOT AN INTERSECTION. "Tell the dispatchers, and also tell
+         * Maria" is one sentence a person says; "tell the dispatchers who are
+         * also Maria" is not, and would silently reach nobody whenever the two
+         * lists disagreed — which is most of the time, since naming a person is
+         * usually how somebody adds a name their roles do not cover.
+         *
+         * Still a NARROWING: reach decided who could be told before either list
+         * is consulted, so naming somebody who cannot see the record does not
+         * tell them. That is the direction Jose's own screen states — "only
+         * those of them who can already see the record".
+         */
+        if ($userIds !== []) {
+            $recipients = $recipients->filter(
+                fn (User $user) => in_array($user->getKey(), $userIds, true)
+                    || ($roleIds !== [] && in_array($user->role_id, $roleIds, true)),
+            )->values();
+
             return $recipients;
         }
 

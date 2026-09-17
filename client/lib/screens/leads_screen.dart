@@ -128,6 +128,30 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.description,
   ];
 
+  /// The sources this person was granted, with their icons - Jose,
+  /// 2026-09-17: *"i should be able to grant access by sub tab as well"*.
+  ///
+  /// Built by index from the two const lists above so the icon cannot drift
+  /// from the label, and read fresh on every build rather than cached: `/me`
+  /// arrives after the first frame, and a list computed in initState would draw
+  /// an empty strip for the life of the screen.
+  ///
+  /// Absent `/me` answers NO, the same way hr_screen's `_mayOpen` does. A strip
+  /// with nothing in it is the honest drawing of "we do not know yet"; the
+  /// alternative shows four tabs and takes some away a moment later.
+  ///
+  /// This is a drawing, not the enforcement. The rows are filtered by
+  /// LeadsController on every request including All, because one list behind
+  /// one endpoint cannot be gated by hiding a chip.
+  List<(String, String, IconData)> get _visibleSources => [
+    for (var i = 0; i < _sourceChips.length; i++)
+      if (_maySee(_sourceChips[i].$1))
+        (_sourceChips[i].$1, _sourceChips[i].$2, _sourceIcons[i]),
+  ];
+
+  bool _maySee(String source) =>
+      widget.session.me?.can('leads.$source.view') ?? false;
+
   void _setSource(String? source) {
     if (source == _source) return;
     setState(() => _source = source);
@@ -209,7 +233,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // this screen exists to avoid.
     final wanted = widget.initialSource;
 
-    if (wanted != null && _sourceChips.any((c) => c.$1 == wanted)) {
+    if (wanted != null && _visibleSources.any((c) => c.$1 == wanted)) {
       _source = wanted;
     }
 
@@ -347,6 +371,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (c['provider'] == 'thumbtack') c,
   ];
 
+  /// Connecting is module-level, NOT per source - decided 2026-09-17.
+  ///
+  /// The sources panel sits above the list rather than inside a source tab, so
+  /// the provider sections are drawn for anybody holding `leads.edit` even if
+  /// they were not granted that source's chip. An account connected by somebody
+  /// who does not watch the Google tab still delivers every enquiry to the
+  /// people who do; the reasoning, and the case where the opposite is right, is
+  /// in SocialProvider::connectPermission.
   bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
 
   /// One tab per source, because the two are not one list yet.
@@ -490,13 +522,17 @@ class _LeadsScreenState extends State<LeadsScreen> {
           key: const ValueKey('source-tabs'),
           labels: [
             ('All', Icons.all_inbox),
-            for (var i = 0; i < _sourceChips.length; i++)
-              (_sourceChips[i].$2, _sourceIcons[i]),
+            for (final source in _visibleSources) (source.$2, source.$3),
           ],
+          // indexWhere answers -1 for a source that is no longer drawn, and
+          // -1 + 1 is All -- which is the right tab to be on when the chip you
+          // were reading has been taken away, and is why this is left as
+          // arithmetic rather than guarded.
           selected: _source == null
               ? 0
-              : _sourceChips.indexWhere((c) => c.$1 == _source) + 1,
-          onSelected: (i) => _setSource(i == 0 ? null : _sourceChips[i - 1].$1),
+              : _visibleSources.indexWhere((c) => c.$1 == _source) + 1,
+          onSelected: (i) =>
+              _setSource(i == 0 ? null : _visibleSources[i - 1].$1),
         ),
         // One "Connected sources" row whatever the number of providers: the
         // band-to-panel shape Google's accounts shipped with, costing one row

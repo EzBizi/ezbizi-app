@@ -715,9 +715,16 @@ class AutomationsController extends Controller
         $samples = [];
 
         foreach ($events as $event) {
-            $subject = $event->subject_type !== null && $event->subject_id !== null
-                ? $event->subject()->first()
-                : null;
+            // RESOLVED THE WAY THE ENGINE RESOLVES IT. `AutomationEvent` has no
+            // `subject()` relation — asking for one answered 500 the moment an
+            // event with a subject reached this, which every test here missed
+            // because their events carry none. A delete event's subject is also
+            // legitimately gone, so a miss is null rather than an error.
+            $subject = $event->subject_type !== null
+                && $event->subject_id !== null
+                && class_exists($event->subject_type)
+                    ? $event->subject_type::query()->find($event->subject_id)
+                    : null;
 
             [$type, $id] = $subject instanceof CarriesAutomationScope
                 ? $subject->automationScope()
@@ -1728,6 +1735,10 @@ class AutomationsController extends Controller
                  * Notifications' correction, and they were right.
                  */
                 $parameter('role_ids', 'Only tell these roles', 'roles', false),
+                // BESIDE the roles, not instead of them — Jose asked for both,
+                // and the two lists add up rather than intersect. Named people
+                // are how somebody reaches a name their roles do not cover.
+                $parameter('user_ids', 'And these people by name', 'people', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),
