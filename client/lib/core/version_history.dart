@@ -13,7 +13,7 @@ class VersionHistory {
       items: [
         'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
         'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
-        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
+        'Every popup dropdown in the app is now a list you can search. Forty screens in this release, and that is the last of them.',
       ],
     ),
     VersionRelease(
