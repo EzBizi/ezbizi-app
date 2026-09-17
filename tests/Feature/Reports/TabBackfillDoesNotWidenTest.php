@@ -143,6 +143,57 @@ class TabBackfillDoesNotWidenTest extends TestCase
         }
     }
 
+    /**
+     * THE SAME RUN STILL GRANTS AN ORDINARY TAB.
+     *
+     * The absences above are satisfied perfectly by a migration that grants
+     * NOTHING — one that errored, or skipped every module, or was handed an
+     * empty registry. "training.manage is absent" is true in all of those, and
+     * a suite of absences cannot tell a working guard from a dead loop.
+     *
+     * So this asserts the other half in the same conditions: a role holding
+     * `reports.view` and nothing else comes out of the backfill holding
+     * `reports.library.view`, which is a tab that does NOT name an existing
+     * action and therefore must be granted.
+     *
+     * The control is the deploy desk's, taken from Services' version rather
+     * than invented here — they wrote it after a sabotage check came back green
+     * against a hazard its worktree could not reach.
+     */
+    public function test_the_same_run_grants_a_tab_that_is_not_an_existing_action(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        $role = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $role = Role::query()->create([
+                'organization_id' => $tenant['org']->id,
+                'name' => 'Reports reader',
+            ]);
+
+            $view = app(PermissionCatalogue::class)->materialise('reports.view');
+
+            DB::table('permission_role')->insertOrIgnore([
+                'role_id' => $role->id,
+                'permission_id' => $view->id,
+            ]);
+
+            return $role;
+        });
+
+        $this->runBackfill();
+
+        $tab = app(PermissionCatalogue::class)->materialise('reports.library.view');
+
+        $this->assertTrue(
+            DB::table('permission_role')
+                ->where('role_id', $role->id)
+                ->where('permission_id', $tab->id)
+                ->exists(),
+            'the backfill granted no tab at all — every absence asserted elsewhere in '
+            .'this file is satisfied by a migration that does nothing',
+        );
+    }
+
     /** The migration's own loop, run again against the current registry. */
     private function runBackfill(): void
     {
