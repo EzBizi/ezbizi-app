@@ -45,13 +45,7 @@ void main() {
   ) async {
     final device = _FakeDevice();
     final bodies = <String>[];
-    final service = await _started(
-      tester,
-      device: device,
-      onToken: bodies.add,
-    );
-    addTearDown(service.stop);
-
+    final service = await _started(tester, device: device, onToken: bodies.add);
     expect(device.setups, 1, reason: 'the initial registration');
     expect(bodies, hasLength(1));
 
@@ -66,6 +60,64 @@ void main() {
     // silent while a phone in a pocket rang. Asserted because a second copy of
     // this request is exactly where that gets forgotten.
     expect(bodies.last, contains('device_id'));
+
+    service.stop();
+  });
+
+  /// A HANDSET GETS NO EXPIRY EVENT, so the desk renews on the clock.
+  ///
+  /// Android reported this on 2026-09-17 with the greps: `tokenWillExpire`
+  /// exists only in the `twilio_voice` plugin's web half, and its Kotlin has
+  /// no expiry callback at all. So `onTokenExpiring` was assigned on every
+  /// platform and fired by two — worse than missing, because the assignment
+  /// made the wiring look complete everywhere.
+  ///
+  /// The lifetime comes from the SERVER (`expires_in`), not from a constant
+  /// here: a second copy of `TwilioGateway::TOKEN_TTL_SECONDS` would keep
+  /// renewing too late the day somebody shortened it, silently.
+  ///
+  /// Pinned five minutes early rather than at the hour, because renewing at
+  /// the moment of expiry is renewing after it once a round trip and a
+  /// registration are counted. The pump at 54 minutes is the half that can
+  /// tell an early renewal from a late one.
+  testWidgets('the token is renewed on a timer, before it expires', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final bodies = <String>[];
+    final service = await _started(tester, device: device, onToken: bodies.add);
+    expect(device.setups, 1);
+
+    // Not yet. A build renewing on any old cadence passes the assertion below
+    // on its own; this is the one that says WHEN — five minutes before the
+    // half hour the server named, so 25 minutes.
+    await tester.pump(const Duration(minutes: 24));
+    expect(device.setups, 1, reason: 'renewed earlier than five minutes ahead');
+
+    await tester.pump(const Duration(minutes: 2));
+
+    expect(device.setups, 2, reason: 'the handset was never renewed at all');
+    expect(bodies, hasLength(2));
+    expect(bodies.last, contains('device_id'));
+
+    service.stop();
+  });
+
+  /// And it keeps going, because one renewal buys one more hour.
+  ///
+  /// A timer that is scheduled at start-up and never again produces a desk
+  /// that survives two hours and dies in the third — which is the original
+  /// defect with a longer fuse and would read as something else entirely.
+  testWidgets('the renewal reschedules itself', (tester) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+    await tester.pump(const Duration(minutes: 26));
+    expect(device.setups, 2);
+
+    await tester.pump(const Duration(minutes: 26));
+    expect(device.setups, 3, reason: 'the desk renewed once and then stopped');
+
+    service.stop();
   });
 
   /// THE CASE THAT MUST NOT WORK.
@@ -86,13 +138,7 @@ void main() {
   ) async {
     final device = _FakeDevice();
     final bodies = <String>[];
-    final service = await _started(
-      tester,
-      device: device,
-      onToken: bodies.add,
-    );
-    addTearDown(service.stop);
-
+    final service = await _started(tester, device: device, onToken: bodies.add);
     device.onIncoming!(const VoiceIncoming(from: '+13055550100'));
     await tester.pumpAndSettle();
     expect(service.busy, isTrue, reason: 'the fixture is not actually busy');
@@ -108,6 +154,8 @@ void main() {
 
     expect(device.setups, 2, reason: 'the deferred renewal was dropped');
     expect(bodies, hasLength(2));
+
+    service.stop();
   });
 
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -309,7 +357,8 @@ void main() {
     expect(
       service.onCall,
       isFalse,
-      reason: 'the desk still thinks it is on a call, so it is still telling '
+      reason:
+          'the desk still thinks it is on a call, so it is still telling '
           'the server on_call and the ring group is still skipping this person',
     );
 
@@ -356,39 +405,40 @@ void main() {
   /// The commonest is not a button: a colleague answers first, or the caller
   /// gives up. A tone that outlived the call it announced would be the stuck
   /// incoming bar again, wearing a sound.
-  testWidgets('declining, hanging up and the other end going away all silence it', (
-    tester,
-  ) async {
-    for (final ending in ['decline', 'hangUp', 'ended']) {
-      final device = _FakeDevice();
-      final alerts = SilentCallAlerts();
-      final service = await _started(tester, device: device);
-      service.alerts = alerts;
+  testWidgets(
+    'declining, hanging up and the other end going away all silence it',
+    (tester) async {
+      for (final ending in ['decline', 'hangUp', 'ended']) {
+        final device = _FakeDevice();
+        final alerts = SilentCallAlerts();
+        final service = await _started(tester, device: device);
+        service.alerts = alerts;
 
-      device.ring('+13055550123');
-      await tester.pump();
-      expect(alerts.rang, hasLength(1), reason: 'never rang for $ending');
+        device.ring('+13055550123');
+        await tester.pump();
+        expect(alerts.rang, hasLength(1), reason: 'never rang for $ending');
 
-      switch (ending) {
-        case 'decline':
-          service.decline();
-        case 'hangUp':
-          service.hangUp();
-        case 'ended':
-          device.end();
+        switch (ending) {
+          case 'decline':
+            service.decline();
+          case 'hangUp':
+            service.hangUp();
+          case 'ended':
+            device.end();
+        }
+        await tester.pump();
+
+        expect(
+          alerts.stopped,
+          greaterThan(0),
+          reason: 'still ringing after $ending',
+        );
+        expect(service.incomingFrom, isNull, reason: 'bar stuck after $ending');
+
+        service.stop();
       }
-      await tester.pump();
-
-      expect(
-        alerts.stopped,
-        greaterThan(0),
-        reason: 'still ringing after $ending',
-      );
-      expect(service.incomingFrom, isNull, reason: 'bar stuck after $ending');
-
-      service.stop();
-    }
-  });
+    },
+  );
 
   /// Signing out takes the sound with it.
   ///
@@ -513,7 +563,8 @@ void main() {
     expect(
       id,
       isNotEmpty,
-      reason: 'the server cannot tell this install from any other, so it can '
+      reason:
+          'the server cannot tell this install from any other, so it can '
           'only ring one of them',
     );
 
@@ -579,6 +630,13 @@ Future<PhoneCallService> _started(
   await tester.pumpAndSettle();
   await starting;
 
+  // EVERY started desk now holds a renewal timer, and `testWidgets` fails a
+  // test that ends with one pending. Registered here rather than in each case
+  // because it is a property of having started the desk, not of what any one
+  // test does with it — four existing cases went red before this line existed,
+  // none of them about renewal.
+  addTearDown(service.stop);
+
   return service;
 }
 
@@ -601,7 +659,13 @@ ApiClient _apiFor({void Function(String body)? onToken}) => ApiClient(
       onToken?.call(request.body);
 
       return http.Response(
-        jsonEncode({'token': 'a-token'}),
+        // HALF an hour, and deliberately not the 3600 the real endpoint
+        // sends. `TwilioGateway::TOKEN_TTL_SECONDS` is 3600, so a fixture
+        // saying 3600 cannot tell a desk that READS this field from one that
+        // hard-codes an hour — both would renew at the same moment and the
+        // test would pass on the copy that drifts. A value only the server
+        // could have supplied is what makes the assertion mean anything.
+        jsonEncode({'token': 'a-token', 'expires_in': 1800}),
         200,
         headers: {'content-type': 'application/json'},
       );

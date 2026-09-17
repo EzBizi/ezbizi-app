@@ -12,6 +12,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -97,10 +98,18 @@ class TokensController extends Controller
             'token' => $token,
             'identity' => $identity,
             'twiml_app_sid' => $connection->twiml_app_sid,
+
+            // HOW LONG THIS LASTS, so the desk can ask for another one in
+            // time. Only the browser and the WebView are told by their SDK
+            // that a token is expiring; a handset gets no such event, so the
+            // only way it can renew is to know the clock. Sent rather than
+            // assumed, because a client with its own copy of this number goes
+            // quiet the day the number changes and says nothing.
+            'expires_in' => TwilioGateway::TOKEN_TTL_SECONDS,
         ]);
     }
 
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());

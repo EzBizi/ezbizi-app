@@ -23,17 +23,30 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
   int _tab = 0;
   final Set<int> _shown = {0};
 
-  late final List<(String, IconData, Widget Function())> _tabs = [
+  /// Every tab this screen has, with the permission key that opens it.
+  ///
+  /// Jose, 2026-09-17: "i should be able to grant access by sub tab as well".
+  /// Here that splits reading what the business can take from changing it —
+  /// a dispatcher answering the phone needs Availability and has no business
+  /// editing how many jobs a franchise accepts.
+  ///
+  /// THE KEYS HERE AND THE TABS IN THE REGISTRY ARE THE SAME THREE. The labels
+  /// are the strings the tab bar draws, and ModuleServiceProvider copies them
+  /// rather than restating them — a checkbox named for a tab that does not
+  /// exist under that name is a grant nobody can verify.
+  List<(String, String, IconData, Widget Function())> get _declaredTabs => [
     (
+      'availability',
       'Availability',
       Icons.event_available_outlined,
       () => AvailabilityPane(
         api: widget.api,
         session: widget.session,
-        visible: _tab == 0,
+        visible: _visible('availability'),
       ),
     ),
     (
+      'schedule',
       'Schedule',
       Icons.calendar_month_outlined,
       // ponytail: still a placeholder. Nothing books a slot yet — Job has no
@@ -43,15 +56,57 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       () => const _NotBuilt('Schedule is not built yet.'),
     ),
     (
+      'settings',
       'Settings',
       Icons.tune,
       () => CapacitySettings(
         api: widget.api,
         session: widget.session,
-        visible: _tab == 2,
+        visible: _visible('settings'),
       ),
     ),
   ];
+
+  /// The tabs this person may actually open.
+  List<(String, String, IconData, Widget Function())> get _tabs =>
+      [for (final tab in _declaredTabs) if (_mayOpen(tab.$1)) tab];
+
+  /// Absent `/me` answers NO, not yes. This screen is reached only with a
+  /// session, so a null here is a load that has not finished or a state nobody
+  /// designed, and the safe reading of "I do not know yet" is to draw nothing.
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('scheduling.$tab.view') ?? false;
+
+  /// The tab actually on screen, clamped ONCE.
+  ///
+  /// Selection is an index and the list length depends on the grants, so a
+  /// selection made when three tabs were drawn can point past the end of one.
+  /// Both readers of that — the bar and the pane stack — have to clamp the
+  /// same way, and when the fallback lived in `build` alone the two disagreed:
+  /// `build` drew tabs[0] while `_visible` compared the unclamped index and
+  /// told that pane it was off-screen.
+  ///
+  /// THE CONSEQUENCE HERE IS NARROWER THAN IT LOOKS, and worth stating so
+  /// nobody removes this thinking it fixed a blank screen. `CapacitySettings`
+  /// loads in `initState`, so a freshly built pane fetches whatever `visible`
+  /// says; the flag only drives the RELOAD in `didUpdateWidget`. So the
+  /// disagreement cost a stale pane after a revocation, not the empty screen
+  /// the same shape produced in HR, where the landing tab was a constant.
+  int get _selected {
+    final length = _tabs.length;
+
+    return _tab < length ? _tab : 0;
+  }
+
+  /// Whether the pane at [key] is the one on screen.
+  ///
+  /// By KEY rather than by index, because the index depends on which tabs this
+  /// person can open: with Availability hidden, Settings is index 0.
+  bool _visible(String key) {
+    final tabs = _tabs;
+
+    return tabs.isNotEmpty && tabs[_selected].$1 == key;
+  }
 
   void _select(int tab) => setState(() {
     _tab = tab;
@@ -60,14 +115,40 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tabs = _tabs;
+
+    if (tabs.isEmpty) {
+      // Reachable: the rail draws Scheduling for anybody holding
+      // `scheduling.view`, and the tab grants are separate from it. Somebody
+      // with the module and none of its tabs gets a sentence rather than a
+      // blank pane that reads as a broken screen.
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'You do not have access to any part of Scheduling yet. An '
+            'administrator grants these one tab at a time.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // The same clamp the pane stack uses — see `_selected`.
+    final selected = _selected;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
-          color: Theme.of(context).colorScheme.surface,
+          color: theme.colorScheme.surface,
           child: TabBarLike(
-            labels: [for (final tab in _tabs) (tab.$1, tab.$2)],
-            selected: _tab,
+            labels: [for (final tab in tabs) (tab.$2, tab.$3)],
+            selected: selected,
             onSelected: _select,
           ),
         ),
@@ -76,11 +157,11 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              for (var i = 0; i < _tabs.length; i++)
+              for (var i = 0; i < tabs.length; i++)
                 Offstage(
-                  offstage: i != _tab,
+                  offstage: i != selected,
                   child: _shown.contains(i)
-                      ? _tabs[i].$3()
+                      ? tabs[i].$4()
                       : const SizedBox.shrink(),
                 ),
             ],

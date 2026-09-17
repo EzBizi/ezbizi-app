@@ -42,8 +42,14 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring', 'newsletter', 'reports', 'profit_loss',
-        'ads_performance',
+        'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
+
+        // Profit & Loss AFTER Google Ads, matching the order of the chips
+        // inside Reports — the module registry was changed to that order
+        // deliberately (a new tab goes on the end rather than moving one people
+        // already click). Dashboard's copy of this line arrived from main with
+        // the old order, which was mine before the decision, not theirs.
+        'profit_loss',
     ];
 
     /**
@@ -120,7 +126,25 @@ class GlanceRegistry
          */
         'profit_loss' => [
             'label' => 'Profit & Loss',
-            'sentence' => 'Profit and loss is in the Profit & Loss tab under Reports. The figures are read from your connected Airtable base when you open it, so they are not summarised here.',
+
+            /*
+             * REPORTS' OWN SENTENCE, taking Dashboard up on the offer above.
+             *
+             * Their reading is right and the second half is the module's half:
+             * this tab does not summarise BY DESIGN. It reports the weeks where
+             * a sheet disagrees with itself and resolves nothing, so a single
+             * profit figure on a home screen is exactly the silent resolution
+             * the reader refuses to make. Measured on A-1's own base, one week
+             * in thirty is internally inconsistent by $1,613.
+             *
+             * So if a live glance is ever written it owes two answers, not one:
+             * what the fetch costs, and what it shows for a week that does not
+             * add up.
+             */
+            'sentence' => 'Profit and loss is read from the Airtable base a business has connected, '
+                .'week by week, when you open the Profit & Loss tab under Reports. It is not '
+                .'summarised here: the figures are not stored, and a week where the sheet does '
+                .'not add up is worth seeing beside the categories rather than behind a total.',
         ],
         'ads_performance' => [
             'label' => 'Google Ads',
