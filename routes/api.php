@@ -1452,6 +1452,7 @@ Route::prefix('v1')
         Route::delete('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'destroy']);
         Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover']);
         Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover']);
+        Route::get('inspections/{inspection_definition}/graph', [InspectionDefinitionsController::class, 'graph']);
         Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish']);
         Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish']);
         Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show']);
