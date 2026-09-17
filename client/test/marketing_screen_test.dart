@@ -49,6 +49,50 @@ void main() {
       );
     });
 
+    /*
+     * Each chip follows ITS OWN grant, and this is asserted in both
+     * directions on purpose.
+     *
+     * Newsletter is a module with `newsletter.view`; Social Media Management
+     * is Marketing's own pane behind `marketing.view`. They used to be drawn
+     * together inside one `reaches('marketing')`, which failed both ways: a
+     * role with only `marketing.view` was offered a Newsletter chip whose
+     * every request the server then refused, and a role with only
+     * `newsletter.view` got no chip at all, because the module loop only draws
+     * modules that have a `moduleScreens` entry and Newsletter has none.
+     *
+     * The second case is the one a single-direction test misses. A suite that
+     * only checked "marketing alone does not show Newsletter" would pass for a
+     * screen that had stopped drawing Newsletter entirely.
+     *
+     * Varying `reachable` and not `permissions`: `Me.reaches` reads the flag
+     * the server computed from the grant, never the permission list. The first
+     * version of these two varied `permissions` and moved nothing on screen.
+     */
+    testWidgets('a chip is drawn for the grant it belongs to, and only that one', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(reachable: const ['marketing']));
+
+      expect(find.widgetWithText(ChoiceChip, 'Newsletter'), findsNothing);
+      expect(
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the newsletter grant alone still reaches the Newsletter tab', (
+      tester,
+    ) async {
+      await _pumpScreen(tester, _handler(reachable: const ['newsletter']));
+
+      expect(find.widgetWithText(ChoiceChip, 'Newsletter'), findsOneWidget);
+      expect(
+        find.widgetWithText(ChoiceChip, 'Social Media Management'),
+        findsNothing,
+      );
+    });
+
     testWidgets('Social Media Management is a second sub-tab, not a blank page', (
       tester,
     ) async {
@@ -1627,6 +1671,14 @@ MockClientHandler _handler({
   /// Publishing needs `marketing.edit`; the default role here holds only
   /// `marketing.view`, so a test about composing has to ask for it.
   bool canEdit = false,
+  /// Which module keys come back REACHABLE, for the tests that ask which grant
+  /// draws which chip.
+  ///
+  /// Modules and not permissions: `Me.reaches` reads the `reachable` flag the
+  /// server computed, never the permission list. A test that varied
+  /// `permissions` here would change nothing on screen and pass or fail for
+  /// reasons unrelated to what it claims to be about.
+  List<String>? reachable,
   List<Map<String, Object?>>? newsletters,
   List<Map<String, Object?>>? audiences,
   String? sendingRefusedBecause,
@@ -1692,6 +1744,11 @@ MockClientHandler _handler({
       return _json({
         'data': {
           ..._me,
+          if (reachable != null)
+            'modules': [
+              for (final m in (_me['modules']! as List<dynamic>))
+                {...(m as Map<String, Object?>), 'reachable': reachable.contains(m['key'])},
+            ],
           'permissions': [
             'marketing.view',
             'newsletter.view',
@@ -1858,11 +1915,21 @@ const _me = {
   'email': 'jose@example.com',
   'has_avatar': false,
   'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['marketing.view'],
+  // Newsletter is a MODULE with its own grant, not a slice of marketing.view,
+  // so the default fixture holds both — a role that reaches the tab in
+  // production holds both too.
+  'permissions': ['marketing.view', 'newsletter.view'],
   'modules': [
     {
       'key': 'marketing',
       'label': 'Marketing',
+      'available': true,
+      'reachable': true,
+    },
+    {
+      'key': 'newsletter',
+      'label': 'Newsletter',
+      'parent': 'marketing',
       'available': true,
       'reachable': true,
     },
