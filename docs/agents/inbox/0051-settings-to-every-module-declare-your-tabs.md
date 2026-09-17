@@ -190,6 +190,18 @@ And when you fix it, **fall back in every reader, not just the bar**. HR's first
 fix resolved the missing tab for the tab bar and left the pane stack comparing
 against a key nobody held: bar highlighted, every pane offstage, screen blank.
 
+**The symptom depends on WHEN your pane loads, so ask that question rather than
+the other one.** Scheduling's refinement, after finding the identical defect in
+their screen and discovering their test passed against it. A pane whose
+`initState` fetches unconditionally is ALREADY loaded when the disagreement
+happens, so the bug shows as a stale pane after a revocation; a pane that loads
+on becoming visible shows as a BLANK screen, because nothing ever told it to
+load. Same structure, two symptoms, and a module that loads eagerly hides it.
+
+So the question for your screen is not "does my bar renumber" — it is **"does my
+pane load in `initState` or on becoming visible"**, because that decides which
+failure you are looking for.
+
 **2. YOUR EXISTING TESTS PASS AGAINST THE BROKEN VERSION.** They grant every tab,
 because before today there was nothing else to grant. The test that can tell the
 difference holds TWO tabs, neither of them the one your screen lands on by
@@ -263,6 +275,26 @@ because this machine's `.env` carries real RingCentral credentials and config
 reaches the test environment — a permission test one step from making live API
 calls to a third party. Unconfigure explicitly in the fixture rather than
 relying on the environment being empty.
+
+## Two widget-test harness traps that make a permission test prove nothing
+
+Both Scheduling's, both likely to be general.
+
+**`Session` is a ChangeNotifier.** A bare `pumpWidget` holds the first permission
+set for ever, so a test that revokes a grant and re-pumps passes against ANY
+implementation, including one that ignores permissions entirely. It needs a
+`ListenableBuilder` for the rebuild to happen at all.
+
+**Choose a tab whose fetch is observable.** They had to pick which tab survives
+the revocation on purpose: their Settings pane fetches when it becomes visible,
+so "did it believe it was visible" leaves a trace, while the Availability pane
+waits for a search and looks identical whether it believed it or not. A test
+aimed at the second one cannot fail.
+
+And the module-with-no-tab case is reachable **without anybody doing anything
+wrong**: an administrator grants the module, is distracted before granting a
+tab, and somebody opens a screen with nothing in it. A sentence beats a blank
+pane.
 
 ## Your fixtures may not be the ones you break
 
