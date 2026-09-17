@@ -366,6 +366,139 @@ final class TimeClock
         return ['timezone' => $timezone, 'days' => $days];
     }
 
+    /**
+     * One week of shifts, grouped by person, with the hours totalled.
+     *
+     * The day list answers "who was in on this date". Work Hours asks the other
+     * question — what each person worked this week — so the shape is one entry
+     * per person in reach rather than one per punch, and EVERYBODY in reach is
+     * listed, including somebody who worked nothing. A name missing from the
+     * list would read as "not on the team" when it means "did not clock in".
+     *
+     * `?on=` is any date inside the week wanted; the window comes from the
+     * organization's `time_clock.week_starts_on`, so an organization counting
+     * from Thursday gets Thursday to Wednesday.
+     *
+     * @return array{
+     *     week_start: string,
+     *     week_end: string,
+     *     starts_on: string,
+     *     timezone: string,
+     *     timezone_label: string,
+     *     people: list<array<string, mixed>>
+     * }
+     */
+    public function weekList(User $actor, ?string $on): array
+    {
+        $view = ViewScope::forUser($actor);
+        $tz = (string) $this->settings->get('timezone', $view->settingsScope());
+        $timeFormat = (string) $this->settings->get('time_format', $view->settingsScope());
+        $startsOn = (string) $this->settings->get('time_clock.week_starts_on', $actor->organization);
+
+        $weekStart = $this->weekStart($this->resolveDate($on, $tz), $tz, $startsOn);
+        $weekEnd = $weekStart->copy()->addDays(7);
+
+        $shifts = TimeClockShift::query()
+            ->where('clocked_in_at', '>=', $weekStart->copy()->utc())
+            ->where('clocked_in_at', '<', $weekEnd->copy()->utc())
+            ->whereHas('user', fn (Builder $users) => $users->where(
+                fn (Builder $q) => $this->visibleTo($q, $actor)
+            ))
+            ->orderBy('clocked_in_at')
+            ->get()
+            ->groupBy('user_id');
+
+        $people = User::query()
+            ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_active', 'avatar_path']);
+
+        return [
+            'week_start' => $weekStart->toDateString(),
+            'week_end' => $weekStart->copy()->addDays(6)->toDateString(),
+            'starts_on' => $startsOn,
+            'timezone' => $tz,
+            'timezone_label' => SettingRegistry::timezoneLabel($tz),
+            'people' => $people
+                ->map(fn (User $person) => $this->presentWeekPerson(
+                    $person,
+                    $shifts->get($person->getKey()) ?? collect(),
+                    $tz,
+                    $timeFormat,
+                ))
+                ->all(),
+        ];
+    }
+
+    /**
+     * The start of the week `$date` falls in, in this organization's reckoning.
+     *
+     * Carbon's own `startOfWeek()` is deliberately not used: it answers for the
+     * locale, and this has to answer for a setting somebody chose.
+     */
+    private function weekStart(string $date, string $tz, string $startsOn): Carbon
+    {
+        // Carbon numbers Sunday 0 through Saturday 6, which is the order below.
+        $order = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+        $target = (int) array_search($startsOn, $order, true);
+        $local = Carbon::parse($date, $tz)->startOfDay();
+
+        return $local->subDays(((int) $local->dayOfWeek - $target + 7) % 7);
+    }
+
+    /**
+     * One person and their week.
+     *
+     * An open shift counts the time worked SO FAR rather than reporting null
+     * the way the day list does, because the number beside it here is part of a
+     * total: a running shift contributing nothing would make today read as zero
+     * hours until somebody clocked out.
+     *
+     * @param  iterable<TimeClockShift>  $shifts
+     */
+    private function presentWeekPerson(User $person, iterable $shifts, string $tz, string $timeFormat): array
+    {
+        $now = now();
+        $total = 0;
+        $days = [];
+        $open = false;
+        $rows = [];
+
+        foreach ($shifts as $shift) {
+            $isOpen = $shift->clocked_out_at === null;
+            $seconds = ($isOpen ? $now : $shift->clocked_out_at)->getTimestamp()
+                - $shift->clocked_in_at->getTimestamp();
+
+            $total += $seconds;
+            $open = $open || $isOpen;
+            $date = Carbon::parse($shift->clocked_in_at)->timezone($tz)->toDateString();
+            $days[$date] = true;
+
+            $row = $this->presentShift($shift, $tz, $timeFormat);
+            unset($row['user']);
+            $row['date'] = $date;
+            $row['duration_seconds'] = $seconds;
+            $rows[] = $row;
+        }
+
+        $worked = count($days);
+
+        return [
+            'id' => $person->id,
+            'name' => $person->name,
+            'is_active' => (bool) $person->is_active,
+            'has_avatar' => $person->avatar_path !== null,
+            'total_seconds' => $total,
+            'days_worked' => $worked,
+            // Over the days actually WORKED, not over seven: "six hours a day
+            // when I am in" is the useful average, and dividing by a fixed week
+            // would report every part-timer as failing.
+            'average_seconds' => $worked === 0 ? 0 : intdiv($total, $worked),
+            'open' => $open,
+            'shifts' => $rows,
+        ];
+    }
+
     /** @return array{id: string, user_id: string, clocked_in_at: string, clocked_out_at: ?string} */
     private function eventPayload(TimeClockShift $shift): array
     {

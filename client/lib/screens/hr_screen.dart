@@ -102,6 +102,12 @@ class _HrScreenState extends State<HrScreen> {
       Icons.insights_outlined,
       () => DashboardTab(api: widget.api, session: widget.session),
     ),
+    if (_showClockInOut)
+      (
+        UiStrings.t('time_clock.tab'),
+        Icons.schedule_outlined,
+        () => TimeClockTab(api: widget.api),
+      ),
     (
       'Onboarding',
       Icons.how_to_reg_outlined,
@@ -122,12 +128,6 @@ class _HrScreenState extends State<HrScreen> {
       Icons.description_outlined,
       () => ContractsTab(api: widget.api, session: widget.session),
     ),
-    if (_showClockInOut)
-      (
-        UiStrings.t('time_clock.tab'),
-        Icons.schedule_outlined,
-        () => TimeClockTab(api: widget.api),
-      ),
   ];
 
   /// Chip rule (design §4 / §9): org switch on and `hr.view`. Absent

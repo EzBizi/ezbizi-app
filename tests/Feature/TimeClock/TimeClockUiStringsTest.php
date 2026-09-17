@@ -23,11 +23,11 @@ class TimeClockUiStringsTest extends TestCase
             UiString::query()->where('key', 'time_clock.clock_out')->where('locale', 'en')->value('text'),
         );
         $this->assertSame(
-            'Clock in–out',
+            'Work Hours',
             UiString::query()->where('key', 'time_clock.tab')->where('locale', 'en')->value('text'),
         );
         $this->assertSame(
-            'Entrada y salida',
+            'Horas de trabajo',
             UiString::query()->where('key', 'time_clock.tab')->where('locale', 'es')->value('text'),
         );
     }
