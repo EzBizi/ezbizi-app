@@ -797,13 +797,45 @@ Route::prefix('v1')
         Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
         Route::apiResource('inventory/sales', InventorySalesController::class)
             ->only(['index', 'store', 'show']);
+        /*
+         * The two Services chips gate the WRITES only. Both read paths below
+         * serve an audience outside the chip that would otherwise gate them,
+         * so gating them would refuse somebody doing a job they are entitled
+         * to do, and it would do it silently — an empty menu, not an error.
+         *
+         *  - `GET services` is the catalogue Jobs prices a line out of, in
+         *    client/lib/screens/jobs/job_lines_tab.dart. A dispatcher who
+         *    never opens the Services screen still has to read it.
+         *  - `GET services/groups` and `GET services/labels` are read by the
+         *    CATALOGUE chip's own pickers (add_service_pane, service_pane) as
+         *    much as by Settings. Behind `services.settings.view` they would
+         *    empty the group and label menus for somebody holding Catalogue.
+         *
+         * Same shape as `hr/people/scope-options`: a route with two audiences
+         * keeps its gate beside the split already inside it — here the
+         * existing ServicePolicy check, which is still `services.view` — and
+         * not in front of the group. Hiding the chip hides the SCREEN; the
+         * catalogue stays readable where another module legitimately needs it.
+         */
         Route::get('services/groups', [ServiceGroupsController::class, 'index']);
-        Route::post('services/groups', [ServiceGroupsController::class, 'store']);
-        Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
         Route::get('services/labels', [ServiceLabelsController::class, 'index']);
-        Route::post('services/labels', [ServiceLabelsController::class, 'store']);
-        Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
-        Route::apiResource('services', ServicesController::class);
+
+        Route::middleware('permission:services.settings.view')->group(function () {
+            Route::post('services/groups', [ServiceGroupsController::class, 'store']);
+            Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
+            Route::post('services/labels', [ServiceLabelsController::class, 'store']);
+            Route::delete('services/labels/{id}', [ServiceLabelsController::class, 'destroy']);
+        });
+
+        // Declared before the index/show pair so `services/groups` and
+        // `services/labels` are never swallowed by `services/{service}`.
+        Route::middleware('permission:services.catalogue.view')->group(function () {
+            Route::apiResource('services', ServicesController::class)
+                ->only(['store', 'update', 'destroy']);
+        });
+
+        Route::apiResource('services', ServicesController::class)
+            ->only(['index', 'show']);
 
         /*
          * Reports — a builder over the ReportMap
