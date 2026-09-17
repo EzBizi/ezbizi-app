@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/hr/records_tab.dart';
 import 'package:ezbizi_client/screens/hr/training_card.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
@@ -91,6 +92,45 @@ void main() {
   });
 
   /// Certifications is a sentence on the one HR card, not a fifth panel.
+  testWidgets(
+    'a role without Dashboard lands on a real tab and that pane loads',
+    (tester) async {
+      /*
+       * The defect the tab filter introduced, and the one nothing here could
+       * have caught: `_tab` was an INDEX, initialised to the constant 0 meaning
+       * Dashboard, and the list's length now depends on what the reader may
+       * open. Automations and Scheduling each found the same shape in their own
+       * screens within the hour — Scheduling's `_tab == 2` told the only
+       * visible pane it was off-screen, which renders as an empty screen rather
+       * than as a refusal.
+       *
+       * Every other test in this file grants all seven tabs, so all seven pass
+       * against the broken version. This one holds TWO, neither of them
+       * Dashboard, which is the only shape that can tell the difference.
+       */
+      await _pump(
+        tester,
+        _handler(
+          me: {
+            ..._me,
+            'permissions': ['hr.view', 'hr.records.view', 'hr.contracts.view'],
+          },
+        ),
+      );
+
+      expect(find.text('Dashboard'), findsNothing);
+      expect(find.text('Records'), findsOneWidget);
+      expect(find.text('Contracts'), findsOneWidget);
+
+      // Not merely "a tab is highlighted": the pane behind it has to have
+      // FETCHED. A stack that believes it is showing slot 0 while the bar
+      // believes something else renders nothing at all, and an empty pane is
+      // exactly what a reader would report as "the screen is blank".
+      await tester.pumpAndSettle();
+      expect(find.byType(RecordsTab), findsOneWidget);
+    },
+  );
+
   testWidgets('the certifications sentence is on the one HR card', (
     tester,
   ) async {
