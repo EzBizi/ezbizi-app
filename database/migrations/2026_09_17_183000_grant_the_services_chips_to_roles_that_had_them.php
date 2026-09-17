@@ -62,6 +62,31 @@ return new class extends Migration
             }
 
             foreach ($module->tabs as $tab) {
+                /*
+                 * A tab that names an action the module ALREADY had is not a
+                 * new chip to hand out — it is an existing grant the screen
+                 * happens to draw as a tab, and widening it is the opposite of
+                 * what this file exists to do.
+                 *
+                 * `TabDefinition::action()` falls back to `"{key}.view"`, so
+                 * an unguarded loop reads a declared `action:` as if it were a
+                 * chip key. Training is the live case: it declares
+                 * `action: 'view'`, `'monitor'` and `'manage'`, which are three
+                 * separate grants by design — Learn is the learner's pane,
+                 * monitor is everybody's results, manage is the AUTHORING
+                 * surface. Without this clause every role holding
+                 * `training.view` would come out of this migration able to
+                 * author training material and read every colleague's score.
+                 *
+                 * Caught by the deploy desk before the cut, and verified here:
+                 * this migration is merged and was NOT deployed. Scheduling
+                 * wrote the same clause into their copy for `scheduling.edit`
+                 * while the risk was still dormant on their branch.
+                 */
+                if ($tab->namesExistingAction()) {
+                    continue;
+                }
+
                 // materialise(), not a firstOrCreate here: a permission row
                 // carries `module` and `action` beside the key, and it is what
                 // lets this run before ezbizi:sync-permissions rather than
