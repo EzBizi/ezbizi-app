@@ -204,7 +204,7 @@ class AutomationsApiTest extends TestCase
             $this->assertIsBool($entry['module_only']);
             foreach ($entry['parameters'] as $parameter) {
                 $this->assertSame(
-                    ['key', 'label', 'kind', 'required', 'nullable'],
+                    ['key', 'label', 'kind', 'required', 'nullable', 'variables'],
                     array_keys($parameter),
                 );
             }

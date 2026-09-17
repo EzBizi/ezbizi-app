@@ -382,7 +382,7 @@ class ActionRunner
             'report.send' => $this->sendReport($action, $event, $automation),
             'email.send' => $this->sendEmail($action, $event, $automation, $subject),
             'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
-            'sms.send' => $this->sendSms($action, $event, $automation),
+            'sms.send' => $this->sendSms($action, $event, $automation, $subject),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
@@ -1587,7 +1587,7 @@ class ActionRunner
         };
     }
 
-    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation): array
+    private function sendSms(array $action, AutomationEvent $event, ?Automation $automation, ?Model $subject = null): array
     {
         $type = 'sms.send';
 
@@ -1619,7 +1619,12 @@ class ActionRunner
         $to = trim((string) $this->contactFromStored(
             trim((string) ($action['to'] ?? '')), $event, 'phone',
         ));
-        $body = trim((string) ($action['body'] ?? ''));
+        // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
+        // sending {{...}} out as braces: a missed-call text that cannot name the
+        // number that called is the rule Jose has been running for two weeks.
+        // Emptiness is judged AFTER substitution, because a body that is nothing
+        // but an unresolved field is an empty text message, not a message.
+        $body = trim($this->interpolate((string) ($action['body'] ?? ''), $event, $subject));
 
         if ($to === '' || $body === '') {
             return [

@@ -2109,10 +2109,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _ => TextField(
         controller: row.message,
         enabled: !_busy,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           labelText: 'Message',
           isDense: true,
-          helperText: 'Use {{ title }} to include a field from the record.',
+          helperText: _variableHint(),
         ),
       ),
     };
@@ -2301,6 +2301,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : null,
                 helperText: definition.parameters[i].nullable
                     ? 'Leave blank to clear it.'
+                    : definition.parameters[i].variables
+                    ? _variableHint()
                     : null,
               ),
             ),
@@ -2620,6 +2622,29 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   }
 
   /// Which of the three a stored value is. Derived, never stored beside it.
+  /// What to say under a box the runner substitutes `{{ field }}` in.
+  ///
+  /// NAMES REAL FIELDS rather than saying variables exist. "Use {{ title }}"
+  /// was already under two boxes and told nobody which words work here — and a
+  /// name that does not resolve becomes an empty string with no error, so a
+  /// guess costs a message with a hole in it that nobody can explain. These are
+  /// the same names the "only if" dropdown lists, because they come from the
+  /// same event.
+  String _variableHint() {
+    if (_triggerFields.isEmpty) {
+      return _trigger == null
+          ? 'Choose what sets the rule off and the fields you can drop in appear here.'
+          : 'Use {{ field }} to drop in a detail. Nothing of this kind has '
+                'happened here yet, so there are no names to suggest.';
+    }
+
+    final shown = _triggerFields.take(4).join(', ');
+
+    return _triggerFields.length > 4
+        ? 'Drop in a detail with {{ }} — $shown and ${_triggerFields.length - 4} more.'
+        : 'Drop in a detail with {{ }} — $shown.';
+  }
+
   String _recipientKindOf(_ActionRow row, String value, String kindOf) {
     // A value decides its own kind. Only the empty one has to be remembered,
     // because it is the one value that could be any of the three.
@@ -2791,7 +2816,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             decoration: InputDecoration(
               labelText: 'Blank ${i + 1}',
               isDense: true,
-              helperText: 'Use {{ field }} to take it from the record.',
+              helperText: _variableHint(),
             ),
           ),
         ],

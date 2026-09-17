@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use App\Models\PhoneConnection;
+use App\Models\PhoneNumber;
 use App\Models\SavedReport;
 use App\Models\Lead;
 use App\Models\Invitation;
@@ -17,6 +19,7 @@ use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
 use Illuminate\Support\Facades\Mail;
 use App\Support\Automations\ActionRunner;
+use App\Support\Phone\TwilioGateway;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
 use App\Models\Customer;
@@ -1512,6 +1515,67 @@ class AutomationEngineTest extends TestCase
 
             return true;
         });
+    }
+
+    /**
+     * The missed-call text can name the number that called.
+     *
+     * The SMS arm was the last one sending `{{...}}` out as braces — `$body`
+     * went from the action straight to Twilio. It is also the arm Jose's own
+     * Missed Call rule ends with, so the rule that finally matched would have
+     * texted somebody the literal characters `{{from_address}}`.
+     *
+     * ASSERTED ON WHAT LEFT THE BUILDING. The refusal messages say nothing
+     * about the body, so a test that stopped at `ok:false` would pass against
+     * an arm that never substituted anything. Twilio's own request is the
+     * artefact.
+     */
+    public function test_a_text_message_resolves_its_variables(): void
+    {
+        $number = $this->inTenant(function () {
+            $connection = PhoneConnection::factory()->create([
+                'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
+                'scope_id'   => $this->org['organization']->id,
+                'auth_token' => 'auto-auth',
+                'status'     => PhoneConnection::STATUS_CONNECTED,
+            ]);
+
+            return PhoneNumber::factory()->create([
+                'connection_id'        => $connection->id,
+                'scope_type'           => PhoneNumber::SCOPE_ORGANIZATION,
+                'scope_id'             => $this->org['organization']->id,
+                'e164'                 => '+12035553100',
+                'label'                => 'Front desk',
+                'sms_outbound_allowed' => true,
+            ]);
+        });
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'email.received',
+            'payload'         => ['from_address' => 'notify@ringcentral.com'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $ran = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'      => 'sms.send',
+            'number_id' => $number->id,
+            'to'        => '+13057242199',
+            'body'      => 'Missed call, see {{from_address}}',
+        ], $event, null, false, $this->automation('email.received', null, [])));
+
+        $this->assertTrue($ran['ok'], $ran['detail']);
+
+        // WHAT WAS HANDED TO TWILIO, not what the arm said it did. The refusal
+        // and success sentences both say nothing about the body, so a test
+        // stopping at ok:true passes against an arm that substituted nothing.
+        $sent = collect(app(TwilioGateway::class)->calls)
+            ->firstWhere('method', 'sendMessage');
+
+        $this->assertNotNull($sent, 'nothing was handed to Twilio');
+        $this->assertStringContainsString('notify@ringcentral.com', end($sent['args']));
+        $this->assertStringNotContainsString('{{', end($sent['args']));
     }
 
     /**

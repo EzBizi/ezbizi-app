@@ -837,6 +837,38 @@ void main() {
             'showing both is the overflow this replaced');
   });
 
+  /// A box that takes {{ }} NAMES THE FIELDS, and one that does not says nothing.
+  ///
+  /// "Use {{ title }} to include a field from the record" sat under two boxes
+  /// and told nobody which words work here — and an unknown name resolves to an
+  /// empty string with no error, so a guess costs a message with a hole in it
+  /// that nobody can explain afterwards.
+  ///
+  /// THE ABSENCE IS THE HALF THAT MATTERS. "Send to" is a recipient, not an
+  /// interpolated box, and update_field's value is written as typed. Offering
+  /// variables under every text field would promise something the runner does
+  /// not do in most of the places it was offered, which is why the server
+  /// declares the flag per parameter instead of the client guessing from kind.
+  testWidgets('a box that takes variables names the fields of this trigger', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(triggerFields: const ['from_address', 'subject']),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send an email'));
+
+    expect(
+      find.textContaining('from_address, subject'),
+      findsWidgets,
+      reason: 'the boxes that substitute {{ }} have to say which names exist',
+    );
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -2098,8 +2130,22 @@ const _catalogue = {
           'required': true,
           'nullable': false,
         },
-        {'key': 'subject', 'label': 'Subject', 'kind': 'text', 'required': true, 'nullable': false},
-        {'key': 'body', 'label': 'Message', 'kind': 'rich_text', 'required': true, 'nullable': false},
+        {
+          'key': 'subject',
+          'label': 'Subject',
+          'kind': 'text',
+          'required': true,
+          'nullable': false,
+          'variables': true,
+        },
+        {
+          'key': 'body',
+          'label': 'Message',
+          'kind': 'rich_text',
+          'required': true,
+          'nullable': false,
+          'variables': true,
+        },
       ],
     },
     {

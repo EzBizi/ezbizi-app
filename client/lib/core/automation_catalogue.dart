@@ -62,6 +62,7 @@ class CatalogueActionParameter {
     required this.kind,
     required this.required,
     required this.nullable,
+    required this.variables,
   });
 
   final String key;
@@ -69,6 +70,14 @@ class CatalogueActionParameter {
   final String kind;
   final bool required;
   final bool nullable;
+
+  /// Whether the runner substitutes `{{ field }}` in this box.
+  ///
+  /// Declared by the server rather than guessed from the kind: it is true of a
+  /// message and false of `update_field`'s value, which is written as typed. A
+  /// builder that offered variables everywhere would promise something the
+  /// runner does not do in most of the places it was offered.
+  final bool variables;
 
   static CatalogueActionParameter? tryFrom(Object? json) {
     if (json is! Map || json['key'] is! String) return null;
@@ -79,6 +88,7 @@ class CatalogueActionParameter {
       kind: json['kind'] as String? ?? 'text',
       required: json['required'] == true,
       nullable: json['nullable'] == true,
+      variables: json['variables'] == true,
     );
   }
 }

@@ -1486,12 +1486,18 @@ class AutomationsController extends Controller
     /** @return list<array{key:string,label:string,module_only:bool,parameters:array}> */
     private function actionTypes(): array
     {
-        $parameter = static fn (string $key, string $label, string $kind, bool $required = true, bool $nullable = false): array => [
+        // `variables` says this box is one the runner substitutes {{ field }} in.
+        // DECLARED RATHER THAN ASSUMED, because it is not true of every text box:
+        // update_field's value is written as typed, and a builder that offered
+        // {{ }} there would be promising something the runner does not do. The
+        // flag names exactly the parameters ActionRunner::interpolate() reaches.
+        $parameter = static fn (string $key, string $label, string $kind, bool $required = true, bool $nullable = false, bool $variables = false): array => [
             'key' => $key,
             'label' => $label,
             'kind' => $kind,
             'required' => $required,
             'nullable' => $nullable,
+            'variables' => $variables,
         ];
         $type = static fn (string $key, string $label, bool $moduleOnly = false, array $parameters = []): array => [
             'key' => $key,
@@ -1514,7 +1520,7 @@ class AutomationsController extends Controller
             // against a box they had filled in. Both halves are in one commit for
             // that reason; do not split them.
             $type('notify', 'Send a notification', false, [
-                $parameter('message', 'Message', 'rich_text'),
+                $parameter('message', 'Message', 'rich_text', variables: true),
 
                 // Phrased as a DECLINE, and required: false so an untouched
                 // switch is simply absent. A positive key - "send an email" -
@@ -1622,7 +1628,7 @@ class AutomationsController extends Controller
             ]),
 
             $type('lead.reply', 'Reply to the lead', true, [
-                $parameter('message', 'Message', 'rich_text'),
+                $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
 
             $type('assign_to_user', 'Assign to a person', true, [
@@ -1647,8 +1653,8 @@ class AutomationsController extends Controller
                 // leave; an address copied at build time would keep mailing a
                 // mailbox nobody reads.
                 $parameter('to_field', 'Send to', 'recipient'),
-                $parameter('subject', 'Subject', 'text'),
-                $parameter('body', 'Message', 'rich_text'),
+                $parameter('subject', 'Subject', 'text', variables: true),
+                $parameter('body', 'Message', 'rich_text', variables: true),
             ]),
 
             $type('sms.send', 'Send a message', true, [
@@ -1659,7 +1665,7 @@ class AutomationsController extends Controller
                 // - because "who does this go to" is one question and the only
                 // difference is which column answers it.
                 $parameter('to', 'Send to', 'phone_recipient'),
-                $parameter('body', 'Message', 'text'),
+                $parameter('body', 'Message', 'text', variables: true),
             ]),
         ];
     }
