@@ -917,6 +917,48 @@ void main() {
     expect(find.text('Ana Reis'), findsOneWidget);
     expect(find.text('Info'), findsWidgets);
   });
+  /// A tab nobody granted is not drawn, and the OTHER one still opens.
+  ///
+  /// Jose, 2026-09-17: "i should be able to grant access by sub tab as well".
+  /// The second half is the one that would fail silently: tabs used to be
+  /// chosen by INDEX, so hiding Inbox would leave Settings at index 0 and a
+  /// role holding only Settings would be shown the mail. The screen keys on the
+  /// tab's name now, and this is what says so.
+  testWidgets('a role with only Settings sees Settings and not the mail',
+      (tester) async {
+    _permissionsOverride = ['email.view', 'email.settings.view'];
+    addTearDown(() => _permissionsOverride = null);
+
+    await _pump(tester, _handler());
+
+    expect(find.text('Inbox'), findsNothing);
+    expect(find.text('Settings'), findsWidgets);
+  });
+
+  /// The mirror, and the control: with only Inbox the mail is there and the
+  /// connections screen is not. Without this pair, a filter that hid
+  /// EVERYTHING would pass the test above.
+  testWidgets('a role with only Inbox sees the mail and not Settings',
+      (tester) async {
+    _permissionsOverride = ['email.view', 'email.inbox.view'];
+    addTearDown(() => _permissionsOverride = null);
+
+    await _pump(tester, _handler());
+
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Inbox'), findsWidgets);
+  });
+
+  /// Neither tab: a sentence, not an empty strip over an empty pane.
+  testWidgets('a role with neither tab is told, not shown a blank screen',
+      (tester) async {
+    _permissionsOverride = ['email.view'];
+    addTearDown(() => _permissionsOverride = null);
+
+    await _pump(tester, _handler());
+
+    expect(find.textContaining('has been given to your role'), findsOneWidget);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -1096,12 +1138,22 @@ MockClientHandler _handler({
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
+
 }
 
 /// `/me` answered first, whatever else the handler does.
+/// Permissions the next `_withMe` should answer with. Null means [_me] as is.
+List<String>? _permissionsOverride;
+
 MockClientHandler _withMe(MockClientHandler inner) {
   return (request) async {
-    if (request.url.path.endsWith('/me')) return _json({'data': _me});
+    if (request.url.path.endsWith('/me')) {
+      final me = _permissionsOverride == null
+          ? _me
+          : {..._me, 'permissions': _permissionsOverride};
+
+      return _json({'data': me});
+    }
 
     return inner(request);
   };
@@ -1257,7 +1309,7 @@ const List<Map<String, Object?>> _blocks = [
   {
     'kind': 'paragraph',
     'spans': [
-      {'text': 'Confirm here', 'link': 'https://not-your-bank.example.com/x'},
+      {'text': 'Confirm here', 'href': 'https://not-your-bank.example.com/x'},
     ],
   },
   {'kind': 'rule'},
@@ -1284,7 +1336,10 @@ const _me = {
   'email': 'jose@example.com',
   'has_avatar': false,
   'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['email.view'],
+  // Both tabs: this fixture stands for somebody who could open all of Email
+  // before the tabs were split, which is what the migration grants every
+  // existing role. A test for the SPLIT grants one tab, not this.
+  'permissions': ['email.view', 'email.inbox.view', 'email.settings.view'],
   'modules': [
     {'key': 'email', 'label': 'Email', 'available': true, 'reachable': true},
   ],

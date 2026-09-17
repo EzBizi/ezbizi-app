@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Http\Controllers\Api\AutomationsController;
 use App\Support\Dashboard\GlanceRegistry;
 use App\Support\Modules\ModuleRegistry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,12 +19,47 @@ class ReportsModuleTest extends TestCase
         return collect(app(ModuleRegistry::class)->all())->firstWhere('key', 'reports');
     }
 
-    public function test_the_module_declares_its_three_permissions(): void
+    /**
+     * Three capability actions, and one per tab since 2026-09-17.
+     *
+     * The tab actions are not a second list: `TabDefinition::action()` folds
+     * each one into `actions`, which is what lets moduleOf(), materialise() and
+     * ezbizi:sync-permissions carry on knowing nothing about tabs. Asserting
+     * the whole array rather than just the first three is deliberate — a tab
+     * silently dropping out of the registry would leave a route gated on a
+     * permission that no longer exists for anybody to hold.
+     */
+    public function test_the_module_declares_its_permissions_and_its_tabs(): void
     {
         $module = $this->module();
 
         $this->assertNotNull($module, 'the reports module is not registered');
-        $this->assertSame(['view', 'build', 'export'], $module->actions);
+        $this->assertSame([
+            'view',
+            'build',
+            'export',
+            'library.view',
+            'builder.view',
+            'experimental.view',
+        ], $module->actions);
+    }
+
+    /**
+     * THE LABELS ARE THE WORDS ON THE CHIPS, not near-misses.
+     *
+     * An administrator ticks these in the roles editor and then goes looking
+     * for the tab. If this said "Library" and the chip said "Reports", they
+     * have been handed a checkbox for something whose name they were told
+     * wrongly — and nothing errors, because both halves work.
+     */
+    public function test_each_tab_is_labelled_the_way_the_chip_is(): void
+    {
+        $labels = array_map(
+            static fn ($tab): string => $tab->label,
+            $this->module()->tabs,
+        );
+
+        $this->assertSame(['Reports', 'Builder', 'Experimental'], $labels);
     }
 
     /**
@@ -66,7 +102,7 @@ class ReportsModuleTest extends TestCase
      */
     public function test_report_send_is_in_the_implemented_list(): void
     {
-        $reflection = new \ReflectionClass(\App\Http\Controllers\Api\AutomationsController::class);
+        $reflection = new \ReflectionClass(AutomationsController::class);
         $implemented = $reflection->getConstant('IMPLEMENTED_ACTIONS');
 
         $this->assertIsArray($implemented, 'IMPLEMENTED_ACTIONS was not readable');

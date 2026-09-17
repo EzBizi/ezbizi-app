@@ -35,51 +35,79 @@ void main() {
   ) async {
     await _pumpShell(tester);
 
-    final visited = <bool>[];
+    // WHICH REGION, not "is it the sidebar". The deploy desk's point, and
+    // Automations' before that: a type-targeted finder does not fail when its
+    // subject is replaced, it silently re-aims. Worse here than in general —
+    // measuring "not the sidebar" counts a TOP BAR stop as a page stop, so the
+    // sequence would be wrong in a direction that reads as correct.
+    final visited = <String>[];
     for (var press = 0; press < 24; press++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.pump();
-      visited.add(_focusIsInside(tester, find.byType(NavigationSidebar)));
+      visited.add(
+        _focusIsInside(tester, find.byKey(shellSidebarGroup))
+            ? 'sidebar'
+            : _focusIsInside(tester, find.byKey(shellPageGroup))
+            ? 'page'
+            : 'chrome',
+      );
     }
 
+    // Both regions reached. Two positive controls rather than one: a fix that
+    // TRAPPED focus in the page would satisfy the complaint and break the
+    // keyboard, and a test that only knew about the sidebar could not see a
+    // page that had stopped being reachable at all.
     expect(
-      visited.contains(true),
-      isTrue,
+      visited,
+      contains('sidebar'),
       reason:
-          'Tab never reached the sidebar in 24 presses, so this test is not '
-          'looking at the thing it claims to measure. Grouping ORDERS the '
-          'regions; it must not trap focus in one of them. '
-          'focusables=${tester.widgetList(find.byType(Focus)).length} '
-          'sidebars=${find.byType(NavigationSidebar).evaluate().length} '
-          'focused=${FocusManager.instance.primaryFocus?.debugLabel} '
-          'visited=$visited',
+          'Tab never reached the sidebar in 24 presses. Grouping ORDERS the '
+          'regions; it must not trap focus in one of them. $visited',
+    );
+    expect(
+      visited,
+      contains('page'),
+      reason: 'Tab never reached the page in 24 presses: $visited',
     );
 
-    // Runs of consecutive stops on the same side. The FIRST and LAST are cut
-    // off by the press limit and say nothing; every run BETWEEN them is a
-    // complete visit to one region.
-    final runs = <int>[1];
-    for (var i = 1; i < visited.length; i++) {
-      if (visited[i] == visited[i - 1]) {
-        runs[runs.length - 1]++;
-      } else {
-        runs.add(1);
-      }
+    // Collapse to the ORDER the regions were visited in, which is the thing
+    // grouping decides. Run lengths are not: this fixture's page has exactly
+    // one focusable, so a page run of one is honest here and would be honest
+    // on a screen with a single button.
+    final order = <String>[visited.first];
+    for (final region in visited.skip(1)) {
+      if (region != order.last) order.add(region);
     }
 
-    final interior = runs.sublist(1, runs.length - 1);
+    final regions = visited.toSet();
 
-    // A COMPLETE visit of length one is the bug, exactly as he described it:
-    // one field, one sidebar row, one more sidebar row, back to the fields.
-    // Grouped, a visit is the whole region — here 10 and 5 — so this is a
-    // difference in kind rather than a threshold somebody has to tune.
-    expect(
-      interior,
-      everyElement(greaterThan(1)),
-      reason:
-          'Focus visited a region for a SINGLE stop before crossing back, '
-          'which is the alternation. Runs: $runs, from: $visited',
-    );
+    // COMING BACK TO A REGION MEANS HAVING LEFT EVERY OTHER ONE FIRST.
+    //
+    // That is what "keeping on its own section" means, and it needs no
+    // threshold. Grouped, the order laps cleanly —
+    //   chrome, sidebar, page, chrome, sidebar
+    // Ungrouped it reads
+    //   chrome, sidebar, page, sidebar, chrome, sidebar
+    // where the sidebar is returned to with only the page in between: the page
+    // stop sits INSIDE the run of sidebar rows, which is exactly the sentence
+    // Jose wrote — a field, then the sidebar, then the item below it.
+    for (var i = 1; i < order.length; i++) {
+      final previous = order.lastIndexOf(order[i], i - 1);
+      if (previous < 0) continue;
+
+      final between = order.sublist(previous + 1, i).toSet();
+      final others = regions.difference({order[i]});
+
+      expect(
+        between,
+        containsAll(others),
+        reason:
+            'Focus returned to "${order[i]}" without having visited '
+            '${others.difference(between)} in between, so that region is '
+            'split around stops from another one. Order: $order, from: '
+            '$visited',
+      );
+    }
   });
 }
 

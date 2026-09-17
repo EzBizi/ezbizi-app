@@ -24,7 +24,7 @@ class InventorySummaryTest extends TestCase
     public function test_an_item_with_no_reorder_point_is_never_low(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $admin = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+        $admin = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.financials']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $location = InventoryLocation::factory()->create([
@@ -58,7 +58,7 @@ class InventorySummaryTest extends TestCase
     public function test_on_hand_at_the_reorder_point_is_low_not_in_stock(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $admin = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+        $admin = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.financials']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $location = InventoryLocation::factory()->create([
@@ -103,7 +103,7 @@ class InventorySummaryTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.financials'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.financials'],
             onlyAt: $tenant['franchise'],
         );
 

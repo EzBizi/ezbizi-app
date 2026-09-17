@@ -5,7 +5,6 @@ namespace Tests\Feature\TimeClock;
 use App\Models\Organization;
 use App\Models\TimeClockShift;
 use App\Models\User;
-use App\Support\Access\Refusal;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -74,7 +73,7 @@ class TimeClockWeekTest extends TestCase
     public function test_the_week_runs_sunday_to_saturday_and_totals_the_hours(): void
     {
         [$alpha, $worker] = $this->tenantWithAWeek();
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         $page = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
@@ -110,7 +109,7 @@ class TimeClockWeekTest extends TestCase
     {
         [$alpha, $worker] = $this->tenantWithAWeek();
         $this->set($alpha['org'], 'time_clock.week_starts_on', 'monday');
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         $page = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
@@ -131,7 +130,7 @@ class TimeClockWeekTest extends TestCase
     public function test_on_names_any_day_inside_the_week_it_wants(): void
     {
         [$alpha, $worker] = $this->tenantWithAWeek();
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         // The Saturday before, asked for by a date in that week.
@@ -151,7 +150,7 @@ class TimeClockWeekTest extends TestCase
     {
         [$alpha, $worker] = $this->tenantWithAWeek();
         $idle = $this->userWithRole($alpha, 'Idle', ['time_clock.view'], 'idle@alpha.test');
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
 
         $beta = $this->provisionTenant('Beta');
         $this->set($beta['org'], 'time_clock.enabled', true);
@@ -182,7 +181,7 @@ class TimeClockWeekTest extends TestCase
 
         $mine = $this->userWithRole($alpha, 'Mine', ['time_clock.view'], 'mine@alpha.test', onlyAt: $alpha['franchise']);
         $theirs = $this->userWithRole($alpha, 'Theirs', ['time_clock.view'], 'theirs@alpha.test', onlyAt: $other);
-        $manager = $this->userWithRole($alpha, 'Manager', ['hr.view'], 'manager@alpha.test', onlyAt: $alpha['franchise']);
+        $manager = $this->userWithRole($alpha, 'Manager', ['hr.hours.view'], 'manager@alpha.test', onlyAt: $alpha['franchise']);
 
         $this->midweek();
 
@@ -195,21 +194,24 @@ class TimeClockWeekTest extends TestCase
         $this->assertNotContains($theirs->id, $ids);
     }
 
-    public function test_the_week_needs_hr_view_and_the_organization_switch(): void
+    public function test_the_week_needs_the_work_hours_tab_and_the_organization_switch(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
 
         $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
-            ->assertForbidden()
+            // 409, not 403: the feature being off is not a permission failure,
+            // and this viewer HOLDS the permission.
+            ->assertStatus(409)
             ->assertJsonPath('message', 'Clock in is switched off for this organization.');
 
         $this->set($alpha['org'], 'time_clock.enabled', true);
         $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech2@alpha.test');
 
+        // Same as the day list: the rule is that punching does not grant
+        // reading, and the sentence is Settings' middleware to word.
         $this->signedInAs($puncher)->getJson('/api/v1/hr/time-clock/week')
-            ->assertForbidden()
-            ->assertJsonPath('message', Refusal::permission('view clock in and out times')->message());
+            ->assertForbidden();
     }
 
     /**
@@ -222,7 +224,7 @@ class TimeClockWeekTest extends TestCase
     public function test_the_week_names_all_seven_days_in_the_organizations_language(): void
     {
         [$alpha] = $this->tenantWithAWeek();
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
@@ -246,7 +248,7 @@ class TimeClockWeekTest extends TestCase
         [$alpha] = $this->tenantWithAWeek();
         $this->set($alpha['org'], 'locale', 'es');
         $this->set($alpha['org'], 'date_format', 'D/M/YYYY');
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
@@ -272,7 +274,7 @@ class TimeClockWeekTest extends TestCase
     public function test_days_say_whether_they_are_still_to_come(): void
     {
         [$alpha] = $this->tenantWithAWeek();
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek(); // Wednesday the 16th, 11:00 in New York.
 
         $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
@@ -298,13 +300,43 @@ class TimeClockWeekTest extends TestCase
     public function test_a_week_that_is_over_has_no_days_still_to_come(): void
     {
         [$alpha] = $this->tenantWithAWeek();
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
         $this->midweek();
 
         $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week?on=2026-09-09')
             ->assertOk()->json('data.days');
 
         $this->assertSame([false, false, false, false, false, false, false], array_column($days, 'in_future'));
+    }
+
+    /**
+     * The two refusals are told apart by their status, not by reading English.
+     *
+     * This is the test Settings could not write on 2026-09-17: both answered
+     * 403, so a permission suite full of negatives passed identically against a
+     * feature that was switched off entirely. One assertion, two causes.
+     */
+    public function test_no_permission_and_no_feature_are_different_refusals(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $granted = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
+        $ungranted = $this->userWithRole($alpha, 'Other', ['customers.view'], 'other@alpha.test');
+
+        // Clock in is OFF for this organization, and nobody has been granted
+        // anything since. Both people are refused; they must not look alike.
+        $this->signedInAs($ungranted)->getJson('/api/v1/hr/time-clock/week')
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'permission_denied');
+
+        $this->signedInAs($granted)->getJson('/api/v1/hr/time-clock/week')
+            ->assertStatus(409);
+
+        // And with the switch on, the one holding the grant gets through, which
+        // is the case whose absence made the negatives meaningless.
+        $this->set($alpha['org'], 'time_clock.enabled', true);
+
+        $this->signedInAs($granted)->getJson('/api/v1/hr/time-clock/week')->assertOk();
+        $this->signedInAs($ungranted)->getJson('/api/v1/hr/time-clock/week')->assertStatus(403);
     }
 
     private function set(Organization $org, string $key, mixed $value): void

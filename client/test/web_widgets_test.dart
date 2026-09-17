@@ -170,7 +170,7 @@ void main() {
   testWidgets('the widget settings come from the server, not the shortcode', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
 
@@ -186,7 +186,7 @@ void main() {
   testWidgets('a site following the primary says so', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       own: false,
     );
 
@@ -203,7 +203,7 @@ void main() {
   ) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
         'on_accent': '#ffffff',
@@ -228,7 +228,7 @@ void main() {
   testWidgets('a low-contrast pair still saves', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
         'on_accent': '#ffffff',
@@ -255,7 +255,7 @@ void main() {
   testWidgets('three-digit hex is checked, not skipped', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ff0',
         'on_accent': '#fff',
@@ -273,7 +273,7 @@ void main() {
   testWidgets('a half-typed colour is not a finding', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#0b5c',
         'on_accent': '#ffffff',
@@ -292,7 +292,7 @@ void main() {
   testWidgets('a site dressing itself can go back to following', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       own: true,
     );
 
@@ -309,7 +309,7 @@ void main() {
   ) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: null,
     );
 
@@ -320,7 +320,7 @@ void main() {
   testWidgets('and names the brand colour when there is one', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: '#7b2d8e',
     );
 
@@ -339,7 +339,7 @@ void main() {
   ) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
         'on_accent': '#ffffff',
@@ -368,7 +368,7 @@ void main() {
   });
 
   testWidgets('a viewer is offered no presets to pick', (tester) async {
-    await pump(tester, permissions: ['web_management.view']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.byTooltip('#00838f'), findsNothing);
   });
@@ -378,7 +378,7 @@ void main() {
   testWidgets('the preview shows the wording and questions being edited', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // TWO of each is the assertion: the box somebody types in, and the preview
     // drawing the same value. One would mean the preview never rendered it.
@@ -411,7 +411,7 @@ void main() {
   /// The preview is where he checks that wording, so it has to be the step
   /// the wording belongs to.
   testWidgets('the preview asks before it chats', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // The editable copy, drawn as the visitor will meet it.
     expect(find.textContaining('Quick details first'), findsWidgets);
@@ -433,7 +433,7 @@ void main() {
   /// Every site had both switched off, so every site showed nothing, and the
   /// only notice of that was a grey phrase in a preview that reads as styling.
   testWidgets('nothing offers to switch a widget off', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Preview'), findsOneWidget);
 
@@ -452,7 +452,7 @@ void main() {
   testWidgets('the preview follows a preset before anything is saved', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final swatch = find.byTooltip('#6a1b9a');
     await tester.scrollUntilVisible(swatch, 200,
@@ -472,7 +472,7 @@ void main() {
 
   /// The 260 and the 360 were my guesses about somebody else's monitor.
   testWidgets('both panes can be dragged wider and narrower', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     double widthOf(Finder f) => tester.getSize(f).width;
 
@@ -511,7 +511,7 @@ void main() {
   /// A pane dragged to nothing is not a smaller pane, it is a lost one, and the
   /// way back is a hairline somebody has to find.
   testWidgets('a pane cannot be dragged away entirely', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // Shove both handles far past any sane width.
     await tester.drag(
@@ -538,7 +538,7 @@ void main() {
   testWidgets('a resized preview survives switching website', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       twoSites: true,
     );
 
@@ -566,7 +566,7 @@ void main() {
 
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       saved: saved,
     );
 
@@ -591,7 +591,7 @@ void main() {
   testWidgets('a saved width is what the screen opens with', (tester) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {
         'web.widgets.list_width': 300,
         'web.widgets.preview_width': 500,
@@ -613,7 +613,7 @@ void main() {
   ) async {
     await pump(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {'web.widgets.preview_width': 9999},
     );
 
@@ -626,7 +626,7 @@ void main() {
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {
-    await pump(tester, permissions: ['web_management.view']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
     expect(find.text('Save'), findsNothing);
@@ -670,7 +670,7 @@ void main() {
   /// Verified by putting the original shape back and watching it fail with
   /// "Focus left the question after one character."
   testWidgets('a question is driven by its own controller', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final questions = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',
@@ -717,7 +717,7 @@ void main() {
   testWidgets('removing a question does not move its text into another', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final before = find
         .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
@@ -752,7 +752,7 @@ void main() {
   /// the box? The helper shape is the one `structure_canvas_test` already uses
   /// for tab order.
   testWidgets('focus stays in the question being typed into', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final box = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',

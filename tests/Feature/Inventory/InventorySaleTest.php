@@ -192,7 +192,7 @@ class InventorySaleTest extends TestCase
         $viewer = $this->userWithRole(
             $tenant,
             'Stock clerk',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
         );
 
         $this->signedInAs($viewer)
@@ -249,7 +249,7 @@ class InventorySaleTest extends TestCase
         $clerk = $this->userWithRole(
             $tenant,
             'Stock clerk pay',
-            ['inventory.view', 'inventory.edit'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit'],
         );
 
         $this->signedInAs($clerk)

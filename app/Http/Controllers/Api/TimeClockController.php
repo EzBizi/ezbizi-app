@@ -27,7 +27,25 @@ class TimeClockController extends Controller
         $user = $request->user();
 
         if (! $this->timeClock->organizationEnabled($user->organization)) {
-            abort(403, 'Clock in is switched off for this organization.');
+            /*
+             * 409, not 403, and the difference is not decoration.
+             *
+             * This is a PLATFORM fact — the organization has Clock in switched
+             * off — and 403 is what a permission failure returns. Settings
+             * measured the cost while writing their per-tab suite on
+             * 2026-09-17: their positive case, a dispatcher granted only Work
+             * Hours, came back 403, and they realised a suite of NEGATIVES
+             * would every one have passed against a feature that was not
+             * working at all. An assertion true for two reasons cannot tell
+             * them apart, and permission suites are being written across the
+             * fleet this week.
+             *
+             * Not 501: that says EzBizi cannot do this, which is false — an
+             * administrator flipping one switch turns it on. 409 says the
+             * request conflicts with the current state of the thing, which is
+             * what this is. Pick the code that is true about who can fix it.
+             */
+            abort(409, 'Clock in is switched off for this organization.');
         }
 
         $on = $request->query('on');
@@ -49,7 +67,8 @@ class TimeClockController extends Controller
         $user = $request->user();
 
         if (! $this->timeClock->organizationEnabled($user->organization)) {
-            abort(403, 'Clock in is switched off for this organization.');
+            // 409 rather than 403, for the reason spelled out in index().
+            abort(409, 'Clock in is switched off for this organization.');
         }
 
         $on = $request->query('on');

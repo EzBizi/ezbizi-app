@@ -115,7 +115,7 @@ class InventoryIssueTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.edit', 'jobs.view'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit', 'jobs.view'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -211,7 +211,7 @@ class InventoryIssueTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Issuer',
-            ['inventory.view', 'inventory.edit'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -363,7 +363,7 @@ class InventoryIssueTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.edit'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -438,7 +438,7 @@ class InventoryIssueTest extends TestCase
         $this->assertSame($created['id'], $listed[0]['id']);
         $this->assertSame('sold over the counter', $listed[0]['note']);
 
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
         $this->signedInAs($viewer)
             ->getJson('/api/v1/inventory/issues')
             ->assertOk()

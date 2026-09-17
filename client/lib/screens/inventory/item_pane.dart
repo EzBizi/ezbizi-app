@@ -247,9 +247,23 @@ class _ItemPaneState extends State<ItemPane> {
     });
 
     final itemRes = await widget.api.get('/inventory/items/${widget.itemId}');
-    final stockRes = await widget.api.get('/inventory/stock', {
-      'item_id': widget.itemId,
-    });
+
+    /*
+     * On-hand is the Stock tab's answer, and `/inventory/stock` is gated on
+     * `inventory.stock.view`. A role granted Items and not Stock is being told
+     * "the catalogue, not the quantities", so this does not ask — asking and
+     * swallowing the refusal would put a permission message in `_error` on a
+     * tab the person legitimately holds, which reads as broken rather than as
+     * scoped.
+     */
+    final maySeeStock =
+        widget.session.me?.permissions.contains('inventory.stock.view') ??
+        false;
+
+    final stockRes = maySeeStock
+        ? await widget.api.get('/inventory/stock', {'item_id': widget.itemId})
+        : null;
+
     final locRes = await widget.api.get('/inventory/locations');
 
     if (!mounted) return;
@@ -263,8 +277,11 @@ class _ItemPaneState extends State<ItemPane> {
     }
 
     final item = Map<String, dynamic>.from(itemRes.data as Map);
-    final stockFailed = !stockRes.ok;
-    final mine = stockFailed
+
+    // Null is "did not ask", which is not a failure. Only a request that was
+    // made and refused sets `_stockFailed` and surfaces a message.
+    final stockFailed = stockRes != null && !stockRes.ok;
+    final mine = (stockRes == null || stockFailed)
         ? <Map<String, dynamic>>[]
         : [
             for (final row in inventoryRows(stockRes.data))

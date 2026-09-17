@@ -275,7 +275,7 @@ class InventoryAdjustTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -390,7 +390,7 @@ class InventoryAdjustTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -448,7 +448,7 @@ class InventoryAdjustTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.edit'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit'],
             onlyAt: $tenant['franchise'],
         );
 
