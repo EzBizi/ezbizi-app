@@ -292,6 +292,18 @@ if wants macos || wants ios; then
   # whole web build over one. Copying the workaround would be carrying a scar
   # from an injury this script cannot suffer.
   #
+  # assets/ is synced for the same reason, added 2026-09-17 after it cost
+  # 0.0.0234 both Apple halves. pubspec declares assets/social, assets/softphone
+  # and assets/logo; the tar shipped lib, ios and macos and never them, so the
+  # Mac built from whatever copy an older manual sync had left behind. It
+  # worked for weeks and failed the moment that copy was gone, with
+  # "unable to find directory entry in pubspec.yaml" - which reads like a
+  # pubspec error and is a missing directory.
+  #
+  # The general form, and the reason this comment is longer than the fix: a
+  # build that depends on a file nobody sends is GREEN until something tidies
+  # up. The list below is the contract; anything pubspec names has to be in it.
+  #
   # ios/ and macos/ are synced, not just lib/. Skipping them is how a native
   # change — an Info.plist key, an entitlement, an AppDelegate fix — silently
   # never reaches the builder and the artefact is signed against stale code. It
@@ -337,7 +349,7 @@ if wants macos || wants ios; then
     --exclude='DerivedData' \
     --exclude='.DS_Store' \
     -C client \
-    VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib ios macos \
+    VERSION pubspec.yaml pubspec.lock analysis_options.yaml lib assets ios macos \
     | ssh "$MAC_REMOTE" "tar -xz -C ${MAC_PROJECT}"
 
   MAC_DEFINES="--dart-define=API_BASE=${API_BASE} --dart-define=APP_FACE=${APP_FACE}"
