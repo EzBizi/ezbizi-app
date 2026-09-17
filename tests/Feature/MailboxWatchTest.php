@@ -515,9 +515,43 @@ class MailboxWatchTest extends TestCase
 
         // AND STILL NOT THE MESSAGE. The word came from the rule; nothing the
         // customer wrote is here.
-        $json = json_encode($event->getAttributes());
-        $this->assertStringNotContainsString('614', $json);
-        $this->assertStringNotContainsString('Caller', $json);
+        //
+        // ── WHY THE NEEDLES BELOW LOOK FUSSY ──────────────────────
+        //
+        // This read `assertStringNotContainsString('614', $json)` until
+        // 2026-09-17, and it was passing BY COINCIDENCE. `getAttributes()`
+        // carries the row's five UUIDs, a UUID is hexadecimal, and `614` is
+        // three hexadecimal characters -- so the assertion failed on whichever
+        // runs an identifier happened to spell it and passed on the rest. That
+        // is the worse direction: every green run was a fact about random
+        // identifiers, and a real leak of the caller's number would have been
+        // caught only on the runs where no UUID rescued it. Found by the deploy
+        // desk on a failing run that read as a flake.
+        //
+        // So the sweep is done twice, because the two find different things.
+        $payload = json_encode($event->payload);
+        $row = json_encode($event->getAttributes());
+
+        // THE CONTROL, and the point the Reports session made today: a negative
+        // assertion is satisfied perfectly by an empty world. If `payload` came
+        // back null or `getAttributes()` empty, every line below would pass
+        // while proving nothing at all.
+        $this->assertStringContainsString('Missed', $payload);
+        $this->assertStringContainsString('email.received', $row);
+
+        // 1. Against the PAYLOAD, which holds no identifiers, so the number
+        //    itself is a safe needle. This is where a leak would actually land.
+        $this->assertStringNotContainsString('614', $payload);
+        $this->assertStringNotContainsString('555', $payload);
+
+        // 2. Across the WHOLE ROW, which is what would catch a leak into a
+        //    column nobody thought about -- and therefore needs needles
+        //    hexadecimal cannot spell. A space, a bracket and two letters
+        //    outside a-f between them rule out every UUID in the row.
+        $this->assertStringNotContainsString('(614)', $row);
+        $this->assertStringNotContainsString('555 0100', $row);
+        $this->assertStringNotContainsString('Caller', $row);
+        $this->assertStringNotContainsString('Status:', $row);
         $this->assertArrayNotHasKey('snippet', $event->payload);
         $this->assertArrayNotHasKey('body', $event->payload);
     }
