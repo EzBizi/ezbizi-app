@@ -2,7 +2,11 @@
 
 namespace App\Policies;
 
+use App\Models\Lead;
+use App\Models\User;
 use App\Policies\Concerns\AuthorizesCatalogPlace;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Who may do what to a lead.
@@ -19,7 +23,57 @@ use App\Policies\Concerns\AuthorizesCatalogPlace;
  */
 class LeadPolicy
 {
-    use AuthorizesCatalogPlace;
+    use AuthorizesCatalogPlace {
+        view as reachMayView;
+        update as reachMayUpdate;
+        delete as reachMayDelete;
+    }
+
+    /*
+     * THE SOURCE IS A SEPARATE GRANT - Jose, 2026-09-17.
+     *
+     * Gated here rather than only in the controller's list because a lead has
+     * more doors than the list: show, star, note, status, reply. A filter on
+     * the index alone would hide a Thumbtack enquiry from a person and still
+     * let them reply to it by pasting the id, which is the shape the inbox
+     * brief calls a decoration rather than a permission.
+     *
+     * Read-then-write, in that order: somebody who cannot SEE the source
+     * cannot change it either, so the same check sits in front of all three.
+     */
+    public function view(User $user, Model $row): Response
+    {
+        return $this->ofAVisibleSource($user, $row) ?? $this->reachMayView($user, $row);
+    }
+
+    public function update(User $user, Model $row): Response
+    {
+        return $this->ofAVisibleSource($user, $row) ?? $this->reachMayUpdate($user, $row);
+    }
+
+    public function delete(User $user, Model $row): Response
+    {
+        return $this->ofAVisibleSource($user, $row) ?? $this->reachMayDelete($user, $row);
+    }
+
+    /**
+     * Null when the source is allowed, so the caller falls through to reach.
+     *
+     * Refuses as NOT FOUND rather than as a permission, deliberately: a person
+     * who may not see Thumbtack enquiries should not learn that this id is one.
+     * The same reasoning the trait already applies to another organization's
+     * rows one method down.
+     */
+    private function ofAVisibleSource(User $user, Model $row): ?Response
+    {
+        if (! $row instanceof Lead) {
+            return null;
+        }
+
+        return in_array($row->source, Lead::sourcesVisibleTo($user), true)
+            ? null
+            : Response::denyAsNotFound();
+    }
 
     protected function permission(string $action): string
     {

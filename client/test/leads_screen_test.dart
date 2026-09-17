@@ -385,7 +385,15 @@ void main() {
       tester,
       leads: const [],
       connections: const [],
-      permissions: const ['leads.view'],
+      // Sources beside it: this case is about leads.edit, and a role with no
+      // source at all would be a different test failing for a second reason.
+      permissions: const [
+        'leads.view',
+        'leads.local_services.view',
+        'leads.thumbtack.view',
+        'leads.website_chat.view',
+        'leads.website_form.view',
+      ],
     );
 
     expect(find.text('Connect Google Ads'), findsNothing);
@@ -403,7 +411,14 @@ void main() {
       tester,
       leads: const [],
       connections: const [],
-      permissions: const ['leads.view', 'leads.edit'],
+      permissions: const [
+        'leads.view',
+        'leads.edit',
+        'leads.local_services.view',
+        'leads.thumbtack.view',
+        'leads.website_chat.view',
+        'leads.website_form.view',
+      ],
     );
 
     expect(find.text('Connect Google Ads'), findsOneWidget);
@@ -467,6 +482,79 @@ void main() {
     // Still ONE list: a tab narrows it, it does not open a screen per source.
     expect(find.text('Google Leads'), findsNothing);
     expect(find.text('Thumbtack Leads'), findsNothing);
+  });
+
+  /// A SOURCE THIS ROLE WAS NOT GRANTED HAS NO TAB - Jose, 2026-09-17:
+  /// *"i should be able to grant access by sub tab as well"*.
+  ///
+  /// The drawing half only. The rows are filtered by the server on every
+  /// request including All, because one list behind one endpoint cannot be
+  /// gated by hiding a chip - a chip is a convenience, not a permission.
+  testWidgets('the strip draws only the sources this role holds', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+    );
+
+    // The positive half: the one they hold is still there, so an empty strip
+    // cannot pass this by hiding everything.
+    expect(find.widgetWithText(ChoiceChip, 'Chat'), findsOneWidget);
+
+    for (final word in ['Google', 'Thumbtack', 'Forms']) {
+      expect(
+        find.widgetWithText(ChoiceChip, word),
+        findsNothing,
+        reason: '$word was not granted, so it must not be offered.',
+      );
+    }
+  });
+
+  /// Tapping the second tab means the second SURVIVING source.
+  ///
+  /// The strip is built from the filtered list, so the index the widget hands
+  /// back is an index into that list. Built from the full list and filtered
+  /// only for drawing, this tap would have asked for Thumbtack.
+  testWidgets('a tab in a narrowed strip asks for its own source', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const [
+        'leads.view',
+        'leads.website_chat.view',
+        'leads.website_form.view',
+      ],
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Forms'));
+    await tester.pumpAndSettle();
+
+    expect(_lastListQuery['source'], 'website_form');
+  });
+
+  /// A notification for a source this person may not see opens on All.
+  ///
+  /// Same branch as `carrier_pigeon` above and the same reason: a request
+  /// narrowed to a source that answers nothing draws as an empty inbox, and an
+  /// empty inbox is indistinguishable from a quiet morning.
+  testWidgets('a deep link to an ungranted source falls back to All', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.website_chat.view'],
+      initialSource: 'thumbtack',
+    );
+
+    expect(_lastListQuery.containsKey('source'), isFalse);
   });
 
   testWidgets('a source tab narrows the list, and clearing the filters puts '
@@ -743,7 +831,15 @@ void main() {
       tester,
       leads: const [],
       connections: const [],
-      permissions: const ['leads.view'],
+      // Sources beside it: this case is about leads.edit, and a role with no
+      // source at all would be a different test failing for a second reason.
+      permissions: const [
+        'leads.view',
+        'leads.local_services.view',
+        'leads.thumbtack.view',
+        'leads.website_chat.view',
+        'leads.website_form.view',
+      ],
     );
 
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
@@ -1131,7 +1227,18 @@ Future<void> _pump(
   required List<Map<String, dynamic>> leads,
   required List<Map<String, dynamic>> connections,
   String? delayedSince,
-  List<String> permissions = const ['leads.view', 'leads.edit'],
+  /// The four sources are here because every existing role holds them: the
+  /// migration that shipped with the split grants all four to anybody who had
+  /// `leads.view`. A default without them would make every test in this file
+  /// about the rarest role in the business.
+  List<String> permissions = const [
+    'leads.view',
+    'leads.edit',
+    'leads.local_services.view',
+    'leads.thumbtack.view',
+    'leads.website_chat.view',
+    'leads.website_form.view',
+  ],
   Size size = const Size(1200, 900),
   String? initialSource,
 }) async {
