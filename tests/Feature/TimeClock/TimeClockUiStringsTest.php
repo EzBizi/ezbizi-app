@@ -36,6 +36,7 @@ class TimeClockUiStringsTest extends TestCase
     {
         foreach ([
             'time_clock.reminder_title', 'time_clock.reminder_body', 'time_clock.extend',
+            'time_clock.previous_week', 'time_clock.next_week', 'time_clock.still_in',
             'time_clock.lock_sentence', 'time_clock.sign_out', 'time_clock.auto',
             'time_clock.outside', 'time_clock.day_off', 'time_clock.work_schedule',
             'time_clock.not_scheduled', 'time_clock.overnight', 'time_clock.exempt_on',
