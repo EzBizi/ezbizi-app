@@ -2894,6 +2894,59 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 20 · HR · Work Hours — **DRAWN, awaiting Jose**
+
+`docs/previews/work-hours-layouts.html`. Brief from the Clock In session.
+
+> **⚠ THE BRIEF ITSELF IS NOT ON MAIN.** Clock In filed it as their own entry 20 in `c97efb35`
+> *"in the file that outlives the session"* — but that commit sits on the branch
+> `session/clock-in` and nothing on main carries it. Read it with
+> `git show c97efb35:docs/UI-DESIGN-QUEUE.md` until that branch merges. Flagged to them; it holds
+> Jose's requirements verbatim and is worth more than this summary of it.
+
+**Already built by Clock In (`e5c3ecff`) — do not redo:** the rename to Work Hours (en + es), the
+tab moved second beside Dashboard, and the whole data layer
+(`GET /api/v1/hr/time-clock/week?on=YYYY-MM-DD`). The old one-day list still renders on that tab;
+replacing it is the build.
+
+> **HIS LIST CONTAINS TWO DIFFERENT SCREENS, AND THAT IS THE DECISION.** His first bullet asks for
+> *one expanding row per user* — a single list you open in place. His last asks for *a left
+> sidebar of users with the week beside it*. Both are reasonable, they answer different questions,
+> and building one does not give you the other. Options 1–3 are the three honest readings.
+
+**Recommendation: 1 and 5.**
+
+**1 is the only option that satisfies BOTH bullets.** The sidebar is one row per person — which
+is his first complaint, that he appears several times today — and selecting somebody shows every
+clock in and out grouped by day, which is the expansion he asked for. 2 and 3 each satisfy one
+bullet and not the other. 1 also builds his last sentence literally: search on top, avatar before
+the name, total/days/average, the week he is in.
+
+**3 is the one worth arguing for anyway.** It is the only layout that answers *"did everybody do
+their hours"* without clicking six people, which is the Friday question, and the only one showing
+the SHAPE of a week. Its cost is his first bullet: a cell holds a total rather than the punches,
+so reading the actual times needs a second layer.
+
+**5 over 4 on the phone, and it is a deliberate break from pairing.** A sidebar on a 380px screen
+is just a list, so the two-pane idea buys nothing there — while expanding in place is what every
+other list in the app does, keeps the totals on screen while you compare, and is his first bullet
+natively. 4 exists if matching the desktop shape matters more than that.
+
+**Drawn to respect four facts from the brief rather than invented:** everybody in reach is listed
+**including people who worked nothing** (greyed, never dropped — a missing name reads as "not on
+the team"); an open shift reports time **so far** and is the green indicator; times arrive
+**already formatted** in the organization's clock, so nothing formats from the device; and Sunday
+is a **default rather than a rule**, so the header reads `starts_on`.
+
+**Week navigation is not on his list and every option draws it.** The tab this replaces has day
+arrows, so shipping without it would remove something he has today. Worth a word from him if he
+would rather it went.
+
+**One thing to ask Clock In rather than compute here:** option 6's team numbers — who is on the
+clock, who has no hours, the team total — are not in the payload. Summing them client-side is a
+second place that can disagree with the server the day the rules change. If 6 is picked, that is
+a request to them, not arithmetic here.
+
 ### 19 · Communication · Editing from the call flow — **DRAWN, awaiting Jose**
 
 `docs/previews/call-flow-sidebar-layouts.html`. Jose, 2026-09-16, verbatim:
