@@ -1572,6 +1572,11 @@ Route::prefix('v1')
         // Park sets a live call down; parked lists who is waiting. Picking
         // one up is not a route: the desk dials 'park:<queue>' like any other
         // destination, and the voice webhook bridges it.
+        // "I have dealt with this call here; stop my other phones." Answering
+        // and declining both post it, because the rule is the same and two
+        // endpoints would be two chances to end the wrong leg.
+        Route::post('phone/calls/silence', [PhoneCallsController::class, 'silence']);
+
         Route::post('phone/calls/park', [PhoneCallsController::class, 'park']);
         Route::post('phone/page', [PhoneCallsController::class, 'page']);
         Route::get('phone/calls/parked', [PhoneCallsController::class, 'parked']);

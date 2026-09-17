@@ -231,17 +231,48 @@ enum SocialProvider: string
      * in this file.** Reports moved the Airtable arm on 2026-09-16 by applying
      * the rule above rather than inventing one, which is the mechanism working.
      *
-     * ── What makes an arm go wrong, and it is not this file changing ─
+     * ── What makes an arm go wrong, and the class is NARROW ─────────
      *
-     * An arm names a permission that opened the reading screen WHEN IT WAS
-     * WRITTEN. The screen can move behind a narrower grant later and nothing
-     * here fails: per-tab permissions (2026-09-17) put every module's panes
-     * behind `{module}.{tab}.view`, so an arm naming `{module}.edit` can now be
-     * held by somebody who cannot open the tab that reads the account. Airtable
-     * was exactly that and was caught. **When a module declares tabs, re-read
-     * its arm here** — the drift is silent in both directions, offering Connect
-     * to somebody who cannot see what it connects, and refusing it to the
-     * person who reads the thing every day.
+     * `withImpliedView` adds `<module>.view` beside any granted key. So
+     * `leads.edit` implies `leads.view`, `newsletter.send` implies
+     * `newsletter.view`, and the rule above is satisfied FOR FREE whenever the
+     * screen that reads a connection lives in the same module as the arm.
+     *
+     * Which means an arm only goes wrong when its reader LEAVES that module —
+     * either into a module of its own, or behind a tab. Airtable was the first:
+     * its only reader became Profit & Loss, and an accountant reading the
+     * figures weekly could not attach a base (Reports, `33c68c17`). **The
+     * implication does not extend to tabs** — it adds `<module>.view`, never
+     * `<module>.<tab>.view` — so the day a reading screen goes behind a tab
+     * grant its arm silently stops being covered, and nothing fails.
+     *
+     * Measured 2026-09-17: neither `newsletter`, `marketing`, `reviews` nor
+     * `business_profile` declares tabs, so those arms are covered today. That
+     * is a reading with a date on it, not a property.
+     *
+     * ── Re-reading is a QUESTION, and the test is not the screen ─────
+     *
+     * Both from Leads, who re-read theirs and correctly left it (`4120aaf0`).
+     *
+     * **A tab key can be WIDER than the module action it replaces.** Every
+     * dispatcher holds `leads.local_services.view` after the migration that
+     * shipped with the split, so moving that arm to the tab key would have
+     * handed the connecting of an advertising account to every dispatcher. Ask
+     * which way it moves; do not assume re-reading means narrowing.
+     *
+     * **And the test is not "can they open the screen".** It is: is anybody
+     * better off once it is connected? Workiz and Airtable moved because the
+     * connection's only purpose was a screen the connector could not open. A
+     * Google Ads account connected by somebody who never watches the Google tab
+     * still delivers every enquiry, still fires the automations, still books
+     * the work — the control works, it is simply not for the connector's own
+     * reading.
+     *
+     * A reader in a SECOND module (Google Ads is read by Ads Performance too,
+     * Google Business Profile by Business Profile) does not break the rule,
+     * which is one-directional: connecting is an OAuth act belonging to the
+     * module that owns the account, and a read-only consumer elsewhere is not
+     * entitled to perform it.
      */
     public function connectPermission(): string
     {
