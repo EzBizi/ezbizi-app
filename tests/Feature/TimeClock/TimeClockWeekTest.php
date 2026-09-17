@@ -262,6 +262,51 @@ class TimeClockWeekTest extends TestCase
         $this->assertMatchesRegularExpression('/13/', $days[0]['label']);
     }
 
+    /**
+     * Which days have not happened yet (2026-09-17).
+     *
+     * Jose does not want the rest of the week drawn before it arrives. The
+     * client cannot decide that: "future" is against today in the
+     * ORGANIZATION'S clock, and the only today it has is the device's.
+     */
+    public function test_days_say_whether_they_are_still_to_come(): void
+    {
+        [$alpha] = $this->tenantWithAWeek();
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $this->midweek(); // Wednesday the 16th, 11:00 in New York.
+
+        $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
+            ->assertOk()->json('data.days');
+
+        $future = [];
+        foreach ($days as $day) {
+            $future[$day['date']] = $day['in_future'];
+        }
+
+        $this->assertSame([
+            '2026-09-13' => false,
+            '2026-09-14' => false,
+            '2026-09-15' => false,
+            // Today is not the future.
+            '2026-09-16' => false,
+            '2026-09-17' => true,
+            '2026-09-18' => true,
+            '2026-09-19' => true,
+        ], $future);
+    }
+
+    public function test_a_week_that_is_over_has_no_days_still_to_come(): void
+    {
+        [$alpha] = $this->tenantWithAWeek();
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $this->midweek();
+
+        $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week?on=2026-09-09')
+            ->assertOk()->json('data.days');
+
+        $this->assertSame([false, false, false, false, false, false, false], array_column($days, 'in_future'));
+    }
+
     private function set(Organization $org, string $key, mixed $value): void
     {
         app(TenantContext::class)->run($org, fn () => app(SettingsResolver::class)->set($key, $org, $value));
