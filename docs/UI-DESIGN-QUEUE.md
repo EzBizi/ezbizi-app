@@ -2612,7 +2612,12 @@ sending identities (relayed through HR, not measured by me). If that holds, the 
 ships every organization is in B with a perfectly healthy platform — so a design treating B as the
 unusual case is wrong for everyone at once.
 
-### 16 · A mail server for sending — **PICKED: desktop 2, mobile 5. SES building.**
+### 16 · A mail server for sending — **SHIPPED** (`d2a256e1`)
+
+> **SAID "SES building" UNTIL 2026-09-17.** `widgets/sending_server_panel.dart` exists and
+> `settings_screen.dart:655` mounts it behind its own search match. A status naming what
+> another session is doing is the fastest-decaying kind in this file: the session that
+> could correct it has no reason to read an entry filed under somebody else's name.
 
 Relayed by the SES session 2026-09-15, verbatim, with the question it answered:
 
@@ -2966,7 +2971,13 @@ directory that stays unlisted until somebody searches it.
 control with no search box rather than a search box over two options. If he would rather every one of
 them carried a search field, that is a one-line change to `searchFrom`.
 
-### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
+### 21 · HR · PTO balances — **SHIPPED** (`477419fe`, HR)
+
+> **THE STATUS ABOVE SAID "awaiting Jose" UNTIL 2026-09-17, AND THE ENTRY'S OWN NEXT
+> PARAGRAPH SAID HE HAD APPROVED IT.** A heading contradicted by the body three lines
+> below it, on a screen that was built and in front of him. Corrected by reading the
+> tree rather than the file: `client/lib/screens/hr/pto_tab.dart` exists and
+> `hr_screen.dart` mounts it.
 
 `docs/previews/pto-balances-layouts.html`. Approved by Jose 2026-09-17 — *"PTO Balances is good we
 should add that to Human Resources Tab"* — from a real production suggestion. Toula Elwell at
@@ -3029,7 +3040,12 @@ re-reading.
 words. It is the only phone option where *"we all have"* is the whole screen rather than a section
 of it, which is her phrasing. **5 hides the across-people view behind a tab**, which is the ask.
 
-### 20b · HR · Work Hours, the drawing — **DRAWN, awaiting Jose**
+### 20b · HR · Work Hours, the drawing — **SHIPPED** (`70c1331c`, and changed since)
+
+> **SAID "awaiting Jose" UNTIL 2026-09-17.** Built as `work_hours_tab.dart`, then
+> changed again on his word the same day (`3d4ce8a8`: newest day first, future days
+> hidden). So the status was not merely stale — it was stale through a second round
+> of his feedback, which is the state a queue is least able to survive.
 
 Companion to **entry 20 above**, which is Clock In's brief and holds Jose's requirements verbatim. Numbered 20b rather than 20 because two headings with one number is how a reader ends up quoting the wrong half.
 
@@ -3088,7 +3104,13 @@ clock, who has no hours, the team total — are not in the payload. Summing them
 second place that can disagree with the server the day the rules change. If 6 is picked, that is
 a request to them, not arithmetic here.
 
-### 19 · Communication · Editing from the call flow — **DRAWN, awaiting Jose**
+### 19 · Communication · Editing from the call flow — **SHIPPED** (`96ae6847`)
+
+> **SAID "awaiting Jose" UNTIL 2026-09-17.** `call_flow_edit_drawer.dart` hosts the
+> real Settings panes, which is the *"every settings needs to be synced and manageable
+> from here as well"* he asked for. Since corrected twice more — the breadcrumb now
+> reads the rail (`c4db5946`), and the chart re-reads itself after a change
+> (`1bbcb938`).
 
 `docs/previews/call-flow-sidebar-layouts.html`. Jose, 2026-09-16, verbatim:
 
