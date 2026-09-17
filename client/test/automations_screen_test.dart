@@ -230,7 +230,10 @@ void main() {
         'Date and time',
       ]);
 
-      await _tap(tester, find.byType(SearchPickerField<String>));
+      await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
       await _tap(tester, find.text('Date and time').last);
       await _type(tester, 'Set to', '2026-09-01');
 
@@ -343,7 +346,10 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    await _tap(tester, find.byType(SearchPickerField<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
     await _tap(tester, find.text('Email').last);
 
     expect(_saveButton(tester).onPressed, isNotNull);
@@ -950,7 +956,10 @@ void main() {
 
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
-    await _tap(tester, find.byType(SearchPickerField<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
     await _tap(tester, find.text('Date and time').last);
     await _type(tester, 'Set to', '2026-09-01');
 
@@ -983,7 +992,10 @@ void main() {
     await _tap(tester, find.text('Build'));
 
     await _type(tester, 'Name', 'Only here');
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).first);
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Where it applies'),
+    );
     await _tap(tester, find.text('Connecticut').last);
 
     await _tap(tester, find.text('Jobs'));
@@ -991,7 +1003,10 @@ void main() {
 
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
-    await _tap(tester, find.byType(SearchPickerField<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
     await _tap(tester, find.text('Date and time').last);
     await _type(tester, 'Set to', '2026-09-01');
 
@@ -1418,10 +1433,10 @@ void main() {
     );
     expect(_saveButton(tester).onPressed, isNull);
 
-    // The MENU, not its label: a DropdownMenu's label is a Text inside the
-    // decoration and is not a hit target, so tapping it lands on the field
-    // behind and opens nothing.
-    await _tap(tester, find.byType(DropdownMenu<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Timezone'),
+    );
     await _tap(tester, find.text('Eastern — New York').last);
 
     // Now weekly, with no day ticked — the second way this cannot come round.

@@ -1,13 +1,13 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/search_picker.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
@@ -1436,28 +1436,25 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ),
           if (widget.catalogue.places.isNotEmpty) ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _place,
-              decoration: InputDecoration(
-                labelText: 'Where it applies',
-                // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
-                // scopes to wherever the person is standing, and a control that
-                // acts without being touched has to say so — otherwise a rule's
-                // reach is decided by a chip in the top bar that nobody would
-                // ever connect to it.
-                helperText: _place == null
-                    ? 'Left alone, it applies where you are now. A company also '
-                          'covers everything under it.'
-                    : 'A company covers its franchises, its sub companies and '
-                          'theirs.',
-              ),
-              items: [
+            SearchPickerField<String>(
+              value: _place,
+              label: 'Where it applies',
+              // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
+              // scopes to wherever the person is standing, and a control that
+              // acts without being touched has to say so — otherwise a rule's
+              // reach is decided by a chip in the top bar that nobody would
+              // ever connect to it.
+              helperText: _place == null
+                  ? 'Left alone, it applies where you are now. A company also '
+                        'covers everything under it.'
+                  : 'A company covers its franchises, its sub companies and '
+                        'theirs.',
+              helperMaxLines: 3,
+              options: [
                 for (final place in widget.catalogue.places)
-                  DropdownMenuItem(value: place.key, child: Text(place.label)),
+                  SearchOption(value: place.key, label: place.label),
               ],
-              onChanged: _busy
-                  ? null
-                  : (value) => setState(() => _place = value),
+              onChanged: _busy ? null : (value) => setState(() => _place = value),
             ),
           ],
         ],
@@ -1641,13 +1638,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           const SizedBox(height: 12),
           Text('Day of the month', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 6),
-          DropdownMenu<int>(
-            initialSelection: _scheduleDayOfMonth,
-            dropdownMenuEntries: [
-              for (var d = 1; d <= 31; d++)
-                DropdownMenuEntry(value: d, label: '$d'),
-            ],
-            onSelected: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+          SizedBox(
+            width: 200,
+            child: SearchPickerField<int>(
+              value: _scheduleDayOfMonth,
+              label: 'Day of the month',
+              options: [
+                for (var d = 1; d <= 31; d++)
+                  SearchOption(value: d, label: '$d'),
+              ],
+              onChanged: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1673,15 +1674,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: DropdownMenu<String>(
-                width: double.infinity,
-                initialSelection: _scheduleZone,
-                label: const Text('Timezone'),
-                dropdownMenuEntries: [
+              child: SearchPickerField<String>(
+                value: _scheduleZone,
+                label: 'Timezone',
+                options: [
                   for (final zone in zones)
-                    DropdownMenuEntry(value: zone.key, label: zone.label),
+                    SearchOption(value: zone.key, label: zone.label),
                 ],
-                onSelected: (z) => setState(() => _scheduleZone = z),
+                onChanged: (z) => setState(() => _scheduleZone = z),
               ),
             ),
           ],
