@@ -940,19 +940,23 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * Scheduling — a shell, and this comment is the honest label on it.
+             * Scheduling — how much work a service area can take, per day.
              *
-             * Three tabs stand (Availability, Schedule, Settings) and all three
-             * are placeholders. There is no table, no endpoint and no model
-             * behind any of them yet, so the only thing this declaration buys
-             * today is the rail slot and the four permissions — which is the
-             * point: the permissions exist before the screens do, so nobody
-             * ships a screen and grants it to everybody by accident.
+             * THIS COMMENT USED TO SAY "a shell ... no table, no endpoint and
+             * no model behind any of them yet", and it said so while three
+             * tables, six endpoints and two live screens sat behind it: it was
+             * written on 2026-08-31 and never revisited when 0.0.0174 shipped
+             * the module. The description claiming less than the code is the
+             * one nobody checks, because nothing errors and the reader has no
+             * reason to doubt it — so this replacement names what the module
+             * IS, which stays true, rather than what it lacks, which does not.
              *
-             * It sits next to Jobs because that is the work it will eventually
-             * be about. Whether Availability turns out to mean staff, equipment
-             * or customer-facing slots is undecided, and this file is not the
-             * place that decides it.
+             * Availability turned out to mean neither staff nor equipment:
+             * `service_area_slots` holds a job count per area, per weekday, per
+             * time slot, and a CLOSED DAY IS THE ABSENCE OF ROWS, never a zero.
+             * Schedule is the one tab still a placeholder — it needs Scheduled
+             * Jobs, which is also what turns "configured capacity" into
+             * "remaining".
              */
             new ModuleDefinition(
                 key: 'scheduling',

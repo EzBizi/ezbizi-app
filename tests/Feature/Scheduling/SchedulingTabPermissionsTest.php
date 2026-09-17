@@ -155,4 +155,74 @@ class SchedulingTabPermissionsTest extends TestCase
 
         $this->signedInAs($nobody)->getJson('/api/v1/scheduling/areas')->assertForbidden();
     }
+
+    /**
+     * The migration gives an EXISTING role every tab it could already open.
+     *
+     * The test directly above is the one that makes this necessary, and reading
+     * them together is the point: "the module grant alone reaches no tab" is
+     * correct as a rule and is also, on deploy day, a description of every role
+     * that exists right now. `scheduling.view` is what they hold, both routes
+     * are already gated on the new keys, so without this migration they open
+     * Scheduling on Monday and find it empty.
+     *
+     * The generic sweep does not cover this module — it is derived at the
+     * moment it runs, it runs once, and it ships in a cut that does not carry
+     * this declaration. See the migration's own docblock.
+     */
+    public function test_the_migration_gives_an_existing_role_every_tab_it_could_already_open(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        // A role as it stood before today: the module, none of its tabs.
+        $before = $this->userWithRole($tenant, 'Dispatcher', ['scheduling.view']);
+
+        /*
+         * Wrapped because Role is tenant-scoped and refuses an unscoped read.
+         * The MIGRATION needs no wrapper and deliberately has none: it touches
+         * only `permissions` and the `permission_role` pivot, which are
+         * platform tables, and never loads a Role. That is what lets it run
+         * from a deploy, where no tenant is in context at all.
+         */
+        $this->assertFalse(
+            $this->inTenant($tenant['org'], fn () => $before->fresh()->hasPermission('scheduling.availability.view')),
+            'Fixture is wrong: this role must START without the tabs, or the '
+            .'migration below cannot be shown to be what granted them.',
+        );
+
+        // Run the widening migration the way a deploy would.
+        $migration = require database_path(
+            'migrations/2026_09_17_190000_grant_existing_roles_the_three_scheduling_tabs.php',
+        );
+        $migration->up();
+
+        $tabs = ['availability', 'schedule', 'settings'];
+
+        $held = $this->inTenant($tenant['org'], function () use ($before, $tabs) {
+            $after = $before->fresh();
+
+            return collect($tabs)
+                ->mapWithKeys(fn ($tab) => [$tab => $after->hasPermission("scheduling.{$tab}.view")])
+                ->all();
+        });
+
+        foreach ($tabs as $tab) {
+            $this->assertTrue(
+                $held[$tab],
+                "The migration left this role without scheduling.{$tab}.view, so it "
+                .'would lose that tab on the next deploy.',
+            );
+        }
+
+        // And the grant is real at the endpoint, not just a row in a pivot.
+        $this->signedInAs($before->fresh())
+            ->getJson('/api/v1/scheduling/availability?zip=75201')
+            ->assertOk();
+
+        // Idempotent: a second run must not throw on a duplicate pivot row.
+        $migration->up();
+        $this->assertTrue(
+            $this->inTenant($tenant['org'], fn () => $before->fresh()->hasPermission('scheduling.settings.view')),
+        );
+    }
 }
