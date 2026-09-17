@@ -4,6 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Models\Customer;
 use App\Models\Job;
+use App\Support\Reports\ReportMap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -22,7 +23,7 @@ class ReportsApiTest extends TestCase
 
             return Job::factory()->create(array_merge([
                 'franchise_id' => $tenant['franchise']->id,
-                'customer_id'  => $customer->id,
+                'customer_id' => $customer->id,
             ], $attributes));
         });
     }
@@ -30,7 +31,7 @@ class ReportsApiTest extends TestCase
     private function titlesDefinition(): array
     {
         return [
-            'root'    => 'jobs',
+            'root' => 'jobs',
             'columns' => [['resource' => 'jobs', 'column' => 'title']],
             'filters' => [],
         ];
@@ -45,7 +46,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Open jobs',
+                'name' => 'Open jobs',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -74,7 +75,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'First name',
+                'name' => 'First name',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -93,7 +94,7 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($tenant['admin'])
             ->patchJson('/api/v1/reports/'.$created['id'], [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Second name',
+                'name' => 'Second name',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertOk()
@@ -141,7 +142,7 @@ class ReportsApiTest extends TestCase
             ->assertOk()
             ->json('data');
 
-        foreach (array_keys(\App\Support\Reports\ReportMap::all()) as $key) {
+        foreach (array_keys(ReportMap::all()) as $key) {
             $this->assertArrayHasKey(
                 $key,
                 $body,
@@ -199,7 +200,14 @@ class ReportsApiTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
 
-        $runner = $this->userWithRole($tenant, 'Runner', ['reports.view', 'jobs.view']);
+        // The BUILDER tab, because the field picker is the builder's pane. A
+        // role without it never reaches this endpoint at all, which is a
+        // different refusal from the one under test.
+        $runner = $this->userWithRole($tenant, 'Runner', [
+            'reports.view',
+            'reports.builder.view',
+            'jobs.view',
+        ]);
 
         $body = $this->signedInAs($runner)
             ->getJson('/api/v1/reports/fields')
@@ -218,7 +226,7 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($runner)
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Nope',
+                'name' => 'Nope',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertForbidden();
@@ -227,18 +235,29 @@ class ReportsApiTest extends TestCase
     /**
      * The positive half: the same person may RUN a report somebody else built.
      * Without this, a policy that refused everything would pass the test above.
+     *
+     * `reports.library.view` joined the role on 2026-09-17 and the rule under
+     * test did not change: running still needs no `reports.build`, which is the
+     * distinction this has always been about. What the tab adds is a second,
+     * separate question — may this person see the library pane at all — and
+     * every existing role was granted it by migration, so nobody who could run
+     * a report yesterday needs a new grant today.
      */
     public function test_running_is_allowed_with_only_the_view_permission(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $runner = $this->userWithRole($tenant, 'Runner', ['reports.view', 'jobs.view']);
+        $runner = $this->userWithRole($tenant, 'Runner', [
+            'reports.view',
+            'reports.library.view',
+            'jobs.view',
+        ]);
 
         $this->makeJob($tenant, ['title' => 'Sweep']);
 
         $created = $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Open jobs',
+                'name' => 'Open jobs',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -276,7 +295,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->withHeader('X-EzBizi-View', 'company:'.$tenant['company']->id)
             ->postJson('/api/v1/reports', [
-                'name'       => 'From the company',
+                'name' => 'From the company',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -293,7 +312,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
             ->postJson('/api/v1/reports', [
-                'name'       => 'From the branch',
+                'name' => 'From the branch',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -313,7 +332,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->withHeader('X-EzBizi-View', 'organization')
             ->postJson('/api/v1/reports', [
-                'name'       => 'From the group',
+                'name' => 'From the group',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -335,10 +354,10 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($tenant['admin'])
             ->withHeader('X-EzBizi-View', 'franchise:'.$tenant['franchise']->id)
             ->postJson('/api/v1/reports', [
-                'company_id'   => $tenant['company']->id,
+                'company_id' => $tenant['company']->id,
                 'franchise_id' => $other->id,
-                'name'         => 'Somewhere else',
-                'definition'   => $this->titlesDefinition(),
+                'name' => 'Somewhere else',
+                'definition' => $this->titlesDefinition(),
             ])
             ->assertStatus(422);
     }
@@ -350,9 +369,9 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Sneaky',
+                'name' => 'Sneaky',
                 'definition' => [
-                    'root'    => 'password_reset_tokens',
+                    'root' => 'password_reset_tokens',
                     'columns' => [['resource' => 'password_reset_tokens', 'column' => 'email']],
                     'filters' => [],
                 ],
@@ -368,9 +387,9 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Sneaky column',
+                'name' => 'Sneaky column',
                 'definition' => [
-                    'root'    => 'jobs',
+                    'root' => 'jobs',
                     'columns' => [['resource' => 'jobs', 'column' => 'performed_by_user_id']],
                     'filters' => [],
                 ],
@@ -386,7 +405,7 @@ class ReportsApiTest extends TestCase
         $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Company report',
+                'name' => 'Company report',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated();
@@ -418,7 +437,7 @@ class ReportsApiTest extends TestCase
         $created = $this->signedInAs($tenant['admin'])
             ->postJson('/api/v1/reports', [
                 'company_id' => $tenant['company']->id,
-                'name'       => 'Audited',
+                'name' => 'Audited',
                 'definition' => $this->titlesDefinition(),
             ])
             ->assertCreated()
@@ -430,7 +449,7 @@ class ReportsApiTest extends TestCase
 
         $this->assertDatabaseHas('audit_events', [
             'organization_id' => $tenant['org']->id,
-            'action'          => 'report.run',
+            'action' => 'report.run',
         ]);
     }
 }

@@ -95,6 +95,7 @@ use App\Http\Controllers\Api\Phone\VoiceWebhookController as PhoneVoiceWebhookCo
 use App\Http\Controllers\Api\Phone\WhisperWebhookController as PhoneWhisperWebhookController;
 use App\Http\Controllers\Api\PreferencesController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\ProfitLossController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
@@ -850,8 +851,32 @@ Route::prefix('v1')
          * a literal segment declared after the wildcard is swallowed by it.
          * Goes when the Experimental report does.
          */
-        Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
-        Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
+        /*
+         * ── GATED ON THE TAB, not just on reports.build ────────────
+         *
+         * Jose, 2026-09-17, asked for per-tab grants across the product. This
+         * is the tab in Reports where that earns its keep: the pane names every
+         * person who answered a phone, how long they were on it, and how much
+         * of their work became jobs. Somebody who builds reports about jobs has
+         * no automatic business reading other people's performance.
+         *
+         * The Workiz connect route below is ALSO registered as `social/workiz`
+         * for Settings > Integrations, and that copy is deliberately left
+         * outside this gate: connecting an account from Integrations is a
+         * different act by a different person, and it is Settings' own
+         * permission that guards it.
+         */
+        Route::middleware('permission:reports.experimental.view')->group(function () {
+            Route::get('reports/experimental/calls', [ExperimentalCallReportController::class, 'show']);
+
+            /*
+             * The audio of one call, proxied because RingCentral serves it from
+             * a different host and requires our account token - see the action.
+             */
+            Route::get('reports/experimental/calls/{recording}/recording', [ExperimentalCallReportController::class, 'recording']);
+
+            Route::post('reports/experimental/workiz', [WorkizConnectController::class, 'store']);
+        });
 
         /*
         | Connecting a data source from Settings > Integrations.
@@ -866,9 +891,50 @@ Route::prefix('v1')
         Route::post('social/airtable', [AirtableConnectController::class, 'store']);
         Route::post('social/workiz', [WorkizConnectController::class, 'store']);
 
-        Route::get('reports/fields', [ReportsController::class, 'fields']);
-        Route::post('reports/{id}/run', [ReportsController::class, 'run']);
-        Route::apiResource('reports', ReportsController::class)->parameters(['reports' => 'id']);
+        /*
+         * Profit & Loss, read live from a tenant's own Airtable base. Before
+         * `reports/{id}` for the same reason as everything above it.
+         *
+         * `profit_loss.view`, NOT `reports.view` - the sheet carries payroll
+         * and owner distributions by name, so it is a separate grant from
+         * measuring jobs and calls. Jose's call, 2026-09-17.
+         */
+        Route::get('reports/profit-loss/sources', [ProfitLossController::class, 'sources']);
+        Route::get('reports/profit-loss', [ProfitLossController::class, 'show']);
+
+        /*
+         * ── apiResource SPLIT BY AUDIENCE, deliberately ────────────
+         *
+         * It used to be one line. A blanket tab gate over it would have been
+         * wrong in the way Settings warned about: `index` is the library's and
+         * `store` is the builder's, and one middleware cannot say both. So the
+         * verbs are registered individually, each under the tab whose screen
+         * actually calls it — measured from the client rather than assumed:
+         *
+         *     reports_screen.dart    GET /reports, DELETE /reports/{id}
+         *     report_run_view.dart   POST /reports/{id}/run
+         *     report_builder.dart    GET /reports/fields, POST /reports
+         *
+         * Every action behind these still has its own policy check. The tab
+         * grant is a second question — may this role SEE this pane — and it
+         * does not replace `reports.build` or the per-report authorisation.
+         *
+         * `reports/fields` stays ahead of `reports/{id}`: a literal segment
+         * declared after the wildcard is swallowed by it, and the symptom is a
+         * show() for a report called "fields".
+         */
+        Route::middleware('permission:reports.builder.view')->group(function () {
+            Route::get('reports/fields', [ReportsController::class, 'fields']);
+            Route::post('reports', [ReportsController::class, 'store']);
+            Route::match(['put', 'patch'], 'reports/{id}', [ReportsController::class, 'update']);
+        });
+
+        Route::middleware('permission:reports.library.view')->group(function () {
+            Route::get('reports', [ReportsController::class, 'index']);
+            Route::post('reports/{id}/run', [ReportsController::class, 'run']);
+            Route::get('reports/{id}', [ReportsController::class, 'show']);
+            Route::delete('reports/{id}', [ReportsController::class, 'destroy']);
+        });
 
         /*
          * Scheduling — capacity per slot, per weekday, per service area

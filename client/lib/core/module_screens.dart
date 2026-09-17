@@ -16,6 +16,7 @@ import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/marketing_screen.dart';
+import '../screens/profit_loss_screen.dart';
 import '../screens/phone_screen.dart';
 import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
@@ -156,6 +157,14 @@ final Map<String, ModuleScreen> moduleScreens = {
   'ads_performance': ModuleScreen(
     Icons.show_chart_outlined,
     (api, session) => AdsPerformanceScreen(api: api, session: session),
+  ),
+  // A ledger, not a currency symbol or a chart. What the tab holds is a
+  // business's own books read out of its accounting sheet - $ would say
+  // "billing" and a rising line would say "a number went up", and the week
+  // this exists to surface is one where a number did not add up.
+  'profit_loss': ModuleScreen(
+    Icons.account_balance_outlined,
+    (api, session) => ProfitLossScreen(api: api, session: session),
   ),
   'leads': ModuleScreen(
     Icons.call_received_outlined,
