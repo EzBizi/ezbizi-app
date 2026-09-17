@@ -117,7 +117,7 @@ class InspectionBuilderScopeTest extends TestCase
         $elsewhere = $this->extraFranchise($tenant, 'Second');
 
         $author = $this->userWithRole(
-            $tenant, 'Mia', ['inspection.view', 'inspection.create', 'inspection.edit'],
+            $tenant, 'Mia', ['inspection.view', 'inspection.create', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -154,7 +154,7 @@ class InspectionBuilderScopeTest extends TestCase
         ]));
 
         $author = $this->userWithRole(
-            $tenant, 'Mia', ['inspection.view', 'inspection.create', 'inspection.edit'],
+            $tenant, 'Mia', ['inspection.view', 'inspection.create', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             onlyAt: $tenant['franchise'],
         );
 

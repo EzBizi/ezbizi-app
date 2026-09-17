@@ -1001,6 +1001,27 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Inspection',
                 actions: ['view', 'create', 'edit', 'delete', 'archive'],
                 /*
+                 * Labels copied from the tab bar in inspection_screen.dart, not
+                 * written fresh. An administrator who ticks a box called one
+                 * thing and then looks for a tab called another has been handed
+                 * a control for something whose name they were told wrongly,
+                 * and nothing anywhere errors.
+                 *
+                 * These are a SECOND axis, not a replacement for the actions
+                 * above. The three tabs were already separated by capability —
+                 * New Inspection needs `create`, Generated Reports `view`,
+                 * Builder `edit` — and those still govern what the endpoints
+                 * behind each tab will do. The tab permission governs whether
+                 * the tab is there at all, which is the thing Jose could not
+                 * grant before: somebody who files inspections all day and has
+                 * no business reading the whole branch's filed reports.
+                 */
+                tabs: [
+                    new TabDefinition('new', 'New Inspection'),
+                    new TabDefinition('reports', 'Generated Reports'),
+                    new TabDefinition('builder', 'Builder'),
+                ],
+                /*
                  * Both record types this module broadcasts, not just the one
                  * that matters most.
                  *

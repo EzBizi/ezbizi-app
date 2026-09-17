@@ -50,7 +50,7 @@ class InspectionReportReachTest extends TestCase
         $elsewhere = $this->extraFranchise($tenant, 'Second');
 
         // The reader can act only at the SECOND branch.
-        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view'], onlyAt: $elsewhere);
+        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'], onlyAt: $elsewhere);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $customer = $this->customer($tenant, $tenant['franchise']->id);
@@ -66,7 +66,7 @@ class InspectionReportReachTest extends TestCase
     public function test_a_customer_only_report_from_your_own_branch_is_readable(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view'], onlyAt: $tenant['franchise']);
+        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'], onlyAt: $tenant['franchise']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $customer = $this->customer($tenant, $tenant['franchise']->id);
@@ -83,7 +83,7 @@ class InspectionReportReachTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $elsewhere = $this->extraFranchise($tenant, 'Second');
-        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view'], onlyAt: $elsewhere);
+        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'], onlyAt: $elsewhere);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $customer = $this->customer($tenant, $tenant['franchise']->id);
@@ -137,7 +137,7 @@ class InspectionReportReachTest extends TestCase
     /** Nor archived — a write on another branch's record is worse than a read. */
     public function test_another_branchs_report_cannot_be_archived(): void
     {
-        [$reader, $report] = $this->readerAndForeignReport(['inspection.view', 'inspection.archive']);
+        [$reader, $report] = $this->readerAndForeignReport(['inspection.view', 'inspection.archive', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $this->signedInAs($reader)
             ->postJson("/api/v1/inspections/reports/{$report->id}/archive")
@@ -158,7 +158,7 @@ class InspectionReportReachTest extends TestCase
     public function test_your_own_branchs_report_is_still_readable_by_id(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view'], onlyAt: $tenant['franchise']);
+        $reader = $this->userWithRole($tenant, 'Tech', ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'], onlyAt: $tenant['franchise']);
 
         $report = $this->inTenant($tenant['org'], function () use ($tenant) {
             $customer = $this->customer($tenant, $tenant['franchise']->id);
@@ -194,7 +194,7 @@ class InspectionReportReachTest extends TestCase
     public function test_a_customer_only_report_from_another_branch_is_reachable_by_nothing(): void
     {
         [$reader, $report] = $this->readerAndForeignReport(
-            ['inspection.view', 'inspection.archive'],
+            ['inspection.view', 'inspection.archive', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             withJob: false,
         );
 
@@ -227,7 +227,7 @@ class InspectionReportReachTest extends TestCase
      * @return array{0: \App\Models\User, 1: InspectionReport}
      */
     private function readerAndForeignReport(
-        array $permissions = ['inspection.view'],
+        array $permissions = ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
         bool $withJob = true,
     ): array {
         $tenant = $this->provisionTenant('Alpha');

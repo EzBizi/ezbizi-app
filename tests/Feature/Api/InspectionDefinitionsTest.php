@@ -137,8 +137,7 @@ class InspectionDefinitionsTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->editor($tenant);
         $tech = $this->userWithRole($tenant, 'Tech', [
-            'inspection.view', 'inspection.create',
-        ]);
+            'inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $id = $this->signedInAs($editor)
             ->postJson('/api/v1/inspections')
@@ -199,7 +198,7 @@ class InspectionDefinitionsTest extends TestCase
     public function test_builder_is_refused_without_edit(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['inspection.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $this->signedInAs($viewer)
             ->postJson('/api/v1/inspections')
@@ -305,7 +304,6 @@ class InspectionDefinitionsTest extends TestCase
     private function editor(array $tenant)
     {
         return $this->userWithRole($tenant, 'Designer', [
-            'inspection.view', 'inspection.edit',
-        ]);
+            'inspection.view', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
     }
 }
