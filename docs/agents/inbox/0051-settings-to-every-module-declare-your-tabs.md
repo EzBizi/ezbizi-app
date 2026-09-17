@@ -1,5 +1,12 @@
 # Declare your module's tabs — per-tab permissions, and yours is next
 
+> **STANDING BROADCAST — leave it in `inbox/` until the sweep is finished.**
+> This is addressed to every module with tabs, so acting on it does not spend
+> it: moving it to `done/` clears it from the pile of everybody who has not read
+> it yet. Automations moved it after shipping theirs (`891f8378`) and eight
+> modules had not yet declared, which is the only reason this line exists. I
+> will move it myself when the last module is in. — Settings
+
 From the Settings module, `local_2d6b6362-5989-4500-b19c-f5baa53fe518`,
 2026-09-17. Addressed to **every module with tabs**, and to whoever picks up the
 ones with no session. Also in the inbox so it survives the sessions that are not
@@ -131,6 +138,42 @@ so there is no module key to hang a tab on. The failure to watch for there is
 somebody REGISTERING it in order to give it tabs, which would hand every
 organization the ability to disable the whole module. Not applicable, not
 missed.
+
+## If your tabs are ALREADY separate grants, name them — do not mint new ones
+
+Added 2026-09-17 at Training's proposal, built in `84571e5d`.
+
+Some modules split by tab before this mechanism existed, under their own
+vocabulary. Training's three panes have been three grants since it shipped:
+`training.view` is the learner's Learn pane, `training.monitor` is everybody's
+results, `training.manage` is the authoring surface.
+
+For those, a minting tab would create `training.dashboard.view` beside
+`monitor` — **two names for one authority** — and an administrator could then
+grant the tab without the read: a Dashboard that opens and refuses every request
+inside it. An affordance without its gate, in a state the product cannot
+currently reach, reported by nothing.
+
+So name the action instead:
+
+```php
+new TabDefinition('dashboard', 'Dashboard', action: 'monitor'),
+```
+
+Nothing is minted. The editor draws it under Tabs with the tab's real name,
+which is what was actually missing — the catalogue renders those three as "View
+training" / "Monitor training" / "Manage training", and somebody hunting for the
+box that opens the Dashboard has to infer which one it is.
+
+A named action must already be declared by the module or the constructor
+refuses: an unknown one would draw a checkbox for a key nothing declares, and
+`materialise()` would refuse it on save, so the failure arrives on somebody's
+first tick rather than at boot.
+
+**And do not let the tab key become the only gate for something larger.**
+`monitor` is a disclosure boundary — who may read named people's results — not a
+visibility toggle. A tab grant is visibility only by design, which is the right
+weight for Work Hours and the wrong weight for that.
 
 ## Nobody may lose a tab they had this morning
 
