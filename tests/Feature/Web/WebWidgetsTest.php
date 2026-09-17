@@ -220,10 +220,49 @@ class WebWidgetsTest extends TestCase
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
             ->assertOk();
 
+        /*
+         * THE SENTENCE, not just the status. This route is behind
+         * `web_management.widgets.view` as well as behind `edit`, and both
+         * refuse with 403 — so `assertForbidden()` alone would keep passing if
+         * the cause silently moved from one to the other, while this test's
+         * name still claimed to be about view-versus-edit.
+         *
+         * Email's, on their own module: four of their reader tests were green
+         * on a 403 that had migrated from `email.edit` to a new tab gate.
+         * Nothing in a run can show that. The sentences differ where the
+         * statuses do not — `Refusal::permission('change a website')` against
+         * the middleware's 'open this tab' — so the message is the observable
+         * the other cause cannot produce.
+         *
+         * HOW IT WAS VERIFIED, and NOT the way Email verified theirs. Taking
+         * `widgets.view` off this role does not demonstrate anything here: the
+         * GET above is tab-gated too, so the positive control reds on ITS
+         * status first and the refusal below is never reached. Their reader
+         * could still GET, because their tab gate sits only on the settings
+         * routes.
+         *
+         * What works instead is swapping the expected sentence for the
+         * middleware's — `open this tab` — and watching it go red. That proves
+         * both halves: the assertion really reads the message, and the message
+         * really is the edit refusal rather than the tab's. Done, red as
+         * required, restored.
+         *
+         * AND IT COVERS MORE, which Email established by running both against
+         * their two files rather than reasoning about it: removing the key reds
+         * only the refusals whose positive control still passes — one test per
+         * file for them — while swapping the sentence reds EVERY refusal in the
+         * file, because it never depends on the role reaching the route. So
+         * prefer it even where both work.
+         */
         $this->signedInAs($viewer)
             ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
                 'config' => ['style' => ['accent' => '#000000']],
-            ])->assertForbidden();
+            ])
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                fn ($said) => is_string($said) && str_contains($said, 'change a website'),
+            );
     }
 
     public function test_the_defaults_are_a_complete_shape(): void

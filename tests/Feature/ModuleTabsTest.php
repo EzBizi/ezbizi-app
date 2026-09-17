@@ -160,6 +160,112 @@ class ModuleTabsTest extends TestCase
         }
     }
 
+    public function test_the_migration_grants_no_action_a_tab_merely_NAMES(): void
+    {
+        /*
+         * The escalation this file nearly shipped, found by the deploy desk
+         * before the first deploy that would have run it.
+         *
+         * `TabDefinition::action()` returns the NAMED action when a tab supplies
+         * one, and Training's three name `view`, `monitor` and `manage`. So the
+         * loop would have handed `training.monitor` and `training.manage` to
+         * every role holding `training.view` — a learner able to author training
+         * material and read every colleague's score, granted by the migration
+         * written to stop people LOSING access.
+         *
+         * THREE WAYS A TEST FOR THIS GOES FALSE-GREEN, all three hit by other
+         * sessions today, all three avoided here:
+         *
+         *   1. The subject must hold the module view through
+         *      PermissionCatalogue::materialise, because `permissions` rows come
+         *      from `ezbizi:sync-permissions` and no test runs it. Attach a key
+         *      that does not exist and the role is granted nothing, so the
+         *      assertion sails over an empty world.
+         *   2. `learn` names `view`, which the subject holds by construction, so
+         *      that tab cannot distinguish anything. Only `monitor` and `manage`
+         *      can.
+         *   3. The declaration has to BE in this tree. A worktree predating
+         *      Training's tabs gives the loop nothing to widen, and the run is
+         *      green because the defect is unreachable rather than absent — so
+         *      this test asserts the fixture's own premise first.
+         */
+        $registry = app(\App\Support\Modules\ModuleRegistry::class);
+        $training = $registry->get('training');
+
+        $named = array_values(array_filter(
+            $training?->tabs ?? [],
+            fn ($tab) => $tab->namesExistingAction(),
+        ));
+
+        $this->assertNotSame(
+            [],
+            $named,
+            'Training declares no named-action tab in this tree, so the widening this test '
+            .'guards is unreachable here and a pass means nothing.',
+        );
+
+        $tenant = $this->provisionTenant('Foxtrot');
+
+        $role = $this->inTenant($tenant['org'], function () use ($tenant) {
+            $role = Role::create([
+                'organization_id' => $tenant['org']->id,
+                'name'            => 'Learner',
+                'is_system'       => false,
+            ]);
+
+            $role->permissions()->attach(
+                app(PermissionCatalogue::class)->materialise('training.view')->id
+            );
+
+            return $role;
+        });
+
+        (require database_path(
+            'migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php'
+        ))->up();
+
+        $after = $this->inTenant($tenant['org'], fn () => $role->fresh()->permissionKeys());
+
+        foreach ($named as $tab) {
+            if ($tab->action() === 'view') {
+                continue;   // Held by construction; cannot distinguish.
+            }
+
+            $this->assertNotContains(
+                "training.{$tab->action()}",
+                $after,
+                "The migration handed out training.{$tab->action()}, which a role holding only "
+                .'the module view has never held.',
+            );
+        }
+
+        // The control, and it is the half that makes the four assertions above
+        // readable: the migration still DID its job in the same run. Without
+        // this, a migration that had stopped granting anything at all would
+        // satisfy every assertLacks above.
+        $this->assertContains('training.view', $after);
+        $this->assertContains('hr.hours.view', $this->inTenant(
+            $tenant['org'],
+            function () use ($tenant) {
+                $other = Role::create([
+                    'organization_id' => $tenant['org']->id,
+                    'name'            => 'Reader',
+                    'is_system'       => false,
+                ]);
+
+                $other->permissions()->attach(
+                    app(PermissionCatalogue::class)->materialise('hr.view')->id
+                );
+
+                (require database_path(
+                    'migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php'
+                ))->up();
+
+                return $other->fresh()->permissionKeys();
+            },
+        ));
+    }
+
     public function test_the_migration_widens_nobody_who_could_not_open_the_module(): void
     {
         // The control for the test above. Without it, a migration that granted

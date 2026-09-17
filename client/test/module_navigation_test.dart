@@ -448,6 +448,7 @@ void main() {
       _module('marketing', 'Marketing'),
       _module('leads', 'Leads', parent: 'marketing'),
       _module('reviews', 'Reviews', parent: 'marketing'),
+      _module('newsletter', 'Newsletter', parent: 'marketing'),
     ]);
 
     expect(_inSidebar('Marketing'), findsOneWidget);
@@ -457,16 +458,60 @@ void main() {
       reason: 'A row here as well as a chip is the same screen in two places.',
     );
     expect(_inSidebar('Reviews'), findsNothing);
+    expect(_inSidebar('Newsletter'), findsNothing);
 
     await tester.tap(_inSidebar('Marketing'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(ChoiceChip, 'Leads'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
+    /*
+     * Newsletter is in the fixture above BECAUSE IT IS A MODULE, and this line
+     * used to assert the opposite belief.
+     *
+     * It read `findsOneWidget` with the reason "marketing.view is held, so its
+     * own parts are there too", against a fixture that granted `marketing`,
+     * `leads` and `reviews` and never mentioned Newsletter. That was true of
+     * the screen as it stood and the screen was wrong: Newsletter is a module
+     * with `newsletter.view`, and drawing it on Marketing's grant offered a
+     * chip whose every request the server then refused (`2c46edab`).
+     *
+     * So the test was pinning the defect, and it went red on the fix. Its
+     * fixture now grants Newsletter, which is what a role reaching this chip
+     * holds in production.
+     */
     expect(
       find.widgetWithText(ChoiceChip, 'Newsletter'),
       findsOneWidget,
-      reason: 'marketing.view is held, so its own parts are there too.',
+      reason: 'Newsletter is reachable in this fixture, so its chip is drawn.',
+    );
+  });
+
+  /// The other direction, which the test above cannot see.
+  ///
+  /// Everything there is granted, so it would pass for a screen that drew every
+  /// parented module unconditionally — which is the bug `2c46edab` fixed, one
+  /// step along. This is the case that distinguishes: Marketing is held and
+  /// Newsletter is not.
+  testWidgets('a parented module nobody holds is not a chip either', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    await _pumpShell(tester, modules: [
+      _module('dashboard', 'Dashboard'),
+      _module('marketing', 'Marketing'),
+      _module('leads', 'Leads', parent: 'marketing'),
+    ]);
+
+    await tester.tap(_inSidebar('Marketing'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(ChoiceChip, 'Leads'), findsOneWidget);
+    expect(
+      find.widgetWithText(ChoiceChip, 'Newsletter'),
+      findsNothing,
+      reason: 'Newsletter needs its own grant; marketing.view is not it.',
     );
   });
 
