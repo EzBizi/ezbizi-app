@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.9.1
+ * Version:           1.10.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.9.1';
+const EZBIZI_VERSION = '1.10.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -294,7 +294,27 @@ function ezbizi_shortcode($atts) {
         $value = (string) $atts['default'];
     }
 
-    return substr($atts['key'], -4) === '_url' ? esc_url($value) : esc_html($value);
+    return ezbizi_is_link_key($atts['key']) ? esc_url($value) : esc_html($value);
+}
+
+/**
+ * Whether a field holds a web address.
+ *
+ * ── Why the suffix decides ──
+ *
+ * A URL must never go through `esc_html`: it turns the `&` in a query string
+ * into `&amp;`, and it does nothing about a `javascript:` scheme somebody
+ * stored. `esc_url` handles both, so the only question is which fields are
+ * addresses — and the key is the only thing this plugin knows about a value it
+ * has never seen before.
+ *
+ * `_link` joined `_url` when City link and State link arrived: they are called
+ * links on the screen, and a rule that covered only one suffix would have
+ * rendered the customer's own civic links through the wrong escaper while
+ * looking entirely correct.
+ */
+function ezbizi_is_link_key($key) {
+    return substr($key, -4) === '_url' || substr($key, -5) === '_link';
 }
 
 add_shortcode('ezbizi', 'ezbizi_shortcode');

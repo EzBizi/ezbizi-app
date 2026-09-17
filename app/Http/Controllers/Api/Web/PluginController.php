@@ -114,7 +114,7 @@ class PluginController extends Controller
                  * nothing on our side remembers.
                  */
                 'service_account' => ['linked' => $site->isServiceLinked()],
-                ...ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site)),
+                ...$this->published($site, $rows),
             ]);
         });
     }
@@ -218,4 +218,26 @@ class PluginController extends Controller
     {
         return response()->json(['message' => $message], Response::HTTP_UNAUTHORIZED);
     }
+    /**
+     * What the website publishes, with the derived values filled in.
+     *
+     * `website_url` is this site's own address and nobody types it — the host
+     * is already the record, and a typed copy is a second version of one fact
+     * that goes stale the day a domain changes. Derived on the way out, so
+     * there is no row to drift.
+     *
+     * @return array{values: object, pages: object}
+     */
+    private function published(WebSite $site, $rows): array
+    {
+        $payload = ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site));
+
+        $payload['values'] = (object) ValueResolver::withWebsiteUrl(
+            (array) $payload['values'],
+            $site->host,
+        );
+
+        return $payload;
+    }
+
 }

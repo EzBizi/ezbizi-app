@@ -187,6 +187,43 @@ class SeoFields
              * facts like the rest, and the fourth is the one people paste
              * wrong, which is why it says so in the hint.
              */
+            /*
+             * The two civic links, and the site's own address.
+             *
+             * `_link` rather than `_url` on the first two because that is what
+             * they are called on the screen Jose is copying from, and because
+             * the plugin escapes both suffixes as URLs since 1.10.0. A value
+             * that is a web address must never go through esc_html: it would
+             * turn the `&` in a query string into `&amp;` and would not stop a
+             * `javascript:` scheme.
+             */
+            'city_link' => [
+                'label' => 'City link',
+                'hint' => "The city's own website, e.g. https://www.atlantaga.gov/.",
+                'requirement' => self::OPTIONAL,
+            ],
+            'state_link' => [
+                'label' => 'State link',
+                'hint' => "The state's own website, e.g. https://georgia.gov/.",
+                'requirement' => self::OPTIONAL,
+            ],
+            /*
+             * Filled in by EzBizi, not by anybody.
+             *
+             * It is this site's own address, which we already know — the host
+             * IS the record. Asking a customer to type their own web address
+             * into their own website is asking them to keep two copies of one
+             * fact in step, and the one they typed is the one that goes stale
+             * when a domain changes.
+             *
+             * Derived on the way out rather than stored, so there is no row to
+             * drift and nothing to migrate when a host is corrected.
+             */
+            'website_url' => [
+                'label' => 'Website address',
+                'hint' => 'Filled in for you from this site\'s address.',
+                'requirement' => self::OPTIONAL,
+            ],
             'maps_url' => [
                 'label' => 'Google Maps link',
                 'hint' => 'The "Share" link from your Google listing, not the address bar.',
