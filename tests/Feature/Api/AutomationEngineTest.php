@@ -1362,7 +1362,7 @@ class AutomationEngineTest extends TestCase
         $event = $this->inTenant(fn () => AutomationEvent::create([
             'organization_id' => $this->org['organization']->id,
             'event_key'       => 'job.created',
-            'payload'         => [],
+            'payload'         => ['title' => 'Chimney sweep'],
             'occurred_at'     => now(),
             'available_at'    => now(),
         ]));
@@ -1371,6 +1371,10 @@ class AutomationEngineTest extends TestCase
             'type'     => 'whatsapp.send',
             'template' => 'job_booked',
             'to_field' => '+1 305 724 2199',
+            // A VARIABLE, resolved off the event. This arm passed null for the
+            // record too, so every {{...}} in a template parameter went out
+            // blank — a template whose whole job is to carry the specifics.
+            'parameters' => ['{{title}}'],
             // THE NUMBER A PERSON PICKED, which is the display number. The
             // provider id is Meta's and appears only in the URL below.
             'from'     => '+18778536971',
@@ -1393,8 +1397,11 @@ class AutomationEngineTest extends TestCase
         $this->assertDatabaseHas('whatsapp_messages', ['id' => $result['message_id']]);
 
         // Sent to the PROVIDER ID behind the number the rule named: the display
-        // number is what a person chooses and must never reach Meta's URL.
-        Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699'));
+        // number is what a person chooses and must never reach Meta's URL — and
+        // carrying the RESOLVED parameter, not the braces the author typed.
+        Http::assertSent(fn ($request) => str_contains($request->url(), '1254820167721699')
+            && str_contains(json_encode($request->data()), 'Chimney sweep')
+            && ! str_contains(json_encode($request->data()), '{{'));
     }
 
     /**
@@ -1442,6 +1449,69 @@ class AutomationEngineTest extends TestCase
         $this->assertStringNotContainsString('which is its limit', $result['detail']);
 
         Mail::assertNothingSent();
+    }
+
+    /**
+     * `{{ field }}` in an email and in a WhatsApp parameter resolves.
+     *
+     * Both arms passed `null` where every other arm passes the record, so the
+     * `?->` short-circuited and every variable became an empty string. Nothing
+     * threw and nothing was logged: the rule author typed `{{customer_name}}`,
+     * read their test email, and saw a sentence with a hole in it.
+     *
+     * The event half matters as much as the record half. `triggerFields()`
+     * derives the "only if" dropdown from the EVENT's payload, so the names a
+     * person has just been shown are event field names — and before this they
+     * could test a field they could not mention.
+     *
+     * Asserted on values that only the real source can produce: the subject line
+     * comes off the record, the body off the payload. A fix that threaded the
+     * record and forgot the event would pass the first and fail the second.
+     */
+    public function test_a_variable_resolves_from_the_record_and_from_the_event(): void
+    {
+        Mail::fake();
+
+        // THROUGH THE ENDPOINT, because `customers` has NOT NULL columns the app
+        // fills and a hand-made row does not (`number` is the one that bites).
+        $customerId = $this->as()->postJson('/api/v1/customers', [
+            'owning_franchise_id' => $this->org['franchise']->id,
+            'name'                => 'Marta Ruiz',
+            'email'               => 'marta@example.test',
+        ])->assertCreated()->json('data.id');
+
+        $customer = $this->inTenant(fn () => Customer::findOrFail($customerId));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['title' => 'Chimney sweep', 'email' => 'marta@example.test'],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'email.send',
+            'to_field' => 'email',
+            'subject'  => 'Hello {{name}}',
+            'body'     => 'Your {{title}} is booked. Anything else, {{name}}?',
+        ], $event, $customer, false, $this->automation('job.created', null, [])));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+
+        // THE RENDERED MESSAGE, not the constructor arguments: the properties are
+        // private and what matters is what arrives, footer and all.
+        Mail::assertSent(AutomationMessage::class, function ($mail) {
+            $mail->assertHasSubject('Hello Marta Ruiz');       // off the RECORD
+            // No quotation marks in this body on purpose: the plain-text view is
+            // `{{ $body }}`, which HTML-escapes, so a typed " arrives as &quot;
+            // in a text/plain email. That is a real defect and it is NOT mine —
+            // the envelope and its view belong to the mail module, told 2026-09-17.
+            $mail->assertSeeInText('Your Chimney sweep is booked'); // off the EVENT
+            $mail->assertSeeInText('Anything else, Marta Ruiz?');
+
+            return true;
+        });
     }
 
     /**

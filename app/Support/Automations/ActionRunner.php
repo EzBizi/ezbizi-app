@@ -380,8 +380,8 @@ class ActionRunner
             'revoke' => $this->revokeInvitation($subject),
             'reply' => $this->replyToLead($action, $event, $subject),
             'report.send' => $this->sendReport($action, $event, $automation),
-            'email.send' => $this->sendEmail($action, $event, $automation),
-            'whatsapp.send' => $this->sendWhatsApp($action, $event),
+            'email.send' => $this->sendEmail($action, $event, $automation, $subject),
+            'whatsapp.send' => $this->sendWhatsApp($action, $event, $subject),
             'sms.send' => $this->sendSms($action, $event, $automation),
 
             'time_clock.clock_in' => $this->punch($event, $subject, in: true),
@@ -1257,7 +1257,7 @@ class ActionRunner
      * nothing was sent, because for that case it would be false. Their words
      * say what happened; mine would be a guess about which branch threw.
      */
-    private function sendWhatsApp(array $action, AutomationEvent $event): array
+    private function sendWhatsApp(array $action, AutomationEvent $event, ?Model $subject = null): array
     {
         $type = 'whatsapp.send';
         $template = trim((string) ($action['template'] ?? ''));
@@ -1287,7 +1287,7 @@ class ActionRunner
         // "+1 305 724 2199" alike, and refuses what it cannot be sure of rather
         // than guessing - so cleaning it here would only give it worse input.
         $parameters = array_map(
-            fn ($value) => $this->interpolate((string) $value, $event, null),
+            fn ($value) => $this->interpolate((string) $value, $event, $subject),
             array_values((array) ($action['parameters'] ?? [])),
         );
 
@@ -1372,7 +1372,7 @@ class ActionRunner
      * SES and bounced has already spent the reputation the cap protects, so a
      * rule failing every time must still run out.
      */
-    private function sendEmail(array $action, AutomationEvent $event, ?Automation $automation): array
+    private function sendEmail(array $action, AutomationEvent $event, ?Automation $automation, ?Model $record = null): array
     {
         $type = 'email.send';
         $field = trim((string) ($action['to_field'] ?? ''));
@@ -1410,8 +1410,10 @@ class ActionRunner
             $this->mail->platformForTenant(
                 $this->scopeModelFor($automation) ?? $event->organization()->withoutGlobalScopes()->firstOrFail(),
                 new AutomationMessage(
-                    subjectLine: $this->interpolate($subject, $event, null),
-                    body: $this->interpolate((string) $action['body'], $event, null),
+                    // $record, not $subject: in THIS arm `$subject` is the email's
+                    // subject line. The record the rule fired on is the other one.
+                    subjectLine: $this->interpolate($subject, $event, $record),
+                    body: $this->interpolate((string) $action['body'], $event, $record),
                     businessName: (string) ($event->organization()->withoutGlobalScopes()->value('name') ?? 'this business'),
                 ),
                 $to,
@@ -2331,17 +2333,34 @@ class ActionRunner
     }
 
     /**
-     * `{{ field }}` from the subject, and nothing else.
+     * `{{ field }}` from the record, then from the event, and nothing else.
      *
      * Not a template engine, deliberately. Tenant-authored strings evaluated as
      * code is remote code execution wearing a friendly name; this only ever
-     * substitutes attribute values, and an unknown field becomes an empty string
-     * rather than an error nobody can act on.
+     * substitutes values that are already in hand.
+     *
+     * ── WHY THE EVENT IS READ AND NOT ONLY THE RECORD ──────
+     *
+     * The condition builder offers the rule author the EVENT's fields — that is
+     * what `triggerFields()` derives and what the "only if" dropdown lists. So
+     * the names a person has just been shown, and has already typed once into a
+     * condition, are event field names. Resolving only the record's attributes
+     * meant the field somebody was invited to test could not be inserted into
+     * the message about it, with no hint that the two lists differed.
+     *
+     * Same precedence as a recipient field, for the same reason: an update
+     * carries `after`, a flat event carries its keys at the top.
+     *
+     * AN UNKNOWN FIELD STILL BECOMES AN EMPTY STRING rather than an error. A
+     * half-written message that goes out beats a rule that fails at 3am over a
+     * typo — but it is also why the builder has to show which names exist,
+     * because a silent blank is the one failure a person reads and cannot
+     * explain.
      */
     private function interpolate(string $template, AutomationEvent $event, ?Model $subject): string
     {
-        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject) {
-            $value = $subject?->getAttribute($m[1]);
+        return preg_replace_callback('/\{\{\s*([a-z0-9_.]+)\s*\}\}/i', function ($m) use ($subject, $event) {
+            $value = $subject?->getAttribute($m[1]) ?? $this->valueFromEvent($m[1], $event);
 
             return is_scalar($value) ? (string) $value : '';
         }, $template);
