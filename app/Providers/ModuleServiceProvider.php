@@ -957,6 +957,29 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'scheduling',
                 label: 'Scheduling',
+                /*
+                 * Labels copied from the tab bar in scheduling_screen.dart, not
+                 * written fresh — an administrator who ticks a name and then
+                 * cannot find a tab called that has been handed a checkbox for
+                 * something whose name they were told wrongly.
+                 *
+                 * The split that matters is Availability from Settings. Reading
+                 * what the business can take is the dispatcher's job; changing
+                 * how much it can take is not, and until now the only grant
+                 * available gave both.
+                 *
+                 * `schedule` is declared while its tab is still a placeholder.
+                 * Declaring it now means the grant exists before there is
+                 * anything behind it, which is the order this module has used
+                 * since 9d376605 — the alternative is shipping a screen and its
+                 * permission together and leaving a window where everyone can
+                 * see it.
+                 */
+                tabs: [
+                    new TabDefinition('availability', 'Availability'),
+                    new TabDefinition('schedule', 'Schedule'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 auditExemptBecause: 'NOT AUDITED. A create, edit or delete here leaves no '
                     .'audit_events row, so there is no record of who changed what or when. '
                     .'This states a defect, not a decision, and it is not permission to stay '
