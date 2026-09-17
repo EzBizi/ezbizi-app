@@ -8,14 +8,22 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0238',
+      date: '17 Sep 2026',
+      items: [
+        'Typing into a website form question keeps the letters in that question. Every keystroke used to rebuild the box, so the rest of what you typed landed in another field.',
+        'The last six screens are off the old popup dropdown. Every one in the app is now a list you can search.',
+        'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
+        'A role can be given single tabs inside a module rather than the whole module. Human Resources is the first, and nobody loses a tab they could open before.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0237',
       date: '17 Sep 2026',
       items: [
         'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
         'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
-        'Every popup dropdown in the app is now a list you can search. Forty screens in this release, and that is the last of them.',
-        'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
-        'A role can be given single tabs inside a module rather than the whole module. Human Resources is the first, and nobody loses a tab they could open before.',
+        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
       ],
     ),
     VersionRelease(
