@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// The `services` field: work this finding recommends, priced.
 ///
@@ -169,19 +170,20 @@ class _InspectionServicesFieldState extends State<InspectionServicesField> {
             style: theme.textTheme.bodySmall,
           )
         else
-          DropdownButtonFormField<String>(
+          SearchPickerField<String>(
             key: Key('services-add-${widget.label}'),
-            initialValue: null,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Add work'),
-            items: [
+            value: null,
+            label: 'Add work',
+            options: [
               for (final service in widget.catalogue)
-                DropdownMenuItem(
+                SearchOption(
                   value: '${service['id']}',
-                  child: Text(
-                    '${service['name']} — ${_money((service['price_minor'] as num? ?? 0).toInt())}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  // The name searches; the price is what you check once you
+                  // have found it. Split rather than joined, because a
+                  // catalogue of a hundred services is exactly the list this
+                  // control exists for and "150" matching a price is noise.
+                  label: '${service['name']}',
+                  detail: _money((service['price_minor'] as num? ?? 0).toInt()),
                 ),
             ],
             onChanged: (value) {

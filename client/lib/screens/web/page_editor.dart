@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
@@ -322,6 +324,9 @@ class _PageEditorState extends State<PageEditor> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
               children: [
+                // The three the server sections as `page`. Named here rather
+                // than looped, because each is drawn differently — one plain
+                // box and two dropdowns filled from the website.
                 _heading(theme, 'This page'),
                 _text(theme, 'group'),
                 _choice(theme, 'author', _authors),
@@ -341,9 +346,13 @@ class _PageEditorState extends State<PageEditor> {
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
+                // The SITE's fields, which a page may override. Filtered by
+                // section rather than by exclusion: the page's own three and
+                // its text fields carry their own sections now, so a list that
+                // named what to leave out would need editing every time one
+                // was added.
                 for (final field in _fields)
-                  if (field['path'] == null && !_pageOnly.contains(field['key']))
-                    _text(theme, '${field['key']}'),
+                  if (field['section'] == 'general') _text(theme, '${field['key']}'),
 
                 const SizedBox(height: 8),
                 _heading(theme, 'Text on this page'),
@@ -397,10 +406,6 @@ class _PageEditorState extends State<PageEditor> {
       ],
     );
   }
-
-  /// Shown on their own at the top rather than among the site's values, because
-  /// none of them means anything site-wide.
-  static const _pageOnly = {'group', 'author', 'category'};
 
   Widget _heading(ThemeData theme, String text) {
     return Padding(
@@ -470,22 +475,19 @@ class _PageEditorState extends State<PageEditor> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: withShortcode(
-        DropdownButtonFormField<String>(
-        initialValue: names.contains(current) ? current : null,
-        decoration: InputDecoration(
-          labelText: '${field['label']}',
+        SearchPickerField<String>(
+          value: names.contains(current) ? current : null,
+          label: '${field['label']}',
           isDense: true,
           helperText: stored.isEmpty && current.isNotEmpty
               // Said out loud, so nobody reads the website's own answer as
               // something EzBizi has been told to publish.
               ? 'From the website. Change it to publish something else.'
               : '${field['hint']}',
-        ),
-        items: [
-          const DropdownMenuItem(value: '', child: Text('Not set')),
-          for (final name in names)
-            DropdownMenuItem(value: name, child: Text(name)),
-        ],
+          options: [
+            const SearchOption(value: '', label: 'Not set'),
+            for (final name in names) SearchOption(value: name, label: name),
+          ],
           onChanged: !widget.canEdit
               ? null
               : (value) => setState(() => _edits[key] = value ?? ''),

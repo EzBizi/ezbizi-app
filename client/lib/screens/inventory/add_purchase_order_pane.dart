@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
@@ -224,19 +226,12 @@ class _AddPurchaseOrderPaneState extends State<AddPurchaseOrderPane> {
                             setState(() => _franchiseId = v),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: _vendorId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Vendor'),
-                        items: [
+                      SearchPickerField<String>(
+                        value: _vendorId,
+                        label: 'Vendor',
+                        options: [
                           for (final v in _vendors)
-                            DropdownMenuItem(
-                              value: v['id'] as String?,
-                              child: Text(
-                                v['name'] as String? ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            SearchOption(value: v['id'] as String?, label: v['name'] as String? ?? ''),
                         ],
                         onChanged: _busy
                             ? null
@@ -253,20 +248,13 @@ class _AddPurchaseOrderPaneState extends State<AddPurchaseOrderPane> {
                       ),
                       for (var i = 0; i < _lines.length; i++) ...[
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
+                        SearchPickerField<String>(
                           key: ValueKey('po-item-$i-${_lines[i].itemId}'),
-                          initialValue: _lines[i].itemId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Item'),
-                          items: [
+                          value: _lines[i].itemId,
+                          label: 'Item',
+                          options: [
                             for (final item in _items)
-                              DropdownMenuItem(
-                                value: item['id'] as String?,
-                                child: Text(
-                                  inventoryItemChoiceLabel(item),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                              SearchOption(value: item['id'] as String?, label: inventoryItemChoiceLabel(item)),
                           ],
                           onChanged: _busy
                               ? null

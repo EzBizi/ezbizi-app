@@ -1,3 +1,4 @@
+import '../../widgets/search_picker.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -974,25 +975,21 @@ class _OnboardingFormState extends State<OnboardingForm> {
 
     return switch (field.type) {
       'checklist' => _checklist(question, enabled: enabled),
-      'choice' => DropdownButtonFormField<String>(
-        key: answerKey(field.key),
-        initialValue: _chosen(question),
-        isExpanded: true,
-        decoration: const InputDecoration(border: OutlineInputBorder()),
-        items: [
+      'choice' => SearchPickerField<String>(
+                    key: answerKey(field.key),
+                    value: _chosen(question),
+                    border: OutlineInputBorder(),
+                    options: [
           for (final option in field.options)
-            DropdownMenuItem(value: option, child: Text(option)),
+            SearchOption(value: option, label: option),
           if (_chosen(question) case final current?)
             if (!field.options.contains(current))
-              DropdownMenuItem(
-                value: current,
-                child: Text('$current — no longer offered'),
-              ),
+              SearchOption(value: current, label: '$current — no longer offered'),
         ],
-        onChanged: enabled
+                    onChanged: enabled
             ? (value) => setState(() => _pending[question.key] = value ?? '')
             : null,
-      ),
+                  ),
       'file' => _fileControl(context, question),
       'date' => CalendarDayField(
         key: answerKey(field.key),

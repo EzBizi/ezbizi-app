@@ -82,6 +82,30 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   int _range = 0;
   DateTimeRange? _custom;
 
+  /// The word Google puts in the name of every Local Services campaign.
+  ///
+  /// It is generated rather than typed - `LocalServicesCampaign:SystemGenerated:
+  /// 00062050e55e652b` - so the name IS the type, and there is no field on the
+  /// campaign that says so. Matched case-insensitively because a generated
+  /// string is not a thing to be fussy about the casing of.
+  static const _localServicesMark = 'localservicescampaign';
+
+  /// Which KIND of campaign is listed - Jose, 2026-09-17.
+  ///
+  /// A second dimension beside status rather than more status chips: Local
+  /// Services and Search are what a campaign IS, and Active and Paused are what
+  /// it is DOING. A business asks both questions at once - "what are my Search
+  /// ads costing while Local Services is paused" - and chips that shared one
+  /// set could not express it.
+  ///
+  /// Empty means all, the same rule the status chips follow. Selecting both is
+  /// therefore the same as selecting neither, which is the honest answer rather
+  /// than a special case: the two cover every campaign between them.
+  final Set<String> _adTypes = <String>{};
+
+  static const _typeLocalServices = 'local_services';
+  static const _typeSearch = 'search';
+
   /// Which campaign statuses are listed. Empty means all of them.
   final Set<String> _statuses = <String>{};
 
@@ -652,6 +676,24 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 
+  /// Does this campaign match the kind filter?
+  ///
+  /// True when nothing is selected, and true when BOTH are - the two chips
+  /// partition the list, so asking for both is asking for all of it. Written as
+  /// a set test rather than a boolean pair for exactly that reason: a pair of
+  /// bools would have needed a fourth case nobody wanted.
+  bool _isAdType(Map<String, dynamic> campaign) {
+    if (_adTypes.isEmpty) return true;
+
+    final isLocalServices = '${campaign['name']}'.toLowerCase().contains(
+      _localServicesMark,
+    );
+
+    return _adTypes.contains(
+      isLocalServices ? _typeLocalServices : _typeSearch,
+    );
+  }
+
   Widget _campaigns(ThemeData theme, dynamic currency) {
     final all = (_report!['campaigns'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
@@ -670,6 +712,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               (c) =>
                   (_statuses.isEmpty ||
                       _statuses.contains(c['status'] ?? 'UNKNOWN')) &&
+                  _isAdType(c) &&
                   (needle.isEmpty ||
                       '${c['name']}'.toLowerCase().contains(needle)),
             )
@@ -717,6 +760,27 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                       on ? _statuses.add(status) : _statuses.remove(status);
                     }),
                   ),
+                // The kind of campaign, beside the state of it. Drawn in the
+                // same Wrap so a narrow window reflows all of them together
+                // rather than leaving one row of chips stranded above another.
+                FilterChip(
+                  key: const ValueKey('ads-type-local_services'),
+                  label: const Text('LS Ads'),
+                  selected: _adTypes.contains(_typeLocalServices),
+                  onSelected: (on) => setState(() {
+                    on
+                        ? _adTypes.add(_typeLocalServices)
+                        : _adTypes.remove(_typeLocalServices);
+                  }),
+                ),
+                FilterChip(
+                  key: const ValueKey('ads-type-search'),
+                  label: const Text('Search Ads'),
+                  selected: _adTypes.contains(_typeSearch),
+                  onSelected: (on) => setState(() {
+                    on ? _adTypes.add(_typeSearch) : _adTypes.remove(_typeSearch);
+                  }),
+                ),
               ],
             ),
             const SizedBox(height: 8),

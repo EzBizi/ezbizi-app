@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
 import 'vehicle_papers.dart';
 
@@ -40,8 +41,11 @@ class _VehiclePaymentsCardState extends State<VehiclePaymentsCard> {
 
   List<Map<String, dynamic>> get _payments {
     final rows = [...fleetMaps(widget.vehicle['payments'])];
-    rows.sort((a, b) => fleetDay(b['occurred_on'] as String?)
-        .compareTo(fleetDay(a['occurred_on'] as String?)));
+    rows.sort(
+      (a, b) => fleetDay(
+        b['occurred_on'] as String?,
+      ).compareTo(fleetDay(a['occurred_on'] as String?)),
+    );
     return rows;
   }
 
@@ -226,13 +230,12 @@ class _VehiclePaymentsCardState extends State<VehiclePaymentsCard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _category,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Category'),
-          items: [
+        SearchPickerField<String>(
+          value: _category,
+          label: 'Category',
+          options: [
             for (final t in fleetPaymentCategories)
-              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              SearchOption(value: t.$1, label: t.$2),
           ],
           onChanged: _busy
               ? null
@@ -246,13 +249,12 @@ class _VehiclePaymentsCardState extends State<VehiclePaymentsCard> {
           keyboard: const TextInputType.numberWithOptions(decimal: true),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _method,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Method'),
-          items: [
+        SearchPickerField<String>(
+          value: _method,
+          label: 'Method',
+          options: [
             for (final t in fleetPaymentMethods)
-              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+              SearchOption(value: t.$1, label: t.$2),
           ],
           onChanged: _busy
               ? null
@@ -267,18 +269,14 @@ class _VehiclePaymentsCardState extends State<VehiclePaymentsCard> {
         fleetField(_note, 'Note', enabled: !_busy),
         if (links.isNotEmpty) ...[
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _link ?? '__none__',
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Linked to',
-              helperText: 'Optional. At most one ownership, policy, or visit.',
-              helperMaxLines: 2,
-            ),
-            items: [
-              const DropdownMenuItem(value: '__none__', child: Text('Nothing')),
-              for (final t in links)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+          SearchPickerField<String>(
+            value: _link ?? '__none__',
+            label: 'Linked to',
+            helperText: 'Optional. At most one ownership, policy, or visit.',
+            helperMaxLines: 2,
+            options: [
+              const SearchOption(value: '__none__', label: 'Nothing'),
+              for (final t in links) SearchOption(value: t.$1, label: t.$2),
             ],
             onChanged: _busy
                 ? null

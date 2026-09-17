@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/hr/training_card.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -243,14 +244,14 @@ void main() {
     // The organization first — it is the widest thing on offer — then
     // everything else by its whole path, so a company is followed by the
     // franchises under it rather than by an alphabetical run of Connecticuts.
-    expect(scopes.items!.map((i) => i.value), [
+    expect(scopes.options.map((o) => o.value), [
       'organization:org-1',
       'company:co-1',
       'franchise:fr-9',
       'franchise:fr-4',
     ]);
 
-    expect(scopes.items!.map((i) => (i.child as Text).data), [
+    expect(scopes.options.map((o) => o.label), [
       'Everdoors',
       'Serenisima',
       'Serenisima › Connecticut',
@@ -259,7 +260,7 @@ void main() {
       'Serenisima › Rhode Island — deactivated',
     ]);
     expect(
-      scopes.items!.where((i) => !i.enabled).map((i) => i.value),
+      scopes.options.where((o) => !o.enabled).map((o) => o.value),
       ['franchise:fr-4'],
     );
 
@@ -267,7 +268,7 @@ void main() {
     // fact may show through: the question is what this person may ASSIGN, and
     // that is not the same question as what they can see.
     expect(
-      scopes.items!.map((i) => (i.child as Text).data).join(' '),
+      scopes.options.map((o) => o.label).join(' '),
       isNot(contains('Texas')),
       reason: 'The list was assembled from /me instead of from the server.',
     );
@@ -286,11 +287,11 @@ void main() {
 
     final roles = _dropdown(tester, 'Role');
 
-    expect(roles.items!.map((i) => (i.child as Text).data), [
+    expect(roles.options.map((o) => o.label), [
       'Administrator — not yours to give',
       'Technician',
     ]);
-    expect(roles.items!.where((i) => !i.enabled).map((i) => i.value), [
+    expect(roles.options.where((o) => !o.enabled).map((o) => o.value), [
       'role-1',
     ]);
   });
@@ -777,19 +778,16 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
 Future<void> _choose(WidgetTester tester, String label, String option) async {
   await _tap(
     tester,
-    find.widgetWithText(DropdownButtonFormField<String>, label),
+    find.widgetWithText(SearchPickerField<String>, label),
   );
   await _tap(tester, find.text(option).last);
 }
 
-/// The button inside a labelled form field, which is where the options live —
-/// `DropdownButtonFormField` is a FormField and does not expose them.
-DropdownButton<String> _dropdown(WidgetTester tester, String label) =>
-    tester.widget<DropdownButton<String>>(
-      find.descendant(
-        of: find.widgetWithText(DropdownButtonFormField<String>, label),
-        matching: find.byType(DropdownButton<String>),
-      ),
+/// The picker behind one labelled field. It carries its own options, so this
+/// no longer reaches through a FormField for the button underneath it.
+SearchPickerField<String> _dropdown(WidgetTester tester, String label) =>
+    tester.widget<SearchPickerField<String>>(
+      find.widgetWithText(SearchPickerField<String>, label),
     );
 
 FilledButton _inviteButton(WidgetTester tester) => tester.widget<FilledButton>(

@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/phone/hours_pane.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -81,21 +82,21 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add hours'));
     await tester.pumpAndSettle();
 
-    final dropdown = tester.widget<DropdownButtonFormField<String>>(
-      find.byType(DropdownButtonFormField<String>),
+    final dropdown = tester.widget<SearchPickerField<String>>(
+      find.byType(SearchPickerField<String>),
     );
 
     expect(
-      dropdown.initialValue,
+      dropdown.value,
       isNotNull,
       reason: 'a new schedule has no clock at all',
     );
 
     expect(
-      dropdown.initialValue!.startsWith('Etc/'),
+      dropdown.value!.startsWith('Etc/'),
       isFalse,
       reason:
-          'a new schedule starts on ${dropdown.initialValue}, a fixed offset '
+          'a new schedule starts on ${dropdown.value}, a fixed offset '
           'that ignores daylight saving',
     );
   });

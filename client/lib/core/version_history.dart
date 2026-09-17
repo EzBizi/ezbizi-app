@@ -8,6 +8,26 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0237',
+      date: '17 Sep 2026',
+      items: [
+        'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
+        'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
+        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0236',
+      date: '17 Sep 2026',
+      items: [
+        'A website General tab shows the website settings again. It had filled with a text box for every field on every page, plus Group, Author and Category, which mean nothing for a whole site.',
+        'Three website fields you could not see before: City link, State link and Website address.',
+        'Paid time off. Turn it on for the business, set how many days a year, how long somebody waits before using them, and whether unused days carry over. Everybody can see their own balance; seeing anybody else needs the HR permission. Off until you set it up, so nothing changes for anyone today.',
+        'Twenty screens moved off the old popup dropdown to a list you can search.',
+        'A desktop notification now carries its own icon rather than looking one up.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0235',
       date: '17 Sep 2026',
       items: [

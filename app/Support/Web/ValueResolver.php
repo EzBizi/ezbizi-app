@@ -77,6 +77,28 @@ final class ValueResolver
      * @param  array<string, string>  $map
      * @return array<string, string>
      */
+    /**
+     * This site's own web address, which nobody should have to type.
+     *
+     * Derived rather than stored: the host is already the record, and a typed
+     * copy is a second version of one fact that goes stale the day a domain
+     * changes. Overwrites anything stored under the key for the same reason —
+     * if a row ever exists it is wrong by definition.
+     *
+     * @param  array<string, string>  $map
+     * @return array<string, string>
+     */
+    public static function withWebsiteUrl(array $map, ?string $host): array
+    {
+        $host = trim((string) $host);
+
+        if ($host !== '') {
+            $map['website_url'] = 'https://'.$host.'/';
+        }
+
+        return $map;
+    }
+
     public static function withComposedAddress(array $map): array
     {
         $parts = array_filter([

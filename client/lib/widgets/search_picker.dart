@@ -35,10 +35,18 @@ class SearchOption<T> {
     required this.value,
     required this.label,
     this.detail,
+    this.child,
     this.enabled = true,
   });
 
-  final T value;
+  /// Nullable, exactly as `DropdownMenuItem.value` is.
+  ///
+  /// Not an oversight carried over: several of these lists offer a row that
+  /// MEANS nothing chosen -- "Not set", "Nobody has the keys" -- and it is a
+  /// real option somebody picks, not the absence of one. Making this
+  /// non-nullable would have forced ten call sites to cast a `String?` they
+  /// had no reason to believe was non-null.
+  final T? value;
 
   /// What it is called, and what search matches against.
   final String label;
@@ -46,6 +54,16 @@ class SearchOption<T> {
   /// A second line — a number, a place, a role. Searched as well, because
   /// people look things up by whatever they remember about them.
   final String? detail;
+
+  /// A richer row than a line of text -- an icon beside a name, two lines with
+  /// different weights.
+  ///
+  /// **[label] is still required when this is set, and it is not decoration:**
+  /// it is what search matches on. A row with an icon has no single string in
+  /// it, so something has to say which words the list filters by, and a picker
+  /// that filters on the wrong words looks perfectly correct while hiding the
+  /// thing somebody typed the name of.
+  final Widget? child;
 
   final bool enabled;
 }
@@ -60,6 +78,11 @@ class SearchPickerField<T> extends StatelessWidget {
     required this.onChanged,
     this.label,
     this.hint,
+    this.helperText,
+    this.helperMaxLines,
+    this.errorText,
+    this.border,
+    this.isDense = false,
     this.allowClear = false,
     this.searchFrom = 8,
   });
@@ -74,6 +97,26 @@ class SearchPickerField<T> extends StatelessWidget {
 
   /// What the field says when nothing is chosen.
   final String? hint;
+
+  /// The sentence under the field. Carried because several of the dropdowns
+  /// this replaces use it to explain what a choice MEANS -- "the whole group
+  /// can see it" -- and dropping it while swapping the control would lose
+  /// information nobody asked to lose.
+  final String? helperText;
+  final int? helperMaxLines;
+
+  /// What is wrong with the value it currently holds.
+  ///
+  /// Carried because at least one of these fields uses it to NAME a stored
+  /// value it cannot offer -- an automation rule pointing at a field the
+  /// subject no longer has. The alternative is a box that silently went blank,
+  /// which is the thing people file bugs about.
+  final String? errorText;
+
+  /// Carried through so a swapped field keeps the frame it had. Several of
+  /// these sit in dense forms with an outline the rest of the row shares.
+  final InputBorder? border;
+  final bool isDense;
 
   /// Whether the list offers a way back to nothing chosen. Off by default,
   /// because most of these fields are required and a stray "None" row invites
@@ -109,6 +152,11 @@ class SearchPickerField<T> extends StatelessWidget {
         // shape when a field is swapped.
         decoration: InputDecoration(
           labelText: label,
+          helperText: helperText,
+          helperMaxLines: helperMaxLines,
+          errorText: errorText,
+          border: border,
+          isDense: isDense,
           enabled: enabled,
           suffixIcon: Icon(
             Icons.search,
@@ -258,8 +306,8 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                             dense: true,
                             selected: o.value == widget.value,
                             enabled: o.enabled,
-                            title: Text(o.label),
-                            subtitle: o.detail == null
+                            title: o.child ?? Text(o.label),
+                            subtitle: o.detail == null || o.child != null
                                 ? null
                                 : Text(o.detail!),
                             onTap: () =>

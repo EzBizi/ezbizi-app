@@ -1,5 +1,7 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
+
+import '../widgets/search_picker.dart';
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
 import '../core/timestamps.dart';
@@ -1805,25 +1807,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         const SizedBox(width: 8),
         Expanded(
           flex: 3,
-          child: DropdownButtonFormField<String>(
-            initialValue: row.op,
-            // Without this the button sizes itself to its widest option and
-            // overflows the column it was given — "is not one of" does not fit
-            // a third of a narrow window, and the ellipsis on the item below
-            // only takes effect once the button fills its box.
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Is', isDense: true),
-            items: [
+          child: SearchPickerField<String>(
+                   value: row.op,
+                   label: 'Is',
+                   isDense: true,
+                   options: [
               for (final operator in widget.catalogue.operators)
-                DropdownMenuItem(
-                  value: operator.key,
-                  child: Text(operator.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: operator.key, label: operator.label),
             ],
-            onChanged: _busy
+                   onChanged: _busy
                 ? null
                 : (value) => setState(() => row.op = value ?? row.op),
-          ),
+                 ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -2176,16 +2171,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             // A line is picked from the ones this company holds. The value
             // stored is an id, and asking somebody to type one is asking them
             // to fail — which is what a plain text field here would do.
-            DropdownButtonFormField<String>(
-              initialValue:
-                  row.parameter(definition.parameters[i].key).text.isEmpty
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
                   ? null
                   : row.parameter(definition.parameters[i].key).text,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: definition.parameters[i].label,
-                isDense: true,
-                helperText: _lines.isNotEmpty
+              label: definition.parameters[i].label,
+              helperText: _lines.isNotEmpty
                     ? 'Only lines approved for messaging are listed.'
                     : _linesHeld == 0
                     ? 'No phone lines on this company yet.'
@@ -2196,13 +2187,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : 'This company has $_linesHeld phone '
                           '${_linesHeld == 1 ? 'line' : 'lines'}, and none are '
                           'approved for text messaging yet.',
-              ),
-              items: [
+              isDense: true,
+              options: [
                 for (final line in _lines)
-                  DropdownMenuItem(
-                    value: line.$1,
-                    child: Text(line.$2, overflow: TextOverflow.ellipsis),
-                  ),
+                  SearchOption(value: line.$1, label: line.$2),
               ],
               onChanged: _busy
                   ? null
@@ -2431,30 +2419,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<String>(
-          initialValue: kind,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label, isDense: true),
-          items: [
-            const DropdownMenuItem(
-              value: 'person',
-              child: Text('Somebody who works here'),
-            ),
+        SearchPickerField<String>(
+          value: kind,
+          label: label,
+          isDense: true,
+          options: [
+            const SearchOption(value: 'person', label: 'Somebody who works here'),
             if (typedAllowed)
-              DropdownMenuItem(
-                value: 'typed',
-                child: Text(wantsPhone
+              SearchOption(value: 'typed', label: wantsPhone
                     ? 'A number I type'
                     : 'An address I type'),
-              ),
-            DropdownMenuItem(
-              value: 'field',
-              child: Text(kindOf == 'person_or_field'
+            SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
                       ? 'A number from the event'
                       : 'An address from the event'),
-            ),
           ],
           onChanged: _busy
               ? null
@@ -2842,18 +2821,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_whatsAppNumbers.length > 1) ...[
-          DropdownButtonFormField<String>(
-            initialValue: from.isEmpty ? null : from,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Send from',
-              isDense: true,
-              helperText: 'Templates are approved per number, so this decides '
+          SearchPickerField<String>(
+            value: from.isEmpty ? null : from,
+            label: 'Send from',
+            helperText: 'Templates are approved per number, so this decides '
                   'which are available.',
-            ),
-            items: [
+            isDense: true,
+            options: [
               for (final n in _whatsAppNumbers)
-                DropdownMenuItem(value: n.from, child: Text('${n.label} · ${n.from}')),
+                SearchOption(value: n.from, label: '${n.label} · ${n.from}'),
             ],
             onChanged: _busy
                 ? null
@@ -2871,23 +2847,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ),
           const SizedBox(height: 10),
         ],
-        DropdownButtonFormField<String>(
-          initialValue: row.whatsAppTemplate.isEmpty ? null : row.whatsAppTemplate,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Template',
-            isDense: true,
-            helperText: 'Only templates Meta has approved are listed.',
-          ),
-          items: [
+        SearchPickerField<String>(
+          value: row.whatsAppTemplate.isEmpty ? null : row.whatsAppTemplate,
+          label: 'Template',
+          helperText: 'Only templates Meta has approved are listed.',
+          isDense: true,
+          options: [
             for (final t in number?.templates ?? const [])
-              DropdownMenuItem(
-                value: t.name,
-                child: Text(
-                  t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              SearchOption(value: t.name, label: t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}'),
           ],
           onChanged: _busy
               ? null
@@ -2998,33 +2965,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: DropdownButtonFormField<String>(
-            // Null for anything the subject does not have, because the dropdown
-            // asserts on a value with no matching item — and a saved rule can
-            // legitimately carry one, from before any of this was checked.
-            initialValue: known ? current : null,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Field',
-              isDense: true,
-              helperText: known || current.isEmpty
-                  ? 'On ${_article(subject.label)} — whichever one the event '
-                        'was about.'
-                  : null,
-              // Named, not silently dropped. Somebody chose that value, or the
-              // server stored it, and a box that just went blank is the thing
-              // people file bugs about.
-              errorText: known || current.isEmpty
-                  ? null
-                  : '“$current” is not something a rule may set on '
-                        '${_article(subject.label)}.',
-            ),
-            items: [
+          child: SearchPickerField<String>(
+            // Null for anything the subject does not have, because the picker
+            // shows nothing for a value with no matching option — and a saved
+            // rule can legitimately carry one, from before any of this was
+            // checked.
+            value: known ? current : null,
+            label: 'Field',
+            isDense: true,
+            helperText: known || current.isEmpty
+                ? 'On ${_article(subject.label)} — whichever one the event '
+                      'was about.'
+                : null,
+            // Named, not silently dropped. Somebody chose that value, or the
+            // server stored it, and a box that just went blank is the thing
+            // people file bugs about.
+            errorText: known || current.isEmpty
+                ? null
+                : '“$current” is not something a rule may set on '
+                      '${_article(subject.label)}.',
+            options: [
               for (final field in fields)
-                DropdownMenuItem(
-                  value: field.key,
-                  child: Text(field.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: field.key, label: field.label),
             ],
             onChanged: _busy
                 ? null

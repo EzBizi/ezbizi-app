@@ -392,6 +392,23 @@ check('trailing slash and query still match', ezbizi_value('phone'), '555-0999')
 $_SERVER['REQUEST_URI'] = '/about';
 check('another page gets the site value', ezbizi_value('phone'), '555-0100');
 
+echo PHP_EOL . "A link is escaped as a link" . PHP_EOL;
+/*
+ * City link and State link end in `_link`, not `_url`, because that is what
+ * they are called on the screen they were copied from. The escaping rule keyed
+ * on `_url` alone, so a customer's civic links would have gone through
+ * esc_html — which turns the `&` in a query string into `&amp;` and does
+ * nothing about a `javascript:` scheme somebody stored.
+ */
+check('a _url key is a link', ezbizi_is_link_key('booking_url'), true);
+check('a _link key is a link too', ezbizi_is_link_key('city_link'), true);
+check('and so is the other one', ezbizi_is_link_key('state_link'), true);
+
+// The control: if this returned true for everything, the three above would
+// pass while every value on every site went through the wrong escaper.
+check('a phone number is not a link', ezbizi_is_link_key('phone'), false);
+check('nor is a tagline', ezbizi_is_link_key('tagline'), false);
+
 echo PHP_EOL . "Two forms on one page are two forms" . PHP_EOL;
 /*
  * Jose's reason for wanting the form as an Elementor widget: it goes in

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
@@ -446,21 +448,12 @@ class _ItemPaneState extends State<ItemPane> {
                             style: theme.textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _adjustLocationId,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Location',
-                            ),
-                            items: [
+                          SearchPickerField<String>(
+                            value: _adjustLocationId,
+                            label: 'Location',
+                            options: [
                               for (final loc in _locations)
-                                DropdownMenuItem(
-                                  value: loc['id'] as String?,
-                                  child: Text(
-                                    loc['name'] as String? ?? '',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
+                                SearchOption(value: loc['id'] as String?, label: loc['name'] as String? ?? ''),
                             ],
                             onChanged: _adjusting
                                 ? null

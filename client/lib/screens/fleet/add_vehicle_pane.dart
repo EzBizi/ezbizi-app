@@ -5,6 +5,7 @@ import '../../core/money.dart';
 import '../../core/session.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'vehicle_card.dart';
 
 /// Add is the same 75% pane as a vehicle, not a modal.
@@ -349,24 +350,18 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (_showCompanyField) ...[
-                  DropdownButtonFormField<String>(
-                    initialValue: _companyId ?? fleetOrgValue,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Company',
-                      helperText: _companyId == null && _atOrganization
+                  SearchPickerField<String>(
+                    value: _companyId ?? fleetOrgValue,
+                    label: 'Company',
+                    helperText: _companyId == null && _atOrganization
                           ? '$fleetGeneralLabel — the whole group can see it.'
                           : null,
-                      helperMaxLines: 3,
-                    ),
-                    items: [
+                    helperMaxLines: 3,
+                    options: [
                       if (_atOrganization)
-                        DropdownMenuItem(
-                          value: fleetOrgValue,
-                          child: Text(_me.organization.name),
-                        ),
+                        SearchOption(value: fleetOrgValue, label: _me.organization.name),
                       for (final c in _me.companiesInView)
-                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                        SearchOption(value: c.id, label: c.name),
                     ],
                     onChanged: _busy
                         ? null
@@ -378,23 +373,16 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                   const SizedBox(height: 12),
                 ],
                 if (_showFranchiseField)
-                  DropdownButtonFormField<String>(
+                  SearchPickerField<String>(
                     key: ValueKey(_companyId),
-                    initialValue: _franchiseId ?? fleetGeneralValue,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: _me.organization.franchiseLabel,
-                      helperText:
-                          '$fleetGeneralLabel is visible to everyone who can see this company.',
-                      helperMaxLines: 3,
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: fleetGeneralValue,
-                        child: Text(fleetGeneralLabel),
-                      ),
+                    value: _franchiseId ?? fleetGeneralValue,
+                    label: _me.organization.franchiseLabel,
+                    helperText: '$fleetGeneralLabel is visible to everyone who can see this company.',
+                    helperMaxLines: 3,
+                    options: [
+                      const SearchOption(value: fleetGeneralValue, label: fleetGeneralLabel),
                       for (final f in _places)
-                        DropdownMenuItem(value: f.id, child: Text(f.name)),
+                        SearchOption(value: f.id, label: f.name),
                     ],
                     onChanged: _busy
                         ? null
@@ -422,30 +410,24 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                       _field(_vin, 'VIN'),
                       _field(_colour, 'Colour'),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: _bodyType,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Body type',
-                        ),
-                        items: [
+                      SearchPickerField<String>(
+                        value: _bodyType,
+                        label: 'Body type',
+                        options: [
                           for (final t in _bodyTypes)
-                            DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                            SearchOption(value: t.$1, label: t.$2),
                         ],
                         onChanged: _busy
                             ? null
                             : (v) => setState(() => _bodyType = v ?? _bodyType),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: _fuelType,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Fuel type',
-                        ),
-                        items: [
+                      SearchPickerField<String>(
+                        value: _fuelType,
+                        label: 'Fuel type',
+                        options: [
                           for (final t in _fuelTypes)
-                            DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                            SearchOption(value: t.$1, label: t.$2),
                         ],
                         onChanged: _busy
                             ? null
@@ -539,15 +521,12 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _rentalPeriod,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Rate period',
-                          ),
-                          items: [
+                        SearchPickerField<String>(
+                          value: _rentalPeriod,
+                          label: 'Rate period',
+                          options: [
                             for (final t in _periods)
-                              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                              SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
                               ? null
@@ -563,30 +542,24 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
                         ),
                         _field(_rentalAccount, 'Account number'),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _rentalTerms,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Payment terms',
-                          ),
-                          items: [
+                        SearchPickerField<String>(
+                          value: _rentalTerms,
+                          label: 'Payment terms',
+                          options: [
                             for (final t in _terms)
-                              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                              SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
                               ? null
                               : (v) => setState(() => _rentalTerms = v),
                         ),
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: _rentalMethod,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Payment method',
-                          ),
-                          items: [
+                        SearchPickerField<String>(
+                          value: _rentalMethod,
+                          label: 'Payment method',
+                          options: [
                             for (final t in _methods)
-                              DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                              SearchOption(value: t.$1, label: t.$2),
                           ],
                           onChanged: _busy
                               ? null

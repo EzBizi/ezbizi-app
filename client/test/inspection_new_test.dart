@@ -3,6 +3,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/inspection/new_tab.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -76,7 +77,7 @@ void main() {
     await tester.tap(find.text('Level 1'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(DropdownButtonFormField<String>), findsOneWidget,
+    expect(find.byType(SearchPickerField<String>), findsOneWidget,
         reason: 'a one-of-a-list must offer the list');
     expect(find.byKey(const Key('field-flue')), findsOneWidget);
 

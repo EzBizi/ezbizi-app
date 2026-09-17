@@ -57,8 +57,25 @@ import UserNotifications
     // suppressing the foreground case suppresses most of what iOS would ever
     // have shown, and the platform would look broken while being configured
     // exactly as documented.
+    // `as`, NOT `as?`, and the difference is the whole safety of this line.
+    //
+    // Nothing else sets this delegate. flutter_local_notifications implements
+    // the UNUserNotificationCenterDelegate methods and registers itself with
+    // `addApplicationDelegate:` — measured in its own FlutterLocalNotifications
+    // Plugin.m, which never touches `UNUserNotificationCenter.current()
+    // .delegate` at all. It is relying on FlutterAppDelegate being that
+    // delegate and forwarding to it, which is why the plugin's own example app
+    // carries this same line.
+    //
+    // The conformance comes from FlutterAppDelegate, a superclass we do not
+    // own. `as?` on a cast that fails yields nil, and assigning nil here SETS
+    // THE DELEGATE TO NOTHING — no foreground banners and no taps reaching
+    // Dart, silently, with every notification still appearing to be raised
+    // successfully. A Flutter upgrade that dropped the conformance would do
+    // that and nothing would say so. `as` cannot fail quietly: it stops the
+    // build on the Mac, which is where somebody can still act on it.
     UNUserNotificationCenter.current().delegate =
-      self as? UNUserNotificationCenterDelegate
+      self as UNUserNotificationCenterDelegate
 
     // Deliberately NOT gated on the alert permission.
     //
@@ -69,6 +86,44 @@ import UserNotifications
     // reached even silently, and would make the token depend on a prompt that
     // another part of the app owns.
     application.registerForRemoteNotifications()
+
+    // ── The ask, here rather than in Dart, because it was never happening ──
+    //
+    // Measured on Jose's iPhone: EzBizi was absent from Settings ▸
+    // Notifications entirely. An app appears in that list once it has REQUESTED
+    // authorization, so its absence is not "permission was declined" — it is
+    // proof the request never ran. Everything downstream was fine and invisible
+    // behind it: a valid 64-hex device token, and APNs ACCEPTING a push for
+    // topic com.ezbizi.app on the production endpoint, which only happens for
+    // an installed build. Apple took the message and iOS dropped it, because an
+    // app with no authorization is not allowed to be seen.
+    //
+    // The Dart side already asks — OsNotifications.enable() calls
+    // IOSFlutterLocalNotificationsPlugin.requestPermissions from the bell, and
+    // that call is reached, since PushRegistration.start() on the next line of
+    // the same initState is what produced the token. So the ask is being lost
+    // inside a chain that cannot report it: a plugin, a platform resolver, a
+    // method channel, and two `?? true`/`?? false` fallbacks, each of which
+    // turns "this did not happen" into a plausible answer.
+    //
+    // Remote push needs exactly ONE thing from this app, and it is this call.
+    // Making it depend on any of that was the mistake. Asking twice costs
+    // nothing: iOS prompts once and afterwards returns the standing decision
+    // without showing anything, so the Dart path stays as it is for local
+    // notifications and this one guarantees the prompt exists at all.
+    UNUserNotificationCenter.current().requestAuthorization(
+      options: [.alert, .badge, .sound]
+    ) { granted, error in
+      // Recorded, not acted on. Nothing here can undo a refusal, and the
+      // token is registered either way by design (see above) — but "declined"
+      // and "the call itself failed" are the two answers somebody debugging a
+      // silent handset needs to tell apart, and this is the only place that
+      // distinction exists.
+      NSLog(
+        "EzBizi notification authorization: granted=%@ error=%@",
+        String(describing: granted),
+        error?.localizedDescription ?? "none")
+    }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

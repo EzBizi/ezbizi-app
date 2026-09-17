@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -36,7 +38,11 @@ import 'camera_view.dart';
 ///     mobile) they get the same kind of URL card the deep-link tiles get,
 ///     worded for what IS true on that platform: open it in a browser to see it.
 class CameraMonitoringTab extends StatefulWidget {
-  const CameraMonitoringTab({super.key, required this.api, required this.session});
+  const CameraMonitoringTab({
+    super.key,
+    required this.api,
+    required this.session,
+  });
 
   final ApiClient api;
   final Session session;
@@ -504,7 +510,11 @@ class _InlineViewCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.videocam_outlined, size: 20, color: scheme.onSurfaceVariant),
+            Icon(
+              Icons.videocam_outlined,
+              size: 20,
+              color: scheme.onSurfaceVariant,
+            ),
             const SizedBox(height: 6),
             // Capped rather than left to wrap freely: this sits inside a
             // fixed-height grid cell (R7 — 375px is the narrowest column),
@@ -518,11 +528,7 @@ class _InlineViewCard extends StatelessWidget {
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 6),
-            SelectableText(
-              url,
-              maxLines: 1,
-              style: theme.textTheme.labelSmall,
-            ),
+            SelectableText(url, maxLines: 1, style: theme.textTheme.labelSmall),
             const SizedBox(height: 6),
             OutlinedButton.icon(
               onPressed: () => _openUrl(url),
@@ -606,11 +612,7 @@ class _DeepLinkCard extends StatelessWidget {
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 6),
-            SelectableText(
-              url,
-              maxLines: 1,
-              style: theme.textTheme.labelSmall,
-            ),
+            SelectableText(url, maxLines: 1, style: theme.textTheme.labelSmall),
             const SizedBox(height: 6),
             // A vertical stack rather than a `Wrap`: two buttons side by
             // side either fit or wrap to a second row depending on the
@@ -720,16 +722,13 @@ class _AddCameraPanelState extends State<_AddCameraPanel> {
             decoration: const InputDecoration(labelText: 'Label'),
           ),
           const SizedBox(height: 14),
-          DropdownButtonFormField<String>(
+          SearchPickerField<String>(
             key: const Key('camera-add-protocol-field'),
-            initialValue: _protocol,
-            decoration: const InputDecoration(labelText: 'Protocol'),
-            items: [
+            value: _protocol,
+            label: 'Protocol',
+            options: [
               for (final protocol in CameraMonitoringTab.protocols)
-                DropdownMenuItem(
-                  value: protocol,
-                  child: Text(_protocolLabel(protocol)),
-                ),
+                SearchOption(value: protocol, label: _protocolLabel(protocol)),
             ],
             onChanged: (value) {
               if (value != null) setState(() => _protocol = value);

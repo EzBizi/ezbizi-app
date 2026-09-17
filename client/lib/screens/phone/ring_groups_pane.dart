@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Ring groups — who a line rings, and what happens when
 /// nobody picks up.
@@ -74,13 +75,18 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     setState(() {
       _loading = false;
 
-      final failed = results.firstWhere((r) => !r.ok, orElse: () => results.first);
+      final failed = results.firstWhere(
+        (r) => !r.ok,
+        orElse: () => results.first,
+      );
       if (!failed.ok) {
         _error = failed.message;
         return;
       }
 
-      _groups = _listOf(results[0]).map(_Group.fromJson).toList(growable: false);
+      _groups = _listOf(
+        results[0],
+      ).map(_Group.fromJson).toList(growable: false);
 
       final members = results[1].body['data'];
       _people = members is Map<String, dynamic> && members['people'] is List
@@ -91,7 +97,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
           : const [];
 
       _lines = _listOf(results[2]).map(_Line.fromJson).toList(growable: false);
-      _connections = _listOf(results[3]).map(_Conn.fromJson).toList(growable: false);
+      _connections = _listOf(
+        results[3],
+      ).map(_Conn.fromJson).toList(growable: false);
     });
   }
 
@@ -155,7 +163,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
       return;
     }
     if (draft.connectionId == null) {
-      setState(() => _formError = 'Connect a phone account for this place first.');
+      setState(
+        () => _formError = 'Connect a phone account for this place first.',
+      );
       return;
     }
 
@@ -171,8 +181,12 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
       'member_user_ids': draft.memberIds.toList()..sort(),
       'member_role_ids': <String>[],
       'overflow': draft.overflow,
-      'overflow_number': draft.overflow == 'forward' ? draft.overflowNumber.trim() : null,
-      'overflow_group_id': draft.overflow == 'group' ? draft.overflowGroupId : null,
+      'overflow_number': draft.overflow == 'forward'
+          ? draft.overflowNumber.trim()
+          : null,
+      'overflow_group_id': draft.overflow == 'group'
+          ? draft.overflowGroupId
+          : null,
 
       // Sent only when they are the settings in play. A hold time left over
       // from the ten seconds somebody spent looking at the queue option is not
@@ -408,7 +422,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             : Refused(
                 reason: _canEdit ? null : _editRefusal,
                 child: TextButton(
-                  onPressed: _canEdit && !_saving ? () => _editGroup(group) : null,
+                  onPressed: _canEdit && !_saving
+                      ? () => _editGroup(group)
+                      : null,
                   child: const Text('Edit'),
                 ),
               ),
@@ -423,9 +439,7 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
     // group that does not exist yet — nothing has been measured about a draft.
     final roster = {
       for (final member
-          in _groups
-              .where((g) => g.id == draft.id)
-              .expand((g) => g.members))
+          in _groups.where((g) => g.id == draft.id).expand((g) => g.members))
         member.userId: member,
     };
     final otherGroups = _groups
@@ -470,12 +484,12 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
             const SizedBox(height: 12),
 
             if (_connections.length > 1) ...[
-              DropdownButtonFormField<String>(
-                initialValue: draft.connectionId,
-                decoration: const InputDecoration(labelText: 'Phone account'),
-                items: [
+              SearchPickerField<String>(
+                value: draft.connectionId,
+                label: 'Phone account',
+                options: [
                   for (final conn in _connections)
-                    DropdownMenuItem(value: conn.id, child: Text(conn.label)),
+                    SearchOption(value: conn.id, label: conn.label),
                 ],
                 onChanged: _saving
                     ? null
@@ -494,7 +508,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               // ignore: deprecated_member_use
               groupValue: draft.mode,
               // ignore: deprecated_member_use
-              onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => draft.mode = v!),
               title: const Text('Everyone at once'),
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -504,7 +520,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               // ignore: deprecated_member_use
               groupValue: draft.mode,
               // ignore: deprecated_member_use
-              onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => draft.mode = v!),
               title: const Text('One at a time, in order'),
               contentPadding: EdgeInsets.zero,
               dense: true,
@@ -525,7 +543,9 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
               // ignore: deprecated_member_use
               groupValue: draft.mode,
               // ignore: deprecated_member_use
-              onChanged: _saving ? null : (v) => setState(() => draft.mode = v!),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => draft.mode = v!),
               title: const Text('One at a time, whoever is least busy'),
               subtitle: const Text(
                 'Starts with whoever has gone longest without answering.',
@@ -726,7 +746,8 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                 decoration: const InputDecoration(
                   labelText: 'Hold music',
                   hintText: 'Leave empty for the default',
-                  helperText: 'A direct link to an MP3 or WAV file. Its '
+                  helperText:
+                      'A direct link to an MP3 or WAV file. Its '
                       'length is the gap between announcements.',
                   helperMaxLines: 2,
                 ),
@@ -758,12 +779,12 @@ class _RingGroupsPaneState extends State<RingGroupsPane> {
                       'calls to.',
                       style: theme.textTheme.bodySmall,
                     )
-                  : DropdownButtonFormField<String>(
-                      initialValue: draft.overflowGroupId,
-                      decoration: const InputDecoration(labelText: 'Then ring'),
-                      items: [
+                  : SearchPickerField<String>(
+                      value: draft.overflowGroupId,
+                      label: 'Then ring',
+                      options: [
                         for (final g in otherGroups)
-                          DropdownMenuItem(value: g.id, child: Text(g.name)),
+                          SearchOption(value: g.id, label: g.name),
                       ],
                       onChanged: _saving
                           ? null

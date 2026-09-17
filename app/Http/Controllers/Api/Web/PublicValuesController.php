@@ -92,6 +92,15 @@ class PublicValuesController extends Controller
             return response()->json([
                 'fields' => SeoFields::catalogue(),
                 'widgets' => WebWidget::resolvedFor($site),
+                /*
+                 * NOT `withWebsiteUrl()`, deliberately, and this is the one
+                 * endpoint where that matters. This response is reachable with
+                 * a key scraped from page source, and it names neither the
+                 * company nor the host on purpose — so a key must not turn
+                 * into a map of which businesses use EzBizi. Deriving the
+                 * site's own address here would put the host back in, and the
+                 * widgets this feeds have no use for it.
+                 */
                 ...ValueResolver::forReaders($rows, ValueResolver::inheritedRowsFor($site)),
             ])->withHeaders($this->browserHeaders());
         });

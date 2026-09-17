@@ -43,13 +43,7 @@ class ValuesController extends Controller
         $this->authorize('view', $site);
 
         return response()->json([
-            'data' => [
-                'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
-                ...ValueResolver::forEditor(
-                    $this->rows($site),
-                    ValueResolver::inheritedRowsFor($site),
-                ),
-            ],
+            'data' => $this->editorPayload($site),
         ]);
     }
 
@@ -147,13 +141,7 @@ class ValuesController extends Controller
         });
 
         return response()->json([
-            'data' => [
-                'fields' => SeoFields::catalogue(),
-                ...ValueResolver::forEditor(
-                    $this->rows($site),
-                    ValueResolver::inheritedRowsFor($site),
-                ),
-            ],
+            'data' => $this->editorPayload($site),
         ]);
     }
 
@@ -186,6 +174,33 @@ class ValuesController extends Controller
      *
      * @return \Illuminate\Support\Collection<int, WebValue>
      */
+    /**
+     * The editor's view of this site's values, with the derived ones filled in.
+     *
+     * One method rather than two call sites, because the GET and the PUT both
+     * return this shape and the PUT's copy is the one that would quietly fall
+     * behind.
+     *
+     * @return array<string, mixed>
+     */
+    private function editorPayload(WebSite $site): array
+    {
+        $payload = ValueResolver::forEditor(
+            $this->rows($site),
+            ValueResolver::inheritedRowsFor($site),
+        );
+
+        $payload['values'] = (object) ValueResolver::withWebsiteUrl(
+            (array) $payload['values'],
+            $site->host,
+        );
+
+        return [
+            'fields' => [...SeoFields::catalogue(), ...PageFields::catalogueFor($site)],
+            ...$payload,
+        ];
+    }
+
     private function rows(WebSite $site): \Illuminate\Support\Collection
     {
         return WebValue::query()

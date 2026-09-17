@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
+import 'inspection_flow.dart';
 import 'option.dart';
 import '../../widgets/tag.dart';
 
@@ -43,6 +46,10 @@ class _BuilderTabState extends State<BuilderTab> {
   List<Map<String, dynamic>> _bindable = const [];
 
   String? _selectedId;
+
+  /// Whether the right pane shows the flow rather than the phone preview.
+  bool _showFlow = false;
+
   int _screenIndex = 0;
   int _fieldIndex = 0;
   String? _busy;
@@ -454,11 +461,7 @@ class _BuilderTabState extends State<BuilderTab> {
             ),
             _pane(
               key: const Key('inspection-builder-phone'),
-              child: InspectionPhonePreview(
-                definition: _selected,
-                screenIndex: _screenIndex,
-                presets: _presets,
-              ),
+              child: _previewPane(context),
             ),
           ];
 
@@ -486,6 +489,62 @@ class _BuilderTabState extends State<BuilderTab> {
           );
         },
       ),
+    );
+  }
+
+  /// The right-hand pane: one screen as a technician sees it, or the whole
+  /// definition as a flow.
+  ///
+  /// A switch rather than a fourth column. They answer opposite questions --
+  /// "what does this one screen look like" and "which screens are reached at
+  /// all" -- and neither is worth a third of the width while you are reading
+  /// the other.
+  Widget _previewPane(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: SegmentedButton<bool>(
+            key: const Key('inspection-builder-preview-switch'),
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.phone_iphone, size: 16),
+                label: Text('Preview'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.account_tree_outlined, size: 16),
+                label: Text('Flow'),
+              ),
+            ],
+            selected: {_showFlow},
+            showSelectedIcon: false,
+            onSelectionChanged: (picked) =>
+                setState(() => _showFlow = picked.first),
+          ),
+        ),
+        Expanded(
+          child: _showFlow
+              ? InspectionFlowPane(
+                  definition: _selected,
+                  // The node id is a POSITION in the screen list, read at the
+                  // moment of the tap and not held: reordering screens moves
+                  // every id after the one that moved.
+                  onOpenScreen: (index) => setState(() {
+                    _screenIndex = index;
+                    _fieldIndex = 0;
+                  }),
+                )
+              : InspectionPhonePreview(
+                  definition: _selected,
+                  screenIndex: _screenIndex,
+                  presets: _presets,
+                ),
+        ),
+      ],
     );
   }
 
@@ -608,24 +667,16 @@ class _BuilderTabState extends State<BuilderTab> {
         if (_scopes.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
-            child: DropdownButtonFormField<String>(
-              key: const Key('inspection-scope-picker'),
-              initialValue: _scopeValue(current),
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Belongs to',
-                helperText: 'Who this inspection exists for. Roles still gate who may run it.',
-              ),
-              items: [
+            child: SearchPickerField<String>(
+                     key: const Key('inspection-scope-picker'),
+                     value: _scopeValue(current),
+                     label: 'Belongs to',
+                     helperText: 'Who this inspection exists for. Roles still gate who may run it.',
+                     options: [
                 for (final scope in _scopes)
-                  DropdownMenuItem(
-                    // Keyed on type:id, never on the label — a company and its
-                    // only franchise are very often called the same thing.
-                    value: '${scope['type'] ?? 'organization'}:${scope['id'] ?? ''}',
-                    child: Text('${scope['label'] ?? ''}'),
-                  ),
+                  SearchOption(value: '${scope['type'] ?? 'organization'}:${scope['id'] ?? ''}', label: '${scope['label'] ?? ''}'),
               ],
-              onChanged: (value) {
+                     onChanged: (value) {
                 if (value == null) return;
                 final split = value.indexOf(':');
                 final type = value.substring(0, split);
@@ -635,7 +686,7 @@ class _BuilderTabState extends State<BuilderTab> {
                       'id': id.isEmpty ? null : id,
                     });
               },
-            ),
+                   ),
           ),
         TextField(
           controller: _intro,
@@ -724,17 +775,13 @@ class _BuilderTabState extends State<BuilderTab> {
             onChanged: (value) => _updateField((row) => row['label'] = value),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          SearchPickerField<String>(
             key: ValueKey('type-$_selectedId-$_screenIndex-$_fieldIndex'),
-            initialValue: '${field['type'] ?? 'text'}',
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Type'),
-            items: [
+            value: '${field['type'] ?? 'text'}',
+            label: 'Type',
+            options: [
               for (final type in _typesFor(field))
-                DropdownMenuItem(
-                  value: '${type['key']}',
-                  child: Text('${type['label'] ?? type['key']}'),
-                ),
+                SearchOption(value: '${type['key']}', label: '${type['label'] ?? type['key']}'),
             ],
             onChanged: (value) {
               if (value == null) return;
@@ -802,19 +849,16 @@ class _BuilderTabState extends State<BuilderTab> {
           // which is why "A plain line" is first and the default.
           if (field['type'] != 'divider' && field['type'] != 'alert') ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
+            SearchPickerField<String>(
               key: Key('field-print-$_selectedId-$_screenIndex-$_fieldIndex'),
-              initialValue: '${field['print'] ?? 'text'}',
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'On the report',
-                helperText: 'A finding gets its own heading, with its photo, '
+              value: '${field['print'] ?? 'text'}',
+              label: 'On the report',
+              helperText: 'A finding gets its own heading, with its photo, '
                     'code and recommended work grouped under it.',
-              ),
-              items: const [
-                DropdownMenuItem(value: 'text', child: Text('A plain line')),
-                DropdownMenuItem(value: 'root', child: Text('A finding')),
-                DropdownMenuItem(value: 'ignore', child: Text('Do not print it')),
+              options: const [
+                SearchOption(value: 'text', label: 'A plain line'),
+                SearchOption(value: 'root', label: 'A finding'),
+                SearchOption(value: 'ignore', label: 'Do not print it'),
               ],
               onChanged: (value) => _updateField((row) => row['print'] = value),
             ),
@@ -838,23 +882,16 @@ class _BuilderTabState extends State<BuilderTab> {
 
           if (_codes.isNotEmpty) ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
+            SearchPickerField<String>(
               key: const Key('field-code'),
-              initialValue: _codeValue(field),
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Building code',
-                helperText: 'Printed on the report beside this finding. '
+              value: _codeValue(field),
+              label: 'Building code',
+              helperText: 'Printed on the report beside this finding. '
                     'The wording is copied in when you publish.',
-              ),
-              items: [
-                const DropdownMenuItem(value: '', child: Text('No code')),
+              options: [
+                const SearchOption(value: '', label: 'No code'),
                 for (final code in _codes)
-                  DropdownMenuItem(
-                    value: '${code['id']}',
-                    child: Text('${code['code']} — ${code['title'] ?? ''}',
-                        overflow: TextOverflow.ellipsis),
-                  ),
+                  SearchOption(value: '${code['id']}', label: '${code['code']} — ${code['title'] ?? ''}'),
               ],
               onChanged: (value) => _updateField(
                 (row) => row['code_id'] = (value ?? '').isEmpty ? null : value,
@@ -863,13 +900,13 @@ class _BuilderTabState extends State<BuilderTab> {
           ],
           if (field['type'] == 'photo') ...[
             const SizedBox(height: 12),
-            DropdownButtonFormField<int>(
+            SearchPickerField<int>(
               key: ValueKey('max-$_selectedId-$_screenIndex-$_fieldIndex'),
-              initialValue: (field['max_count'] as num?)?.toInt() ?? 1,
-              decoration: const InputDecoration(labelText: 'How many photos'),
-              items: [
+              value: (field['max_count'] as num?)?.toInt() ?? 1,
+              label: 'How many photos',
+              options: [
                 for (final n in [1, 2, 3, 4, 6, 8, 12])
-                  DropdownMenuItem(value: n, child: Text('$n')),
+                  SearchOption(value: n, label: '$n'),
               ],
               onChanged: (value) => _updateField(
                 (row) => row['max_count'] = value ?? 1,
@@ -882,18 +919,14 @@ class _BuilderTabState extends State<BuilderTab> {
             value: field['required'] == true,
             onChanged: (value) => _updateField((row) => row['required'] = value),
           ),
-          DropdownButtonFormField<String>(
+          SearchPickerField<String>(
             key: ValueKey('bind-$_selectedId-$_screenIndex-$_fieldIndex'),
-            initialValue: field['bind'] is String ? field['bind'] as String : '',
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Prefill from'),
-            items: [
-              const DropdownMenuItem(value: '', child: Text('Nothing')),
+            value: field['bind'] is String ? field['bind'] as String : '',
+            label: 'Prefill from',
+            options: [
+              const SearchOption(value: '', label: 'Nothing'),
               for (final bind in _bindable)
-                DropdownMenuItem(
-                  value: '${bind['key']}',
-                  child: Text('${bind['label'] ?? bind['key']}'),
-                ),
+                SearchOption(value: '${bind['key']}', label: '${bind['label'] ?? bind['key']}'),
             ],
             onChanged: (value) => _updateField((row) {
               if (value == null || value.isEmpty) {
@@ -1196,44 +1229,42 @@ class _ConditionEditor extends StatelessWidget {
           children: [
             Expanded(
               flex: 3,
-              child: DropdownButtonFormField<String>(
-                key: const Key('cond-field'),
-                initialValue: fieldKeys.contains(field) ? field : null,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Field'),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('Always ask it')),
+              child: SearchPickerField<String>(
+                       key: const Key('cond-field'),
+                       value: fieldKeys.contains(field) ? field : null,
+                       label: 'Field',
+                       options: [
+                  const SearchOption(value: '', label: 'Always ask it'),
                   for (final key in fieldKeys)
-                    DropdownMenuItem(value: key, child: Text(key)),
+                    SearchOption(value: key, label: key),
                 ],
-                onChanged: (chosen) {
+                       onChanged: (chosen) {
                   if (chosen == null || chosen.isEmpty) {
                     onChanged(null);
                     return;
                   }
                   onChanged({'field': chosen, 'op': op, 'value': value});
                 },
-              ),
+                     ),
             ),
             const SizedBox(width: 8),
             Expanded(
               flex: 2,
-              child: DropdownButtonFormField<String>(
-                key: const Key('cond-op'),
-                initialValue: op,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Is'),
-                items: const [
-                  DropdownMenuItem(value: 'eq', child: Text('equal to')),
-                  DropdownMenuItem(value: 'ne', child: Text('not equal to')),
-                  DropdownMenuItem(value: 'in', child: Text('one of')),
-                  DropdownMenuItem(value: 'not_in', child: Text('none of')),
+              child: SearchPickerField<String>(
+                       key: const Key('cond-op'),
+                       value: op,
+                       label: 'Is',
+                       options: const [
+                  SearchOption(value: 'eq', label: 'equal to'),
+                  SearchOption(value: 'ne', label: 'not equal to'),
+                  SearchOption(value: 'in', label: 'one of'),
+                  SearchOption(value: 'not_in', label: 'none of'),
                 ],
-                onChanged: (chosen) {
+                       onChanged: (chosen) {
                   if (chosen == null || field.isEmpty) return;
                   onChanged(_build(field, chosen, value));
                 },
-              ),
+                     ),
             ),
           ],
         ),

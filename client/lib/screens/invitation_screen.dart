@@ -9,6 +9,7 @@ import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/calendar_day_field.dart';
 import '../widgets/error_note.dart';
+import '../widgets/search_picker.dart';
 
 /// The other end of an invitation (HR plan, "Invitations").
 ///
@@ -373,22 +374,19 @@ class _InvitationScreenState extends State<InvitationScreen> {
           lastDate: DateTime.now(),
         ),
         const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _gender,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Gender',
-            border: OutlineInputBorder(),
-            helperText: 'Optional.',
-          ),
-          items: [
+        SearchPickerField<String>(
+          value: _gender,
+          label: 'Gender',
+          border: const OutlineInputBorder(),
+          helperText: 'Optional.',
+          options: [
             for (final option in _genders.entries)
-              DropdownMenuItem(value: option.key, child: Text(option.value)),
+              SearchOption(value: option.key, label: option.value),
             // A value this build has no word for is kept and shown as it came
             // rather than dropped: the alternative is a form that silently
             // erases something somebody already answered.
             if (_gender != null && !_genders.containsKey(_gender))
-              DropdownMenuItem(value: _gender, child: Text(_gender!)),
+              SearchOption(value: _gender!, label: _gender!),
           ],
           onChanged: (_busy || _accepted)
               ? null

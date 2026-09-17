@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/theme.dart';
@@ -427,20 +429,13 @@ class _JobLinesTabState extends State<JobLinesTab> {
               ),
             )
           else
-            DropdownButtonFormField<String>(
+            SearchPickerField<String>(
               key: const Key('job-line-service-picker'),
-              initialValue: _serviceId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Service'),
-              items: [
+              value: _serviceId,
+              label: 'Service',
+              options: [
                 for (final service in _services)
-                  DropdownMenuItem(
-                    value: service['id'] as String?,
-                    child: Text(
-                      service['name'] as String? ?? '',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  SearchOption(value: service['id'] as String?, label: service['name'] as String? ?? ''),
               ],
               onChanged: _busy ? null : (v) => setState(() => _serviceId = v),
             ),
