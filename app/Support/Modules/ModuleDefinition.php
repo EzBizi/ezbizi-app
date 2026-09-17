@@ -75,8 +75,8 @@ final class ModuleDefinition
          * hours')` on `hr` produces `hr.hours.view` and nothing else in the
          * system needs teaching -- moduleOf, withImpliedView, materialise and
          * ezbizi:sync-permissions all already handle a dotted action, because
-         * `monitoring.cameras.view` and `fleet.specs.view` have existed since
-         * those modules shipped.
+         * `monitoring.cameras.view` and `monitoring.screenshots.view` have
+         * existed since that module shipped.
          *
          * Declaring tabs is NOT optional once a screen has them, but nothing
          * here can check that: the tabs live in a Flutter widget this class

@@ -32,9 +32,9 @@ use InvalidArgumentException;
  * `materialise()` still finds it in `actions`, and `ezbizi:sync-permissions`
  * still writes the row.
  *
- * That shape is not invented for this. `monitoring.cameras.view`,
- * `monitoring.screenshots.view` and `fleet.specs.view` have been dotted actions
- * since those modules shipped — this names the pattern and gives it a LABEL,
+ * That shape is not invented for this. `monitoring.cameras.view` and
+ * `monitoring.screenshots.view` have been dotted actions since that module
+ * shipped — this names the pattern and gives it a LABEL,
  * which is the part they lack: the roles editor currently draws
  * `security.reset` as the words "Security.reset" on a checkbox.
  *
