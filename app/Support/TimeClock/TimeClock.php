@@ -385,7 +385,7 @@ final class TimeClock
      *     starts_on: string,
      *     timezone: string,
      *     timezone_label: string,
-     *     days: list<array{date: string, weekday: string, label: string}>,
+     *     days: list<array{date: string, weekday: string, label: string, in_future: bool}>,
      *     people: list<array<string, mixed>>
      * }
      */
@@ -423,7 +423,7 @@ final class TimeClock
             'starts_on' => $startsOn,
             'timezone' => $tz,
             'timezone_label' => SettingRegistry::timezoneLabel($tz),
-            'days' => $this->weekDays($weekStart, $locale, $dateFormat),
+            'days' => $this->weekDays($weekStart, $tz, $locale, $dateFormat),
             'people' => $people
                 ->map(fn (User $person) => $this->presentWeekPerson(
                     $person,
@@ -465,10 +465,17 @@ final class TimeClock
      * `week_start` would mean the client guessing both the length of a week and
      * the name of a day.
      *
-     * @return list<array{date: string, weekday: string, label: string}>
+     * `in_future` is the one fact the client cannot work out for itself. A day
+     * is in the future against TODAY IN THE ORGANIZATION'S CLOCK, and the only
+     * today the client has is the device's — which is the whole error this
+     * module spent a day on. Whether a screen then hides those days is its own
+     * decision; this only says which they are.
+     *
+     * @return list<array{date: string, weekday: string, label: string, in_future: bool}>
      */
-    private function weekDays(Carbon $weekStart, string $locale, string $dateFormat): array
+    private function weekDays(Carbon $weekStart, string $tz, string $locale, string $dateFormat): array
     {
+        $today = Carbon::now($tz)->toDateString();
         $days = [];
 
         for ($offset = 0; $offset < 7; $offset++) {
@@ -476,6 +483,9 @@ final class TimeClock
 
             $days[] = [
                 'date' => $day->toDateString(),
+                // Today is not the future. A week gone by has none of these; a
+                // week ahead is all of them.
+                'in_future' => $day->toDateString() > $today,
                 // The English key, untranslated, for anything that has to branch
                 // on the day rather than print it.
                 'weekday' => strtolower($day->locale('en')->isoFormat('dddd')),
