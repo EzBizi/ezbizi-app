@@ -639,7 +639,9 @@ void main() {
     expect(field.enabled, isFalse);
   });
 
-  /// NOT A GUARD, and saying so is the point of this comment.
+  /// A coarse check that the questions are wired up. The GUARD is the focus
+  /// test at the bottom of this file, which was written last and is the only
+  /// one of five attempts that fails against the bug.
   ///
   /// What Jose photographed: typing "First name" left "Fi" in the box and the
   /// rest somewhere else. The row was a TextFormField whose KEY contained its
@@ -654,17 +656,19 @@ void main() {
   /// descriptions rather than guards, and they are kept only as coarse checks
   /// that the box is wired up at all.
   ///
-  /// I then tried four ways to pin it and none can fail against the broken
-  /// shape: a controller assertion passes because TextFormField builds a
-  /// controller-driven TextField underneath; a count passes for the same
-  /// reason; comparing the element before and after typing passes because the
-  /// harness does not drive focus the way a keyboard does.
+  /// FOUR ATTEMPTS COULD NOT FAIL AGAINST IT, and they are listed because the
+  /// next person will reach for one of them: typing character by character
+  /// passes, because `enterText` writes to whichever editable the harness finds;
+  /// asserting a controller passes, because TextFormField builds a
+  /// controller-driven TextField underneath; counting them passes for the same
+  /// reason; comparing the element across a keystroke passes too.
   ///
-  /// So what is below is a coarse check that the questions are wired up at
-  /// all, and the fix itself rests on the structure — rows that own their
-  /// controllers, the pattern `_ConditionRow` already proved in the automation
-  /// builder. Nobody should read these tests as evidence the bug cannot
-  /// return; the docblock on `_QuestionRow` is where that reasoning lives.
+  /// The fifth works, and it is at the bottom of this file. The deploy desk
+  /// pointed at `structure_canvas_test`, which already inspects where focus
+  /// actually sits — so the question to ask was not what the WIDGET looks like
+  /// after a keystroke but where FOCUS is, which is the thing the bug destroys.
+  /// Verified by putting the original shape back and watching it fail with
+  /// "Focus left the question after one character."
   testWidgets('a question is driven by its own controller', (tester) async {
     await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
 
@@ -739,9 +743,63 @@ void main() {
       reason: 'The surviving row wears the text of the row that was removed.',
     );
   });
+
+  /// THE FIFTH ATTEMPT, on the deploy desk's suggestion: assert the FOCUS NODE
+  /// across a keystroke rather than the element.
+  ///
+  /// The bug loses focus once per character, so this asks the question the
+  /// other four asked sideways — after typing into the box, is focus still in
+  /// the box? The helper shape is the one `structure_canvas_test` already uses
+  /// for tab order.
+  testWidgets('focus stays in the question being typed into', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final box = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Question',
+    ).first;
+
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+
+    expect(_focusIsIn(tester, box), isTrue, reason: 'Tapping did not focus it.');
+
+    await tester.enterText(box, 'F');
+    await tester.pumpAndSettle();
+
+    expect(
+      _focusIsIn(tester, box),
+      isTrue,
+      reason: 'Focus left the question after one character.',
+    );
+  });
 }
 
 /// What the box actually contains, read from its controller rather than from
 /// the widget tree's text — a stale render would otherwise pass.
 String _typed(WidgetTester tester, Finder box) =>
     tester.widget<TextField>(box).controller?.text ?? '';
+
+/// Whether focus currently sits inside the widget this finder names.
+///
+/// Borrowed in shape from `structure_canvas_test`, which uses it for tab order.
+/// The node is private to the framework's own field, so what is asserted is
+/// that focus is somewhere INSIDE the control — which is the whole of what a
+/// person typing needs to be true.
+bool _focusIsIn(WidgetTester tester, Finder finder) {
+  final focused = FocusManager.instance.primaryFocus?.context;
+  final targets = finder.evaluate().toSet();
+
+  if (focused == null || targets.isEmpty) return false;
+
+  var inside = false;
+
+  focused.visitAncestorElements((element) {
+    if (!targets.contains(element)) return true;
+
+    inside = true;
+
+    return false;
+  });
+
+  return inside;
+}
