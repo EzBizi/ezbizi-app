@@ -53,10 +53,38 @@ whose name they were told wrongly, and nothing errors.
 `hr_screen.dart` has the shape: one list carrying the key beside the label, and
 a `_mayOpen` helper. Absent `/me` answers NO, not yes.
 
-**3. Gate the endpoints.** `permission:<module>.<tab>.view` middleware over the
-route group — registered in `bootstrap/app.php`, used in the HR block. A hidden
-tab whose endpoints still answer is not a permission, it is a decoration, and
-the URL is one paste away from anybody who has ever seen the pane.
+**3. Gate the endpoints — BUT ONLY WHERE A ROUTE SERVES EXACTLY ONE TAB.**
+`permission:<module>.<tab>.view` middleware over the route group, registered in
+`bootstrap/app.php` and used in the HR block. A hidden tab whose endpoints still
+answer is not a permission, it is a decoration, and the URL is one paste away
+from anybody who has ever seen the pane.
+
+**CORRECTED 2026-09-17 by Communication, who measured their side before
+answering, and route middleware would have broken their module.** The first
+version of this step read as "put the middleware over your route group", full
+stop. That is right for HR, where most routes serve one pane, and wrong wherever
+a route feeds several. Theirs, measured by grepping the client for consumers of
+each endpoint:
+
+    phone/calls        Dial, Records, Voicemails, and the desk service
+    phone/numbers      NINE consumers, including automation_builder.dart —
+                       another module's screen entirely
+    phone/ring-groups  the Dial pane, plus four Settings panes
+    phone/presence     the desk service AND the availability button in the shell
+    phone/tokens       every user with a softphone
+
+`presence` and `tokens` must answer ANY signed-in user with a softphone — it is
+why a technician can be rung at all — and a gate on either takes the phone away
+from everybody who is not a dispatcher. Their sharpest example is
+`phone/ring-groups`: a Page button was added to the Dial pane today, so gating
+that route to `phone.settings.view` would kill paging for the person most likely
+to use it, with a 403 naming the wrong subject.
+
+**So the test is: grep your own client for every consumer of the endpoint before
+you gate it.** Where a route has one consumer, the middleware is right. Where it
+has several, the SCREEN filters the tab list and the existing per-record
+policies keep doing their job — and say so in the route comment, so the next
+person does not "finish" it.
 
 **4. Update your fixtures.** Every test whose role holds `<module>.view` and
 then opens a gated route needs the tab key too. HR's cost 15 lines.
@@ -76,6 +104,33 @@ with *"Clock in is switched off for this organization"* — §2.1's platform lay
 answering before any permission is consulted. A suite of 403 assertions with no
 "this person CAN reach it" case would have read that as the feature working
 perfectly.
+
+## Grant at the level where the audiences actually differ
+
+Communication's rule, and it is the best sentence anybody has written about this
+change. Their Phone pane splits into Dial, Team, Messages and Voicemail, and
+those are real grants because "the dispatcher may take calls but not read
+voicemail" is a sentence somebody says out loud. Their Settings pane has a
+FIFTEEN-PANE RAIL and those are not fifteen keys: they are `phone.edit`, which
+already exists and already means "may change how the phones work". Nobody has
+ever wanted "may edit hours but not ring groups".
+
+Declaring a tab per pane because the panes exist produces a roles editor nobody
+can read, which costs more than the granularity buys.
+
+**Nesting, settled by the same session: FLAT LEAVES, and the parent is not a
+tab.** Eight keys — `phone.dial.view`, `phone.team.view`, … — with the Phone
+container shown when the role holds any of its leaves. `TabDefinition` refuses a
+dotted key for the reason this avoids: `phone.phone.dial.view` would split in
+the wrong place at `moduleOf()` and `materialise()`.
+
+**And declaring nothing is a legitimate answer.** Suggestions replied that it is
+deliberately absent from `ModuleRegistry` — that absence is what stops an
+organization switching off the channel its own people use to write to EzBizi —
+so there is no module key to hang a tab on. The failure to watch for there is
+somebody REGISTERING it in order to give it tabs, which would hand every
+organization the ability to disable the whole module. Not applicable, not
+missed.
 
 ## Nobody may lose a tab they had this morning
 
