@@ -2652,56 +2652,50 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
-                 * NO `tabs:` DECLARATION, DELIBERATELY - and this module already
-                 * does what that mechanism was built for (Settings, 0051,
-                 * 2026-09-17; Jose: "i should be able to grant access by sub tab
-                 * as well ... this applies to every tab and it's sub tabs").
+                 * Three tabs, each NAMING an action this module already has
+                 * rather than minting a new one (Jose, 2026-09-17: "i should be
+                 * able to grant access by sub tab as well ... this applies to
+                 * every tab and it's sub tabs").
                  *
-                 * Training's three tabs are ALREADY three separate grants, and
-                 * have been since the module shipped:
+                 * Training's tabs were three separate grants before that ask
+                 * existed, so the only thing missing was the LABEL: the roles
+                 * editor rendered them "View training" / "Monitor training" /
+                 * "Manage training", and an administrator hunting for the box
+                 * that opens the Dashboard had to infer which one it was.
+                 * `action:` supplies the name without a second key.
                  *
-                 *   Learn      `training.view`     the learner's own pane
-                 *   Dashboard  `training.monitor`  everybody's results
-                 *   Settings   `training.manage`   the authoring surface
+                 * ── Why these must never MINT, if you are about to change it ──
                  *
-                 * `training_screen.dart` omits a tab from `_tabs` entirely when
-                 * its permission is absent, `DashboardController::authorizeMonitor`
-                 * refuses every dashboard route without `monitor`, and both
-                 * directions are pinned: TrainingDashboardTest refuses view-only
-                 * on all three dashboard endpoints, TrainingTestAuthoringTest and
-                 * TrainingGuideScopeTest refuse a ViewOnly author, and
-                 * training_screen_test asserts a viewer without `monitor` sees
-                 * Learn and Settings and never Dashboard.
+                 * Dropping `action:` makes `TabDefinition` mint `{key}.view`, so
+                 * a `dashboard` tab becomes `training.dashboard.view` sitting
+                 * beside `training.monitor`: two names for one authority. An
+                 * administrator could then grant the tab without the read and
+                 * get a Dashboard that opens and then refuses every request
+                 * inside it — an affordance without its gate, a state this
+                 * product cannot otherwise reach, and nothing would report it.
                  *
-                 * ── Why declaring tabs here would make it WORSE ──────────────
+                 * The other way round is worse. `monitor` is a DISCLOSURE
+                 * boundary, not a visibility toggle: it decides who may read
+                 * named people's results, and this module shipped two
+                 * cross-franchise disclosures learning to hold that line
+                 * (task-11 review). A tab grant is "visibility only,
+                 * deliberately" by `TabDefinition`'s own docblock, which is the
+                 * right weight for Work Hours and the wrong weight for this.
                  *
-                 * `TabDefinition` mints `{key}.view`, so a `dashboard` tab would
-                 * create `training.dashboard.view` beside `training.monitor` -
-                 * two names for one authority. An administrator could then grant
-                 * the tab without the read, producing a Dashboard that opens and
-                 * then refuses every request inside it: an affordance without its
-                 * gate, which is a state this product cannot reach today and
-                 * which nothing would report.
+                 * `TrainingModuleTest::test_every_tab_names_an_existing_action_and_mints_nothing`
+                 * pins it. `ModuleDefinition` also refuses a named action the
+                 * module does not declare, at boot.
                  *
-                 * The alternative - letting the tab key become the only gate -
-                 * is worse still. `monitor` is a DISCLOSURE boundary, not a
-                 * visibility toggle: it decides who may read named people's
-                 * results, and this module shipped two cross-franchise
-                 * disclosures learning to hold that line (task-11 review). A tab
-                 * grant is documented as "visibility only, deliberately"
-                 * (TabDefinition's own docblock), and that is the wrong weight
-                 * for this boundary.
-                 *
-                 * WHAT IS GENUINELY MISSING is only the LABEL. `labelFor()`
-                 * renders these as "View training" / "Monitor training" /
-                 * "Manage training", so an administrator hunting for the
-                 * Dashboard tab has to infer which one opens it. That is
-                 * `TabDefinition`'s own stated concern, and fixing it needs the
-                 * mechanism to let a tab NAME AN EXISTING ACTION rather than mint
-                 * one. Raised with Settings 2026-09-17. If that lands, declare
-                 * three tabs pointing at the three actions above and change
-                 * nothing else.
-                 *
+                 * The client needs nothing: `training_screen.dart` already omits
+                 * a tab from `_tabs` when its permission is absent, and the keys
+                 * it reads are unchanged by naming.
+                 */
+                tabs: [
+                    new TabDefinition('learn', 'Learn', action: 'view'),
+                    new TabDefinition('dashboard', 'Dashboard', action: 'monitor'),
+                    new TabDefinition('settings', 'Settings', action: 'manage'),
+                ],
+                /*
                  * `assign` DELIBERATELY declares no `actionRequires`, and the
                  * history is worth keeping because the obvious reading is wrong.
                  *
