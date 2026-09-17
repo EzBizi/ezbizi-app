@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -959,6 +960,40 @@ void main() {
 
     expect(find.textContaining('has been given to your role'), findsOneWidget);
   });
+
+  /// A conversation the server really sent, opened on the screen.
+  ///
+  /// Jose, 2026-09-17: a lot of emails show blank on desktop, and "content
+  /// loads for a second and then vanishes". Every other test in this file
+  /// opens a message I wrote, and all of them pass -- so what they establish
+  /// is that the screen agrees with my idea of a message.
+  ///
+  /// This one opens the largest CONVERSATION in the two production inboxes as
+  /// the server published it: 73 parts, each with its own blocks, which is the
+  /// branch `_conversation` takes and no other test in this file reaches.
+  /// Words are replaced by x's of the same length and URLs reduced to their
+  /// host -- the shape is real and none of anybody's mail is in the repository.
+  testWidgets('a real 73-part conversation draws', (tester) async {
+    final thread = jsonDecode(
+      File('test/fixtures/real_thread_message.json').readAsStringSync(),
+    ) as Map<String, dynamic>;
+
+    expect(
+      (thread['thread'] as List).length,
+      greaterThan(1),
+      reason: 'the fixture stopped being a conversation',
+    );
+
+    await _pump(tester, _handler(detail: thread));
+    await _tap(tester, find.text('Chimney sweep quote').first);
+
+    // The report is that it appears and then goes, so the frames AFTER the
+    // first are the ones that matter.
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('x'), findsWidgets);
+  });
 }
 
 // ── driving the screen ─────────────────────────────────────────────
@@ -1026,6 +1061,11 @@ MockClientHandler _handler({
   void Function(String path)? onDealt,
   void Function(String url)? onFile,
   List<String>? folders,
+
+  /// Answer every message-detail request with THIS, instead of the detail
+  /// built below. For the one test that opens a message the server really
+  /// sent -- see `test/fixtures/real_thread_message.json`.
+  Map<String, Object?>? detail,
 }) {
   return (request) async {
     final path = request.url.path;
@@ -1132,7 +1172,7 @@ MockClientHandler _handler({
     // .../mailboxes/{mailbox}/messages/{message}
     if (parts.length > 2 && parts[parts.length - 2] == 'messages') {
       return _json({
-        'data': _detail(parts[parts.length - 3], parts.last),
+        'data': detail ?? _detail(parts[parts.length - 3], parts.last),
       });
     }
 
