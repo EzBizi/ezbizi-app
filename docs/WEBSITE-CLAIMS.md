@@ -1424,3 +1424,149 @@ traffic, and not a fraction the site may be given.
 tip made the deployed tree readable here, which is the one condition under which
 this check does not need the desk for code claims. It still needs it for row
 counts, which is exactly what the Automations test above is waiting on.
+
+## 2026-09-17: seven releases, and a PRIVACY sentence had been false for a day
+
+**Production moved `0.0.0232` → `0.0.0239`** (`547b74b0` → `2832a607`,
+`/download/windows.json`, fetched). `main`'s tip **is** the deployed SHA, so
+every code claim below was read off the tree production is running.
+`git log 547b74b0..2832a607` is **259 commits and NOT ONE under `www/`**.
+
+**The audit was clean before the edit below.** All seven pages fetched from
+production byte-identical to `www/` after stripping CR, `Last-Modified`
+**Thu, 17 Sep 2026 22:12:22 GMT**. `python www/check-site.py` →
+`ok - 7 pages, 7 sitemap entries`. `./scripts/index-landmines.sh` →
+`0 stale, 0 live`. Forbidden terms, parsed from this file and **split on
+LINES** → `ok - 4 terms, none present`. Control, **method stated**: python
+`.count('ezbizi')` lowercased over `www/**/*.html` = **393**, identical to
+yesterday's number by the same method over an unchanged tree; negative control
+`zzzznotpresent` = **0**.
+
+### The finding: `/privacy/` said EzBizi never carries a business's mail, and it does
+
+**Published 2026-09-14, false since 2026-09-16, corrected today.** The *Email we
+send you* section ended:
+
+> These are EzBizi's own messages about your account, **and they are all of
+> them. Mail your business writes to its own customers does not go out over
+> ours** — a mailing goes through your own Mailchimp account…
+
+**Both bolded clauses are false at `2832a607`.** Three automation actions send a
+tenant's mail over EzBizi's own SES identity, and the code says so in its own
+words — `ActionRunner.php:610-635`, on Jose reversing his 2026-09-14 ruling:
+
+    report.send                ActionRunner:382 -> SendSavedReport:183
+    email.send                 ActionRunner:383 -> ActionRunner:1352
+    inspection_report.email    ActionRunner:391 -> ActionRunner:1354
+
+all three reaching `MailDispatcher::platformForTenant()` (`:178`), which is
+EzBizi's platform identity gated only by an hourly cap. **`asTenant()` is a
+`@throws CannotSendMail always` stub** (`:136`) — retired for putting a
+*tenant's* address on our transport — and the live method puts **EzBizi's**
+address on it instead. Jose's words, quoted in `SendSavedReport`'s docblock:
+*"Email ( the Ezbizi SES one, not the company one )"*, 2026-09-16.
+
+**The sentence was true when it was written and the ruling behind it was
+reversed two days later.** `SendSavedReport:60` records the first ruling
+verbatim — *"EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS"* — which is the sentence
+the privacy page was derived from. **A privacy claim derived from a ruling ages
+with the ruling, and nothing on the site is watching the ruling.** The daily
+check found this only because a release note said *"Emailing a report to a
+customer is back"* and the word *customer* did not fit the page.
+
+**What shipped:**
+
+> These are EzBizi's own messages about your account. **An organization can also
+> have EzBizi send mail on its behalf**: an automation rule can email a saved
+> report, an inspection report, or a message the organization writes — to the
+> recipients that rule names, or to an address held on the record it fired on,
+> which may be a customer's. Those leave from EzBizi's own address rather than
+> the organization's, and the body says which business the work is about. A
+> newsletter is not one of these: a mailing goes through your own Mailchimp
+> account, on your list and your sending reputation.
+
+Every clause read out of the deployed tree: recipients-vs-record is the real
+split (`SendSavedReport:167` loops a recipient list; `ActionRunner:1322` reads a
+`to_field` **off the record the rule fired on**, so a customer's address on a
+job is exactly how it is reached — one phrasing covering both would have been
+wrong about one of them). "EzBizi's own address" is `platformForTenant`'s
+`$this->platform->identity()`. "Says which business" is
+`companyName: (string) $scope->name`. The Mailchimp clause survives untouched
+because `NewsletterSenders::for()` is still `Mailchimp` and `default => null`.
+
+**`Last updated` moved to 17 September 2026** — and it read **16** September
+before this edit, set by `7ef75f6f` on the **15th**, a stamp dated into the
+future that nothing would ever have corrected.
+
+**Deliberately NOT written: "or through your own mail server if you connect
+one."** The screen exists (`mail/sending-server`, published in `0.0.0215`) and
+`MailDispatcher::throughTenantProvider()` exists — and **nothing in `app/` calls
+it.** Measured: zero callers outside the dispatcher itself and one test. It is
+the 2026-09-14 trap in its third outfit — an enum, a dispatcher branch, a route
+AND a screen, and still no code path that sends through it. **A privacy page is
+the worst place to describe a route no message takes.**
+
+**This is the first published claim this check has had to pull rather than
+narrow, and grep found it in exactly one place** — `www/privacy/index.html:81`,
+with the homepage's Newsletter card (`index.html:533`) the only other Mailchimp
+sentence and still true. The "a claim is never in one place" rule held anyway
+because it was *checked*, not assumed.
+
+### Four published claims re-measured at `2832a607`
+
+`Publishers.php` still returns five — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok — and `default => null`, so *"Five
+networks send today"* holds and **no sixth publisher was written**.
+`NewsletterSenders.php` is still `Mailchimp` and `default => null`.
+**`ReportMap::all()` still holds ELEVEN keys**, re-counted rather than carried:
+jobs, customers, franchises, services, inventory_items, vehicles,
+training_guides, leads, service_areas, monitored_devices, users. Stores: Play
+`200`; Apple lookup `resultCount` **1**, `trackId` 6805979795, **`version`
+0.0.0222** (was 0.0.0200 for two days), `currentVersionReleaseDate`
+2026-09-17 — both live, both pages already correct.
+
+### Sixteen migrations and not one new table
+
+Every migration in the window is the per-tab permission sweep plus three column
+changes (`pto_allowance_and_waiting_carry_a_unit`,
+`add_answer_with_to_phone_numbers`, the Work Hours copy pair). **Zero
+`Schema::create` across all sixteen**, so the structural scheduling test cannot
+have moved: no table carries both a job reference and a date-or-slot reference,
+and `service_area_slots` is still `(service_area_id, weekday, start_time,
+end_time, max_jobs)` with no `job_id`.
+
+### The Automations card is held again, and its own test is what held it
+
+Yesterday's run named the test: a production row count of `automations`, **and a
+release window with no automation *fix* in it.** The second half fails outright.
+`0.0.0233` shipped three automation fixes — a variable in an email or WhatsApp
+message *"was always blank"*, a rule could not name the caller in a text, and a
+typed quotation mark *"arrived as a string of symbols"*. **A card written today
+would again describe a machine that was demonstrably mis-firing this morning**,
+which is the same sentence yesterday wrote, for a different release. The test
+did its job; nothing about it needs changing.
+
+### New this window, deliberately unpublished
+
+- **Paid time off** (`0.0.0236`) — allowance, waiting period, carry-over, and
+  everybody sees their own balance. Hours old, and *"Off until you set it up"*
+  by its own release note, so built-and-unused **and** unswitched. Candidate for
+  the People card on a later run, under the Coverage & capacity precedent and
+  its tense rule.
+- **Per-tab role permissions** (`0.0.0238`) — the whole of today's sweep. Not a
+  capability the site sells; Roles and permissions are not on the homepage grid
+  at all.
+- **Inspections Flow view**, **searchable dropdowns everywhere**, **iPhone
+  notifications** (`0.0.0237`) — refinements under published cards, or mobile,
+  which the site is silent about on purpose.
+- **Chat-bubble hours per site** (`0.0.0239`) — a refinement to the Web
+  management card, which needs no edit.
+
+### The channel: no desk asked, and this run did not need one for the finding
+
+Production being `main`'s tip made the deployed tree readable here, which is the
+one condition under which the code claims need no desk. **The correction above
+was derived entirely from that tree** — the release note pointed, the code
+answered. Row counts still need the desk: Training's `training_attempts`, the
+Local Services and Thumbtack `is_test = 0` counts, the resolved ring-group
+fraction, and the `automations` count the card above is waiting on.
