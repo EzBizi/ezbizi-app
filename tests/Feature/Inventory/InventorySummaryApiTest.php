@@ -35,7 +35,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_health_counts_what_is_in_reach(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.financials']);
 
         $this->seedOneItemOnHand($tenant, qty: '4.000', reorderAt: '10.000', lastCostMinor: 250);
 
@@ -55,7 +55,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_without_financials_there_is_no_value_key_at_all(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $clerk = $this->userWithRole($tenant, 'Clerk', ['inventory.view']);
+        $clerk = $this->userWithRole($tenant, 'Clerk', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneItemOnHand($tenant, qty: '4.000', reorderAt: '10.000', lastCostMinor: 250);
 
@@ -72,7 +72,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_no_items_in_reach_returns_the_sentence(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $health = $this->signedInAs($boss)
             ->getJson('/api/v1/inventory/summary')
@@ -86,7 +86,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_the_low_figure_carries_the_query_that_produced_it(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneItemOnHand($tenant, qty: '4.000', reorderAt: '10.000', lastCostMinor: null);
 
@@ -103,7 +103,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_purchase_order_with_no_ordered_on_is_never_called_old(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             $vendor = \App\Models\InventoryVendor::factory()->create([
@@ -149,7 +149,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_warning_with_nothing_in_it_is_not_sent(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneItemOnHand($tenant, qty: '40.000', reorderAt: '10.000', lastCostMinor: 250);
 
@@ -165,7 +165,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_out_of_stock_leads_the_list(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneItemOnHand($tenant, qty: '0.000', reorderAt: '10.000', lastCostMinor: 250);
         $this->seedOneItemOnHand($tenant, qty: '2.000', reorderAt: '10.000', lastCostMinor: 250);
@@ -190,7 +190,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_no_cost_recorded_is_withheld_without_financials(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $clerk = $this->userWithRole($tenant, 'Clerk', ['inventory.view']);
+        $clerk = $this->userWithRole($tenant, 'Clerk', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneItemOnHand($tenant, qty: '4.000', reorderAt: null, lastCostMinor: null);
 
@@ -211,7 +211,7 @@ class InventorySummaryApiTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-09-09 02:00:00', 'UTC'));
 
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             app(SettingsResolver::class)->set('timezone', $tenant['org'], 'America/New_York');
@@ -261,7 +261,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_no_cost_recorded_is_shown_with_financials(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.financials']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.financials']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             InventoryItem::factory()->create([
@@ -287,7 +287,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_location_holding_nothing_reports_only_the_empty_one(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
             // Empty: no balance rows at all.
@@ -330,7 +330,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_transfer_is_neither_in_nor_out(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneTransferToday($tenant, qty: '10.000');
 
@@ -350,7 +350,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_an_adjustment_downward_is_a_negative_adjustment(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneAdjustmentToday($tenant, before: '10.000', after: '4.000');
 
@@ -364,7 +364,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_points_are_index_aligned_with_buckets(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $movement = $this->signedInAs($boss)
             ->getJson('/api/v1/inventory/summary')
@@ -383,7 +383,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_sale_fulfilment_counts_as_out(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneFulfilmentToday($tenant, qty: '3.000');
 
@@ -404,7 +404,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_out_sums_issues_and_fulfilments_together(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneIssueToday($tenant, qty: '5.000');
         $this->seedOneFulfilmentToday($tenant, qty: '3.000');
@@ -487,7 +487,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_receive_counts_as_in(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->seedOneReceiveToday($tenant, qty: '7.000');
 
@@ -525,7 +525,7 @@ class InventorySummaryApiTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -574,7 +574,7 @@ class InventorySummaryApiTest extends TestCase
     public function test_a_period_the_dashboard_does_not_offer_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view']);
+        $boss = $this->userWithRole($tenant, 'Boss', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
 
         $this->signedInAs($boss)
             ->getJson('/api/v1/inventory/summary?period=nope')

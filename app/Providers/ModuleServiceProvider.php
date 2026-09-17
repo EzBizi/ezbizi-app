@@ -1733,6 +1733,36 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
+                /*
+                 * Four tabs, in the order the chip row draws them.
+                 *
+                 * ── Two of these four cannot be enforced at the endpoint ──
+                 *
+                 * Hiding a tab whose routes still answer is decoration, so this
+                 * says which two are which rather than letting somebody assume
+                 * all four are alike.
+                 *
+                 * `stock` and `orders` own their endpoints outright and carry
+                 * `permission:` middleware in routes/api.php.
+                 *
+                 * `items` and `locations` are the module's REFERENCE DATA, not
+                 * one tab's list. Measured: `/inventory/items` is read by six
+                 * panes and `/inventory/locations` by seven, across all four
+                 * tabs — every "new purchase order", "new sale", "new issue"
+                 * and "new transfer" form has to name an item and a place. So a
+                 * role that may cut a purchase order can necessarily read the
+                 * catalogue, and gating those routes would refuse the Orders
+                 * tab mid-form. Granting these two hides the LIST; it does not
+                 * withhold the data, and an administrator should be told that.
+                 * Closing it properly needs a narrow id-and-name picker
+                 * endpoint for the forms — see TODO #36.
+                 */
+                tabs: [
+                    new TabDefinition('stock', 'Stock'),
+                    new TabDefinition('items', 'Items'),
+                    new TabDefinition('orders', 'Orders'),
+                    new TabDefinition('locations', 'Locations'),
+                ],
                 subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
                 triggers: [
                     new TriggerDefinition(

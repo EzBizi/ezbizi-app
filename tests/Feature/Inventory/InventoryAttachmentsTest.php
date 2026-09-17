@@ -33,11 +33,11 @@ class InventoryAttachmentsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Editor', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
         ]);
         $viewer = $this->userWithRole($tenant, 'Viewer', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
         ]);
 
         $item = $this->inTenant($tenant['org'], function () use ($tenant) {
@@ -67,11 +67,11 @@ class InventoryAttachmentsTest extends TestCase
         // Edit without financials: upload authorizes update, which must refuse
         // with the money sentence — not the generic edit refusal.
         $editor = $this->userWithRole($tenant, 'Editor', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
         ]);
         $money = $this->userWithRole($tenant, 'Money', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
             'inventory.financials',
         ]);
@@ -114,11 +114,11 @@ class InventoryAttachmentsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Editor', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
         ]);
         $money = $this->userWithRole($tenant, 'Money', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
             'inventory.financials',
         ]);
@@ -156,7 +156,7 @@ class InventoryAttachmentsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Editor', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
         ]);
 
@@ -184,7 +184,7 @@ class InventoryAttachmentsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Editor', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.edit',
         ]);
 
@@ -215,9 +215,9 @@ class InventoryAttachmentsTest extends TestCase
     public function test_po_json_omits_attachments_without_financials(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
         $money = $this->userWithRole($tenant, 'Money', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.financials',
         ]);
 

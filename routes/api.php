@@ -720,9 +720,25 @@ Route::prefix('v1')
         Route::post('leads/{lead}/book', [LeadsController::class, 'book']);
         Route::patch('leads/{lead}', [LeadsController::class, 'update']);
         Route::apiResource('vehicles', VehiclesController::class);
+        /*
+         * NO `permission:inventory.items.view` OR `.locations.view` HERE, and
+         * the omission is the decision.
+         *
+         * These two are the module's reference data, not one tab's list. Every
+         * form that records a movement has to name an item and a place:
+         * `/inventory/items` is read by six panes and `/inventory/locations` by
+         * seven, across all four tabs — new purchase order, new sale, new
+         * issue, new transfer, and the item pane itself. A blanket gate here
+         * refuses the Orders tab in the middle of writing an order.
+         *
+         * So the Items and Locations grants hide their LISTS in the chip row
+         * and do not withhold the rows, which the registry block for this
+         * module states in the same words so an administrator is not told
+         * otherwise. The endpoint-level fix is a narrow id-and-name picker for
+         * the forms; until that exists this is honest rather than decorative.
+         */
         Route::apiResource('inventory/items', InventoryItemsController::class);
         Route::apiResource('inventory/locations', InventoryLocationsController::class);
-        Route::apiResource('inventory/vendors', InventoryVendorsController::class);
 
         // Web Management. Sites are the hosts a company owns — a subdomain is
         // its own site with its own token and its own phone number. The token
@@ -757,23 +773,59 @@ Route::prefix('v1')
         Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
         Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
         Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
-        Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
-        Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
-        Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);
-        Route::apiResource('inventory/purchase-orders', InventoryPurchaseOrdersController::class)
-            ->only(['index', 'store', 'show']);
-        Route::get('inventory/stock', [InventoryStockController::class, 'index']);
+        /*
+         * The Orders tab owns buying, selling and issuing outright: nothing
+         * outside `order_list.dart` and its own panes reads these, so unlike
+         * items and locations above they take a blanket gate.
+         *
+         * Vendors sit here rather than beside items because the only two panes
+         * that read them — the vendor form and the purchase-order form — are
+         * both Orders panes. A vendor is who you buy from, so it belongs to
+         * buying.
+         */
+        Route::middleware('permission:inventory.orders.view')->group(function () {
+            Route::apiResource('inventory/vendors', InventoryVendorsController::class);
+            Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
+            Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
+            Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);
+            Route::apiResource('inventory/purchase-orders', InventoryPurchaseOrdersController::class)
+                ->only(['index', 'store', 'show']);
+            Route::apiResource('inventory/issues', InventoryIssuesController::class)
+                ->only(['index', 'store']);
+            Route::post('inventory/sales/{sale}/open', [InventorySalesController::class, 'open']);
+            Route::post('inventory/sales/{sale}/cancel', [InventorySalesController::class, 'cancel']);
+            Route::post('inventory/sales/{sale}/pay', [InventorySalesController::class, 'pay']);
+            Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
+            Route::apiResource('inventory/sales', InventorySalesController::class)
+                ->only(['index', 'store', 'show']);
+        });
+
+        /*
+         * On-hand is the Stock tab's own answer, so it is gated — and the item
+         * pane, which also shows balances, now asks for them only when the
+         * caller holds this. A role granted Items but not Stock is being told
+         * "manage the catalogue, not the quantities", and an item pane that
+         * listed on-hand anyway would spend a grant nobody made.
+         */
+        Route::middleware('permission:inventory.stock.view')
+            ->get('inventory/stock', [InventoryStockController::class, 'index']);
+
+        /*
+         * `summary` is the General tab's data and General DOES NOT EXIST on the
+         * chip row yet — the screen is UI/UX's and unbuilt. So there is no tab
+         * to grant and no label to put in the roles editor; declaring one would
+         * hand an administrator a checkbox for a tab they cannot find. It stays
+         * on `inventory.view` until that screen ships.
+         *
+         * Adjustments and transfers are movements rather than tabs, and are
+         * already authorized by `inventory.edit` inside their controllers. They
+         * are reached from panes whose tabs are gated above, and a tab gate on
+         * top would refuse an adjustment from the item pane, which is where the
+         * product puts it.
+         */
         Route::get('inventory/summary', [InventorySummaryController::class, 'index']);
         Route::post('inventory/adjustments', [InventoryAdjustmentsController::class, 'store']);
         Route::post('inventory/transfers', [InventoryTransfersController::class, 'store']);
-        Route::apiResource('inventory/issues', InventoryIssuesController::class)
-            ->only(['index', 'store']);
-        Route::post('inventory/sales/{sale}/open', [InventorySalesController::class, 'open']);
-        Route::post('inventory/sales/{sale}/cancel', [InventorySalesController::class, 'cancel']);
-        Route::post('inventory/sales/{sale}/pay', [InventorySalesController::class, 'pay']);
-        Route::post('inventory/sales/{sale}/fulfillments', [InventorySalesController::class, 'fulfill']);
-        Route::apiResource('inventory/sales', InventorySalesController::class)
-            ->only(['index', 'store', 'show']);
         Route::get('services/groups', [ServiceGroupsController::class, 'index']);
         Route::post('services/groups', [ServiceGroupsController::class, 'store']);
         Route::delete('services/groups/{id}', [ServiceGroupsController::class, 'destroy']);
