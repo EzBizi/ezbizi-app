@@ -31,6 +31,25 @@ use Tests\TestCase;
  * rail, so it stays on `web_management.view` and the last test here pins that
  * as a decision rather than leaving it to look like the gap somebody should
  * close next.
+ *
+ * ── Why every OTHER web fixture now carries both tab keys ────────
+ *
+ * Not tidiness. Email found the trap on their own module: when a route moves
+ * behind a tab, the refusal tests around it keep passing and their 403 quietly
+ * stops meaning what their docblock says. Four of their "a reader may not
+ * connect a mailbox by password" tests were green on a 403 that had migrated
+ * from `email.edit` to `email.settings.view` — still red-proof, no longer about
+ * the authority they claim to measure, and nothing in a test run can show it.
+ *
+ * So every `Web Viewer` fixture in this directory holds BOTH tabs. Their
+ * refusals are then necessarily about the thing each one names — the missing
+ * `web_management.edit` — because the only other gate on the route is one the
+ * role satisfies.
+ *
+ * `WebTenantIsolationTest` needs no such care and it is worth saying why: it
+ * asserts 404, and a tab refusal is 403. The assertion discriminates on its own,
+ * so no permission change can make it pass for the wrong reason. That is the
+ * shape to prefer wherever a refusal has more than one possible cause.
  */
 class WebTabPermissionsTest extends TestCase
 {
