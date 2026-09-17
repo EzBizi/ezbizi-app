@@ -998,14 +998,48 @@ Route::prefix('v1')
          * under it that arrives first. Ordering here is load-bearing, not
          * tidiness.
          */
-        Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
-        Route::get('scheduling/suggest', [SchedulingSuggestController::class, 'index']);
-        Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
-        Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
-        Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
-        Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
-        Route::apiResource('scheduling/areas', SchedulingAreasController::class)
-            ->parameters(['areas' => 'area']);
+        /*
+         * TWO AUDIENCES, AND NEITHER IS A PERSON READING THEIR OWN DAY.
+         *
+         * The brief warns that a route serving two audiences cannot take a
+         * blanket gate — HR's `onboardings` must answer the employee filling
+         * their own form in. Measured here rather than assumed: Scheduling has
+         * NO person dimension at all. `2026_08_31_130000_create_scheduling_tables`
+         * creates service_areas, service_area_zips and service_area_slots, and
+         * none of them carries a user, staff or technician column. There is no
+         * "my own schedule" in this module to take away from anybody, so a
+         * group gate is safe on every route below.
+         *
+         * READING what the business can take is the dispatcher's job; CHANGING
+         * it is not. That is the split, and it is why availability and settings
+         * are separate grants rather than one.
+         */
+        Route::middleware('permission:scheduling.availability.view')->group(function () {
+            Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
+
+            // Suggest is Availability's search box and has no other caller
+            // (grepped across client/lib). It answers with area names, city
+            // names and zips — the same facts the week grid shows — so it
+            // belongs to the same grant rather than to settings.
+            Route::get('scheduling/suggest', [SchedulingSuggestController::class, 'index']);
+        });
+
+        /*
+         * Everything that WRITES capacity, plus the list that feeds the editor.
+         *
+         * `pattern/*` is declared BEFORE the apiResource, because
+         * `scheduling/areas/{area}` would otherwise swallow anything nested
+         * under it that arrives first. Ordering here is load-bearing, not
+         * tidiness.
+         */
+        Route::middleware('permission:scheduling.settings.view')->group(function () {
+            Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
+            Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
+            Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
+            Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
+            Route::apiResource('scheduling/areas', SchedulingAreasController::class)
+                ->parameters(['areas' => 'area']);
+        });
 
         // Training — guides people read, the tests they take, and (later
         // tasks) who has been given which. `view`/`monitor`/`manage`/

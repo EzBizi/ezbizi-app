@@ -34,6 +34,26 @@ use Illuminate\Validation\ValidationException;
  *
  * These two together are what stands in place of a stored "this area is
  * deliberately different" flag. See the spec on why that column is not here.
+ *
+ * ── NOTHING CALLS EITHER OF THESE. Measured 2026-09-17 ───────────
+ *
+ * Neither endpoint has ever appeared in the client, in ANY commit:
+ * `git log -S"pattern/apply" -- client/` returns nothing, against three hits
+ * for a route that is wired. They were built on 2026-08-31 alongside an
+ * Overview card that offered "apply this pattern to every area", the card was
+ * never wired to them, and c2de5403 then removed the card outright on Jose's
+ * instruction — "get rid of your slot pattern, i dont need to see that".
+ *
+ * So this is reachable API with green tests and no caller, which is the exact
+ * thing that reads as maintained and is not. It is recorded here rather than
+ * deleted because the decision is Jose's and he has not answered it twice;
+ * asking a third time is noise, and silently deleting a shipped endpoint on
+ * his behalf is worse. It is gated behind `scheduling.settings.view` with
+ * everything else that changes capacity, so it is not an open door.
+ *
+ * WHOEVER PICKS THIS UP: the choice is delete it, or wire "apply to every
+ * area" back into Settings. What it must not do is sit here for another month
+ * looking like a feature.
  */
 class SchedulingPatternController extends Controller
 {
