@@ -26,7 +26,7 @@ use PHPUnit\Framework\TestCase;
  *
  * ── The fixture is shared and the expectations are hand-written ──
  *
- * `tests/fixtures/condition_cases.json` is read by this test and by
+ * `tests/Fixtures/condition_cases.json` is read by this test and by
  * `client/test/condition_agreement_test.dart`. The `expected` values come from
  * the documented rules, NOT from running either implementation — recording one
  * side's behaviour would enshrine its bugs and make this test agree with
@@ -49,7 +49,7 @@ class ConditionAgreementTest extends TestCase
 
     public static function cases(): array
     {
-        $path = __DIR__.'/../../fixtures/condition_cases.json';
+        $path = __DIR__.'/../../Fixtures/condition_cases.json';
 
         $raw = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
 
