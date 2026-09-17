@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0237',
+      date: '17 Sep 2026',
+      items: [
+        'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
+        'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
+        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0236',
       date: '17 Sep 2026',
       items: [
