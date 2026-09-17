@@ -28,6 +28,7 @@ class WebQuietSweepTest extends TestCase
         $tenant = $this->provisionTenant('Alpha '.$host);
         $editor = $this->userWithRole($tenant, 'Web Editor', [
             'web_management.view', 'web_management.edit',
+            'web_management.seo.view', 'web_management.widgets.view',
         ]);
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [

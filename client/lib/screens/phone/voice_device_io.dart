@@ -48,6 +48,9 @@ class _SilentVoiceDevice implements VoiceDevice {
   /// Never fires. There is no engine here, so there is no call to end — and
   /// the desk's state was never set in the first place.
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// Nothing here answers anything; there is no phone.

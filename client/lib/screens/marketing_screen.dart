@@ -44,7 +44,19 @@ class MarketingScreen extends StatefulWidget {
 }
 
 class _MarketingScreenState extends State<MarketingScreen> {
-  int _tab = 0;
+  /// The chip by NAME, not by index.
+  ///
+  /// Settings found this in three modules while rolling out per-tab
+  /// permissions, and the symptom is a blank or wrong pane rather than a
+  /// refusal, so nothing errors. An index means a different chip depending on
+  /// which chips are drawn: somebody on Social Media at index 0 who is granted
+  /// `newsletter.view` mid-session finds index 0 is now Newsletter, and the
+  /// page changes under them with no interaction.
+  ///
+  /// Null is "whatever is first", which is also where an unknown name lands —
+  /// the chip this was on has gone, so the fallback has to be a chip that
+  /// exists rather than the position it used to occupy.
+  String? _tab;
 
   /// The chips, in the owner's order.
   ///
@@ -57,19 +69,37 @@ class _MarketingScreenState extends State<MarketingScreen> {
   /// or an administrator edits the role they hold. A `late final` list would go
   /// on offering a chip whose screen has started answering 403.
   List<(String, IconData, Widget Function())> _tabsFor(Me me) => [
-    // This module's own parts, behind this module's own permission.
-    if (me.reaches('marketing')) ...[
+    /*
+     * Newsletter is its own MODULE with its own grant, so it asks for that
+     * grant and not Marketing's.
+     *
+     * It used to sit inside `reaches('marketing')` with Social Media, which
+     * offered the chip to anybody holding `marketing.view` and then let
+     * NewslettersController refuse every request behind it with "You do not
+     * have permission to open Newsletter." A tab that is drawn and then says no
+     * is worse than an absent one: the person can see the thing they are being
+     * refused, so they read it as broken rather than as not theirs.
+     *
+     * The reverse was true too and is the half that loses work — a role granted
+     * `newsletter.view` and nothing else in Marketing got NO chip at all, since
+     * the loop below only draws modules that have a `moduleScreens` entry and
+     * Newsletter has none. It is drawn here by name.
+     */
+    if (me.reaches('newsletter'))
       (
         'Newsletter',
         Icons.campaign_outlined,
         () => NewsletterTab(api: widget.api, session: widget.session),
       ),
+    // Social Media Management is Marketing's own pane and the only one, which
+    // is why this module declares no tabs of its own: a `marketing.social.view`
+    // would be a checkbox that is never ticked apart from `marketing.view`.
+    if (me.reaches('marketing'))
       (
         'Social Media Management',
         Icons.share_outlined,
         () => SocialMediaTab(api: widget.api, session: widget.session),
       ),
-    ],
     // The modules drawn inside this one. `reachableModules` is in the server's
     // registry order, which is the order the sidebar used to show them in, so
     // the strip reads the way the rail did.
@@ -106,10 +136,11 @@ class _MarketingScreenState extends State<MarketingScreen> {
       );
     }
 
-    // Clamped rather than reset, because the list can shrink under a finger:
-    // losing a grant while sitting on the last chip would otherwise index past
-    // the end and take the page down with it.
-    final selected = _tab.clamp(0, tabs.length - 1);
+    // Resolved by name every frame. A chip that is gone falls back to the
+    // first one that is actually drawn, which cannot index past the end the
+    // way a remembered position could.
+    final found = tabs.indexWhere((tab) => tab.$1 == _tab);
+    final selected = found == -1 ? 0 : found;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -119,7 +150,7 @@ class _MarketingScreenState extends State<MarketingScreen> {
           child: TabBarLike(
             labels: [for (final tab in tabs) (tab.$1, tab.$2)],
             selected: selected,
-            onSelected: (tab) => setState(() => _tab = tab),
+            onSelected: (tab) => setState(() => _tab = tabs[tab].$1),
           ),
         ),
         const Divider(height: 1),

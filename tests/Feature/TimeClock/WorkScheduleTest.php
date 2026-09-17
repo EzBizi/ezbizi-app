@@ -3,7 +3,6 @@
 namespace Tests\Feature\TimeClock;
 
 use App\Support\Settings\SettingsResolver;
-use App\Support\Tenancy\TenantContext;
 use App\Support\TimeClock\WorkSchedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -61,7 +60,7 @@ class WorkScheduleTest extends TestCase
     public function test_hr_edit_saves_a_schedule_and_snapshots_the_view_zone(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $hr = $this->userWithRole($alpha, 'Hr', ['hr.view', 'hr.edit']);
+        $hr = $this->userWithRole($alpha, 'Hr', ['hr.records.view', 'hr.edit']);
         $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
 
         $this->inTenant($alpha['org'], fn () => app(SettingsResolver::class)->set('timezone', $alpha['org'], 'Etc/GMT+6'));
@@ -79,7 +78,7 @@ class WorkScheduleTest extends TestCase
     public function test_a_reader_without_hr_edit_cannot_set_a_schedule(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.records.view']);
         $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
 
         $this->signedInAs($reader)
@@ -92,7 +91,7 @@ class WorkScheduleTest extends TestCase
     public function test_hr_edit_toggles_the_exemption(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $hr = $this->userWithRole($alpha, 'Hr', ['hr.view', 'hr.edit']);
+        $hr = $this->userWithRole($alpha, 'Hr', ['hr.records.view', 'hr.edit']);
         $person = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
 
         $this->signedInAs($hr)

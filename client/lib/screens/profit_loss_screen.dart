@@ -1,0 +1,438 @@
+import 'package:flutter/material.dart';
+
+import '../core/api_client.dart';
+import '../core/session.dart';
+import '../widgets/error_note.dart';
+
+/// Profit and loss, read live out of a business's own Airtable base.
+///
+/// ── WHAT THIS SCREEN IS FOR ─────────────────────────────────────
+///
+/// Replacing the weekly financial summary a contractor was assembling by hand
+/// and sending out as an image. The figures are the same figures; what changes
+/// is that they are derived from the sheet's detail lines every time somebody
+/// looks, rather than typed once into a message.
+///
+/// ── THE DISAGREEMENTS PANEL IS THE POINT, NOT A WARNING ─────────
+///
+/// The reader sums the detail lines and reads the sheet's own Total cells only
+/// to CHECK them. Where the two differ it says so and resolves nothing, and
+/// this screen shows that list rather than tucking it behind an icon.
+///
+/// On A-1's own data, one week in thirty disagrees with ITSELF by $1,613 —
+/// its category totals do not equal its own net cell. A screen that quietly
+/// picked the prettier number would have hidden the only part anybody can act
+/// on, and it would have looked right while doing it.
+///
+/// ── AN INCOMPLETE WEEK SHOWS NO FIGURES ─────────────────────────
+///
+/// Not zeros. "Nobody has finished filling this in" and "nothing happened" are
+/// different facts, and a zero-cost week reads as a triumph.
+class ProfitLossScreen extends StatefulWidget {
+  const ProfitLossScreen({super.key, required this.api, required this.session});
+
+  final ApiClient api;
+  final Session session;
+
+  /// Below this the category table becomes a list of cards. Guessed from a
+  /// gallery rather than measured against a real nine-category week.
+  static const double tableAbove = 700;
+
+  @override
+  State<ProfitLossScreen> createState() => _ProfitLossScreenState();
+}
+
+class _ProfitLossScreenState extends State<ProfitLossScreen> {
+  List<dynamic>? _sources;
+  String? _sourceId;
+  String? _table;
+  String? _week;
+
+  List<String> _weeks = [];
+  Map<String, dynamic>? _figures;
+
+  String? _error;
+  bool _loadingSources = true;
+  bool _loadingWeek = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSources();
+  }
+
+  Future<void> _loadSources() async {
+    setState(() {
+      _loadingSources = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/reports/profit-loss/sources');
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingSources = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      _sources = (response.body['sources'] as List<dynamic>?) ?? [];
+
+      // Open on the first base that actually has tables. A base whose token
+      // has stopped working is still listed - see the picker - but landing on
+      // it would show an error before the person has chosen anything.
+      for (final source in _sources!) {
+        final tables = (source['tables'] as List<dynamic>?) ?? [];
+        if (tables.isNotEmpty) {
+          _sourceId = source['id'] as String;
+          _table = tables.first as String;
+          break;
+        }
+      }
+    });
+
+    if (_sourceId != null && _table != null) _loadWeek();
+  }
+
+  Future<void> _loadWeek() async {
+    setState(() {
+      _loadingWeek = true;
+      _error = null;
+    });
+
+    final query = {'connection': _sourceId!, 'table': _table!};
+
+    // Built up rather than written inline: the week is genuinely optional and
+    // its ABSENCE is what asks the server for the latest complete one.
+    final week = _week;
+    if (week != null) query['week'] = week;
+
+    final response = await widget.api.get('/reports/profit-loss', query);
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingWeek = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        _figures = null;
+        return;
+      }
+
+      _weeks = ((response.body['weeks'] as List<dynamic>?) ?? [])
+          .map((week) => week as String)
+          .toList();
+
+      _figures = response.body['week'] as Map<String, dynamic>?;
+      _week = _figures?['week'] as String?;
+    });
+  }
+
+  Map<String, dynamic>? get _source {
+    if (_sources == null || _sourceId == null) return null;
+
+    for (final source in _sources!) {
+      if (source['id'] == _sourceId) return source as Map<String, dynamic>;
+    }
+
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loadingSources) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(32),
+        child: CircularProgressIndicator(),
+      ));
+    }
+
+    if (_sources != null && _sources!.isEmpty) {
+      return _empty(
+        context,
+        'No Airtable base is connected yet.',
+        'Profit and loss is read from a business\'s own Airtable base. Connect '
+            'one under Settings, Integrations, and the weeks in it appear here.',
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _pickers(context),
+        const SizedBox(height: 16),
+        if (_error != null) ErrorNote(_error!),
+        if (_error == null && _loadingWeek)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        if (_error == null && !_loadingWeek && _figures != null) ..._week_(context),
+      ],
+    );
+  }
+
+  Widget _empty(BuildContext context, String title, String beneath) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              beneath,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pickers(BuildContext context) {
+    final source = _source;
+    final tables = ((source?['tables'] as List<dynamic>?) ?? [])
+        .map((table) => table as String)
+        .toList();
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        DropdownMenu<String>(
+          initialSelection: _sourceId,
+          label: const Text('Base'),
+          dropdownMenuEntries: [
+            for (final s in _sources ?? [])
+              DropdownMenuEntry<String>(
+                value: s['id'] as String,
+                label: (s['name'] as String?) ?? 'Airtable',
+
+                // A base whose token has stopped working stays in the list and
+                // says so. Dropping it makes something somebody connected last
+                // week vanish with no explanation.
+                enabled: ((s['tables'] as List<dynamic>?) ?? []).isNotEmpty,
+              ),
+          ],
+          onSelected: (id) {
+            if (id == null || id == _sourceId) return;
+            setState(() {
+              _sourceId = id;
+              _table = ((_source?['tables'] as List<dynamic>?) ?? []).isEmpty
+                  ? null
+                  : (_source!['tables'] as List<dynamic>).first as String;
+              _week = null;
+              _figures = null;
+            });
+            if (_table != null) _loadWeek();
+          },
+        ),
+        if (tables.isNotEmpty)
+          DropdownMenu<String>(
+            initialSelection: _table,
+            label: const Text('Table'),
+            dropdownMenuEntries: [
+              for (final table in tables)
+                DropdownMenuEntry<String>(value: table, label: table),
+            ],
+            onSelected: (table) {
+              if (table == null || table == _table) return;
+              // The week is cleared rather than kept: week labels are free text
+              // and another table need not have one spelled the same way.
+              setState(() {
+                _table = table;
+                _week = null;
+              });
+              _loadWeek();
+            },
+          ),
+        if (_weeks.isNotEmpty)
+          DropdownMenu<String>(
+            initialSelection: _week,
+            label: const Text('Week'),
+            dropdownMenuEntries: [
+              for (final week in _weeks)
+                DropdownMenuEntry<String>(value: week, label: week),
+            ],
+            onSelected: (week) {
+              if (week == null || week == _week) return;
+              setState(() => _week = week);
+              _loadWeek();
+            },
+          ),
+        if (source?['unavailable'] != null)
+          Text(
+            source!['unavailable'] as String,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _week_(BuildContext context) {
+    final figures = _figures!;
+    final theme = Theme.of(context);
+
+    if (figures['complete'] != true) {
+      return [
+        _empty(
+          context,
+          'This week is not filled in yet.',
+          'One or more categories have no lines for ${figures['week']}, so there '
+              'is no total to show. A partly-entered week would read as a good '
+              'one rather than an unfinished one.',
+        ),
+      ];
+    }
+
+    final disagreements = (figures['disagreements'] as List<dynamic>?) ?? [];
+    final categories = (figures['categories'] as Map<String, dynamic>?) ?? {};
+    final net = (figures['net'] as num?)?.toDouble() ?? 0;
+
+    return [
+      Row(
+        children: [
+          Expanded(child: _tile(context, 'Income', figures['income'] as num?)),
+          const SizedBox(width: 12),
+          Expanded(child: _tile(context, 'Costs', figures['costs'] as num?)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _tile(
+              context,
+              net < 0 ? 'Loss' : 'Profit',
+              net,
+              tone: net < 0 ? theme.colorScheme.error : null,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      if (disagreements.isNotEmpty) ...[
+        _disagreements(context, disagreements),
+        const SizedBox(height: 20),
+      ],
+      Text('Categories', style: theme.textTheme.titleMedium),
+      const SizedBox(height: 8),
+      ...categories.entries.map((entry) => _category(context, entry.key, entry.value)),
+    ];
+  }
+
+  Widget _tile(BuildContext context, String label, num? amount, {Color? tone}) {
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: theme.textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Text(
+              amount == null ? '—' : _money(amount),
+              style: theme.textTheme.headlineSmall?.copyWith(color: tone),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The sheet disagreeing with itself, said plainly.
+  ///
+  /// Deliberately not a red error: nothing is broken in EzBizi and the figures
+  /// beside it are still the best available reading. It is a note about the
+  /// spreadsheet, addressed to whoever maintains it.
+  Widget _disagreements(BuildContext context, List<dynamic> lines) {
+    final theme = Theme.of(context);
+
+    return Card(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              lines.length == 1
+                  ? 'One category does not add up in the sheet'
+                  : '${lines.length} categories do not add up in the sheet',
+              style: theme.textTheme.titleSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'The figures above come from the individual lines, which is what '
+              'they always come from. These are the places where the sheet\'s '
+              'own total cell says something different — worth a look in '
+              'Airtable.',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            for (final line in lines)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('• $line', style: theme.textTheme.bodyMedium),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _category(BuildContext context, String name, dynamic detail) {
+    final theme = Theme.of(context);
+    final row = (detail as Map<String, dynamic>?) ?? {};
+    final total = row['total'] as num?;
+    final lines = (row['lines'] as num?)?.toInt() ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(name, style: theme.textTheme.bodyLarge),
+          ),
+          Text(
+            lines == 1 ? '1 line' : '$lines lines',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(width: 16),
+          SizedBox(
+            width: 120,
+            child: Text(
+              total == null ? '—' : _money(total),
+              textAlign: TextAlign.right,
+              style: theme.textTheme.bodyLarge,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Whole dollars with thousands separators, and a minus rather than
+  /// parentheses — accountants read brackets as negative, everybody else reads
+  /// them as a footnote.
+  String _money(num amount) {
+    final negative = amount < 0;
+    final whole = amount.abs().round().toString();
+
+    final buffer = StringBuffer();
+    for (var i = 0; i < whole.length; i++) {
+      if (i > 0 && (whole.length - i) % 3 == 0) buffer.write(',');
+      buffer.write(whole[i]);
+    }
+
+    return '${negative ? '-' : ''}\$$buffer';
+  }
+}

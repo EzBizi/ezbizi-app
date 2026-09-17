@@ -1438,6 +1438,9 @@ class _FakeDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// Registration succeeds unless a test says otherwise — the desk being

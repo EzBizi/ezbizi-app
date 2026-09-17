@@ -78,6 +78,14 @@ final class LeadsGlance extends DescribedGlance
                  * it is worse than either number alone.
                  */
                 ->sourceStillConnected()
+                /*
+                 * And only the sources this person was granted, by exactly the
+                 * argument written two paragraphs up. A dispatcher who may see
+                 * website chats and not Thumbtack would otherwise read "38
+                 * enquiries" here above a list showing four, and the number
+                 * they cannot reconcile is the one they will believe.
+                 */
+                ->sourceVisibleTo($user)
                 ->where(
                     fn ($q) => $q->whereNull('franchise_id')->orWhereIn('franchise_id', $reachable),
                 );

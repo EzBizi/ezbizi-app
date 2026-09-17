@@ -154,6 +154,55 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     }
 
     /**
+     * Every source, in the order the screen draws its chips.
+     *
+     * Total by construction: each value is granted separately as
+     * `leads.<source>.view`, so a fifth source added without a fifth
+     * TabDefinition would be invisible to everybody rather than visible to
+     * everybody. That is the safe direction of the two - a source nobody can
+     * see gets reported the day it arrives; a source everybody can see is the
+     * failure nobody notices.
+     */
+    public const SOURCES = [
+        self::SOURCE_LOCAL_SERVICES,
+        self::SOURCE_THUMBTACK,
+        self::SOURCE_WEBSITE_CHAT,
+        self::SOURCE_WEBSITE_FORM,
+    ];
+
+    /**
+     * Which sources this person may be shown - Jose, 2026-09-17: *"i should be
+     * able to grant access by sub tab as well"*.
+     *
+     * An empty array is a real answer and means no leads, not all leads. A role
+     * holding `leads.view` and none of the four is somebody who may open the
+     * module and see nothing in it, which is odd but is what was granted; the
+     * migration that ships with this hands every existing role all four, so
+     * nobody arrives at that state by accident.
+     *
+     * @return list<string>
+     */
+    public static function sourcesVisibleTo(User $user): array
+    {
+        return array_values(array_filter(
+            self::SOURCES,
+            fn (string $source): bool => $user->hasPermission('leads.'.$source.'.view'),
+        ));
+    }
+
+    /**
+     * The same rule as a query, because the list is one endpoint.
+     *
+     * Leads has ONE list rather than a pane per source, so hiding a chip on the
+     * screen would leave the rows in `All`. The gate has to be here, on every
+     * request, with or without a `source` parameter.
+     */
+    public function scopeSourceVisibleTo(Builder $query, User $user): Builder
+    {
+        return $query->whereIn($this->getTable().'.source', self::sourcesVisibleTo($user));
+    }
+
+    /**
      * Ours, not the source's.
      *
      * `NEW` is the absence of a decision rather than a decision, which is why a

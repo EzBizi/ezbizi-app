@@ -214,7 +214,7 @@ class WebWidgetsTest extends TestCase
     {
         ['site' => $site, 'tenant' => $tenant] = $this->site();
 
-        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $this->signedInAs($viewer)
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
@@ -402,7 +402,7 @@ class WebWidgetsTest extends TestCase
     {
         ['tenant' => $tenant] = $this->site();
 
-        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $this->signedInAs($viewer)
             ->putJson('/api/v1/branding/colour', ['colour' => '#7b2d8e'])
@@ -496,7 +496,7 @@ class WebWidgetsTest extends TestCase
         $editor = $this->userWithRole(
             $tenant,
             'Web Editor',
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
         );
 
         return [
@@ -540,7 +540,8 @@ class WebWidgetsTest extends TestCase
     private function brandSetter(array $tenant): User
     {
         return $this->userWithRole($tenant, 'Brand Admin', [
-            'web_management.view', 'web_management.edit', 'organizations.edit',
+            'web_management.view', 'web_management.edit',
+            'web_management.seo.view', 'web_management.widgets.view', 'organizations.edit',
         ]);
     }
 

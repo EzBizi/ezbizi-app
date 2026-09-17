@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   CallFlowGraph graph(List<List<String>> nodes, List<List<String>> edges) =>
       CallFlowGraph(
+        entry: phoneEntryNode,
         nodes: [
           for (final n in nodes)
             FlowNode(
@@ -339,9 +340,9 @@ void main() {
 
   group('parsing', () {
     test('a row with no graph is not a graph', () {
-      expect(CallFlowGraph.fromJson(null), isNull);
-      expect(CallFlowGraph.fromJson({'nodes': 'nope'}), isNull);
-      expect(CallFlowGraph.fromJson({'nodes': [], 'edges': []}), isNull);
+      expect(CallFlowGraph.fromJson(null, entry: phoneEntryNode), isNull);
+      expect(CallFlowGraph.fromJson({'nodes': 'nope'}, entry: phoneEntryNode), isNull);
+      expect(CallFlowGraph.fromJson({'nodes': [], 'edges': []}, entry: phoneEntryNode), isNull);
     });
 
     test('a state this build has never heard of is not a fault', () {
@@ -356,7 +357,7 @@ void main() {
         'edges': [
           {'from': 'caller', 'to': 'x'},
         ],
-      })!;
+      }, entry: phoneEntryNode)!;
 
       expect(g.node('x')!.isDead, isFalse);
       expect(g.node('x')!.isSkipped, isFalse);

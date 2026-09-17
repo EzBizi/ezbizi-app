@@ -27,7 +27,7 @@ void main() {
   testWidgets('the tab opens the SEO panel and lists the company websites', (
     tester,
   ) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('SEO'), findsOneWidget);
     expect(find.text('Websites'), findsOneWidget);
@@ -40,14 +40,14 @@ void main() {
   testWidgets('a subdomain is listed as its own website, connected or not', (
     tester,
   ) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.textContaining('Connected'), findsWidgets);
     expect(find.textContaining('Waiting for the plugin'), findsWidgets);
   });
 
   testWidgets('view alone cannot add a website', (tester) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Add a website'), findsNothing);
   });
@@ -57,7 +57,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     expect(find.text('Phone number'), findsOneWidget);
@@ -81,7 +81,7 @@ void main() {
   testWidgets('a website with no values yet still opens', (tester) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       emptyValues: true,
     );
 
@@ -103,7 +103,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     await tester.ensureVisible(find.text('Browser snippet'));
@@ -136,7 +136,7 @@ void main() {
   ) async {
     await _pumpSeoTab(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       size: const Size(390, 844),
     );
 
@@ -158,7 +158,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     // The first site is selected for you rather than leaving an empty pane.
@@ -178,7 +178,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     expect(find.text('Phone number'), findsOneWidget);
@@ -206,7 +206,7 @@ void main() {
   testWidgets('picking a full address fills the parts', (tester) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     final search = find.descendant(
@@ -235,7 +235,7 @@ void main() {
   /// two are appended by the client — the server's sections are groups of
   /// fields and these are not fields.
   testWidgets('pages and posts sit in the SEO strip', (tester) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('General'), findsOneWidget);
     expect(find.text('Social links'), findsOneWidget);
@@ -245,7 +245,7 @@ void main() {
 
   /// SEO has sections now, and General is the one that exists.
   testWidgets('SEO opens on its General section', (tester) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('General'), findsOneWidget);
   });
@@ -262,7 +262,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       emptyValues: true,
     );
 
@@ -278,7 +278,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     expect(find.text('Monday'), findsOneWidget);
@@ -291,7 +291,7 @@ void main() {
   /// Choosing the primary changes what every OTHER site publishes, so it is
   /// gated on edit like any other change to a value.
   testWidgets('view alone cannot make a site primary', (tester) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Make primary'), findsNothing);
   });
@@ -361,7 +361,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     await tester.ensureVisible(find.text('Browser snippet'));
@@ -382,7 +382,7 @@ void main() {
   });
 
   testWidgets('view alone cannot reissue a browser key', (tester) async {
-    await _pumpDestination(tester, permissions: ['web_management.view']);
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     await tester.ensureVisible(find.text('Browser snippet'));
     await tester.pumpAndSettle();
@@ -403,7 +403,7 @@ void main() {
   testWidgets('the guide and the snippet are behind buttons', (tester) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     expect(find.text('Connection guide'), findsOneWidget);
@@ -424,7 +424,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     await tester.tap(find.text('Add a website'));
@@ -441,7 +441,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
     );
 
     // The actions sit below eight fields in a scrolling pane now, so they have
@@ -467,7 +467,7 @@ void main() {
   ) async {
     await _pumpDestination(
       tester,
-      permissions: ['web_management.view', 'web_management.edit'],
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       scopedToCompany: true,
     );
 

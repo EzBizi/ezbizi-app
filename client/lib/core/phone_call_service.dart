@@ -253,6 +253,7 @@ class PhoneCallService extends ChangeNotifier {
       _device!.onRegistrationChanged = notifyListeners;
       _device!.onEnded = _ended;
       _device!.onAnswered = _answeredElsewhere;
+      _device!.onTokenExpiring = () => unawaited(_renewToken());
 
       // prepare(), then a FRAME, then the token. platformView is null until
       // prepare() has built the controller, so the shell cannot mount the
@@ -263,25 +264,7 @@ class PhoneCallService extends ChangeNotifier {
       notifyListeners();
       await WidgetsBinding.instance.endOfFrame;
 
-      final token = await api.post('/phone/tokens', {
-        'connection_id': _connectionId,
-
-        // WHICH INSTALL IS ASKING, so a call can ring this one as well as the
-        // others. A `<Dial>` makes one leg per `<Client>`, so an identity that
-        // named only the person rang whichever device Twilio picked — the desk
-        // open on a PC stayed silent while the phone in a pocket rang.
-        'device_id': DeviceIdentity.value,
-        'device_label': DeviceIdentity.label,
-        // Omitted on a browser. Present on a handset, and it is what makes the
-        // minted token carry a push credential — without it the phone
-        // registers and never rings.
-        if (_device!.pushPlatform != null) 'platform': _device!.pushPlatform,
-      });
-
-      if (token.ok) {
-        final value = token.body['token'] as String? ?? '';
-        if (value.isNotEmpty) await _device!.setup(value);
-      }
+      await _mintTokenAndRegister(api);
 
       _started = true;
       notifyListeners();
@@ -293,6 +276,78 @@ class PhoneCallService extends ChangeNotifier {
     } finally {
       _starting = false;
     }
+  }
+
+  /// Ask for a token and hand it to the device.
+  ///
+  /// ONE COPY, because there are now two callers — the first registration and
+  /// every renewal after it — and a second copy of this request is a second
+  /// place to forget the device id or the push platform. Both of those have
+  /// already cost a platform that registered and never rang.
+  Future<void> _mintTokenAndRegister(ApiClient api) async {
+    final device = _device;
+    if (device == null) return;
+
+    final token = await api.post('/phone/tokens', {
+      'connection_id': _connectionId,
+
+      // WHICH INSTALL IS ASKING, so a call can ring this one as well as the
+      // others. A `<Dial>` makes one leg per `<Client>`, so an identity that
+      // named only the person rang whichever device Twilio picked — the desk
+      // open on a PC stayed silent while the phone in a pocket rang.
+      'device_id': DeviceIdentity.value,
+      'device_label': DeviceIdentity.label,
+      // Omitted on a browser. Present on a handset, and it is what makes the
+      // minted token carry a push credential — without it the phone
+      // registers and never rings.
+      if (device.pushPlatform != null) 'platform': device.pushPlatform,
+    });
+
+    if (!token.ok) return;
+
+    final value = token.body['token'] as String? ?? '';
+    if (value.isEmpty) return;
+
+    await device.setup(value);
+  }
+
+  /// A renewal fell due while somebody was talking, and is still owed.
+  bool _tokenOwed = false;
+
+  /// The token is about to expire, so get another one.
+  ///
+  /// ── Why this exists ─────────────────────────────────────────────
+  ///
+  /// A Twilio access token lasts 3600 seconds and the app asked for exactly
+  /// one, at launch. An hour later the registration lapsed and the desk took
+  /// no more incoming calls, showing nothing: no error, no banner, and
+  /// outbound still working. The browser bridge had been announcing the
+  /// expiry all along with nothing listening.
+  ///
+  /// ── NEVER MID-CALL ─────────────────────────────────────────────
+  ///
+  /// [VoiceDevice.setup] rebuilds the device, and on the web that means
+  /// `Device.destroy()`, which REJECTS the call in progress — Twilio then
+  /// reports that leg busy, which is the worst way for a conversation to end
+  /// and exactly the failure that cost Jose a customer call on 2026-09-15.
+  ///
+  /// So a renewal that falls due during a call is deferred rather than
+  /// dropped: [_releasePresence] runs at the end of every call and pays it.
+  /// Dropping it would leave the desk holding a token it already knows is
+  /// dead, which is the original defect with an extra step.
+  Future<void> _renewToken() async {
+    final api = _api;
+    if (api == null) return;
+
+    if (busy) {
+      _tokenOwed = true;
+
+      return;
+    }
+
+    _tokenOwed = false;
+    await _mintTokenAndRegister(api);
+    notifyListeners();
   }
 
   /// A call is in flight on this device, ringing or connected.
@@ -431,6 +486,15 @@ class PhoneCallService extends ChangeNotifier {
     // never answered never set `on_call`, and writing presence for it would be
     // a request per missed call for no change.
     if (wasOnCall) unawaited(_releasePresence());
+
+    // A renewal deferred because a call was in flight — see [_renewToken].
+    //
+    // Paid HERE and not inside `_releasePresence`, which is the mistake this
+    // comment exists to stop somebody repeating: that method runs only for a
+    // call that was CONNECTED, and a token falling due while the phone was
+    // merely ringing is owed exactly the same. Most calls ring and are never
+    // connected, so the debt would have gone unpaid in the common case.
+    if (_tokenOwed) unawaited(_renewToken());
   }
 
   /// Put the server back to whatever this person's standing answer is.
@@ -467,6 +531,10 @@ class PhoneCallService extends ChangeNotifier {
     // stale-presence bug by a different route, and the one somebody would hit
     // every single call rather than only when the customer hung up first.
     if (wasOnCall) unawaited(_releasePresence());
+
+    // And the deferred token, for the same reason as in [_ended]: hanging up
+    // is a way a call ends that does not go through it.
+    if (_tokenOwed) unawaited(_renewToken());
   }
 
   /// Somebody signed out. The next person is not this person.

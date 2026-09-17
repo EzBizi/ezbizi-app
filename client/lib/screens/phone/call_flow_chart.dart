@@ -14,6 +14,18 @@ import '../../widgets/flow_chart.dart';
 
 export '../../widgets/flow_chart.dart';
 
+/// The node a call flow begins at.
+///
+/// Phone's, and it lives here rather than on [CallFlowGraph] because it is a
+/// fact about telephone calls: the server guarantees exactly one entry node
+/// and that it is always `caller`, which is what makes Jose's "Caller ----
+/// (what happens)" literal.
+///
+/// Named at every call site rather than defaulted. A default is inherited by
+/// whoever forgets, and the one who forgets is usually the module that owns
+/// the word.
+const String phoneEntryNode = 'caller';
+
 /// How many callers are holding in one queue, and how long they have waited.
 class QueueLive {
   const QueueLive({required this.waiting, required this.averageWaitSeconds});

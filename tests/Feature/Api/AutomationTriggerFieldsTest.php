@@ -75,7 +75,7 @@ class AutomationTriggerFieldsTest extends TestCase
         $this->recordEmailEvent($t);
 
         $atOneBranch = $this->userWithRole(
-            $t, 'Branch', ['automations.view', 'email.view'],
+            $t, 'Branch', ['automations.view', 'automations.build.view', 'email.view'],
             email: 'branch@example.test', onlyAt: $t['franchise'],
         );
 
@@ -101,7 +101,7 @@ class AutomationTriggerFieldsTest extends TestCase
 
         // Can build rules, cannot open Email. Asking by name must not report
         // what an inbox event carries.
-        $outsider = $this->userWithRole($t, 'Rules only', ['automations.view']);
+        $outsider = $this->userWithRole($t, 'Rules only', ['automations.view', 'automations.build.view']);
 
         $this->signedInAs($outsider)
             ->getJson('/api/v1/automations/trigger-fields?trigger=email.received')
@@ -260,10 +260,10 @@ class AutomationTriggerFieldsTest extends TestCase
             'available_at'    => now(),
         ]));
 
-        $atTheTop = $this->userWithRole($t, 'Owner', ['automations.view', 'jobs.view']);
+        $atTheTop = $this->userWithRole($t, 'Owner', ['automations.view', 'automations.build.view', 'jobs.view']);
 
         $atOneBranch = $this->userWithRole(
-            $t, 'Branch', ['automations.view', 'jobs.view'],
+            $t, 'Branch', ['automations.view', 'automations.build.view', 'jobs.view'],
             email: 'branch@example.test', onlyAt: $t['franchise'],
         );
 
@@ -281,5 +281,52 @@ class AutomationTriggerFieldsTest extends TestCase
         // VALUE and not about the endpoint refusing the narrower person outright.
         $this->assertContains('title', $narrower['fields']);
         $this->assertArrayNotHasKey('title', $narrower['samples']);
+    }
+
+    /**
+     * AN EVENT THAT ACTUALLY HAS A SUBJECT, which is the case that 500'd.
+     *
+     * The sample reader asked `$event->subject()` — a relation `AutomationEvent`
+     * does not have. Every test here built events with no subject at all, so the
+     * branch that resolves one was never entered and the endpoint answered 500
+     * in production the first time a real job event reached it.
+     *
+     * A whole feature can be covered by tests that never construct its subject.
+     * The fixtures were convenient rather than representative, and convenient
+     * fixtures decide which branch runs.
+     */
+    public function test_an_event_carrying_a_subject_is_read_without_error(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        // A RULE IS ITS OWN SUBJECT on the clock trigger, which makes it the
+        // cheapest real subject there is — no customer, no job number, nothing
+        // this test would have to invent. What matters is only that
+        // `subject_type` is set and the class resolves, which is the branch
+        // that was never entered.
+        $rule = $this->inTenant($t['org'], fn () => \App\Models\Automation::create([
+            'organization_id' => $t['org']->id,
+            'name' => 'Nightly',
+            'trigger_key' => 'automation.schedule_reached',
+            'is_active' => true,
+        ]));
+
+        $this->inTenant($t['org'], fn () => AutomationEvent::create([
+            'organization_id' => $t['org']->id,
+            'event_key' => 'automation.schedule_reached',
+            'subject_type' => $rule::class,
+            'subject_id' => $rule->getKey(),
+            'payload' => ['schedule_kind' => 'daily'],
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $data = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/automations/trigger-fields?trigger=automation.schedule_reached')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertContains('schedule_kind', $data['fields']);
+        $this->assertSame('daily', $data['samples']['schedule_kind'] ?? null);
     }
 }

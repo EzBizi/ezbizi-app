@@ -237,6 +237,40 @@ final class CallReconciliation
                     : null,
             ],
             'people' => $people,
+
+            /*
+             * ── THE CALLS THEMSELVES, FLAT ──────────────────────────
+             *
+             * So a person's row can be opened and the calls behind its numbers
+             * read. Sent ONCE as a flat list rather than nested under each
+             * person, because a queue call rings several people and nesting
+             * would send the same call three or four times - the same
+             * double-count the `rang` column exists to warn about, arriving
+             * this time as bytes.
+             *
+             * The client picks a person's calls by matching `answered_by` or
+             * membership of `rang`, which is exactly what the two columns mean.
+             *
+             * Names are canonicalised here, the same way the columns are. Left
+             * raw, a drill-down would show "Adeline Pierre Louis-Aghaji" under
+             * a row labelled with whatever canonical() made of it, and the two
+             * would look like different people.
+             */
+            'calls' => array_map(fn (array $call): array => [
+                'id' => $call['id'] ?? null,
+                'started_at' => $call['started_at'] ?? null,
+                'from' => $call['from'] ?? null,
+                'caller_label' => $call['caller_label'] ?? null,
+                'queue' => $call['queue'] ?? null,
+                'result' => $call['result'] ?? null,
+                'talk_seconds' => $call['talk_seconds'] ?? null,
+                'recording_id' => $call['recording_id'] ?? null,
+                'answered_by' => $this->canonical($call['answered_by'] ?? null),
+                'rang' => array_values(array_filter(array_map(
+                    fn ($person) => $this->canonical($person),
+                    $call['rang'] ?? [],
+                ))),
+            ], $calls),
         ];
     }
 

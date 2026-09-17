@@ -171,6 +171,22 @@ class LeadsController extends Controller
          */
         $query->sourceStillConnected();
 
+        /*
+         * THE SOURCES THIS PERSON WAS GRANTED - Jose, 2026-09-17: *"i should be
+         * able to grant access by sub tab as well"*.
+         *
+         * Applied to EVERY request, including the one with no `source`
+         * parameter. `All` is the request that would otherwise hand back the
+         * rows the chips are hiding, and it is the default one the screen
+         * makes.
+         *
+         * The narrowing below it still runs: asking for a source you may not
+         * see returns nothing rather than erroring, because the two clauses
+         * intersect. That is the right answer for a URL nobody should have
+         * been able to build from the screen anyway.
+         */
+        $query->sourceVisibleTo($user);
+
         if (is_string($status = $request->query('status')) && $status !== '') {
             $query->where('leads.status', $status);
         }
@@ -752,7 +768,11 @@ class LeadsController extends Controller
         $now = now();
         $count = 0;
 
-        $ids = Lead::query()->select('id');
+        // "Every lead this person can see" is the docblock above, and the
+        // sources they were granted are half of what that means. Marking a
+        // hidden Thumbtack enquiry read on their behalf is not harmful, but it
+        // is a row written about a lead they are not allowed to know exists.
+        $ids = Lead::query()->select('id')->sourceVisibleTo($user);
 
         $franchiseIds = $user->reachableFranchises()->pluck('id')->all();
         $companyIds = $user->reachableCompanies()->pluck('id')->all();
