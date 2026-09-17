@@ -193,6 +193,20 @@ interface TwilioGateway
      * credential — without one Twilio has no way to wake a locked handset, so
      * the device registers, places calls, and never rings.
      */
+    /**
+     * How long a minted access token lives.
+     *
+     * Named here because two places need the same number and they are in
+     * different languages: the gateway that mints the token, and the desk that
+     * has to ask for another one before it dies. The desk used to know nothing
+     * about it — it asked for one token at launch and went quiet an hour later
+     * with no error, which cost 27 of 29 inbound calls over two days.
+     *
+     * A client that is TOLD the lifetime cannot drift from it. A client with a
+     * hard-coded 3600 can, and would do so silently the day this changes.
+     */
+    public const TOKEN_TTL_SECONDS = 3600;
+
     public function accessToken(PhoneConnection $connection, string $identity, ?string $platform = null): string;
 
     /**
