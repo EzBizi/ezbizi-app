@@ -194,13 +194,15 @@ class TimeClockWeekTest extends TestCase
         $this->assertNotContains($theirs->id, $ids);
     }
 
-    public function test_the_week_needs_hr_view_and_the_organization_switch(): void
+    public function test_the_week_needs_the_work_hours_tab_and_the_organization_switch(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
 
         $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
-            ->assertForbidden()
+            // 409, not 403: the feature being off is not a permission failure,
+            // and this viewer HOLDS the permission.
+            ->assertStatus(409)
             ->assertJsonPath('message', 'Clock in is switched off for this organization.');
 
         $this->set($alpha['org'], 'time_clock.enabled', true);
@@ -305,6 +307,36 @@ class TimeClockWeekTest extends TestCase
             ->assertOk()->json('data.days');
 
         $this->assertSame([false, false, false, false, false, false, false], array_column($days, 'in_future'));
+    }
+
+    /**
+     * The two refusals are told apart by their status, not by reading English.
+     *
+     * This is the test Settings could not write on 2026-09-17: both answered
+     * 403, so a permission suite full of negatives passed identically against a
+     * feature that was switched off entirely. One assertion, two causes.
+     */
+    public function test_no_permission_and_no_feature_are_different_refusals(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $granted = $this->userWithRole($alpha, 'Hr', ['hr.hours.view'], 'hr@alpha.test');
+        $ungranted = $this->userWithRole($alpha, 'Other', ['customers.view'], 'other@alpha.test');
+
+        // Clock in is OFF for this organization, and nobody has been granted
+        // anything since. Both people are refused; they must not look alike.
+        $this->signedInAs($ungranted)->getJson('/api/v1/hr/time-clock/week')
+            ->assertStatus(403)
+            ->assertJsonPath('code', 'permission_denied');
+
+        $this->signedInAs($granted)->getJson('/api/v1/hr/time-clock/week')
+            ->assertStatus(409);
+
+        // And with the switch on, the one holding the grant gets through, which
+        // is the case whose absence made the negatives meaningless.
+        $this->set($alpha['org'], 'time_clock.enabled', true);
+
+        $this->signedInAs($granted)->getJson('/api/v1/hr/time-clock/week')->assertOk();
+        $this->signedInAs($ungranted)->getJson('/api/v1/hr/time-clock/week')->assertStatus(403);
     }
 
     private function set(Organization $org, string $key, mixed $value): void
