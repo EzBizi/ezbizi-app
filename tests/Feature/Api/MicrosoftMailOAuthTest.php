@@ -140,6 +140,29 @@ class MicrosoftMailOAuthTest extends TestCase
             // who found it in their own WebTenantIsolationTest: where a refusal
             // has more than one possible cause, assert something the other
             // causes cannot produce.
+            //
+            // ── TWO WAYS TO CHECK THIS ASSERTION EARNS ITS PLACE ──
+            //
+            // Both were run against this file on 2026-09-17; neither is being
+            // described from memory.
+            //
+            //   1. Take `email.settings.view` off the Reader above. It goes red
+            //      HERE, on the message rather than the status, which is the
+            //      migration that was passing silently before. Stronger, because
+            //      it exercises the real thing -- but it only works where the
+            //      tab gate sits on some routes and not others. Web Management
+            //      copied it into a module whose gate covers the GET too, where
+            //      removing the key reds the positive control first and this
+            //      line is never reached. Same manoeuvre, opposite result,
+            //      decided by route topology.
+            //
+            //   2. Swap the expected sentence below for 'open this tab'. Both
+            //      refusals in this file go red. Weaker in principle -- it does
+            //      not exercise the tab path -- but it proves the two halves
+            //      that matter (the assertion really reads the message, and the
+            //      message really is MailboxAccess's rather than the
+            //      middleware's) and it does not care how the routes are gated.
+            //      This is the one to use somewhere new.
             ->assertJsonPath(
                 'message',
                 fn (string $said) => str_contains($said, 'connect this inbox'),
