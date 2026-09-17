@@ -1382,6 +1382,40 @@ class ModuleServiceProvider extends ServiceProvider
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
                 /*
+                 * ── Two tabs, and deliberately only two ──
+                 *
+                 * The labels are web_screen.dart's own words. The strip there
+                 * is a fixed list of exactly these two, so there is nothing to
+                 * copy wrongly and nothing else to declare.
+                 *
+                 * WHY THIS IS A REAL GRANT rather than granularity for its own
+                 * sake: SEO is what the website SAYS — the phone number, the
+                 * licence, the address, the copy on each page. Widgets is what
+                 * a visitor can START on it, and every conversation begun there
+                 * becomes a lead. "Whoever writes the site's copy may not
+                 * reconfigure the thing that captures enquiries" is a sentence
+                 * somebody says out loud, which is the test the brief sets.
+                 *
+                 * NOT DECLARED, on purpose: General, Pages, Posts, Templates,
+                 * Content and Hours are panes of a rail INSIDE the SEO tab, not
+                 * tabs. Six more keys would produce a roles editor nobody can
+                 * read, to express a distinction nobody has asked for — the
+                 * same reason Communication left their fifteen-pane Settings
+                 * rail as one `phone.edit`.
+                 *
+                 * THE BROWSER KEY DOES NOT GET A TAB EITHER, and Settings was
+                 * right to ask. Re-issuing it is already `web_management.edit`
+                 * and the button is drawn only behind `canEdit`, so "may look
+                 * at the site" and "may reissue the credential the plugin
+                 * authenticates with" are ALREADY two grants. A tab key is a
+                 * visibility toggle by design; hanging a credential rotation on
+                 * one would be the weaker half of a gate that already holds.
+                 */
+                tabs: [
+                    new TabDefinition('seo', 'SEO'),
+                    new TabDefinition('widgets', 'Widgets'),
+                ],
+                /*
                  * This module was automation-exempt on the grounds that
                  * "nothing here happens on its own". That stopped being true
                  * when the chat and form widgets shipped: a visitor starting a

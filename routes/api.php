@@ -733,30 +733,53 @@ Route::prefix('v1')
         // unlike the public `web/plugin/values` further up this file, because
         // it hands over code rather than a company's data.
         Route::get('web/plugin', [WebSitesController::class, 'downloadPlugin']);
-        Route::apiResource('web/sites', WebSitesController::class)
-            ->parameters(['sites' => 'site']);
-        Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
-        // The browser key. Separate from the token above because they are different
-        // credentials with different blast radii — see rotatePublicKey.
-        Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
-        // The site the company's others inherit from, per key, wherever they
-        // say nothing themselves. `edit` gates it: choosing the primary changes
-        // what every other site publishes.
-        Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
-        Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
-        Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
-        // The pages and posts on the site itself, read live through the account
-        // it handed us at pairing. Nothing stored, so nothing to keep in step.
-        Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
 
         /*
-         * Before the {site}/content/{path} shape anybody adds later: a literal
-         * segment registered after a wildcard one is unreachable.
+         * NO TAB GATE ON `web/sites` ITSELF, and it is not an oversight.
+         *
+         * Both tabs draw the same rail of hosts from `GET web/sites` —
+         * seo_tab.dart:143 and widgets_tab.dart:59 — so a gate naming either
+         * tab takes the rail away from the other, and the pane behind it is an
+         * empty list rather than a refusal anybody can read. It stays on
+         * `web_management.view`/`.edit` as before, and the per-record policies
+         * keep doing their job.
+         *
+         * Everything BELOW is single-tab, measured by grepping the client for
+         * each endpoint's consumers rather than by reading the URL:
+         *   values, content, content/options, token, public-key, primary
+         *                                   → seo_tab, page_editor, templates_pane
+         *   widgets (show/update/destroy)   → widgets_tab, and nothing else
          */
-        Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
-        Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
-        Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
-        Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+        Route::apiResource('web/sites', WebSitesController::class)
+            ->parameters(['sites' => 'site']);
+
+        Route::middleware('permission:web_management.seo.view')->group(function () {
+            Route::post('web/sites/{site}/token', [WebSitesController::class, 'rotateToken']);
+            // The browser key. Separate from the token above because they are different
+            // credentials with different blast radii — see rotatePublicKey.
+            Route::post('web/sites/{site}/public-key', [WebSitesController::class, 'rotatePublicKey']);
+            // The site the company's others inherit from, per key, wherever they
+            // say nothing themselves. `edit` gates it: choosing the primary changes
+            // what every other site publishes.
+            Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
+            Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
+            Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+            // The pages and posts on the site itself, read live through the account
+            // it handed us at pairing. Nothing stored, so nothing to keep in step.
+            Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
+
+            /*
+             * Before the {site}/content/{path} shape anybody adds later: a literal
+             * segment registered after a wildcard one is unreachable.
+             */
+            Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
+        });
+
+        Route::middleware('permission:web_management.widgets.view')->group(function () {
+            Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
+            Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
+            Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+        });
         Route::post('inventory/purchase-orders/{purchase_order}/open', [InventoryPurchaseOrdersController::class, 'open']);
         Route::post('inventory/purchase-orders/{purchase_order}/cancel', [InventoryPurchaseOrdersController::class, 'cancel']);
         Route::post('inventory/purchase-orders/{purchase_order}/receives', [InventoryPurchaseOrdersController::class, 'receive']);

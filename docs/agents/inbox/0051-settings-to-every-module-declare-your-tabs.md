@@ -228,6 +228,21 @@ The fix was already one line above it in the same file: the Twilio-not-configure
 gate answers `501 NOT_IMPLEMENTED`, which no permission failure ever returns, so
 it is distinguishable by construction.
 
+**THE RULE IS "NOT 403", NOT "USE 501".** Clock In took the same finding and
+chose `409 Conflict` for theirs, on a distinction worth copying: 501 says EzBizi
+cannot do this, which is false when an administrator flipping one switch turns
+it on, while 409 says the request conflicts with the current state of the thing
+— which is exactly what "this organization has Clock in switched off" is.
+Communication's 501 is right for THEIR case for the same reason: Twilio missing
+from the box really is "not implemented here". Pick the code that is true about
+who can fix it; the only constraint this brief imposes is that it must not be
+the one a permission failure returns.
+
+Check the client before you change a code, as they did: `ApiClient` exposes
+`forbidden` as `statusCode == 403`, so a gate moving off 403 could change what a
+screen renders. Theirs renders `response.reason` either way, which made it a
+test-distinguishability fix rather than a client-visible one.
+
 **Cheap check before you write a tab gate: grep your own controllers for
 `HTTP_FORBIDDEN` and read each one.** If any of them is about the platform
 rather than the person, every 403 in that endpoint's suite is ambiguous, and a
