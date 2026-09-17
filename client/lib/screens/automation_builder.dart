@@ -496,6 +496,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// entry means "not yours to see", never "this field does not exist".
   Map<String, String> _fieldSamples = const {};
 
+  /// Where this rule applies, in the stored shape the catalogue hands out:
+  /// `organization`, `company:<id>` or `franchise:<id>`.
+  ///
+  /// Null on a NEW rule until somebody chooses, and null means the field is not
+  /// sent — which is what lets the server scope the rule to the view it was
+  /// written in. Defaulting to `organization` here would put every rule back to
+  /// applying across the whole business, this time explicitly.
+  String? _place;
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -565,6 +574,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _name.text = editing['name'] as String? ?? '';
       _description.text = editing['description'] as String? ?? '';
       _trigger = editing['trigger_key'] as String?;
+      // AN EXISTING RULE ALWAYS RESTATES ITS SCOPE, "everywhere" included.
+      // There is no view to fall back on when saving one, so silence would let
+      // a save re-scope a rule to wherever the person happened to be standing.
+      final scope = editing['scope'] as Map?;
+      _place = scope == null || scope['type'] == null
+          ? 'organization'
+          : '${scope['type']}:${scope['id']}';
       _adoptActions(editing['actions']);
       _adoptSchedule(editing['schedule']);
       _adoptConditions(editing['conditions']);
@@ -1232,6 +1248,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // rule, and every run already recorded would describe something it no
       // longer does. The API refuses the field outright.
       if (!_isEdit) 'trigger_key': _trigger,
+      // Only when somebody chose, or when editing a rule that already has one.
+      // An untouched picker on a NEW rule leaves the field out entirely and the
+      // server scopes it to the view it was written in — the difference between
+      // "apply this everywhere" and "nobody said".
+      if (_place != null) ...{
+        'scope_type': _place == 'organization' ? null : _place!.split(':').first,
+        'scope_id': _place == 'organization' ? null : _place!.split(':').last,
+      },
       // Sent on create AND on edit: retiming a rule is the one thing about a
       // scheduled rule that can legitimately change without it becoming a
       // different rule. The server recomputes the next run from it.
@@ -1379,32 +1403,63 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       1,
       'Name it',
       'What you will see in the list, and in every run it records.',
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _name,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'Tell the office when a job is completed',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _name,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'Tell the office when a job is completed',
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: TextField(
-              controller: _description,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'What it is for (optional)',
-                hintText: 'Why this rule exists, for whoever reads it next',
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _description,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'What it is for (optional)',
+                    hintText: 'Why this rule exists, for whoever reads it next',
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          if (widget.catalogue.places.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _place,
+              decoration: InputDecoration(
+                labelText: 'Where it applies',
+                // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
+                // scopes to wherever the person is standing, and a control that
+                // acts without being touched has to say so — otherwise a rule's
+                // reach is decided by a chip in the top bar that nobody would
+                // ever connect to it.
+                helperText: _place == null
+                    ? 'Left alone, it applies where you are now. A company also '
+                          'covers everything under it.'
+                    : 'A company covers its franchises, its sub companies and '
+                          'theirs.',
+              ),
+              items: [
+                for (final place in widget.catalogue.places)
+                  DropdownMenuItem(value: place.key, child: Text(place.label)),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _place = value),
+            ),
+          ],
         ],
       ),
     );

@@ -5,6 +5,8 @@ namespace Tests\Feature\Api;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Models\Automation;
 use App\Models\Customer;
+use App\Models\Franchise;
+use App\Support\Tenancy\TenantContext;
 use App\Models\Job;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Automations\ActionRunner;
@@ -139,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'reports', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'reports', 'places', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -929,5 +931,149 @@ class AutomationsApiTest extends TestCase
 
         $this->withHeader('Authorization', "Bearer {$token}")
             ->getJson("/api/v1/automations/{$id}")->assertNotFound();
+    }
+
+    /**
+     * A RULE BELONGS WHERE IT WAS MADE, AND IS READ WHERE IT ACTS.
+     *
+     * Jose, 2026-09-17: *"i made an automation for a-1chimney, but it's applying
+     * for everything and im seeing it on any company"*. Both halves are one bug
+     * seen twice: nothing ever SET a scope, so every rule was stored
+     * organization-wide, and the list then showed every rule in the business to
+     * everybody standing anywhere.
+     *
+     * THE ENGINE WAS NEVER WRONG, which is why this went unnoticed for so long
+     * — `coversScope` has honoured company and franchise since it was written,
+     * and every test that built a rule set the scope BY HAND. The app never did.
+     * A fixture doing for the code what the code does not do for itself is the
+     * shape that hides a missing write.
+     */
+    public function test_a_rule_made_in_one_view_belongs_to_it_and_says_so(): void
+    {
+        $franchise = Franchise::withoutGlobalScopes()
+            ->where('organization_id', $this->org['organization']->id)
+            ->firstOrFail();
+
+        // Written while standing at ONE FRANCHISE, and the builder sends no
+        // scope — exactly what the screen posts today.
+        $id = $this->as()
+            ->withHeader('X-EzBizi-View', 'franchise:'.$franchise->id)
+            ->postJson('/api/v1/automations', [
+                'name' => 'Only here',
+                'trigger_key' => 'job.created',
+                'actions' => [['type' => 'notify', 'message' => 'A job was made.']],
+            ])->assertCreated()->json('data.id');
+
+        $stored = Automation::withoutGlobalScopes()->findOrFail($id);
+
+        $this->assertSame('franchise', $stored->scope_type,
+            'a rule written at one place was stored as applying to the whole business');
+        $this->assertSame($franchise->id, $stored->scope_id);
+
+        // AND THE CHIP CARRIES A NAME. An id on a chip tells nobody anything,
+        // and at the organization the name is the only thing separating one
+        // company's rule from another's.
+        $listed = $this->as()
+            ->withHeader('X-EzBizi-View', 'franchise:'.$franchise->id)
+            ->getJson('/api/v1/automations')->assertOk()->json('data');
+
+        $this->assertSame(
+            $franchise->name,
+            collect($listed)->firstWhere('id', $id)['scope']['label'],
+        );
+    }
+
+    /**
+     * ASKING FOR EVERYWHERE IS STILL POSSIBLE, and is not the same as silence.
+     *
+     * The key being PRESENT is what separates "make this one apply to the whole
+     * business" from "the builder said nothing". Without that distinction the
+     * only way to write an organization-wide rule would be to change the top
+     * bar first, which is a setting nobody would connect to the rule.
+     */
+    public function test_an_explicit_everywhere_survives_a_narrow_view(): void
+    {
+        $franchise = Franchise::withoutGlobalScopes()
+            ->where('organization_id', $this->org['organization']->id)
+            ->firstOrFail();
+
+        $id = $this->as()
+            ->withHeader('X-EzBizi-View', 'franchise:'.$franchise->id)
+            ->postJson('/api/v1/automations', [
+                'name' => 'Everywhere please',
+                'trigger_key' => 'job.created',
+                'actions' => [['type' => 'notify', 'message' => 'A job was made.']],
+                'scope_type' => null,
+                'scope_id' => null,
+            ])->assertCreated()->json('data.id');
+
+        $stored = Automation::withoutGlobalScopes()->findOrFail($id);
+
+        $this->assertNull($stored->scope_type);
+        $this->assertSame('Everywhere', collect(
+            $this->as()->getJson('/api/v1/automations')->assertOk()->json('data')
+        )->firstWhere('id', $id)['scope']['label']);
+    }
+
+    /**
+     * ANOTHER PLACE'S RULE IS NOT ON YOUR SCREEN, and yours still is.
+     *
+     * This is the half Jose actually saw — he was looking at one company and
+     * reading a rule he had written for another. A list showing every rule in
+     * the business is not only noise: a franchise manager could switch off a
+     * rule that runs for everybody, from a screen that gave no hint it was not
+     * theirs.
+     *
+     * Asked through the SAME `coversScope` the engine asks, so the list cannot
+     * drift from what actually runs. The organization view is deliberately NOT
+     * filtered by it — see the comment there.
+     */
+    public function test_one_places_rule_does_not_appear_at_another(): void
+    {
+        $organization = $this->org['organization'];
+
+        $mine = Franchise::withoutGlobalScopes()
+            ->where('organization_id', $organization->id)->firstOrFail();
+
+        $theirs = app(TenantContext::class)->run($organization, fn () => Franchise::create([
+            'organization_id' => $organization->id,
+            'company_id' => $mine->company_id,
+            'name' => 'Second Franchise',
+            'is_active' => true,
+        ]));
+
+        $here = $this->as()->withHeader('X-EzBizi-View', 'franchise:'.$mine->id)
+            ->postJson('/api/v1/automations', [
+                'name' => 'Mine',
+                'trigger_key' => 'job.created',
+                'actions' => [['type' => 'notify', 'message' => 'Here.']],
+            ])->assertCreated()->json('data.id');
+
+        $elsewhere = $this->as()->withHeader('X-EzBizi-View', 'franchise:'.$theirs->id)
+            ->postJson('/api/v1/automations', [
+                'name' => 'Theirs',
+                'trigger_key' => 'job.created',
+                'actions' => [['type' => 'notify', 'message' => 'There.']],
+            ])->assertCreated()->json('data.id');
+
+        $seenHere = collect(
+            $this->as()->withHeader('X-EzBizi-View', 'franchise:'.$mine->id)
+                ->getJson('/api/v1/automations')->assertOk()->json('data')
+        )->pluck('id');
+
+        // THE CONTROL: this person's own rule is still listed, so the filter is
+        // narrowing by PLACE and not just hiding things.
+        $this->assertContains($here, $seenHere);
+        $this->assertNotContains($elsewhere, $seenHere);
+
+        // And at the top, both — with the names that tell them apart.
+        $atTheTop = collect(
+            $this->as()->withHeader('X-EzBizi-View', 'organization')
+                ->getJson('/api/v1/automations')->assertOk()->json('data')
+        );
+
+        $this->assertContains($here, $atTheTop->pluck('id'));
+        $this->assertContains($elsewhere, $atTheTop->pluck('id'));
+        $this->assertSame('Second Franchise', $atTheTop->firstWhere('id', $elsewhere)['scope']['label']);
     }
 }

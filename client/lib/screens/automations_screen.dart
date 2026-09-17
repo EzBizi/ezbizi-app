@@ -244,6 +244,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     final runs = automation['runs_count'] as int? ?? 0;
     final trigger = automation['trigger_key'] as String? ?? '';
     final description = automation['description'] as String?;
+    final scope = (automation['scope'] as Map?)?['label'] as String?;
 
     return Card(
       child: Padding(
@@ -266,6 +267,12 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       Tag(live ? 'Live' : 'Off', warn: !live),
                       if (disabledReason != null)
                         const Tag('Auto-disabled', warn: true),
+                      // WHERE IT APPLIES. At the organization every rule in the
+                      // business is listed, so without this a rule for one
+                      // company is indistinguishable from one that runs
+                      // everywhere — which is exactly how Jose came to switch
+                      // his attention to a rule that was not his branch's.
+                      if (scope != null) Tag(scope),
                     ],
                   ),
                 ),

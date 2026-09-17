@@ -349,6 +349,7 @@ class AutomationCatalogue {
     this.roles = const [],
     this.people = const [],
     this.reports = const [],
+    this.places = const [],
     this.actionBudget,
   });
 
@@ -370,6 +371,7 @@ class AutomationCatalogue {
       // already carries the `user:` prefix the runner reads, so the client never
       // constructs it and cannot construct it wrongly.
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
+      places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       people: [
         for (final row in (json['people'] as List? ?? const []))
           if (row is Map<String, dynamic> && row['id'] is String)
@@ -401,6 +403,13 @@ class AutomationCatalogue {
   /// columns and filters a business uses, which is more than a permission about
   /// writing rules should carry.
   final List<CatalogueChoice> reports;
+
+  /// Where a rule can be pointed, in this person's own reach.
+  ///
+  /// The id is the STORED shape — `organization`, `company:<id>`,
+  /// `franchise:<id>` — so the builder hands back what it was given instead of
+  /// assembling a scope from two fields and mispairing them.
+  final List<CatalogueChoice> places;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

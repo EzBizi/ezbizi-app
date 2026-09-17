@@ -921,6 +921,86 @@ void main() {
     );
   });
 
+  /// AN UNTOUCHED PICKER SENDS NOTHING, and that is the whole fix.
+  ///
+  /// Jose, 2026-09-17: *"i made an automation for a-1chimney, but it's applying
+  /// for everything"*. Nothing ever set a scope, so every rule was stored
+  /// organization-wide. The server now scopes a new rule to the view it was
+  /// written in — which only works while the builder stays SILENT about scope
+  /// unless somebody chooses.
+  ///
+  /// So the assertion is an absence. Sending `organization` by default would
+  /// look identical on screen and would put every rule back to applying across
+  /// the whole business, this time explicitly and with a control agreeing.
+  testWidgets('a new rule says nothing about where it applies until asked', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithPlaces(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Only here');
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+    await _tap(tester, find.byType(SearchPickerField<String>));
+    await _tap(tester, find.text('Date and time').last);
+    await _type(tester, 'Set to', '2026-09-01');
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent, isNotNull);
+    expect(
+      sent!.containsKey('scope_type'),
+      isFalse,
+      reason: 'an untouched picker must leave the server free to use the view',
+    );
+
+  });
+
+  /// And choosing one sends the PAIR the server stores.
+  ///
+  /// The catalogue hands out `franchise:f-1` as one string precisely so the
+  /// builder cannot mispair a type with another place's id; this is the split
+  /// back into the two columns, which is the only place that can go wrong.
+  testWidgets('choosing where it applies sends the type and the id', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithPlaces(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Only here');
+    await _tap(tester, find.byType(DropdownButtonFormField<String>).first);
+    await _tap(tester, find.text('Connecticut').last);
+
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+    await _tap(tester, find.byType(SearchPickerField<String>));
+    await _tap(tester, find.text('Date and time').last);
+    await _type(tester, 'Set to', '2026-09-01');
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent!['scope_type'], 'franchise');
+    expect(sent!['scope_id'], 'f-1');
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -1150,6 +1230,13 @@ void main() {
     expect(sent, {
       'name': 'Chase completions',
       'description': 'Tell the office when a job finishes.',
+      // AN EDIT ALWAYS RESTATES WHERE IT APPLIES, including "everywhere". There
+      // is no view to fall back on when saving an existing rule, so silence
+      // would let a save re-scope a rule to wherever the person happened to be
+      // standing — which is the bug this whole change is about, arriving
+      // through the edit path instead of the create one.
+      'scope_type': null,
+      'scope_id': null,
       // Sent back as the list it was stored as, not as one comma-joined
       // string that would match nothing.
       'conditions': {
@@ -1198,6 +1285,8 @@ void main() {
     expect(sent, {
       'name': 'Chase completions, renamed',
       'description': 'Tell the office when a job finishes.',
+      'scope_type': null,
+      'scope_id': null,
     });
   });
 
@@ -2250,6 +2339,15 @@ const _catalogue = {
 /// written before schedules keeps the vocabulary it was written against — a
 /// trigger appearing in a picker it did not have changes what "the first row"
 /// means in half a dozen assertions.
+Map<String, dynamic> _catalogueWithPlaces() => {
+  ...Map<String, dynamic>.from(_catalogue),
+  'places': const [
+    {'id': 'organization', 'label': 'Everywhere in this business'},
+    {'id': 'company:c-1', 'label': 'A-1 Chimney and everything under it'},
+    {'id': 'franchise:f-1', 'label': 'Connecticut'},
+  ],
+};
+
 Map<String, dynamic> _catalogueWithTheClock() {
   final modules = [
     ...(_catalogue['modules'] as List),
