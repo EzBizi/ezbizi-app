@@ -638,4 +638,110 @@ void main() {
 
     expect(field.enabled, isFalse);
   });
+
+  /// NOT A GUARD, and saying so is the point of this comment.
+  ///
+  /// What Jose photographed: typing "First name" left "Fi" in the box and the
+  /// rest somewhere else. The row was a TextFormField whose KEY contained its
+  /// own text, so every keystroke wrote back, the parent rebuilt, the key was
+  /// now different, and Flutter threw the field away and built a new one —
+  /// losing focus once per character.
+  ///
+  /// I tried to reproduce that by typing character by character and it PASSED
+  /// against the broken shape: `enterText` writes to whichever editable the
+  /// harness finds, so it never experiences the focus loss a keyboard does.
+  /// Both behavioural tests below pass against the bug, which makes them
+  /// descriptions rather than guards, and they are kept only as coarse checks
+  /// that the box is wired up at all.
+  ///
+  /// I then tried four ways to pin it and none can fail against the broken
+  /// shape: a controller assertion passes because TextFormField builds a
+  /// controller-driven TextField underneath; a count passes for the same
+  /// reason; comparing the element before and after typing passes because the
+  /// harness does not drive focus the way a keyboard does.
+  ///
+  /// So what is below is a coarse check that the questions are wired up at
+  /// all, and the fix itself rests on the structure — rows that own their
+  /// controllers, the pattern `_ConditionRow` already proved in the automation
+  /// builder. Nobody should read these tests as evidence the bug cannot
+  /// return; the docblock on `_QuestionRow` is where that reasoning lives.
+  testWidgets('a question is driven by its own controller', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final questions = find.byWidgetPredicate(
+      (w) => w is TextField && w.decoration?.labelText == 'Question',
+    );
+
+    expect(questions, findsWidgets);
+
+    for (final element in questions.evaluate()) {
+      expect(
+        (element.widget as TextField).controller,
+        isNotNull,
+        reason: 'A question rebuilt from initialValue loses text on rebuild.',
+      );
+    }
+
+    // Both questions from the fixture are on screen and wired up. This is the
+    // whole claim — see the docblock for why it is not more.
+    expect(questions.evaluate().length, 2);
+
+    final box = find.widgetWithText(TextField, 'Question').first;
+
+    await tester.tap(box);
+    await tester.pumpAndSettle();
+
+    // Emptied first: the fixture's question already says something, and
+    // appending to it would have been a test of my own arithmetic.
+    await tester.enterText(box, '');
+    await tester.pumpAndSettle();
+
+    for (final letter in 'First name'.split('')) {
+      await tester.enterText(box, _typed(tester, box) + letter);
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      _typed(tester, box),
+      'First name',
+      reason: 'Characters went somewhere other than the box being typed into.',
+    );
+  });
+
+  /// The bug the old key was PUT there to fix, which the fix must not bring
+  /// back: remove the first question and the second must not inherit its text.
+  testWidgets('removing a question does not move its text into another', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    final before = find
+        .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
+        .evaluate()
+        .map((e) => (e.widget as TextField).controller?.text)
+        .toList();
+
+    expect(before.length, greaterThan(1), reason: 'The fixture needs two questions.');
+
+    await tester.tap(find.byTooltip('Remove').first);
+    await tester.pumpAndSettle();
+
+    final after = find
+        .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
+        .evaluate()
+        .map((e) => (e.widget as TextField).controller?.text)
+        .toList();
+
+    expect(after.length, before.length - 1);
+    expect(
+      after.first,
+      before[1],
+      reason: 'The surviving row wears the text of the row that was removed.',
+    );
+  });
 }
+
+/// What the box actually contains, read from its controller rather than from
+/// the widget tree's text — a stale render would otherwise pass.
+String _typed(WidgetTester tester, Finder box) =>
+    tester.widget<TextField>(box).controller?.text ?? '';
