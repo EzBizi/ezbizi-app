@@ -390,6 +390,11 @@ class HomeShell extends StatefulWidget {
 /// not a rail destination, but it is somewhere the shell can be pointed.
 enum _Rail { modules, pinned, staff, profile }
 
+/// The two traversal regions of the shell, named so a test can ask which one
+/// focus is in. See the note beside [shellSidebarGroup]'s use.
+const Key shellSidebarGroup = Key('shell-traversal-sidebar');
+const Key shellPageGroup = Key('shell-traversal-page');
+
 class _HomeShellState extends State<HomeShell> {
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
@@ -1675,6 +1680,14 @@ class _HomeShellState extends State<HomeShell> {
                     // It orders, it does not trap: Tab still reaches the
                     // sidebar, after the page rather than through it.
                     FocusTraversalGroup(
+                      // Keyed so a test can say which region a stop is IN,
+                      // rather than which one it is not. A type finder does
+                      // not fail when its subject is replaced -- it silently
+                      // re-aims at whatever now answers to that type -- and
+                      // "not the sidebar" quietly counts a top-bar stop as a
+                      // page stop, which is the measurement changing shape
+                      // under an assertion that still reads as true.
+                      key: shellSidebarGroup,
                       child: _maybeThemed(
                         // In a mixed mode the sidebar runs on the opposite theme to the
                         // page. Wrapping only the sidebar — rather than building two
@@ -1729,6 +1742,7 @@ class _HomeShellState extends State<HomeShell> {
                     // is traversed together before Tab leaves for the
                     // chrome around it.
                     child: FocusTraversalGroup(
+                      key: shellPageGroup,
                       child: KeyedSubtree(
                         key: ValueKey('${me.scope.type}:${me.scope.id}'),
                         // Their own account is the last fallback, and the only honest
