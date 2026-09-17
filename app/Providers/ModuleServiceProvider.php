@@ -1810,6 +1810,23 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
+                /*
+                 * Labels copied from the chip bar in
+                 * client/lib/screens/services_screen.dart, not written fresh — an
+                 * administrator who ticks a name and then cannot find a chip called
+                 * that has been handed a checkbox for the wrong thing, and nothing
+                 * errors.
+                 *
+                 * What these two gate is deliberately NOT everything behind them.
+                 * See the services block in routes/api.php: the catalogue list and
+                 * the group and label lists stay on plain `services.view`, because
+                 * Jobs prices a line out of the catalogue and the Catalogue chip's
+                 * own pickers read the taxonomy. Only WRITES sit behind a chip.
+                 */
+                tabs: [
+                    new TabDefinition('catalogue', 'Catalogue'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 subject: new AutomationSubject(Service::class, 'Service'),
                 /*
                  * No `automationActions`, and that is a ruling rather than an
