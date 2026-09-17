@@ -152,7 +152,9 @@ class PhoneAutomationsTest extends TestCase
     {
         $t = $this->provisionTenant();
         $user = $this->userWithRole($t, 'Phone rules', [
-            'automations.view', 'phone.view',
+            // `automations.build.view` since 2026-09-17: the catalogue is the
+            // build tab's own endpoint and now answers to that tab's grant.
+            'automations.view', 'automations.build.view', 'phone.view',
         ]);
 
         $catalogue = $this->signedInAs($user)
@@ -266,7 +268,9 @@ class PhoneAutomationsTest extends TestCase
     {
         $t = $this->provisionTenant();
         $user = $this->userWithRole($t, 'Phone catalogue', [
-            'automations.view', 'phone.view',
+            // `automations.build.view` since 2026-09-17: the catalogue is the
+            // build tab's own endpoint and now answers to that tab's grant.
+            'automations.view', 'automations.build.view', 'phone.view',
         ]);
 
         $module = collect(

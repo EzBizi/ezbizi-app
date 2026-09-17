@@ -236,6 +236,9 @@ class MobileVoiceDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// CallKit or the ConnectionService took the call. See [VoiceDevice].

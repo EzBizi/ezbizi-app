@@ -25,6 +25,91 @@ import 'package:http/testing.dart';
 void main() {
   // start() awaits a frame before it registers — see the ordering test — so
   // these need a binding even though none of them build a widget.
+  /// A desk that has been running for an hour must not go quiet.
+  ///
+  /// A Twilio access token lasts 3600 seconds. The app asked for one, at
+  /// launch, and nothing ever asked again — so an hour in, the registration
+  /// lapsed and the desk stopped receiving calls. Nothing said so: no error,
+  /// no banner, and outbound calls kept working, which is what hid it.
+  ///
+  /// Measured on production 2026-09-17: three of the seven `<Client>` legs on
+  /// the busiest line went to identities nothing was registered as, and 27 of
+  /// 29 inbound calls over two days rang the full sixty seconds into
+  /// voicemail.
+  ///
+  /// The browser had been announcing the expiry all along — the bridge raises
+  /// `tokenExpiring` with a comment saying Dart refetches and calls setup
+  /// again. Dart did not. This is the half that was missing.
+  testWidgets('an expiring token is replaced, and the device re-registers', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final bodies = <String>[];
+    final service = await _started(
+      tester,
+      device: device,
+      onToken: bodies.add,
+    );
+    addTearDown(service.stop);
+
+    expect(device.setups, 1, reason: 'the initial registration');
+    expect(bodies, hasLength(1));
+
+    device.onTokenExpiring!();
+    await tester.pumpAndSettle();
+
+    expect(device.setups, 2, reason: 'the desk did not re-register');
+    expect(bodies, hasLength(2), reason: 'no second token was asked for');
+
+    // The renewal must carry the device id, or the new identity names only the
+    // person and rings whichever device Twilio picks — the bug that left a PC
+    // silent while a phone in a pocket rang. Asserted because a second copy of
+    // this request is exactly where that gets forgotten.
+    expect(bodies.last, contains('device_id'));
+  });
+
+  /// THE CASE THAT MUST NOT WORK.
+  ///
+  /// `setup()` rebuilds the device, and on the web that calls
+  /// `Device.destroy()`, which REJECTS the call in progress — Twilio then
+  /// reports the leg busy. Renewing during a conversation would end it in the
+  /// worst possible way, which is the same failure that cost Jose a customer
+  /// call on 2026-09-15.
+  ///
+  /// And the debt must not be dropped either: a desk that skipped its renewal
+  /// is holding a token it already knows is dead. So the second half asserts
+  /// it is paid when the call ends — for a call that only RANG, because that
+  /// is the common case and the one the first version of this missed by paying
+  /// the debt somewhere only connected calls reach.
+  testWidgets('a renewal waits for the call to end, and then happens', (
+    tester,
+  ) async {
+    final device = _FakeDevice();
+    final bodies = <String>[];
+    final service = await _started(
+      tester,
+      device: device,
+      onToken: bodies.add,
+    );
+    addTearDown(service.stop);
+
+    device.onIncoming!(const VoiceIncoming(from: '+13055550100'));
+    await tester.pumpAndSettle();
+    expect(service.busy, isTrue, reason: 'the fixture is not actually busy');
+
+    device.onTokenExpiring!();
+    await tester.pumpAndSettle();
+
+    expect(device.setups, 1, reason: 'a live call was torn down to renew');
+    expect(bodies, hasLength(1));
+
+    device.onEnded!();
+    await tester.pumpAndSettle();
+
+    expect(device.setups, 2, reason: 'the deferred renewal was dropped');
+    expect(bodies, hasLength(2));
+  });
+
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('the desk registers without any screen asking it to', (
@@ -573,6 +658,9 @@ class _FakeDevice implements VoiceDevice {
   String? pushPlatform;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   String? callerId;
@@ -588,9 +676,14 @@ class _FakeDevice implements VoiceDevice {
   @override
   Future<void> prepare() async => _prepared = true;
 
+  var setups = 0;
+  String? lastToken;
+
   @override
   Future<void> setup(String token) async {
     prepareCalledBeforeSetup = _prepared;
+    setups++;
+    lastToken = token;
     registered = true;
     onRegistrationChanged?.call();
   }

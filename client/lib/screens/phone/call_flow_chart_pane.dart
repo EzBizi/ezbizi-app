@@ -70,6 +70,16 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   /// The box whose settings are open, or null.
   FlowNode? _editing;
 
+  /// True when the last attempt to re-read the graph failed.
+  ///
+  /// Phone's warning, and it is the same rule as `queues_known` one level up:
+  /// **a refetch that fails silently leaves a shape on screen that looks
+  /// current and is not.** Somebody who has just changed a menu and sees the
+  /// old menu drawn confidently will conclude the change did not save. So a
+  /// failed refresh says so and leaves the chart alone, rather than either
+  /// hiding the chart or pretending.
+  bool _stale = false;
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +100,13 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
   /// at.
   void _startPolling() {
     _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 10), (_) => _loadLive());
+    _poll = Timer.periodic(const Duration(seconds: 10), (_) async {
+      await _loadLive();
+      // Only while somebody has a pane open. With no drawer there is nothing
+      // changing the flow from this screen, and the counts are the only thing
+      // that moves on their own.
+      if (mounted && _editing != null) await _refreshGraph();
+    });
   }
 
   Future<void> _loadLive() async {
@@ -110,6 +126,43 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
       _live = response.ok
           ? CallFlowLive.fromJson(response.body['data'] as Map<String, dynamic>?)
           : null;
+    });
+  }
+
+  /// Re-read the graph, keeping the line and the chart that is on screen.
+  ///
+  /// Jose, 2026-09-17: *"i click one of the nodes and change something, the
+  /// chart does not update automatically, it should be live, so whatever
+  /// change is made the chart updates."*
+  ///
+  /// Not `_load()`: that one owns the first paint and the error state, and a
+  /// refresh that failed must not blank a chart somebody is reading. This only
+  /// ever REPLACES a good graph with a newer good graph.
+  ///
+  /// On the poll tick rather than only on close, because the hosted panes save
+  /// with their own buttons and somebody may save three times without closing
+  /// the drawer. The endpoint answers for every line at once and has no cache
+  /// behind it, so this is one extra request every ten seconds, and only while
+  /// a drawer is actually open.
+  Future<void> _refreshGraph() async {
+    final response = await widget.api.get('/phone/call-flow');
+    if (!mounted) return;
+
+    setState(() {
+      if (!response.ok) {
+        _stale = true;
+
+        return;
+      }
+
+      _stale = false;
+      _lines = _Line.listFrom(response.body);
+      if (_lineId != null && !_lines.any((l) => l.id == _lineId)) {
+        // The line itself is gone -- deleted from Settings while this was
+        // open. Falling back to the first one is better than drawing a chart
+        // for something that no longer exists.
+        _lineId = _lines.isEmpty ? null : _lines.first.id;
+      }
     });
   }
 
@@ -212,7 +265,7 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
         else ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
-            child: _Counts(graph: graph, live: _live),
+            child: _Counts(graph: graph, live: _live, stale: _stale),
           ),
           Expanded(
             child: LayoutBuilder(
@@ -241,7 +294,10 @@ class _CallFlowChartPaneState extends State<CallFlowChartPane> {
                         node: _editing!,
                         api: widget.api,
                         session: widget.session,
-                        onClose: () => setState(() => _editing = null),
+                        onClose: () {
+                          setState(() => _editing = null);
+                          _refreshGraph();
+                        },
                       ),
                   ],
                 );
@@ -470,9 +526,13 @@ class _LinePickerState extends State<_LinePicker> {
 /// outline colour and a dashed swatch, which is the same distinction the rest
 /// of the app draws between a fault and an advisory.
 class _Counts extends StatelessWidget {
-  const _Counts({required this.graph, this.live});
+  const _Counts({required this.graph, this.live, this.stale = false});
 
   final CallFlowGraph graph;
+
+  /// The last re-read of the graph failed, so this drawing may be older than
+  /// the settings behind it.
+  final bool stale;
 
   /// Null until the first live answer, and null again when it fails.
   final CallFlowLive? live;
@@ -529,6 +589,28 @@ class _Counts extends StatelessWidget {
                 ? '1 step does nothing'
                 : '$skipped steps do nothing',
             detail: 'a caller passes through and hears nothing',
+          ),
+        // ABOVE the healthy sentence, because it is a claim ABOUT that
+        // sentence: "every branch leads somewhere" is a statement about a
+        // shape that may no longer be the shape.
+        if (stale)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Icon(Icons.sync_problem, size: 14, color: scheme.error),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'This chart could not be re-read after your change, so it '
+                    'may be out of date. Reopen the tab to see it as it is.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.error,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         if (healthy)
           Padding(

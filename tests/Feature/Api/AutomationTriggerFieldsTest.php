@@ -75,7 +75,7 @@ class AutomationTriggerFieldsTest extends TestCase
         $this->recordEmailEvent($t);
 
         $atOneBranch = $this->userWithRole(
-            $t, 'Branch', ['automations.view', 'email.view'],
+            $t, 'Branch', ['automations.view', 'automations.build.view', 'email.view'],
             email: 'branch@example.test', onlyAt: $t['franchise'],
         );
 
@@ -101,7 +101,7 @@ class AutomationTriggerFieldsTest extends TestCase
 
         // Can build rules, cannot open Email. Asking by name must not report
         // what an inbox event carries.
-        $outsider = $this->userWithRole($t, 'Rules only', ['automations.view']);
+        $outsider = $this->userWithRole($t, 'Rules only', ['automations.view', 'automations.build.view']);
 
         $this->signedInAs($outsider)
             ->getJson('/api/v1/automations/trigger-fields?trigger=email.received')
@@ -260,10 +260,10 @@ class AutomationTriggerFieldsTest extends TestCase
             'available_at'    => now(),
         ]));
 
-        $atTheTop = $this->userWithRole($t, 'Owner', ['automations.view', 'jobs.view']);
+        $atTheTop = $this->userWithRole($t, 'Owner', ['automations.view', 'automations.build.view', 'jobs.view']);
 
         $atOneBranch = $this->userWithRole(
-            $t, 'Branch', ['automations.view', 'jobs.view'],
+            $t, 'Branch', ['automations.view', 'automations.build.view', 'jobs.view'],
             email: 'branch@example.test', onlyAt: $t['franchise'],
         );
 
