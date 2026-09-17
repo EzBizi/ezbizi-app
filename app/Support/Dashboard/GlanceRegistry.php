@@ -44,10 +44,11 @@ class GlanceRegistry
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
 
-        // After ads_performance, matching the order of the chips inside
-        // Reports. A glance the COMING_SOON list carries but ORDER does not is
-        // silently dropped by all() - which is how this arrived first as a
-        // missing glance rather than a misplaced one.
+        // Profit & Loss AFTER Google Ads, matching the order of the chips
+        // inside Reports — the module registry was changed to that order
+        // deliberately (a new tab goes on the end rather than moving one people
+        // already click). Dashboard's copy of this line arrived from main with
+        // the old order, which was mine before the decision, not theirs.
         'profit_loss',
     ];
 
@@ -96,37 +97,58 @@ class GlanceRegistry
          * wins on this key without this entry being removed first - and if it
          * ever is, it needs a quota story, not just a query.
          */
-        'ads_performance' => [
-            'label' => 'Google Ads',
-            'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
-        ],
         /*
-         * Profit & Loss, and this is Google Ads' reason rather than a
-         * placeholder borrowed from it.
+         * Reports' other child, and the same answer as Google Ads above for
+         * the same reason rather than by copying it.
          *
-         * Every figure in that tab is read from a business's own Airtable base
-         * when somebody opens the screen. EzBizi stores none of them, so a
-         * glance here would not be a query against our database — it would be
-         * a third party's API called once per dashboard load per person, for a
-         * number nobody asked to see yet.
+         * The figures are read from the Airtable base a business connected,
+         * when somebody opens the screen, and are never stored — the module's
+         * own `automationExemptBecause` says so in as many words. A dashboard
+         * box would therefore have to make that call on every home-screen
+         * load, for every viewer, to summarise numbers nobody asked for yet.
          *
-         * And the tab's whole point does not summarise. It reports the weeks
-         * where a sheet disagrees with ITSELF and resolves nothing; a single
-         * profit figure on a dashboard is exactly the silent resolution the
-         * reader refuses to make. Measured on A-1's own base: one week in
-         * thirty is internally inconsistent by $1,613.
+         * I wrote that as "the permanent answer and not a queue entry", and
+         * that part was not mine to decide. Whether a business owner wants a
+         * profit figure on the home screen is REPORTS' call and Jose's, not
+         * the dashboard's — I own the surface, not what a module puts on it.
+         * The reasoning above is offered, not imposed.
          *
-         * A live glance can win on this key later without this entry being
-         * removed first. If one is ever written it needs an answer for what it
-         * costs to fetch and what it shows for a week that does not add up —
-         * not just a query.
+         * THIS ENTRY DOES NOT BLOCK A REAL GLANCE. A live class registered on
+         * this key wins over the placeholder without anybody removing it —
+         * `test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key`
+         * pins that. It exists so a module can reach the sidebar without the
+         * completeness test holding a release.
+         *
+         * The one case where it must come out: if Reports decides Profit &
+         * Loss should NOT be its own sidebar module, this entry and its ORDER
+         * line go in the SAME commit, or the completeness test fails the
+         * other way round — a glance for a tab that no longer exists.
          */
         'profit_loss' => [
             'label' => 'Profit & Loss',
+
+            /*
+             * REPORTS' OWN SENTENCE, taking Dashboard up on the offer above.
+             *
+             * Their reading is right and the second half is the module's half:
+             * this tab does not summarise BY DESIGN. It reports the weeks where
+             * a sheet disagrees with itself and resolves nothing, so a single
+             * profit figure on a home screen is exactly the silent resolution
+             * the reader refuses to make. Measured on A-1's own base, one week
+             * in thirty is internally inconsistent by $1,613.
+             *
+             * So if a live glance is ever written it owes two answers, not one:
+             * what the fetch costs, and what it shows for a week that does not
+             * add up.
+             */
             'sentence' => 'Profit and loss is read from the Airtable base a business has connected, '
                 .'week by week, when you open the Profit & Loss tab under Reports. It is not '
                 .'summarised here: the figures are not stored, and a week where the sheet does '
                 .'not add up is worth seeing beside the categories rather than behind a total.',
+        ],
+        'ads_performance' => [
+            'label' => 'Google Ads',
+            'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
         ],
         'newsletter' => [
             'label' => 'Newsletter',

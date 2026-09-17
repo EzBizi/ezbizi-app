@@ -171,6 +171,73 @@ class EmailTabPermissionsTest extends TestCase
     }
 
     /**
+     * An administrator's `/me` carries both tab keys.
+     *
+     * ── WHY THIS CANNOT BE A CLIENT TEST ─────────────────────────────
+     *
+     * `email_screen.dart` decides which tabs to draw from
+     * `session.me.permissions`. Every client test STATES that list in a
+     * fixture, so no client test can discover what the server actually puts in
+     * it — and if the answer were "not the tab keys", every administrator would
+     * open Email and find a screen with no tabs at all, which is the one
+     * audience nobody would suspect of a permissions fault.
+     *
+     * Two places could drop them, and they fail for different reasons.
+     * `heldBy()` gives an administrator `$this->keys()` whole, so the keys have
+     * to be IN the registry — that is the declaration in ModuleServiceProvider.
+     * Then every key is filtered through
+     * `ModuleAvailability::isPermissionAvailable()`, which runs BEFORE any role
+     * is consulted and answers about the ORGANIZATION. A tab key it does not
+     * recognise is dropped there, for administrators and everybody else alike.
+     *
+     * Raised by the Human Resources session on 2026-09-17, who measured 121
+     * keys for an HR administrator and pointed out that a fixture states its
+     * permissions and therefore cannot find this out.
+     */
+    public function test_an_administrator_is_given_both_email_tabs(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        // Through the ROUTE, not through PermissionCatalogue directly: the
+        // client is handed whatever `GET /me` answers, and the catalogue is
+        // only one of the things between here and there.
+        $held = $this->signedInAs($t['admin'])
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->json('data.permissions');
+
+        $this->assertContains('email.inbox.view', $held);
+        $this->assertContains('email.settings.view', $held);
+
+        // THE CONTROL. `heldBy` returning the world would satisfy the two
+        // assertions above while telling us nothing, so pin something it must
+        // NOT contain — a key no module declares.
+        $this->assertNotContains('email.nonexistent.view', $held);
+    }
+
+    /**
+     * And an ordinary role that holds one tab is given exactly that one.
+     *
+     * The mirror of the test above, through the same call the `/me` route
+     * makes. Without it, an availability layer that let every declared key
+     * through for everybody would pass the administrator test and hand the
+     * Inbox to a role that was never granted it.
+     */
+    public function test_a_role_is_given_only_the_tab_it_was_granted(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view', 'email.inbox.view']);
+
+        $held = $this->signedInAs($reader)
+            ->getJson('/api/v1/me')
+            ->assertOk()
+            ->json('data.permissions');
+
+        $this->assertContains('email.inbox.view', $held);
+        $this->assertNotContains('email.settings.view', $held);
+    }
+
+    /**
      * Holding the module and neither tab reaches nothing behind either.
      *
      * `email.view` alone used to open the whole module. It now opens the door
