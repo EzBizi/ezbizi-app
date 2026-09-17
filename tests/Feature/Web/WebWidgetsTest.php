@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Web\WidgetDefaults;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -20,6 +21,183 @@ class WebWidgetsTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
+
+    /**
+     * A week, Monday first, the way the screen sends it.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function week(string $open = '08:00', string $close = '17:00'): array
+    {
+        return [
+            ...array_fill(0, 5, ['closed' => false, 'open' => $open, 'close' => $close]),
+            ['closed' => true],
+            ['closed' => true],
+        ];
+    }
+
+    /**
+     * ── When the chat bubble is on the page at all ──
+     *
+     * Jose, 2026-09-17: "it needs to be able to be set so it works only on
+     * certain work hours, cause if no one is there to answer it's bad".
+     *
+     * The schedule is read in the BROWSER, because these sites serve from an
+     * nginx page cache and a PHP decision bakes into the cached HTML. So what
+     * this side has to get right is the shape that reaches the browser: seven
+     * entries and a zone `Intl.DateTimeFormat` will accept, or nothing at all.
+     */
+    public function test_a_schedule_and_its_zone_reach_the_site(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => [
+                    'hours' => $this->week(),
+                    'timezone' => 'America/New_York',
+                ]],
+            ])->assertOk()->json();
+
+        $hours = $body['config']['chat']['hours'];
+
+        $this->assertCount(7, $hours);
+        $this->assertSame('America/New_York', $body['config']['chat']['timezone']);
+        $this->assertSame(['closed' => false, 'open' => '08:00', 'close' => '17:00'], $hours[0]);
+
+        // A closed day carries times anyway, so the browser never reads a key
+        // that is not there — it checks `closed` first and stops.
+        $this->assertTrue($hours[5]['closed']);
+    }
+
+    /**
+     * THE DEFAULT IS ALWAYS ON, and this is the assertion that keeps it.
+     *
+     * Every site on the estate has a chat today. A schedule defaulting to
+     * office hours would take the bubble off a hundred websites at the next
+     * plugin update, at whatever hour it landed, with nothing logged anywhere.
+     * Narrowing is the direction nobody notices.
+     */
+    public function test_a_site_that_has_said_nothing_is_open_always(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $chat = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+            ->assertOk()
+            ->json('config.chat');
+
+        $this->assertSame([], $chat['hours']);
+        $this->assertSame('', $chat['timezone']);
+    }
+
+    /**
+     * Half a gate is no gate, and the half must not travel.
+     *
+     * "Is it 08:00?" has no answer without saying where, so a schedule with no
+     * zone cannot be read at all — and a zone with no schedule gates nothing.
+     * Sending either half would leave the plugin deciding what to do with it,
+     * which is a decision that belongs on this side, once.
+     *
+     */
+    #[DataProvider('halfGates')]
+    public function test_half_a_gate_is_sent_as_no_gate(array $chat): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $got = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", ['config' => ['chat' => $chat]])
+            ->assertOk()
+            ->json('config.chat');
+
+        $this->assertSame([], $got['hours'], 'A schedule travelled without a usable zone.');
+        $this->assertSame('', $got['timezone']);
+    }
+
+    /** @return array<string, array{array<string, mixed>}> */
+    public static function halfGates(): array
+    {
+        $week = [
+            ...array_fill(0, 5, ['closed' => false, 'open' => '08:00', 'close' => '17:00']),
+            ['closed' => true],
+            ['closed' => true],
+        ];
+
+        return [
+            'no zone at all' => [['hours' => $week]],
+            // Both look like a timezone to a person and neither is a name
+            // Intl knows; an unknown one throws a RangeError on somebody's
+            // website, which is why this is checked against PHP's own list
+            // rather than against a pattern.
+            'an abbreviation' => [['hours' => $week, 'timezone' => 'EST']],
+            'a place' => [['hours' => $week, 'timezone' => 'Florida']],
+            'a zone with no schedule' => [['timezone' => 'America/New_York']],
+        ];
+    }
+
+    /**
+     * A malformed schedule shows the bubble rather than hiding it.
+     *
+     * FAIL OPEN is the whole design, and the asymmetry is the argument: a
+     * wrongly-shown chat is somebody replying late, and a wrongly-hidden one
+     * is every enquiry that day going nowhere with nothing on any screen to
+     * say so. So one bad day discards the week rather than being guessed at.
+     *
+     */
+    #[DataProvider('malformedWeeks')]
+    public function test_a_schedule_that_cannot_be_read_is_not_sent(mixed $hours): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $got = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => ['hours' => $hours, 'timezone' => 'America/New_York']],
+            ])->assertOk()->json('config.chat');
+
+        $this->assertSame([], $got['hours']);
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function malformedWeeks(): array
+    {
+        $ok = ['closed' => false, 'open' => '08:00', 'close' => '17:00'];
+
+        return [
+            'six days' => [array_fill(0, 6, $ok)],
+            'eight days' => [array_fill(0, 8, $ok)],
+            // `8:00` rather than `08:00`. The regex in the browser wants two
+            // digits and would read null, so it must never arrive.
+            'an unpadded hour' => [[...array_fill(0, 6, $ok), ['closed' => false, 'open' => '8:00', 'close' => '17:00']]],
+            'an hour past the clock' => [[...array_fill(0, 6, $ok), ['closed' => false, 'open' => '24:00', 'close' => '25:00']]],
+            'a missing close' => [[...array_fill(0, 6, $ok), ['closed' => false, 'open' => '08:00']]],
+            'not a list' => ['every day'],
+        ];
+    }
+
+    /**
+     * An overnight shift is a real shape, not a mistake to be corrected.
+     *
+     * 22:00–06:00 is two ranges around midnight, and the browser reads it as
+     * such. Asserted here because the temptation on this side is to "fix" a
+     * close time earlier than its open time, which would silently turn a
+     * night-shift business's chat off for the eight hours it is actually
+     * staffed.
+     */
+    public function test_a_shift_that_ends_after_midnight_survives(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $got = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => [
+                    'hours' => array_fill(0, 7, ['closed' => false, 'open' => '22:00', 'close' => '06:00']),
+                    'timezone' => 'America/New_York',
+                ]],
+            ])->assertOk()->json('config.chat');
+
+        $this->assertSame('22:00', $got['hours'][0]['open']);
+        $this->assertSame('06:00', $got['hours'][0]['close']);
+    }
 
     public function test_a_site_with_no_config_of_its_own_gets_the_defaults(): void
     {

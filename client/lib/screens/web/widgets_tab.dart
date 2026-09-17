@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import 'chat_hours.dart';
 
 /// Web Management → Widgets: how a site's chat bubble and contact form look,
 /// and what the form asks.
@@ -498,6 +499,28 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           '${chat['position'] ?? 'bottom-right'}',
           const ['bottom-right', 'bottom-left', 'inline'],
           (v) => _set('chat', 'position', v),
+        ),
+
+        const SizedBox(height: 16),
+        /*
+         * Both keys in one call, because the server drops a schedule with no
+         * zone and a zone with no schedule. Setting them one at a time would
+         * mean a save that silently discards the half that arrived first.
+         */
+        ChatHoursField(
+          hours: (chat['hours'] as List? ?? const [])
+              .whereType<Map>()
+              .map((day) => Map<String, dynamic>.from(day))
+              .toList(),
+          timezone: '${chat['timezone'] ?? ''}',
+          enabled: widget.canEdit,
+          onChanged: (hours, timezone) => setState(() {
+            final part = _section('chat');
+            part['hours'] = hours;
+            part['timezone'] = timezone;
+            _config['chat'] = part;
+            _saved = null;
+          }),
         ),
 
         const Divider(height: 32),

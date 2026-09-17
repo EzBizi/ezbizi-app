@@ -25,6 +25,8 @@ void main() {
     bool twoSites = false,
     Map<String, Object?> preferences = const {},
     Map<String, Object?>? saved,
+    Map<String, Object?> chat = const {},
+    List<Map<String, dynamic>>? sent,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -88,6 +90,9 @@ void main() {
         };
       } else if (path == '/api/v1/web/sites/site-1/widgets' ||
           path == '/api/v1/web/sites/site-2/widgets') {
+        if (request.method == 'PUT') {
+          sent?.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
         body = {
           'own': own,
           'config': {
@@ -105,6 +110,10 @@ void main() {
               'contact_label': 'Phone or email',
               'message_label': 'How can we help?',
               'start': 'Start chat',
+              // The server always sends both, empty meaning always on.
+              'hours': const <Object?>[],
+              'timezone': '',
+              ...chat,
             },
             'form': {
               'enabled': true,
@@ -432,6 +441,171 @@ void main() {
   /// it used to tap the switch and assert the preview said "off on your site".
   /// Every site had both switched off, so every site showed nothing, and the
   /// only notice of that was a grey phrase in a preview that reads as styling.
+  /// ── Chat hours ───────────────────────────────────────────────────
+  ///
+  /// Jose, 2026-09-17: the bubble should be on the website during working
+  /// hours and gone outside them, "cause if no one is there to answer it's
+  /// bad". What this side has to get right is the SHAPE that reaches the
+  /// server — the browser on the customer's site reads it and hides the bubble,
+  /// and it fails open on anything it cannot read.
+  testWidgets('a site with no chat hours says the chat is always on', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    expect(find.textContaining('on every page, at every hour'), findsOneWidget);
+    expect(find.text('Set chat hours'), findsOneWidget);
+
+    // No grid until somebody asks for one: seven rows of times nobody has
+    // chosen would read as a schedule that is already in force.
+    expect(find.text('Mon'), findsNothing);
+  });
+
+  /// Both keys or neither, and this is the assertion that catches the half.
+  ///
+  /// The server drops a schedule with no zone and a zone with no schedule, so a
+  /// screen that set them one at a time would produce a save that silently
+  /// discarded what was just typed — green everywhere, nothing gated.
+  testWidgets('setting hours sends a week AND a zone', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+    );
+
+    await tester.tap(find.text('Set chat hours'));
+    await tester.pumpAndSettle();
+
+    // Named by its ancestor rather than by `.last`: this screen has a site
+    // list, the editor and the preview, and which Scrollable is 'last'
+    // is paint order rather than anything this test knows. The editor is
+    // the one containing the Live chat heading. Save is lazily built at
+    // the bottom of it, so an unscrolled tap finds no element at all.
+    await tester.scrollUntilVisible(
+      find.text('Save'),
+      300,
+      scrollable: find
+          .ancestor(of: find.text('Live chat'), matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+    final hours = chat['hours'] as List;
+
+    expect(hours, hasLength(7));
+    expect(chat['timezone'], isNotEmpty);
+
+    // Padded to two digits. The browser's own check wants `08:00` and reads
+    // `8:00` as unparseable — which fails open and leaves the bubble up all
+    // night, the exact thing this feature exists to stop.
+    expect((hours.first as Map)['open'], '08:00');
+    expect((hours.first as Map)['close'], '17:00');
+    expect((hours.first as Map)['closed'], isFalse);
+
+    // A guess somebody can correct in two clicks: weekdays on, weekend off.
+    expect((hours.last as Map)['closed'], isTrue);
+  });
+
+  testWidgets('an existing schedule is drawn as a week with its zone', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 5; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+          {'closed': true, 'open': '00:00', 'close': '00:00'},
+          {'closed': true, 'open': '00:00', 'close': '00:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('Mon'), findsOneWidget);
+    expect(find.text('Sun'), findsOneWidget);
+    expect(find.text('8:00 AM'), findsWidgets);
+    expect(find.text('5:00 PM'), findsWidgets);
+    expect(find.text('No chat this day'), findsNWidgets(2));
+
+    // The zone is shown as a place rather than as an identifier, because
+    // "America/New_York" is not how anybody describes where their office is.
+    expect(find.textContaining('Eastern'), findsOneWidget);
+  });
+
+  /// Clearing IS the always-on setting, and it must clear BOTH.
+  ///
+  /// A zone left behind with no schedule gates nothing and would sit in the
+  /// config looking like a setting that had stopped working.
+  testWidgets('showing at all hours clears the week and the zone', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    await tester.tap(find.text('Show at all hours'));
+    await tester.pumpAndSettle();
+
+    // Named by its ancestor rather than by `.last`: this screen has a site
+    // list, the editor and the preview, and which Scrollable is 'last'
+    // is paint order rather than anything this test knows. The editor is
+    // the one containing the Live chat heading. Save is lazily built at
+    // the bottom of it, so an unscrolled tap finds no element at all.
+    await tester.scrollUntilVisible(
+      find.text('Save'),
+      300,
+      scrollable: find
+          .ancestor(of: find.text('Live chat'), matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+
+    expect(chat['hours'], isEmpty);
+    expect(chat['timezone'], '');
+  });
+
+  testWidgets('a viewer is shown the hours and cannot change them', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('Mon'), findsOneWidget);
+    expect(find.text('Show at all hours'), findsNothing);
+
+    final box = tester.widget<Checkbox>(find.byType(Checkbox).first);
+    expect(box.onChanged, isNull);
+  });
+
   testWidgets('nothing offers to switch a widget off', (tester) async {
     await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 

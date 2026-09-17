@@ -96,7 +96,121 @@ final class WidgetDefaults
             'error' => 'Sorry — that did not send. Please try again.',
             'away' => 'We are not at the desk right now, but leave a message and we will come back to you.',
             'position' => 'bottom-right',
+            /*
+             * ── When the bubble is on the page at all ──
+             *
+             * Jose, 2026-09-17: "it needs to be able to be set so it works only
+             * on certain work hours, cause if no one is there to answer it's
+             * bad ... on work hours livechat should appear on the websites and
+             * outside, it should disappear."
+             *
+             * EMPTY MEANS ALWAYS ON, and that is the whole default. Every site
+             * on the estate has a chat today; shipping a schedule that defaults
+             * to office hours would take the bubble off a hundred websites at
+             * the next plugin update, at whatever hour the update landed, with
+             * nothing logged. Narrowing is the direction nobody notices.
+             *
+             * SEVEN ENTRIES OR NONE. A partial week would need a rule for the
+             * days it does not mention, and either answer is a guess about
+             * somebody's business.
+             *
+             * NOT the `hours` SEO field, though that is the obvious reuse and I
+             * looked at it first. That field is a STRING — `parseWeek` reads
+             * back what the grid wrote and returns null for anything else — so
+             * a customer who types "By appointment only" into their published
+             * hours would silently lose their chat. A gate that fails on free
+             * text is a gate that fails on the businesses least like a shop.
+             */
+            'hours' => [],
+            /*
+             * The zone the schedule is read in, and it must be the BUSINESS's.
+             *
+             * A visitor in Berlin looking at a Florida chimney sweep is not who
+             * decides whether somebody is at the desk in Orlando. The browser's
+             * own zone is the one thing that must never be used here.
+             *
+             * An IANA name rather than an offset, because an offset is wrong
+             * for half the year: America/New_York is -5 in January and -4 in
+             * July, and a business that set 8–5 in winter would answer 9–6 all
+             * summer. `Intl.DateTimeFormat` takes this name directly in the
+             * browser, so the plugin needs no library and no table.
+             */
+            'timezone' => '',
         ];
+    }
+
+    /**
+     * A chat schedule, or `[]` meaning always on.
+     *
+     * Seven entries, Monday first, each `closed` or an `open`/`close` pair of
+     * `HH:MM` strings. Anything that is not exactly that shape becomes `[]` —
+     * FAIL OPEN, deliberately. A malformed schedule showing the bubble is a
+     * business answering chats outside its hours; a malformed schedule hiding
+     * it is a business losing every enquiry and finding out from nobody.
+     *
+     * @param  mixed  $raw
+     * @return array<int, array<string, mixed>>
+     */
+    private static function hours($raw): array
+    {
+        if (! is_array($raw) || count($raw) !== 7) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach (array_values($raw) as $day) {
+            if (! is_array($day)) {
+                return [];
+            }
+
+            if (! empty($day['closed'])) {
+                $out[] = ['closed' => true, 'open' => '00:00', 'close' => '00:00'];
+
+                continue;
+            }
+
+            $open = self::clock($day['open'] ?? '');
+            $close = self::clock($day['close'] ?? '');
+
+            if ($open === null || $close === null) {
+                return [];
+            }
+
+            $out[] = ['closed' => false, 'open' => $open, 'close' => $close];
+        }
+
+        return $out;
+    }
+
+    /** `HH:MM` on a 24-hour clock, or null. `8:5` and `24:00` are both null. */
+    private static function clock($raw): ?string
+    {
+        if (! is_string($raw) || preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/', $raw) !== 1) {
+            return null;
+        }
+
+        return $raw;
+    }
+
+    /**
+     * An IANA zone name PHP itself knows, or ''.
+     *
+     * Checked against `DateTimeZone::listIdentifiers()` rather than by pattern,
+     * because the consumer is `Intl.DateTimeFormat` in a browser and a name it
+     * does not know throws a RangeError on somebody's website. "EST" and
+     * "Florida" both look plausible and neither is a zone this may send.
+     */
+    private static function zone($raw): string
+    {
+        if (! is_string($raw) || $raw === '') {
+            return '';
+        }
+
+        static $known = null;
+        $known ??= array_flip(\DateTimeZone::listIdentifiers());
+
+        return isset($known[$raw]) ? $raw : '';
     }
 
     /** @return array<string, mixed> */
@@ -207,6 +321,21 @@ final class WidgetDefaults
                 'position' => in_array($chat['position'] ?? '', ['bottom-right', 'bottom-left', 'inline'], true)
                     ? $chat['position']
                     : 'bottom-right',
+                /*
+                 * Both or neither. A schedule with no zone cannot be read at
+                 * all — "is it 08:00?" has no answer without saying where —
+                 * and a zone with no schedule gates nothing. Sending half of
+                 * it would leave the plugin deciding what to do with the half,
+                 * which is a decision that belongs here, once.
+                 */
+                ...(function () use ($chat) {
+                    $hours = self::hours($chat['hours'] ?? []);
+                    $zone = self::zone($chat['timezone'] ?? '');
+
+                    return $hours === [] || $zone === ''
+                        ? ['hours' => [], 'timezone' => '']
+                        : ['hours' => $hours, 'timezone' => $zone];
+                })(),
             ],
             'form' => [
                 // Always on; see the note above.
