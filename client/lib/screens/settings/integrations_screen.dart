@@ -224,44 +224,62 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// branch connecting its own book from the screen that reads it is a real
   /// path, and both go through the same endpoint and the same shared form
   /// rather than being two implementations.
+  /// Whether this person may connect the source behind one of these forms.
+  ///
+  /// The two are DIFFERENT permissions and were not always: connecting an
+  /// Airtable base follows Profit & Loss, the screen that reads it, while a
+  /// Workiz account follows the Experimental report. Showing both to everybody
+  /// was survivable while they agreed; it stopped being so on 2026-09-17, when
+  /// Airtable's moved to `profit_loss.view`.
+  ///
+  /// Absent, not disabled, and not shown-then-refused: a form that posts and
+  /// comes back with a permission error has spent somebody's time and told
+  /// them the app is for other people. Absent `/me` answers no.
+  bool _mayConnect(String permission) =>
+      widget.session.me?.permissions.contains(permission) ?? false;
+
   List<Widget> _reportingForms() => [
-    Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
-    const SizedBox(height: 4),
-    Text(
-      'One connection is one base. Connect as many bases as this business '
-      'keeps its figures in.',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-    const SizedBox(height: 8),
-    ApiKeyConnectForm(
-      api: widget.api,
-      path: '/social/airtable',
-      submitLabel: 'Connect base',
-      fields: const [
-        ('api_token', 'Personal access token', 'pat…'),
-        ('base_id', 'Base id', 'app… — from the base\'s URL'),
-      ],
-      onConnected: _load,
-    ),
-    const SizedBox(height: 16),
-    Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
-    const SizedBox(height: 4),
-    Text(
-      'One connection is one Workiz account. Switch to the branch it belongs '
-      'to before connecting it — the accounts are separate books and a report '
-      'attributes each one to its branch.',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-    const SizedBox(height: 8),
-    ApiKeyConnectForm(
-      api: widget.api,
-      path: '/social/workiz',
-      submitLabel: 'Connect account',
-      fields: const [
-        ('api_token', 'API token', 'api_… — from Workiz › Developer › v1'),
-      ],
-      onConnected: _load,
-    ),
+    if (_mayConnect('profit_loss.view')) ...[
+      Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(
+        'One connection is one base. Connect as many bases as this business '
+        'keeps its figures in.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      ApiKeyConnectForm(
+        api: widget.api,
+        path: '/social/airtable',
+        submitLabel: 'Connect base',
+        fields: const [
+          ('api_token', 'Personal access token', 'pat…'),
+          ('base_id', 'Base id', 'app… — from the base\'s URL'),
+        ],
+        onConnected: _load,
+      ),
+      const SizedBox(height: 16),
+    ],
+    if (_mayConnect('reports.build')) ...[
+      Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(
+        'One connection is one Workiz account. Switch to the branch it belongs '
+        'to before connecting it — the accounts are separate books and a report '
+        'attributes each one to its branch.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      ApiKeyConnectForm(
+        api: widget.api,
+        path: '/social/workiz',
+        submitLabel: 'Connect account',
+        fields: const [
+          ('api_token', 'API token', 'api_… — from Workiz › Developer › v1'),
+        ],
+        onConnected: _load,
+      ),
+    ],
   ];
 
   Widget _family(

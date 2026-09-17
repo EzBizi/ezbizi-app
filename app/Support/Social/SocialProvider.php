@@ -232,16 +232,47 @@ enum SocialProvider: string
             // control that does not work (§4).
             self::Mailchimp => 'newsletter.send',
 
-            // The rule above, applied: the only screen that reads a Workiz
-            // account is the Experimental report, and `reports.build` is what
-            // opens it. Gating on `marketing.edit` would offer Connect to
-            // somebody who could never see what it connects.
+            /*
+             * The rule above, applied: a Workiz account is read by the
+             * Experimental report, and `reports.build` is one of the two things
+             * that opens it. Gating on `marketing.edit` would offer Connect to
+             * somebody who could never see what it connects.
+             *
+             * Still `reports.build` after tabs (2026-09-17), and that was
+             * measured rather than assumed. The pane needs the tab AND the
+             * capability — `ExperimentalCallReportController` authorises
+             * `createOnOrganization`, which SavedReportPolicy maps to
+             * `reports.build` — so nobody can reach the report on the tab
+             * alone, and Connect is not offered to anybody who cannot see what
+             * it connects. Pinned by
+             * ReportsTabPermissionsTest::test_the_tab_alone_does_not_open_the_pane_without_the_capability,
+             * which is the assertion that goes red if the route gate ever
+             * becomes the only one.
+             *
+             * Integrations connects Workiz too, through `social/workiz`. That
+             * does not change this: it is the same act needing the same grant,
+             * reached from a different screen.
+             */
             self::Workiz => 'reports.build',
 
-            // Same reasoning: the only screens that read an Airtable base are
-            // the report ones, so `marketing.edit` would offer Connect to
-            // somebody who could never see what it connects.
-            self::Airtable => 'reports.build',
+            /*
+             * `profit_loss.view`, CORRECTED 2026-09-17, and the correction is
+             * the rule above applied honestly rather than copied.
+             *
+             * This said `reports.build` — written when the only thing that was
+             * going to read an Airtable base was a report. Profit & Loss is a
+             * module of its own now, with its own grant, and the two came
+             * apart in both directions: an accountant who reads the figures
+             * every week could not connect a base, and somebody holding
+             * `reports.build` was offered Connect for figures they cannot open.
+             * The second of those is precisely what the comment above says not
+             * to do.
+             *
+             * So Connect follows the screen that READS it, which is what the
+             * rule has always said. Measured before changing, in
+             * ReportsTabPermissionsTest.
+             */
+            self::Airtable => 'profit_loss.view',
 
             default => 'marketing.edit',
         };
