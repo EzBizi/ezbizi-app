@@ -443,6 +443,18 @@ declare": is there an act inside it that somebody would want to withhold on its
 own? That is a real answer either way, and "no" is worth recording as a decision
 rather than leaving as a silence.
 
+**And an act gated by POSSESSION is not a permission.** Android · Play asked the
+second question and answered it properly: uploading to Play, signing with the
+upload key and cutting a build are all acts somebody would want withheld, and
+none of them is a role grant. They are gated by credentials on a machine and by
+who holds the vendor account — the upload key lives outside the repo precisely
+because possession IS the gate. A permission key for any of them would be a
+checkbox that grants nothing, which is the failure this whole brief is about,
+arrived at from the other end.
+
+So there are three answers, and all three are decisions worth recording:
+a tab, an action, or "this is gated by something that is not a role".
+
 ## Nobody may lose a tab they had this morning
 
 `database/migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php`
