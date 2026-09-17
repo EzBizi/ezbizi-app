@@ -311,15 +311,12 @@ void main() {
         .map((m) => m.group(1)!)
         .toSet();
 
-    // The three awaiting `b166aae1`, which adds the keys AND the Dart
-    // fallbacks. Using them before it merges would render the raw key as a
-    // tooltip, which is worse than English. They come out of this list and
-    // out of the screen in the same commit.
-    const pending = {
-      'Previous week',
-      'Next week',
-      'still clocked in',
-    };
+    // Empty, and it stays empty. It held three strings until `b166aae1`
+    // landed the keys AND the Dart fallbacks -- using a key before its
+    // fallback exists renders the key itself in a tooltip, which is worse
+    // than the English it replaces. They left this list and the screen in
+    // one commit, which is what the exemption said it would do.
+    const pending = <String>{};
 
     expect(
       found.difference(pending),
