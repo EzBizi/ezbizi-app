@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/search_picker.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
@@ -896,60 +898,32 @@ class _InvitePanelState extends State<_InvitePanel> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 18),
-          DropdownButtonFormField<String>(
-            initialValue: _roleId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Role',
-              border: OutlineInputBorder(),
-              helperText: 'Which tabs they see, and what they may do inside.',
-            ),
-            items: [
+          SearchPickerField<String>(
+            value: _roleId,
+            label: 'Role',
+            helperText: 'Which tabs they see, and what they may do inside.',
+            border: OutlineInputBorder(),
+            options: [
               for (final role in widget.options.roles)
-                DropdownMenuItem(
-                  value: role.id,
-                  // §4: nobody hands out what they do not hold. Shown and
-                  // refused rather than filtered out, so "we have no such role"
-                  // and "that one is not mine to give" stay distinguishable —
-                  // the same answer the role editor gives for a locked action.
-                  enabled: role.assignable,
-                  child: Text(
-                    role.assignable
+                SearchOption(value: role.id, label: role.assignable
                         ? role.name
-                        : '${role.name} — not yours to give',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                        : '${role.name} — not yours to give', enabled: role.assignable),
             ],
             onChanged: _busy ? null : (v) => setState(() => _roleId = v),
           ),
           const SizedBox(height: 18),
-          DropdownButtonFormField<String>(
-            initialValue: _scope,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Where they are assigned',
-              border: OutlineInputBorder(),
-              helperMaxLines: 3,
-              helperText:
-                  'Everything beneath it comes with it. This list holds only '
+          SearchPickerField<String>(
+            value: _scope,
+            label: 'Where they are assigned',
+            helperText: 'Everything beneath it comes with it. This list holds only '
                   'places you can reach yourself.',
-            ),
-            items: [
+            helperMaxLines: 3,
+            border: OutlineInputBorder(),
+            options: [
               for (final scope in widget.options.scopes)
-                DropdownMenuItem(
-                  value: scope.value,
-                  // §4: an assignment to a deactivated scope grants nothing.
-                  // Choosing one produces an employee who can reach nothing and
-                  // no error to explain it.
-                  enabled: scope.isActive,
-                  child: Text(
-                    scope.isActive
+                SearchOption(value: scope.value, label: scope.isActive
                         ? scope.pathLabel
-                        : '${scope.pathLabel} — deactivated',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                        : '${scope.pathLabel} — deactivated', enabled: scope.isActive),
             ],
             onChanged: _busy ? null : (v) => setState(() => _scope = v),
           ),

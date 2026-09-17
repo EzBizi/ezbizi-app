@@ -80,6 +80,7 @@ class SearchPickerField<T> extends StatelessWidget {
     this.hint,
     this.helperText,
     this.helperMaxLines,
+    this.errorText,
     this.border,
     this.isDense = false,
     this.allowClear = false,
@@ -103,6 +104,14 @@ class SearchPickerField<T> extends StatelessWidget {
   /// information nobody asked to lose.
   final String? helperText;
   final int? helperMaxLines;
+
+  /// What is wrong with the value it currently holds.
+  ///
+  /// Carried because at least one of these fields uses it to NAME a stored
+  /// value it cannot offer -- an automation rule pointing at a field the
+  /// subject no longer has. The alternative is a box that silently went blank,
+  /// which is the thing people file bugs about.
+  final String? errorText;
 
   /// Carried through so a swapped field keeps the frame it had. Several of
   /// these sit in dense forms with an outline the rest of the row shares.
@@ -145,6 +154,7 @@ class SearchPickerField<T> extends StatelessWidget {
           labelText: label,
           helperText: helperText,
           helperMaxLines: helperMaxLines,
+          errorText: errorText,
           border: border,
           isDense: isDense,
           enabled: enabled,

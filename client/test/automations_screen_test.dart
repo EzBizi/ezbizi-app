@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -214,23 +215,22 @@ void main() {
       await _tap(tester, find.text('Add a step'));
       await _tap(tester, _inStep(find.text('Update a field')));
 
-      // The button inside the form field, which is where the options live.
-      final field = tester.widget<DropdownButton<String>>(
-        find.byType(DropdownButton<String>),
+      final field = tester.widget<SearchPickerField<String>>(
+        find.byType(SearchPickerField<String>),
       );
 
       // The job's fields and only the job's — `email` is a customer's, and the
       // engine would have refused it every time.
-      expect(field.items!.map((i) => i.value), ['status', 'scheduled_for']);
+      expect(field.options.map((o) => o.value), ['status', 'scheduled_for']);
 
       // And read as words. "scheduled_for" is a wire name, and the person
       // choosing runs a chimney business.
-      expect(field.items!.map((i) => (i.child as Text).data), [
+      expect(field.options.map((o) => o.label), [
         'Status',
         'Date and time',
       ]);
 
-      await _tap(tester, find.byType(DropdownButtonFormField<String>));
+      await _tap(tester, find.byType(SearchPickerField<String>));
       await _tap(tester, find.text('Date and time').last);
       await _type(tester, 'Set to', '2026-09-01');
 
@@ -263,7 +263,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Update a field')));
 
     // An empty dropdown is a dead end that explains nothing.
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(SearchPickerField<String>), findsNothing);
     expect(
       find.textContaining('Choose what this reacts to first'),
       findsOneWidget,
@@ -343,7 +343,7 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>));
+    await _tap(tester, find.byType(SearchPickerField<String>));
     await _tap(tester, find.text('Email').last);
 
     expect(_saveButton(tester).onPressed, isNotNull);
@@ -420,7 +420,7 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(SearchPickerField<String>), findsNothing);
     expect(find.textContaining('cannot offer the list'), findsOneWidget);
 
     await _type(tester, 'Field', 'status');
@@ -661,7 +661,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Phone')));
     await _tap(tester, _inStep(find.text('Send a message')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Marketing'), findsWidgets);
@@ -719,7 +719,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Template'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -742,7 +742,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Send to'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -831,7 +831,7 @@ void main() {
     expect(find.text('Search people'), findsOneWidget);
     expect(find.text('Email address'), findsNothing);
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('An address I type').last);
 
@@ -953,7 +953,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Field'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -1480,7 +1480,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Send a message')));
 
     // The line is chosen from what the company holds.
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
@@ -1528,7 +1528,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Phone')));
     await _tap(tester, _inStep(find.text('Send a message')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
     await _type(tester, 'Send to', '+13057242199');

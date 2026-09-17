@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
@@ -133,16 +135,13 @@ class _AddTransferPaneState extends State<AddTransferPane> {
     widget.onSaved(Map<String, dynamic>.from(response.data as Map));
   }
 
-  List<DropdownMenuItem<String>> _locationItems({String? exclude}) {
+  List<SearchOption<String>> _locationItems({String? exclude}) {
     return [
       for (final loc in _locations)
         if (loc['id'] != exclude)
-          DropdownMenuItem(
+          SearchOption(
             value: loc['id'] as String?,
-            child: Text(
-              inventoryLocationChoiceLabel(loc, _me.organization.name),
-              overflow: TextOverflow.ellipsis,
-            ),
+            label: inventoryLocationChoiceLabel(loc, _me.organization.name),
           ),
     ];
   }
@@ -186,11 +185,10 @@ class _AddTransferPaneState extends State<AddTransferPane> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: _fromId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'From'),
-                        items: _locationItems(),
+                      SearchPickerField<String>(
+                        value: _fromId,
+                        label: 'From',
+                        options: _locationItems(),
                         onChanged: _busy
                             ? null
                             : (v) => setState(() {
@@ -199,34 +197,26 @@ class _AddTransferPaneState extends State<AddTransferPane> {
                               }),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
+                      SearchPickerField<String>(
                         key: ValueKey('to-$_fromId-$_toId'),
-                        initialValue: _toId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'To'),
-                        items: _locationItems(exclude: _fromId),
+                        value: _toId,
+                        label: 'To',
+                        options: _locationItems(exclude: _fromId),
                         onChanged: _busy
                             ? null
                             : (v) => setState(() => _toId = v),
                       ),
                       for (var i = 0; i < _lines.length; i++) ...[
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
+                        SearchPickerField<String>(
                           key: ValueKey(
                             'transfer-item-$i-${_lines[i].itemId}',
                           ),
-                          initialValue: _lines[i].itemId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Item'),
-                          items: [
+                          value: _lines[i].itemId,
+                          label: 'Item',
+                          options: [
                             for (final item in _items)
-                              DropdownMenuItem(
-                                value: item['id'] as String?,
-                                child: Text(
-                                  inventoryItemChoiceLabel(item),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                              SearchOption(value: item['id'] as String?, label: inventoryItemChoiceLabel(item)),
                           ],
                           onChanged: _busy
                               ? null
