@@ -21,7 +21,7 @@ import 'package:http/testing.dart';
 /// less than it used to is a loss whether or not anybody asked.
 void main() {
   testWidgets(
-    'organizationEnabled false and hr.view keep the original five chips',
+    'organizationEnabled false and hr.view keep the other six chips',
     (tester) async {
       await _pump(tester, timeClock: _clock(organizationEnabled: false));
 
@@ -30,6 +30,7 @@ void main() {
         'Onboarding',
         'Records',
         'Invitations',
+        'Paid time off',
         'Contracts',
       ]);
       expect(_tab('Work Hours'), findsNothing);
@@ -58,6 +59,7 @@ void main() {
         'Onboarding',
         'Records',
         'Invitations',
+        'Paid time off',
         'Contracts',
       ]);
 

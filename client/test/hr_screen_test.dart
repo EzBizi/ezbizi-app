@@ -17,11 +17,19 @@ import 'package:http/testing.dart';
 ///
 /// Three things, and they fail in different ways.
 ///
-/// The first is that a person who invites somebody is told the invitation was
-/// not sent. Nothing on this platform can send mail, so the link IS the
-/// delivery — and a screen that shows a link without saying so leaves somebody
-/// waiting for an acceptance to a message that was never going to arrive. That
-/// sentence is tested like a feature because it is one.
+/// The first is that a person who invites somebody is told what became of the
+/// message. Mail sends for real since SES production access (2026-09-14), so
+/// the strip says which of three things happened — sent, refused, or never
+/// attempted because this installation delivers nowhere — and the link is
+/// there for the two where nothing arrived. A screen that showed a link
+/// without saying so leaves somebody waiting for an acceptance to a message
+/// that was never going to come. That sentence is tested like a feature
+/// because it is one.
+///
+/// (This paragraph used to say "nothing on this platform can send mail". True
+/// when written, false the hour SES was approved, and nothing failed when it
+/// turned — which is why it is worth suspecting every sentence that says what
+/// the platform cannot do.)
 ///
 /// The second is that the places somebody may be assigned come from the server.
 /// §4 bounds an inviter to their own reach, the server already computes it, and
@@ -34,11 +42,11 @@ import 'package:http/testing.dart';
 /// broken; this codebase's answer is to draw it and mark it, the same as an
 /// automation action the engine cannot run.
 ///
-/// No tab is left — all five are built, and hr_contracts_test.dart,
+/// No tab is left — all six are built, and hr_contracts_test.dart,
 /// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. The
 /// Dashboard chip is one glance; certifications is a sentence on that card.
 void main() {
-  testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
+  testWidgets('the six tabs are drawn, in the owner’s order, and switch', (
     tester,
   ) async {
     await _pump(tester, _handler());
@@ -48,6 +56,7 @@ void main() {
       'Onboarding',
       'Records',
       'Invitations',
+      'Paid time off',
       'Contracts',
     ]);
 
