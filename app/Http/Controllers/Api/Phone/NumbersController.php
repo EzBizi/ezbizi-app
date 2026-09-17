@@ -7,23 +7,24 @@ use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\PhoneCall;
+use App\Models\PhoneConnection;
+use App\Models\PhoneExtension;
 use App\Models\PhoneFlow;
 use App\Models\PhoneNumber;
+use App\Models\PhoneNumberGrant;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneUsageDaily;
-use App\Models\PhoneExtension;
-use App\Models\PhoneNumberGrant;
-use App\Support\Scoping\ViewScope;
-use Illuminate\Support\Facades\DB;
 use App\Support\Phone\ConnectionResolver;
 use App\Support\Phone\PhoneNumberAccess;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwimlRenderer;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -854,7 +855,49 @@ class NumbersController extends Controller
             'emergency_address_sid' => ['sometimes', 'nullable', 'string', 'max:34'],
             'voice_caller_id_lookup' => ['sometimes', 'boolean'],
             'voicemail_transcribe' => ['sometimes', 'boolean'],
+
+            // WHAT THIS LINE ANSWERS WITH, which used to be decided by the
+            // ORDER the renderer read two columns in: a menu if `flow_id` was
+            // set, otherwise the ring group, otherwise voicemail. That order
+            // is invisible on a screen and cannot say "just voicemail" or
+            // "ring this one person" at all.
+            //
+            // Nullable, and null is not a sixth choice: it means "as before",
+            // which is how every production line behaves today.
+            'answer_with' => ['sometimes', 'nullable', Rule::in(PhoneNumber::answerChoices())],
+            'answer_user_id' => ['sometimes', 'nullable', 'uuid', $this->existsInTenant('users')],
         ]);
+
+        // A DESTINATION THAT NAMES NOTHING IS A LINE THAT RINGS NOBODY.
+        //
+        // Each of these would otherwise save cleanly and fail at the only
+        // moment that matters — a real caller on the line — with the screen
+        // still showing the setting as chosen. Refused here so the sentence
+        // arrives while somebody is looking at the thing they picked.
+        $wanted = $input['answer_with'] ?? $number->answer_with;
+
+        if ($wanted === PhoneNumber::ANSWER_USER) {
+            $userId = $input['answer_user_id'] ?? $number->answer_user_id;
+
+            if (! filled($userId)) {
+                throw ValidationException::withMessages([
+                    'answer_user_id' => 'Choose the person this line should ring.',
+                ]);
+            }
+        }
+
+        if ($wanted === PhoneNumber::ANSWER_MENU && ! filled($input['flow_id'] ?? $number->flow_id)) {
+            throw ValidationException::withMessages([
+                'answer_with' => 'Choose the menu this line should play.',
+            ]);
+        }
+
+        if ($wanted === PhoneNumber::ANSWER_RING_GROUP
+            && ! filled($input['ring_group_id'] ?? $number->ring_group_id)) {
+            throw ValidationException::withMessages([
+                'answer_with' => 'Choose the team this line should ring.',
+            ]);
+        }
 
         // A group on another Twilio account expands to Client identities this
         // call can never reach, so the Dial would ring nobody and look fine.
@@ -1007,7 +1050,7 @@ class NumbersController extends Controller
         abort_unless($ok, Response::HTTP_NOT_FOUND, 'That place was not found.');
     }
 
-    private function pickAvailable(\App\Models\PhoneConnection $connection, string $areaCode): string
+    private function pickAvailable(PhoneConnection $connection, string $areaCode): string
     {
         $available = $this->twilio->searchAvailable($connection, [
             'area_code' => $areaCode,
@@ -1107,6 +1150,12 @@ class NumbersController extends Controller
             'after_hours' => $number->after_hours,
             'after_hours_number' => $number->after_hours_number,
             'ring_group_id' => $number->ring_group_id,
+
+            // What this line answers with, and whom when that is a person.
+            // Null means "as before" — see the migration; a screen draws that
+            // as the inherited behaviour rather than as an empty choice.
+            'answer_with' => $number->answer_with,
+            'answer_user_id' => $number->answer_user_id,
             'flow_id' => $number->flow_id,
             'voicemail_box_id' => $number->voicemail_box_id,
             'hours_schedule_id' => $number->hours_schedule_id,
