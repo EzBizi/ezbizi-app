@@ -273,6 +273,39 @@ for drawing while the index still comes from the const list makes tap index 2
 mean the wrong source — and it passes every "is the chip drawn" test. Same
 family as the tab-index trap above, one level down.
 
+## A tab is an AND on top of the capability, not an alternative to it
+
+Before concluding that a tab grant widened anything, **read the controller behind
+it.** I did not, and got it wrong in public: I told Reports and Marketing that
+somebody holding `reports.experimental.view` without `reports.build` could now
+read the Experimental report but not connect the Workiz account it reads from —
+an affordance and its gate disagreeing. Measured afterwards, at Reports'
+correction: `ExperimentalCallReportController:83` authorises
+`createOnOrganization`, and `SavedReportPolicy::permission()` maps everything
+but `view` to `reports.build`. The tab never became a way IN.
+
+Reports pinned it rather than only replying —
+`test_the_tab_alone_does_not_open_the_pane_without_the_capability` — which is
+the assertion that goes red if a route gate ever becomes the only one.
+
+**The entry beside it WAS wrong**, which is why the check matters in both
+directions: `Airtable => 'reports.build'` was written when only a report would
+read a base, and Profit & Loss is its own module now. An accountant reading the
+figures weekly could not attach a base, and somebody holding `reports.build` was
+offered Connect for figures they cannot open. It is `profit_loss.view` now —
+Connect follows the screen that reads it.
+
+## A refusal test whose subject holds NONE of the candidates proves nothing
+
+Reports again, from their own suite. `AirtableConnectTest`'s gate case was named
+"without `reports.build`" and held a role with NEITHER permission, so it passed
+under the old rule and the new one and distinguished nothing. The role has to
+hold the OTHER candidate specifically — that is the only fixture that can tell
+which rule is in force.
+
+Same family as the administrator fixture below: a 403 arriving for a reason
+other than the one in the test's name.
+
 ## An ADMINISTRATOR fixture cannot test a permission at all
 
 Reports' finding, and it fails in the direction that looks like success.
