@@ -227,25 +227,46 @@ void main() {
 
   testWidgets(
     'the sub-tab strip shows PC Specs active, and Camera Monitoring plus '
-    'Desktop Monitoring locked as soon — neither grant is in the default '
-    'fixture',
+    'Desktop Monitoring LOCKED — neither grant is in the default fixture',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
 
       expect(find.text('PC Specs'), findsOneWidget);
       expect(find.text('Camera Monitoring'), findsOneWidget);
       expect(find.text('Desktop Monitoring'), findsOneWidget);
-      expect(find.text('Soon'), findsNWidgets(2));
+      // Named and locked, never "Soon": both of those tabs shipped long ago,
+      // and the only reason they do not open is the reader's role. Telling
+      // somebody a built feature is coming sends them to wait instead of to
+      // the person who can tick the box.
+      expect(find.text('Soon'), findsNothing);
+
+      // THREE locked, not two, and the third is the point of this change:
+      // General minted its own key, so the default fixture — which holds
+      // `monitoring.view` and `monitoring.specs.view` and nothing else — no
+      // longer opens it. In production nobody meets this state, because the
+      // backfill migration hands `monitoring.general.view` to every role that
+      // already held the module view. This fixture is what that migration
+      // exists to prevent, written down.
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
     },
   );
 
   testWidgets(
-    'the General sub-tab is present, first in the strip, and selectable on '
-    'the module grant — a viewer with monitoring.view can open it',
+    'the General sub-tab is present, first in the strip, and opens on its OWN '
+    'grant — monitoring.general.view, not the module grant',
     (tester) async {
-      // The default fixture holds monitoring.view (the module grant), so the
-      // General chip is live rather than the locked "Soon" fallback.
-      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+      // General MINTED its own key when tabs were declared, so the module
+      // grant alone no longer opens it — the backfill migration is what keeps
+      // every role that had it.
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        permissions: [
+          'monitoring.view',
+          'monitoring.specs.view',
+          'monitoring.general.view',
+        ],
+      );
 
       expect(find.text('General'), findsOneWidget);
 
@@ -267,9 +288,9 @@ void main() {
       expect(
         find.text(GeneralTab.noPlansNote),
         findsOneWidget,
-        reason: 'A viewer with monitoring.view switched to General and should '
-            'see the real tab (its empty state), proving the chip is gated on '
-            'the module grant they hold, not locked behind "Soon".',
+        reason: 'A viewer holding monitoring.general.view switched to General '
+            'and should see the real tab (its empty state), proving the chip '
+            'is gated on the tab key they hold.',
       );
       expect(find.text(GeneralTab.noPermissionNote), findsNothing);
     },
@@ -277,7 +298,7 @@ void main() {
 
   testWidgets(
     'with monitoring.cameras.view granted, the Camera Monitoring sub-tab is '
-    'selectable and no longer locked behind "Soon"',
+    'selectable and no longer locked',
     (tester) async {
       await _pumpScreen(
         tester,
@@ -291,8 +312,8 @@ void main() {
 
       expect(find.text('Camera Monitoring'), findsOneWidget);
       // Only Desktop Monitoring remains locked — its own grant is still
-      // absent from this fixture.
-      expect(find.text('Soon'), findsOneWidget);
+      // absent from this fixture. General too, now that it has its own key.
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(2));
 
       await tester.tap(find.text('Camera Monitoring'));
       await tester.pumpAndSettle();

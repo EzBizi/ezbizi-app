@@ -2071,6 +2071,19 @@ Route::prefix('v1')
         // find + 404; `store`/`update` validate the chosen scope with
         // ScopeReach::assertCovers and every node assignee against
         // constrainToVisiblePeople — see FloorPlansController.
+        /*
+         * GATED ON THE TAB, because these six serve exactly one — measured, not
+         * assumed: `grep -rn "floor-plans" client/lib` answers general_tab.dart
+         * and floor_plan_canvas.dart, and nothing else in the app reads a floor
+         * plan. Where a Monitoring route feeds several panes (`monitoring/devices`
+         * is read by PC Specs, General AND Desktop Monitoring) the tab gate would
+         * be wrong and the screen filters instead.
+         *
+         * A hidden tab whose endpoints still answer is decoration rather than a
+         * permission: the URL is one paste away from anybody who has ever had the
+         * pane open.
+         */
+        Route::middleware('permission:monitoring.general.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
         // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
@@ -2082,6 +2095,7 @@ Route::prefix('v1')
         Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
         Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
         Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
+        });
 
         // The assign picker's own roster: who this editor may put on a tile.
         // Deliberately NOT hr/people — that is gated on HR grants a map editor
