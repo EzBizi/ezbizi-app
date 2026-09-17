@@ -15,7 +15,7 @@ constexpr UINT kTrayCallbackMessage = WM_APP + 1;
 constexpr UINT kTrayIconId = 1;
 
 // Menu command ids for the right-click menu.
-constexpr UINT kTrayCommandOpen = 1001;
+constexpr UINT kTrayCommandOpen = Win32Window::kCommandShowFromTray;
 constexpr UINT kTrayCommandQuit = 1002;
 
 /// Sent to every top-level window when Explorer restarts.

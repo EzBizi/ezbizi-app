@@ -17,6 +17,8 @@ class VersionHistory {
         'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
         'A role can be given single tabs inside a module rather than the whole module, and the sub tabs inside those. Nobody loses a tab they could open before, and a module with no tab opened to you now says so rather than showing a blank pane.',
         'The phone stays registered. A desk left open all day keeps ringing, instead of going quiet after an hour.',
+        'Clicking the EzBizi button on the taskbar brings the window back after you have closed it to the notification area. It used to do nothing, so the only way back in was the small icon beside the clock.',
+        'Answering or declining a call on one device stops your other phones ringing.',
         'Pressing Tab moves to the next field, instead of jumping out to the sidebar and the lists beside it.',
         'The call flow chart redraws as soon as you change something from it.',
         'Work Hours reads newest day first and stops at today, rather than listing days nobody has worked yet.',
