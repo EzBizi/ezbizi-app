@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Phone;
 
 use App\Http\Controllers\Api\Controller;
 use App\Jobs\PlaceQueueCallback;
+use App\Jobs\RingSomebodyWhoJustBecameFree;
 use App\Models\PhoneConnection;
 use App\Models\PhonePresence;
 use App\Support\Phone\PhoneNumberAccess;
@@ -11,6 +12,7 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -148,7 +150,52 @@ class PresenceController extends Controller
         // a question nobody asked. What a caller wants to know is how many of
         // their lines this now applies to.
         $lines = (clone $rows)->count();
+
+        // WHICH LINES, and read before the update for the same reason the
+        // count is: afterwards there is no way to tell which rows this request
+        // changed from the ones that already said it.
+        $connectionIds = (clone $rows)
+            ->pluck('connection_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+
         $rows->update(['state' => $input['state']]);
+
+        // "I AM BACK" HAPPENS HERE, AND ONLY HERE.
+        //
+        // This is the person's own toggle. The desk's endpoint below cannot
+        // lift a standing Do Not Disturb by design — `storedState()` refuses
+        // every state the software would like to write while somebody is away,
+        // after Jose reported the same bug through two different transitions.
+        //
+        // So the two things that should happen when somebody becomes free were
+        // wired to the one endpoint that can never see it happen. The queue
+        // callback has been in that position since it was written: a caller
+        // who pressed 1 and was promised a call back got one when a colleague
+        // came off a CALL, and not when the person they were waiting for came
+        // off Do Not Disturb — which is the commoner way of becoming free and
+        // the one a person does deliberately.
+        //
+        // Per connection rather than once, because both jobs act on one line's
+        // callers and one line's ringing calls.
+        if ($input['state'] === PhonePresence::STATE_REGISTERED) {
+            foreach ($connectionIds as $connectionId) {
+                PlaceQueueCallback::dispatch(
+                    (string) $this->tenant->idOrFail(),
+                    $connectionId,
+                    (string) $user->id,
+                );
+
+                RingSomebodyWhoJustBecameFree::dispatch(
+                    (string) $this->tenant->idOrFail(),
+                    $connectionId,
+                    (string) $user->id,
+                );
+            }
+        }
 
         return response()->json(['data' => [
             'state' => $input['state'],
@@ -239,6 +286,24 @@ class PresenceController extends Controller
         // stops when nothing is owed, which is almost every time.
         if ($presence->state === PhonePresence::STATE_REGISTERED) {
             PlaceQueueCallback::dispatch(
+                (string) $this->tenant->idOrFail(),
+                (string) $connection->id,
+                (string) $user->id,
+            );
+
+            // AND A CALL THAT IS RINGING RIGHT NOW.
+            //
+            // The callback above is for somebody who was PROMISED a call and
+            // hung up. This is the other half, which Jose asked for on
+            // 2026-09-17: a call already ringing a colleague should start
+            // ringing you too the moment you say you are back, rather than
+            // waiting for it to overflow.
+            //
+            // Queued for the same reason, and it matters more here: the job
+            // reads legs from Twilio and may redirect a live call, and neither
+            // that latency nor its failures belong in the path of a control
+            // whose only job is to say "I am available".
+            RingSomebodyWhoJustBecameFree::dispatch(
                 (string) $this->tenant->idOrFail(),
                 (string) $connection->id,
                 (string) $user->id,
@@ -378,7 +443,7 @@ class PresenceController extends Controller
         return ['state' => $wanted, 'wrap_up_until' => null];
     }
 
-    private function existsInTenant(string $table): \Illuminate\Validation\Rules\Exists
+    private function existsInTenant(string $table): Exists
     {
         return Rule::exists($table, 'id')
             ->where('organization_id', $this->tenant->idOrFail());

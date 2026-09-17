@@ -1187,9 +1187,21 @@ class WebManagementTest extends TestCase
 
         $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
 
+        /*
+         * The sentence, for the reason spelled out on
+         * `test_view_alone_cannot_change_the_widgets`: this route sits behind
+         * `web_management.seo.view` as well as behind `edit`, both refuse with
+         * 403, and a bare `assertForbidden()` would stay green if the cause
+         * drifted from one to the other while the test's name went on claiming
+         * view-versus-edit.
+         */
         $this->signedInAs($viewer)
             ->postJson("/api/v1/web/sites/{$site['data']['id']}/primary")
-            ->assertForbidden();
+            ->assertForbidden()
+            ->assertJsonPath(
+                'message',
+                fn ($said) => is_string($said) && str_contains($said, 'change a website'),
+            );
     }
 
     // ── 8. the address is parts, and one line built from them ────────

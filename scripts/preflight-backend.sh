@@ -30,6 +30,14 @@ echo "── backend pre-flight · ${SHA:0:8}${FILTER:+ · filter $FILTER} ─�
 ARGS="--colors=never"
 [ -n "$FILTER" ] && ARGS="$ARGS --filter $FILTER"
 
+# The verdict is printed, not just returned. 2026-09-17: I ran this as
+# `preflight-backend.sh main | tail -60` and read "[exited with code 0]" while
+# the output above it said "FAILURES! Tests: 4077 ... Failures: 2" -- a pipeline
+# exits with its LAST command's status, so tail's 0 replaced phpunit's 1. That
+# is the same shape as release.sh reporting exit 0 over "nothing deployed",
+# twice today. So the last line says which it was in words, and a piped
+# invocation cannot hide it.
+rc=0
 git -c core.autocrlf=false archive "$SHA" | ssh "$REMOTE" "WIPE='$WIPE' ARGS='$ARGS'"'
   set -e
   mkdir -p /opt/ezbizi-test
@@ -43,4 +51,12 @@ git -c core.autocrlf=false archive "$SHA" | ssh "$REMOTE" "WIPE='$WIPE' ARGS='$A
   tar -x
   composer install --no-interaction -q
   php8.4 -d memory_limit=1G vendor/bin/phpunit $ARGS
-'
+' || rc=$?
+
+if [ "$rc" -eq 0 ]; then
+  echo "== PRE-FLIGHT GREEN · ${SHA:0:8} · backend suite passed =="
+else
+  echo "== PRE-FLIGHT FAILED · ${SHA:0:8} · backend suite exit $rc · NOTHING SHOULD BE CUT =="
+fi
+
+exit "$rc"

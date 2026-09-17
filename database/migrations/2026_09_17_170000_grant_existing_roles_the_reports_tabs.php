@@ -24,10 +24,18 @@ use Illuminate\Support\Facades\DB;
  *
  * ── Safe to run twice ────────────────────────────────────────────
  *
- * The body below is the original, unchanged, and it is idempotent: it
+ * The body below is the original plus one clause, and it is idempotent: it
  * re-derives every module's tabs from the registry and `insertOrIgnore`s the
  * pivot rows. Where the first migration already granted a tab, this does
  * nothing. Where a module declared tabs since, it grants them.
+ *
+ * THE ONE CLAUSE is `namesExistingAction()`, and it is not a refinement — see
+ * the comment on it below. A tab may now declare that it IS an existing
+ * permission rather than a new one, and granting those here would widen every
+ * role holding a module's view into authorities that module keeps separate.
+ * The option did not exist when this file was written. That is the cost of a
+ * loop that reads the whole registry, and the loop is still right: it is what
+ * covers a module declaring tabs late.
  *
  * ── The direction that nobody notices ────────────────────────────
  *
@@ -71,6 +79,31 @@ return new class extends Migration
             }
 
             foreach ($module->tabs as $tab) {
+                /*
+                 * A TAB THAT NAMES AN EXISTING ACTION IS NOT A NEW GRANT, and
+                 * granting it here would WIDEN inside the file written to
+                 * prevent narrowing.
+                 *
+                 * `TabDefinition::action()` returns the declared action when
+                 * there is one, so a tab declared as
+                 * `new TabDefinition('settings', 'Settings', action: 'manage')`
+                 * makes this loop grant `training.manage` to every role holding
+                 * `training.view`. Training's three panes are three separate
+                 * authorities - the learner's, everybody's results, and the
+                 * authoring surface - so an unguarded loop hands authoring to
+                 * somebody who could only watch a video.
+                 *
+                 * That option did not exist when this file was written, and
+                 * that is exactly why the guard belongs here rather than in a
+                 * caller: this loop reads the WHOLE registry on purpose, so it
+                 * inherits every module's later decisions, including ones taken
+                 * after it was merged. Raised by the deploy desk, 2026-09-17,
+                 * before the cut; the predicate is Scheduling's.
+                 */
+                if ($tab->namesExistingAction()) {
+                    continue;
+                }
+
                 $key = "{$module->key}.{$tab->action()}";
 
                 /*

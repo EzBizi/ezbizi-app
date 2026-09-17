@@ -19,6 +19,8 @@ class VersionHistory {
         'The phone stays registered. A desk left open all day keeps ringing, instead of going quiet after an hour.',
         'Clicking the EzBizi button on the taskbar brings the window back after you have closed it to the notification area. It used to do nothing, so the only way back in was the small icon beside the clock.',
         'Answering or declining a call on one device stops your other phones ringing.',
+        'Make yourself available again and a call that is still ringing starts ringing your phone too.',
+        'A caller who asked to be called back now gets one when the person they were waiting for comes off Do Not Disturb, not only when that person finishes a call. Coming off Do Not Disturb is the commoner way of becoming free and the one somebody does on purpose.',
         'Pressing Tab moves to the next field, instead of jumping out to the sidebar and the lists beside it.',
         'The call flow chart redraws as soon as you change something from it.',
         'Work Hours reads newest day first and stops at today, rather than listing days nobody has worked yet.',
