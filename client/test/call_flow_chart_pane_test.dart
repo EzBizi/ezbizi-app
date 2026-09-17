@@ -765,12 +765,14 @@ void main() {
         FlowNode(id: 'b', kind: 'b', title: 'B', detail: '', state: 'ok'),
       ],
       edges: const [FlowEdge(from: 'caller', to: 'b')],
+      entry: phoneEntryNode,
     );
 
     test('a different flow repaints', () {
       final two = CallFlowGraph(
         nodes: [...one.nodes],
         edges: const [],
+        entry: phoneEntryNode,
       );
 
       expect(painter(one).shouldRepaint(painter(two)), isTrue);
