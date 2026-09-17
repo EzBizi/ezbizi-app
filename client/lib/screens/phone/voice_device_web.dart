@@ -23,6 +23,9 @@ class TwilioVoiceDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// The browser answers through the desk's own button, so the desk
@@ -49,6 +52,24 @@ class TwilioVoiceDevice implements VoiceDevice {
           _pending = jsCall;
           _watchForEnd(jsCall);
           onIncoming?.call(VoiceIncoming(from: _from(jsCall)));
+        }.toJS,
+      );
+
+      // A TOKEN LASTS AN HOUR AND WE ASKED FOR ONE.
+      //
+      // The SDK raises this a few minutes before the token dies. Unanswered,
+      // the registration lapses and this desk stops receiving calls — no
+      // error, no banner, and outbound still works, which is what made it
+      // invisible for so long.
+      //
+      // ZERO PARAMETERS, deliberately. A `.toJS` closure that declares one
+      // throws `NoSuchMethodError: method not found: 'call$0'` when the SDK
+      // calls it with none, and this event carries none. Measured in a real
+      // browser after the same mistake cost a cancel handler.
+      device.on(
+        'tokenWillExpire'.toJS,
+        () {
+          onTokenExpiring?.call();
         }.toJS,
       );
       // ── ONE RINGTONE, and it is ours ────────────────────────────
