@@ -175,6 +175,38 @@ first tick rather than at boot.
 visibility toggle. A tab grant is visibility only by design, which is the right
 weight for Work Hours and the wrong weight for that.
 
+## Two client traps found by three modules on the same afternoon
+
+**1. A SCREEN THAT TRACKS THE SELECTED TAB BY INDEX IS ALREADY BROKEN once you
+filter the list.** Positions stop being stable: slot 1 is one pane for somebody
+holding every grant and a different pane for somebody holding two. Automations
+moved to keys for this. Scheduling's visibility check was `_tab == 2`, so with
+Availability hidden the ONLY visible pane was told it was off-screen — it
+renders and never loads, which reads as a blank screen rather than as a refusal.
+Human Resources had it too, and the docblock above the state still claimed "a
+tab's position never moves", which the filter had just falsified (`b823e153`).
+
+And when you fix it, **fall back in every reader, not just the bar**. HR's first
+fix resolved the missing tab for the tab bar and left the pane stack comparing
+against a key nobody held: bar highlighted, every pane offstage, screen blank.
+
+**2. YOUR EXISTING TESTS PASS AGAINST THE BROKEN VERSION.** They grant every tab,
+because before today there was nothing else to grant. The test that can tell the
+difference holds TWO tabs, neither of them the one your screen lands on by
+default, and asserts the pane actually rendered — not merely that a label is
+highlighted. HR's twenty-six all passed against a blank screen.
+
+Scheduling adds the reason this is so easy to miss: their capacity tests build
+the pane directly, so the tab bar — the widget this whole step changes — had no
+coverage at all. **A module with good pane tests can still have none on the tab
+bar.**
+
+## Your fixtures may not be the ones you break
+
+Automations' declaration reddened four tests in their own suite and **two in
+Phone's**, because a fixture in another module's directory reaches the same
+catalogue. Run more than your own suite before you call it done.
+
 ## Nobody may lose a tab they had this morning
 
 `database/migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php`
