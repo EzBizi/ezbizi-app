@@ -150,7 +150,7 @@ class InspectionReportEmailActionTest extends TestCase
     public function test_the_action_is_offered_to_the_builder_as_implemented(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $user = $this->userWithRole($tenant, 'Manager', ['automations.view', 'inspection.view']);
+        $user = $this->userWithRole($tenant, 'Manager', ['automations.view', 'inspection.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $data = $this->signedInAs($user)
             ->getJson('/api/v1/automations/catalogue')

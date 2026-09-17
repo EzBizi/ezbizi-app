@@ -1475,41 +1475,71 @@ Route::prefix('v1')
         // as an id. Cover upload is on the definition (create already minted
         // one). DELETE is only a never-published draft; unpublish hides a
         // published one from the picker without touching versions or reports.
-        Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue']);
+        Route::get('inspections/catalogue', [InspectionDefinitionsController::class, 'catalogue'])
+            ->middleware('permission:inspection.builder.view');
 
         // The building-code library. Before `{inspection_definition}`, which
         // would otherwise happily bind the word "codes".
-        Route::get('inspections/codes', [InspectionCodesController::class, 'index']);
-        Route::post('inspections/codes', [InspectionCodesController::class, 'store']);
-        Route::get('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'show']);
-        Route::patch('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'update']);
-        Route::delete('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'destroy']);
-        Route::get('inspections/search', [InspectionRunsController::class, 'search']);
-        Route::get('inspections/startable', [InspectionRunsController::class, 'startable']);
-        Route::get('inspections', [InspectionDefinitionsController::class, 'index']);
-        Route::post('inspections', [InspectionDefinitionsController::class, 'store']);
-        Route::get('inspections/reports', [InspectionReportsController::class, 'index']);
+        Route::get('inspections/codes', [InspectionCodesController::class, 'index'])
+            ->middleware('permission:inspection.builder.view');
+        Route::post('inspections/codes', [InspectionCodesController::class, 'store'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'show'])
+            ->middleware('permission:inspection.builder.view');
+        Route::patch('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'update'])
+            ->middleware('permission:inspection.builder.view');
+        Route::delete('inspections/codes/{inspection_code}', [InspectionCodesController::class, 'destroy'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/search', [InspectionRunsController::class, 'search'])
+            ->middleware('permission:inspection.new.view');
+        Route::get('inspections/startable', [InspectionRunsController::class, 'startable'])
+            ->middleware('permission:inspection.new.view');
+        Route::get('inspections', [InspectionDefinitionsController::class, 'index'])
+            ->middleware('permission:inspection.builder.view');
+        Route::post('inspections', [InspectionDefinitionsController::class, 'store'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/reports', [InspectionReportsController::class, 'index'])
+            ->middleware('permission:inspection.reports.view');
         // Before `{inspection_report}` would otherwise be happy to bind `pdf`,
         // the same way `catalogue` sits ahead of `{inspection_definition}`.
-        Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf']);
-        Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show']);
-        Route::patch('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'update']);
-        Route::post('inspections/reports/{inspection_report}/archive', [InspectionReportsController::class, 'archive']);
-        Route::post('inspections/reports/{inspection_report}/unarchive', [InspectionReportsController::class, 'unarchive']);
-        Route::post('inspections/runs', [InspectionRunsController::class, 'store']);
-        Route::get('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'show']);
-        Route::patch('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'update']);
-        Route::post('inspections/runs/{inspection_run}/restart', [InspectionRunsController::class, 'restart']);
-        Route::post('inspections/runs/{inspection_run}/submit', [InspectionRunsController::class, 'submit']);
-        Route::delete('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'destroy']);
-        Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover']);
-        Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover']);
-        Route::get('inspections/{inspection_definition}/graph', [InspectionDefinitionsController::class, 'graph']);
-        Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish']);
-        Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish']);
-        Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show']);
-        Route::patch('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'update']);
-        Route::delete('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'destroy']);
+        Route::get('inspections/reports/{inspection_report}/pdf', [InspectionReportsController::class, 'pdf'])
+            ->middleware('permission:inspection.reports.view');
+        Route::get('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'show'])
+            ->middleware('permission:inspection.reports.view');
+        Route::patch('inspections/reports/{inspection_report}', [InspectionReportsController::class, 'update'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/reports/{inspection_report}/archive', [InspectionReportsController::class, 'archive'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/reports/{inspection_report}/unarchive', [InspectionReportsController::class, 'unarchive'])
+            ->middleware('permission:inspection.reports.view');
+        Route::post('inspections/runs', [InspectionRunsController::class, 'store'])
+            ->middleware('permission:inspection.new.view');
+        Route::get('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'show'])
+            ->middleware('permission:inspection.new.view');
+        Route::patch('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'update'])
+            ->middleware('permission:inspection.new.view');
+        Route::post('inspections/runs/{inspection_run}/restart', [InspectionRunsController::class, 'restart'])
+            ->middleware('permission:inspection.new.view');
+        Route::post('inspections/runs/{inspection_run}/submit', [InspectionRunsController::class, 'submit'])
+            ->middleware('permission:inspection.new.view');
+        Route::delete('inspections/runs/{inspection_run}', [InspectionRunsController::class, 'destroy'])
+            ->middleware('permission:inspection.new.view');
+        Route::post('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'storeCover'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/{inspection_definition}/cover', [InspectionDefinitionsController::class, 'showCover'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/{inspection_definition}/graph', [InspectionDefinitionsController::class, 'graph'])
+            ->middleware('permission:inspection.builder.view');
+        Route::post('inspections/{inspection_definition}/publish', [InspectionDefinitionsController::class, 'publish'])
+            ->middleware('permission:inspection.builder.view');
+        Route::post('inspections/{inspection_definition}/unpublish', [InspectionDefinitionsController::class, 'unpublish'])
+            ->middleware('permission:inspection.builder.view');
+        Route::get('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'show'])
+            ->middleware('permission:inspection.builder.view');
+        Route::patch('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'update'])
+            ->middleware('permission:inspection.builder.view');
+        Route::delete('inspections/{inspection_definition}', [InspectionDefinitionsController::class, 'destroy'])
+            ->middleware('permission:inspection.builder.view');
 
         // ── Email: shared team inboxes ───────────────────────────
         //

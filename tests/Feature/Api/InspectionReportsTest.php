@@ -100,8 +100,7 @@ class InspectionReportsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Designer', [
-            'inspection.view', 'inspection.edit',
-        ]);
+            'inspection.view', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
         $viewer = $this->viewer($tenant);
 
         $seeded = $this->seedReport($tenant, preset: 'step_strip');
@@ -193,8 +192,7 @@ class InspectionReportsTest extends TestCase
     private function viewer(array $tenant)
     {
         return $this->userWithRole($tenant, 'Reader', [
-            'inspection.view', 'inspection.archive',
-        ]);
+            'inspection.view', 'inspection.archive', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
     }
 
     /**
