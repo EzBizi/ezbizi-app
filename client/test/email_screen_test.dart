@@ -1309,7 +1309,7 @@ const List<Map<String, Object?>> _blocks = [
   {
     'kind': 'paragraph',
     'spans': [
-      {'text': 'Confirm here', 'link': 'https://not-your-bank.example.com/x'},
+      {'text': 'Confirm here', 'href': 'https://not-your-bank.example.com/x'},
     ],
   },
   {'kind': 'rule'},
