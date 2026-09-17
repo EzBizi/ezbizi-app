@@ -57,8 +57,25 @@ import UserNotifications
     // suppressing the foreground case suppresses most of what iOS would ever
     // have shown, and the platform would look broken while being configured
     // exactly as documented.
+    // `as`, NOT `as?`, and the difference is the whole safety of this line.
+    //
+    // Nothing else sets this delegate. flutter_local_notifications implements
+    // the UNUserNotificationCenterDelegate methods and registers itself with
+    // `addApplicationDelegate:` — measured in its own FlutterLocalNotifications
+    // Plugin.m, which never touches `UNUserNotificationCenter.current()
+    // .delegate` at all. It is relying on FlutterAppDelegate being that
+    // delegate and forwarding to it, which is why the plugin's own example app
+    // carries this same line.
+    //
+    // The conformance comes from FlutterAppDelegate, a superclass we do not
+    // own. `as?` on a cast that fails yields nil, and assigning nil here SETS
+    // THE DELEGATE TO NOTHING — no foreground banners and no taps reaching
+    // Dart, silently, with every notification still appearing to be raised
+    // successfully. A Flutter upgrade that dropped the conformance would do
+    // that and nothing would say so. `as` cannot fail quietly: it stops the
+    // build on the Mac, which is where somebody can still act on it.
     UNUserNotificationCenter.current().delegate =
-      self as? UNUserNotificationCenterDelegate
+      self as UNUserNotificationCenterDelegate
 
     // Deliberately NOT gated on the alert permission.
     //
