@@ -1915,6 +1915,76 @@ than 30 days") is the honest weaker claim that ships instead. Do not draw a red
 
 ---
 
+### 20 · HR · Work Hours — **BRIEF, not yet drawn** (from Clock In, 2026-09-17)
+
+Jose asked for this screen in his own words on 2026-09-17, in the Clock In
+session. It names new elements (a sidebar, a search field, an expanding row),
+so it is UI/UX's to draw and build. Quoted rather than paraphrased, because the
+detail is his:
+
+> * First i should only see 1 per user, as u can see for example i appear
+>   multiple times as Jose Luis Demasi, instead make it so if i click the user
+>   it expands and shows all the clock in and outs
+> * I also want to see the amount of hours
+> * overall i want a better UI Design, i want to see the profile picture on the
+>   left side before the name as well
+> * green clock in indicator, red clock out indicator next to the hours
+> * also move the work hours tab next to dashboard so it's second in place.
+> * for the ui i would like to have a left sidebar with every user, ( search bar
+>   on top ) so when u click a user it shows you the history for the week, total
+>   hours, days worked, avg/day, it should also always show me the week i'm in
+>   from Sunday to Saturday ( so for example when i enter today, i should see the
+>   record from sunday till today but nothing before sunday, ( this should be
+>   modifiable for each organization so they can choose how they count their
+>   days, but for now that is the default )
+
+**Already done by Clock In at `e5c3ecff`, so do not redo it:** the rename to
+**Work Hours** (`time_clock.tab`, en + es), the tab moved second in
+`hr_screen.dart`, and the whole data layer. The screen currently on that tab is
+still the old one-day list; replacing it is the build.
+
+**The endpoint is `GET /api/v1/hr/time-clock/week?on=YYYY-MM-DD`** (`hr.view`
+plus the organization Clock in switch; `on` is ANY date inside the week wanted,
+omit for this week). It answers:
+
+```
+data: {
+  week_start, week_end,        // YYYY-MM-DD, inclusive
+  starts_on,                   // 'sunday' by default, org setting
+  timezone, timezone_label,
+  people: [{
+    id, name, is_active, has_avatar,
+    total_seconds, days_worked, average_seconds,
+    open,                      // clocked in right now
+    shifts: [{ id, date, clocked_in, clocked_out, clocked_in_at, clocked_out_at,
+               duration_seconds, open, ended_by, outside_schedule, extensions }]
+  }]
+}
+```
+
+Five things worth knowing before drawing it:
+
+- **Everybody in reach is in `people`**, including anyone who worked nothing
+  that week (zero totals, empty `shifts`). A name missing from a sidebar reads
+  as "not on the team", which is not what "did not clock in" means.
+- **`clocked_in` / `clocked_out` are already formatted** in the organization's
+  clock and 12/24h setting. `clocked_in_at` / `clocked_out_at` are the UTC
+  instants if you need them. Do not format from the device.
+- **An open shift reports the time worked SO FAR** in `duration_seconds`, not
+  null, because it is summed into the total shown beside it. `open: true` says
+  it is still running — that is the green indicator Jose asks for.
+- **`has_avatar`** says whether to fetch `GET /api/v1/users/{id}/avatar`; fall
+  back to initials rather than requesting one that is not there.
+- **Copy already exists** as `time_clock.total`, `time_clock.days_worked`,
+  `time_clock.average_per_day`, `time_clock.search_people`,
+  `time_clock.no_hours`, `time_clock.this_week` (en + es, migration
+  `2026_09_17_100000_work_hours_copy.php`). Ask Clock In for more rather than
+  hardcoding English.
+
+Week navigation is not in Jose's list. The tab it replaces has day arrows, so
+dropping the ability to look back at all would lose something he has today —
+worth one of the options showing how you would move between weeks.
+
 ## Naming, because it will bite whoever reads this
 
 Two adjacent dashboard panels must not share a word for different facts. HR's

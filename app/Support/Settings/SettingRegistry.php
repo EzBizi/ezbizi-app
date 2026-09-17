@@ -980,6 +980,28 @@ class SettingRegistry
                 help: 'How much each Extend adds to the scheduled end. There is no limit on how many times.',
             ),
             new SettingDefinition(
+                key: 'time_clock.week_starts_on',
+                label: 'Week starts on',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'sunday',
+                options: ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'],
+                optionLabels: [
+                    'sunday' => 'Sunday',
+                    'monday' => 'Monday',
+                    'tuesday' => 'Tuesday',
+                    'wednesday' => 'Wednesday',
+                    'thursday' => 'Thursday',
+                    'friday' => 'Friday',
+                    'saturday' => 'Saturday',
+                ],
+                allowedScopes: $orgOnly,
+                // All seven rather than the two that cover most people: a
+                // payroll week starting on a Thursday is somebody's real one,
+                // and an enum costs the same either way.
+                help: 'Which day Work Hours counts a week from. It decides the totals, '
+                    .'the days worked and the average on that screen.',
+            ),
+            new SettingDefinition(
                 key: 'time_clock.self_schedule',
                 label: 'People can edit their own schedule',
                 type: SettingDefinition::TYPE_BOOL,
