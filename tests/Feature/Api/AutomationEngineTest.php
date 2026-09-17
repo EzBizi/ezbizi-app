@@ -1634,6 +1634,39 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * A ROLE THAT IS NOT A ROLE IS A REFUSAL, NOT A SERVER ERROR.
+     *
+     * Jose pressed Test on his live rule and got "Could not run it — Server
+     * Error", with the reason only in the server log. The dispatcher throws
+     * when a rule names a role that no longer exists, and it is right to; but
+     * thrown out of the arm it became a 500, which tells the rule's author
+     * nothing and reads as the app being broken rather than their rule.
+     *
+     * His rule had reached that state on its own — see the builder's list
+     * adoption, which had been wrapping the stored role list in another layer
+     * on every save.
+     */
+    public function test_a_role_that_does_not_exist_is_refused_in_words(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $result = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'notify',
+            'message'  => 'A job was made.',
+            'role_ids' => ['[[[]]]'],
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $this->assertFalse($result['ok']);
+        $this->assertStringContainsString('no longer exists', $result['detail']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

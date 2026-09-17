@@ -441,12 +441,49 @@ class PhoneCallService extends ChangeNotifier {
     _stopRinging();
     _onCall = true;
     notifyListeners();
+    unawaited(_silenceMyOtherDevices());
   }
 
   void decline() {
     _device?.declineIncoming();
     _stopRinging();
     notifyListeners();
+    unawaited(_silenceMyOtherDevices());
+  }
+
+  /// This phone has dealt with the call. Stop the rest of mine ringing.
+  ///
+  /// ── What Jose reported ──────────────────────────────────────────
+  ///
+  /// 2026-09-17: "all 3 ring, i decline on desktop, it should update that it
+  /// was declined on the others and stop ringing". Same for answering.
+  ///
+  /// ── Why the server has to do it ─────────────────────────────────
+  ///
+  /// Each of a person's devices is a separate `<Client>` leg, and only the
+  /// server knows which legs belong to one human. Twilio ends the siblings
+  /// when a Dial is ANSWERED, but declining must not end them — a leg one
+  /// person refuses has to leave the call ringing for the colleagues it is
+  /// also offered to, and Twilio cannot tell that from "my other phone has
+  /// it".
+  ///
+  /// ── Why both paths post the same thing ──────────────────────────
+  ///
+  /// The rule is identical: end my legs except this device's. Two endpoints
+  /// would be two chances to end the leg of the phone that just answered,
+  /// which hangs up on a customer mid-sentence.
+  ///
+  /// Fire-and-forget on purpose. The call is already answered or refused on
+  /// this device and the screen is already right; a failed request must not
+  /// undo either. The worst case is the behaviour we had before, which is the
+  /// other phones ringing on.
+  Future<void> _silenceMyOtherDevices() async {
+    final api = _api;
+    if (api == null) return;
+
+    await api.post('/phone/calls/silence', {
+      'from_device_id': DeviceIdentity.value,
+    });
   }
 
   /// The call ended and nobody here pressed anything.

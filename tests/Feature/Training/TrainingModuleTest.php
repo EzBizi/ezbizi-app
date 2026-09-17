@@ -33,6 +33,44 @@ class TrainingModuleTest extends TestCase
         ], $triggers);
     }
 
+    /**
+     * The three tabs NAME existing actions and mint nothing.
+     *
+     * Dropping `action:` from any of them would mint `training.<tab>.view`
+     * beside the permission that already governs that tab — two names for one
+     * authority, and an administrator could grant the tab without the read,
+     * producing a Dashboard that opens and then refuses every request inside
+     * it. That is the state this assertion exists to keep unreachable.
+     *
+     * Pinned per tab rather than as "Training declares no minting tabs", so a
+     * FOURTH tab that legitimately needs its own key does not turn this red on
+     * a correct change.
+     */
+    public function test_every_tab_names_an_existing_action_and_mints_nothing(): void
+    {
+        $module = app(ModuleRegistry::class)->all()['training'];
+
+        $byKey = [];
+        foreach ($module->tabs as $tab) {
+            $byKey[$tab->key] = $tab;
+        }
+
+        foreach (['learn' => 'view', 'dashboard' => 'monitor', 'settings' => 'manage'] as $key => $action) {
+            $this->assertArrayHasKey($key, $byKey, "Training lost its '{$key}' tab.");
+            $this->assertTrue(
+                $byKey[$key]->namesExistingAction(),
+                "Training's '{$key}' tab mints a new permission instead of naming '{$action}'.",
+            );
+            $this->assertSame($action, $byKey[$key]->action());
+        }
+
+        // The labels are what an administrator reads while deciding, and they
+        // must be the words on the tab bar in training_screen.dart.
+        $this->assertSame('Learn', $byKey['learn']->label);
+        $this->assertSame('Dashboard', $byKey['dashboard']->label);
+        $this->assertSame('Settings', $byKey['settings']->label);
+    }
+
     public function test_the_four_permission_keys_are_reachable(): void
     {
         // Derived from the module, not registered separately: PermissionCatalogue

@@ -668,7 +668,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       for (final entry in action.entries) {
         if (entry.key != 'type' &&
             !const {'field', 'value', 'url'}.contains(entry.key)) {
-          row.parameter(entry.key).text = '${entry.value ?? ''}';
+          // A LIST IS JOINED, NOT PRINTED. Every list parameter — roles, named
+          // people, template blanks, report recipients — is held as one
+          // comma-joined string because all parameters share one map of text
+          // controllers, and `'$value'` on a List gives Dart's own "[a, b]".
+          //
+          // Reading that back produced ONE id with brackets in it, and saving
+          // wrapped it again: Jose's live rule went [] -> ["[]"] -> ["[[]]"] ->
+          // ["[[[]]]"] over three edits, each save adding a layer, and then the
+          // dispatcher refused a role id that had never existed. Nothing warned,
+          // because a string is exactly what this line wanted.
+          row.parameter(entry.key).text = switch (entry.value) {
+            null => '',
+            final List<dynamic> list => list.join(','),
+            final other => '$other',
+          };
         }
       }
 
@@ -1760,6 +1774,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               padding: const EdgeInsets.only(bottom: 10),
               child: _conditionRow(context, row),
             ),
+          _fieldCatalogue(context),
         ],
       ),
       action: TextButton.icon(
@@ -1772,6 +1787,78 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               }),
         icon: const Icon(Icons.add, size: 16),
         label: const Text('Add a condition'),
+      ),
+    );
+  }
+
+  /// Everything this event carries, in one place, with the words that fit.
+  ///
+  /// Jose, 2026-09-17: *"i set website_chat manually cause i knew it, but i
+  /// dont know the rest ... i need to know which ones they are, make them
+  /// searchable, give me a catalog as well to see them all"*.
+  ///
+  /// The pickers answer it one field at a time, which is the right shape while
+  /// somebody is writing a clause. This answers the other question — what is
+  /// there AT ALL — which a picker cannot, because reading a picker means
+  /// first guessing which field to hang it off.
+  ///
+  /// THREE DIFFERENT THINGS, AND THEY ARE NOT INTERCHANGEABLE. A field with a
+  /// closed set lists every allowed value, because anything else matches
+  /// nothing for as long as the rule exists. A field without one shows a real
+  /// example, because the shape of a value is the only guide there is. A field
+  /// with neither is still named, because knowing it exists is what lets
+  /// somebody test it at all.
+  ///
+  /// Collapsed by default: a reference, not a step.
+  Widget _fieldCatalogue(BuildContext context) {
+    if (_triggerFields.isEmpty) return const SizedBox.shrink();
+
+    final text = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        title: Text(
+          'What this event carries (${_triggerFields.length})',
+          style: text.titleSmall,
+        ),
+        subtitle: Text(
+          'Every field you can test above, or drop into a message below.',
+          style: text.bodySmall,
+        ),
+        children: [
+          for (final field in _triggerFields)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SelectableText(field, style: text.titleSmall),
+                  if (_fieldValues[field] != null)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final option in _fieldValues[field]!)
+                          Chip(
+                            label: Text('${option.label} - ${option.value}'),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                      ],
+                    )
+                  else if (_fieldSamples[field] != null)
+                    Text(
+                      'Anything. Last one seen: ${_fieldSamples[field]}',
+                      style: text.bodySmall,
+                    )
+                  else
+                    Text('Anything.', style: text.bodySmall),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1898,23 +1985,20 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               // Only for `is`. "is one of" takes several values separated by
               // commas, and one dropdown cannot say two things - that case
               // keeps the text box and lists the options underneath instead.
-              ? DropdownMenu<String>(
-                  initialSelection: row.value.text.trim().isEmpty
+              ? SearchPickerField<String>(
+                  value: row.value.text.trim().isEmpty
                       ? null
                       : row.value.text.trim(),
-                  enabled: !_busy,
-                  label: const Text('Value'),
-                  expandedInsets: EdgeInsets.zero,
-                  enableFilter: true,
-                  requestFocusOnTap: true,
-                  onSelected: _busy
+                  label: 'Value',
+                  isDense: true,
+                  onChanged: _busy
                       ? null
                       : (chosen) => setState(
                           () => row.value.text = chosen ?? '',
                         ),
-                  dropdownMenuEntries: [
+                  options: [
                     for (final option in _fieldValues[row.field.text.trim()]!)
-                      DropdownMenuEntry<String>(
+                      SearchOption<String>(
                         value: option.value,
                         // The wire name is shown as well as the plain one: a
                         // rule saved before this existed reads back as the raw
@@ -3156,19 +3240,16 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       );
     }
 
-    return DropdownMenu<String>(
-      initialSelection: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
-      enabled: !_busy,
-      label: const Text('Set to'),
-      expandedInsets: EdgeInsets.zero,
-      enableFilter: true,
-      requestFocusOnTap: true,
-      onSelected: _busy
+    return SearchPickerField<String>(
+      value: row.value.text.trim().isEmpty ? null : row.value.text.trim(),
+      label: 'Set to',
+      isDense: true,
+      onChanged: _busy
           ? null
           : (chosen) => setState(() => row.value.text = chosen ?? ''),
-      dropdownMenuEntries: [
+      options: [
         for (final option in options)
-          DropdownMenuEntry<String>(
+          SearchOption<String>(
             value: option.value,
             // The wire name is shown too: a rule saved before this reads back as
             // the raw value, and somebody comparing the two needs to see they

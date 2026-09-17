@@ -452,6 +452,25 @@ final class FakeTwilioGateway implements TwilioGateway
         }
     }
 
+    /**
+     * The legs a test says Twilio is ringing, keyed by parent call sid.
+     *
+     * @var array<string, list<array{sid: string, to: string, status: string}>>
+     */
+    public array $legs = [];
+
+    public function childLegs(PhoneConnection $connection, string $parentCallSid): array
+    {
+        $this->record(__FUNCTION__, [$connection->id, $parentCallSid]);
+
+        return $this->legs[$parentCallSid] ?? [];
+    }
+
+    public function endCall(PhoneConnection $connection, string $callSid): void
+    {
+        $this->record(__FUNCTION__, [$connection->id, $callSid]);
+    }
+
     public function sendMessage(PhoneConnection $connection, string $from, string $to, string $body): array
     {
         $this->record(__FUNCTION__, [$connection->id, $from, $to, $body]);

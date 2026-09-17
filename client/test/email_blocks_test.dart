@@ -175,7 +175,7 @@ void main() {
       {
         'kind': 'paragraph',
         'spans': [
-          {'text': 'Click here', 'link': 'https://not-your-bank.example.com/x'},
+          {'text': 'Click here', 'href': 'https://not-your-bank.example.com/x'},
         ],
       },
     ]);

@@ -112,13 +112,21 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $reader = $this->userWithRole($t, 'Reader', ['email.view']);
+        // Holds the Settings TAB and not `email.edit`, deliberately.
+        //
+        // Since 2026-09-17 these routes sit behind `email.settings.view` as
+        // well, and a Reader without it is refused by the tab -- which would
+        // pass this assertion while proving nothing about the authority the
+        // docblock names. Giving them the tab puts the refusal back on
+        // `email.edit`, which is the thing under test. The tab's own refusal
+        // is covered by EmailTabPermissionsTest.
+        $reader = $this->userWithRole($t, 'Reader', ['email.view', 'email.settings.view']);
 
         $this->signedInAs($reader)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
             ->assertForbidden();
 
-        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.edit']);
+        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.settings.view', 'email.edit']);
 
         $this->signedInAs($manager)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
@@ -365,7 +373,7 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.edit']);
+        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.settings.view', 'email.edit']);
         $state   = $this->beginSignIn($t, $mailbox, $manager);
 
         $this->inTenant($t['org'], fn () => $manager->forceFill(['is_active' => false])->save());
@@ -612,7 +620,7 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $reader = $this->userWithRole($t, 'Reader', ['email.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['email.view', 'email.settings.view']);
 
         $this->signedInAs($reader)
             ->getJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/status")

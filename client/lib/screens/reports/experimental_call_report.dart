@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
+import '../phone/recording_playback_bar.dart';
+import '../phone/recording_player.dart';
 
 /// One day of A-1's calls against the jobs they became (TEMPORARY).
 ///
@@ -41,6 +43,27 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _error;
   bool _loading = true;
 
+  /// Which column the table is ordered by, and which way.
+  ///
+  /// Defaults to answered, descending: the question somebody opens this on a
+  /// Monday morning is who took the calls, and alphabetical by first name
+  /// answers nothing. Null would mean the server's order, which is
+  /// alphabetical - available by tapping Person.
+  String _sortBy = 'answered';
+  bool _ascending = false;
+
+  /// The person whose calls are open, by name. One at a time: several open
+  /// rows turn a table into a wall and the comparison the table exists for is
+  /// lost.
+  String? _expanded;
+
+  /// Built once and shared by every row's transport, so opening a second
+  /// person stops the first rather than playing two calls at once.
+  final RecordingPlayer _player = createRecordingPlayer();
+
+  /// Why a recording would not play, kept per call id.
+  final Map<String, String> _recordingErrors = {};
+
   final TextEditingController _token = TextEditingController();
   String? _disconnecting;
   String? _confirmingDisconnect;
@@ -52,6 +75,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   @override
   void dispose() {
     _token.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -196,26 +220,60 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     final totals = (report['totals'] as Map? ?? const {})
         .cast<String, dynamic>();
 
-    return ListView(
-      children: [
-        _totals(context, totals),
-        const SizedBox(height: 16),
-        _coverage(context, report),
-        const SizedBox(height: 16),
-        if (people.isEmpty)
-          _nothing(context)
-        else
-          LayoutBuilder(
-            builder: (context, constraints) =>
-                constraints.maxWidth >= ExperimentalCallReport.tableAbove
-                ? _table(context, people)
-                : Column(
-                    children: [
-                      for (final person in people) _card(context, person),
-                    ],
-                  ),
-          ),
-      ],
+    final calls = (report['calls'] as List? ?? const [])
+        .map((row) => (row as Map).cast<String, dynamic>())
+        .toList();
+
+    final ordered = _sorted(people);
+
+    /*
+     * ── A CustomScrollView SO THE COLUMN HEADER CAN PIN ─────────
+     *
+     * Jose asked for the header to stay put while the people scroll. A
+     * DataTable cannot do that - it draws its own header inside itself and
+     * scrolls as one box - so the header is a sliver of its own and the rows
+     * are a list beneath it.
+     *
+     * Which means the widths can no longer be decided by the table. They come
+     * from _columns(), and the header and every row lay themselves out from
+     * that one list, so a column added to it cannot appear in one and not the
+     * other.
+     */
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= ExperimentalCallReport.tableAbove;
+
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _totals(context, totals)),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            SliverToBoxAdapter(child: _coverage(context, report)),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+
+            if (people.isEmpty)
+              SliverToBoxAdapter(child: _nothing(context))
+            else if (wide) ...[
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyHeader(child: _headerRow(context)),
+              ),
+              SliverList.builder(
+                itemCount: ordered.length,
+                itemBuilder: (context, index) =>
+                    _personRow(context, ordered[index], calls),
+              ),
+            ] else
+              SliverList.builder(
+                itemCount: ordered.length,
+                itemBuilder: (context, index) =>
+                    _card(context, ordered[index], calls),
+              ),
+
+            if (people.isNotEmpty)
+              SliverToBoxAdapter(child: _conversionNote(context)),
+          ],
+        );
+      },
     );
   }
 
@@ -537,42 +595,410 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _table(BuildContext context, List<Map<String, dynamic>> people) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        columns: const [
-          DataColumn(label: Text('Person')),
-          DataColumn(label: Text('Rang'), numeric: true),
-          DataColumn(label: Text('Answered'), numeric: true),
-          DataColumn(label: Text('New'), numeric: true),
-          DataColumn(label: Text('Existing'), numeric: true),
-          DataColumn(label: Text('Jobs'), numeric: true),
-          DataColumn(label: Text('Avg talk'), numeric: true),
-          DataColumn(label: Text('')),
-        ],
-        rows: [
-          for (final person in people)
-            DataRow(
-              cells: [
-                DataCell(Text('${person['person']}')),
-                DataCell(Text('${person['rang']}')),
-                DataCell(Text('${person['answered']}')),
-                DataCell(Text('${person['new_client']}')),
-                DataCell(Text('${person['existing_client']}')),
-                DataCell(Text('${person['jobs']}')),
-                DataCell(Text(_mmss(person['avg_talk_seconds']))),
-                DataCell(Text(_onlyIn(person) ?? '')),
+  /// The columns, once, so the header and the rows cannot disagree.
+  ///
+  /// `flex` rather than fixed widths: above 900px there is room for all of
+  /// them, and a fixed-width table would need its own horizontal scrollbar
+  /// that the pinned header could not follow.
+  List<({String key, String label, int flex, bool numeric})> _columns() =>
+      const [
+        (key: 'person', label: 'Person', flex: 3, numeric: false),
+        (key: 'rang', label: 'Rang', flex: 2, numeric: true),
+        (key: 'answered', label: 'Answered', flex: 2, numeric: true),
+        (key: 'new_client', label: 'New', flex: 2, numeric: true),
+        (key: 'existing_client', label: 'Existing', flex: 2, numeric: true),
+        (key: 'jobs', label: 'Jobs', flex: 2, numeric: true),
+
+        // Jose's column, 2026-09-17: "conversion rate %, which is calculated
+        // between new and jobs".
+        (key: 'conversion', label: 'Conversion', flex: 2, numeric: true),
+
+        (key: 'avg_talk_seconds', label: 'Avg talk', flex: 2, numeric: true),
+      ];
+
+  /// Jobs booked as a share of new-client calls answered.
+  ///
+  /// ── IT IS A RATIO OF TWO HONEST NUMBERS, NOT A FUNNEL ───────
+  ///
+  /// `jobs` counts what a person created in Workiz on the day; `new_client`
+  /// counts new-client calls they answered. Those are not the same population:
+  /// somebody can book a job for an existing customer, or book today from a
+  /// call taken last week. So this reads "jobs per new-client call", which is
+  /// worth watching, and it is NOT "the share of their calls that converted".
+  /// The screen says so under the table rather than leaving the percent sign
+  /// to imply the stronger claim.
+  ///
+  /// Null when they answered no new-client calls — a dash. Zero divided by
+  /// zero is not 0%, and 0% next to a name reads as a judgement about somebody
+  /// who was never given the chance.
+  double? _conversion(Map<String, dynamic> person) {
+    final calls = (person['new_client'] as num?)?.toDouble() ?? 0;
+    if (calls <= 0) return null;
+
+    return ((person['jobs'] as num?)?.toDouble() ?? 0) / calls * 100;
+  }
+
+  /// What the conversion column does and does not claim.
+  ///
+  /// Written on the screen rather than left to the percent sign, because a
+  /// column headed "Conversion" beside somebody's name will be read as a
+  /// verdict on them. The two counts come from different systems and different
+  /// populations, and the honest reading is narrower than the word.
+  Widget _conversionNote(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Text(
+        'Conversion is jobs booked in Workiz divided by new-client calls '
+        'answered, for the same day. It is not the share of a person\'s calls '
+        'that became work: a job can be booked for an existing customer, or '
+        'booked today from a call taken last week. A dash means they answered '
+        'no new-client calls, which is different from converting none.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.outline,
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _sorted(List<Map<String, dynamic>> people) {
+    final ordered = [...people];
+
+    ordered.sort((a, b) {
+      final comparison = switch (_sortBy) {
+        'person' => '${a['person']}'.toLowerCase().compareTo(
+          '${b['person']}'.toLowerCase(),
+        ),
+
+        // Nulls last whichever way the arrow points. A person with no average
+        // talk time has no value to rank, and sorting them to the top of a
+        // descending column would read as the longest calls of the day.
+        'conversion' => _nullsLast(_conversion(a), _conversion(b)),
+        'avg_talk_seconds' => _nullsLast(
+          (a['avg_talk_seconds'] as num?)?.toDouble(),
+          (b['avg_talk_seconds'] as num?)?.toDouble(),
+        ),
+
+        _ => ((a[_sortBy] as num?) ?? 0).compareTo((b[_sortBy] as num?) ?? 0),
+      };
+
+      return _ascending ? comparison : -comparison;
+    });
+
+    return ordered;
+  }
+
+  /// Ranks two possibly-absent numbers, keeping absence at the bottom.
+  ///
+  /// Returns 0 when both are missing so the sort stays stable and two dashes
+  /// do not swap places every time somebody flips the arrow.
+  int _nullsLast(double? a, double? b) {
+    if (a == null && b == null) return 0;
+
+    // The sign is flipped by the caller, so "last" has to be expressed as
+    // though ascending: a missing value sorts high, and the descending pass
+    // inverts it back to the bottom.
+    if (a == null) return _ascending ? 1 : -1;
+    if (b == null) return _ascending ? -1 : 1;
+
+    return a.compareTo(b);
+  }
+
+  void _sort(String key) {
+    setState(() {
+      if (_sortBy == key) {
+        _ascending = !_ascending;
+        return;
+      }
+
+      _sortBy = key;
+
+      // A newly chosen column starts on the end somebody wants to see: most
+      // calls first for a number, A first for a name.
+      _ascending = key == 'person';
+    });
+  }
+
+  Widget _headerRow(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Material(
+      // Opaque on purpose: pinned, it scrolls over the rows beneath it, and a
+      // transparent header would print the names through itself.
+      color: theme.colorScheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                for (final column in _columns())
+                  Expanded(
+                    flex: column.flex,
+                    child: InkWell(
+                      onTap: () => _sort(column.key),
+                      child: Row(
+                        mainAxisAlignment: column.numeric
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              column.label,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelLarge,
+                            ),
+                          ),
+
+                          // Only on the column actually in force. An arrow on
+                          // every header says nothing about which one is doing
+                          // the sorting.
+                          if (_sortBy == column.key)
+                            Icon(
+                              _ascending
+                                  ? Icons.arrow_upward
+                                  : Icons.arrow_downward,
+                              size: 14,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Matches the chevron's slot in every row below.
+                const SizedBox(width: 40),
               ],
+            ),
+          ),
+          const Divider(height: 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _personRow(
+    BuildContext context,
+    Map<String, dynamic> person,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final theme = Theme.of(context);
+    final name = '${person['person']}';
+    final open = _expanded == name;
+    final only = _onlyIn(person);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = open ? null : name),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                for (final column in _columns())
+                  Expanded(
+                    flex: column.flex,
+                    child: Align(
+                      alignment: column.numeric
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: column.key == 'person'
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(name, overflow: TextOverflow.ellipsis),
+                                if (only != null)
+                                  Text(
+                                    only,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.outline,
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : Text(_cell(person, column.key)),
+                    ),
+                  ),
+                SizedBox(
+                  width: 40,
+                  child: Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (open) _calls(context, name, calls),
+        const Divider(height: 1),
+      ],
+    );
+  }
+
+  String _cell(Map<String, dynamic> person, String key) => switch (key) {
+    'avg_talk_seconds' => _mmss(person['avg_talk_seconds']),
+    'conversion' => switch (_conversion(person)) {
+      null => '—',
+      final rate => '${rate.round()}%',
+    },
+    _ => '${person[key] ?? 0}',
+  };
+
+  /// The calls behind one person's row.
+  ///
+  /// ── A CALL THAT RANG THEM AND A CALL THEY TOOK ARE BOTH HERE ──
+  ///
+  /// The row has a Rang column and an Answered column, so drilling into it has
+  /// to account for both or the list will not add up to the numbers that were
+  /// clicked. Each call says which it was, and a call that rang four people
+  /// appears under all four — which is what happened.
+  Widget _calls(
+    BuildContext context,
+    String name,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final theme = Theme.of(context);
+
+    final mine = calls.where((call) {
+      if (call['answered_by'] == name) return true;
+
+      return ((call['rang'] as List?) ?? const []).contains(name);
+    }).toList();
+
+    if (mine.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(32, 0, 16, 16),
+        child: Text(
+          'No calls for this person on this day. They are listed because '
+          'Workiz has them booking jobs.',
+          style: theme.textTheme.bodySmall,
+        ),
+      );
+    }
+
+    return Container(
+      color: theme.colorScheme.surfaceContainerHighest,
+      padding: const EdgeInsets.fromLTRB(32, 8, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [for (final call in mine) _call(context, name, call)],
+      ),
+    );
+  }
+
+  Widget _call(BuildContext context, String name, Map<String, dynamic> call) {
+    final theme = Theme.of(context);
+    final answered = call['answered_by'] == name;
+    final id = call['recording_id']?.toString();
+    final error = id == null ? null : _recordingErrors[id];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                answered ? Icons.call_received : Icons.ring_volume_outlined,
+                size: 16,
+                color: theme.colorScheme.outline,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${_clock(call['started_at'])} · '
+                  '${call['caller_label'] ?? call['from'] ?? 'Unknown caller'}'
+                  '${call['queue'] == null ? '' : ' · ${call['queue']}'}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              Text(
+                answered
+                    ? _mmss(call['talk_seconds'])
+                    // Not a duration: they did not take it. Showing the
+                    // record's length here would read as time they spent.
+                    : 'rang',
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
+          ),
+          if (id != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, top: 4),
+              child: RecordingPlaybackBar(
+                player: _player,
+                dense: true,
+                load: () => _recording(id),
+              ),
+            ),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 24, top: 4),
+              child: Text(
+                error,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
             ),
         ],
       ),
     );
   }
 
-  Widget _card(BuildContext context, Map<String, dynamic> person) {
+  /// Fetches one recording, keeping the server's sentence when it refuses.
+  ///
+  /// `getBytesResponse` rather than `getBytes`, because the refusal here is
+  /// worth reading: the recordings exist and the RingCentral app has not been
+  /// granted permission to play them, which is something somebody can go and
+  /// fix in a console. A bare "could not load" sends them into this codebase
+  /// instead.
+  Future<List<int>?> _recording(String id) async {
+    final response = await widget.api.getBytesResponse(
+      '/reports/experimental/calls/$id/recording',
+    );
+
+    if (response.bytes != null) {
+      if (mounted) setState(() => _recordingErrors.remove(id));
+      return response.bytes;
+    }
+
+    if (mounted) {
+      setState(
+        () => _recordingErrors[id] =
+            response.message ?? 'That recording could not be loaded.',
+      );
+    }
+
+    return null;
+  }
+
+  /// The time of day out of an ISO stamp, without pulling in a date library
+  /// for eight characters.
+  String _clock(dynamic stamp) {
+    final parsed = DateTime.tryParse('$stamp')?.toLocal();
+    if (parsed == null) return '';
+
+    final hour = parsed.hour.toString().padLeft(2, '0');
+    final minute = parsed.minute.toString().padLeft(2, '0');
+
+    return '$hour:$minute';
+  }
+
+  Widget _card(
+    BuildContext context,
+    Map<String, dynamic> person,
+    List<Map<String, dynamic>> calls,
+  ) {
     final theme = Theme.of(context);
     final only = _onlyIn(person);
+    final name = '${person['person']}';
+    final open = _expanded == name;
 
     return Card(
       child: Padding(
@@ -594,9 +1020,30 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
               '${person['new_client']} new · '
               '${person['existing_client']} existing · '
               '${person['jobs']} jobs · '
+              '${_cell(person, 'conversion')} conversion · '
               '${_mmss(person['avg_talk_seconds'])} avg talk',
               style: theme.textTheme.bodyMedium,
             ),
+
+            // The same drill-down as the table, because a phone is where
+            // somebody is most likely to want to hear the call rather than
+            // read the count.
+            InkWell(
+              onTap: () => setState(() => _expanded = open ? null : name),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      open ? 'Hide calls' : 'Show calls',
+                      style: theme.textTheme.labelLarge,
+                    ),
+                    Icon(open ? Icons.expand_less : Icons.expand_more),
+                  ],
+                ),
+              ),
+            ),
+            if (open) _calls(context, name, calls),
           ],
         ),
       ),
@@ -637,4 +1084,34 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
 
     return inCalls && !inJobs ? 'not in Workiz' : null;
   }
+}
+
+/// Holds the column header at the top of the list while the people scroll.
+///
+/// A fixed height, because the header is one row of labels and measuring it
+/// would mean laying it out twice on every frame. It is stated in one place
+/// and the header's own padding is derived from nothing else.
+class _StickyHeader extends SliverPersistentHeaderDelegate {
+  const _StickyHeader({required this.child});
+
+  final Widget child;
+
+  static const double _height = 45;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox(height: _height, child: child);
+  }
+
+  /// True whenever the header WIDGET differs, which it does on every sort
+  /// change — the arrow moves and the labels rebuild. Returning false would
+  /// pin a header showing the previous column's arrow forever.
+  @override
+  bool shouldRebuild(_StickyHeader old) => old.child != child;
 }

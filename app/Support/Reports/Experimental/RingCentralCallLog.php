@@ -86,7 +86,8 @@ final class RingCentralCallLog
      *
      * @return list<array{
      *     id: ?string, started_at: ?string, from: ?string, caller_label: ?string,
-     *     queue: ?string, result: ?string, rang: list<string>, answered_by: ?string
+     *     queue: ?string, result: ?string, rang: list<string>, answered_by: ?string,
+     *     talk_seconds: ?int, recording_id: ?string
      * }>
      */
     public function forDate(string $from, string $to): array
@@ -224,6 +225,74 @@ final class RingCentralCallLog
             // Null when nobody picked up. Null rather than 0, because a zero
             // would average in as a real short call and pull every mean down.
             'talk_seconds' => $talkSeconds,
+
+            /*
+             * THE RECORDING'S ID, NOT ITS URL.
+             *
+             * `contentUri` points at media.ringcentral.com - a DIFFERENT host
+             * from the API - and needs our bearer token to fetch, so handing
+             * it to a browser gives a 401 and handing the token with it gives
+             * away the account. The id is what the proxy endpoint takes.
+             *
+             * Null on a call with no recording, which is a real and common
+             * state: measured 2026-09-17, 175 of 250 inbound calls over three
+             * days carried one. A missing recording is not an error and must
+             * not read as one.
+             */
+            'recording_id' => isset($record['recording']['id'])
+                ? (string) $record['recording']['id']
+                : null,
+        ];
+    }
+
+    /**
+     * The audio of one recording, fetched with the account's own token.
+     *
+     * Two hosts are involved and that is the trap: the call log lives on the
+     * API host, the audio on media.ringcentral.com. The id is turned into a
+     * media URL HERE rather than trusting a `contentUri` sent up from a
+     * browser - a caller that can name any URL and have the server fetch it
+     * with our bearer token is a request-forgery hole with a token attached.
+     *
+     * @return array{body: string, type: string}
+     *
+     * @throws RuntimeException naming what is missing, never a token
+     */
+    public function recording(string $id): array
+    {
+        $server = rtrim((string) config('experimental_reports.ringcentral.server'), '/');
+
+        $response = Http::withToken($this->token())
+            ->get($server.'/restapi/v1.0/account/~/recording/'.rawurlencode($id).'/content');
+
+        /*
+         * 403 here is ONE thing and it is worth saying by name: the app has
+         * not been granted ReadCallRecording. Measured 2026-09-17 against the
+         * live account - the recordings are there and the audio refuses.
+         *
+         * Left as "RingCentral refused (403)" this reads like a broken build
+         * and somebody spends an afternoon in the wrong codebase.
+         */
+        if ($response->status() === 403) {
+            throw new RuntimeException(
+                'The RingCentral app EzBizi uses is not allowed to read call recordings. The '
+                .'recordings exist - the app needs the ReadCallRecording permission added '
+                .'to it in the RingCentral developer console, which is a change there and '
+                .'not in EzBizi.'
+            );
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException('RingCentral refused the recording ('.$response->status().').');
+        }
+
+        return [
+            'body' => $response->body(),
+
+            // Whatever RingCentral says it is. RingCentral serves wav or mp3
+            // depending on how the account is configured, and guessing one
+            // gives a player that silently will not play.
+            'type' => $response->header('Content-Type') ?: 'audio/mpeg',
         ];
     }
 

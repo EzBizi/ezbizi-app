@@ -2237,16 +2237,33 @@ class ActionRunner
             (array) ($action['user_ids'] ?? []),
         ), fn (string $id) => $id !== ''));
 
-        $sent = $this->notifications->dispatch(
-            title: $title,
-            body: $action['body'] ?? null,
-            subject: $subject,
-            source: 'automation',
-            eventId: $event->getKey(),
-            inAppOnly: $inAppOnly,
-            roleIds: $roleIds,
-            userIds: $userIds,
-        );
+        /*
+         * A BAD ROLE ID IS A REFUSAL, NOT A 500.
+         *
+         * The dispatcher throws when a rule names a role that does not exist,
+         * and it is right to: telling everybody instead would be the noise the
+         * role was chosen to avoid. But thrown out of here it reached the
+         * browser as "Server Error", which tells the rule's author nothing and
+         * looks like the app is broken rather than like their rule is.
+         *
+         * Measured on Jose's live rule, 2026-09-17: three edits had stored the
+         * role list as ["[[[]]]"] and pressing Test answered a 500 with the
+         * reason only in the server log.
+         */
+        try {
+            $sent = $this->notifications->dispatch(
+                title: $title,
+                body: $action['body'] ?? null,
+                subject: $subject,
+                source: 'automation',
+                eventId: $event->getKey(),
+                inAppOnly: $inAppOnly,
+                roleIds: $roleIds,
+                userIds: $userIds,
+            );
+        } catch (InvalidArgumentException $refusal) {
+            return ['type' => 'notify', 'ok' => false, 'detail' => $refusal->getMessage()];
+        }
 
         return [
             'type' => 'notify',

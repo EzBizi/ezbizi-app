@@ -1382,6 +1382,40 @@ class ModuleServiceProvider extends ServiceProvider
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: ['view', 'edit'],
                 /*
+                 * ── Two tabs, and deliberately only two ──
+                 *
+                 * The labels are web_screen.dart's own words. The strip there
+                 * is a fixed list of exactly these two, so there is nothing to
+                 * copy wrongly and nothing else to declare.
+                 *
+                 * WHY THIS IS A REAL GRANT rather than granularity for its own
+                 * sake: SEO is what the website SAYS — the phone number, the
+                 * licence, the address, the copy on each page. Widgets is what
+                 * a visitor can START on it, and every conversation begun there
+                 * becomes a lead. "Whoever writes the site's copy may not
+                 * reconfigure the thing that captures enquiries" is a sentence
+                 * somebody says out loud, which is the test the brief sets.
+                 *
+                 * NOT DECLARED, on purpose: General, Pages, Posts, Templates,
+                 * Content and Hours are panes of a rail INSIDE the SEO tab, not
+                 * tabs. Six more keys would produce a roles editor nobody can
+                 * read, to express a distinction nobody has asked for — the
+                 * same reason Communication left their fifteen-pane Settings
+                 * rail as one `phone.edit`.
+                 *
+                 * THE BROWSER KEY DOES NOT GET A TAB EITHER, and Settings was
+                 * right to ask. Re-issuing it is already `web_management.edit`
+                 * and the button is drawn only behind `canEdit`, so "may look
+                 * at the site" and "may reissue the credential the plugin
+                 * authenticates with" are ALREADY two grants. A tab key is a
+                 * visibility toggle by design; hanging a credential rotation on
+                 * one would be the weaker half of a gate that already holds.
+                 */
+                tabs: [
+                    new TabDefinition('seo', 'SEO'),
+                    new TabDefinition('widgets', 'Widgets'),
+                ],
+                /*
                  * This module was automation-exempt on the grounds that
                  * "nothing here happens on its own". That stopped being true
                  * when the chat and form widgets shipped: a visitor starting a
@@ -1733,6 +1767,36 @@ class ModuleServiceProvider extends ServiceProvider
                     .'This states a defect, not a decision, and it is not permission to stay '
                     .'this way — see TODO #35 for how to close it and delete this line.',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'financials'],
+                /*
+                 * Four tabs, in the order the chip row draws them.
+                 *
+                 * ── Two of these four cannot be enforced at the endpoint ──
+                 *
+                 * Hiding a tab whose routes still answer is decoration, so this
+                 * says which two are which rather than letting somebody assume
+                 * all four are alike.
+                 *
+                 * `stock` and `orders` own their endpoints outright and carry
+                 * `permission:` middleware in routes/api.php.
+                 *
+                 * `items` and `locations` are the module's REFERENCE DATA, not
+                 * one tab's list. Measured: `/inventory/items` is read by six
+                 * panes and `/inventory/locations` by seven, across all four
+                 * tabs — every "new purchase order", "new sale", "new issue"
+                 * and "new transfer" form has to name an item and a place. So a
+                 * role that may cut a purchase order can necessarily read the
+                 * catalogue, and gating those routes would refuse the Orders
+                 * tab mid-form. Granting these two hides the LIST; it does not
+                 * withhold the data, and an administrator should be told that.
+                 * Closing it properly needs a narrow id-and-name picker
+                 * endpoint for the forms — see TODO #36.
+                 */
+                tabs: [
+                    new TabDefinition('stock', 'Stock'),
+                    new TabDefinition('items', 'Items'),
+                    new TabDefinition('orders', 'Orders'),
+                    new TabDefinition('locations', 'Locations'),
+                ],
                 subject: new AutomationSubject(InventoryItem::class, 'Item', key: 'item'),
                 triggers: [
                     new TriggerDefinition(
@@ -2308,6 +2372,45 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'email',
                 label: 'Email',
                 auditActionPrefixes: ['mailbox', 'sending_identity'],
+
+                /*
+                 * ── TWO TABS, AND THE SECOND ONE IS THE POINT ────────
+                 *
+                 * Jose, 2026-09-17: "i should be able to grant access by sub
+                 * tab as well ... so this applies to every tab and it's sub
+                 * tabs". For Email the split somebody actually wants is
+                 * obvious: the people who READ the mail are not the people who
+                 * CONNECT the mailboxes. Settings holds provider sign-ins,
+                 * server addresses and the per-role inbox grants themselves --
+                 * the screen on which somebody could grant themselves an inbox.
+                 *
+                 * Labels copied from the tab bar in `email_screen.dart`, not
+                 * written fresh. An administrator who ticks "Settings" and then
+                 * looks for a tab with that word has to find one.
+                 *
+                 * ── THIS IS THE THIRD LEVEL, AND IT IS NOT A FOURTH ──
+                 *
+                 * Email already had a second-level grant that is NOT a
+                 * permission key: the per-inbox `MailboxGrant` rows, which say
+                 * WHICH inboxes a role may read once it is through the door.
+                 * Tabs now sit beside them under one module heading, so the
+                 * editor reads: open Email, open which tab, read which inbox.
+                 *
+                 * They are genuinely different questions and neither replaces
+                 * the other -- `email.inbox.view` is "may you see the mail
+                 * screen at all", a grant is "whose mail". A role with the tab
+                 * and no grant gets the screen and the sentence explaining that
+                 * no inbox has been given to it, which is the honest answer and
+                 * already written.
+                 *
+                 * NOTHING NARROWS TODAY. The migration grants both tabs to
+                 * every role already holding `email.view`, so no role loses a
+                 * screen it had this morning.
+                 */
+                tabs: [
+                    new TabDefinition('inbox', 'Inbox'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 triggers: [
                     /*
                      * THE ONE THIS MODULE EXISTS FOR, AND IT FIRES.
@@ -2635,56 +2738,50 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
-                 * NO `tabs:` DECLARATION, DELIBERATELY - and this module already
-                 * does what that mechanism was built for (Settings, 0051,
-                 * 2026-09-17; Jose: "i should be able to grant access by sub tab
-                 * as well ... this applies to every tab and it's sub tabs").
+                 * Three tabs, each NAMING an action this module already has
+                 * rather than minting a new one (Jose, 2026-09-17: "i should be
+                 * able to grant access by sub tab as well ... this applies to
+                 * every tab and it's sub tabs").
                  *
-                 * Training's three tabs are ALREADY three separate grants, and
-                 * have been since the module shipped:
+                 * Training's tabs were three separate grants before that ask
+                 * existed, so the only thing missing was the LABEL: the roles
+                 * editor rendered them "View training" / "Monitor training" /
+                 * "Manage training", and an administrator hunting for the box
+                 * that opens the Dashboard had to infer which one it was.
+                 * `action:` supplies the name without a second key.
                  *
-                 *   Learn      `training.view`     the learner's own pane
-                 *   Dashboard  `training.monitor`  everybody's results
-                 *   Settings   `training.manage`   the authoring surface
+                 * ── Why these must never MINT, if you are about to change it ──
                  *
-                 * `training_screen.dart` omits a tab from `_tabs` entirely when
-                 * its permission is absent, `DashboardController::authorizeMonitor`
-                 * refuses every dashboard route without `monitor`, and both
-                 * directions are pinned: TrainingDashboardTest refuses view-only
-                 * on all three dashboard endpoints, TrainingTestAuthoringTest and
-                 * TrainingGuideScopeTest refuse a ViewOnly author, and
-                 * training_screen_test asserts a viewer without `monitor` sees
-                 * Learn and Settings and never Dashboard.
+                 * Dropping `action:` makes `TabDefinition` mint `{key}.view`, so
+                 * a `dashboard` tab becomes `training.dashboard.view` sitting
+                 * beside `training.monitor`: two names for one authority. An
+                 * administrator could then grant the tab without the read and
+                 * get a Dashboard that opens and then refuses every request
+                 * inside it — an affordance without its gate, a state this
+                 * product cannot otherwise reach, and nothing would report it.
                  *
-                 * ── Why declaring tabs here would make it WORSE ──────────────
+                 * The other way round is worse. `monitor` is a DISCLOSURE
+                 * boundary, not a visibility toggle: it decides who may read
+                 * named people's results, and this module shipped two
+                 * cross-franchise disclosures learning to hold that line
+                 * (task-11 review). A tab grant is "visibility only,
+                 * deliberately" by `TabDefinition`'s own docblock, which is the
+                 * right weight for Work Hours and the wrong weight for this.
                  *
-                 * `TabDefinition` mints `{key}.view`, so a `dashboard` tab would
-                 * create `training.dashboard.view` beside `training.monitor` -
-                 * two names for one authority. An administrator could then grant
-                 * the tab without the read, producing a Dashboard that opens and
-                 * then refuses every request inside it: an affordance without its
-                 * gate, which is a state this product cannot reach today and
-                 * which nothing would report.
+                 * `TrainingModuleTest::test_every_tab_names_an_existing_action_and_mints_nothing`
+                 * pins it. `ModuleDefinition` also refuses a named action the
+                 * module does not declare, at boot.
                  *
-                 * The alternative - letting the tab key become the only gate -
-                 * is worse still. `monitor` is a DISCLOSURE boundary, not a
-                 * visibility toggle: it decides who may read named people's
-                 * results, and this module shipped two cross-franchise
-                 * disclosures learning to hold that line (task-11 review). A tab
-                 * grant is documented as "visibility only, deliberately"
-                 * (TabDefinition's own docblock), and that is the wrong weight
-                 * for this boundary.
-                 *
-                 * WHAT IS GENUINELY MISSING is only the LABEL. `labelFor()`
-                 * renders these as "View training" / "Monitor training" /
-                 * "Manage training", so an administrator hunting for the
-                 * Dashboard tab has to infer which one opens it. That is
-                 * `TabDefinition`'s own stated concern, and fixing it needs the
-                 * mechanism to let a tab NAME AN EXISTING ACTION rather than mint
-                 * one. Raised with Settings 2026-09-17. If that lands, declare
-                 * three tabs pointing at the three actions above and change
-                 * nothing else.
-                 *
+                 * The client needs nothing: `training_screen.dart` already omits
+                 * a tab from `_tabs` when its permission is absent, and the keys
+                 * it reads are unchanged by naming.
+                 */
+                tabs: [
+                    new TabDefinition('learn', 'Learn', action: 'view'),
+                    new TabDefinition('dashboard', 'Dashboard', action: 'monitor'),
+                    new TabDefinition('settings', 'Settings', action: 'manage'),
+                ],
+                /*
                  * `assign` DELIBERATELY declares no `actionRequires`, and the
                  * history is worth keeping because the obvious reading is wrong.
                  *
@@ -3019,6 +3116,46 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Reports',
                 auditActionPrefixes: ['report'],
                 actions: ['view', 'build', 'export'],
+
+                /*
+                 * ── THE TABS, and what a tab grant MEANS here ───────
+                 *
+                 * Jose, 2026-09-17: "i should be able to grant access by sub
+                 * tab as well ... so this applies to every tab and it's sub
+                 * tabs".
+                 *
+                 * In most modules a tab grant reads as "which pane opens". In
+                 * this one the panes are the same capability aimed at different
+                 * data, so it reads as WHICH FIGURES A ROLE MAY SEE - a
+                 * stronger claim, and the reason Experimental is the tab worth
+                 * having. It names every person who answered a phone, how long
+                 * they spent on it and how much of their work became jobs. That
+                 * is personnel performance, and somebody who builds reports
+                 * about jobs has no automatic business reading it.
+                 *
+                 * Labels copied from the chips in reports_screen.dart, not
+                 * written fresh: an administrator who ticks a box and then
+                 * cannot find a tab by that name has been told the name wrongly
+                 * and nothing errors.
+                 *
+                 * ── The other doors were checked, not assumed ───────
+                 *
+                 * A tab that hides figures is worth nothing if the same numbers
+                 * come out of another pane. Measured 2026-09-17: the report
+                 * builder reads ReportMap, which holds EzBizi's own records
+                 * only - no RingCentral calls, no Workiz jobs, and by written
+                 * commitment to Google no ads_performance resource. Profit and
+                 * loss is read live from Airtable and is its own module with
+                 * its own grant. So no tab here can be reached around by
+                 * building a report, and that is a fact about ReportMap rather
+                 * than about these three keys: it stops being true the day
+                 * anything external is stored in a resource the builder offers.
+                 */
+                tabs: [
+                    new TabDefinition('library', 'Reports'),
+                    new TabDefinition('builder', 'Builder'),
+                    new TabDefinition('experimental', 'Experimental'),
+                ],
                 actionRequires: [
                     'build' => ['reports.view'],
                     'export' => ['reports.view'],
@@ -3095,6 +3232,37 @@ class ModuleServiceProvider extends ServiceProvider
              * measures internally, and an organization that wants one without
              * the other should not have to choose.
              */
+            /*
+             * Profit & Loss - a tenant's own accounting sheet, read live out
+             * of Airtable.
+             *
+             * ITS OWN PERMISSION, which is the reason it is a module at all
+             * rather than a report type in the builder. The sheet holds
+             * payroll, owner distributions and franchise royalties, by name
+             * and by person. Somebody who measures jobs and calls should not
+             * acquire that with the same grant, and an organization wanting
+             * one without the other should not have to choose. Same shape as
+             * Google Ads beside it, for the same reason. Jose's call,
+             * 2026-09-17, asked before building.
+             *
+             * `view` alone. The figures live in somebody else's spreadsheet
+             * and are read when the screen opens - EzBizi stores none of them,
+             * so create, update and delete would offer three actions that
+             * cannot exist.
+             */
+            new ModuleDefinition(
+                key: 'profit_loss',
+                label: 'Profit & Loss',
+                parent: 'reports',
+                actions: ['view'],
+                automationExemptBecause: 'Nothing here is a record. The figures are read from '
+                    .'the Airtable base a business connected, when somebody opens the screen, and are '
+                    .'never stored, so no row is ever created, changed or removed for a trigger '
+                    .'to fire on. This stops being true the day a week is cached or watched: '
+                    .'an alert on a branch going into loss is a real trigger, and it needs this '
+                    .'line removed rather than reworded.',
+            ),
+
             new ModuleDefinition(
                 key: 'ads_performance',
                 label: 'Google Ads',
