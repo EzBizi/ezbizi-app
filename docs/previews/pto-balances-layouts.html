@@ -127,6 +127,21 @@ button that does nothing for the reader.</p>
 <p class="sub"><b>Use the state switcher.</b> Every layout is drawn in all five, because a layout
 that only reads well at &ldquo;6 days available&rdquo; is a layout for the rarest case.</p>
 
+<p class="sub"><b>&#9888; STATE A IS ALL-OR-NOTHING, which corrected an argument I had already
+written down.</b> All four PTO settings are organization-scoped, so &ldquo;no policy&rdquo; empties
+every row at once and <b>can never be one person&rsquo;s state beside somebody else&rsquo;s</b>.
+Not checkable from here &mdash; it is HR&rsquo;s settings block rather than a tenant row, and not
+on main yet &mdash; so it is their measurement, relayed. It <i>strengthens</i> the recommendation
+rather than weakening it: option 2&rsquo;s advantage was the mixed-state reading, and a third of
+that mix turns out to be impossible.</p>
+
+<p class="sub"><b>Where the feature leans next, worth drawing for now rather than redrawing
+later.</b> A-1&rsquo;s own paperwork is per-ROLE rather than per-company &mdash; that is what
+&ldquo;one of eleven&rdquo; means, and the one is Project Manager. So a per-person override on top
+of the organization default is very likely the next thing this needs, and then a roster genuinely
+does show six days beside zero beside two. <b>Option 3&rsquo;s table absorbs that without moving;
+a card wall would want re-reading.</b></p>
+
 <p class="sub"><b>Room is reserved for a number that does not exist yet.</b> Nothing in EzBizi
 records a day off &mdash; HR measured that too &mdash; so whether a balance can say
 &ldquo;2 taken&rdquo; is undecided and sits between Scheduling and HR. Every option keeps the line
@@ -155,7 +170,7 @@ var TEAM = [
   {i:'MR', n:'Maria Ruiz',    st:'B'},
   {i:'JP', n:'Jon Park',      st:'D'},
   {i:'AD', n:'Aisha Dyer',    st:'C'},
-  {i:'SB', n:'Sam Blake',     st:'A'}
+  {i:'SB', n:'Sam Blake',     st:'B'}
 ];
 
 function balWords(st){
@@ -255,15 +270,8 @@ function D2(){
       num + '</div><div class="sub2">' + sub + '</div></div>';
   }
   return h + '</div></div>' +
-    '<div class="note"><b>Her actual words were &ldquo;how much we ALL have&rdquo;, and this is ' +
-    'the only option that answers that without clicking.</b> Five people, five states, one ' +
-    'screen — and the states are genuinely mixed in real data, which a single-person layout ' +
-    'never shows you.<br><br><b>The mixed board is the argument.</b> Sam has no policy, Jon has ' +
-    'no start date, Maria is waiting until December: those three facts sitting side by side is ' +
-    'what tells an owner the policy is half set up. Options 1 and 3 can show it, but only after ' +
-    'you have gone looking.<br><br><b>The cost:</b> a card holds one sentence. The full reason ' +
-    '— which contract, which clause, which date — needs the card to open, and at forty staff ' +
-    'this is a lot of scrolling for a grid whose cells are mostly identical.</div>';
+    '<div class="note"><b>Her actual words were &ldquo;how much we ALL have&rdquo;, and this answers that without clicking.</b> Five people, one screen.<br><br>' +
+    '<b>&#9888; ITS BEST ARGUMENT RESTED ON A CASE THAT CANNOT HAPPEN, and HR was the only one who could tell me.</b> This note used to say the mixed board was the point &mdash; Sam-no-policy beside Jon-no-start-date beside Maria-waiting, three facts side by side telling an owner the policy is half configured. <b>All four PTO settings are organization-scoped</b>, so &ldquo;no policy&rdquo; empties every row at once and is never one person&rsquo;s state beside somebody else&rsquo;s. A third of the mix I was selling is impossible, and the fixture drew it anyway until this was corrected.<br><br><b>What is left is still real:</b> waiting, usable and start-date-unknown do vary per person, so a board still shows three genuine states at once.<br><br><b>The cost:</b> a card holds one sentence. The full reason needs the card to open, and at forty staff this is a lot of scrolling for a grid whose cells are mostly identical.</div>';
 }
 
 /* ---- 3 : the table ------------------------------------------------ */

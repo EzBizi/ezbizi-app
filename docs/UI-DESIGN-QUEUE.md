@@ -2939,10 +2939,19 @@ one sentence. So in state A the table is **replaced wholesale** by the notice ra
 empty. Worth knowing that my note claimed this before the drawing did it; caught by reading my own
 prose back against my own screen.
 
-**2 is the one worth arguing for.** A card per person puts the mixed states side by side, and
-three facts sitting together — Sam has no policy, Jon has no start date, Maria waits until
-December — is what tells an owner the policy is half configured. No other layout shows that
-without going looking.
+**2 is the one worth arguing for, and its case is weaker than I first wrote it.** A card per
+person puts the states side by side. I argued that from *Sam-no-policy beside Jon-no-start-date
+beside Maria-waiting* — and **HR corrected it: all four PTO settings are organization-scoped, so
+"no policy" empties every row at once and is never one person's state beside somebody else's.** A
+third of the mix I was selling cannot occur, and my fixture drew it anyway until they said so. Not
+checkable from here (their settings block rather than a tenant row, and not on main yet), so
+relayed — and it **strengthens** the recommendation rather than weakening it.
+
+**Where this leans next, and why it makes 3 safer still.** A-1's paperwork is per-ROLE rather than
+per-company — that is what "one of eleven" means, and the one is Project Manager. So a per-person
+override over the organization default is likely the next thing, and then a roster genuinely does
+show six days beside zero beside two. The table takes that without moving; a card wall would want
+re-reading.
 
 **6 on the phone**: one list, you inside it rather than above it, each row carrying its state in
 words. It is the only phone option where *"we all have"* is the whole screen rather than a section
