@@ -201,6 +201,24 @@ the pane directly, so the tab bar — the widget this whole step changes — had
 coverage at all. **A module with good pane tests can still have none on the tab
 bar.**
 
+## An ADMINISTRATOR fixture cannot test a permission at all
+
+Reports' finding, and it fails in the direction that looks like success.
+`Role::isAdministrator()` bypasses the permission table entirely, so a test
+written with the tenant admin sails through the gate and fails several layers
+later — in their case a 422 from the controller. **If you are asserting 403, an
+admin fixture gives you a refusal that has nothing to do with your gate.** Use
+`userWithRole(...)` with exactly the keys under test, as HR's suite does.
+
+## Your `.env` can reach the test environment
+
+Also Reports, and worth a minute from everybody who tests against a vendor.
+Their positive control asserted "not connected" and got `connected: true`,
+because this machine's `.env` carries real RingCentral credentials and config
+reaches the test environment — a permission test one step from making live API
+calls to a third party. Unconfigure explicitly in the fixture rather than
+relying on the environment being empty.
+
 ## Your fixtures may not be the ones you break
 
 Automations' declaration reddened four tests in their own suite and **two in
