@@ -61,6 +61,36 @@ final class TabDefinition
          * working correctly.
          */
         public readonly string $label,
+        /**
+         * An action this module ALREADY declares, when the tab is one.
+         *
+         * Null mints `{key}.view`, which is right for a tab that had no grant
+         * of its own. Naming one is for a module that split by tab before this
+         * mechanism existed, under its own vocabulary.
+         *
+         * Training is the case that asked for it, and the argument is theirs:
+         * their three tabs are already three grants — `training.view` is the
+         * learner's Learn pane, `training.monitor` is everybody's results, and
+         * `training.manage` is the authoring surface. Minting
+         * `training.dashboard.view` beside `monitor` would put TWO NAMES ON ONE
+         * AUTHORITY, and an administrator could then grant the tab without the
+         * read: a Dashboard that opens and refuses every request inside it. An
+         * affordance without its gate, in a product where that state is
+         * currently unreachable, and nothing would report it.
+         *
+         * The reverse — letting the tab key become the only gate — is worse.
+         * `monitor` is a disclosure boundary rather than a visibility toggle: it
+         * decides who may read named people's results. This class says a tab
+         * grant is "visibility only, deliberately", which is the right weight
+         * for Work Hours and the wrong weight for that.
+         *
+         * So what was actually missing for them was the LABEL. The catalogue
+         * renders their three as "View training" / "Monitor training" / "Manage
+         * training", and an administrator hunting for the box that opens the
+         * Dashboard has to infer which one it is. Not a bare key on a checkbox
+         * — a correct name that is not the tab's name.
+         */
+        public readonly ?string $action = null,
     ) {
         if (trim($key) === '') {
             throw new InvalidArgumentException('A tab needs a key.');
@@ -74,6 +104,13 @@ final class TabDefinition
             );
         }
 
+        if ($action !== null && trim($action) === '') {
+            throw new InvalidArgumentException(
+                "Tab '{$key}' names an empty action. Leave it out to mint '{$key}.view'; "
+                .'an empty string is neither.'
+            );
+        }
+
         if (str_contains($key, '.')) {
             throw new InvalidArgumentException(
                 "Tab key '{$key}' contains a dot. The action is built as '{$key}.view', so a ".
@@ -83,9 +120,22 @@ final class TabDefinition
         }
     }
 
-    /** The action this tab contributes to its module — `hours` → `hours.view`. */
+    /**
+     * The action behind this tab — minted as `{key}.view`, or the named one.
+     *
+     * One method rather than a nullable field the callers each interpret,
+     * because four places ask this question (the registry's merge, the
+     * catalogue's `tab` flag, its label lookup, and the migration) and a
+     * fifth will be added by somebody who does not know about the third.
+     */
     public function action(): string
     {
-        return "{$this->key}.view";
+        return $this->action ?? "{$this->key}.view";
+    }
+
+    /** True when this names an action the module already had. */
+    public function namesExistingAction(): bool
+    {
+        return $this->action !== null;
     }
 }
