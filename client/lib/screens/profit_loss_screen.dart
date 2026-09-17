@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/error_note.dart';
+import '../widgets/search_picker.dart';
 
 /// Profit and loss, read live out of a business's own Airtable base.
 ///
@@ -145,10 +146,12 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loadingSources) {
-      return const Center(child: Padding(
-        padding: EdgeInsets.all(32),
-        child: CircularProgressIndicator(),
-      ));
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     if (_sources != null && _sources!.isEmpty) {
@@ -171,7 +174,8 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
             padding: EdgeInsets.all(32),
             child: Center(child: CircularProgressIndicator()),
           ),
-        if (_error == null && !_loadingWeek && _figures != null) ..._week_(context),
+        if (_error == null && !_loadingWeek && _figures != null)
+          ..._week_(context),
       ],
     );
   }
@@ -198,6 +202,19 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
     );
   }
 
+  /// Base, table and week.
+  ///
+  /// `SearchPickerField` rather than `DropdownMenu`, which is the house control
+  /// and not a preference: Jose, 2026-09-17 — "this sort of popup dropdown are
+  /// terrible ui design, anything that offers users should be a search bar
+  /// picker instead". An unfiltered `DropdownMenu` is a popup dropdown wearing a
+  /// search bar's name, and `no_popup_dropdown_test.dart` fails the build over
+  /// it. This screen was written the same afternoon the rule landed and shipped
+  /// with three of them.
+  ///
+  /// It costs nothing on the short lists here: the picker shows its search box
+  /// only from eight options up, so two bases and four tables simply open. The
+  /// WEEK list is the one that earns it — A-1's base carries a year of them.
   Widget _pickers(BuildContext context) {
     final source = _source;
     final tables = ((source?['tables'] as List<dynamic>?) ?? [])
@@ -209,66 +226,75 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       runSpacing: 12,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        DropdownMenu<String>(
-          initialSelection: _sourceId,
-          label: const Text('Base'),
-          dropdownMenuEntries: [
-            for (final s in _sources ?? [])
-              DropdownMenuEntry<String>(
-                value: s['id'] as String,
-                label: (s['name'] as String?) ?? 'Airtable',
+        SizedBox(
+          width: 260,
+          child: SearchPickerField<String>(
+            value: _sourceId,
+            label: 'Base',
+            options: [
+              for (final s in _sources ?? [])
+                SearchOption<String>(
+                  value: s['id'] as String,
+                  label: (s['name'] as String?) ?? 'Airtable',
 
-                // A base whose token has stopped working stays in the list and
-                // says so. Dropping it makes something somebody connected last
-                // week vanish with no explanation.
-                enabled: ((s['tables'] as List<dynamic>?) ?? []).isNotEmpty,
-              ),
-          ],
-          onSelected: (id) {
-            if (id == null || id == _sourceId) return;
-            setState(() {
-              _sourceId = id;
-              _table = ((_source?['tables'] as List<dynamic>?) ?? []).isEmpty
-                  ? null
-                  : (_source!['tables'] as List<dynamic>).first as String;
-              _week = null;
-              _figures = null;
-            });
-            if (_table != null) _loadWeek();
-          },
-        ),
-        if (tables.isNotEmpty)
-          DropdownMenu<String>(
-            initialSelection: _table,
-            label: const Text('Table'),
-            dropdownMenuEntries: [
-              for (final table in tables)
-                DropdownMenuEntry<String>(value: table, label: table),
+                  // A base whose token has stopped working stays in the list and
+                  // says so. Dropping it makes something somebody connected last
+                  // week vanish with no explanation.
+                  enabled: ((s['tables'] as List<dynamic>?) ?? []).isNotEmpty,
+                ),
             ],
-            onSelected: (table) {
-              if (table == null || table == _table) return;
-              // The week is cleared rather than kept: week labels are free text
-              // and another table need not have one spelled the same way.
+            onChanged: (id) {
+              if (id == null || id == _sourceId) return;
               setState(() {
-                _table = table;
+                _sourceId = id;
+                _table = ((_source?['tables'] as List<dynamic>?) ?? []).isEmpty
+                    ? null
+                    : (_source!['tables'] as List<dynamic>).first as String;
                 _week = null;
+                _figures = null;
               });
-              _loadWeek();
+              if (_table != null) _loadWeek();
             },
           ),
+        ),
+        if (tables.isNotEmpty)
+          SizedBox(
+            width: 220,
+            child: SearchPickerField<String>(
+              value: _table,
+              label: 'Table',
+              options: [
+                for (final table in tables)
+                  SearchOption<String>(value: table, label: table),
+              ],
+              onChanged: (table) {
+                if (table == null || table == _table) return;
+                // The week is cleared rather than kept: week labels are free
+                // text and another table need not have one spelled the same way.
+                setState(() {
+                  _table = table;
+                  _week = null;
+                });
+                _loadWeek();
+              },
+            ),
+          ),
         if (_weeks.isNotEmpty)
-          DropdownMenu<String>(
-            initialSelection: _week,
-            label: const Text('Week'),
-            dropdownMenuEntries: [
-              for (final week in _weeks)
-                DropdownMenuEntry<String>(value: week, label: week),
-            ],
-            onSelected: (week) {
-              if (week == null || week == _week) return;
-              setState(() => _week = week);
-              _loadWeek();
-            },
+          SizedBox(
+            width: 240,
+            child: SearchPickerField<String>(
+              value: _week,
+              label: 'Week',
+              options: [
+                for (final week in _weeks)
+                  SearchOption<String>(value: week, label: week),
+              ],
+              onChanged: (week) {
+                if (week == null || week == _week) return;
+                setState(() => _week = week);
+                _loadWeek();
+              },
+            ),
           ),
         if (source?['unavailable'] != null)
           Text(
@@ -323,7 +349,9 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       ],
       Text('Categories', style: theme.textTheme.titleMedium),
       const SizedBox(height: 8),
-      ...categories.entries.map((entry) => _category(context, entry.key, entry.value)),
+      ...categories.entries.map(
+        (entry) => _category(context, entry.key, entry.value),
+      ),
     ];
   }
 
@@ -399,9 +427,7 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: [
-          Expanded(
-            child: Text(name, style: theme.textTheme.bodyLarge),
-          ),
+          Expanded(child: Text(name, style: theme.textTheme.bodyLarge)),
           Text(
             lines == 1 ? '1 line' : '$lines lines',
             style: theme.textTheme.bodySmall,
