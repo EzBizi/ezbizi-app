@@ -2618,6 +2618,56 @@ class ModuleServiceProvider extends ServiceProvider
                 ],
                 actions: ['view', 'monitor', 'manage', 'assign'],
                 /*
+                 * NO `tabs:` DECLARATION, DELIBERATELY - and this module already
+                 * does what that mechanism was built for (Settings, 0051,
+                 * 2026-09-17; Jose: "i should be able to grant access by sub tab
+                 * as well ... this applies to every tab and it's sub tabs").
+                 *
+                 * Training's three tabs are ALREADY three separate grants, and
+                 * have been since the module shipped:
+                 *
+                 *   Learn      `training.view`     the learner's own pane
+                 *   Dashboard  `training.monitor`  everybody's results
+                 *   Settings   `training.manage`   the authoring surface
+                 *
+                 * `training_screen.dart` omits a tab from `_tabs` entirely when
+                 * its permission is absent, `DashboardController::authorizeMonitor`
+                 * refuses every dashboard route without `monitor`, and both
+                 * directions are pinned: TrainingDashboardTest refuses view-only
+                 * on all three dashboard endpoints, TrainingTestAuthoringTest and
+                 * TrainingGuideScopeTest refuse a ViewOnly author, and
+                 * training_screen_test asserts a viewer without `monitor` sees
+                 * Learn and Settings and never Dashboard.
+                 *
+                 * ── Why declaring tabs here would make it WORSE ──────────────
+                 *
+                 * `TabDefinition` mints `{key}.view`, so a `dashboard` tab would
+                 * create `training.dashboard.view` beside `training.monitor` -
+                 * two names for one authority. An administrator could then grant
+                 * the tab without the read, producing a Dashboard that opens and
+                 * then refuses every request inside it: an affordance without its
+                 * gate, which is a state this product cannot reach today and
+                 * which nothing would report.
+                 *
+                 * The alternative - letting the tab key become the only gate -
+                 * is worse still. `monitor` is a DISCLOSURE boundary, not a
+                 * visibility toggle: it decides who may read named people's
+                 * results, and this module shipped two cross-franchise
+                 * disclosures learning to hold that line (task-11 review). A tab
+                 * grant is documented as "visibility only, deliberately"
+                 * (TabDefinition's own docblock), and that is the wrong weight
+                 * for this boundary.
+                 *
+                 * WHAT IS GENUINELY MISSING is only the LABEL. `labelFor()`
+                 * renders these as "View training" / "Monitor training" /
+                 * "Manage training", so an administrator hunting for the
+                 * Dashboard tab has to infer which one opens it. That is
+                 * `TabDefinition`'s own stated concern, and fixing it needs the
+                 * mechanism to let a tab NAME AN EXISTING ACTION rather than mint
+                 * one. Raised with Settings 2026-09-17. If that lands, declare
+                 * three tabs pointing at the three actions above and change
+                 * nothing else.
+                 *
                  * `assign` DELIBERATELY declares no `actionRequires`, and the
                  * history is worth keeping because the obvious reading is wrong.
                  *
