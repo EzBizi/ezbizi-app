@@ -66,68 +66,65 @@ class InspectionReportEmailActionTest extends TestCase
 
 
 
+
     /**
-     * THE HOLD, AND THIS IS THE ONE TEST THAT CATCHES THE SEQUENCING HAZARD.
+     * NO SENDING IDENTITY, DELIBERATELY — that is the production state.
      *
-     * The fixture is the FULLY CONFIGURED case on purpose: a verified sending
-     * identity and a customer with a real address. That is the state in which
-     * this action used to send, and it is the state production enters the
-     * moment somebody configures a sending identity for A-1 Group - which is on
-     * Jose's list because I put it there.
+     * This test used to call `verifiedIdentityFor($tenant)` first, because the
+     * action sent through `asTenant` and needed one. It does not any more:
+     * Jose reversed the ruling on 2026-09-16 and the send goes out on EZBIZI's
+     * identity via `platformForTenant`, with the branch named in the body.
      *
-     * Before the hold, everything was refused for an UNRELATED reason: every
-     * organization resolves to the Platform identity while sending_identities
-     * is empty, so the From-line guard caught it. That guard was never about
-     * the transport. A test leaning on it would have stayed green right up
-     * until somebody configured an address, and then started asserting a send.
-     * So this asserts against the one state where nothing else refuses.
-     *
-     * assertNothingQueued rather than the refusal wording, because the wording
-     * is what the code says about itself and the queue is what happened.
-     * Deleting the hold block fails this on the artefact.
+     * Leaving the fixture in would have been the quiet failure. Production has
+     * ZERO rows in `sending_identities`, so a test that configures one proves
+     * the action works in a state no organization is in, and would have stayed
+     * green if the action had silently gone back to requiring one.
      */
-    public function test_it_is_held_and_nothing_leaves_even_with_a_verified_identity(): void
+    public function test_it_emails_the_report_to_the_customer(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
+
+        $this->assertTrue($result['ok'], $result['detail']);
+        Mail::assertQueued(
+            InspectionReportMail::class,
+            fn (InspectionReportMail $mail) => $mail->hasTo('owner@example.test'),
+        );
+    }
+
+    /** A customer with no address is an ordinary case, not a fault. */
+    public function test_a_customer_with_no_email_is_reported_and_nothing_is_sent(): void
     {
         Mail::fake();
 
         $tenant = $this->provisionTenant('Alpha');
         $this->verifiedIdentityFor($tenant);
 
-        $result = $this->runAction($tenant, $this->reportFor($tenant, email: 'owner@example.test'));
+        $result = $this->runAction($tenant, $this->reportFor($tenant, email: null));
 
-        /*
-         * THE STRING IS LOAD-BEARING. DO NOT TIDY IT AWAY AS REDUNDANT.
-         *
-         * The three assertions below it are now VACUOUS, and were not when this
-         * was written. The SES session made `MailDispatcher::asTenant` throw
-         * unconditionally, so with the hold deleted the arm proceeds, calls
-         * asTenant, catches CannotSendMail and returns ok=false having queued
-         * nothing. `assertNothingQueued`, `assertNothingSent` and `assertFalse`
-         * are then all satisfied by the DISPATCHER refusing rather than by the
-         * hold — an absence two different mechanisms produce.
-         *
-         * Only the sentence tells them apart: this one is the hold's, and the
-         * other is SES's about connecting an email provider. Measured, not
-         * reasoned — with the hold removed and their dispatcher in place, this
-         * assertion is the one that fires and the other three pass.
-         *
-         * Asserted FIRST so the failure names the hold rather than a queue.
-         * Pinning prose is a cost I took deliberately; the alternative is a
-         * non-prose marker on the result, which changes a shape the run log
-         * shares with every other action. If this string ever changes, change
-         * it here in the same commit.
-         */
-        $this->assertStringContainsString(
-            'switched off',
-            $result['detail'],
-            'the refusal must be the HOLD, not the mail dispatcher declining for its own reasons',
-        );
-
-        // Kept because they will distinguish again the day a per-tenant mailer
-        // exists and asTenant stops refusing everything.
         Mail::assertNothingQueued();
-        Mail::assertNothingSent();
-        $this->assertFalse($result['ok'], 'the action is held by the 2026-09-14 ruling');
+        $this->assertFalse($result['ok']);
+        $this->assertStringContainsString('no email address', $result['detail']);
+    }
+
+    /** Attached to the wrong trigger, it declines instead of guessing. */
+    public function test_it_declines_a_subject_that_is_not_a_report(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $result = $this->inTenant($tenant['org'], fn () => app(ActionRunner::class)->run(
+            ['type' => 'inspection_report.email'],
+            $this->event($tenant),
+            subject: $tenant['admin'],
+        ));
+
+        Mail::assertNothingQueued();
+        $this->assertFalse($result['ok']);
     }
 
     /**

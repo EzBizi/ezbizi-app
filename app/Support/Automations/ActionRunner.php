@@ -388,7 +388,7 @@ class ActionRunner
             'time_clock.clock_out' => $this->punch($event, $subject, in: false),
 
             'training.assign' => $this->assignTraining($action, $event, $subject, $automation),
-            'inspection_report.email' => $this->emailInspectionReport($action, $subject),
+            'inspection_report.email' => $this->emailInspectionReport($action, $subject, $automation),
 
             default => throw new InvalidArgumentException(
                 "Unknown automation action '{$type}'. Actions are declared by modules "
@@ -570,64 +570,10 @@ class ActionRunner
      * record, resolved when the rule fires, which is the only address the
      * subject of the document has consented to be at.
      */
-    private function emailInspectionReport(array $action, ?Model $subject): array
+    private function emailInspectionReport(array $action, ?Model $subject, ?Automation $automation): array
     {
         $type = 'inspection_report.email';
 
-        /*
-         * -- HELD BY JOSE'S RULING OF 2026-09-14, AND THIS IS THE REAL LEVER --
-         *
-         * His words, to the Automations session, who asked directly whether
-         * they covered this action. He answered yes:
-         *
-         *     "no ezbizi SES is to be used only for EZBIZI Related actions like
-         *      notificaitons, account creation, password, resets, etc
-         *      at least for now."
-         *
-         * THE PLATFORM CHECK BELOW DOES NOT COVER THIS, and believing it did is
-         * the mistake this comment exists to prevent. That check reads the FROM
-         * LINE and refuses when the resolved identity is EzBizi. But
-         * MailDispatcher::handOver() ends:
-         *
-         *     Mail::mailer($this->platform->mailerName())->to($to)->send($message);
-         *
-         * EVERY message leaves over the platform mailer. A verified tenant
-         * identity changes from() and replyTo() and nothing else - the
-         * transport, the SES reputation and the 50,000/day quota belong to
-         * EzBizi either way. So a fully configured branch would still have
-         * mailed a member of the public over EzBizi SES, which is what the
-         * ruling forbids, and no From-line guard can see it.
-         *
-         * WHY THE REFUSAL IS HERE AND NOT IN THE CONST. Dropping
-         * inspection_report.email from AutomationsController::IMPLEMENTED_ACTIONS
-         * stops anybody building a NEW rule and leaves this arm running every
-         * rule already saved - it would look like a fix and not be one. The
-         * Automations session made that point and it is right.
-         *
-         * WHY IT IS FIRST, BEFORE ANY LOOKUP. Until somebody configures a
-         * sending identity the Platform check below refuses everything anyway,
-         * so this was latent rather than live: production holds two
-         * organizations and zero rows in sending_identities. The hazard is the
-         * SEQUENCE. "Configure a sending identity for A-1 Group" sits on Jose's
-         * list because I put it there, and the moment he does it a guard
-         * written for a different question stops refusing and this starts
-         * sending - silently, correctly by its own lights, against a ruling
-         * made after it shipped. A refusal that depends on nothing cannot be
-         * switched on by somebody changing unrelated configuration.
-         *
-         * TO LIFT IT: delete this block. Everything below is intact and still
-         * tested. The condition to check first is whether mail can leave over a
-         * transport that is not EzBizi - a per-tenant MAILER, rather than the
-         * per-tenant From line that exists today.
-         */
-        return [
-            'type' => $type,
-            'ok' => false,
-            'detail' => 'Emailing inspection reports to customers is switched off. The '
-                .'EzBizi mail service carries EzBizi messages only - sign-ins, password '
-                .'resets and account notices - and a report to a customer would go out '
-                .'over it however this branch is configured.',
-        ];
 
         if (! $subject instanceof InspectionReport) {
             return [
@@ -663,39 +609,37 @@ class ActionRunner
         }
 
         /*
-         * REFUSE RATHER THAN SEND AS EZBIZI, and this is not what asTenant does
-         * on its own.
+         * EZBIZI SENDS IT, AND THE BODY SAYS WHO WROTE IT.
          *
-         * `MailIdentityResolver::for()` falls back to the PLATFORM identity when
-         * no row exists at any level of the cascade, and that identity is
-         * Verified with a transport whose `requiresDomainProof()` is false — so
-         * `canSend()` is true and `asTenant` hands the message over happily. A
-         * tenant who has configured nothing would have their customer receive an
-         * inspection report from EzBizi's address.
+         * This used to refuse when the resolved identity was EzBizi, on the
+         * reasoning that a customer told their chimney was swept has no
+         * relationship with us and should not learn which software the company
+         * runs. Jose reversed that on 2026-09-16, in his own words asking for
+         * automation actions on "Email ( the Ezbizi SES one, not the company
+         * one )". So the condition the old guard refused on is now the
+         * INTENDED one, and leaving it would have refused every send: every
+         * organization resolves to Platform while sending_identities is empty.
          *
-         * That is wrong twice: the customer has no relationship with us, and it
-         * discloses which software the company runs to somebody who was only
-         * told their chimney was swept. `MailTransport::Platform`'s own label is
-         * the word "EzBizi".
+         * `platformForTenant` rather than `platform`, and the distinction is
+         * the dispatcher's: platform() has no tenant lookup at all, which is
+         * what keeps sign-in and password-reset mail separable. This one knows
+         * the scope, so tenant-authored traffic is countable and suppressible
+         * on its own rather than being indistinguishable from an invitation —
+         * which matters because SES reputation is shared platform-wide and
+         * nothing yet consults a bounce or complaint list.
          *
-         * This is the first caller of asTenant, so nothing has needed the
-         * distinction before. Refusing here is deliberately a decision of THIS
-         * action rather than a change to the shared dispatcher — the newsletter
-         * may reasonably want a different answer, and that is Marketing's call
-         * to make when it arrives.
+         * `asTenant` is NOT the method any more. It was retired to an
+         * unconditional throw: it put a TENANT's address on our transport,
+         * which is a claim about who is writing. This puts EZBIZI's address on
+         * it, and `companyName` below is what makes the body say who actually
+         * did the work.
          */
-        if ($this->mail->identityFor($scope)->transport === MailTransport::Platform) {
-            return [
-                'type' => $type,
-                'ok' => false,
-                'detail' => 'This branch has not set up its own sending address, and a '
-                    .'report must not reach a customer from the EzBizi address. Set one '
-                    .'up under Settings, Sending Identity.',
-            ];
+        if ($automation !== null && ($refusal = $this->ruleAllowanceRefusal($automation)) !== null) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal];
         }
 
         try {
-            $this->mail->asTenant(
+            $this->mail->platformForTenant(
                 $scope,
                 new InspectionReportMail(
                     report: $subject,
