@@ -42,7 +42,8 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
+        'automations', 'monitoring', 'newsletter', 'reports', 'profit_loss',
+        'ads_performance',
     ];
 
     /**
@@ -90,6 +91,24 @@ class GlanceRegistry
          * wins on this key without this entry being removed first - and if it
          * ever is, it needs a quota story, not just a query.
          */
+        /*
+         * Reports' other child, and the same answer as Google Ads above for
+         * the same reason rather than by copying it.
+         *
+         * The figures are read from the Airtable base a business connected,
+         * when somebody opens the screen, and are never stored — the module's
+         * own `automationExemptBecause` says so in as many words. A dashboard
+         * box would therefore have to make that call on every home-screen
+         * load, for every viewer, to summarise numbers nobody asked for yet.
+         *
+         * So this is the permanent answer and not a queue entry. It stops
+         * being true the day a period is cached, which is the same line that
+         * would make it an automation subject.
+         */
+        'profit_loss' => [
+            'label' => 'Profit & Loss',
+            'sentence' => 'Profit and loss is in the Profit & Loss tab under Reports. The figures are read from your connected Airtable base when you open it, so they are not summarised here.',
+        ],
         'ads_performance' => [
             'label' => 'Google Ads',
             'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
