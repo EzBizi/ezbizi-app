@@ -468,7 +468,9 @@ class _PersonWeek extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 18),
-        if (days.isEmpty)
+        if (week.days.isEmpty)
+          // Only when the server sent no week at all. A week where nobody
+          // worked still has seven days and seven headings.
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text(
@@ -480,8 +482,8 @@ class _PersonWeek extends StatelessWidget {
             ),
           )
         else
-          for (final day in days.entries)
-            _DayCard(date: day.key, shifts: day.value),
+          for (final day in week.days)
+            _DayCard(label: day.label, shifts: days[day.date] ?? const []),
       ],
     );
   }
@@ -532,9 +534,11 @@ class _Stat extends StatelessWidget {
 }
 
 class _DayCard extends StatelessWidget {
-  const _DayCard({required this.date, required this.shifts});
+  const _DayCard({required this.label, required this.shifts});
 
-  final String date;
+  /// The server's own words, in the organization's language and date format.
+  final String label;
+
   final List<_Shift> shifts;
 
   @override
@@ -566,10 +570,7 @@ class _DayCard extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    dayHeading(date),
-                    style: theme.textTheme.labelLarge,
-                  ),
+                  child: Text(label, style: theme.textTheme.labelLarge),
                 ),
                 Text(
                   formatWorked(total),
@@ -580,6 +581,19 @@ class _DayCard extends StatelessWidget {
               ],
             ),
           ),
+          if (shifts.isEmpty)
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: scheme.outlineVariant)),
+              ),
+              child: Text(
+                UiStrings.t('time_clock.no_hours'),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           for (final shift in shifts) _ShiftRow(shift: shift),
         ],
       ),
@@ -715,6 +729,7 @@ class _Week {
     required this.label,
     required this.timezoneLabel,
     required this.people,
+    required this.days,
   });
 
   final String start;
@@ -722,6 +737,13 @@ class _Week {
   final String label;
   final String timezoneLabel;
   final List<_Person> people;
+
+  /// All seven, in order from `week_start`, **including the days nobody
+  /// worked** — which is what lets a Sunday with no hours carry a heading
+  /// without this screen deriving one. It is the day loop as well as the
+  /// labels: iterate it, filter the shifts by date, and an empty result IS
+  /// the "no hours" row.
+  final List<_Day> days;
 
   /// A date inside the week before this one, for the arrows.
   String? get previousOn => _shift(start, -7);
@@ -743,14 +765,28 @@ class _Week {
     final start = '${json['week_start'] ?? ''}';
     final end = '${json['week_end'] ?? ''}';
 
+    final days = [
+      for (final row in (json['days'] as List?) ?? const [])
+        if (row is Map<String, dynamic>) _Day.from(row),
+    ];
+
+    // Built from the server's own labels rather than two dates formatted
+    // here. Spanish organizations get "domingo, 13 sept", and month-first or
+    // day-first follows the organization's date_format, so this heading
+    // cannot contradict every other date on the screen.
+    final label = days.length < 2
+        ? ''
+        : '${days.first.label} – ${days.last.label}';
+
     return _Week(
       start: start,
       end: end,
       // Built from the server's dates rather than assuming Sunday: the week
       // start is an organization setting and all seven days are allowed.
-      label: start.isEmpty
+      label: label.isEmpty
           ? UiStrings.t('time_clock.this_week')
-          : '${dayHeading(start)} – ${dayHeading(end)}',
+          : label,
+      days: days,
       timezoneLabel: '${json['timezone_label'] ?? ''}',
       people: [
         for (final row in (json['people'] as List?) ?? const [])
@@ -867,45 +903,29 @@ String formatWorked(int seconds) {
   return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
 }
 
-/// "Monday 15 Sep" from a `YYYY-MM-DD`.
+/// One of the week's seven days, named by the server.
 ///
-/// **DEBT, and asked for rather than assumed.** The weekday name is locale
-/// text and this screen ships in English and Spanish, so this belongs on the
-/// payload beside `clocked_in` — which the server already formats for exactly
-/// this reason. Requested from Clock In as `day_label` (or a `days` array,
-/// which would also let an empty day carry a heading); until it lands this is
-/// the app's existing precedent rather than a new one, since
-/// `book_lead_panel.dart`, `work_schedule_panel.dart` and
-/// `setting_editors.dart` each already hardcode their own English list.
-///
-/// Swapping to the server's label is one line at the two call sites.
-String dayHeading(String date) {
-  final at = DateTime.tryParse(date);
-  if (at == null) return date;
+/// **This replaces a local weekday array, and the swap was worth asking
+/// for.** A weekday name is locale text on a screen that ships in English and
+/// Spanish, and the app had no shared date formatter — three widgets each
+/// hardcoded their own English list, so a fourth would have been wrong in the
+/// same way three times over. Clock In put it on the payload beside the times
+/// they already format.
+class _Day {
+  const _Day({required this.date, required this.weekday, required this.label});
 
-  const days = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday',
-  ];
-  const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
+  final String date;
 
-  return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}';
+  /// The English key, untranslated on purpose, for anything that branches on
+  /// which day it is. Nobody reads this one.
+  final String weekday;
+
+  /// The only part a person reads.
+  final String label;
+
+  static _Day from(Map<String, dynamic> json) => _Day(
+    date: '${json['date'] ?? ''}',
+    weekday: '${json['weekday'] ?? ''}',
+    label: '${json['label'] ?? ''}',
+  );
 }

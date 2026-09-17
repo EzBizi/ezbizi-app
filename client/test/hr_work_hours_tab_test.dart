@@ -253,6 +253,44 @@ void main() {
     );
   });
 
+  /// The day headings are the SERVER'S words, in the organization's language.
+  ///
+  /// This screen used a local English weekday array until Clock In put the
+  /// labels on the payload. The assertion uses a label no local formatter
+  /// would produce, because "Monday 24 Aug" and "Monday, Aug 24" are both
+  /// plausible English and only one of them can have come from the server.
+  testWidgets('day headings come from the payload, not from this screen', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+
+    await _tap(tester, _tab('Work Hours'));
+
+    expect(find.text('Tuesday, Aug 25'), findsOneWidget);
+    expect(
+      find.text('Sunday, Aug 23'),
+      findsOneWidget,
+      reason: 'A day nobody worked still gets a heading, which is why the '
+          'seven days are the loop rather than the shifts.',
+    );
+  });
+
+  test('the tab names no weekday of its own', () {
+    final source = File('lib/screens/hr/work_hours_tab.dart').readAsStringSync();
+
+    expect(
+      source,
+      isNot(contains("'Wednesday'")),
+      reason: 'A weekday name here is locale text on a screen that ships in '
+          'two languages. Three other widgets in this tree each hardcode '
+          'their own English list; this one asked for the payload instead.',
+    );
+  });
+
   test('the tab does not read the device clock', () {
     final file = File('lib/screens/hr/work_hours_tab.dart');
     expect(file.existsSync(), isTrue);
@@ -360,6 +398,17 @@ Map<String, dynamic> _week({
   'week_start': start,
   'week_end': end,
   'starts_on': 'sunday',
+  // All seven, in the organization's own language, from the server -- so a
+  // day nobody worked still has a heading and this screen never names one.
+  'days': const [
+    {'date': '2026-08-23', 'weekday': 'sunday', 'label': 'Sunday, Aug 23'},
+    {'date': '2026-08-24', 'weekday': 'monday', 'label': 'Monday, Aug 24'},
+    {'date': '2026-08-25', 'weekday': 'tuesday', 'label': 'Tuesday, Aug 25'},
+    {'date': '2026-08-26', 'weekday': 'wednesday', 'label': 'Wednesday, Aug 26'},
+    {'date': '2026-08-27', 'weekday': 'thursday', 'label': 'Thursday, Aug 27'},
+    {'date': '2026-08-28', 'weekday': 'friday', 'label': 'Friday, Aug 28'},
+    {'date': '2026-08-29', 'weekday': 'saturday', 'label': 'Saturday, Aug 29'},
+  ],
   'timezone': 'Etc/GMT+5',
   'timezone_label': timezoneLabel,
   'people': people,
