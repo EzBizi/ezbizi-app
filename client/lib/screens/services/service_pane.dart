@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
@@ -257,21 +259,14 @@ class _ServicePaneState extends State<ServicePane> {
                 ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                DropdownButtonFormField<String?>(
+                SearchPickerField<String?>(
                   key: ValueKey('group-$_groupId'),
-                  initialValue: _groupId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Group'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('No group')),
+                  value: _groupId,
+                  label: 'Group',
+                  options: [
+                    const SearchOption(value: null, label: 'No group'),
                     for (final row in _groups)
-                      DropdownMenuItem(
-                        value: row['id'] as String?,
-                        child: Text(
-                          row['name'] as String? ?? '',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
                   ],
                   onChanged: !_canEdit || _busy
                       ? null
@@ -279,21 +274,14 @@ class _ServicePaneState extends State<ServicePane> {
                 ),
                 const SizedBox(height: 12),
                 if (_taxonomyReady)
-                DropdownButtonFormField<String?>(
+                SearchPickerField<String?>(
                   key: ValueKey('label-$_labelId'),
-                  initialValue: _labelId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Label'),
-                  items: [
-                    const DropdownMenuItem(value: null, child: Text('No label')),
+                  value: _labelId,
+                  label: 'Label',
+                  options: [
+                    const SearchOption(value: null, label: 'No label'),
                     for (final row in _labels)
-                      DropdownMenuItem(
-                        value: row['id'] as String?,
-                        child: Text(
-                          row['name'] as String? ?? '',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                      SearchOption(value: row['id'] as String?, label: row['name'] as String? ?? ''),
                   ],
                   onChanged: !_canEdit || _busy
                       ? null

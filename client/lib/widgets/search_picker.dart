@@ -39,7 +39,14 @@ class SearchOption<T> {
     this.enabled = true,
   });
 
-  final T value;
+  /// Nullable, exactly as `DropdownMenuItem.value` is.
+  ///
+  /// Not an oversight carried over: several of these lists offer a row that
+  /// MEANS nothing chosen -- "Not set", "Nobody has the keys" -- and it is a
+  /// real option somebody picks, not the absence of one. Making this
+  /// non-nullable would have forced ten call sites to cast a `String?` they
+  /// had no reason to believe was non-null.
+  final T? value;
 
   /// What it is called, and what search matches against.
   final String label;

@@ -401,19 +401,12 @@ class _AddMailboxPanelState extends State<AddMailboxPanel> {
                 'Close this and open it again.',
               )
             else
-              DropdownButtonFormField<String>(
-                initialValue: provider?.value,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Mail service'),
-                items: [
+              SearchPickerField<String>(
+                value: provider?.value,
+                label: 'Mail service',
+                options: [
                   for (final option in widget.providers)
-                    DropdownMenuItem(
-                      value: option.value,
-                      child: Text(
-                        option.label,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+                    SearchOption(value: option.value, label: option.label),
                 ],
                 onChanged: _saving
                     ? null

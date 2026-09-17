@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/money.dart';
 import '../../core/session.dart';
@@ -219,28 +221,15 @@ class _AddSalePaneState extends State<AddSalePane> {
                             setState(() => _franchiseId = v),
                       ),
                       const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        initialValue: _customerChoice,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Customer',
-                          helperText:
-                              'A named customer, or a counter sale with a note.',
-                          helperMaxLines: 2,
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: _counter,
-                            child: Text('Counter sale'),
-                          ),
+                      SearchPickerField<String>(
+                        value: _customerChoice,
+                        label: 'Customer',
+                        helperText: 'A named customer, or a counter sale with a note.',
+                        helperMaxLines: 2,
+                        options: [
+                          const SearchOption(value: _counter, label: 'Counter sale'),
                           for (final customer in _customers)
-                            DropdownMenuItem(
-                              value: customer['id'] as String?,
-                              child: Text(
-                                customer['name'] as String? ?? '',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                            SearchOption(value: customer['id'] as String?, label: customer['name'] as String? ?? ''),
                         ],
                         onChanged: _busy || _customersHidden
                             ? null
@@ -260,20 +249,13 @@ class _AddSalePaneState extends State<AddSalePane> {
                       ),
                       for (var i = 0; i < _lines.length; i++) ...[
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
+                        SearchPickerField<String>(
                           key: ValueKey('sale-item-$i-${_lines[i].itemId}'),
-                          initialValue: _lines[i].itemId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Item'),
-                          items: [
+                          value: _lines[i].itemId,
+                          label: 'Item',
+                          options: [
                             for (final item in _items)
-                              DropdownMenuItem(
-                                value: item['id'] as String?,
-                                child: Text(
-                                  inventoryItemChoiceLabel(item),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                              SearchOption(value: item['id'] as String?, label: inventoryItemChoiceLabel(item)),
                           ],
                           onChanged: _busy
                               ? null

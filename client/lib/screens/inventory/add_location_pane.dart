@@ -246,21 +246,14 @@ class _AddLocationPaneState extends State<AddLocationPane> {
                   if (_loadingVehicles)
                     const LinearProgressIndicator()
                   else
-                    DropdownButtonFormField<String>(
-                      initialValue: _vehicleId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Vehicle'),
-                      items: [
+                    SearchPickerField<String>(
+                      value: _vehicleId,
+                      label: 'Vehicle',
+                      options: [
                         for (final v in _vehicles)
-                          DropdownMenuItem(
-                            value: v['id'] as String?,
-                            child: Text(
-                              v['label'] as String? ??
+                          SearchOption(value: v['id'] as String?, label: v['label'] as String? ??
                                   v['number'] as String? ??
-                                  '',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                                  ''),
                       ],
                       onChanged: _busy
                           ? null
