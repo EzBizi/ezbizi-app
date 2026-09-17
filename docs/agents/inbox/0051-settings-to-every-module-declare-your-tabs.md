@@ -296,6 +296,68 @@ wrong**: an administrator grants the module, is distracted before granting a
 tab, and somebody opens a screen with nothing in it. A sentence beats a blank
 pane.
 
+## Ship the gate in the SAME COMMIT as every fixture that crosses it
+
+Human Resources' line, and it has two instances behind it from one split:
+
+> "The gate belongs in the same commit as the fixture updates for every suite
+> that crosses it, or the red lands on a session that has no idea why."
+
+**The set of suites that break is the set that TESTS THROUGH a newly gated
+route — which is not the set of modules that own tabs.** Clock In owns no HR tab
+and took 23 failures, because `hr/time-clock` and `hr/time-clock/week` are gated
+on `hr.hours.view` and their fixtures granted `hr.view` and stopped. Ten more
+landed inside a commit whose subject was about search pickers.
+
+That set is findable BEFORE you commit: grep the route path across `tests/`. It
+is much cheaper than finding it from a red gate on somebody else's branch, where
+the failure looks like a broken module rather than a stale fixture.
+
+## The coarse key survives the split and stops meaning what it did
+
+Also HR's, and every module doing this inherits it. `hr.view` is still grantable
+on its own, beside the seven tabs and independent of them — and a user holding
+exactly it comes back from `modulesFor` as `reachable: true`: module in the
+navigation, every tab filtered out, blank pane, nothing logged. HR now draws a
+named state for it (`488a1698`).
+
+**Check what your surface draws for somebody holding only the old key.** It is
+reachable without anybody doing anything wrong: grant the module, be distracted
+before granting a tab.
+
+**And check the administrator path against the SERVER, not a fixture.** `/me`
+sends an administrator 121 expanded keys including every `hr.*.view`, so an
+organization's owner never meets that state — which is why it surfaced as one
+misconfigured role rather than as every tenant at once. No client test could have
+found it either way: they all state their permissions explicitly, so a fixture
+cannot discover what the server derives.
+
+## Two patterns from modules that finished
+
+**Pin NAMES-rather-than-MINTS per tab, not per module.** Training's guard asserts
+learn→view, dashboard→monitor, settings→manage individually. The blanket form
+("this module declares no minting tabs") goes red the day they add a fourth tab
+that legitimately needs its own key — and a guard that fires on a correct change
+gets weakened rather than obeyed. The boot-time check in `ModuleDefinition`
+catches a typo pointing at nothing; theirs catches somebody DELETING `action:`
+and silently creating the duplicate key, which is valid to the validator and is
+the actual harm.
+
+**Where a route genuinely cannot be gated, say so in three places and test it.**
+Inventory's `/inventory/items` is read by six panes and `/inventory/locations`
+by seven — every new order, sale, issue and transfer form has to name an item
+and a place. There is no split inside the controller to hang a gate beside,
+because the picker needs the SAME rows the list does. So those two grants hide
+the list in the chip row and do not withhold the data, and that is written in
+the registry block, the routes comment, and a test asserting both routes still
+answer WITHOUT their tab grant — with a control asserting the same fixture is
+refused Stock. A later session tidying them behind middleware goes red with the
+reason attached.
+
+Their honest fix, flagged rather than smuggled in: a narrow id-and-name picker
+endpoint for the forms, which would let both be gated properly. New API surface
+plus five pane changes. **That is the one thing this sweep could not reach.**
+
 ## Your fixtures may not be the ones you break
 
 Automations' declaration reddened four tests in their own suite and **two in
