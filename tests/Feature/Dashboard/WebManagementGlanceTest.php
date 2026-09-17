@@ -190,4 +190,39 @@ class WebManagementGlanceTest extends TestCase
 
         $this->assertSame(['All 2 websites connected.'], $data['sentences']);
     }
+
+    /**
+     * The box sends what it draws, and nothing else (Dashboard's rule).
+     *
+     * This glance used to send `organization_total` — an unfiltered
+     * `WebSite::query()->count()` beside a body scoped by company and view. No
+     * client read it, in this glance or in the four others that carried it,
+     * which is the tell that it was copied rather than decided: a figure with
+     * no reader is a query on every dashboard load and a disclosure on every
+     * response, bought for nothing. A franchise reader received the whole
+     * organization's count, invisible on screen and plain in the network tab.
+     *
+     * REMOVING IT CHANGED NO TEST, which is why this one exists. The suite
+     * asserted the sentences and never the key, so the field could be dropped
+     * — or copied back in by the next person starting from this file — with
+     * everything still green. Asserted by absence, because absence is the whole
+     * property.
+     *
+     * Not a ban on extra data. CustomersGlance keeps its copy legitimately:
+     * §5.2 shares the book, and its docblock argues the case at the line that
+     * sends it. That is the price — one sentence, where it is sent.
+     */
+    public function test_the_box_sends_no_figure_it_does_not_draw(): void
+    {
+        $this->site('a-1chimney.com', connected: true);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $this->assertArrayNotHasKey('organization_total', $data);
+
+        // The control: the payload is populated, so the assertion above is
+        // about the key being withheld rather than about an empty response.
+        $this->assertArrayHasKey('sentences', $data);
+        $this->assertFalse($data['empty']);
+    }
 }
