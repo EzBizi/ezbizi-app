@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\AutomationMessage;
 use App\Models\Company;
 use App\Models\Invitation;
 use App\Models\Organization;
@@ -25,6 +26,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use RuntimeException;
+use Symfony\Component\Mime\Email;
 use Tests\TestCase;
 
 /**
@@ -790,6 +792,84 @@ class PlatformMailTest extends TestCase
         $send($other['organization'], $other['company']);
 
         Mail::assertSentCount(2);
+    }
+
+    public function test_an_automation_body_arrives_as_the_author_typed_it(): void
+    {
+        /*
+         * The view was `{{ $body }}`, which HTML-escapes — in a text/plain
+         * email. Every quote and ampersand a rule author typed arrived mangled:
+         *
+         *     typed      Your "sweep" is booked. Don't forget & keys.
+         *     delivered  Your &quot;sweep&quot; is booked. Don&#039;t forget &amp; keys.
+         *
+         * Found by the Automations session from the far side of the envelope,
+         * which is the only side it is visible from — nothing in this module
+         * reads a delivered body.
+         *
+         * Asserted on the RENDERED MIME rather than on the view, because the
+         * escape happens in Blade and a test that called the view directly
+         * would reproduce the bug rather than catch it.
+         */
+        $composed = $this->composedAutomation("Your \"sweep\" is booked. Don't forget & keys.");
+
+        $this->assertStringContainsString('Your "sweep" is booked.', $composed);
+        $this->assertStringContainsString("Don't forget & keys.", $composed);
+
+        $this->assertStringNotContainsString('&quot;', $composed);
+        $this->assertStringNotContainsString('&amp;', $composed);
+        $this->assertStringNotContainsString('&#039;', $composed);
+    }
+
+    public function test_an_automation_message_has_no_html_part(): void
+    {
+        /*
+         * THIS is what makes the unescaped body safe, and it is not the view.
+         *
+         * text/plain has no markup context, so an escape there protects nothing
+         * and only corrupts apostrophes. Add an ->html() alternative and the
+         * same tenant-authored body becomes markup in a rendering context —
+         * which is the injection the escape would genuinely have been for.
+         *
+         * So the guard lives on the property that actually holds the safety.
+         * Adding an HTML part goes red here, and whoever adds it has to make a
+         * decision about escaping rather than inherit one made when the only
+         * part was plain text.
+         */
+        $message = $this->renderedAutomation('Anything at all.');
+
+        $this->assertNull(
+            $message->getHtmlBody(),
+            'AutomationMessage grew an HTML part. The body is a tenant-authored string '
+            .'rendered unescaped, which is safe in text/plain and is an injection in '
+            .'markup — decide about escaping before this test is changed.',
+        );
+
+        // The control: there IS a text part, so this cannot pass by the message
+        // having rendered nothing.
+        $this->assertNotNull($message->getTextBody());
+    }
+
+    /** The message as Symfony built it, composed locally and sent nowhere. */
+    private function renderedAutomation(string $body): Email
+    {
+        $message = new AutomationMessage('A subject', $body, 'A-1 Chimney');
+        $message->from('noreply@ezbizi.test', 'EzBizi');
+
+        $mailer = Mail::build(['transport' => 'array']);
+        $mailer->to('customer@example.test')->send($message);
+
+        return collect($mailer->getSymfonyTransport()->messages())
+            ->last()
+            ->getOriginalMessage();
+    }
+
+    private function composedAutomation(string $body): string
+    {
+        // quoted-printable wraps long lines with a trailing "=", so the raw MIME
+        // cannot be searched for a sentence directly. The decoded text body is
+        // what a recipient actually reads, and it is what these assert on.
+        return (string) $this->renderedAutomation($body)->getTextBody();
     }
 
     public function test_a_tenant_with_no_mail_server_is_refused_rather_than_sent_as_ezbizi(): void
