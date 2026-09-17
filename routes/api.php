@@ -1020,6 +1020,12 @@ Route::prefix('v1')
 
         Route::get('hr/people/scope-options', [HrPeopleController::class, 'scopeOptions']);
         Route::get('hr/people', [HrPeopleController::class, 'index']);
+
+        // Deliberately NOT behind the hr.view policy the rest of this group
+        // leans on: everybody may read their own paid time off, and `hr.view`
+        // is what adds everybody else's. The controller makes that split —
+        // see HrPeopleController::pto.
+        Route::get('hr/pto', [HrPeopleController::class, 'pto']);
         // Before the {user} PATCH is irrelevant — different verbs — but declared
         // beside it so the three read as one resource. §9's consent answer, which
         // lives next to the person rather than in a privacy module of its own.
