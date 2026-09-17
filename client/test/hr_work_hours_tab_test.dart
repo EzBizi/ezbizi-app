@@ -11,7 +11,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// Human Resources Clock in–out chip and one-day list (design §9, §11).
+/// HR › Work Hours — the week (Jose: desktop 1, mobile 4, 2026-09-17).
+///
+/// This file replaces the one-day list's tests rather than starting fresh.
+/// Four of its assertions are CARRIED OVER, and finding them is how I learned
+/// the old screen showed things my rewrite had silently dropped: `Auto` for a
+/// shift the system closed, and the extension count. Neither is on Jose's
+/// list, and neither was mine to remove — a screen quietly telling somebody
+/// less than it used to is a loss whether or not anybody asked.
 void main() {
   testWidgets(
     'organizationEnabled false and hr.view keep the original five chips',
@@ -30,21 +37,18 @@ void main() {
   );
 
   testWidgets(
-    'organizationEnabled and hr.view add Clock in–out; the first fetch has '
-    'no on and the date and clocks come from the payload',
+    'the first fetch has no on, and the names, clocks and zone come from the '
+    'payload',
     (tester) async {
-      final clockRequests = <Uri>[];
+      final requests = <Uri>[];
 
       await _pump(
         tester,
         timeClock: _clock(organizationEnabled: true),
         onClock: (uri, _) {
-          clockRequests.add(uri);
-          return _day(
-            date: '2026-08-25',
-            timezoneLabel: 'UTC-5',
-            shifts: [_bea],
-          );
+          requests.add(uri);
+
+          return _week(people: [_person()]);
         },
       );
 
@@ -56,46 +60,105 @@ void main() {
         'Invitations',
         'Contracts',
       ]);
-      expect(
-        clockRequests,
-        isEmpty,
-        reason: 'Fetch only once the chip is shown.',
-      );
 
       await _tap(tester, _tab('Work Hours'));
 
-      expect(clockRequests, hasLength(1));
-      expect(clockRequests.single.path, '/api/v1/hr/time-clock');
+      expect(requests, hasLength(1));
+      expect(requests.single.path, '/api/v1/hr/time-clock/week');
       expect(
-        clockRequests.single.queryParameters.containsKey('on'),
+        requests.single.queryParameters.containsKey('on'),
         isFalse,
-        reason: 'The first fetch is the server’s view-local today, not ?on=.',
+        reason: 'The first fetch is the server\'s view-local week, not ?on=.',
       );
 
-      expect(find.text('Bea Okafor'), findsOneWidget);
+      expect(find.text('Bea Okafor'), findsWidgets);
       expect(find.text('8:00 AM'), findsOneWidget);
       expect(find.text('9:05 AM'), findsOneWidget);
-      expect(find.text('1:05'), findsOneWidget);
-      expect(find.text('Times in UTC-5'), findsOneWidget);
-      expect(find.text('2026-08-25'), findsOneWidget);
+      expect(find.text('UTC-5'), findsOneWidget);
     },
   );
 
-  testWidgets('a row shows Auto, Outside schedule and the extension count', (
+  /// The brief's most important gotcha, and the one I would have got wrong:
+  /// everybody in reach is in `people`, including anyone who worked nothing.
+  /// A name missing from this list reads as "not on the team", which is not
+  /// what "did not clock in" means.
+  testWidgets('somebody who worked nothing is listed, not dropped', (
     tester,
   ) async {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      onClock: (_, _) => _day(
-        date: '2026-08-25',
-        shifts: [
-          {
-            ..._bea,
-            'ended_by': 'schedule',
-            'outside_schedule': true,
-            'extensions': 2,
-          },
+      onClock: (_, _) => _week(
+        people: [
+          _person(),
+          _person(
+            id: 'u-9',
+            name: 'Jon Park',
+            total: 0,
+            days: 0,
+            average: 0,
+            shifts: const [],
+          ),
+        ],
+      ),
+    );
+
+    await _tap(tester, _tab('Work Hours'));
+
+    expect(
+      find.text('Jon Park'),
+      findsOneWidget,
+      reason: 'Dropping him would say he is not on the team.',
+    );
+    expect(
+      find.text('\u2014'),
+      findsWidgets,
+      reason: 'His total is an em dash rather than 0h 00m, which would read '
+          'as a measurement somebody made.',
+    );
+  });
+
+  testWidgets('the three numbers he asked for are on the person', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [_person(total: 29100, days: 4, average: 7275)],
+      ),
+    );
+
+    await _tap(tester, _tab('Work Hours'));
+
+    // The total appears twice on purpose -- on the person's row in the list
+    // AND in their Total tile -- so the ones that distinguish this assertion
+    // are the two the list does not carry.
+    expect(find.text('8h 05m'), findsWidgets);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('2h 01m'), findsOneWidget);
+  });
+
+  /// CARRIED OVER. The old row showed all three and my rewrite dropped two of
+  /// them; this test is how I found out.
+  testWidgets('a shift shows Auto, Outside schedule and the extensions', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(
+        people: [
+          _person(
+            shifts: [
+              {
+                ..._bea,
+                'ended_by': 'schedule',
+                'outside_schedule': true,
+                'extensions': 2,
+              },
+            ],
+          ),
         ],
       ),
     );
@@ -107,49 +170,59 @@ void main() {
     expect(find.text('+2'), findsOneWidget);
   });
 
-  testWidgets('empty shifts show the empty-day sentence', (tester) async {
-    await _pump(
-      tester,
-      timeClock: _clock(organizationEnabled: true),
-      onClock: (_, _) => _day(date: '2026-08-25', shifts: const []),
-    );
-
-    await _tap(tester, _tab('Work Hours'));
-
-    expect(find.text('Nobody clocked in on this day.'), findsOneWidget);
-    expect(find.text('Bea Okafor'), findsNothing);
-  });
-
-  testWidgets('an open shift says In and uses an em dash for duration', (
+  /// An open shift reports the time worked SO FAR rather than null, because
+  /// it is summed into the total beside it. So the duration is a number here,
+  /// and `open` is what says it is still running.
+  testWidgets('an open shift is green, running, and still counts', (
     tester,
   ) async {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      onClock: (_, _) => _day(
-        date: '2026-08-25',
-        shifts: [
-          {
-            ..._bea,
-            'clocked_out_at': null,
-            'clocked_out': null,
-            'duration_seconds': null,
-            'open': true,
-          },
+      onClock: (_, _) => _week(
+        people: [
+          _person(
+            open: true,
+            shifts: [
+              {..._bea, 'clocked_out': null, 'open': true},
+            ],
+          ),
         ],
       ),
     );
 
     await _tap(tester, _tab('Work Hours'));
 
-    expect(find.text('Bea Okafor'), findsOneWidget);
-    expect(find.text('8:00 AM'), findsOneWidget);
-    expect(find.text('In'), findsOneWidget);
-    expect(find.text('\u2014'), findsOneWidget);
-    expect(find.text('9:05 AM'), findsNothing);
+    expect(find.text('still clocked in'), findsOneWidget);
+    expect(
+      find.text('9:05 AM'),
+      findsNothing,
+      reason: 'There is no clock-out to draw.',
+    );
+    expect(
+      find.text('1h 05m'),
+      findsWidgets,
+      reason: 'The time so far is summed into the total, so it is shown '
+          'rather than hidden behind an em dash.',
+    );
   });
 
-  testWidgets('moving the day forward refetches with on=', (tester) async {
+  testWidgets('a week nobody worked says so', (tester) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: const []),
+    );
+
+    await _tap(tester, _tab('Work Hours'));
+
+    // The real string, not one I invented: UiStrings falls back to its own
+    // English map, and asserting my own wording would have passed only
+    // against a build where the copy was missing.
+    expect(find.text('Nothing clocked this week.'), findsOneWidget);
+  });
+
+  testWidgets('the arrows move a WEEK and refetch with on=', (tester) async {
     final ons = <String?>[];
 
     await _pump(
@@ -158,28 +231,30 @@ void main() {
       onClock: (uri, _) {
         final on = uri.queryParameters['on'];
         ons.add(on);
-        return _day(
-          date: on ?? '2026-08-25',
-          timezoneLabel: 'UTC-5',
-          shifts: on == null || on == '2026-08-25' ? [_bea] : const [],
+
+        return _week(
+          start: on ?? '2026-08-23',
+          end: '2026-08-29',
+          people: [_person()],
         );
       },
     );
 
     await _tap(tester, _tab('Work Hours'));
-
     expect(ons, [null]);
-    expect(find.text('2026-08-25'), findsOneWidget);
 
     await _tap(tester, find.byIcon(Icons.chevron_right));
 
-    expect(ons, [null, '2026-08-26']);
-    expect(find.text('2026-08-26'), findsOneWidget);
-    expect(find.text('Nobody clocked in on this day.'), findsOneWidget);
+    expect(
+      ons,
+      [null, '2026-08-30'],
+      reason: 'Seven days, not one. The tab this replaces had day arrows and '
+          'this one is a week, so a one-day step would look like a bug.',
+    );
   });
 
   test('the tab does not read the device clock', () {
-    final file = File('lib/screens/hr/time_clock_tab.dart');
+    final file = File('lib/screens/hr/work_hours_tab.dart');
     expect(file.existsSync(), isTrue);
     expect(file.readAsStringSync(), isNot(contains('DateTime.now()')));
   });
@@ -212,7 +287,7 @@ Future<void> _pump(
         });
       }
 
-      if (path.endsWith('/hr/time-clock')) {
+      if (path.endsWith('/hr/time-clock/week')) {
         final payload = onClock?.call(request.url, request);
         if (payload != null) return _json({'data': payload});
       }
@@ -275,26 +350,53 @@ Map<String, Object?> _clock({required bool organizationEnabled}) => {
   'open': null,
 };
 
-Map<String, dynamic> _day({
-  required String date,
+/// A week, shaped like the endpoint Clock In built.
+Map<String, dynamic> _week({
+  String start = '2026-08-23',
+  String end = '2026-08-29',
   String timezoneLabel = 'UTC-5',
-  List<Map<String, Object?>> shifts = const [],
+  List<Map<String, Object?>> people = const [],
 }) => {
-  'date': date,
+  'week_start': start,
+  'week_end': end,
+  'starts_on': 'sunday',
   'timezone': 'Etc/GMT+5',
   'timezone_label': timezoneLabel,
+  'people': people,
+};
+
+Map<String, Object?> _person({
+  String id = 'u-2',
+  String name = 'Bea Okafor',
+  int total = 3900,
+  int days = 1,
+  int average = 3900,
+  bool open = false,
+  List<Map<String, Object?>> shifts = const [_bea],
+}) => {
+  'id': id,
+  'name': name,
+  'is_active': true,
+  'has_avatar': false,
+  'total_seconds': total,
+  'days_worked': days,
+  'average_seconds': average,
+  'open': open,
   'shifts': shifts,
 };
 
 const _bea = {
   'id': 's-1',
-  'user': {'id': 'u-2', 'name': 'Bea Okafor'},
+  'date': '2026-08-25',
   'clocked_in_at': '2026-08-25T13:00:00Z',
   'clocked_out_at': '2026-08-25T14:05:00Z',
   'clocked_in': '8:00 AM',
   'clocked_out': '9:05 AM',
   'duration_seconds': 3900,
   'open': false,
+  'ended_by': 'person',
+  'outside_schedule': false,
+  'extensions': 0,
 };
 
 Map<String, Object?> _me({required Map<String, Object?> timeClock}) => {
