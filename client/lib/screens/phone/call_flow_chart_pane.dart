@@ -698,7 +698,7 @@ String waitingWords(QueueLive queue) {
 
 IconData _iconFor(String kind) {
   switch (kind) {
-    case CallFlowGraph.entryId:
+    case phoneEntryNode:
       return Icons.call_outlined;
     case 'arrival':
       return Icons.call_received;
@@ -750,7 +750,7 @@ FlowLook _phoneLook(CallFlowLive? live) => (node) {
 
 String _kindWord(String kind) {
   switch (kind) {
-    case CallFlowGraph.entryId:
+    case phoneEntryNode:
       return 'Inbound';
     case 'menu':
       // Not 'Menu': that is the node's own title on most lines, and a tile
@@ -801,7 +801,13 @@ class _Line {
           id: row['id'].toString(),
           e164: (row['e164'] ?? '') as String,
           label: (row['label'] ?? '') as String,
-          graph: CallFlowGraph.fromJson(row['graph'] as Map<String, dynamic>?),
+          graph: CallFlowGraph.fromJson(
+            row['graph'] as Map<String, dynamic>?,
+            // Named here rather than inherited from a default, so that
+            // renaming Phone's entry node breaks Phone rather than quietly
+            // leaving inspections working and this one drawing nothing.
+            entry: phoneEntryNode,
+          ),
         ),
     ];
   }
