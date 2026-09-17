@@ -67,8 +67,8 @@ class PtoPolicyTest extends TestCase
             $answer = $this->policy()->for($t['admin']);
 
             $this->assertFalse($answer['enabled']);
-            $this->assertSame(0, $answer['days_per_year']);
-            $this->assertSame(0, $answer['waiting_days']);
+            $this->assertSame(0, $answer['allowance']);
+            $this->assertSame(0, $answer['waiting']);
             $this->assertFalse($answer['carry_over']);
         });
     }
@@ -76,22 +76,24 @@ class PtoPolicyTest extends TestCase
     /**
      * The waiting period is counted from the day they started.
      *
-     * Ninety days from a real start date, which is what a contract means by
-     * "after three months of continuous employment".
+     * Ninety days from a real start date. A contract that says "after three
+     * months of continuous employment" should be entered as three months
+     * rather than converted here — see the months test below for the dates
+     * where those two stop agreeing.
      */
     public function test_the_eligible_date_is_the_start_date_plus_the_waiting_period(): void
     {
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
         $this->started($t, '2026-08-01');
 
         $this->inTenant($t['org'], function () use ($t) {
             $answer = $this->policy()->for($t['admin']);
 
             $this->assertTrue($answer['enabled']);
-            $this->assertSame(6, $answer['days_per_year']);
+            $this->assertSame(6, $answer['allowance']);
             $this->assertSame('2026-08-01', $answer['started_on']);
             $this->assertSame('2026-10-30', $answer['eligible_from']);
 
@@ -108,7 +110,7 @@ class PtoPolicyTest extends TestCase
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
         $this->started($t, '2026-01-06');
 
         $this->inTenant($t['org'], function () use ($t) {
@@ -133,7 +135,7 @@ class PtoPolicyTest extends TestCase
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
 
         $this->inTenant($t['org'], function () use ($t) {
             $answer = $this->policy()->for($t['admin']);
@@ -161,7 +163,7 @@ class PtoPolicyTest extends TestCase
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.waiting_days' => 90]);
+        $this->set($t, ['pto.enabled' => true, 'pto.waiting' => 90]);
         $this->started($t, '2020-03-02');
         $this->started($t, '2026-09-01');
 
@@ -177,7 +179,7 @@ class PtoPolicyTest extends TestCase
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->set($t, ['pto.enabled' => true, 'pto.waiting_days' => 0]);
+        $this->set($t, ['pto.enabled' => true, 'pto.waiting' => 0]);
         $this->started($t, '2026-09-17');
 
         $this->inTenant($t['org'], function () use ($t) {
@@ -187,4 +189,86 @@ class PtoPolicyTest extends TestCase
             $this->assertTrue($answer['eligible']);
         });
     }
+
+    /**
+     * Three months is not ninety days, and the date proves which one was used.
+     *
+     * The start date is chosen so the two answers differ: three months from 31
+     * January is 30 April, ninety days is 1 May. A conversion to days anywhere
+     * between the setting and the screen lands on the wrong one of those, and
+     * a person told 1 May when their contract says 30 April has been given a
+     * wrong date about their own leave by a product that was guessing.
+     */
+    public function test_a_waiting_period_in_months_counts_months(): void
+    {
+        Carbon::setTestNow('2026-02-10 12:00:00');
+
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, [
+            'pto.enabled' => true,
+            'pto.waiting' => 3,
+            'pto.waiting_unit' => 'month',
+        ]);
+        $this->started($t, '2026-01-31');
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $answer = $this->policy()->for($t['admin']);
+
+            $this->assertSame('2026-04-30', $answer['eligible_from']);
+            $this->assertNotSame('2026-05-01', $answer['eligible_from'], 'Ninety days, not three months.');
+            $this->assertSame(3, $answer['waiting']);
+            $this->assertSame('month', $answer['waiting_unit']);
+            $this->assertFalse($answer['eligible']);
+        });
+    }
+
+    /**
+     * An allowance per month stays per month. Nothing is annualised.
+     *
+     * One day a month is twelve a year, and EzBizi writing that twelve down
+     * would be putting a figure in a contract's mouth — the policy says one a
+     * month, so the answer says one a month and the screen says it back.
+     */
+    public function test_an_allowance_period_passes_through_unconverted(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, [
+            'pto.enabled' => true,
+            'pto.allowance' => 1,
+            'pto.allowance_period' => 'month',
+        ]);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $answer = $this->policy()->for($t['admin']);
+
+            $this->assertSame(1, $answer['allowance'], 'Twelve would be us annualising somebody else’s policy.');
+            $this->assertSame('month', $answer['allowance_period']);
+        });
+    }
+
+    /**
+     * A zero wait opens for somebody with no start date at all.
+     *
+     * The case that distinguishes: everybody on the books before the
+     * employment record existed has no `started` row, so there is no date to
+     * count from — and when the policy opens on day one there is nothing to
+     * count. Reading eligibility off the date alone tells that whole group to
+     * wait for a day that can never arrive.
+     */
+    public function test_a_zero_wait_is_open_even_with_no_start_date(): void
+    {
+        Carbon::setTestNow('2026-09-17 12:00:00');
+
+        $t = $this->provisionTenant('Alpha');
+        $this->set($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 0]);
+
+        $this->inTenant($t['org'], function () use ($t) {
+            $answer = $this->policy()->for($t['admin']);
+
+            $this->assertNull($answer['started_on'], 'The fixture is the person with no start date.');
+            $this->assertNull($answer['eligible_from'], 'Still unknown — there is no date to give.');
+            $this->assertTrue($answer['eligible'], 'Nothing to wait for, so nothing to wait on.');
+        });
+    }
+
 }

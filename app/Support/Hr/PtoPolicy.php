@@ -64,8 +64,20 @@ class PtoPolicy
      * start date would make somebody eligible three months early or late, and
      * nothing would ever say why.
      *
+     * Both numbers carry a unit and NEITHER is converted. Six days a year and
+     * half a day a month are the same allowance said two ways, but only one of
+     * them is what the contract says, and annualising on the way through would
+     * hand somebody a figure their own policy does not contain. The waiting
+     * period is the sharper case: from 31 January 2026, three months is 30
+     * April and ninety days is 1 May, and a person told the wrong one of those
+     * has been told a wrong date about their own leave. (Both measured. The
+     * pair I reached for first — 30 November, three months against ninety days
+     * — lands on 28 February either way, which is the example that would have
+     * proved nothing.)
+     *
      * @return array{
-     *     enabled: bool, days_per_year: int, waiting_days: int,
+     *     enabled: bool, allowance: int, allowance_period: string,
+     *     waiting: int, waiting_unit: string,
      *     carry_over: bool, started_on: ?string, eligible_from: ?string,
      *     eligible: bool,
      * }
@@ -74,19 +86,34 @@ class PtoPolicy
     {
         $organization = $user->organization;
 
-        $days = (int) $this->settings->get('pto.days_per_year', $organization);
-        $waiting = max(0, (int) $this->settings->get('pto.waiting_days', $organization));
+        $allowance = (int) $this->settings->get('pto.allowance', $organization);
+        $waiting = max(0, (int) $this->settings->get('pto.waiting', $organization));
+        $unit = (string) $this->settings->get('pto.waiting_unit', $organization);
 
         $startedOn = $this->startedOn($user);
 
         // A waiting period with no start date to count from is unanswerable,
         // and saying so is the point — see the docblock above.
-        $eligibleFrom = $startedOn?->copy()->addDays($waiting);
+        //
+        // The NoOverflow variants, and measured rather than assumed: the
+        // generic `add('month', 3)` from 31 January lands on 1 MAY, because
+        // April has no 31st and Carbon rolls forward into the next month. A
+        // contract saying "three months" from 31 January means 30 April to
+        // every person who signs one, and a product that answers 1 May has
+        // moved somebody's leave by a day for a reason no one can see.
+        $eligibleFrom = $startedOn === null ? null : match ($unit) {
+            'week' => $startedOn->copy()->addWeeks($waiting),
+            'month' => $startedOn->copy()->addMonthsNoOverflow($waiting),
+            'year' => $startedOn->copy()->addYearsNoOverflow($waiting),
+            default => $startedOn->copy()->addDays($waiting),
+        };
 
         return [
             'enabled' => $this->enabledFor($organization),
-            'days_per_year' => max(0, $days),
-            'waiting_days' => $waiting,
+            'allowance' => max(0, $allowance),
+            'allowance_period' => (string) $this->settings->get('pto.allowance_period', $organization),
+            'waiting' => $waiting,
+            'waiting_unit' => $unit,
             'carry_over' => (bool) $this->settings->get('pto.carry_over', $organization),
             'started_on' => $startedOn?->toDateString(),
             'eligible_from' => $eligibleFrom?->toDateString(),
@@ -96,7 +123,15 @@ class PtoPolicy
             // have booked costs a conversation, being told you may book when
             // your contract says otherwise costs the company an argument it
             // has already written down.
-            'eligible' => $eligibleFrom !== null && ! $eligibleFrom->isFuture(),
+            //
+            // Except with no waiting period at all, where the unknown start
+            // date stops mattering: a policy usable from the first day is
+            // usable by anybody who is here, and the date it would be counted
+            // from cannot change that. Without this clause every person with no
+            // `started` event — which is everybody who predates that table — is
+            // told to wait for a date that is already behind them.
+            'eligible' => $waiting === 0
+                || ($eligibleFrom !== null && ! $eligibleFrom->isFuture()),
         ];
     }
 

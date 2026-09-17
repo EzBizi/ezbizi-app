@@ -32,7 +32,7 @@ void main() {
 
     // It replaces the screen rather than sitting beside it: the settings are
     // organization-scoped, so this is never one person's state.
-    expect(find.text('6 days'), findsNothing);
+    expect(find.text('6 days a year'), findsNothing);
     expect(find.text('When you can use them'), findsNothing);
   });
 
@@ -46,7 +46,7 @@ void main() {
     expect(find.textContaining('Jon Ames'), findsWidgets);
 
     // And it opens on the reader's own panel without a tap. Asserted on
-    // something only HER panel can say — "6 days" appears in the list rows
+    // something only HER panel can say — "6 days a year" appears in the rows
     // too, so it cannot tell whose panel is open.
     expect(find.text('Toula Elwell (you)'), findsOneWidget);
     expect(find.text('When you can use them'), findsOneWidget);
@@ -89,6 +89,81 @@ void main() {
       reason: 'Without this the reader assumes somebody lost it and goes looking.',
     );
     expect(find.textContaining('Somebody in HR can add it'), findsNothing);
+  });
+
+  /// The unit is half the answer, and the screen says back the one that was
+  /// chosen rather than converting it.
+  ///
+  /// "1" is a day a month or a day a year, and "3" is three days or three
+  /// months. A screen that prints the number alone is only an answer to
+  /// somebody who already knows which their company wrote down — and the
+  /// people who know that are not the ones opening this tab.
+  testWidgets('a monthly policy says months, not an annualised number', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _body(
+        policy: {
+          'allowance_period': 'month',
+          'waiting': 3,
+          'waiting_unit': 'month',
+        },
+      ),
+      width: 1200,
+    );
+
+    expect(find.text('6 days a month'), findsWidgets);
+    expect(
+      find.text('6 days a year'),
+      findsNothing,
+      reason: 'The period is drawn from the policy, not assumed to be a year.',
+    );
+    expect(
+      find.text('72 days a year'),
+      findsNothing,
+      reason: 'Annualising is us rewriting somebody else’s policy.',
+    );
+    expect(
+      find.textContaining('3 months after somebody starts here'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('90 days'), findsNothing);
+  });
+
+  /// With no waiting period the unknown start date stops mattering.
+  ///
+  /// Everybody who predates the employment record has no start date, so asking
+  /// "do we know when they started" first tells that whole group to wait for a
+  /// day that can never arrive — for a policy that is open to them today.
+  testWidgets('no waiting period is open even when the start date is unknown', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _body(policy: {'waiting': 0, 'waiting_unit': 'day'})
+        ..['data'] = [
+          {
+            'id': 'u-1',
+            'name': 'Toula Elwell',
+            'role': 'Office',
+            'allowance': 6,
+            'started_on': null,
+            'eligible_from': null,
+            'eligible': true,
+            'taken': null,
+          },
+        ],
+      width: 1200,
+    );
+
+    expect(find.text('Now'), findsOneWidget);
+    expect(find.text('We cannot tell you'), findsNothing);
+    expect(
+      find.textContaining('from somebody’s first day here'),
+      findsOneWidget,
+      reason: '"0 days after somebody starts here" is not a sentence.',
+    );
   });
 
   testWidgets('phone: you first, everybody after', (tester) async {
@@ -136,12 +211,18 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
-Map<String, dynamic> _body({bool enabled = true}) => {
+Map<String, dynamic> _body({
+  bool enabled = true,
+  Map<String, dynamic> policy = const {},
+}) => {
   'policy': {
     'enabled': enabled,
-    'days_per_year': 6,
-    'waiting_days': 90,
+    'allowance': 6,
+    'waiting': 90,
+    'waiting_unit': 'day',
+    'allowance_period': 'year',
     'carry_over': false,
+    ...policy,
   },
   'me': 'u-1',
   'data': [
@@ -149,7 +230,7 @@ Map<String, dynamic> _body({bool enabled = true}) => {
       'id': 'u-1',
       'name': 'Toula Elwell',
       'role': 'Office',
-      'days_per_year': 6,
+      'allowance': 6,
       'started_on': '2026-09-14',
       'eligible_from': '2026-12-13',
       'eligible': false,
@@ -159,7 +240,7 @@ Map<String, dynamic> _body({bool enabled = true}) => {
       'id': 'u-2',
       'name': 'Bea Okafor',
       'role': 'Technician',
-      'days_per_year': 6,
+      'allowance': 6,
       'started_on': '2025-01-06',
       'eligible_from': '2025-04-06',
       'eligible': true,
@@ -170,7 +251,7 @@ Map<String, dynamic> _body({bool enabled = true}) => {
       'id': 'u-3',
       'name': 'Jon Ames',
       'role': 'Technician',
-      'days_per_year': 6,
+      'allowance': 6,
       'started_on': null,
       'eligible_from': null,
       'eligible': false,

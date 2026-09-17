@@ -481,12 +481,16 @@ class HrPeopleController extends Controller
             // row: "this company has not set up paid time off" is a state of
             // the whole screen. The settings are organization-scoped, so it can
             // never be one person's state beside somebody else's.
-            'policy' => [
-                'enabled' => $policy->enabledFor($actor->organization),
-                'days_per_year' => (int) $this->settings->get('pto.days_per_year', $actor->organization),
-                'waiting_days' => (int) $this->settings->get('pto.waiting_days', $actor->organization),
-                'carry_over' => (bool) $this->settings->get('pto.carry_over', $actor->organization),
-            ],
+            // Read off one person's answer rather than the settings
+            // directly: these six are organization-scoped, so every row carries
+            // the same ones, and one reader means the units cannot disagree
+            // with the dates computed from them.
+            'policy' => collect($policy->for($actor))
+                ->only([
+                    'enabled', 'allowance', 'allowance_period',
+                    'waiting', 'waiting_unit', 'carry_over',
+                ])
+                ->all(),
 
             // Which row is the reader's, so the phone layout leads with it
             // instead of the client guessing from a name.
@@ -499,7 +503,7 @@ class HrPeopleController extends Controller
                     'id' => $person->getKey(),
                     'name' => $person->name,
                     'role' => $person->role?->name,
-                    'days_per_year' => $answer['days_per_year'],
+                    'allowance' => $answer['allowance'],
                     'started_on' => $answer['started_on'],
                     'eligible_from' => $answer['eligible_from'],
                     'eligible' => $answer['eligible'],
