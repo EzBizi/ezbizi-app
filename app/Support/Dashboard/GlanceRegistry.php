@@ -43,6 +43,12 @@ class GlanceRegistry
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
+
+        // After ads_performance, matching the order of the chips inside
+        // Reports. A glance the COMING_SOON list carries but ORDER does not is
+        // silently dropped by all() - which is how this arrived first as a
+        // missing glance rather than a misplaced one.
+        'profit_loss',
     ];
 
     /**
@@ -93,6 +99,34 @@ class GlanceRegistry
         'ads_performance' => [
             'label' => 'Google Ads',
             'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
+        ],
+        /*
+         * Profit & Loss, and this is Google Ads' reason rather than a
+         * placeholder borrowed from it.
+         *
+         * Every figure in that tab is read from a business's own Airtable base
+         * when somebody opens the screen. EzBizi stores none of them, so a
+         * glance here would not be a query against our database — it would be
+         * a third party's API called once per dashboard load per person, for a
+         * number nobody asked to see yet.
+         *
+         * And the tab's whole point does not summarise. It reports the weeks
+         * where a sheet disagrees with ITSELF and resolves nothing; a single
+         * profit figure on a dashboard is exactly the silent resolution the
+         * reader refuses to make. Measured on A-1's own base: one week in
+         * thirty is internally inconsistent by $1,613.
+         *
+         * A live glance can win on this key later without this entry being
+         * removed first. If one is ever written it needs an answer for what it
+         * costs to fetch and what it shows for a week that does not add up —
+         * not just a query.
+         */
+        'profit_loss' => [
+            'label' => 'Profit & Loss',
+            'sentence' => 'Profit and loss is read from the Airtable base a business has connected, '
+                .'week by week, when you open the Profit & Loss tab under Reports. It is not '
+                .'summarised here: the figures are not stored, and a week where the sheet does '
+                .'not add up is worth seeing beside the categories rather than behind a total.',
         ],
         'newsletter' => [
             'label' => 'Newsletter',
