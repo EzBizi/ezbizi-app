@@ -8,6 +8,7 @@ import 'hr/contracts_tab.dart';
 import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
+import 'hr/pto_tab.dart';
 import 'hr/records_tab.dart';
 import 'hr/work_hours_tab.dart';
 
@@ -122,6 +123,11 @@ class _HrScreenState extends State<HrScreen> {
       'Invitations',
       Icons.mail_outline,
       () => InvitationsTab(api: widget.api, session: widget.session),
+    ),
+    (
+      'Paid time off',
+      Icons.beach_access_outlined,
+      () => PtoTab(api: widget.api, session: widget.session),
     ),
     (
       'Contracts',

@@ -433,6 +433,17 @@ class HrPeopleController extends Controller
      *
      * Everybody signed in gets their own row. `hr.view` adds everybody else's.
      *
+     * TODAY THAT HALF HAS NO DOOR, and saying so here is the point. The only
+     * screen that calls this lives in the Human Resources tab, and
+     * `PermissionCatalogue` marks a module reachable only for somebody holding
+     * `{module}.view` — so a technician without `hr.view` cannot open the tab
+     * and never reaches the row this endpoint would happily give them. The
+     * split is not decoration: it means the day a self-service surface exists
+     * — Your account is the obvious one — it works without touching this, and
+     * nobody has to loosen a permission to get there. But it is groundwork,
+     * not a shipped capability, and a reader who assumed otherwise would be
+     * describing a feature that has no way in.
+     *
      * Forced by the design rather than chosen beside it: the phone layout leads
      * with YOU and puts the team under a heading below, and the person who
      * wrote the suggestion is an office employee asking about her own days.
