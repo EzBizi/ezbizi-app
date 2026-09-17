@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0233',
       date: '17 Sep 2026',
       items: [
+        'Scheduling settings open again. The pane went grey, rail and all, because the server sent each service area week in a shape the screen could not read.',
         'Clock in-out is now Work Hours, and sits beside Dashboard.',
         'Work Hours knows the week for each person: hours worked, days worked, and an average per day, counted from whichever day your organization starts its week on. Everybody is listed, including anyone who worked nothing.',
         'A variable in an automation email or WhatsApp message now carries its value. It was always blank, and every variable box now says which names work.',
