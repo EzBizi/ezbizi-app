@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/dashboard_card.dart';
+import 'inspection_flow.dart';
 import 'option.dart';
 import '../../widgets/tag.dart';
 
@@ -43,6 +44,10 @@ class _BuilderTabState extends State<BuilderTab> {
   List<Map<String, dynamic>> _bindable = const [];
 
   String? _selectedId;
+
+  /// Whether the right pane shows the flow rather than the phone preview.
+  bool _showFlow = false;
+
   int _screenIndex = 0;
   int _fieldIndex = 0;
   String? _busy;
@@ -454,11 +459,7 @@ class _BuilderTabState extends State<BuilderTab> {
             ),
             _pane(
               key: const Key('inspection-builder-phone'),
-              child: InspectionPhonePreview(
-                definition: _selected,
-                screenIndex: _screenIndex,
-                presets: _presets,
-              ),
+              child: _previewPane(context),
             ),
           ];
 
@@ -486,6 +487,62 @@ class _BuilderTabState extends State<BuilderTab> {
           );
         },
       ),
+    );
+  }
+
+  /// The right-hand pane: one screen as a technician sees it, or the whole
+  /// definition as a flow.
+  ///
+  /// A switch rather than a fourth column. They answer opposite questions --
+  /// "what does this one screen look like" and "which screens are reached at
+  /// all" -- and neither is worth a third of the width while you are reading
+  /// the other.
+  Widget _previewPane(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: SegmentedButton<bool>(
+            key: const Key('inspection-builder-preview-switch'),
+            style: const ButtonStyle(visualDensity: VisualDensity.compact),
+            segments: const [
+              ButtonSegment(
+                value: false,
+                icon: Icon(Icons.phone_iphone, size: 16),
+                label: Text('Preview'),
+              ),
+              ButtonSegment(
+                value: true,
+                icon: Icon(Icons.account_tree_outlined, size: 16),
+                label: Text('Flow'),
+              ),
+            ],
+            selected: {_showFlow},
+            showSelectedIcon: false,
+            onSelectionChanged: (picked) =>
+                setState(() => _showFlow = picked.first),
+          ),
+        ),
+        Expanded(
+          child: _showFlow
+              ? InspectionFlowPane(
+                  definition: _selected,
+                  // The node id is a POSITION in the screen list, read at the
+                  // moment of the tap and not held: reordering screens moves
+                  // every id after the one that moved.
+                  onOpenScreen: (index) => setState(() {
+                    _screenIndex = index;
+                    _fieldIndex = 0;
+                  }),
+                )
+              : InspectionPhonePreview(
+                  definition: _selected,
+                  screenIndex: _screenIndex,
+                  presets: _presets,
+                ),
+        ),
+      ],
     );
   }
 
