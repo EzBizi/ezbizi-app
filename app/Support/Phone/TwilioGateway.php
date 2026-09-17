@@ -242,6 +242,29 @@ interface TwilioGateway
     public function redirectCall(PhoneConnection $connection, string $callSid, string $twiml): void;
 
     /**
+     * The device legs Twilio made for one inbound call.
+     *
+     * A `<Dial>` with several `<Client>` nouns produces one CHILD call per
+     * noun, and the parent row in `phone_calls` knows nothing about them. This
+     * is the only way to find out which of a person's devices Twilio is
+     * currently ringing — needed because answering on one of them does not
+     * stop the others by itself when they were rung by separate Dials, and
+     * DECLINING on one never stops the others at all.
+     *
+     * @return list<array{sid: string, to: string, status: string}>
+     */
+    public function childLegs(PhoneConnection $connection, string $parentCallSid): array;
+
+    /**
+     * Hang up one leg, leaving the rest of the call alone.
+     *
+     * Used to stop a person's OTHER phones ringing once they have dealt with a
+     * call on one of them. Deliberately per-leg: ending the parent would take
+     * the call away from the colleague who just answered it.
+     */
+    public function endCall(PhoneConnection $connection, string $callSid): void;
+
+    /**
      * How many callers are waiting in each queue on this account, right now.
      *
      * ── Why this is asked of Twilio and not of our own tables ───
