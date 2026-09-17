@@ -399,6 +399,7 @@ Future<void> _pumpTab(
             ..._me,
             'permissions': <String>[
               'monitoring.view',
+              'monitoring.general.view',
               if (grantScreenshots) 'monitoring.screenshots.view',
             ],
           },
@@ -460,6 +461,7 @@ Future<void> _pumpScreen(WidgetTester tester) async {
             ..._me,
             'permissions': const <String>[
               'monitoring.view',
+              'monitoring.general.view',
               'monitoring.screenshots.view',
             ],
           },
@@ -510,7 +512,7 @@ const _me = {
   'email': 'jose@example.com',
   'role': {'name': 'Manager'},
   'has_avatar': false,
-  'permissions': <String>['monitoring.view'],
+  'permissions': <String>['monitoring.view', 'monitoring.general.view'],
   'preferences': <String, dynamic>{},
   'organization': {
     'id': 'org-1',

@@ -3103,6 +3103,50 @@ class ModuleServiceProvider extends ServiceProvider
                             .'happens, not again until it is fixed and happens again.',
                     ),
                 ],
+                /*
+                 * The four chips MonitoringScreen draws, in that order.
+                 *
+                 * THREE OF THESE NAME AN ACTION RATHER THAN MINTING ONE, and
+                 * this module is the case the mechanism was named after:
+                 * `monitoring.specs.view`, `monitoring.cameras.view` and
+                 * `monitoring.screenshots.view` have been separate grants since
+                 * the module shipped, because "may see who is online" and "may
+                 * look at their screen" were never the same permission here.
+                 *
+                 * Minting `monitoring.desktop.view` beside `screenshots.view`
+                 * would put two names on one authority, and an administrator
+                 * could then grant the tab without the read — a Desktop
+                 * Monitoring pane that opens and shows nothing, which is the
+                 * affordance-without-its-gate shape. What was missing was the
+                 * LABEL: the catalogue renders these as "Screenshots.view", so
+                 * somebody hunting for the box that opens Desktop Monitoring
+                 * has to infer it.
+                 *
+                 * PC SPECS NAMES `view`, AND NAMING `specs.view` WOULD HAVE
+                 * BEEN THE SILENT NARROWING THIS WHOLE SWEEP EXISTS TO STOP.
+                 * That tab is the people roster — who is online, on what, seen
+                 * when — and `monitoring.specs.view` gates only the HARDWARE
+                 * DETAIL inside it: DevicesController withholds the `specs` key
+                 * without that grant and the roster still lists everybody. So
+                 * the tab is the module's own view, exactly as Training's Learn
+                 * pane is `training.view`. Naming `specs.view` would have taken
+                 * the roster away from every role holding plain
+                 * `monitoring.view` — and the backfill could not have restored
+                 * it, correctly, because a named action is skipped there.
+                 *
+                 * `general` is the one that MINTS, and it is the only one that
+                 * should. The floor-plan map has ridden on the module's own
+                 * `monitoring.view` since it shipped, so a tab key for it is
+                 * new and its backfill genuinely preserves what roles had.
+                 * Naming `view` instead would draw a General checkbox that IS
+                 * the module grant — ticking a tab to gain the module.
+                 */
+                tabs: [
+                    new TabDefinition('general', 'General'),
+                    new TabDefinition('specs', 'PC Specs', action: 'view'),
+                    new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
+                    new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
+                ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
                 sidebar: true,
             ),
