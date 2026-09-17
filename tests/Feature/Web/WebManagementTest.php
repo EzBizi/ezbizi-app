@@ -912,26 +912,53 @@ class WebManagementTest extends TestCase
     }
 
     /**
-     * Every field belongs to a section the editor knows how to show.
+     * Every field is REACHABLE by some screen.
      *
-     * The screen draws one section at a time and filters on this attribute, so
-     * a field with a section nothing lists is a field nobody can reach — a
-     * phone number that silently stops being editable is precisely the failure
-     * this module exists to prevent.
+     * It used to say "belongs to a listed section", and the reason was right:
+     * the site's screen draws one section at a time and filters on this
+     * attribute, so a field in a section nothing draws is a field nobody can
+     * edit — a phone number that silently stops being editable is exactly the
+     * failure this module exists to prevent.
+     *
+     * Two sections are now deliberately NOT tabs. `page` is drawn by a page's
+     * own screen and `template` by the Templates tab, each asking by name. They
+     * were general until Jose opened General and found every page's text fields
+     * piled into the site's own screen, which is the opposite failure: not
+     * unreachable, but reachable from somewhere it does not belong.
+     *
+     * So the list below is the whole set of places a field can be drawn, and
+     * adding to it is the deliberate act it should be — a new section with no
+     * screen still fails here.
      */
-    public function test_every_field_belongs_to_a_listed_section(): void
+    public function test_every_field_is_reachable_by_some_screen(): void
     {
-        $sections = array_column(SeoFields::sections(), 'key');
+        $tabs = array_column(SeoFields::sections(), 'key');
 
-        $this->assertNotEmpty($sections);
+        $this->assertNotEmpty($tabs);
+
+        $drawn = [
+            ...$tabs,
+            // A page's own screen asks for these by name.
+            SeoFields::PAGE,
+            // The Templates tab asks for these by name.
+            SeoFields::TEMPLATE,
+        ];
 
         foreach (SeoFields::catalogue() as $field) {
             $this->assertContains(
                 $field['section'],
-                $sections,
-                "{$field['key']} is in a section the editor does not list.",
+                $drawn,
+                "{$field['key']} is in a section no screen draws.",
             );
         }
+
+        /*
+         * And the two that are not tabs must STAY not tabs: listing one would
+         * put a page's fields back on the site's screen, which is the defect
+         * this pair of rules exists to prevent in both directions.
+         */
+        $this->assertNotContains(SeoFields::PAGE, $tabs);
+        $this->assertNotContains(SeoFields::TEMPLATE, $tabs);
     }
 
     /**

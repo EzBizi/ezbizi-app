@@ -297,4 +297,56 @@ class WebPageFieldsTest extends TestCase
         $this->assertFalse(PageFields::isTemplateKey('template_0'));
         $this->assertFalse(PageFields::isTemplateKey('template_2_x'));
     }
+
+    /**
+     * THE one that was missing, and the defect it would have caught reached
+     * Jose's screen: a page's text fields were sectioned `general`, so the
+     * SITE's General tab drew every text field of every page. He opened it and
+     * found a hundred boxes belonging to pages he was not looking at.
+     *
+     * The General tab filters on section, so the section IS the fix — and
+     * asserting the section is asserting the thing the screen actually reads.
+     */
+    public function test_a_pages_own_fields_never_appear_under_general(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+        $id = $site['data']['id'];
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/$id/values", [
+            'path' => '/about-us',
+            'values' => ['about_us_field_1' => 'Words about this page.'],
+        ])->assertOk();
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/$id/values", [
+            'values' => ['template_1' => 'Shared words.'],
+        ])->assertOk();
+
+        $fields = collect(
+            $this->signedInAs($editor)->getJson("/api/v1/web/sites/$id/values")
+                ->assertOk()->json('data.fields')
+        );
+
+        $general = $fields->where('section', 'general')->pluck('key')->all();
+
+        $this->assertNotContains('about_us_field_1', $general);
+        $this->assertNotContains('template_1', $general);
+
+        // Nor do the three that only mean something on a page.
+        $this->assertNotContains('group', $general);
+        $this->assertNotContains('author', $general);
+        $this->assertNotContains('category', $general);
+
+        /*
+         * The control. Without it every assertion above would pass on a
+         * catalogue that had stopped offering a `general` section at all.
+         */
+        $this->assertContains('phone', $general);
+        $this->assertContains('city_link', $general);
+
+        // And each is still offered, in its own section, or the page screen
+        // and the Templates tab would have nothing to draw.
+        $this->assertSame('page', $fields->firstWhere('key', 'about_us_field_1')['section']);
+        $this->assertSame('page', $fields->firstWhere('key', 'group')['section']);
+        $this->assertSame('template', $fields->firstWhere('key', 'template_1')['section']);
+    }
 }

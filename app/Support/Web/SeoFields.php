@@ -51,6 +51,24 @@ class SeoFields
 
     public const SOCIAL = 'social';
 
+    /*
+     * Fields that belong to a PAGE rather than to the site.
+     *
+     * Not a tab: `sections()` below offers General and Social links, and this
+     * key deliberately matches neither, so the General pane — which filters on
+     * section — stops drawing them. They are rendered by the page's own screen,
+     * which asks for them by name.
+     *
+     * Jose, seeing group, author, category and a hundred page text fields piled
+     * into General: "not supposed to be in general". They were marked general
+     * because every field needed A section and general was the one that existed,
+     * which is how a label nobody chose becomes a screen nobody wants.
+     */
+    public const PAGE = 'page';
+
+    /** Shared text, drawn only by the Templates tab. Not a tab key either. */
+    public const TEMPLATE = 'template';
+
     /**
      * The sections, in the order the screen shows them.
      *
@@ -75,7 +93,7 @@ class SeoFields
      */
     public static function all(): array
     {
-        return array_merge(self::general(), self::social());
+        return array_merge(self::general(), self::page(), self::social());
     }
 
     /**
@@ -259,23 +277,46 @@ class SeoFields
              * WordPress: the account we hold could set a post's author and
              * deliberately does not.
              */
+            /*
+             * Sectioned as PAGE below, so they appear on a page's screen and
+             * nowhere else. A site-wide "Author" means nothing — it was only in
+             * General because the catalogue had two sections and everything had
+             * to be in one of them.
+             */
+        ]);
+    }
+
+    /**
+     * What a PAGE answers for, rather than the site.
+     *
+     * Group is the customer's own label for organising pages; author and
+     * category are chosen from the website's own lists. None of the three means
+     * anything site-wide, and all three sat in General purely because the
+     * catalogue had two sections and everything had to be in one of them.
+     *
+     * @return array<string, array{label: string, hint: string, requirement: string, section: string}>
+     */
+    public static function page(): array
+    {
+        return self::sectioned(self::PAGE, [
             'group' => [
                 'label' => 'Group',
-                'hint' => 'Your own label for organising pages. Usually set per page.',
+                'hint' => 'Your own label for organising pages.',
                 'requirement' => self::OPTIONAL,
             ],
             'author' => [
                 'label' => 'Author',
-                'hint' => 'Chosen from the people on this website. Usually set per page.',
+                'hint' => 'Chosen from the people on this website.',
                 'requirement' => self::OPTIONAL,
             ],
             'category' => [
                 'label' => 'Category',
-                'hint' => 'Chosen from this website\'s categories. Usually set per page.',
+                'hint' => "Chosen from this website's categories.",
                 'requirement' => self::OPTIONAL,
             ],
         ]);
     }
+
 
     /**
      * Where the business already exists, so a site can link to it.
