@@ -1,0 +1,446 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HR › PTO balances — layouts</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --ok:#1a7f37; --soft:#f6fafa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+blockquote{margin:8px 0 12px;padding:8px 14px;border-left:3px solid var(--line);
+  color:#2b3a41;font-size:13px}
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin:16px 0 4px}
+.bar button{font:600 12.5px/1 inherit;padding:9px 13px;border:1px solid var(--line);
+  background:var(--paper);border-radius:999px;cursor:pointer;color:var(--ink)}
+.bar button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.states{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px;align-items:center}
+.states span.lab{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin-right:4px}
+.states button{font:600 11.5px/1 inherit;padding:7px 10px;border:1px solid var(--line);
+  background:var(--paper);border-radius:8px;cursor:pointer;color:var(--ink)}
+.states button[aria-current="true"]{background:var(--brand);color:#fff;
+  border-color:var(--brand)}
+.cap{font-size:12px;color:var(--muted);margin:10px 0 7px}
+.win{width:1120px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.head{padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700;
+  font-size:14px;display:flex;align-items:center;gap:10px}
+.head .sc{margin-left:auto;font-weight:500;font-size:11.5px;color:var(--muted)}
+.body{display:flex;min-height:390px}
+.side{width:252px;border-right:1px solid var(--line);overflow:auto}
+.prow{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:12.5px;
+  border-bottom:1px solid #eef2f3}
+.prow:last-child{border-bottom:0}
+.prow.on{background:#eaf3f2}
+.av{width:28px;height:28px;border-radius:50%;background:#e6eef0;display:flex;
+  align-items:center;justify-content:center;font-size:10.5px;font-weight:800;
+  color:#516067;flex:0 0 auto}
+.av.big{width:44px;height:44px;font-size:15px}
+.prow .nm{flex:1;font-weight:600;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.bal{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px}
+.bal.none{color:var(--muted);font-weight:500}
+.bal.wait{color:var(--warn)}
+.bal.unk{color:var(--muted);font-style:italic;font-weight:500}
+.main{flex:1;padding:18px 20px;overflow:auto}
+.who{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.who .n{font-weight:700;font-size:15px}
+.who .s{font-size:11.5px;color:var(--muted)}
+.big{font-size:34px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.taken{font-size:12.5px;color:var(--muted);margin-top:3px;min-height:19px}
+.when{margin-top:14px;border:1px solid var(--line);border-radius:11px;
+  background:var(--soft);padding:12px 14px;font-size:12.5px}
+.when .k{font:800 8.5px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin-bottom:3px}
+.when .v{font-weight:700;font-size:14px}
+.when .why{color:var(--muted);font-size:11.5px;margin-top:4px}
+.when.wait{border-color:#e6d5ab;background:#fdf9ef}
+.when.unk{border-color:var(--line);background:#f7f8f9}
+.notice{border:1px solid var(--line);border-radius:11px;padding:14px 16px;
+  background:var(--soft);font-size:12.5px}
+.notice b{display:block;margin-bottom:3px;font-size:13px}
+.notice .who2{color:var(--muted);margin-top:6px;font-size:11.5px}
+/* cards */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px}
+.card{border:1px solid var(--line);border-radius:12px;padding:13px 14px}
+.card .top{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+.card .nm{font-weight:700;font-size:12.5px;flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.card .num{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.card .sub2{font-size:11px;color:var(--muted);min-height:32px;margin-top:2px}
+.card.wait{border-color:#e6d5ab;background:#fdf9ef}
+.card.none{background:#fafbfb}
+/* table */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);text-align:left;padding:9px 14px;background:var(--soft);
+  border-bottom:1px solid var(--line)}
+.tbl td{padding:10px 14px;border-bottom:1px solid #eef2f3}
+.tbl td.n{font-variant-numeric:tabular-nums;font-weight:700}
+.tbl td.q{color:var(--muted)}
+.tbl tr:last-child td{border-bottom:0}
+.dash{color:#c2ced2}
+/* phone */
+.phone{width:380px;background:var(--paper);border:1px solid var(--line);
+  border-radius:26px;overflow:hidden}
+.pbar{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;
+  font-size:13.5px}
+.mine{padding:16px 14px;border-bottom:1px solid var(--line)}
+.tabs{display:flex;border-bottom:1px solid var(--line);font-size:12.5px}
+.tabs div{flex:1;text-align:center;padding:10px;color:var(--muted)}
+.tabs div.on{color:var(--ink);font-weight:700;box-shadow:inset 0 -2px 0 var(--brand)}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:12px;font-size:12.5px;max-width:1120px}
+.note.warn{border-left-color:var(--warn)}
+</style>
+<div class="wrap">
+<h1>HR &rsaquo; PTO balances &mdash; pick one desktop and one mobile</h1>
+
+<p class="sub">Jose approved it 2026-09-17: <i>&ldquo;PTO Balances is good we should add that to
+Human Resources Tab&rdquo;</i>. It came from a real production suggestion &mdash; Toula Elwell at
+A1-Group, 2026-09-08, her spelling:</p>
+
+<blockquote>&ldquo;a part for us where we can see howq much paidf pto we all have and when it can
+be used&rdquo;</blockquote>
+
+<p class="sub"><b>There are two asks in that sentence and the second is the hard one.</b>
+<b>&ldquo;we ALL have&rdquo;</b> is a view across people, not self-service. <b>&ldquo;when it can
+be USED&rdquo;</b> is a waiting period, not a number &mdash; so on a screen called
+&ldquo;balances&rdquo;, the <i>date</i> is often the answer and the number is the decoration.</p>
+
+<p class="sub"><b>&#9888; THE EMPTY STATE IS THE COMMON STATE, which is unusual and shapes every
+option here.</b> HR measured production: <b>exactly one of eleven contract templates mentions PTO
+at all</b>, the other ten are silent. So &ldquo;this organization has not set up paid time
+off&rdquo; is probably the FIRST thing most people ever see on this screen &mdash; not an edge
+case to tuck away. <i>(Their measurement of tenant data, relayed; I verified the models and the
+employment-events migration they name, not the eleven.)</i> And the remedy belongs to whoever can
+edit contract templates, <b>which is not most of the people looking</b>, so state A must not be a
+button that does nothing for the reader.</p>
+
+<p class="sub"><b>Use the state switcher.</b> Every layout is drawn in all five, because a layout
+that only reads well at &ldquo;6 days available&rdquo; is a layout for the rarest case.</p>
+
+<p class="sub"><b>&#9888; STATE A IS ALL-OR-NOTHING, which corrected an argument I had already
+written down.</b> All four PTO settings are organization-scoped, so &ldquo;no policy&rdquo; empties
+every row at once and <b>can never be one person&rsquo;s state beside somebody else&rsquo;s</b>.
+Not checkable from here &mdash; it is HR&rsquo;s settings block rather than a tenant row, and not
+on main yet &mdash; so it is their measurement, relayed. It <i>strengthens</i> the recommendation
+rather than weakening it: option 2&rsquo;s advantage was the mixed-state reading, and a third of
+that mix turns out to be impossible.</p>
+
+<p class="sub"><b>Where the feature leans next, worth drawing for now rather than redrawing
+later.</b> A-1&rsquo;s own paperwork is per-ROLE rather than per-company &mdash; that is what
+&ldquo;one of eleven&rdquo; means, and the one is Project Manager. So a per-person override on top
+of the organization default is very likely the next thing this needs, and then a roster genuinely
+does show six days beside zero beside two. <b>Option 3&rsquo;s table absorbs that without moving;
+a card wall would want re-reading.</b></p>
+
+<p class="sub"><b>Room is reserved for a number that does not exist yet.</b> Nothing in EzBizi
+records a day off &mdash; HR measured that too &mdash; so whether a balance can say
+&ldquo;2 taken&rdquo; is undecided and sits between Scheduling and HR. Every option keeps the line
+for it, so the answer arriving does not move the layout. Same trick as the invitation strip
+leaving room for <code>bounced</code>.</p>
+
+<div class="bar" id="bar"></div>
+<div class="states" id="states"></div>
+<div class="cap" id="cap"></div>
+<div id="hold"></div>
+</div>
+<script>
+var SEL = 1;
+var ST = 'C';
+
+var STATES = {
+  A: 'A · No policy set',
+  B: 'B · Not usable yet',
+  C: 'C · Usable now',
+  D: 'D · Start date unknown',
+  E: 'E · Across people'
+};
+
+var TEAM = [
+  {i:'TE', n:'Toula Elwell',  st:'C'},
+  {i:'MR', n:'Maria Ruiz',    st:'B'},
+  {i:'JP', n:'Jon Park',      st:'D'},
+  {i:'AD', n:'Aisha Dyer',    st:'C'},
+  {i:'SB', n:'Sam Blake',     st:'B'}
+];
+
+function balWords(st){
+  if (st === 'A') return ['<span class="bal none">No policy</span>', ''];
+  if (st === 'B') return ['<span class="bal wait">6 days</span>', 'from 14 Dec'];
+  if (st === 'D') return ['<span class="bal unk">Unknown</span>', ''];
+  return ['<span class="bal">6 days</span>', ''];
+}
+
+function teamList(selIndex){
+  var h = '<div class="side">';
+  for (var i = 0; i < TEAM.length; i++){
+    var p = TEAM[i];
+    // State A is the ORGANIZATION, not a person: "the organization has not
+    // said it has paid time off". So it applies to everybody at once, which
+    // is what makes it the common state rather than one quiet row.
+    var st = ST === 'A' ? 'A' : (i === 0 ? ST : p.st);
+    var w = balWords(st === 'E' ? 'C' : st);
+    h += '<div class="prow' + (i === selIndex ? ' on' : '') + '">' +
+      '<span class="av">' + p.i + '</span>' +
+      '<span class="nm">' + p.n + '</span>' + w[0] + '</div>';
+  }
+  return h + '</div>';
+}
+
+/* The person panel, in whichever state is selected. */
+function person(st){
+  if (st === 'A'){
+    return '<div class="notice"><b>This organization has not set up paid time off.</b>' +
+      'Nobody has an allowance yet, so there is nothing to count down to.' +
+      '<div class="who2">It is added to a contract template, by somebody who can edit ' +
+      'those. If that is not you, this is the whole answer rather than a step you are ' +
+      'missing.</div></div>';
+  }
+  if (st === 'D'){
+    return '<div class="big">6 days</div>' +
+      '<div class="taken">&nbsp;</div>' +
+      '<div class="when unk"><div class="k">When you can use them</div>' +
+      '<div class="v">We cannot tell you</div>' +
+      '<div class="why">Your contract makes these available after three months, and we do ' +
+      'not have a start date on file for you — so any date here would be a guess. ' +
+      'Somebody in HR can add it.</div></div>';
+  }
+  if (st === 'B'){
+    return '<div class="big">6 days</div>' +
+      '<div class="taken">&nbsp;</div>' +
+      '<div class="when wait"><div class="k">When you can use them</div>' +
+      '<div class="v">Saturday 14 December</div>' +
+      '<div class="why">Your contract makes paid time off available after three months of ' +
+      'continuous employment. You started on 14 September.</div></div>';
+  }
+
+  return '<div class="big">6 days</div>' +
+    '<div class="taken">available to book now</div>' +
+    '<div class="when"><div class="k">When you can use them</div>' +
+    '<div class="v">Now</div>' +
+    '<div class="why">Available since 14 December.</div></div>';
+}
+
+/* ---- 1 : team list, one person beside it -------------------------- */
+function D1(){
+  var st = ST === 'E' ? 'C' : ST;
+  return '<div class="win"><div class="head">Paid time off' +
+    '<span class="sc">Everyone you can see</span></div>' +
+    '<div class="body">' + teamList(0) +
+    '<div class="main"><div class="who"><span class="av big">TE</span>' +
+    '<span><div class="n">Toula Elwell</div>' +
+    '<div class="s">Technician · started 14 September</div></span></div>' +
+    person(st) + '</div></div></div>' +
+    '<div class="note"><b>Her sentence has two halves and this answers them in two ' +
+    'panes.</b> &ldquo;We all have&rdquo; is the list on the left — everybody in reach, each ' +
+    'with their own state, so you can see at a glance that Sam has no policy and Jon’s is ' +
+    'unknown without opening anybody. &ldquo;When it can be used&rdquo; is the panel on the ' +
+    'right, where the DATE gets its own box rather than being a footnote under a ' +
+    'number.<br><br><b>Switch to state A.</b> The list still works — it is the panel that ' +
+    'goes quiet, and it says who can fix it rather than offering a button most readers cannot ' +
+    'use.<br><br><b>The cost:</b> a manager comparing five people reads five panels. It is ' +
+    'built for the person, with the team as navigation.</div>';
+}
+
+/* ---- 2 : a card per person ---------------------------------------- */
+function D2(){
+  var h = '<div class="win"><div class="head">Paid time off' +
+    '<span class="sc">Everyone you can see</span></div><div class="cards">';
+  for (var i = 0; i < TEAM.length; i++){
+    var p = TEAM[i];
+    var st = ST === 'A' ? 'A' : (i === 0 ? (ST === 'E' ? 'C' : ST) : p.st);
+    var cls = st === 'B' ? ' wait' : st === 'A' ? ' none' : '';
+    var num = st === 'A' ? '—' : st === 'D' ? '6 days' : '6 days';
+    var sub = st === 'A' ? 'No policy on this contract'
+            : st === 'B' ? 'Not until 14 Dec — three months from starting'
+            : st === 'D' ? 'We do not know when — no start date on file'
+            : 'Available to book now';
+    h += '<div class="card' + cls + '"><div class="top">' +
+      '<span class="av">' + p.i + '</span><span class="nm">' + p.n + '</span></div>' +
+      '<div class="num"' + (st === 'A' ? ' style="color:var(--muted)"' : '') + '>' +
+      num + '</div><div class="sub2">' + sub + '</div></div>';
+  }
+  return h + '</div></div>' +
+    '<div class="note"><b>Her actual words were &ldquo;how much we ALL have&rdquo;, and this answers that without clicking.</b> Five people, one screen.<br><br>' +
+    '<b>&#9888; ITS BEST ARGUMENT RESTED ON A CASE THAT CANNOT HAPPEN, and HR was the only one who could tell me.</b> This note used to say the mixed board was the point &mdash; Sam-no-policy beside Jon-no-start-date beside Maria-waiting, three facts side by side telling an owner the policy is half configured. <b>All four PTO settings are organization-scoped</b>, so &ldquo;no policy&rdquo; empties every row at once and is never one person&rsquo;s state beside somebody else&rsquo;s. A third of the mix I was selling is impossible, and the fixture drew it anyway until this was corrected.<br><br><b>What is left is still real:</b> waiting, usable and start-date-unknown do vary per person, so a board still shows three genuine states at once.<br><br><b>The cost:</b> a card holds one sentence. The full reason needs the card to open, and at forty staff this is a lot of scrolling for a grid whose cells are mostly identical.</div>';
+}
+
+/* ---- 3 : the table ------------------------------------------------ */
+function D3(){
+  var rows = '';
+  for (var i = 0; i < TEAM.length; i++){
+    var p = TEAM[i];
+    var st = ST === 'A' ? 'A' : (i === 0 ? (ST === 'E' ? 'C' : ST) : p.st);
+    var allow = st === 'A' ? '<span class="dash">—</span>' : '6';
+    var taken = st === 'A' ? '<span class="dash">—</span>'
+              : '<span class="dash" title="not recorded yet">—</span>';
+    var avail = st === 'A' ? '<span class="dash">—</span>'
+              : st === 'B' ? '<span class="bal wait">0 yet</span>'
+              : st === 'D' ? '<span class="bal unk">Unknown</span>' : '6';
+    var when = st === 'A' ? 'No policy on this contract'
+             : st === 'B' ? '14 Dec — 3 months from starting'
+             : st === 'D' ? 'No start date on file'
+             : 'Now';
+    rows += '<tr><td><div style="display:flex;align-items:center;gap:9px">' +
+      '<span class="av">' + p.i + '</span><span>' + p.n + '</span></div></td>' +
+      '<td class="n">' + allow + '</td><td class="n q">' + taken + '</td>' +
+      '<td class="n">' + avail + '</td><td class="q">' + when + '</td></tr>';
+  }
+  // Replaced WHOLESALE rather than drawn with five columns of em dashes. The
+  // note below claimed this and the drawing did not do it -- caught by reading
+  // my own prose back against my own screen.
+  var inner = ST === 'A'
+    ? '<div style="padding:20px">' + person('A') + '</div>'
+    : '<table class="tbl"><tr><th>Person</th><th>Allowance</th><th>Taken</th>' +
+      '<th>Available</th><th>When it can be used</th></tr>' + rows + '</table>';
+
+  return '<div class="win"><div class="head">Paid time off' +
+    '<span class="sc">Everyone you can see</span></div>' + inner + '</div>' +
+    '<div class="note"><b>The one that already has a column for the number nobody can ' +
+    'compute yet.</b> Nothing in EzBizi records a day off, so <b>Taken</b> is drawn as an ' +
+    'em dash in every row — present, empty, and honest. The day that question is settled ' +
+    'between Scheduling and HR, the column fills and <b>not one thing on this screen ' +
+    'moves.</b><br><br><b>It is also the densest:</b> forty people fit, sorting by ' +
+    '&ldquo;when&rdquo; groups everybody waiting on a date together, and &ldquo;who is ' +
+    'eligible in January&rdquo; is a glance rather than a query.<br><br><b>The cost is state A, ' +
+    'which is the common one.</b> A table of five columns where four are em dashes is a lot of ' +
+    'furniture around the sentence &ldquo;nobody has a policy&rdquo; — so this option needs ' +
+    'the table replaced wholesale by the notice when no policy exists anywhere, rather than ' +
+    'drawn empty. Switch to A to see that.</div>';
+}
+
+/* ---- phone -------------------------------------------------------- */
+function M4(){
+  var st = ST === 'E' ? 'C' : ST;
+  var h = '<div class="phone"><div class="pbar">Paid time off</div>' +
+    '<div class="mine"><div class="who"><span class="av big">TE</span>' +
+    '<span><div class="n">You</div><div class="s">Toula Elwell</div></span></div>' +
+    person(st) + '</div>';
+  h += '<div style="padding:11px 14px 4px;font:800 9px sans-serif;text-transform:uppercase;' +
+    'letter-spacing:.06em;color:var(--muted)">Everyone you can see</div>';
+  for (var i = 1; i < TEAM.length; i++){
+    var p = TEAM[i];
+    var w = balWords(ST === 'A' ? 'A' : p.st);
+    h += '<div class="prow" style="padding:11px 14px"><span class="av">' + p.i + '</span>' +
+      '<span class="nm">' + p.n + '</span>' + w[0] +
+      (w[1] ? '<span style="font-size:10.5px;color:var(--muted)">' + w[1] + '</span>' : '') +
+      '</div>';
+  }
+  return h + '</div>' +
+    '<div class="note"><b>You first, everybody after.</b> On a phone the person holding it is ' +
+    'almost always asking about themselves — Toula wrote the suggestion about her own ' +
+    'days — so the top of the screen answers that without a tap, and the team is a scroll ' +
+    'rather than a destination.<br><br><b>The date box survives at 380px</b>, which is the ' +
+    'part that matters: &ldquo;when it can be used&rdquo; is the half a small screen usually ' +
+    'drops first.<br><br><b>The cost:</b> a manager of forty scrolls past their own card every ' +
+    'time. Fine for a technician, tiring for the person who opens this most.</div>';
+}
+
+function M5(){
+  var st = ST === 'E' ? 'C' : ST;
+  var h = '<div class="phone"><div class="pbar">Paid time off</div>' +
+    '<div class="tabs"><div class="on">Mine</div><div>Everyone</div></div>' +
+    '<div class="mine">' + person(st) + '</div></div>';
+  return h +
+    '<div class="note"><b>Two tabs, because they are two questions.</b> &ldquo;How much do I ' +
+    'have&rdquo; and &ldquo;how much does everybody have&rdquo; are asked by different people ' +
+    'on different days, and a tab makes each of them whole rather than half a screen.<br><br>' +
+    '<b>It gives the date room</b> — the reason box can hold the full sentence about the ' +
+    'contract clause and the start date, which is the thing Toula actually asked for and the ' +
+    'thing that gets truncated everywhere else.<br><br><b>The cost:</b> a tab nobody opens is ' +
+    'a feature nobody finds. &ldquo;We all have&rdquo; was HER phrasing — the across-people ' +
+    'view is the ask, and this is the only option that hides it behind a control.</div>';
+}
+
+function M6(){
+  var h = '<div class="phone"><div class="pbar">Paid time off</div>';
+  for (var i = 0; i < TEAM.length; i++){
+    var p = TEAM[i];
+    var st = ST === 'A' ? 'A' : (i === 0 ? (ST === 'E' ? 'C' : ST) : p.st);
+    var num = st === 'A' ? 'No policy' : st === 'D' ? '6 days' : '6 days';
+    var sub = st === 'A' ? 'nothing set on this contract'
+            : st === 'B' ? 'not until 14 Dec'
+            : st === 'D' ? 'when: we cannot tell'
+            : 'available now';
+    h += '<div style="padding:12px 14px;border-bottom:1px solid #eef2f3;display:flex;' +
+      'align-items:center;gap:11px">' +
+      '<span class="av">' + p.i + '</span>' +
+      '<span style="flex:1;min-width:0"><div style="font-weight:700;font-size:13px">' +
+      p.n + (i === 0 ? ' <span style="color:var(--muted);font-weight:500">(you)</span>' : '') +
+      '</div><div style="font-size:11px;color:var(--muted)">' + sub + '</div></span>' +
+      '<span class="bal' + (st === 'A' ? ' none' : st === 'B' ? ' wait' : '') + '">' +
+      num + '</span></div>';
+  }
+  return h + '</div>' +
+    '<div class="note"><b>One list, you in it rather than above it.</b> Every person, every ' +
+    'state, one column of rows — the phone shape of desktop 2, and the only phone option ' +
+    'where &ldquo;we all have&rdquo; is the whole screen instead of a section of ' +
+    'it.<br><br><b>The second line carries the state in words</b>, so &ldquo;not until 14 ' +
+    'Dec&rdquo; and &ldquo;we cannot tell&rdquo; are readable without opening anybody — which ' +
+    'is what makes a list of identical &ldquo;6 days&rdquo; worth scrolling.<br><br>' +
+    '<b>The cost:</b> your own row is one of many, so the question most people open with takes ' +
+    'a scan rather than a glance. Marking it <i>(you)</i> helps and does not fix it.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; the team beside one person', D1],
+  2:['2 &middot; Desktop &mdash; a card per person, states side by side', D2],
+  3:['3 &middot; Desktop &mdash; a table, with the column for "taken" already there', D3],
+  4:['4 &middot; Phone &mdash; you first, everybody after', M4],
+  5:['5 &middot; Phone &mdash; two tabs: mine, everyone', M5],
+  6:['6 &middot; Phone &mdash; one list, you inside it', M6]
+};
+
+function draw(k){
+  SEL = k;
+  document.getElementById('cap').innerHTML = OPT[k][0];
+  document.getElementById('hold').innerHTML = OPT[k][1]();
+  var bs = document.querySelectorAll('#bar button');
+  for (var i = 0; i < bs.length; i++){
+    bs[i].setAttribute('aria-current', bs[i].getAttribute('data-k') === String(k));
+  }
+  var ss = document.querySelectorAll('#states button');
+  for (var j = 0; j < ss.length; j++){
+    ss[j].setAttribute('aria-current', ss[j].getAttribute('data-s') === ST);
+  }
+}
+
+(function(){
+  var bar = document.getElementById('bar');
+  for (var k = 1; k <= 6; k++){
+    var b = document.createElement('button');
+    b.textContent = (k < 4 ? 'Desktop ' : 'Phone ') + k;
+    b.setAttribute('data-k', k);
+    b.onclick = (function(n){ return function(){ draw(n); }; })(k);
+    bar.appendChild(b);
+  }
+
+  var box = document.getElementById('states');
+  var lab = document.createElement('span');
+  lab.className = 'lab';
+  lab.textContent = 'State';
+  box.appendChild(lab);
+
+  var keys = ['A','B','C','D','E'];
+  for (var i = 0; i < keys.length; i++){
+    var sb = document.createElement('button');
+    sb.textContent = STATES[keys[i]];
+    sb.setAttribute('data-s', keys[i]);
+    sb.onclick = (function(s){
+      return function(){ ST = s; draw(SEL); };
+    })(keys[i]);
+    box.appendChild(sb);
+  }
+
+  draw(1);
+})();
+</script>

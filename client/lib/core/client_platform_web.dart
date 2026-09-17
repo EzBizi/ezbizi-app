@@ -12,6 +12,14 @@ import 'package:web/web.dart' as web;
 /// desktop minimum moves.
 String platformName() => 'web';
 
+/// A browser has no disk to put an asset on. See client_platform.dart.
+///
+/// Assets are served over HTTP and the only thing that could be returned here
+/// is a URL, which is not a file path and would be wrong for every caller —
+/// they want this precisely because something outside the process has to OPEN
+/// the file.
+String? installedAssetPath(String assetKey) => null;
+
 /// Fetch the app again from the server.
 ///
 /// This is the entire remedy on the web, and it is why the web copy on the

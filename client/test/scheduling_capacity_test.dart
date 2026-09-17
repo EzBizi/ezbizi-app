@@ -595,7 +595,11 @@ const _defaultAreas = [
     'franchise_id': 'fr-1',
     'zip_count': 18,
     'follows_pattern': true,
-    // Sunday (0) absent -> closed, drawn as a dash.
+    // STRING KEYS, copied from what the server actually sends rather than
+    // from the shape I meant. The server builds an int-keyed PHP array and
+    // casts it to an object so json_encode writes `{"0":null,"1":2,...}`;
+    // without that cast it wrote a JSON ARRAY, this fixture still agreed with
+    // itself, and the real screen threw a cast error on every area.
     'week': {'1': 2, '2': 2, '3': 2, '4': 2, '5': 2, '6': 1, '0': null},
   },
   {

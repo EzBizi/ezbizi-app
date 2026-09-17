@@ -1497,7 +1497,7 @@ class AutomationEngineTest extends TestCase
             'type'     => 'email.send',
             'to_field' => 'email',
             'subject'  => 'Hello {{name}}',
-            'body'     => 'Your {{title}} is booked. Anything else, {{name}}?',
+            'body'     => 'Your "{{title}}" is booked. Anything else, {{name}}?',
         ], $event, $customer, false, $this->automation('job.created', null, [])));
 
         $this->assertTrue($result['ok'], $result['detail']);
@@ -1506,11 +1506,12 @@ class AutomationEngineTest extends TestCase
         // private and what matters is what arrives, footer and all.
         Mail::assertSent(AutomationMessage::class, function ($mail) {
             $mail->assertHasSubject('Hello Marta Ruiz');       // off the RECORD
-            // No quotation marks in this body on purpose: the plain-text view is
-            // `{{ $body }}`, which HTML-escapes, so a typed " arrives as &quot;
-            // in a text/plain email. That is a real defect and it is NOT mine —
-            // the envelope and its view belong to the mail module, told 2026-09-17.
-            $mail->assertSeeInText('Your Chimney sweep is booked'); // off the EVENT
+            // QUOTED ON PURPOSE. The plain-text view was `{{ $body }}` until
+            // 2026-09-17 and HTML-escaped a typed " into &quot; in a text/plain
+            // message. The mail module fixed it and pins the thing that makes it
+            // safe — that there is no HTML part. This asserts the other end of
+            // the same property: what a rule author typed is what arrives.
+            $mail->assertSeeInText('Your "Chimney sweep" is booked'); // off the EVENT
             $mail->assertSeeInText('Anything else, Marta Ruiz?');
 
             return true;

@@ -124,6 +124,15 @@ flutter:
   assets:
     - assets/social/
 
+    # The app icon Windows shows on a toast. Declared as an asset rather than
+    # left to windows/runner/resources/app_icon.ico because that .ico is
+    # compiled INTO ezbizi.exe as a resource, and the toast icon is a path in
+    # the registry — Windows opens the file itself, at display time, so it has
+    # to exist on disk for as long as EzBizi is installed. A Flutter asset does
+    # (data/flutter_assets, beside the exe); a compiled-in resource does not.
+    # See ClientPlatform.installedAssetPath.
+    - assets/logo/app-icon-120.png
+
     # The Twilio Voice JS SDK and the page that hosts it, for Windows. Vendored
     # rather than fetched: WebView2 serves this folder from a virtual host so
     # the page is a secure context, which getUserMedia requires, and a CDN

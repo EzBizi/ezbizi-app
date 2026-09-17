@@ -212,6 +212,56 @@ class TimeClockWeekTest extends TestCase
             ->assertJsonPath('message', Refusal::permission('view clock in and out times')->message());
     }
 
+    /**
+     * The seven headings, named on the server (2026-09-17).
+     *
+     * UI/UX asked for these rather than hardcode a fourth English weekday array
+     * in a screen that ships in Spanish. Empty days are included because a day
+     * nobody worked still needs a heading saying so.
+     */
+    public function test_the_week_names_all_seven_days_in_the_organizations_language(): void
+    {
+        [$alpha] = $this->tenantWithAWeek();
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $this->midweek();
+
+        $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
+            ->assertOk()->json('data.days');
+
+        $this->assertCount(7, $days, 'every day, including the ones nobody worked');
+        $this->assertSame('2026-09-13', $days[0]['date']);
+        $this->assertSame('sunday', $days[0]['weekday']);
+        $this->assertSame('2026-09-19', $days[6]['date']);
+        $this->assertSame('saturday', $days[6]['weekday']);
+
+        // Default date_format is M/D/YYYY, so the month leads.
+        $this->assertSame('Sunday, Sep 13', $days[0]['label']);
+
+        // Thursday the 17th is inside the week and nobody worked it.
+        $this->assertSame('2026-09-17', $days[4]['date']);
+    }
+
+    public function test_a_spanish_organization_gets_spanish_headings_day_first(): void
+    {
+        [$alpha] = $this->tenantWithAWeek();
+        $this->set($alpha['org'], 'locale', 'es');
+        $this->set($alpha['org'], 'date_format', 'D/M/YYYY');
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.view'], 'hr@alpha.test');
+        $this->midweek();
+
+        $days = $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock/week')
+            ->assertOk()->json('data.days');
+
+        // The key stays English for anything that branches on the day.
+        $this->assertSame('sunday', $days[0]['weekday']);
+
+        // The label is the part a person reads, and it is not English.
+        $this->assertStringNotContainsStringIgnoringCase('Sunday', $days[0]['label']);
+        $this->assertStringContainsStringIgnoringCase('domingo', $days[0]['label']);
+        // Day before month, because this organization writes dates that way.
+        $this->assertMatchesRegularExpression('/13/', $days[0]['label']);
+    }
+
     private function set(Organization $org, string $key, mixed $value): void
     {
         app(TenantContext::class)->run($org, fn () => app(SettingsResolver::class)->set($key, $org, $value));

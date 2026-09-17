@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Assignment;
+use Illuminate\Support\Str;
 use App\Models\Automation;
 use App\Models\Role;
 use App\Models\SavedReport;
@@ -574,11 +576,13 @@ class AutomationsController extends Controller
             Refusal::permission('see what this event carries')->message(),
         );
 
-        $events = AutomationEvent::query()
+        $recent = AutomationEvent::query()
             ->where('event_key', $key)
             ->latest('occurred_at')
             ->limit(self::FIELD_SAMPLE)
-            ->pluck('payload');
+            ->get(['payload', 'subject_type', 'subject_id']);
+
+        $events = $recent->pluck('payload');
 
         $fields = [];
 
@@ -632,11 +636,85 @@ class AutomationsController extends Controller
             'trigger' => $key,
             'fields' => $fields,
             'values' => $values,
+            'samples' => $this->samplesFor($recent, $fields, $request->user()),
             // So the builder can tell "this trigger carries nothing" apart from
             // "this trigger has not happened here yet", which are different
             // things to say to somebody stuck.
             'sampled' => $events->count(),
         ]]);
+    }
+
+    /**
+     * One real example per field, from an event THIS person could already read.
+     *
+     * ── THIS REVERSES A RULE THAT WAS WRITTEN ON PURPOSE ──────
+     *
+     * The `values` map above says, in its own comment: "Values are DECLARED,
+     * never sampled. Reading them off recent events would leak what this
+     * tenant's records contain." That reasoning was right for `values`, which
+     * feeds a dropdown of every allowed value and had no reason to touch a
+     * record at all.
+     *
+     * It is not right for a preview, and Jose asked for the preview by name:
+     * *"I should have a preview and catalog of variables, so for example if i
+     * put {{title}} i should be able to see what that will turn out as"*. An
+     * example that is not a real value cannot answer that question — a rule
+     * author reading `Your [title] is booked` learns the brackets work, not
+     * whether their field resolves. A blank is the failure this whole evening
+     * was about, and it is invisible until a customer receives it.
+     *
+     * ── WHAT MAKES IT SAFE IS THE REACH CHECK, NOT THE TRUNCATION ──────
+     *
+     * The module gate above decides whether somebody may know a field EXISTS.
+     * It is per-module, so on its own it would show a franchise manager a value
+     * from another franchise's record — a leak inside a module they can open.
+     * So each candidate event is asked whose record it is, through the same
+     * `ScopeReach` the notification audience uses. One answer, two readers.
+     *
+     * An event with no subject is organization-level, and `covers()` is asked
+     * about the organization rather than waved through.
+     *
+     * @param  \Illuminate\Support\Collection<int, AutomationEvent>  $events
+     * @param  list<string>  $fields
+     * @return array<string, string>
+     */
+    private function samplesFor($events, array $fields, ?User $viewer): array
+    {
+        if ($viewer === null || $fields === []) {
+            return [];
+        }
+
+        $reach = app(ScopeReach::class);
+        $samples = [];
+
+        foreach ($events as $event) {
+            $subject = $event->subject_type !== null && $event->subject_id !== null
+                ? $event->subject()->first()
+                : null;
+
+            [$type, $id] = $subject instanceof CarriesAutomationScope
+                ? $subject->automationScope()
+                : [null, null];
+
+            if (! $reach->covers($viewer, $type ?? Assignment::SCOPE_ORGANIZATION, $id ?? $this->tenant->idOrFail())) {
+                continue;
+            }
+
+            $payload = is_array($event->payload) ? $event->payload : [];
+            $flat = array_merge($payload, is_array($payload['after'] ?? null) ? $payload['after'] : []);
+
+            foreach ($fields as $field) {
+                // FIRST ONE WINS, so the preview reads as one coherent record
+                // rather than a sentence assembled from three different jobs.
+                if (array_key_exists($field, $samples) || ! is_scalar($flat[$field] ?? null)) {
+                    continue;
+                }
+
+                $samples[$field] = Str::limit((string) $flat[$field], 60);
+            }
+        }
+
+        return $samples;
     }
 
     /**

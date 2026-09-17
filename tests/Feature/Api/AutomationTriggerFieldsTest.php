@@ -50,27 +50,44 @@ class AutomationTriggerFieldsTest extends TestCase
     }
 
     /**
-     * Keys are structural. Values are a customer's words.
+     * Keys are structural. Values are a customer's words — and the line moved.
      *
-     * Reach here is `automations.view` plus the module's tab, which is not
-     * permission to read one branch's mail. A sample value would be far more
-     * useful and is exactly what must not cross this line.
+     * THIS TEST USED TO SAY NO VALUE MAY EVER BE RETURNED, and asserted it for
+     * an administrator. Jose asked for the opposite on 2026-09-17, by name:
+     * *"I should have a preview and catalog of variables, so for example if i
+     * put {{title}} i should be able to see what that will turn out as"* — and
+     * a preview built from invented values answers nothing, because the failure
+     * it exists to show is a field that resolves to a blank.
+     *
+     * So the rule is no longer "never a value". It is "a value only to somebody
+     * who already reaches the record", and the guard had to move with it rather
+     * than be deleted: the admin case is covered below, and what is asserted
+     * HERE is the half that still protects somebody — a person who may build
+     * rules and may open Email, but stands at one branch.
+     *
+     * Asserted on the whole response body rather than on the `samples` key,
+     * because a leak that arrives under a new key is still a leak, and a key
+     * name is the thing most likely to change next.
      */
-    /**
-     * Still true, and now worth reading carefully: the endpoint DOES return a
-     * `values` map for fields with a closed set declared in code. What it must
-     * never return is a value read off this tenant's records, which is what
-     * every assertion below is about. Declared is not sampled.
-     */
-    public function test_it_returns_no_values_only_field_names(): void
+    public function test_somebody_who_does_not_reach_the_record_gets_names_and_no_words(): void
     {
         $t = $this->provisionTenant('Alpha');
         $this->recordEmailEvent($t);
 
-        $body = $this->signedInAs($t['admin'])
+        $atOneBranch = $this->userWithRole(
+            $t, 'Branch', ['automations.view', 'email.view'],
+            email: 'branch@example.test', onlyAt: $t['franchise'],
+        );
+
+        $response = $this->signedInAs($atOneBranch)
             ->getJson('/api/v1/automations/trigger-fields?trigger=email.received')
-            ->assertOk()
-            ->getContent();
+            ->assertOk();
+
+        // THE CONTROL: the names are offered, so this is about the words and
+        // not about the endpoint refusing this person outright.
+        $this->assertContains('from_address', $response->json('data.fields'));
+
+        $body = $response->getContent();
 
         $this->assertStringNotContainsString('Missed call from', $body);
         $this->assertStringNotContainsString('notify@ringcentral.com', $body);
@@ -209,5 +226,60 @@ class AutomationTriggerFieldsTest extends TestCase
             'occurred_at' => now(),
             'available_at' => now(),
         ]));
+    }
+
+    /**
+     * A PREVIEW NEEDS A REAL VALUE, AND ONLY FROM A RECORD THIS PERSON REACHES.
+     *
+     * Jose asked for it by name: *"if i put {{title}} i should be able to see
+     * what that will turn out as"*. An invented example cannot answer that — it
+     * shows the braces work, not whether the field resolves, and a blank is
+     * exactly the failure that goes unnoticed until a customer receives it.
+     *
+     * Sampling reverses the rule written above `values`, which says values are
+     * declared and never read off events. That rule is right for a dropdown of
+     * every allowed value and wrong for a preview, so the safety had to move
+     * somewhere: the module gate decides who may know a field EXISTS, and it is
+     * per-module, which on its own would hand somebody a value off a record
+     * they cannot open.
+     *
+     * TWO VIEWERS, ONE EVENT. The administrator gets the example; the person
+     * who stands at one branch does not, because an event with no subject
+     * belongs to the organization and reach is asked about it rather than
+     * waved through. Both see the same FIELD — what differs is the value.
+     */
+    public function test_an_example_value_is_only_shown_to_somebody_who_reaches_the_record(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+
+        $this->inTenant($t['org'], fn () => AutomationEvent::create([
+            'organization_id' => $t['org']->id,
+            'event_key'       => 'job.created',
+            'payload'         => ['title' => 'Reachable sweep'],
+            'occurred_at'     => now()->subMinute(),
+            'available_at'    => now(),
+        ]));
+
+        $atTheTop = $this->userWithRole($t, 'Owner', ['automations.view', 'jobs.view']);
+
+        $atOneBranch = $this->userWithRole(
+            $t, 'Branch', ['automations.view', 'jobs.view'],
+            email: 'branch@example.test', onlyAt: $t['franchise'],
+        );
+
+        $seen = $this->signedInAs($atTheTop)
+            ->getJson('/api/v1/automations/trigger-fields?trigger=job.created')
+            ->assertOk()->json('data');
+
+        $narrower = $this->signedInAs($atOneBranch)
+            ->getJson('/api/v1/automations/trigger-fields?trigger=job.created')
+            ->assertOk()->json('data');
+
+        $this->assertSame('Reachable sweep', $seen['samples']['title'] ?? null);
+
+        // THE CONTROL: the field itself is offered to both, so this is about the
+        // VALUE and not about the endpoint refusing the narrower person outright.
+        $this->assertContains('title', $narrower['fields']);
+        $this->assertArrayNotHasKey('title', $narrower['samples']);
     }
 }

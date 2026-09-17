@@ -9,7 +9,7 @@ import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
 import 'hr/records_tab.dart';
-import 'hr/time_clock_tab.dart';
+import 'hr/work_hours_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
 /// organization has turned Clock in on.
@@ -106,7 +106,7 @@ class _HrScreenState extends State<HrScreen> {
       (
         UiStrings.t('time_clock.tab'),
         Icons.schedule_outlined,
-        () => TimeClockTab(api: widget.api),
+        () => WorkHoursTab(api: widget.api),
       ),
     (
       'Onboarding',

@@ -2894,6 +2894,128 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
+
+`docs/previews/pto-balances-layouts.html`. Approved by Jose 2026-09-17 — *"PTO Balances is good we
+should add that to Human Resources Tab"* — from a real production suggestion. Toula Elwell at
+A1-Group, 2026-09-08, her spelling kept:
+
+> *"a part for us where we can see howq much paidf pto we all have and when it can be used"*
+
+**Two asks in that sentence, and the second is the hard one.** *"we ALL have"* is a view across
+people rather than self-service. *"when it can be USED"* is a waiting period rather than a number
+— so on a screen called balances, **the date is often the answer and the number is the
+decoration**. Every layout gives the date its own box rather than a footnote.
+
+> **THE EMPTY STATE IS THE COMMON STATE, and that is what shapes all six.** HR measured
+> production: **one of eleven contract templates mentions PTO, the other ten are silent**. So
+> *"this organization has not set up paid time off"* is probably the FIRST thing most people ever
+> see here. *(Their count is of tenant rows and is relayed — I verified the models and the
+> employment-events migration they name, not the eleven.)*
+>
+> Two consequences drawn rather than described. **State A is organization-wide, not one quiet
+> row** — I drew it per-person first, which made the common case look like an edge case in my own
+> gallery after I had written the warning saying it was not. And **the remedy belongs to somebody
+> else**: it is set on a contract template, so state A says who can change it instead of offering
+> a button most readers cannot use.
+
+**The five states are switchable on every layout**, because a layout that only reads well at "6
+days available" is a layout for the rarest case. **D is the one worth clicking**: nobody on the
+books before the employment-events table has a start date, the migration deliberately refused to
+invent them, so eligibility is genuinely unanswerable for those people. It says so. Being told you
+may book when your contract says otherwise is worse than being told we cannot tell.
+
+**Recommendation: 3 and 6.**
+
+**3 is the table**, and it is the only layout that already has a column for the number nobody can
+compute yet. Nothing in EzBizi records a day off — HR measured that too — so whether a balance
+can say "2 taken" is undecided and sits between Scheduling and HR. **Taken** is drawn as an em
+dash in every row: present, empty, honest. The day that is settled the column fills and nothing
+moves, which is the constraint HR asked me to design for. It is also the densest, sorts by "when",
+and answers "who becomes eligible in January" at a glance.
+
+**Its cost is state A, the common one** — five columns of em dashes is a lot of furniture around
+one sentence. So in state A the table is **replaced wholesale** by the notice rather than drawn
+empty. Worth knowing that my note claimed this before the drawing did it; caught by reading my own
+prose back against my own screen.
+
+**2 is the one worth arguing for, and its case is weaker than I first wrote it.** A card per
+person puts the states side by side. I argued that from *Sam-no-policy beside Jon-no-start-date
+beside Maria-waiting* — and **HR corrected it: all four PTO settings are organization-scoped, so
+"no policy" empties every row at once and is never one person's state beside somebody else's.** A
+third of the mix I was selling cannot occur, and my fixture drew it anyway until they said so. Not
+checkable from here (their settings block rather than a tenant row, and not on main yet), so
+relayed — and it **strengthens** the recommendation rather than weakening it.
+
+**Where this leans next, and why it makes 3 safer still.** A-1's paperwork is per-ROLE rather than
+per-company — that is what "one of eleven" means, and the one is Project Manager. So a per-person
+override over the organization default is likely the next thing, and then a roster genuinely does
+show six days beside zero beside two. The table takes that without moving; a card wall would want
+re-reading.
+
+**6 on the phone**: one list, you inside it rather than above it, each row carrying its state in
+words. It is the only phone option where *"we all have"* is the whole screen rather than a section
+of it, which is her phrasing. **5 hides the across-people view behind a tab**, which is the ask.
+
+### 20b · HR · Work Hours, the drawing — **DRAWN, awaiting Jose**
+
+Companion to **entry 20 above**, which is Clock In's brief and holds Jose's requirements verbatim. Numbered 20b rather than 20 because two headings with one number is how a reader ends up quoting the wrong half.
+
+`docs/previews/work-hours-layouts.html`. Brief from the Clock In session.
+
+> **A WARNING THAT WAS TRUE FOR ABOUT A MINUTE, LEFT HERE BECAUSE THE HABIT IS WORTH MORE THAN
+> THE TIDINESS.** This entry said the brief was not on main. It was not, when I grepped: `c97efb35`
+> was still only on `session/clock-in`, and I read it with `git show` to draw from. The deploy desk
+> merged it minutes later, in the same minute my own commit is stamped. **So the claim was stale
+> rather than wrong** — which is the failure I have corrected in four other rows this week, arriving
+> in mine. The brief is at line 1918 and both entries survived the merge with nothing dropped.
+>
+> The predicted conflict was real and the desk resolved it keeping both sides. That part of the
+> warning earned its place.
+
+**Already built by Clock In (`e5c3ecff`) — do not redo:** the rename to Work Hours (en + es), the
+tab moved second beside Dashboard, and the whole data layer
+(`GET /api/v1/hr/time-clock/week?on=YYYY-MM-DD`). The old one-day list still renders on that tab;
+replacing it is the build.
+
+> **HIS LIST CONTAINS TWO DIFFERENT SCREENS, AND THAT IS THE DECISION.** His first bullet asks for
+> *one expanding row per user* — a single list you open in place. His last asks for *a left
+> sidebar of users with the week beside it*. Both are reasonable, they answer different questions,
+> and building one does not give you the other. Options 1–3 are the three honest readings.
+
+**Recommendation: 1 and 5.**
+
+**1 is the only option that satisfies BOTH bullets.** The sidebar is one row per person — which
+is his first complaint, that he appears several times today — and selecting somebody shows every
+clock in and out grouped by day, which is the expansion he asked for. 2 and 3 each satisfy one
+bullet and not the other. 1 also builds his last sentence literally: search on top, avatar before
+the name, total/days/average, the week he is in.
+
+**3 is the one worth arguing for anyway.** It is the only layout that answers *"did everybody do
+their hours"* without clicking six people, which is the Friday question, and the only one showing
+the SHAPE of a week. Its cost is his first bullet: a cell holds a total rather than the punches,
+so reading the actual times needs a second layer.
+
+**5 over 4 on the phone, and it is a deliberate break from pairing.** A sidebar on a 380px screen
+is just a list, so the two-pane idea buys nothing there — while expanding in place is what every
+other list in the app does, keeps the totals on screen while you compare, and is his first bullet
+natively. 4 exists if matching the desktop shape matters more than that.
+
+**Drawn to respect four facts from the brief rather than invented:** everybody in reach is listed
+**including people who worked nothing** (greyed, never dropped — a missing name reads as "not on
+the team"); an open shift reports time **so far** and is the green indicator; times arrive
+**already formatted** in the organization's clock, so nothing formats from the device; and Sunday
+is a **default rather than a rule**, so the header reads `starts_on`.
+
+**Week navigation is not on his list and every option draws it.** The tab this replaces has day
+arrows, so shipping without it would remove something he has today. Worth a word from him if he
+would rather it went.
+
+**One thing to ask Clock In rather than compute here:** option 6's team numbers — who is on the
+clock, who has no hours, the team total — are not in the payload. Summing them client-side is a
+second place that can disagree with the server the day the rules change. If 6 is picked, that is
+a request to them, not arithmetic here.
+
 ### 19 · Communication · Editing from the call flow — **DRAWN, awaiting Jose**
 
 `docs/previews/call-flow-sidebar-layouts.html`. Jose, 2026-09-16, verbatim:

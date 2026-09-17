@@ -1,0 +1,461 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HR › Work Hours — layouts</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --ok:#1a7f37; --soft:#f6fafa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+blockquote{margin:8px 0 12px;padding:8px 14px;border-left:3px solid var(--line);
+  color:#2b3a41;font-size:13px}
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 6px}
+.bar button{font:600 12.5px/1 inherit;padding:9px 13px;border:1px solid var(--line);
+  background:var(--paper);border-radius:999px;cursor:pointer;color:var(--ink)}
+.bar button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.cap{font-size:12px;color:var(--muted);margin:12px 0 7px}
+.win{width:1120px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:12px}
+.head .t{font-weight:700;font-size:14px}
+.wk{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:12px;
+  color:var(--muted)}
+.wk .arw{width:26px;height:26px;border:1px solid var(--line);border-radius:7px;
+  display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.wk b{color:var(--ink)}
+.body{display:flex;min-height:430px}
+.side{width:264px;border-right:1px solid var(--line);display:flex;
+  flex-direction:column}
+.search{display:flex;align-items:center;gap:8px;padding:10px 12px;
+  border-bottom:1px solid var(--line);color:var(--muted);font-size:12.5px}
+.search .mag{font-size:13px}
+.plist{overflow:auto;flex:1}
+.prow{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:12.5px;
+  border-bottom:1px solid #eef2f3;cursor:default}
+.prow:last-child{border-bottom:0}
+.prow.on{background:#eaf3f2}
+.prow.zero .nm{color:var(--muted)}
+.av{width:28px;height:28px;border-radius:50%;background:#e6eef0;display:flex;
+  align-items:center;justify-content:center;font-size:10.5px;font-weight:800;
+  color:#516067;flex:0 0 auto;position:relative}
+.av.big{width:42px;height:42px;font-size:14px}
+.dot{position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;
+  border:2px solid var(--paper);background:var(--bad)}
+.dot.in{background:var(--ok)}
+.prow .nm{flex:1;font-weight:600;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.prow .hrs{font-variant-numeric:tabular-nums;font-weight:700;font-size:12px}
+.prow .hrs.z{color:var(--muted);font-weight:500}
+.main{flex:1;padding:16px 18px;overflow:auto}
+.who{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.who .n{font-weight:700;font-size:15px}
+.who .s{font-size:11.5px;color:var(--muted)}
+.stats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.stat{flex:1;min-width:120px;border:1px solid var(--line);border-radius:11px;
+  padding:10px 12px;background:var(--soft)}
+.stat .k{font:800 8.5px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted)}
+.stat .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;
+  margin-top:2px}
+.day{border:1px solid var(--line);border-radius:11px;margin-bottom:8px;
+  overflow:hidden}
+.dhead{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--soft);font-size:12px}
+.dhead .dn{font-weight:700}
+.dhead .dt{color:var(--muted)}
+.dhead .dh{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.shift{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:12.5px;
+  border-top:1px solid #eef2f3}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+  font-weight:700;font-variant-numeric:tabular-nums}
+.pip{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.pip.out{background:var(--bad)}
+.shift .dur{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.flag{font-size:9.5px;font-weight:800;color:var(--warn);
+  background:rgba(138,90,0,.1);border-radius:999px;padding:2px 7px}
+.empty{padding:26px;text-align:center;color:var(--muted);font-size:12.5px}
+/* expanding-row layout */
+.rows{padding:0}
+.erow{border-bottom:1px solid #eef2f3}
+.etop{display:flex;align-items:center;gap:12px;padding:11px 16px}
+.etop .nm{flex:1;font-weight:600}
+.etop .sub2{font-size:11px;color:var(--muted);font-weight:400}
+.etop .tot{font-weight:700;font-variant-numeric:tabular-nums}
+.etop .chev{color:var(--muted);width:16px;text-align:center}
+.inner{background:var(--soft);padding:10px 16px 14px 58px;
+  border-top:1px solid #eef2f3}
+/* week grid */
+.grid{display:grid;grid-template-columns:150px repeat(7,1fr) 84px;font-size:11.5px}
+.gc{border-bottom:1px solid #eef2f3;border-right:1px solid #eef2f3;padding:7px 8px;
+  min-height:40px}
+.gh{background:var(--soft);font-weight:800;font-size:9.5px;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--muted)}
+.gc.name{display:flex;align-items:center;gap:8px;font-weight:600}
+.gc.tot{font-weight:700;text-align:right;font-variant-numeric:tabular-nums;
+  border-right:0}
+.chiph{display:inline-block;background:#dff1ee;color:#0b5e57;border-radius:6px;
+  padding:2px 5px;font-weight:700;font-variant-numeric:tabular-nums}
+.chiph.open{background:#dcf5e3;color:#0f6a2a}
+.chiph.none{background:transparent;color:#c2ced2}
+.gc.future{background:repeating-linear-gradient(135deg,#fafcfc,#fafcfc 6px,#f2f6f7 6px,#f2f6f7 12px)}
+/* phone */
+.phone{width:380px;background:var(--paper);border:1px solid var(--line);
+  border-radius:26px;overflow:hidden}
+.pbar{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;
+  align-items:center;gap:10px;font-weight:700;font-size:13.5px}
+.pwk{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 14px;border-bottom:1px solid var(--line);font-size:12px;
+  color:var(--muted)}
+.sheet{border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+  box-shadow:0 -6px 20px rgba(6,8,8,.12);background:var(--paper)}
+.grab{width:36px;height:4px;border-radius:2px;background:#d7e0e3;margin:8px auto 2px}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:12px;font-size:12.5px;max-width:1120px}
+.note.warn{border-left-color:var(--warn)}
+.two{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+</style>
+<div class="wrap">
+<h1>HR &rsaquo; Work Hours &mdash; pick one desktop and one mobile</h1>
+
+<p class="sub">Jose, 2026-09-17, in the Clock In session. His words, not a
+paraphrase:</p>
+
+<blockquote>
+&bull; First i should only see 1 per user &hellip; instead make it so if i click the user it
+expands and shows all the clock in and outs<br>
+&bull; I also want to see the amount of hours<br>
+&bull; i want to see the profile picture on the left side before the name as well<br>
+&bull; green clock in indicator, red clock out indicator next to the hours<br>
+&bull; for the ui i would like to have a <b>left sidebar with every user, ( search bar on
+top )</b> so when u click a user it shows you the history for the week, total hours, days
+worked, avg/day, it should also always show me the week i&rsquo;m in from Sunday to Saturday
+</blockquote>
+
+<p class="sub"><b>&#9888; His list contains two different screens, and that is the thing to
+decide.</b> The first bullet asks for <i>one expanding row per user</i> &mdash; a single list
+you open in place. The last asks for <i>a left sidebar of users with the week beside it</i>.
+Both are reasonable, they solve different problems, and building one does not give you the
+other. Options 1&ndash;3 are the three honest readings.</p>
+
+<p class="sub"><b>Facts the drawing has to respect, from Clock In&rsquo;s brief rather than
+guessed:</b></p>
+<p class="sub">&bull; <b>Everybody in reach is in the list, including people who worked
+nothing.</b> A name missing from a sidebar reads as &ldquo;not on the team&rdquo;, which is not
+what &ldquo;did not clock in&rdquo; means &mdash; so zero-hour people are drawn, greyed, never
+dropped.<br>
+&bull; <b>An open shift reports time worked SO FAR</b>, not null, because it is summed into the
+total beside it. Green means still running.<br>
+&bull; <b>Times arrive already formatted</b> in the organization&rsquo;s clock and 12/24h
+setting. Nothing here formats from the device.<br>
+&bull; <b>Sunday is a default, not a rule.</b> The week start is an organization setting, so
+the header reads <code>starts_on</code> rather than assuming Sunday.</p>
+
+<p class="sub"><b>Week navigation is not on his list, and every option draws it anyway.</b> The
+tab this replaces has day arrows, so shipping without it would take away something he has
+today. Say if you would rather it went.</p>
+
+<div class="bar" id="bar"></div>
+<div class="cap" id="cap"></div>
+<div id="hold"></div>
+</div>
+<script>
+var SEL = 1;
+
+var PEOPLE = [
+  {i:'JD', n:'Jose Luis Demasi', h:'32h 15m', open:true,  days:4, avg:'8h 04m'},
+  {i:'MR', n:'Maria Ruiz',       h:'38h 40m', open:false, days:5, avg:'7h 44m'},
+  {i:'TC', n:'Tom Carter',       h:'16h 05m', open:false, days:2, avg:'8h 02m'},
+  {i:'AD', n:'Aisha Dyer',       h:'40h 00m', open:false, days:5, avg:'8h 00m'},
+  {i:'JP', n:'Jon Park',         h:'—',       open:false, days:0, avg:'—', zero:true},
+  {i:'SB', n:'Sam Blake',        h:'12h 30m', open:false, days:2, avg:'6h 15m'}
+];
+
+var DAYS = [
+  {d:'Sunday',    t:'14 Sep', h:'—',      shifts:[]},
+  {d:'Monday',    t:'15 Sep', h:'8h 12m', shifts:[['8:02 AM','4:14 PM','8h 12m',false]]},
+  {d:'Tuesday',   t:'16 Sep', h:'8h 01m', shifts:[['7:58 AM','4:29 PM','8h 01m',false,'Outside schedule']]},
+  {d:'Wednesday', t:'17 Sep', h:'9h 44m', shifts:[['8:00 AM','12:02 PM','4h 02m',false],
+                                                  ['12:45 PM','6:27 PM','5h 42m',false]]},
+  {d:'Thursday',  t:'18 Sep', h:'6h 18m', shifts:[['8:05 AM',null,'6h 18m',true]]}
+];
+
+function avatar(p, big){
+  return '<span class="av' + (big ? ' big' : '') + '">' + p.i +
+    '<span class="dot' + (p.open ? ' in' : '') + '"></span></span>';
+}
+
+function sidebar(sel){
+  var h = '<div class="side"><div class="search"><span class="mag">&#128269;</span>' +
+    '<span>Search people</span></div><div class="plist">';
+  for (var i = 0; i < PEOPLE.length; i++){
+    var p = PEOPLE[i];
+    h += '<div class="prow' + (i === sel ? ' on' : '') + (p.zero ? ' zero' : '') + '">' +
+      avatar(p) + '<span class="nm">' + p.n + '</span>' +
+      '<span class="hrs' + (p.zero ? ' z' : '') + '">' + p.h + '</span></div>';
+  }
+  return h + '</div></div>';
+}
+
+function weekbar(){
+  return '<div class="wk"><span class="arw">&lsaquo;</span>' +
+    '<span><b>Sun 14 &ndash; Sat 20 Sep</b> &middot; this week</span>' +
+    '<span class="arw">&rsaquo;</span></div>';
+}
+
+function stats(){
+  return '<div class="stats">' +
+    '<div class="stat"><div class="k">Total</div><div class="v">32h 15m</div></div>' +
+    '<div class="stat"><div class="k">Days worked</div><div class="v">4</div></div>' +
+    '<div class="stat"><div class="k">Average / day</div><div class="v">8h 04m</div></div>' +
+    '</div>';
+}
+
+function dayCards(){
+  var h = '';
+  for (var i = 0; i < DAYS.length; i++){
+    var d = DAYS[i];
+    h += '<div class="day"><div class="dhead"><span class="dn">' + d.d + '</span>' +
+      '<span class="dt">' + d.t + '</span><span class="dh">' + d.h + '</span></div>';
+    if (!d.shifts.length){
+      h += '<div class="shift" style="color:var(--muted)">No hours</div>';
+    }
+    for (var j = 0; j < d.shifts.length; j++){
+      var s = d.shifts[j];
+      h += '<div class="shift">' +
+        '<span class="pill"><span class="pip"></span>' + s[0] + '</span>' +
+        '<span class="pill"><span class="pip out"></span>' +
+        (s[1] || 'still clocked in') + '</span>' +
+        (s[4] ? '<span class="flag">' + s[4] + '</span>' : '') +
+        '<span class="dur">' + s[2] + '</span></div>';
+    }
+    h += '</div>';
+  }
+  return h;
+}
+
+/* ---- 1 : sidebar + the person's week ------------------------------ */
+function D1(){
+  return '<div class="win"><div class="head"><span class="t">Work hours</span>' +
+    weekbar() + '</div><div class="body">' + sidebar(0) +
+    '<div class="main"><div class="who">' + avatar(PEOPLE[0], true) +
+    '<span><div class="n">Jose Luis Demasi</div>' +
+    '<div class="s">Clocked in since 8:05 AM</div></span></div>' +
+    stats() + dayCards() + '</div></div></div>' +
+    '<div class="note"><b>His last bullet, built exactly.</b> Sidebar of everybody with the ' +
+    'search on top, avatar before the name, the week&rsquo;s total on each row so the list ' +
+    'answers &ldquo;who is short this week&rdquo; before you click anything. Picking somebody ' +
+    'fills the right with their three numbers and every clock in and out, grouped by day.' +
+    '<br><br><b>The green and red are on the ROW as well as the shift.</b> A dot on the ' +
+    'avatar says who is on the clock right now, which is the question somebody opens this tab ' +
+    'asking at 9am. Jon Park has worked nothing and is still listed, greyed &mdash; dropping ' +
+    'him would read as &ldquo;not on the team&rdquo;.<br><br><b>The cost:</b> it answers about ' +
+    'one person at a time. &ldquo;Did everybody do their hours&rdquo; means clicking six ' +
+    'people, and that is the question a manager asks on a Friday.</div>';
+}
+
+/* ---- 2 : one list, rows that expand ------------------------------- */
+function D2(){
+  var h = '<div class="win"><div class="head"><span class="t">Work hours</span>' +
+    weekbar() + '</div>' +
+    '<div class="search" style="padding:11px 16px"><span class="mag">&#128269;</span>' +
+    '<span>Search people</span></div><div class="rows">';
+  for (var i = 0; i < PEOPLE.length; i++){
+    var p = PEOPLE[i];
+    h += '<div class="erow"><div class="etop">' + avatar(p) +
+      '<span class="nm">' + p.n +
+      (p.zero ? ' <span class="sub2">no hours this week</span>'
+              : ' <span class="sub2">' + p.days + ' days · ' + p.avg + '/day</span>') +
+      '</span><span class="tot' + (p.zero ? '' : '') + '">' + p.h + '</span>' +
+      '<span class="chev">' + (i === 0 ? '&#9662;' : '&#9656;') + '</span></div>' +
+      (i === 0 ? '<div class="inner">' + dayCards() + '</div>' : '') + '</div>';
+  }
+  return h + '</div></div>' +
+    '<div class="note"><b>His FIRST bullet, built exactly: one row per person, click to ' +
+    'expand.</b> No sidebar, so the whole width belongs to the list &mdash; every name, every ' +
+    'total, every indicator on one screen without clicking anything.<br><br><b>It answers the ' +
+    'Friday question that option 1 cannot:</b> did everybody do their hours. Six people, six ' +
+    'totals, one glance. And it is the same shape on a phone, which is why option 5 is ' +
+    'literally this at 380px rather than a second design.<br><br><b>The cost:</b> two people ' +
+    'expanded at once pushes the rest off screen, and with forty staff the list is long before ' +
+    'you have opened anything. Search carries more weight here than in 1, where the sidebar ' +
+    'stays put while you read.</div>';
+}
+
+/* ---- 3 : sidebar + the week as a grid ------------------------------ */
+function D3(){
+  var head = ['Sun 14','Mon 15','Tue 16','Wed 17','Thu 18','Fri 19','Sat 20'];
+  var cells = [
+    ['—','8h 12m','8h 01m','9h 44m','6h 18m','','' ],
+    ['8h 00m','8h 10m','7h 30m','7h 40m','7h 20m','',''],
+    ['—','8h 05m','8h 00m','—','—','',''],
+    ['8h 00m','8h 00m','8h 00m','8h 00m','8h 00m','',''],
+    ['—','—','—','—','—','',''],
+    ['—','6h 15m','6h 15m','—','—','','']
+  ];
+  var h = '<div class="win"><div class="head"><span class="t">Work hours</span>' +
+    weekbar() + '</div>' +
+    '<div class="search" style="padding:11px 16px"><span class="mag">&#128269;</span>' +
+    '<span>Search people</span></div><div class="grid">' +
+    '<div class="gc gh">Person</div>';
+  for (var i = 0; i < 7; i++) h += '<div class="gc gh">' + head[i] + '</div>';
+  h += '<div class="gc gh tot">Total</div>';
+  for (var r = 0; r < PEOPLE.length; r++){
+    var p = PEOPLE[r];
+    h += '<div class="gc name">' + avatar(p) + '<span>' + p.n + '</span></div>';
+    for (var c = 0; c < 7; c++){
+      var v = cells[r][c];
+      var future = c >= 5;
+      var open = (r === 0 && c === 4);
+      h += '<div class="gc' + (future ? ' future' : '') + '">' +
+        (future ? '' : (v === '—'
+          ? '<span class="chiph none">—</span>'
+          : '<span class="chiph' + (open ? ' open' : '') + '">' + v + '</span>')) +
+        '</div>';
+    }
+    h += '<div class="gc tot">' + p.h + '</div>';
+  }
+  return h + '</div></div>' +
+    '<div class="note"><b>The week as a timesheet: everybody down, days across.</b> It is the ' +
+    'only option where you can see the SHAPE of the week &mdash; who was off Tuesday, who ' +
+    'worked Sunday, where the gaps line up &mdash; and the one a payroll question gets ' +
+    'answered from fastest.<br><br><b>The days after today are hatched rather than blank</b>, ' +
+    'because an empty cell for Friday and an empty cell for a day somebody did not work look ' +
+    'identical and mean completely different things. His &ldquo;nothing before Sunday&rdquo; ' +
+    'has a mirror: nothing after today either.<br><br><b>The cost is the clock in and out ' +
+    'times, which is his first bullet.</b> A cell holds a total, not a list of shifts, so ' +
+    'reading the actual punches means clicking a cell &mdash; a second layer this grid has to ' +
+    'grow. <b>Strongest for the week, weakest for the person.</b></div>';
+}
+
+/* ---- phone -------------------------------------------------------- */
+function pwk(){
+  return '<div class="pwk"><span>&lsaquo;</span><span><b>Sun 14 &ndash; Sat 20 Sep</b>' +
+    '</span><span>&rsaquo;</span></div>';
+}
+
+function M4(){
+  var h = '<div class="phone"><div class="pbar">Work hours</div>' + pwk() +
+    '<div class="search"><span class="mag">&#128269;</span><span>Search people</span></div>';
+  for (var i = 0; i < PEOPLE.length; i++){
+    var p = PEOPLE[i];
+    h += '<div class="prow' + (p.zero ? ' zero' : '') + '" style="padding:11px 14px">' +
+      avatar(p) + '<span class="nm">' + p.n + '</span>' +
+      '<span class="hrs' + (p.zero ? ' z' : '') + '">' + p.h + '</span>' +
+      '<span style="color:var(--muted)">&rsaquo;</span></div>';
+  }
+  return h + '</div>' +
+    '<div class="note"><b>The sidebar, as the thing a phone actually has: a list that goes ' +
+    'somewhere.</b> Same rows, same avatar-and-total, and tapping pushes the person&rsquo;s ' +
+    'week as a full screen with a back arrow.<br><br><b>It pairs with desktop 1</b> &mdash; ' +
+    'same two-step idea, so there is one screen to learn rather than two. The week arrows sit ' +
+    'above the search because the week applies to the whole list, not to whoever you ' +
+    'tapped.<br><br><b>The cost:</b> comparing two people is two taps and a back, and on a ' +
+    'phone that is where people give up.</div>';
+}
+
+function M5(){
+  var h = '<div class="phone"><div class="pbar">Work hours</div>' + pwk() +
+    '<div class="search"><span class="mag">&#128269;</span><span>Search people</span></div>';
+  for (var i = 0; i < PEOPLE.length; i++){
+    var p = PEOPLE[i];
+    h += '<div class="erow"><div class="etop" style="padding:11px 14px">' + avatar(p) +
+      '<span class="nm" style="font-size:13px">' + p.n +
+      (p.zero ? '<div class="sub2">no hours this week</div>'
+              : '<div class="sub2">' + p.days + ' days · ' + p.avg + '/day</div>') +
+      '</span><span class="tot">' + p.h + '</span>' +
+      '<span class="chev">' + (i === 0 ? '&#9662;' : '&#9656;') + '</span></div>';
+    if (i === 0){
+      h += '<div class="inner" style="padding:8px 14px 12px 50px">' +
+        '<div class="stats" style="margin-bottom:10px">' +
+        '<div class="stat" style="min-width:0"><div class="k">Days</div>' +
+        '<div class="v" style="font-size:15px">4</div></div>' +
+        '<div class="stat" style="min-width:0"><div class="k">Avg</div>' +
+        '<div class="v" style="font-size:15px">8h 04m</div></div></div>' +
+        dayCards() + '</div>';
+    }
+    h += '</div>';
+  }
+  return h + '</div>' +
+    '<div class="note"><b>His first bullet, and it is the most native thing on this page.</b> ' +
+    'A phone list that opens in place is what every other list in this app does &mdash; ' +
+    'nothing slides over anything, nothing is hidden behind anything, and the names above and ' +
+    'below stay put so you keep your place.<br><br><b>It is also the only phone option where ' +
+    'you can compare without navigating:</b> collapse one, open another, the totals never ' +
+    'leave the screen.<br><br><b>The cost:</b> an expanded person with five days of shifts is ' +
+    'a long scroll before you reach the next name, so the three numbers sit at the TOP of the ' +
+    'expansion rather than the bottom.</div>';
+}
+
+function M6(){
+  var h = '<div class="phone"><div class="pbar">Work hours</div>' + pwk();
+  h += '<div style="padding:12px 14px 4px"><div class="stats">' +
+    '<div class="stat" style="min-width:0"><div class="k">On the clock</div>' +
+    '<div class="v" style="font-size:16px;color:var(--ok)">1</div></div>' +
+    '<div class="stat" style="min-width:0"><div class="k">No hours yet</div>' +
+    '<div class="v" style="font-size:16px">1</div></div>' +
+    '<div class="stat" style="min-width:0"><div class="k">Team total</div>' +
+    '<div class="v" style="font-size:16px">139h</div></div></div></div>';
+  h += '<div class="search"><span class="mag">&#128269;</span><span>Search people</span></div>';
+  for (var i = 0; i < 4; i++){
+    var p = PEOPLE[i];
+    h += '<div class="prow' + (p.zero ? ' zero' : '') + '" style="padding:11px 14px">' +
+      avatar(p) + '<span class="nm">' + p.n + '</span>' +
+      '<span class="hrs">' + p.h + '</span></div>';
+  }
+  h += '<div class="sheet"><div class="grab"></div>' +
+    '<div class="who" style="padding:4px 14px 0;margin-bottom:8px">' +
+    avatar(PEOPLE[0], true) + '<span><div class="n">Jose Luis Demasi</div>' +
+    '<div class="s">Clocked in since 8:05 AM</div></span></div>' +
+    '<div style="padding:0 14px 14px">' + dayCards() + '</div></div>';
+  return h + '</div>' +
+    '<div class="note"><b>The team first, the person in a sheet.</b> Three numbers across the ' +
+    'top that no other option has &mdash; who is on the clock right now, who has not worked at ' +
+    'all, and the team total &mdash; then the list, then whoever you tapped in a sheet you can ' +
+    'drag up.<br><br><b>It is the only option that answers a question about the TEAM on a ' +
+    'phone</b>, which is the thing a manager checks between jobs.<br><br><b>The cost, and it ' +
+    'is the reason this is not my recommendation:</b> those three numbers are not in the ' +
+    'payload. Clock In sends per-person rows, so &ldquo;1 on the clock&rdquo; and ' +
+    '&ldquo;139h&rdquo; would be summed on the client &mdash; fine, honest, and a second place ' +
+    'that can disagree with the server the day the rules change. Worth asking them for it ' +
+    'rather than adding it up here.</div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; sidebar of people, the week beside it', D1],
+  2:['2 &middot; Desktop &mdash; one list, rows that expand in place', D2],
+  3:['3 &middot; Desktop &mdash; the whole week as a grid', D3],
+  4:['4 &middot; Phone &mdash; the list, tap through to a person', M4],
+  5:['5 &middot; Phone &mdash; one list, rows that expand in place', M5],
+  6:['6 &middot; Phone &mdash; team numbers first, person in a sheet', M6]
+};
+
+function draw(k){
+  SEL = k;
+  document.getElementById('cap').innerHTML = OPT[k][0];
+  document.getElementById('hold').innerHTML = OPT[k][1]();
+  var bs = document.querySelectorAll('#bar button');
+  for (var i = 0; i < bs.length; i++){
+    bs[i].setAttribute('aria-current', bs[i].getAttribute('data-k') === String(k));
+  }
+}
+
+(function(){
+  var bar = document.getElementById('bar');
+  for (var k = 1; k <= 6; k++){
+    var b = document.createElement('button');
+    b.textContent = (k < 4 ? 'Desktop ' : 'Phone ') + k;
+    b.setAttribute('data-k', k);
+    b.onclick = (function(n){ return function(){ draw(n); }; })(k);
+    bar.appendChild(b);
+  }
+  draw(1);
+})();
+</script>

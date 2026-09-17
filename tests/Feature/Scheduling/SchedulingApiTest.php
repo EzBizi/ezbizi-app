@@ -377,6 +377,27 @@ class SchedulingApiTest extends TestCase
 
         $this->assertCount(7, $week, 'Every weekday travels, open or not.');
 
+        // THE DISCRIMINATOR, AND IT HAS TO READ THE RAW BODY. Keys 0..6 in
+        // order make a PHP list, which json_encode writes as a JSON ARRAY —
+        // and the client reads a map keyed by weekday, so an array threw a
+        // cast error and greyed the whole Settings pane.
+        //
+        // Every decoded assertion is blind to this. `->json()` decodes with
+        // assoc, and PHP turns the object's "0","1",... back into INT keys, so
+        // `array_is_list()` calls the decoded object a list too — my first
+        // attempt at this check asserted exactly that and failed against the
+        // fixed code. The two shapes differ in the bytes and nowhere else.
+        $raw = $this->signedInAs($editor)
+            ->getJson('/api/v1/scheduling/areas')
+            ->getContent();
+
+        $this->assertStringContainsString(
+            '"week":{',
+            $raw,
+            'week must encode as a JSON object.',
+        );
+        $this->assertStringNotContainsString('"week":[', $raw);
+
         // Monday sums its two slots rather than reporting either.
         $this->assertSame(5, $week['1']);
         $this->assertSame(1, $week['4']);
