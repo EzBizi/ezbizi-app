@@ -106,6 +106,13 @@ prefix, and gating it refused a branch manager mid-invitation. Both were caught
 by existing suites within a minute. For routes like these the tab gate belongs
 beside the split already inside the controller, not in front of it.
 
+**The shape that proves it, from Clock In, once they moved their platform
+refusal off 403:** one test, one endpoint, three assertions — somebody without
+the tab gets 403 with `code: permission_denied`; somebody WITH the tab in an
+organization that has the feature switched off gets 409; then the switch goes on
+and the granted one gets through. The third line is the one that matters, and it
+is the one a permission suite never writes on its own.
+
 **Write the positive control first.** A role holding `hr.hours.view` was refused
 with *"Clock in is switched off for this organization"* — §2.1's platform layer
 answering before any permission is consulted. A suite of 403 assertions with no
@@ -228,6 +235,21 @@ The fix was already one line above it in the same file: the Twilio-not-configure
 gate answers `501 NOT_IMPLEMENTED`, which no permission failure ever returns, so
 it is distinguishable by construction.
 
+**THE RULE IS "NOT 403", NOT "USE 501".** Clock In took the same finding and
+chose `409 Conflict` for theirs, on a distinction worth copying: 501 says EzBizi
+cannot do this, which is false when an administrator flipping one switch turns
+it on, while 409 says the request conflicts with the current state of the thing
+— which is exactly what "this organization has Clock in switched off" is.
+Communication's 501 is right for THEIR case for the same reason: Twilio missing
+from the box really is "not implemented here". Pick the code that is true about
+who can fix it; the only constraint this brief imposes is that it must not be
+the one a permission failure returns.
+
+Check the client before you change a code, as they did: `ApiClient` exposes
+`forbidden` as `statusCode == 403`, so a gate moving off 403 could change what a
+screen renders. Theirs renders `response.reason` either way, which made it a
+test-distinguishability fix rather than a client-visible one.
+
 **Cheap check before you write a tab gate: grep your own controllers for
 `HTTP_FORBIDDEN` and read each one.** If any of them is about the platform
 rather than the person, every 403 in that endpoint's suite is ambiguous, and a
@@ -257,6 +279,39 @@ four, and a number nobody can reconcile is the one people believe.
 for drawing while the index still comes from the const list makes tap index 2
 mean the wrong source — and it passes every "is the chip drawn" test. Same
 family as the tab-index trap above, one level down.
+
+## A tab is an AND on top of the capability, not an alternative to it
+
+Before concluding that a tab grant widened anything, **read the controller behind
+it.** I did not, and got it wrong in public: I told Reports and Marketing that
+somebody holding `reports.experimental.view` without `reports.build` could now
+read the Experimental report but not connect the Workiz account it reads from —
+an affordance and its gate disagreeing. Measured afterwards, at Reports'
+correction: `ExperimentalCallReportController:83` authorises
+`createOnOrganization`, and `SavedReportPolicy::permission()` maps everything
+but `view` to `reports.build`. The tab never became a way IN.
+
+Reports pinned it rather than only replying —
+`test_the_tab_alone_does_not_open_the_pane_without_the_capability` — which is
+the assertion that goes red if a route gate ever becomes the only one.
+
+**The entry beside it WAS wrong**, which is why the check matters in both
+directions: `Airtable => 'reports.build'` was written when only a report would
+read a base, and Profit & Loss is its own module now. An accountant reading the
+figures weekly could not attach a base, and somebody holding `reports.build` was
+offered Connect for figures they cannot open. It is `profit_loss.view` now —
+Connect follows the screen that reads it.
+
+## A refusal test whose subject holds NONE of the candidates proves nothing
+
+Reports again, from their own suite. `AirtableConnectTest`'s gate case was named
+"without `reports.build`" and held a role with NEITHER permission, so it passed
+under the old rule and the new one and distinguished nothing. The role has to
+hold the OTHER candidate specifically — that is the only fixture that can tell
+which rule is in force.
+
+Same family as the administrator fixture below: a 403 arriving for a reason
+other than the one in the test's name.
 
 ## An ADMINISTRATOR fixture cannot test a permission at all
 

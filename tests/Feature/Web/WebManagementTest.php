@@ -41,7 +41,7 @@ class WebManagementTest extends TestCase
         $this->assertNotNull($module);
         $this->assertSame('Web Management', $module->label);
         $this->assertSame(
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
             $module->permissionKeys(),
         );
         /*
@@ -296,7 +296,7 @@ class WebManagementTest extends TestCase
         }
 
         $tenant = $this->provisionTenant('Alpha');
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $response = $this->signedInAs($viewer)->get('/api/v1/web/plugin')->assertOk();
 
@@ -435,7 +435,7 @@ class WebManagementTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->editorFor($tenant);
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
 
@@ -1183,7 +1183,7 @@ class WebManagementTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->editorFor($tenant);
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
         $site = $this->registerSite($editor, $tenant, 'a-1chimney.com');
 
@@ -1388,7 +1388,7 @@ class WebManagementTest extends TestCase
         return $this->userWithRole(
             $tenant,
             'Web Editor',
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
         );
     }
 
@@ -1447,6 +1447,7 @@ class WebManagementTest extends TestCase
         $tenant = $this->provisionTenant('Alpha');
         $editor = $this->userWithRole($tenant, 'Web Editor', [
             'web_management.view', 'web_management.edit',
+            'web_management.seo.view', 'web_management.widgets.view',
         ]);
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
