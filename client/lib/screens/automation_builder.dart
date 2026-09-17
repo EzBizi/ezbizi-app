@@ -487,6 +487,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// would be a shorter list pretending to be the whole one.
   Map<String, List<({String value, String label})>> _fieldValues = const {};
 
+  /// One real example per field, for the preview under a message box.
+  ///
+  /// Only holds fields whose record this person reaches — the server decides
+  /// that, and a field can be offered with no example beside it. So an absent
+  /// entry means "not yours to see", never "this field does not exist".
+  Map<String, String> _fieldSamples = const {};
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -529,6 +536,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                       label: (option['label'] ?? '').toString(),
                     ),
                 ],
+            }
+          : const {};
+      _fieldSamples = response.ok
+          ? {
+              for (final entry
+                  in (response.data?['samples'] as Map? ?? const {}).entries)
+                entry.key.toString(): entry.value.toString(),
             }
           : const {};
     });
@@ -1021,6 +1035,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _triggerFields = const [];
       _fieldsSampled = null;
       _fieldValues = const {};
+      _fieldSamples = const {};
     });
 
     _loadTriggerFields();
@@ -2106,14 +2121,20 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // branch on the first declared parameter and reads the PARAMETER
       // controllers, so a hand-written box would have posted nothing.
       'notify' => _parameterForm(row, widget.catalogue.actionType('notify')),
-      _ => TextField(
-        controller: row.message,
-        enabled: !_busy,
-        decoration: InputDecoration(
-          labelText: 'Message',
-          isDense: true,
-          helperText: _variableHint(),
-        ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: row.message,
+            enabled: !_busy,
+            decoration: InputDecoration(
+              labelText: 'Message',
+              isDense: true,
+              helperText: _variableHint(),
+            ),
+          ),
+          _variableTools(row.message),
+        ],
       ),
     };
   }
@@ -2306,6 +2327,8 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : null,
               ),
             ),
+          if (definition.parameters[i].variables)
+            _variableTools(row.parameter(definition.parameters[i].key)),
           if (i < definition.parameters.length - 1) const SizedBox(height: 10),
         ],
       ],
@@ -2645,6 +2668,92 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         : 'Drop in a detail with {{ }} — $shown.';
   }
 
+  /// The catalogue and the preview that sit under a box taking `{{ }}`.
+  ///
+  /// Two complaints, one control. A name typed from memory that does not exist
+  /// becomes an empty string with no error, so the chips insert the real name
+  /// and nobody has to remember it; and a message that reads fine in the
+  /// builder can still arrive with a hole in it, so the preview shows what a
+  /// recipient would actually get.
+  ///
+  /// THE PREVIEW IS BUILT THE WAY THE RUNNER BUILDS IT — an unknown name goes
+  /// to an empty string here too, deliberately. A preview that left `{{oops}}`
+  /// on screen would be kinder and would hide the exact failure this exists to
+  /// show: the gap is what the customer sees.
+  ///
+  /// A field the server sent no example for is one whose record this person
+  /// does not reach. It still gets a chip, because the field is real and the
+  /// rule will resolve it when it runs; what it cannot have is a preview.
+  Widget _variableTools(TextEditingController controller) {
+    if (_triggerFields.isEmpty) return const SizedBox.shrink();
+
+    final typed = controller.text;
+    final used = RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false)
+        .allMatches(typed)
+        .map((m) => m.group(1)!)
+        .toList();
+
+    final preview = typed.replaceAllMapped(
+      RegExp(r'\{\{\s*([a-z0-9_.]+)\s*\}\}', caseSensitive: false),
+      (m) => _fieldSamples[m.group(1)!] ?? '',
+    );
+
+    // Nothing to preview against: every name used is one this person cannot see
+    // an example of, so a preview would be the message with its values deleted.
+    final canPreview = used.isNotEmpty &&
+        used.any((field) => _fieldSamples.containsKey(field));
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final field in _triggerFields)
+                ActionChip(
+                  label: Text(
+                    _fieldSamples[field] == null
+                        ? field
+                        : '$field — ${_fieldSamples[field]}',
+                  ),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _busy
+                      ? null
+                      : () => _insertVariable(controller, field),
+                ),
+            ],
+          ),
+          if (canPreview) ...[
+            const SizedBox(height: 6),
+            Text(
+              'They will read: $preview',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Put `{{ field }}` where the cursor is, not at the end.
+  ///
+  /// A chip that appended would make writing a sentence around a variable a
+  /// retyping exercise, which is how a catalogue ends up unused.
+  void _insertVariable(TextEditingController controller, String field) {
+    final selection = controller.selection;
+    final text = controller.text;
+    final at = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : text.length;
+
+    controller.value = TextEditingValue(
+      text: text.replaceRange(at, end, '{{$field}}'),
+      selection: TextSelection.collapsed(offset: at + field.length + 4),
+    );
+  }
+
   String _recipientKindOf(_ActionRow row, String value, String kindOf) {
     // A value decides its own kind. Only the empty one has to be remembered,
     // because it is the one value that could be any of the three.
@@ -2819,6 +2928,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               helperText: _variableHint(),
             ),
           ),
+          _variableTools(row.whatsAppValues[i]),
         ],
       ],
     );

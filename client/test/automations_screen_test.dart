@@ -749,7 +749,11 @@ void main() {
     await _tap(tester, find.text('A number from the event').last);
 
     await _tap(tester, find.byType(DropdownMenu<String>).last);
-    await _tap(tester, find.text('phone').last);
+
+    // THE MENU ENTRY, not any text saying "phone". The variable catalogue under
+    // the message boxes puts the field's own name on a chip, so `find.text`
+    // matches two different controls and `.last` silently picks the wrong one.
+    await _tap(tester, find.widgetWithText(MenuItemButton, 'phone').last);
 
     await _tap(tester, find.text('Create automation'));
 
@@ -866,6 +870,54 @@ void main() {
       find.textContaining('from_address, subject'),
       findsWidgets,
       reason: 'the boxes that substitute {{ }} have to say which names exist',
+    );
+  });
+
+  /// TAP A FIELD, SEE WHAT A CUSTOMER WOULD READ.
+  ///
+  /// Jose asked for both halves in one sentence: *"I should have a preview and
+  /// catalog of variables, so for example if i put {{title}} i should be able
+  /// to see what that will turn out as"*. A name typed from memory that does
+  /// not exist resolves to an empty string with no error, so the catalogue
+  /// inserts the real name; and a message that reads fine in the builder can
+  /// still arrive with a hole in it, so the preview shows the substitution.
+  ///
+  /// THE PREVIEW USES THE SAME RULE THE RUNNER USES — this asserts the sample,
+  /// not the braces, because a preview that echoed `{{from_address}}` back
+  /// would look like it worked in exactly the case that fails.
+  testWidgets('a variable can be inserted and previewed with a real value', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        triggerFields: const ['from_address'],
+        fieldSamples: const {'from_address': 'notify@ringcentral.com'},
+      ),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send an email'));
+
+    // The catalogue carries the example beside the name, so the value is
+    // visible before anything is typed.
+    final chip = find.widgetWithText(ActionChip, 'from_address — notify@ringcentral.com');
+    expect(chip, findsWidgets);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Subject').first,
+      'Call from ',
+    );
+    await tester.pumpAndSettle();
+
+    await _tap(tester, chip.first);
+
+    expect(
+      find.textContaining('They will read: Call from notify@ringcentral.com'),
+      findsOneWidget,
+      reason: 'the preview has to show the VALUE, not the braces',
     );
   });
 
@@ -1807,6 +1859,9 @@ MockClientHandler _handler({
   // before the field picker expects: the form falls back to a text box.
   List<String>? triggerFields,
   Map<String, List<Map<String, String>>>? triggerFieldValues,
+  // One real example per field, as the server sends for the preview. A field
+  // with no entry is one whose record this person does not reach.
+  Map<String, String> fieldSamples = const {},
   List<Map<String, Object?>>? whatsAppTemplates,
   int deleteStatus = 200,
   // What the signed-in role holds. The screen consults this now, so a test that
@@ -1840,6 +1895,7 @@ MockClientHandler _handler({
           'trigger': request.url.queryParameters['trigger'],
           'fields': triggerFields,
           'values': triggerFieldValues ?? const {},
+          'samples': fieldSamples,
           'sampled': triggerFields.isEmpty ? 0 : 1,
         },
       });
