@@ -77,16 +77,35 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
   bool _mayOpen(String tab) =>
       widget.session.me?.permissions.contains('scheduling.$tab.view') ?? false;
 
+  /// The tab actually on screen, clamped ONCE.
+  ///
+  /// Selection is an index and the list length depends on the grants, so a
+  /// selection made when three tabs were drawn can point past the end of one.
+  /// Both readers of that — the bar and the pane stack — have to clamp the
+  /// same way, and when the fallback lived in `build` alone the two disagreed:
+  /// `build` drew tabs[0] while `_visible` compared the unclamped index and
+  /// told that pane it was off-screen.
+  ///
+  /// THE CONSEQUENCE HERE IS NARROWER THAN IT LOOKS, and worth stating so
+  /// nobody removes this thinking it fixed a blank screen. `CapacitySettings`
+  /// loads in `initState`, so a freshly built pane fetches whatever `visible`
+  /// says; the flag only drives the RELOAD in `didUpdateWidget`. So the
+  /// disagreement cost a stale pane after a revocation, not the empty screen
+  /// the same shape produced in HR, where the landing tab was a constant.
+  int get _selected {
+    final length = _tabs.length;
+
+    return _tab < length ? _tab : 0;
+  }
+
   /// Whether the pane at [key] is the one on screen.
   ///
-  /// By KEY rather than by index, because the index now depends on which tabs
-  /// this person can open: with Availability hidden, Settings is index 0, and
-  /// an index comparison would tell the wrong pane it was visible and leave it
-  /// never loading.
+  /// By KEY rather than by index, because the index depends on which tabs this
+  /// person can open: with Availability hidden, Settings is index 0.
   bool _visible(String key) {
     final tabs = _tabs;
 
-    return _tab < tabs.length && tabs[_tab].$1 == key;
+    return tabs.isNotEmpty && tabs[_selected].$1 == key;
   }
 
   void _select(int tab) => setState(() {
@@ -119,8 +138,8 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       );
     }
 
-    // A revoked tab can leave the selection past the end of a shorter list.
-    final selected = _tab < tabs.length ? _tab : 0;
+    // The same clamp the pane stack uses — see `_selected`.
+    final selected = _selected;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -74,6 +74,109 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
   });
 
+  /// The clamp has to live in ONE place — and this test does NOT prove a blank
+  /// screen, which is worth saying because I claimed one before measuring.
+  ///
+  /// HR's version of this shape rendered blank. Scheduling's does not:
+  /// `CapacitySettings` loads in `initState`, so a freshly built pane fetches
+  /// whatever `visible` says, and the flag only drives the reload in
+  /// `didUpdateWidget`. The disagreement between the two clamps cost a stale
+  /// pane after a revocation, not an empty one.
+  ///
+  /// What this holds is the thing that stays true either way: the tab that is
+  /// DRAWN is the tab that believes it is visible. If somebody later makes the
+  /// pane's first load conditional on `visible` — which is the natural tidy-up
+  /// — this goes red, and HR's blank screen becomes reachable here.
+  ///
+  /// Selection is an index. Revoke a grant and the list gets shorter, so a
+  /// selection made when two tabs were drawn can point past the end of one.
+  /// `build` clamped that to 0 and drew tabs[0] — but `_visible` compared the
+  /// UNCLAMPED index, so the pane it drew was told it was off-screen. It
+  /// renders and never loads: a blank pane that reads as a broken screen
+  /// rather than as a permission.
+  ///
+  /// Settings hit this shape in HR and it cost them two commits, the second
+  /// because the fallback lived where only one of the two readers saw it.
+  ///
+  /// SETTINGS IS THE TAB LEFT STANDING ON PURPOSE: it fetches when it becomes
+  /// visible, so "did the drawn pane believe it was visible" is observable.
+  /// Availability waits for a search and would have looked identical either
+  /// way.
+  testWidgets('a selection past the end still loads the tab that is drawn', (
+    tester,
+  ) async {
+    var permissions = <String>[
+      'scheduling.view',
+      'scheduling.availability.view',
+      'scheduling.settings.view',
+    ];
+    var askedForAreas = false;
+
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = ApiClient(
+      client: MockClient((request) async {
+        final path = request.url.path;
+
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {..._me, 'permissions': permissions},
+          });
+        }
+
+        if (path.endsWith('/scheduling/areas')) {
+          askedForAreas = true;
+          return _json({'data': const [], 'pattern': null});
+        }
+
+        return _json({'data': const [], 'pattern': null});
+      }),
+    );
+
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+
+    // Session is a ChangeNotifier and the real app rebuilds on it; a bare
+    // pump would hold the first permission set for ever and this test would
+    // pass against any implementation.
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) =>
+                SchedulingScreen(api: api, session: session),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Stand on Settings, which is index 2 of three.
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    askedForAreas = false;
+
+    // Lose every tab except Settings. The list shortens to one under a
+    // selection of 2.
+    permissions = <String>['scheduling.view', 'scheduling.settings.view'];
+    await tester.runAsync(() => session.refresh());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Availability'), findsNothing);
+
+    expect(
+      askedForAreas,
+      isTrue,
+      reason: 'The tab that is drawn must believe it is the visible one.',
+    );
+  });
+
   /// Reachable: the rail draws Scheduling for anybody holding the module, and
   /// the tab grants are separate from it.
   testWidgets('the module without any tab says so rather than drawing blank', (
