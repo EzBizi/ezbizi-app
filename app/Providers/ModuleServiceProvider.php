@@ -2342,6 +2342,45 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'email',
                 label: 'Email',
                 auditActionPrefixes: ['mailbox', 'sending_identity'],
+
+                /*
+                 * ── TWO TABS, AND THE SECOND ONE IS THE POINT ────────
+                 *
+                 * Jose, 2026-09-17: "i should be able to grant access by sub
+                 * tab as well ... so this applies to every tab and it's sub
+                 * tabs". For Email the split somebody actually wants is
+                 * obvious: the people who READ the mail are not the people who
+                 * CONNECT the mailboxes. Settings holds provider sign-ins,
+                 * server addresses and the per-role inbox grants themselves --
+                 * the screen on which somebody could grant themselves an inbox.
+                 *
+                 * Labels copied from the tab bar in `email_screen.dart`, not
+                 * written fresh. An administrator who ticks "Settings" and then
+                 * looks for a tab with that word has to find one.
+                 *
+                 * ── THIS IS THE THIRD LEVEL, AND IT IS NOT A FOURTH ──
+                 *
+                 * Email already had a second-level grant that is NOT a
+                 * permission key: the per-inbox `MailboxGrant` rows, which say
+                 * WHICH inboxes a role may read once it is through the door.
+                 * Tabs now sit beside them under one module heading, so the
+                 * editor reads: open Email, open which tab, read which inbox.
+                 *
+                 * They are genuinely different questions and neither replaces
+                 * the other -- `email.inbox.view` is "may you see the mail
+                 * screen at all", a grant is "whose mail". A role with the tab
+                 * and no grant gets the screen and the sentence explaining that
+                 * no inbox has been given to it, which is the honest answer and
+                 * already written.
+                 *
+                 * NOTHING NARROWS TODAY. The migration grants both tabs to
+                 * every role already holding `email.view`, so no role loses a
+                 * screen it had this morning.
+                 */
+                tabs: [
+                    new TabDefinition('inbox', 'Inbox'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
                 triggers: [
                     /*
                      * THE ONE THIS MODULE EXISTS FOR, AND IT FIRES.

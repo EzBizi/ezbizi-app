@@ -348,7 +348,7 @@ class MailboxesApiTest extends TestCase
 
         // The control: the same request from somebody who holds the tab is
         // allowed through, so this is a gate and not an outage.
-        $insider = $this->userWithRole($t, 'Support', ['email.view'], 'support@a1.test');
+        $insider = $this->userWithRole($t, 'Support', ['email.view', 'email.inbox.view', 'email.settings.view'], 'support@a1.test');
 
         $this->signedInAs($insider)->getJson(self::ENDPOINT)->assertOk();
     }
@@ -371,7 +371,7 @@ class MailboxesApiTest extends TestCase
     public function test_an_empty_inbox_list_says_which_empty_it_is(): void
     {
         $t      = $this->provisionTenant('A1-Group');
-        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view'], 'dispatch@a1.test');
+        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view', 'email.inbox.view', 'email.settings.view'], 'dispatch@a1.test');
 
         // 1. NOTHING CONNECTED. No mailbox exists in the organization at all.
         $this->signedInAs($reader)->getJson(self::ENDPOINT)
@@ -407,7 +407,7 @@ class MailboxesApiTest extends TestCase
     public function test_an_inbox_out_of_view_is_reported_as_out_of_view(): void
     {
         $t      = $this->provisionTenant('A1-Group');
-        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view'], 'dispatch@a1.test');
+        $reader = $this->userWithRole($t, 'Dispatcher', ['email.view', 'email.inbox.view', 'email.settings.view'], 'dispatch@a1.test');
 
         // Organization-scoped, then LOOKED AT from a single franchise. Reach
         // and current view are two different rules: this person reaches the
@@ -525,7 +525,7 @@ class MailboxesApiTest extends TestCase
         $branch = $this->userWithRole(
             $t,
             'Branch Manager',
-            ['email.view', 'email.create', 'email.edit'],
+            ['email.view', 'email.inbox.view', 'email.settings.view', 'email.create', 'email.edit'],
             onlyAt: $t['franchise'],
         );
 
@@ -551,7 +551,20 @@ class MailboxesApiTest extends TestCase
     {
         $t = $this->provisionTenant('A1-Group');
 
-        $viewer = $this->userWithRole($t, 'Viewer', ['customers.view']);
+        /*
+         * INSIDE the Settings tab, and without `email.create`.
+         *
+         * Since 2026-09-17 the tab gate answers first, so a role holding
+         * nothing of Email is refused with "you cannot open this tab" and never
+         * reaches the sentence this test is about. That refusal is correct and
+         * it is a DIFFERENT one: the question here is what somebody who can
+         * open Settings is told when they try to add an inbox they may not add.
+         * Granting the tab is what keeps this test pointed at its own subject
+         * rather than at the outer gate.
+         */
+        $viewer = $this->userWithRole($t, 'Viewer', [
+            'customers.view', 'email.view', 'email.settings.view',
+        ]);
 
         $this->signedInAs($viewer)->postJson(self::ENDPOINT, [
             'scope_type'   => 'organization',
@@ -786,7 +799,7 @@ class MailboxesApiTest extends TestCase
 
         $mailbox = $this->inbox($t, 'info@a-1chimney.com');
 
-        $this->userWithRole($t, 'Front desk', ['email.view']);
+        $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Front desk');
 
         $this->inTenant($t['org'], fn () => $this->assertSame(1, MailboxGrant::count()));

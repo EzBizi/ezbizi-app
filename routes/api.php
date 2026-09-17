@@ -1681,12 +1681,40 @@ Route::prefix('v1')
         // question is never about the Mailbox model alone: it is permission AND
         // grant AND reach, and App\Support\Email\MailboxAccess is the one place
         // all three are asked.
+        /*
+         * ── `GET email/mailboxes` TAKES NO TAB GATE, AND THAT IS NOT AN
+         *    OVERSIGHT ─────────────────────────────────────────────
+         *
+         * It serves BOTH tabs. Settings lists the connections to manage them;
+         * the Inbox calls the same endpoint to draw its rail of inboxes and to
+         * learn which addresses this person may read at all
+         * (`_loadMailboxes` in `email_screen.dart`). Putting
+         * `permission:email.settings.view` in front of it would empty the mail
+         * screen for every role that reads mail and does not manage
+         * connections — which is the ordinary case and the whole reason the
+         * two tabs were split.
+         *
+         * Its authority is unchanged and already inside the controller:
+         * `email.view` for the tab, then grant and §4 reach per inbox, all
+         * asked of App\Support\Email\MailboxAccess. This is the shape the HR
+         * brief names — a route with two audiences gates beside the split
+         * already in the controller, never in front of it.
+         */
         Route::get('email/mailboxes', [MailboxesController::class, 'index']);
-        Route::post('email/mailboxes', [MailboxesController::class, 'store']);
 
-        Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
-        Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
-        Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
+        /*
+         * Everything that CHANGES a connection is the Settings tab. These are
+         * the screen where somebody attaches a credential to an address, and
+         * where the per-role inbox grants are given out — including, for an
+         * administrator, to their own role.
+         */
+        Route::middleware('permission:email.settings.view')->group(function () {
+            Route::post('email/mailboxes', [MailboxesController::class, 'store']);
+
+            Route::patch('email/mailboxes/{mailbox}', [MailboxesController::class, 'update']);
+            Route::delete('email/mailboxes/{mailbox}', [MailboxesController::class, 'destroy']);
+            Route::post('email/mailboxes/{mailbox}/connect', [MailboxesController::class, 'connect']);
+        });
 
         // ── Connecting a mailbox by signing in, rather than by password ──
         //
@@ -1717,10 +1745,12 @@ Route::prefix('v1')
         //
         // `start` is a POST because it WRITES a pending sign-in row. A GET that
         // writes is a GET something eventually prefetches.
-        Route::post('email/mailboxes/{mailbox}/oauth/start',
-            [GoogleMailAuthController::class, 'start']);
-        Route::get('email/mailboxes/{mailbox}/oauth/status',
-            [GoogleMailAuthController::class, 'status']);
+        Route::middleware('permission:email.settings.view')->group(function () {
+            Route::post('email/mailboxes/{mailbox}/oauth/start',
+                [GoogleMailAuthController::class, 'start']);
+            Route::get('email/mailboxes/{mailbox}/oauth/status',
+                [GoogleMailAuthController::class, 'status']);
+        });
 
         // ── Connecting a Google Workspace domain, then picking inboxes ──
         //
@@ -1729,33 +1759,51 @@ Route::prefix('v1')
         // same public Google redirect as per-inbox sign-in — one registered
         // URI — and GoogleMailAuthController tries the Workspace sign-in row
         // first.
-        Route::get('email/workspace', [GoogleWorkspaceAuthController::class, 'show']);
-        Route::get('email/workspace/directory', [GoogleWorkspaceAuthController::class, 'directory']);
-        Route::delete('email/workspace', [GoogleWorkspaceAuthController::class, 'destroy']);
-        Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
-        Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
+        Route::middleware('permission:email.settings.view')->group(function () {
+            Route::get('email/workspace', [GoogleWorkspaceAuthController::class, 'show']);
+            Route::get('email/workspace/directory', [GoogleWorkspaceAuthController::class, 'directory']);
+            Route::delete('email/workspace', [GoogleWorkspaceAuthController::class, 'destroy']);
+            Route::post('email/workspace/oauth/start', [GoogleWorkspaceAuthController::class, 'start']);
+            Route::get('email/workspace/oauth/status', [GoogleWorkspaceAuthController::class, 'status']);
+        });
 
-        Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
-        Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
-        Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
-        Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);
-        Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
-        Route::get('email/mailboxes/{mailbox}/messages/{message}/picture',
-            [MailboxMessagesController::class, 'picture']);
-        Route::get('email/mailboxes/{mailbox}/messages/{message}/file',
-            [MailboxMessagesController::class, 'file']);
-        Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
-            [MailboxMessagesController::class, 'reply']);
-        Route::post('email/mailboxes/{mailbox}/messages/{message}/dealt',
-            [MailboxMessagesController::class, 'markDealt']);
-        Route::delete('email/mailboxes/{mailbox}/messages/{message}/dealt',
-            [MailboxMessagesController::class, 'unmarkDealt']);
-        Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
-            [MailboxMessagesController::class, 'markSeen']);
-        Route::delete('email/mailboxes/{mailbox}/messages/{message}/seen',
-            [MailboxMessagesController::class, 'unsee']);
-        Route::delete('email/mailboxes/{mailbox}/messages/{message}',
-            [MailboxMessagesController::class, 'destroy']);
+        /*
+         * ── READING THE MAIL IS THE INBOX TAB ────────────────────
+         *
+         * Everything below answers about MESSAGES, which is the whole of what
+         * the Inbox tab draws. A role granted Settings and not Inbox manages
+         * the connections and cannot read what arrives at them -- which is the
+         * split Jose asked for, and it is only real if the endpoints enforce
+         * it. A hidden tab whose routes still answer is a decoration, and the
+         * URL is one paste away from anybody who has ever seen the pane.
+         *
+         * The per-inbox grant and §4 reach are UNCHANGED and still asked
+         * inside the controller. This gate is the door; those decide whose
+         * mail is behind it.
+         */
+        Route::middleware('permission:email.inbox.view')->group(function () {
+            Route::get('email/mailboxes/{mailbox}/folders', [MailboxMessagesController::class, 'folders']);
+            Route::get('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'index']);
+            Route::post('email/mailboxes/{mailbox}/messages', [MailboxMessagesController::class, 'store']);
+            Route::post('email/mailboxes/{mailbox}/messages/bulk', [MailboxMessagesController::class, 'bulk']);
+            Route::get('email/mailboxes/{mailbox}/messages/{message}', [MailboxMessagesController::class, 'show']);
+            Route::get('email/mailboxes/{mailbox}/messages/{message}/picture',
+                [MailboxMessagesController::class, 'picture']);
+            Route::get('email/mailboxes/{mailbox}/messages/{message}/file',
+                [MailboxMessagesController::class, 'file']);
+            Route::post('email/mailboxes/{mailbox}/messages/{message}/reply',
+                [MailboxMessagesController::class, 'reply']);
+            Route::post('email/mailboxes/{mailbox}/messages/{message}/dealt',
+                [MailboxMessagesController::class, 'markDealt']);
+            Route::delete('email/mailboxes/{mailbox}/messages/{message}/dealt',
+                [MailboxMessagesController::class, 'unmarkDealt']);
+            Route::post('email/mailboxes/{mailbox}/messages/{message}/seen',
+                [MailboxMessagesController::class, 'markSeen']);
+            Route::delete('email/mailboxes/{mailbox}/messages/{message}/seen',
+                [MailboxMessagesController::class, 'unsee']);
+            Route::delete('email/mailboxes/{mailbox}/messages/{message}',
+                [MailboxMessagesController::class, 'destroy']);
+        });
 
         // ── Attachments (§9, §11) ────────────────────────────────
         //
