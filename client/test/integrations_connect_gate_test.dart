@@ -41,13 +41,38 @@ void main() {
     // The case that distinguishes the change: this is the permission that
     // opened BOTH until today, so a gate that had not moved would still draw
     // the Airtable form here.
-    await _pump(tester, permissions: const ['reports.build']);
+    //
+    // The tab comes with it because the Workiz form needs BOTH — see the test
+    // below for why `reports.build` on its own is no longer enough.
+    await _pump(
+      tester,
+      permissions: const ['reports.build', 'reports.experimental.view'],
+    );
 
     expect(find.text('Workiz'), findsOneWidget);
     expect(find.text('Connect account'), findsOneWidget);
 
     expect(find.text('Airtable'), findsNothing);
     expect(find.text('Connect base'), findsNothing);
+  });
+
+  testWidgets('the Workiz form needs the tab as well as the capability', (
+    tester,
+  ) async {
+    // Measured 2026-09-17: a role with `reports.build` and no experimental tab
+    // reaches the CONNECT endpoint and is refused the pane it would be
+    // connecting for — connect answered 422, the report answered 403. Offering
+    // the form there asks somebody for an API token for a screen they cannot
+    // open, which is the exact thing SocialProvider's own rule forbids.
+    //
+    // The server permission is deliberately unchanged. `reports.build` is the
+    // right authorisation floor, no single connect key can say "both of
+    // these", and widening the controller so one key would do it would hand
+    // the pane to everybody holding `reports.view`.
+    await _pump(tester, permissions: const ['reports.build']);
+
+    expect(find.text('Workiz'), findsNothing);
+    expect(find.text('Connect account'), findsNothing);
   });
 
   testWidgets('somebody with neither is offered no reporting form at all', (
@@ -93,7 +118,9 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+      home: Scaffold(
+        body: IntegrationsScreen(api: api, session: session),
+      ),
     ),
   );
   await tester.pumpAndSettle();

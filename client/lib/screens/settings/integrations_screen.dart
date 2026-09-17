@@ -238,6 +238,25 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   bool _mayConnect(String permission) =>
       widget.session.me?.permissions.contains(permission) ?? false;
 
+  /// Whether this person can actually SEE the Experimental report.
+  ///
+  /// ── Two keys, because the pane needs two ────────────────────
+  ///
+  /// `reports.build` is what `SocialProvider` asks for to connect a Workiz
+  /// account, and it was enough to see the report until Reports' tabs landed
+  /// on 2026-09-17. It is not any more: the pane needs the tab AND the
+  /// capability, so a builder without `reports.experimental.view` was being
+  /// offered a form for an account they cannot look at — measured, connect
+  /// reached the controller while the pane answered 403.
+  ///
+  /// The server permission is deliberately left alone. It is an authorisation
+  /// floor and `reports.build` is the right one; what was wrong is the OFFER,
+  /// and offering is this screen's job. A single connect permission cannot
+  /// express "both of these", and widening the controller so one key would do
+  /// it would hand the pane to everybody holding `reports.view`.
+  bool get _maySeeExperimental =>
+      _mayConnect('reports.build') && _mayConnect('reports.experimental.view');
+
   List<Widget> _reportingForms() => [
     if (_mayConnect('profit_loss.view')) ...[
       Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
@@ -260,7 +279,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ),
       const SizedBox(height: 16),
     ],
-    if (_mayConnect('reports.build')) ...[
+    if (_maySeeExperimental) ...[
       Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
       Text(
