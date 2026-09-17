@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\Permission;
-use App\Support\Access\PermissionCatalogue;
+use App\Support\Modules\PermissionCatalogue;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 
