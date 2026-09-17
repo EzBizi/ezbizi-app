@@ -3253,9 +3253,39 @@ class ModuleServiceProvider extends ServiceProvider
              * measures internally, and an organization that wants one without
              * the other should not have to choose.
              */
+
+            new ModuleDefinition(
+                key: 'ads_performance',
+                label: 'Google Ads',
+                parent: 'reports',
+                actions: ['view'],
+                automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
+                    .'trigger to fire on: the figures are read from Google when somebody opens '
+                    .'the screen and are never stored, so no row is created, changed or removed. '
+                    .'And an action would have to WRITE to the Google Ads API - change a budget, '
+                    .'pause a campaign - which is exactly what we have told Google this product '
+                    .'cannot do, in the Standard Access answer and in the OAuth justification. '
+                    .'This stops being true the day spend is stored or watched: an alert on a '
+                    .'campaign passing a threshold is a real trigger, and it needs this line '
+                    .'removed rather than reworded.',
+            ),
+
             /*
              * Profit & Loss - a tenant's own accounting sheet, read live out
              * of Airtable.
+             *
+             * AFTER Google Ads, and that is a decision rather than the order
+             * it was typed in. Registry order is the strip order, so placing
+             * this ahead of Google Ads would move a chip that has been in the
+             * same position for weeks - a silent change to where people
+             * already click, with nothing on screen to explain it. A new tab
+             * goes on the end.
+             *
+             * It was ahead of it for one commit, because the edit that added
+             * it anchored on Google Ads and inserted above - which also split
+             * Google Ads' comment from its own definition. Both are why this
+             * says which order it wants rather than leaving it to the next
+             * anchor.
              *
              * ITS OWN PERMISSION, which is the reason it is a module at all
              * rather than a report type in the builder. The sheet holds
@@ -3282,22 +3312,6 @@ class ModuleServiceProvider extends ServiceProvider
                     .'to fire on. This stops being true the day a week is cached or watched: '
                     .'an alert on a branch going into loss is a real trigger, and it needs this '
                     .'line removed rather than reworded.',
-            ),
-
-            new ModuleDefinition(
-                key: 'ads_performance',
-                label: 'Google Ads',
-                parent: 'reports',
-                actions: ['view'],
-                automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
-                    .'trigger to fire on: the figures are read from Google when somebody opens '
-                    .'the screen and are never stored, so no row is created, changed or removed. '
-                    .'And an action would have to WRITE to the Google Ads API - change a budget, '
-                    .'pause a campaign - which is exactly what we have told Google this product '
-                    .'cannot do, in the Standard Access answer and in the OAuth justification. '
-                    .'This stops being true the day spend is stored or watched: an alert on a '
-                    .'campaign passing a threshold is a real trigger, and it needs this line '
-                    .'removed rather than reworded.',
             ),
         ];
     }

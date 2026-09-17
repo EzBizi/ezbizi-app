@@ -81,9 +81,20 @@ final class BusinessProfileGlance extends DescribedGlance
                 comingSoon: false,
                 options: [],
                 data: [
-                    'empty'              => false,
-                    'sentences'          => $sentences,
-                    'organization_total' => BusinessLocation::query()->count(),
+                    'empty'     => false,
+                    'sentences' => $sentences,
+                    // `organization_total` was here and is gone. GlancePayload's
+                    // rule: a glance sends what its box draws. Nothing in
+                    // client/lib read it, so it was a COUNT(*) on every
+                    // dashboard load for a figure nobody sees - and an
+                    // organization-wide one, so a franchise-scoped reader was
+                    // handed the whole organization's listing count in a
+                    // response they could open the network tab on. Copied here
+                    // rather than decided: the arm carried no argument, which
+                    // is the tell. Customers keeps its own because its docblock
+                    // makes the case (the book is shared with that reader
+                    // anyway); if this box ever needs a figure it does not
+                    // draw, the cost is one sentence saying why.
                 ],
             );
         });

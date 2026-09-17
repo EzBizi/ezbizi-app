@@ -142,7 +142,26 @@ final class ReviewsGlance extends DescribedGlance
                 'series' => [['label' => 'Reviews', 'points' => $points]],
                 'slices' => $slices,
                 'sentences' => $sentences,
-                'organization_total' => (int) Review::query()->count(),
+                /*
+                 * `organization_total` was here and is gone. Dashboard's rule,
+                 * 2026-09-15: a glance sends what its box draws, and nothing
+                 * else. Nothing in client/lib read it, so it was a COUNT(*) on
+                 * every dashboard load for a figure nobody sees.
+                 *
+                 * And it was bare - `Review::query()->count()` with no reach
+                 * clause, sitting in the same payload as sentences built from
+                 * `$inReach(...)`. Two numbers answering different questions,
+                 * one of them the whole organization's, delivered to a reader
+                 * who may see one franchise and can open the network tab. That
+                 * is the exact overreach the sentences above were rewritten to
+                 * stop, still shipping one field below them.
+                 *
+                 * The fifth of five glances to carry it, each written by
+                 * starting from the last. Customers keeps its own and is the
+                 * legitimate shape: its docblock argues the case. The
+                 * exception is available and costs a sentence - if this box
+                 * ever needs a figure it does not draw, say why here.
+                 */
             ]);
         });
     }

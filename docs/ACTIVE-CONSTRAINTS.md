@@ -644,3 +644,46 @@ merge — not the files you expected to change:
 widget.** One session per module does not prevent it: the sweep that replaced
 every popup dropdown touched forty files owned by a dozen sessions, so any
 branch cut before it collides with main inside somebody else's file.
+
+## 16 · Match the construct, never the bare name
+
+Three sessions arrived at this independently on 2026-09-17, which is why it is
+here rather than in three docblocks.
+
+When you check whether something is PRESENT or GONE in source, match the syntax
+that makes it so — the assignment, the call, the `Route::middleware(`, the
+`=>`. A bare name matches prose, and prose about a thing is evidence somebody
+thought about it, never evidence of its state.
+
+    grep -c "organization_total"          3   <- what a correct file looks like
+                                               AND what a reverted one looks like
+    grep -c "'organization_total' =>"     0   <- the field is actually gone
+
+The three occurrences were comments explaining that the field had been removed.
+The count could not tell the two states apart, and it was quoted as confirmation
+that a peer's work had survived a revert. The answer happened to be right; the
+instrument could not have said otherwise.
+
+The same shape runs the other way. Reading a stale diff of `routes/api.php`, the
+desk named three of Inventory's route gates as deleted — and one was a COMMENT
+saying that route is deliberately NOT gated. **A deliberate-absence note reads to
+a text scan exactly like the thing it says is absent.**
+
+`client/test/no_popup_dropdown_test.dart` had already solved it and says why in
+its own header: it matches `DropdownButtonFormField<` or `DropdownButtonFormField(`
+and never the bare name, because the name appears in `search_picker.dart`'s
+explanation of what it replaced — a guard that read the word would go red on the
+prose describing its own subject.
+
+**The general form, and it is uncomfortable:** the better the comment, the worse
+the text scan. The places most carefully explained are exactly where a
+name-match is least trustworthy, so writing down WHY something was removed is
+both the behaviour we want and the thing that breaks the next person's grep.
+
+Verifying a file survived a revert has a stronger instrument than any grep:
+
+    git rev-parse <their-sha>:<path>      compare the BLOB shas
+    git rev-parse HEAD:<path>
+
+which a diff of a file somebody has been editing all day cannot accidentally
+satisfy.

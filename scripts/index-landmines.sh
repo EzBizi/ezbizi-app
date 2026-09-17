@@ -233,6 +233,13 @@ fi
 # module. Insertions tell you nothing; the DELETION count is the instrument.
 # The recovery is the same in all three cases: restore the file to HEAD and
 # re-apply your own lines by hand.
+#
+# READ THE DELETED LINES BEFORE REPORTING A REVERT. The count is the signal,
+# not the finding. Web Management's 108 was about half comment: a stale copy of
+# this file reports every explanatory block in the range as deleted too, and
+# they named three of Inventory's gates as removed when one of them was a
+# COMMENT saying that route is deliberately NOT gated. Confirm a named gate
+# against an actual `Route::middleware(` line before calling it lost.
 for shared in routes/api.php app/Providers/ModuleServiceProvider.php; do
   [ -f "$shared" ] || continue
   dels=$(git diff HEAD --numstat -- "$shared" | awk '{print $2+0}')
