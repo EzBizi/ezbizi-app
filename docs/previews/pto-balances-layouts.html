@@ -135,6 +135,30 @@ on main yet &mdash; so it is their measurement, relayed. It <i>strengthens</i> t
 rather than weakening it: option 2&rsquo;s advantage was the mixed-state reading, and a third of
 that mix turns out to be impossible.</p>
 
+<p class="sub"><b>&#9888; TWO COPY DEFECTS, BOTH OF THEM &ldquo;A REMEDY THAT DOES NOT
+REMEDY&rdquo;, AND THE SECOND IS THE DANGEROUS ONE.</b></p>
+
+<p class="sub"><b>State A used to say the policy is added to a contract template.</b> HR caught it:
+PTO is an organization <b>setting</b> &mdash; <code>pto.enabled</code>,
+<code>pto.days_per_year</code>, <code>pto.waiting_days</code>, <code>pto.carry_over</code> &mdash;
+and a contract template has no field for it. An owner following my sentence would edit a template,
+publish a version, and the screen would still say &ldquo;not set up&rdquo;. <i>(Verified from here:
+<code>SettingRegistry</code> does carry a Human Resources section.)</i></p>
+
+<p class="sub"><b>State D used to say &ldquo;somebody in HR can add it&rdquo;, and that one is
+worse, because the nearest thing to it lies.</b> I went to check the remedy rather than repeat the
+mistake, and <b>there is no way to record a start date that already happened</b>: the only two
+writers of a <code>started</code> employment event are an <code>is_active</code> toggle and an
+invitation being accepted, and both stamp <code>now()</code>. So the only action resembling my
+advice &mdash; deactivating somebody and reactivating them &mdash; would stamp <b>today</b>,
+manufacture a confidently wrong eligibility date, and fire an activation notification on the way
+past. The copy now explains why it is unanswerable instead of pointing at a door.</p>
+
+<p class="sub"><b>And B said &ldquo;your contract makes these available after three
+months&rdquo;.</b> EzBizi cannot read anybody&rsquo;s contract; it knows the setting. It now says
+<b>90 days</b>, taken from the setting, so changing the setting to sixty cannot leave the sentence
+claiming three months.</p>
+
 <p class="sub"><b>Where the feature leans next, worth drawing for now rather than redrawing
 later.</b> A-1&rsquo;s own paperwork is per-ROLE rather than per-company &mdash; that is what
 &ldquo;one of eleven&rdquo; means, and the one is Project Manager. So a per-person override on top
@@ -201,26 +225,27 @@ function person(st){
   if (st === 'A'){
     return '<div class="notice"><b>This organization has not set up paid time off.</b>' +
       'Nobody has an allowance yet, so there is nothing to count down to.' +
-      '<div class="who2">It is added to a contract template, by somebody who can edit ' +
-      'those. If that is not you, this is the whole answer rather than a step you are ' +
-      'missing.</div></div>';
+      '<div class="who2">It is set under <b>Settings › Human Resources</b>, by ' +
+      'somebody who can change the organization’s settings. If that is not you, this ' +
+      'is the whole answer rather than a step you are missing.</div></div>';
   }
   if (st === 'D'){
     return '<div class="big">6 days</div>' +
       '<div class="taken">&nbsp;</div>' +
       '<div class="when unk"><div class="k">When you can use them</div>' +
       '<div class="v">We cannot tell you</div>' +
-      '<div class="why">Your contract makes these available after three months, and we do ' +
-      'not have a start date on file for you — so any date here would be a guess. ' +
-      'Somebody in HR can add it.</div></div>';
+      '<div class="why">Paid time off becomes available 90 days after somebody starts ' +
+      'here, and there is no record of when you started — so any date would be a ' +
+      'guess. Start dates have only been kept since this was added, so people who were ' +
+      'already here do not have one.</div></div>';
   }
   if (st === 'B'){
     return '<div class="big">6 days</div>' +
       '<div class="taken">&nbsp;</div>' +
       '<div class="when wait"><div class="k">When you can use them</div>' +
       '<div class="v">Saturday 14 December</div>' +
-      '<div class="why">Your contract makes paid time off available after three months of ' +
-      'continuous employment. You started on 14 September.</div></div>';
+      '<div class="why">Paid time off becomes available 90 days after somebody starts ' +
+      'here. You started on 14 September.</div></div>';
   }
 
   return '<div class="big">6 days</div>' +
@@ -260,9 +285,9 @@ function D2(){
     var st = ST === 'A' ? 'A' : (i === 0 ? (ST === 'E' ? 'C' : ST) : p.st);
     var cls = st === 'B' ? ' wait' : st === 'A' ? ' none' : '';
     var num = st === 'A' ? '—' : st === 'D' ? '6 days' : '6 days';
-    var sub = st === 'A' ? 'No policy on this contract'
+    var sub = st === 'A' ? 'Not set up for this organization'
             : st === 'B' ? 'Not until 14 Dec — three months from starting'
-            : st === 'D' ? 'We do not know when — no start date on file'
+            : st === 'D' ? 'We cannot tell — no record of when they started'
             : 'Available to book now';
     h += '<div class="card' + cls + '"><div class="top">' +
       '<span class="av">' + p.i + '</span><span class="nm">' + p.n + '</span></div>' +
@@ -286,9 +311,9 @@ function D3(){
     var avail = st === 'A' ? '<span class="dash">—</span>'
               : st === 'B' ? '<span class="bal wait">0 yet</span>'
               : st === 'D' ? '<span class="bal unk">Unknown</span>' : '6';
-    var when = st === 'A' ? 'No policy on this contract'
-             : st === 'B' ? '14 Dec — 3 months from starting'
-             : st === 'D' ? 'No start date on file'
+    var when = st === 'A' ? 'Not set up for this organization'
+             : st === 'B' ? '14 Dec — 90 days from starting'
+             : st === 'D' ? 'No record of when they started'
              : 'Now';
     rows += '<tr><td><div style="display:flex;align-items:center;gap:9px">' +
       '<span class="av">' + p.i + '</span><span>' + p.n + '</span></div></td>' +
@@ -367,7 +392,7 @@ function M6(){
     var p = TEAM[i];
     var st = ST === 'A' ? 'A' : (i === 0 ? (ST === 'E' ? 'C' : ST) : p.st);
     var num = st === 'A' ? 'No policy' : st === 'D' ? '6 days' : '6 days';
-    var sub = st === 'A' ? 'nothing set on this contract'
+    var sub = st === 'A' ? 'not set up for this organization'
             : st === 'B' ? 'not until 14 Dec'
             : st === 'D' ? 'when: we cannot tell'
             : 'available now';

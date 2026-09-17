@@ -280,7 +280,7 @@ class _WeekBar extends StatelessWidget {
             onPressed: w == null ? null : () => onMove(w.previousOn),
             icon: const Icon(Icons.chevron_left),
             iconSize: 20,
-            tooltip: 'Previous week',
+            tooltip: UiStrings.t('time_clock.previous_week'),
           ),
           Expanded(
             child: Text(
@@ -293,7 +293,7 @@ class _WeekBar extends StatelessWidget {
             onPressed: w == null ? null : () => onMove(w.nextOn),
             icon: const Icon(Icons.chevron_right),
             iconSize: 20,
-            tooltip: 'Next week',
+            tooltip: UiStrings.t('time_clock.next_week'),
           ),
         ],
       ),
@@ -626,7 +626,7 @@ class _ShiftRow extends StatelessWidget {
           const SizedBox(width: 12),
           if (shift.open)
             Text(
-              'still clocked in',
+              UiStrings.t('time_clock.still_in'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: const Color(0xFF1A7F37),
                 fontWeight: FontWeight.w700,

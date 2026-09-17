@@ -9,6 +9,7 @@ use App\Support\Audit\AuditLogger;
 use App\Support\Files\FileStore;
 use App\Support\Access\ScopeReach;
 use App\Support\Inspection\BindableFields;
+use App\Support\Inspection\DefinitionGraph;
 use App\Support\Inspection\FieldSet;
 use App\Support\Inspection\FieldType;
 use App\Support\Inspection\InspectionScope;
@@ -117,6 +118,36 @@ class InspectionDefinitionsController extends Controller
             ['data' => $this->present($definition->load('currentVersion'), detailed: true)],
             Response::HTTP_CREATED,
         );
+    }
+
+    /**
+     * The definition drawn as a graph, for the builder canvas.
+     *
+     * THE DRAFT, NOT THE PUBLISHED VERSION, and that is the whole point of
+     * where this reads from. The author is editing `screens` on the definition;
+     * the frozen version is what technicians already ran. A chart of the
+     * published version would show somebody a picture of the form they are not
+     * looking at, and would be right about the wrong thing — worst on exactly
+     * the branch they just added and are trying to check.
+     *
+     * `view` rather than `update`: this is a reading of the definition and
+     * shows nothing the detail response does not already carry. Somebody who
+     * may see the inspection may see its shape.
+     *
+     * The overlay for one report's actual path is a second caller of
+     * `DefinitionGraph::of`, passing that report's frozen screens and its
+     * answers, and is deliberately not this endpoint — it answers a different
+     * question about a different record.
+     */
+    public function graph(InspectionDefinition $inspectionDefinition): JsonResponse
+    {
+        $this->authorize('view', $inspectionDefinition);
+
+        return response()->json([
+            'data' => DefinitionGraph::of(
+                is_array($inspectionDefinition->screens) ? $inspectionDefinition->screens : [],
+            ),
+        ]);
     }
 
     public function show(InspectionDefinition $inspectionDefinition): JsonResponse
