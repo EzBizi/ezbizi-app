@@ -1,0 +1,150 @@
+{
+  "_why": "One table, asserted by BOTH condition evaluators. app/Support/Inspection/Condition.php decides what a submitted report contains; client/lib/screens/inspection/condition.dart decides what a technician is shown while filling it in. They must agree, and nothing fails when they stop — a field the app hides and the server thinks was answered is a required question nobody was asked. Expectations are written from the documented rules, NOT recorded from either implementation, so a wrong one fails rather than being enshrined.",
+  "_shape": "answers is the map of answers so far; expected is what both must return for passes()/conditionPasses().",
+  "cases": [
+    {
+      "name": "no condition at all is shown",
+      "condition": null,
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "an empty condition is shown",
+      "condition": {},
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "a condition naming no field is shown",
+      "condition": { "field": "", "op": "eq", "value": "Poor" },
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "eq matches the answer given",
+      "condition": { "field": "roof", "op": "eq", "value": "Poor" },
+      "answers": { "roof": "Poor" },
+      "expected": true
+    },
+    {
+      "name": "eq against a different answer",
+      "condition": { "field": "roof", "op": "eq", "value": "Poor" },
+      "answers": { "roof": "Good" },
+      "expected": false
+    },
+    {
+      "name": "eq against a question nobody answered cannot match",
+      "condition": { "field": "roof", "op": "eq", "value": "Poor" },
+      "answers": {},
+      "expected": false
+    },
+    {
+      "name": "ne against a question nobody answered is always true",
+      "condition": { "field": "roof", "op": "ne", "value": "Poor" },
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "ne against a matching answer",
+      "condition": { "field": "roof", "op": "ne", "value": "Poor" },
+      "answers": { "roof": "Poor" },
+      "expected": false
+    },
+    {
+      "name": "in matches one of several",
+      "condition": { "field": "roof", "op": "in", "values": ["Poor", "Failed"] },
+      "answers": { "roof": "Failed" },
+      "expected": true
+    },
+    {
+      "name": "in against a question nobody answered cannot match",
+      "condition": { "field": "roof", "op": "in", "values": ["Poor"] },
+      "answers": {},
+      "expected": false
+    },
+    {
+      "name": "not_in against a question nobody answered is always true",
+      "condition": { "field": "roof", "op": "not_in", "values": ["Poor"] },
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "an empty answer counts as unanswered for eq",
+      "condition": { "field": "roof", "op": "eq", "value": "Poor" },
+      "answers": { "roof": "" },
+      "expected": false
+    },
+    {
+      "name": "an operator neither build knows shows the field",
+      "condition": { "field": "roof", "op": "matches_regex", "value": "P.*" },
+      "answers": { "roof": "Poor" },
+      "expected": true
+    },
+    {
+      "name": "and over nothing is true",
+      "condition": { "op": "and", "conditions": [] },
+      "answers": {},
+      "expected": true
+    },
+    {
+      "name": "or over nothing is false",
+      "condition": { "op": "or", "conditions": [] },
+      "answers": {},
+      "expected": false
+    },
+    {
+      "name": "and needs every child",
+      "condition": {
+        "op": "and",
+        "conditions": [
+          { "field": "roof", "op": "eq", "value": "Poor" },
+          { "field": "flue", "op": "eq", "value": "Blocked" }
+        ]
+      },
+      "answers": { "roof": "Poor", "flue": "Clear" },
+      "expected": false
+    },
+    {
+      "name": "and with every child satisfied",
+      "condition": {
+        "op": "and",
+        "conditions": [
+          { "field": "roof", "op": "eq", "value": "Poor" },
+          { "field": "flue", "op": "eq", "value": "Blocked" }
+        ]
+      },
+      "answers": { "roof": "Poor", "flue": "Blocked" },
+      "expected": true
+    },
+    {
+      "name": "or needs only one child",
+      "condition": {
+        "op": "or",
+        "conditions": [
+          { "field": "roof", "op": "eq", "value": "Poor" },
+          { "field": "flue", "op": "eq", "value": "Blocked" }
+        ]
+      },
+      "answers": { "roof": "Good", "flue": "Blocked" },
+      "expected": true
+    },
+    {
+      "name": "nesting one inside the other",
+      "condition": {
+        "op": "and",
+        "conditions": [
+          { "field": "roof", "op": "eq", "value": "Poor" },
+          {
+            "op": "or",
+            "conditions": [
+              { "field": "flue", "op": "eq", "value": "Blocked" },
+              { "field": "cap", "op": "eq", "value": "Missing" }
+            ]
+          }
+        ]
+      },
+      "answers": { "roof": "Poor", "flue": "Clear", "cap": "Missing" },
+      "expected": true
+    }
+  ]
+}

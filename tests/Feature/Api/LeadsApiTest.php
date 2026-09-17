@@ -57,6 +57,12 @@ class LeadsApiTest extends TestCase
         });
     }
 
+    /*
+     * Every row here is `local_services`, so every role that reads the list
+     * needs `leads.local_services.view` beside `leads.view` - the source became
+     * a separate grant on 2026-09-17. The admin fixtures are unaffected:
+     * Role::isAdministrator bypasses the permission table entirely.
+     */
     private function lead(array $t, array $attributes = []): Lead
     {
         $account = $this->account($t);
@@ -91,7 +97,7 @@ class LeadsApiTest extends TestCase
         $t = $this->provisionTenant('A1-Chimney');
         $this->lead($t);   // company_id and franchise_id both null
 
-        $branch = $this->userWithRole($t, 'Branch', ['leads.view'], onlyAt: $t['franchise']);
+        $branch = $this->userWithRole($t, 'Branch', ['leads.view', 'leads.local_services.view'], onlyAt: $t['franchise']);
 
         $this->signedInAs($branch)
             ->getJson(self::ENDPOINT)
@@ -268,7 +274,7 @@ class LeadsApiTest extends TestCase
             'name'            => 'Second Branch',
         ]));
 
-        $manager = $this->userWithRole($t, 'Branch', ['leads.view'], onlyAt: $mine);
+        $manager = $this->userWithRole($t, 'Branch', ['leads.view', 'leads.local_services.view'], onlyAt: $mine);
 
         $this->lead($t, [
             'company_id'   => $t['company']->id,

@@ -482,8 +482,18 @@ class _PersonWeek extends StatelessWidget {
             ),
           )
         else
-          for (final day in week.days)
-            _DayCard(label: day.label, shifts: days[day.date] ?? const []),
+          // Newest first, and nothing that has not happened yet (Jose,
+          // 2026-09-17: *"make it so it's descending / so sep 19 first / then
+          // 18 / then 17 / also do not show the future days"*).
+          //
+          // Reversed and filtered HERE rather than in `week.days`, which stays
+          // the seven ascending days the server sent: the week's own heading
+          // is built from the first and last labels of that list, so turning
+          // it round would silently reverse the heading and dropping from it
+          // would take a label out of the range.
+          for (final day in week.days.reversed)
+            if (!day.inFuture)
+              _DayCard(label: day.label, shifts: days[day.date] ?? const []),
       ],
     );
   }
@@ -915,9 +925,26 @@ String formatWorked(int seconds) {
 /// same way three times over. Clock In put it on the payload beside the times
 /// they already format.
 class _Day {
-  const _Day({required this.date, required this.weekday, required this.label});
+  const _Day({
+    required this.date,
+    required this.weekday,
+    required this.label,
+    required this.inFuture,
+  });
 
   final String date;
+
+  /// Whether this day has not arrived yet, **in the view's timezone**.
+  ///
+  /// Given by the server (`2f34d5a8`) and not worked out here, because the
+  /// only today this side has is the DEVICE's. That is the same confusion
+  /// that had every reminder and auto clock-out running an hour late last
+  /// week: a person in one timezone reading an organization set to another
+  /// would hide a day that had already started for the people on it, or show
+  /// one that had not.
+  ///
+  /// Today is never in the future.
+  final bool inFuture;
 
   /// The English key, untranslated on purpose, for anything that branches on
   /// which day it is. Nobody reads this one.
@@ -930,5 +957,9 @@ class _Day {
     date: '${json['date'] ?? ''}',
     weekday: '${json['weekday'] ?? ''}',
     label: '${json['label'] ?? ''}',
+    // Absent reads as "has happened", so a server older than this build shows
+    // the whole week rather than an empty one. A missing day is the louder
+    // failure of the two.
+    inFuture: json['in_future'] == true,
   );
 }

@@ -1728,6 +1728,10 @@ class AutomationsController extends Controller
                  * Notifications' correction, and they were right.
                  */
                 $parameter('role_ids', 'Only tell these roles', 'roles', false),
+                // BESIDE the roles, not instead of them — Jose asked for both,
+                // and the two lists add up rather than intersect. Named people
+                // are how somebody reaches a name their roles do not cover.
+                $parameter('user_ids', 'And these people by name', 'people', false),
             ]),
             $type('voicemail.mark_dealt', 'Mark a voicemail dealt with'),
             $type('missed.create_job', 'Create a job from a missed call'),

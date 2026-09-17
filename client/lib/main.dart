@@ -390,6 +390,11 @@ class HomeShell extends StatefulWidget {
 /// not a rail destination, but it is somewhere the shell can be pointed.
 enum _Rail { modules, pinned, staff, profile }
 
+/// The two traversal regions of the shell, named so a test can ask which one
+/// focus is in. See the note beside [shellSidebarGroup]'s use.
+const Key shellSidebarGroup = Key('shell-traversal-sidebar');
+const Key shellPageGroup = Key('shell-traversal-page');
+
 class _HomeShellState extends State<HomeShell> {
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
@@ -1650,42 +1655,76 @@ class _HomeShellState extends State<HomeShell> {
                     // Blocks fit more in less width and some people prefer them, so
                     // they stay available — as the user's own preference, not an
                     // opinion imposed by whoever wrote this.
-                    _maybeThemed(
-                      // In a mixed mode the sidebar runs on the opposite theme to the
-                      // page. Wrapping only the sidebar — rather than building two
-                      // MaterialApps or threading colours by hand — means every widget
-                      // inside it, including NavigationRail's own indicator and hover
-                      // colours, resolves against the right scheme without knowing that
-                      // anything unusual is happening.
-                      //
-                      // The top bar takes this same override, so the chrome is one
-                      // theme and the page is the other.
-                      EzBiziTheme.navigationOverride(me.theme),
-                      builder: (context) => NavigationSidebar(
-                        expanded: expanded,
-                        width: me.navigationWidth,
-                        destinations: destinations,
-                        divideAfter: divideAfter,
-                        pinned: pinned,
-                        staffOnly: staffOnly,
-                        selectedIndex: railIndex,
-                        pinnedIndex: pinnedIndex,
-                        staffIndex: staffIndex,
-                        onSelected: (i) =>
-                            _show(_Rail.modules, destinations[i].id),
-                        onPinnedSelected: (i) =>
-                            _show(_Rail.pinned, pinned[i].id),
-                        onStaffSelected: (i) =>
-                            _show(_Rail.staff, staffOnly[i].id),
-                        // Written through the same path as every other preference, once
-                        // the drag settles.
-                        onResized: (w) => widget.session.setPreference(
-                          'navigation.width',
-                          w.round(),
-                        ),
-                        onArranged: (order) => widget.session.setPreference(
-                          'navigation.order',
-                          order,
+                    // TAB STAYS IN THE SECTION IT STARTED IN.
+                    //
+                    // Jose, 2026-09-17, typing in a form: *"i press tab it
+                    // should go to the field below, but instead it's going to
+                    // the sidebar, then the item below on the sidebar, then
+                    // the left bar where the websites are, then back to the
+                    // fields"*.
+                    //
+                    // Nothing broke and nothing changed. With no groups,
+                    // Flutter's reading-order policy sorts every focusable in
+                    // the tree by GEOMETRY, and a sidebar row sits BESIDE a
+                    // form field rather than before or after it -- so the two
+                    // columns interleave, exactly as he describes. Grouping
+                    // the regions is what makes "the fields, then the
+                    // sidebar" something the policy can express at all.
+                    //
+                    // Here rather than in the two panes he happened to be in:
+                    // there was exactly ONE FocusTraversalGroup in the whole
+                    // client before this (structure_canvas.dart), so every
+                    // screen has the same gap and a per-pane fix mends the two
+                    // he named while leaving the next one he opens broken.
+                    //
+                    // It orders, it does not trap: Tab still reaches the
+                    // sidebar, after the page rather than through it.
+                    FocusTraversalGroup(
+                      // Keyed so a test can say which region a stop is IN,
+                      // rather than which one it is not. A type finder does
+                      // not fail when its subject is replaced -- it silently
+                      // re-aims at whatever now answers to that type -- and
+                      // "not the sidebar" quietly counts a top-bar stop as a
+                      // page stop, which is the measurement changing shape
+                      // under an assertion that still reads as true.
+                      key: shellSidebarGroup,
+                      child: _maybeThemed(
+                        // In a mixed mode the sidebar runs on the opposite theme to the
+                        // page. Wrapping only the sidebar — rather than building two
+                        // MaterialApps or threading colours by hand — means every widget
+                        // inside it, including NavigationRail's own indicator and hover
+                        // colours, resolves against the right scheme without knowing that
+                        // anything unusual is happening.
+                        //
+                        // The top bar takes this same override, so the chrome is one
+                        // theme and the page is the other.
+                        EzBiziTheme.navigationOverride(me.theme),
+                        builder: (context) => NavigationSidebar(
+                          expanded: expanded,
+                          width: me.navigationWidth,
+                          destinations: destinations,
+                          divideAfter: divideAfter,
+                          pinned: pinned,
+                          staffOnly: staffOnly,
+                          selectedIndex: railIndex,
+                          pinnedIndex: pinnedIndex,
+                          staffIndex: staffIndex,
+                          onSelected: (i) =>
+                              _show(_Rail.modules, destinations[i].id),
+                          onPinnedSelected: (i) =>
+                              _show(_Rail.pinned, pinned[i].id),
+                          onStaffSelected: (i) =>
+                              _show(_Rail.staff, staffOnly[i].id),
+                          // Written through the same path as every other preference, once
+                          // the drag settles.
+                          onResized: (w) => widget.session.setPreference(
+                            'navigation.width',
+                            w.round(),
+                          ),
+                          onArranged: (order) => widget.session.setPreference(
+                            'navigation.order',
+                            order,
+                          ),
                         ),
                       ),
                     ),
@@ -1698,22 +1737,29 @@ class _HomeShellState extends State<HomeShell> {
                     // Connecticut's jobs on the page while claiming to be in Texas.
                     // Making the scope part of the screen's identity is the fix that
                     // needs no screen to know the switcher exists.
-                    child: KeyedSubtree(
-                      key: ValueKey('${me.scope.type}:${me.scope.id}'),
-                      // Their own account is the last fallback, and the only honest
-                      // one: it is the single screen that is theirs by definition and
-                      // cannot answer 403. It is what somebody whose role reaches no
-                      // module at all lands on, rather than an empty frame.
-                      child: pinnedIndex != null
-                          ? pinned[pinnedIndex].screen
-                          : staffIndex != null
-                          ? staffOnly[staffIndex].screen
-                          : (showingProfile || railIndex == null)
-                          ? ProfileScreen(
-                              api: widget.api,
-                              session: widget.session,
-                            )
-                          : _titled(destinations[railIndex]),
+                    // The page is the other group. Everything a screen
+                    // puts up -- its fields, its list, its side panel --
+                    // is traversed together before Tab leaves for the
+                    // chrome around it.
+                    child: FocusTraversalGroup(
+                      key: shellPageGroup,
+                      child: KeyedSubtree(
+                        key: ValueKey('${me.scope.type}:${me.scope.id}'),
+                        // Their own account is the last fallback, and the only honest
+                        // one: it is the single screen that is theirs by definition and
+                        // cannot answer 403. It is what somebody whose role reaches no
+                        // module at all lands on, rather than an empty frame.
+                        child: pinnedIndex != null
+                            ? pinned[pinnedIndex].screen
+                            : staffIndex != null
+                            ? staffOnly[staffIndex].screen
+                            : (showingProfile || railIndex == null)
+                            ? ProfileScreen(
+                                api: widget.api,
+                                session: widget.session,
+                              )
+                            : _titled(destinations[railIndex]),
+                      ),
                     ),
                   ),
                 ],

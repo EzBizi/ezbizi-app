@@ -2319,6 +2319,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // decides who COULD be told.
           else if (definition.parameters[i].kind == 'roles')
             _rolePicker(row, definition.parameters[i].key, definition.parameters[i].label)
+          // NAMES, BESIDE THE ROLES. A role covers the people who hold it today
+          // and a name covers one person whatever their role becomes, and Jose
+          // asked for both. Searchable rather than a row of chips: thirteen
+          // people fit, a hundred do not.
+          else if (definition.parameters[i].kind == 'people')
+            _peoplePicker(row, definition.parameters[i].key, definition.parameters[i].label)
           else if (definition.parameters[i].kind == 'boolean')
             // A yes/no answer, drawn as a switch.
             //
@@ -2388,6 +2394,79 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// Stored in the parameter controller as a comma-joined list because every
   /// parameter shares one map of text controllers; the payload splits it back
   /// into an array, the same shape the runner reads.
+  /// Pick people by name, for a step that also offers roles.
+  ///
+  /// Stores bare user ids, comma-joined, the way the role picker stores role
+  /// ids — the notification dispatcher takes the two lists side by side and
+  /// adds them up.
+  ///
+  /// NOTHING CHOSEN MEANS THE ROLES DECIDE, and if neither is chosen everybody
+  /// with reach is told, which is what every rule saved before today did. An
+  /// untouched control must not change a rule.
+  Widget _peoplePicker(_ActionRow row, String key, String label) {
+    final controller = row.parameter(key);
+
+    final chosen = controller.text
+        .split(',')
+        .map((one) => one.trim())
+        .where((one) => one.isNotEmpty)
+        .toList();
+
+    String labelFor(String id) =>
+        widget.catalogue.people.where((p) => p.key == 'user:$id').firstOrNull?.label ??
+        '$id (no longer here)';
+
+    void store(List<String> next) =>
+        setState(() => controller.text = next.join(','));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        Text(
+          chosen.isEmpty
+              ? 'Nobody named — the roles above decide, and if none are ticked '
+                    'everybody who can see the record is told.'
+              : 'These people are told as well, and only if they can already '
+                    'see the record.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (chosen.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final one in chosen)
+                InputChip(
+                  label: Text(labelFor(one)),
+                  onDeleted: _busy ? null : () => store([...chosen]..remove(one)),
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 8),
+        SearchPickerField<String>(
+          value: null,
+          label: 'Add somebody by name',
+          options: [
+            for (final person in widget.catalogue.people)
+              if (!chosen.contains(person.key.replaceFirst('user:', '')))
+                SearchOption(
+                  value: person.key.replaceFirst('user:', ''),
+                  label: person.label,
+                ),
+          ],
+          onChanged: _busy
+              ? null
+              : (added) {
+                  if (added == null || chosen.contains(added)) return;
+                  store([...chosen, added]);
+                },
+        ),
+      ],
+    );
+  }
+
   Widget _rolePicker(_ActionRow row, String key, String label) {
     final chosen = row
         .parameter(key)

@@ -281,6 +281,47 @@ void main() {
     );
   });
 
+  /// Jose, 2026-09-17: *"make it so it's descending / so sep 19 first / then
+  /// 18 / then 17 / also do not show the future days"*.
+  testWidgets('the newest day is first and the week stops at today', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+
+    await _tap(tester, _tab('Work Hours'));
+
+    // Tuesday is today in this fixture, so the week ends there.
+    expect(find.text('Wednesday, Aug 26'), findsNothing);
+    expect(find.text('Saturday, Aug 29'), findsNothing);
+
+    // Order, read off the screen rather than off the list: Tuesday must sit
+    // ABOVE Sunday. Asserting both are present would pass either way round,
+    // which is the whole of what changed.
+    final tuesday = tester.getTopLeft(find.text('Tuesday, Aug 25')).dy;
+    final sunday = tester.getTopLeft(find.text('Sunday, Aug 23')).dy;
+    expect(
+      tuesday,
+      lessThan(sunday),
+      reason: 'Newest first: Tuesday is later than Sunday and must be higher '
+          'up the page.',
+    );
+
+    // AND THE HEADING STILL SPANS THE WHOLE WEEK. It is built from the first
+    // and last labels of `days`, so this is what fails if somebody reverses
+    // or filters that list instead of the loop over it -- which is the one
+    // way to make the days right and the header silently wrong.
+    expect(
+      find.text('Sunday, Aug 23 – Saturday, Aug 29'),
+      findsOneWidget,
+      reason: 'The week is still Sunday to Saturday even when four of its '
+          'days have not happened yet.',
+    );
+  });
+
   /// NO USER-FACING STRING IN THIS SCREEN IS WRITTEN HERE.
   ///
   /// Clock In found two hardcoded English tags in this file, reported it
@@ -449,14 +490,27 @@ Map<String, dynamic> _week({
   'starts_on': 'sunday',
   // All seven, in the organization's own language, from the server -- so a
   // day nobody worked still has a heading and this screen never names one.
+  // `in_future` is the SERVER's, against today in the view's timezone. The
+  // only today this side has is the device's, which is a different day for
+  // anybody reading an organization set elsewhere.
+  //
+  // This fixture is a week in progress: Tuesday is today, Wednesday on has
+  // not arrived. Today is never in the future.
   'days': const [
-    {'date': '2026-08-23', 'weekday': 'sunday', 'label': 'Sunday, Aug 23'},
-    {'date': '2026-08-24', 'weekday': 'monday', 'label': 'Monday, Aug 24'},
-    {'date': '2026-08-25', 'weekday': 'tuesday', 'label': 'Tuesday, Aug 25'},
-    {'date': '2026-08-26', 'weekday': 'wednesday', 'label': 'Wednesday, Aug 26'},
-    {'date': '2026-08-27', 'weekday': 'thursday', 'label': 'Thursday, Aug 27'},
-    {'date': '2026-08-28', 'weekday': 'friday', 'label': 'Friday, Aug 28'},
-    {'date': '2026-08-29', 'weekday': 'saturday', 'label': 'Saturday, Aug 29'},
+    {'date': '2026-08-23', 'weekday': 'sunday', 'label': 'Sunday, Aug 23',
+      'in_future': false},
+    {'date': '2026-08-24', 'weekday': 'monday', 'label': 'Monday, Aug 24',
+      'in_future': false},
+    {'date': '2026-08-25', 'weekday': 'tuesday', 'label': 'Tuesday, Aug 25',
+      'in_future': false},
+    {'date': '2026-08-26', 'weekday': 'wednesday', 'label': 'Wednesday, Aug 26',
+      'in_future': true},
+    {'date': '2026-08-27', 'weekday': 'thursday', 'label': 'Thursday, Aug 27',
+      'in_future': true},
+    {'date': '2026-08-28', 'weekday': 'friday', 'label': 'Friday, Aug 28',
+      'in_future': true},
+    {'date': '2026-08-29', 'weekday': 'saturday', 'label': 'Saturday, Aug 29',
+      'in_future': true},
   ],
   'timezone': 'Etc/GMT+5',
   'timezone_label': timezoneLabel,
