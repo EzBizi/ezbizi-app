@@ -176,9 +176,9 @@ class InventoryPurchaseTest extends TestCase
             ])
             ->assertCreated();
 
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
         $money = $this->userWithRole($tenant, 'Money', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.financials',
         ]);
 
@@ -359,7 +359,7 @@ class InventoryPurchaseTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.create', 'inventory.edit'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create', 'inventory.edit'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -406,7 +406,7 @@ class InventoryPurchaseTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
             onlyAt: $tenant['franchise'],
         );
 

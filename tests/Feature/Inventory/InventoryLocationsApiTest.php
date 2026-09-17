@@ -112,7 +112,7 @@ class InventoryLocationsApiTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -464,7 +464,7 @@ class InventoryLocationsApiTest extends TestCase
             $tenant,
             $tenant['company'],
             'CompanyClerk',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
         );
 
         $this->signedInAs($local)
