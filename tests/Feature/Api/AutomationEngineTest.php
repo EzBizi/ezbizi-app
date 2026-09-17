@@ -1580,6 +1580,60 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * A NAMED PERSON IS TOLD BESIDE THE ROLES, NOT INSTEAD OF THEM.
+     *
+     * Jose, 2026-09-17: notifications should narrow *"By role / By user"*. Two
+     * lists that INTERSECTED would read as the same feature and reach nobody
+     * whenever they disagreed — which is most of the time, because naming
+     * somebody is how a person adds a name their roles do not cover.
+     *
+     * Asserted on the count in the sentence: a named person with no role list
+     * at all must still be told, which is the case an intersection loses.
+     */
+    public function test_a_notification_can_name_a_person(): void
+    {
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        // A SECOND PERSON WITH REACH, and this is the whole test. With one user
+        // in the organization "Told 1" is what a broken narrowing produces too:
+        // the count and the fallback coincide, and the first draft of this test
+        // passed with `userIds` deleted from the arm entirely.
+        $this->inTenant(fn () => User::create([
+            'organization_id' => $this->org['organization']->id,
+            'role_id'         => $this->org['admin']->role_id,
+            'name'            => 'Second',
+            'email'           => 'second@alpha.test',
+            'password'        => 'a-real-password',
+            'is_active'       => true,
+        ]));
+
+        $named = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'     => 'notify',
+            'message'  => 'A job was made.',
+            'user_ids' => [$this->org['admin']->id],
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $this->assertTrue($named['ok'], $named['detail']);
+        $this->assertStringContainsString('Told 1', $named['detail']);
+
+        // THE CONTROL: with nobody named the same event reaches more people, so
+        // the assertion above is about the narrowing and not about an
+        // organization that happens to hold one person.
+        $everybody = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type'    => 'notify',
+            'message' => 'A job was made.',
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $this->assertStringContainsString('Told 2', $everybody['detail']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

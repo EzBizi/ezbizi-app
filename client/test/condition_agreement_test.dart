@@ -11,7 +11,7 @@
 // answerable is a required question nobody was asked: the technician sees a
 // submission refused for something never put in front of them.
 //
-// tests/fixtures/condition_cases.json is the ONE table. Its expectations are
+// tests/Fixtures/condition_cases.json is the ONE table. Its expectations are
 // written from the documented rules rather than recorded from either build, so
 // a wrong implementation fails here instead of being enshrined.
 
@@ -22,7 +22,7 @@ import 'package:ezbizi_client/screens/inspection/condition.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final file = File('../tests/fixtures/condition_cases.json');
+  final file = File('../tests/Fixtures/condition_cases.json');
 
   test('the shared condition table is actually present', () {
     expect(

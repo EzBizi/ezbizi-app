@@ -163,6 +163,37 @@ abstract class VoiceDevice {
   /// Inbound ringing. Tests drive this; the web wrapper maps SDK `incoming`.
   void Function(VoiceIncoming incoming)? onIncoming;
 
+  /// The access token is about to expire, and a desk with a dead token is a
+  /// desk that silently stops ringing.
+  ///
+  /// ── The hour-long phone ──────────────────────────────────────────
+  ///
+  /// `accessToken()` mints a token with a TTL of **3600 seconds**, and the
+  /// client asked for exactly one, at startup. So a desk left open longer than
+  /// an hour lost its registration and took no more incoming calls, with
+  /// nothing on screen saying so: no error, no banner, a dial pad that still
+  /// dials out perfectly.
+  ///
+  /// Measured on production 2026-09-17: of seven `<Client>` legs on Jose's
+  /// busiest line, three went to identities nothing was registered as, and 27
+  /// of the 29 inbound calls over two days rang the full 60 seconds and went
+  /// to voicemail.
+  ///
+  /// ── The half that was already built ─────────────────────────────
+  ///
+  /// The browser bridge has raised this since the day it was written, with a
+  /// comment saying "Dart owns the token lifecycle; it refetches and sends
+  /// setup again". Dart did not. Nothing listened for the message, and nothing
+  /// failed — the painted half shipped and the half nobody sees was never
+  /// written.
+  ///
+  /// So this is the contract that comment was describing. The desk answers by
+  /// fetching a new token and calling [setup] again, which re-registers the
+  /// same identity and, not incidentally, is also the only thing that refreshes
+  /// `last_seen_at` — the column `PhoneDeviceRegistration::liveFor()` uses to
+  /// decide whether a device is worth dialling at all.
+  void Function()? onTokenExpiring;
+
   /// The call is over, and NOBODY HERE ASKED FOR THAT.
   ///
   /// ── Why this had to exist ────────────────────────────────────

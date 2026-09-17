@@ -601,3 +601,46 @@ answers it directly:
 That would close the gap permanently and it means EzBizi code installing itself
 on 110 customer sites unattended — a decision about other businesses' property,
 not a deployment call, so it waits for him even under §11. Raised 2026-09-17.
+
+## 15 · `merge-tree --write-tree` writes a tree WHEN IT CONFLICTS
+
+The desk's plumbing merge is:
+
+    T=$(git merge-tree --write-tree main $SHA | head -1)
+    M=$(git commit-tree $T -p main -p $SHA -F msg)
+    git update-ref refs/heads/main $M
+
+On 2026-09-17 it was guarded like this, and the guard is worthless:
+
+    if git cat-file -t "$T" | grep -q tree; then echo "clean merge"
+
+**merge-tree writes a tree whether or not it conflicted.** It resolves what it
+can, writes `<<<<<<< main` / `=======` / `>>>>>>> branch` INTO the blob, and
+returns a perfectly valid tree object. The conflict is reported through its EXIT
+STATUS and through lines printed after the tree — both discarded by `| head -1`
+and by a type check. So a conflicted merge of `widgets_tab.dart` was committed
+to main and announced as clean, and the client did not compile for half an hour.
+
+Nothing looked wrong. `git diff --name-only main $T` was entirely normal,
+because the file legitimately changed. Nothing is red until somebody compiles,
+and `flutter analyze` in the shared tree was being run by peers against their
+own uncommitted copies, which had no markers.
+
+**The check that works, both halves:**
+
+    OUT=$(git merge-tree --write-tree main "$SHA"); RC=$?
+    [ "$RC" -eq 0 ] || { echo "CONFLICT"; exit 1; }
+    T=$(echo "$OUT" | head -1)
+    git grep -n -E "^(<<<<<<< |=======$|>>>>>>> )" "$T" && exit 1
+
+Grep the tree as well as trusting the status: once markers are committed they
+are ordinary content, every later merge merges happily around them, and
+merge-tree exits 0 forever after. Sweep the whole of `main` after any plumbing
+merge — not the files you expected to change:
+
+    git grep -n -E "^(<<<<<<< |>>>>>>> )" main
+
+**Expect a conflict wherever a peer's branch and main have both edited one
+widget.** One session per module does not prevent it: the sweep that replaced
+every popup dropdown touched forty files owned by a dozen sessions, so any
+branch cut before it collides with main inside somebody else's file.
