@@ -668,7 +668,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       for (final entry in action.entries) {
         if (entry.key != 'type' &&
             !const {'field', 'value', 'url'}.contains(entry.key)) {
-          row.parameter(entry.key).text = '${entry.value ?? ''}';
+          // A LIST IS JOINED, NOT PRINTED. Every list parameter — roles, named
+          // people, template blanks, report recipients — is held as one
+          // comma-joined string because all parameters share one map of text
+          // controllers, and `'$value'` on a List gives Dart's own "[a, b]".
+          //
+          // Reading that back produced ONE id with brackets in it, and saving
+          // wrapped it again: Jose's live rule went [] -> ["[]"] -> ["[[]]"] ->
+          // ["[[[]]]"] over three edits, each save adding a layer, and then the
+          // dispatcher refused a role id that had never existed. Nothing warned,
+          // because a string is exactly what this line wanted.
+          row.parameter(entry.key).text = switch (entry.value) {
+            null => '',
+            final List<dynamic> list => list.join(','),
+            final other => '$other',
+          };
         }
       }
 
