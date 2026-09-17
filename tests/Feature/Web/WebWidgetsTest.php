@@ -246,6 +246,13 @@ class WebWidgetsTest extends TestCase
          * both halves: the assertion really reads the message, and the message
          * really is the edit refusal rather than the tab's. Done, red as
          * required, restored.
+         *
+         * AND IT COVERS MORE, which Email established by running both against
+         * their two files rather than reasoning about it: removing the key reds
+         * only the refusals whose positive control still passes — one test per
+         * file for them — while swapping the sentence reds EVERY refusal in the
+         * file, because it never depends on the role reaching the route. So
+         * prefer it even where both work.
          */
         $this->signedInAs($viewer)
             ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
