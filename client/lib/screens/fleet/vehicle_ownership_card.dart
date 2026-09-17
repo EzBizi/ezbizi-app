@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
@@ -49,8 +51,7 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
   String? _error;
 
   bool get _canEdit => widget.session.me!.can('fleet_management.edit');
-  bool get _financials =>
-      widget.session.me!.can('fleet_management.financials');
+  bool get _financials => widget.session.me!.can('fleet_management.financials');
 
   String get _status => widget.vehicle['status'] as String? ?? '';
 
@@ -185,8 +186,9 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
         final aOpen = a['ended_on'] == null ? 0 : 1;
         final bOpen = b['ended_on'] == null ? 0 : 1;
         if (aOpen != bOpen) return aOpen.compareTo(bOpen);
-        return fleetDay(b['started_on'] as String?)
-            .compareTo(fleetDay(a['started_on'] as String?));
+        return fleetDay(
+          b['started_on'] as String?,
+        ).compareTo(fleetDay(a['started_on'] as String?));
       });
     final ended = _status == 'sold' || _status == 'returned';
 
@@ -361,17 +363,14 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
             keyboard: const TextInputType.numberWithOptions(decimal: true),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _rentalPeriod,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Rate period'),
-            items: [
+          SearchPickerField<String>(
+            value: _rentalPeriod,
+            label: 'Rate period',
+            options: [
               for (final t in fleetRatePeriods)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                SearchOption(value: t.$1, label: t.$2),
             ],
-            onChanged: _busy
-                ? null
-                : (v) => setState(() => _rentalPeriod = v),
+            onChanged: _busy ? null : (v) => setState(() => _rentalPeriod = v),
           ),
           fleetField(
             _rentalDeposit,
@@ -381,24 +380,22 @@ class _VehicleOwnershipCardState extends State<VehicleOwnershipCard> {
           ),
           fleetField(_rentalAccount, 'Account number', enabled: !_busy),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _rentalTerms,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Payment terms'),
-            items: [
+          SearchPickerField<String>(
+            value: _rentalTerms,
+            label: 'Payment terms',
+            options: [
               for (final t in fleetRentalTerms)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                SearchOption(value: t.$1, label: t.$2),
             ],
             onChanged: _busy ? null : (v) => setState(() => _rentalTerms = v),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _rentalMethod,
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Payment method'),
-            items: [
+          SearchPickerField<String>(
+            value: _rentalMethod,
+            label: 'Payment method',
+            options: [
               for (final t in fleetPaymentMethods)
-                DropdownMenuItem(value: t.$1, child: Text(t.$2)),
+                SearchOption(value: t.$1, label: t.$2),
             ],
             onChanged: _busy ? null : (v) => setState(() => _rentalMethod = v),
           ),

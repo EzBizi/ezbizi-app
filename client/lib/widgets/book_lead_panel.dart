@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/search_picker.dart';
+
 import '../core/api_client.dart';
 import '../core/job_status.dart';
 import '../core/phone_numbers.dart';
@@ -245,13 +247,13 @@ class _BookLeadPanelState extends State<BookLeadPanel> {
           onChanged: (_) => setState(() {}),
         ),
         const SizedBox(height: 10),
-        DropdownButtonFormField<String>(
+        SearchPickerField<String>(
           key: const ValueKey('book-status'),
-          initialValue: _status,
-          decoration: const InputDecoration(labelText: 'Status'),
-          items: [
+          value: _status,
+          label: 'Status',
+          options: [
             for (final s in _statuses)
-              DropdownMenuItem(value: s.value, child: Text(s.label)),
+              SearchOption(value: s.value, label: s.label),
           ],
           onChanged: _busy ? null : (v) => setState(() => _status = v),
         ),

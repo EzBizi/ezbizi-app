@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import 'settings_pane.dart';
@@ -152,7 +154,9 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   Future<void> _delete(_Box box) async {
     setState(() => _saving = true);
 
-    final response = await widget.api.delete('/phone/voicemail-boxes/${box.id}');
+    final response = await widget.api.delete(
+      '/phone/voicemail-boxes/${box.id}',
+    );
 
     if (!mounted) return;
 
@@ -216,7 +220,8 @@ class _VoicemailPaneState extends State<VoicemailPane> {
   Widget _list(ThemeData theme) {
     return SettingsPane(
       title: 'Voicemail',
-      subtitle: 'What a caller hears when nobody answers. Lines with no '
+      subtitle:
+          'What a caller hears when nobody answers. Lines with no '
           'mailbox use the built-in sentence.',
       error: _error,
       onRetry: _load,
@@ -343,16 +348,13 @@ class _VoicemailPaneState extends State<VoicemailPane> {
             ),
             if (fresh && _connections.length > 1) ...[
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _connectionId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Phone account',
-                  border: OutlineInputBorder(),
-                ),
-                items: [
+              SearchPickerField<String>(
+                value: _connectionId,
+                label: 'Phone account',
+                border: OutlineInputBorder(),
+                options: [
                   for (final c in _connections)
-                    DropdownMenuItem(value: c.id, child: Text(c.label)),
+                    SearchOption(value: c.id, label: c.label),
                 ],
                 onChanged: (id) => setState(() => _connectionId = id),
               ),
@@ -375,9 +377,11 @@ class _VoicemailPaneState extends State<VoicemailPane> {
                 // worse than no suggestion: it reads as a template nobody
                 // adapted, and it is exactly the kind of thing that gets saved
                 // unedited and then spoken to a real caller.
-                hintText: 'You have reached $_placeName. Leave a number and we '
+                hintText:
+                    'You have reached $_placeName. Leave a number and we '
                     'will ring you back the same day.',
-                helperText: 'Spoken to the caller. Left empty, they hear the '
+                helperText:
+                    'Spoken to the caller. Left empty, they hear the '
                     'built-in sentence.',
                 helperMaxLines: 2,
                 border: const OutlineInputBorder(),

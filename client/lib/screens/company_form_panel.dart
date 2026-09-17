@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 
 /// Everything a company needs to exist (plan §3, §5.2).
@@ -218,13 +220,12 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
             if (_isSub) ...[
               const SizedBox(height: 18),
               _label(context, 'Under which company'),
-              DropdownButtonFormField<String>(
-                initialValue: _parentId,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                hint: const Text('Choose one'),
-                items: [
+              SearchPickerField<String>(
+                value: _parentId,
+                border: OutlineInputBorder(),
+                options: [
                   for (final p in widget.parents)
-                    DropdownMenuItem(value: p.id, child: Text(p.name)),
+                    SearchOption(value: p.id, label: p.name),
                 ],
                 onChanged: (v) => setState(() => _parentId = v),
               ),

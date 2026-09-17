@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../widgets/search_picker.dart';
 import '../core/api_client.dart';
 import '../core/job_status.dart';
 import '../core/session.dart';
@@ -756,16 +758,11 @@ class _NewJobPanelState extends State<_NewJobPanel> {
                   enabled: !_busy,
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  initialValue: _status,
-                  decoration: const InputDecoration(labelText: 'Status'),
-                  items: _statusChoices
-                      .map(
-                        (s) => DropdownMenuItem(
-                          value: s.value,
-                          child: Text(s.label),
-                        ),
-                      )
+                SearchPickerField<String>(
+                  value: _status,
+                  label: 'Status',
+                  options: _statusChoices
+                      .map((s) => SearchOption(value: s.value, label: s.label))
                       .toList(),
                   onChanged: _busy
                       ? null

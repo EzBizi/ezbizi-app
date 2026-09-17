@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/search_picker.dart';
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
@@ -166,10 +168,7 @@ class _PortingPaneState extends State<PortingPane> {
           ),
         ],
 
-        if (_open) ...[
-          const SizedBox(height: 16),
-          _form(theme),
-        ],
+        if (_open) ...[const SizedBox(height: 16), _form(theme)],
 
         const SizedBox(height: 24),
 
@@ -215,16 +214,13 @@ class _PortingPaneState extends State<PortingPane> {
 
           if (_connections.length > 1) ...[
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              initialValue: _connectionId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Port into',
-                border: OutlineInputBorder(),
-              ),
-              items: [
+            SearchPickerField<String>(
+              value: _connectionId,
+              label: 'Port into',
+              border: OutlineInputBorder(),
+              options: [
                 for (final c in _connections)
-                  DropdownMenuItem(value: c.id, child: Text(c.label)),
+                  SearchOption(value: c.id, label: c.label),
               ],
               onChanged: (id) => setState(() => _connectionId = id),
             ),
@@ -237,7 +233,8 @@ class _PortingPaneState extends State<PortingPane> {
             decoration: const InputDecoration(
               labelText: 'Numbers',
               hintText: '+17865550123\n+17865550124',
-              helperText: 'One per line. They must all be on the same losing '
+              helperText:
+                  'One per line. They must all be on the same losing '
                   'account, which is the carriers’ rule, not ours.',
               helperMaxLines: 3,
               border: OutlineInputBorder(),

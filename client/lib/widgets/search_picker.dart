@@ -60,6 +60,10 @@ class SearchPickerField<T> extends StatelessWidget {
     required this.onChanged,
     this.label,
     this.hint,
+    this.helperText,
+    this.helperMaxLines,
+    this.border,
+    this.isDense = false,
     this.allowClear = false,
     this.searchFrom = 8,
   });
@@ -74,6 +78,18 @@ class SearchPickerField<T> extends StatelessWidget {
 
   /// What the field says when nothing is chosen.
   final String? hint;
+
+  /// The sentence under the field. Carried because several of the dropdowns
+  /// this replaces use it to explain what a choice MEANS -- "the whole group
+  /// can see it" -- and dropping it while swapping the control would lose
+  /// information nobody asked to lose.
+  final String? helperText;
+  final int? helperMaxLines;
+
+  /// Carried through so a swapped field keeps the frame it had. Several of
+  /// these sit in dense forms with an outline the rest of the row shares.
+  final InputBorder? border;
+  final bool isDense;
 
   /// Whether the list offers a way back to nothing chosen. Off by default,
   /// because most of these fields are required and a stray "None" row invites
@@ -109,6 +125,10 @@ class SearchPickerField<T> extends StatelessWidget {
         // shape when a field is swapped.
         decoration: InputDecoration(
           labelText: label,
+          helperText: helperText,
+          helperMaxLines: helperMaxLines,
+          border: border,
+          isDense: isDense,
           enabled: enabled,
           suffixIcon: Icon(
             Icons.search,
@@ -259,9 +279,7 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                             selected: o.value == widget.value,
                             enabled: o.enabled,
                             title: Text(o.label),
-                            subtitle: o.detail == null
-                                ? null
-                                : Text(o.detail!),
+                            subtitle: o.detail == null ? null : Text(o.detail!),
                             onTap: () =>
                                 Navigator.of(context).pop(_Picked<T>(o.value)),
                           ),
