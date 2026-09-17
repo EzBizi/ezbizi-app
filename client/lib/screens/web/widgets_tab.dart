@@ -1134,7 +1134,44 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 }
 
 /// The questions the form asks, in the order it asks them.
-class _FieldList extends StatelessWidget {
+/// One question on the contact form.
+///
+/// It owns its controller rather than being redrawn from a map of strings, and
+/// that is the fix for a bug Jose photographed: typing "First name" left "Fi"
+/// in the box and the rest somewhere else.
+///
+/// The row used to be a `TextFormField(initialValue:)` whose KEY contained its
+/// own text — `ValueKey('label:$i:${fields[i]['label']}')`. Every keystroke
+/// wrote the text back to the parent, the parent rebuilt, the key was now a
+/// different key, so Flutter threw the field away and built a new one. Focus
+/// died with it, once per character.
+///
+/// Dropping the value from the key alone would have brought back the older bug
+/// it was put there to fix: keyed on the index, deleting row 0 shifts row 1 up
+/// and the surviving State keeps the deleted row's text. Text that follows a
+/// controller cannot do either, and a key made once per row keeps focus with
+/// the row it belongs to. Same shape as `_ConditionRow` in the automation
+/// builder, for the same reason.
+class _QuestionRow {
+  _QuestionRow({String label = '', this.type = 'text', this.required = false})
+    : label = TextEditingController(text: label);
+
+  final TextEditingController label;
+  final Key key = UniqueKey();
+
+  String type;
+  bool required;
+
+  Map<String, dynamic> toJson() => {
+    'label': label.text,
+    'type': type,
+    'required': required,
+  };
+
+  void dispose() => label.dispose();
+}
+
+class _FieldList extends StatefulWidget {
   const _FieldList({
     required this.fields,
     required this.types,
@@ -1148,6 +1185,61 @@ class _FieldList extends StatelessWidget {
   final void Function(List<Map<String, dynamic>>) onChanged;
 
   @override
+  State<_FieldList> createState() => _FieldListState();
+}
+
+class _FieldListState extends State<_FieldList> {
+  late List<_QuestionRow> _rows;
+
+  @override
+  void initState() {
+    super.initState();
+    _rows = _rowsFrom(widget.fields);
+  }
+
+  @override
+  void didUpdateWidget(covariant _FieldList old) {
+    super.didUpdateWidget(old);
+
+    /*
+     * Rebuild the rows only when the LIST changes underneath us — a different
+     * site chosen in the rail, or a save coming back. Not on every keystroke:
+     * the parent is told about each one, so its `fields` differ from ours
+     * constantly, and rebuilding then would throw away the controller somebody
+     * is typing into, which is the bug this class exists to fix.
+     */
+    if (widget.fields.length != _rows.length) {
+      for (final row in _rows) {
+        row.dispose();
+      }
+
+      _rows = _rowsFrom(widget.fields);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  List<_QuestionRow> _rowsFrom(List<Map<String, dynamic>> fields) => [
+    for (final field in fields)
+      _QuestionRow(
+        label: '${field['label'] ?? ''}',
+        type: widget.types.contains(field['type'])
+            ? '${field['type']}'
+            : widget.types.first,
+        required: field['required'] == true,
+      ),
+  ];
+
+  /// What the rows currently say, handed up as the plain list the API takes.
+  void _publish() => widget.onChanged([for (final row in _rows) row.toJson()]);
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -1157,28 +1249,30 @@ class _FieldList extends StatelessWidget {
         Text('Questions', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 4),
         Text(
-          'Name, Email and Phone are recognised and fill in the enquirer’s '
+          'Name, Email and Phone are recognised and fill in the enquirer\u2019s '
           'details. Anything else becomes a line of the message.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
-        for (var i = 0; i < fields.length; i++)
+        for (final row in _rows)
           Padding(
+            key: row.key,
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   flex: 3,
-                  child: TextFormField(
-                    key: ValueKey('label:$i:${fields[i]['label']}'),
-                    initialValue: '${fields[i]['label'] ?? ''}',
-                    enabled: canEdit,
+                  child: TextField(
+                    controller: row.label,
+                    enabled: widget.canEdit,
                     decoration: const InputDecoration(
                       labelText: 'Question',
                       isDense: true,
                     ),
-                    onChanged: (value) => _replace(i, 'label', value),
+                    // No setState: the controller already holds the text, and
+                    // rebuilding on every keystroke is what broke this.
+                    onChanged: (_) => _publish(),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1188,56 +1282,54 @@ class _FieldList extends StatelessWidget {
                     // See the note on the other one: sizes to its slot, so a
                     // narrowed pane ellipsises instead of overflowing.
                     isExpanded: true,
-                    initialValue: types.contains(fields[i]['type'])
-                        ? '${fields[i]['type']}'
-                        : types.first,
+                    initialValue: row.type,
                     decoration: const InputDecoration(
                       labelText: 'Answer',
                       isDense: true,
                     ),
                     items: [
-                      for (final type in types)
+                      for (final type in widget.types)
                         DropdownMenuItem(value: type, child: Text(type)),
                     ],
-                    onChanged: canEdit
-                        ? (value) =>
-                            value == null ? null : _replace(i, 'type', value)
+                    onChanged: widget.canEdit
+                        ? (value) {
+                            if (value == null) return;
+
+                            setState(() => row.type = value);
+                            _publish();
+                          }
                         : null,
                   ),
                 ),
                 IconButton(
                   tooltip: 'Remove',
                   icon: const Icon(Icons.close, size: 18),
-                  onPressed: canEdit ? () => _removeAt(i) : null,
+                  onPressed: widget.canEdit
+                      ? () {
+                          setState(() {
+                            _rows.remove(row);
+                            row.dispose();
+                          });
+                          _publish();
+                        }
+                      : null,
                 ),
               ],
             ),
           ),
-        if (canEdit)
+        if (widget.canEdit)
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
-              onPressed: () => onChanged([
-                ...fields,
-                {'label': '', 'type': 'text', 'required': false},
-              ]),
+              onPressed: () {
+                setState(() => _rows.add(_QuestionRow()));
+                _publish();
+              },
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Add a question'),
             ),
           ),
       ],
     );
-  }
-
-  void _replace(int index, String key, Object? value) {
-    final next = [for (final field in fields) Map<String, dynamic>.from(field)];
-    next[index][key] = value;
-    onChanged(next);
-  }
-
-  void _removeAt(int index) {
-    final next = [for (final field in fields) Map<String, dynamic>.from(field)];
-    next.removeAt(index);
-    onChanged(next);
   }
 }
