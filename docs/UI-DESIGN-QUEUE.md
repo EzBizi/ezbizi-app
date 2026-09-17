@@ -2894,6 +2894,51 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 22 · App-wide · Popup dropdowns → search pickers — **20 OF 56 DONE**
+
+Jose, 2026-09-17, on a twelve-name person dropdown running off the bottom of the window:
+
+> *"this sort of popup dropdown are terrible ui design, anything that offers users should be a
+> search bar picker instead. So i want you to go and find every single use of this sort of dropdown
+> in the app and replace it."*
+
+**`client/lib/widgets/search_picker.dart`** is the replacement, shipped in `89324380`.
+**`SearchPickerField` shows the search box only when the list is long enough to need one**
+(`searchFrom`, default 8). That is what makes "replace every single use" uniformly right: 58 of
+these offer people, vehicles and locations and want search; 44 offer *Everyone at once / In order*,
+where a search box asks somebody to type where they could have pointed.
+
+**Done: 20 files, `2b8faf72`.** Inventory, Jobs, Services, Web, Fleet, Marketing, Phone numbers and
+ring groups, and several shared widgets.
+
+> **THE METHOD, AND THE TWO TIMES IT WENT WRONG, because the next person will reach for the same
+> tool.** Hand-anchoring on exact whitespace failed twice on indentation alone, so the job is a
+> transformer that balances brackets:
+> `C:/Users/.../scratchpad/swap.py` (session-local; rewrite it rather than hunt for it).
+>
+> **It guessed twice and both times cost a full revert of ~40 files.** `Text(x, overflow: ...)` —
+> the pattern stops at the only closing paren, so the second argument arrived as part of the label
+> and the files stopped compiling. Then a `//` comment inside a call, which the splitter could not
+> see and ran into the next argument, and an `items:` built by something other than a literal list,
+> which emitted `options: ,`. Its own docstring said it should refuse what it does not understand;
+> it did not, and enforcing that is the whole fix. **Nothing was committed either time**, and every
+> modified file was verifiably mine before reverting — checked, not assumed, in a shared tree.
+
+**REMAINING 36, and they are three different jobs rather than one queue:**
+
+- **31 · an item child is not a plain `Text`** — a `Row` with an icon, a two-line child. These need
+  a person to say **what the search text is**, because a rich child has no single string in it and
+  guessing gives you a list that filters on the wrong words while looking right. `SearchOption`
+  would gain an optional `child` for display beside `label` for searching.
+- **5 · their tests drive the old control** — tapping `DropdownButtonFormField` and reading
+  `.items`: fleet, hr onboarding, automations, phone general, inspection builder. The source change
+  is trivial; the tests encode other modules' intent and deserve their own pass.
+- **4 · `items:` is not a literal list** — built by a `.map()` or a helper.
+
+**One judgement made without him, flagged in his three bullets:** the short fixed-enum dropdowns get
+the same control with no search box rather than a search box over two options. If he would rather
+every one of them carried a search field, that is a one-line change to `searchFrom`.
+
 ### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
 
 `docs/previews/pto-balances-layouts.html`. Approved by Jose 2026-09-17 — *"PTO Balances is good we
