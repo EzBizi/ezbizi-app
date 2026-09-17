@@ -84,7 +84,7 @@ class InspectionCodesTest extends TestCase
     public function test_reading_needs_view_and_writing_needs_edit(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $tech = $this->userWithRole($tenant, 'Rodrigo', ['inspection.view', 'inspection.create']);
+        $tech = $this->userWithRole($tenant, 'Rodrigo', ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $this->inTenant($tenant['org'], fn () => InspectionCode::create([
             'code' => 'R1003.11', 'title' => 'Flue lining', 'body' => 'All chimneys shall be lined.',

@@ -462,8 +462,7 @@ class InspectionReportPdfTest extends TestCase
     private function tech(array $tenant, string $name = 'Rodrigo', array $extra = [])
     {
         return $this->userWithRole($tenant, $name, [
-            'inspection.view', 'inspection.create', ...$extra,
-        ]);
+            'inspection.view', 'inspection.create', ...$extra, 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
     }
 
     private function seedOffered(array $tenant, $tech, array $screens): array

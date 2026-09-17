@@ -18,13 +18,12 @@ void main() {
       'inspection.view',
       'inspection.create',
       'inspection.edit',
+      'inspection.new.view',
+      'inspection.reports.view',
+      'inspection.builder.view',
     ]);
 
-    expect(_chips(tester), [
-      'New Inspection',
-      'Generated Reports',
-      'Builder',
-    ]);
+    expect(_chips(tester), ['New Inspection', 'Generated Reports', 'Builder']);
 
     expect(
       find.text(
@@ -37,22 +36,61 @@ void main() {
   testWidgets('a role with only view sees Generated Reports, not the others', (
     tester,
   ) async {
-    await _pump(tester, ['inspection.view']);
+    await _pump(tester, [
+      'inspection.view',
+      'inspection.new.view',
+      'inspection.reports.view',
+      'inspection.builder.view',
+    ]);
 
     expect(_chips(tester), ['Generated Reports']);
     expect(find.widgetWithText(ChoiceChip, 'New Inspection'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
     expect(
-      find.text('Finished inspections show here. None have been submitted yet.'),
+      find.text(
+        'Finished inspections show here. None have been submitted yet.',
+      ),
       findsOneWidget,
     );
   });
 
   testWidgets('Builder is not drawn without edit', (tester) async {
-    await _pump(tester, ['inspection.view', 'inspection.create']);
+    await _pump(tester, [
+      'inspection.view',
+      'inspection.create',
+      'inspection.new.view',
+      'inspection.reports.view',
+      'inspection.builder.view',
+    ]);
 
     expect(_chips(tester), ['New Inspection', 'Generated Reports']);
     expect(find.widgetWithText(ChoiceChip, 'Builder'), findsNothing);
+  });
+
+  /// The tab axis, which is not the capability axis.
+  ///
+  /// Jose, 2026-09-17: "i should be able to grant access by sub tab as well".
+  /// This role can do everything - view, create, edit - and simply has not been
+  /// granted the Generated Reports TAB. Before per-tab permissions there was no
+  /// way to express that: the chip was drawn for anybody holding
+  /// `inspection.view`.
+  ///
+  /// The other two chips are asserted PRESENT, not merely the third absent. A
+  /// screen that drew nothing at all would satisfy "Generated Reports is gone"
+  /// while being completely broken.
+  testWidgets('a tab withheld is not drawn, even with every capability', (
+    tester,
+  ) async {
+    await _pump(tester, [
+      'inspection.view',
+      'inspection.create',
+      'inspection.edit',
+      'inspection.new.view',
+      'inspection.builder.view',
+    ]);
+
+    expect(_chips(tester), ['New Inspection', 'Builder']);
+    expect(find.widgetWithText(ChoiceChip, 'Generated Reports'), findsNothing);
   });
 }
 

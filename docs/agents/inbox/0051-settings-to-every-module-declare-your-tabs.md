@@ -427,6 +427,57 @@ grants every tab to every role already holding the module's view, and it is
 runs after your declaration. If your tabs land in a later deploy than that
 migration, copy it with a new timestamp; do not edit the spent one.
 
+**WRITE YOUR OWN COPY ANYWAY, AND DO NOT LET IT RE-DERIVE.** Inspection's
+argument, and it is stronger than the instruction above. 090000 is
+registry-derived AT EXECUTION: run it against a tree that does not yet carry
+your declaration and it grants nothing for your module, marks itself run, and
+never looks again. Your declaration then arrives and every existing role holds
+none of your tab keys — and the client filters on exactly those, so every tab
+vanishes at once, silently, in the direction nobody notices.
+
+Not hypothetical: their declaration was blocked out of main for hours by another
+module's uncommitted lines while 090000 sat Pending and deployable.
+
+So their copy hard-codes its own keys with `insertOrIgnore` rather than reading
+the registry, because **a copy that re-derives inherits the failure it insures
+against.** And they tested it against the PIVOT rather than the console output,
+because a migration that inserts nothing prints the same DONE as one that works.
+
+**CORRECTED by the same session, and it lowers the urgency: a re-deriving copy
+committed IN THE SAME CHANGE as the declaration cannot fail this way**, because
+both are in the same tree on every path git offers. That is a property, not
+timing luck — so the four copies already written do not need rewriting.
+
+What breaks it is later editing: a squash that keeps the migration and drops the
+declaration, a revert of the declaration alone, or somebody marking 090000 run
+by hand. So the cheap check for a module that has already shipped is **"are the
+declaration and the copy in the same commit"**, and the hard-coded form is what
+you want if they are not.
+
+## A dirty shared file blocks everybody's merge, not just yours
+
+`git merge` refuses to touch a file with uncommitted changes. So while any
+session holds `routes/api.php` or `app/Providers/ModuleServiceProvider.php`
+dirty, nobody else can land their tabs — two modules queued behind that today,
+and the deploy desk held five branches for the same reason. **Commit those two
+files promptly rather than across a gate run**; a green suite you are still
+holding is somebody else's blocked merge.
+
+The refusal NAMES the files, so it tells you who to ask. And `git stash` is the
+wrong reach: it stashes the whole shared tree rather than your files, which
+takes every other session's work with it.
+
+## A branch behind main fails peer tests for the wrong reason
+
+Inspection nearly reported having broken three peer suites. Their branch was 58
+commits behind, and the tests passed on main. **The control run is what separates
+staleness from breakage**, and a stale branch's red looks exactly like your
+change's red.
+
+The method, in their words: run the same filter in the PRIMARY tree, which is at
+main, before believing your branch broke anything. "Three peer suites red" is
+the shape to distrust, and it is cheap to check.
+
 The reason this matters more than it looks: a permission split fails silently in
 exactly one direction. Granting too much gets reported by whoever sees a pane
 they should not. NARROWING is somebody opening your module on Thursday to find

@@ -1364,6 +1364,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (_isEdit) _editingBanner(context),
+                    if (!_isEdit) _templateBar(context),
                     _nameStep(context),
                     const SizedBox(height: 24),
                     _triggerStep(context),
@@ -1409,6 +1410,116 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         ],
       ),
     );
+  }
+
+  /// Start from a ready-made rule instead of an empty form.
+  ///
+  /// Jose, 2026-09-17: *"i want to have Templates as well, these will be
+  /// global, with basic actions that you can think of we'll be adding more, so
+  /// people can easily select them and apply them."*
+  ///
+  /// APPLYING ONE SAVES NOTHING. It fills the form in and stops — the person
+  /// still names it, still reads every condition and step, and still presses
+  /// the button. So a template cannot switch anything on behind somebody's
+  /// back, and a badly chosen one costs a glance rather than an incident.
+  ///
+  /// NEW RULES ONLY. On an edit the trigger is fixed for the life of the rule,
+  /// so a control that rewrote it would be offering something the form refuses
+  /// two steps further down.
+  Widget _templateBar(BuildContext context) {
+    if (widget.catalogue.templates.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: SearchPickerField<String>(
+        value: null,
+        label: 'Start from a template',
+        helperText: 'Fills this form in. Nothing is saved until you press the '
+            'button at the bottom, and you can change every part of it first.',
+        helperMaxLines: 3,
+        options: [
+          for (final template in widget.catalogue.templates)
+            SearchOption<String>(
+              value: template['key'] as String,
+              label: template['name'] as String,
+              detail: template['description'] as String?,
+            ),
+        ],
+        onChanged: _busy ? null : _applyTemplate,
+      ),
+    );
+  }
+
+  /// Put a template into the form, replacing whatever is there.
+  ///
+  /// REPLACES rather than merges, and says so by asking first when there is
+  /// anything to lose. A merge would produce a rule that is neither what the
+  /// template says nor what the person wrote, and they would have to read the
+  /// whole form to find out which parts came from where.
+  Future<void> _applyTemplate(String? key) async {
+    if (key == null) return;
+
+    final template = widget.catalogue.templates
+        .where((one) => one['key'] == key)
+        .firstOrNull;
+
+    if (template == null) return;
+
+    final hasWork = _name.text.trim().isNotEmpty ||
+        _conditions.isNotEmpty ||
+        _actions.isNotEmpty;
+
+    if (hasWork) {
+      final replace = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Replace what you have?'),
+          content: Text(
+            'Starting from "${template['name']}" clears the name, the '
+            'conditions and the steps you have here now.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Keep mine'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Use the template'),
+            ),
+          ],
+        ),
+      );
+
+      if (replace != true || !mounted) return;
+    }
+
+    setState(() {
+      _name.text = template['name'] as String;
+      _description.text = (template['description'] as String?) ?? '';
+      _trigger = template['trigger_key'] as String?;
+
+      for (final row in _conditions) {
+        row.dispose();
+      }
+      _conditions.clear();
+
+      for (final row in _actions) {
+        row.dispose();
+      }
+      _actions.clear();
+    });
+
+    // AFTER the clear, and through the same readers a saved rule goes through:
+    // a second way of turning stored JSON into rows is a second thing to keep
+    // in step with the wire, and it would drift on the first parameter either
+    // of them gained.
+    _adoptConditions(template['conditions']);
+    _adoptActions(template['actions']);
+
+    if (mounted) setState(() {});
+
+    _loadTriggerFields();
   }
 
   Widget _nameStep(BuildContext context) {

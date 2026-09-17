@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "flutter_window.h"
+#include "win32_window.h"
 #include "utils.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -37,10 +38,25 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     // title, because every Flutter desktop app on the machine shares the class.
     HWND existing = ::FindWindowW(L"FLUTTER_RUNNER_WIN32_WINDOW", L"EzBizi");
     if (existing != nullptr) {
-      if (::IsIconic(existing)) {
-        ::ShowWindow(existing, SW_RESTORE);
-      }
-      ::SetForegroundWindow(existing);
+      /*
+       * Ask the running copy to show itself, rather than showing it from here.
+       *
+       * Jose, 2026-09-17: with the window CLOSED to the tray, clicking the
+       * taskbar button did nothing and only the notification-area icon would
+       * bring the app back. This is why. Close-to-tray hides the window
+       * (WM_CLOSE -> hide, win32_window.cpp), so it is NOT VISIBLE and NOT
+       * ICONIC -- and what stood here restored an iconic window and nothing
+       * else, then called SetForegroundWindow on a window that cannot be
+       * foregrounded because it is invisible. Both calls succeeded and the
+       * app stayed hidden.
+       *
+       * The fix is not the missing SW_SHOW. ShowFromTray() already does all
+       * three steps in the right order, and the tray menu has been using it
+       * the whole time; this was a SECOND copy of that sequence, in another
+       * process, with one line missing. So post the command instead and let
+       * the owning process run the one path, which cannot drift from itself.
+       */
+      ::PostMessageW(existing, WM_COMMAND, Win32Window::kCommandShowFromTray, 0);
     }
     ::CloseHandle(instance_mutex);
     ::CoUninitialize();

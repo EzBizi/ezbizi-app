@@ -177,4 +177,43 @@ class ServiceTabPermissionsTest extends TestCase
             $this->assertTrue($role->hasPermission('services.settings.view'));
         });
     }
+    /**
+     * And nobody GAINS one either — the direction that does not get reported.
+     *
+     * `TabDefinition::action()` falls back to `"{key}.view"`, so a tab that
+     * declares an `action:` of its own names a grant the module ALREADY had.
+     * Training is the live case on main: `action: 'view'`, `'monitor'`,
+     * `'manage'` are three deliberate grants, and `manage` is the authoring
+     * surface. An unguarded sweep would hand it to every learner.
+     *
+     * Found by the deploy desk before the cut, not by this suite — which is
+     * why the assertion is here now: the next person to copy this migration
+     * gets a red test instead of a repeat.
+     */
+    public function test_a_tab_naming_an_existing_action_is_never_widened(): void
+    {
+        [$tenant, $user] = $this->tenantWith(['services.view', 'training.view']);
+
+        $this->inTenant($tenant['org'], function () use ($user) {
+            $role = $user->role;
+
+            $migration = require base_path(
+                'database/migrations/'
+                .'2026_09_17_183000_grant_the_services_chips_to_roles_that_had_them.php',
+            );
+            $migration->up();
+
+            $role = $role->fresh();
+
+            // Positive control FIRST: an inert migration — one that widened
+            // nothing because it errored, skipped every module, or found no
+            // roles — would satisfy the refusals below while doing nothing.
+            $this->assertTrue($role->hasPermission('services.catalogue.view'));
+
+            // Training's Learn tab declares `action: 'view'`, so the only
+            // training key this role should hold is the one it came in with.
+            $this->assertFalse($role->hasPermission('training.monitor'));
+            $this->assertFalse($role->hasPermission('training.manage'));
+        });
+    }
 }
