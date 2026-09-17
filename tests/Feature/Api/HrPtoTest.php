@@ -61,7 +61,7 @@ class HrPtoTest extends TestCase
         Carbon::setTestNow('2026-09-17 12:00:00');
 
         $t = $this->provisionTenant('Alpha');
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
 
         $technician = $this->userWithRole($t, 'Technician', ['customers.view']);
         $this->started($t, $technician->getKey(), '2026-01-06');
@@ -73,7 +73,7 @@ class HrPtoTest extends TestCase
 
         $this->assertSame($technician->getKey(), $body['me']);
         $this->assertCount(1, $body['data'], 'They were shown somebody else, or nobody.');
-        $this->assertSame(6, $body['data'][0]['days_per_year']);
+        $this->assertSame(6, $body['data'][0]['allowance']);
         $this->assertSame('2026-04-06', $body['data'][0]['eligible_from']);
         $this->assertTrue($body['data'][0]['eligible']);
     }
@@ -87,7 +87,7 @@ class HrPtoTest extends TestCase
     public function test_that_person_is_not_shown_anybody_else(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6]);
 
         $technician = $this->userWithRole($t, 'Technician', ['customers.view']);
 
@@ -103,7 +103,7 @@ class HrPtoTest extends TestCase
     public function test_hr_view_adds_everybody_in_reach(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6]);
 
         $this->userWithRole($t, 'Technician', ['customers.view']);
 
@@ -129,15 +129,54 @@ class HrPtoTest extends TestCase
         $body = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json();
 
         $this->assertFalse($body['policy']['enabled']);
-        $this->assertSame(0, $body['policy']['days_per_year']);
+        $this->assertSame(0, $body['policy']['allowance']);
 
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
 
         $body = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json();
 
         $this->assertTrue($body['policy']['enabled']);
-        $this->assertSame(6, $body['policy']['days_per_year']);
-        $this->assertSame(90, $body['policy']['waiting_days']);
+        $this->assertSame(6, $body['policy']['allowance']);
+        $this->assertSame(90, $body['policy']['waiting']);
+    }
+
+    /**
+     * Both numbers carry their unit to the screen, unconverted.
+     *
+     * Without the unit the number is not an answer: "1" is a day a month or a
+     * day a year, and "3" is three days or three months. The screen cannot
+     * work either out, and a default of days-and-years would be right for most
+     * companies and silently wrong for the ones that accrue.
+     */
+    public function test_the_units_travel_with_the_numbers(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->policy($t, [
+            'pto.enabled' => true,
+            'pto.allowance' => 1,
+            'pto.allowance_period' => 'month',
+            'pto.waiting' => 3,
+            'pto.waiting_unit' => 'month',
+        ]);
+
+        $body = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json();
+
+        $this->assertSame('month', $body['policy']['allowance_period']);
+        $this->assertSame('month', $body['policy']['waiting_unit']);
+        $this->assertSame(1, $body['policy']['allowance'], 'Twelve would be the server annualising it.');
+        $this->assertSame(3, $body['policy']['waiting'], 'Ninety would be the server converting months to days.');
+    }
+
+    /** The policy block carries the defaults when nothing was chosen. */
+    public function test_the_units_default_to_days_and_years(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6]);
+
+        $body = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json();
+
+        $this->assertSame('year', $body['policy']['allowance_period']);
+        $this->assertSame('day', $body['policy']['waiting_unit']);
     }
 
     /**
@@ -149,7 +188,7 @@ class HrPtoTest extends TestCase
     public function test_somebody_with_no_start_date_gets_nulls_rather_than_a_guess(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6, 'pto.waiting_days' => 90]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6, 'pto.waiting' => 90]);
 
         $row = collect(
             $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json('data')
@@ -170,7 +209,7 @@ class HrPtoTest extends TestCase
     public function test_taken_is_unknown_rather_than_zero(): void
     {
         $t = $this->provisionTenant('Alpha');
-        $this->policy($t, ['pto.enabled' => true, 'pto.days_per_year' => 6]);
+        $this->policy($t, ['pto.enabled' => true, 'pto.allowance' => 6]);
 
         $row = $this->signedInAs($t['admin'])->getJson('/api/v1/hr/pto')->assertOk()->json('data.0');
 

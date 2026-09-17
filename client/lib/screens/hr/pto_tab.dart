@@ -213,12 +213,45 @@ class _PtoTabState extends State<PtoTab> {
   /// The list's one-line version. It must not say a date is known when it is
   /// not — the panel explains, this only has to be true.
   String _shortState(Map<String, dynamic> person) {
-    final days = person['days_per_year'] as int? ?? 0;
+    final days = _allowance(person);
 
+    if (person['eligible'] == true) return days;
     if (person['started_on'] == null) return 'Start date unknown';
-    if (person['eligible'] == true) return '$days days';
 
-    return '$days days, not yet';
+    return '$days, not yet';
+  }
+
+  /// "6 days a year" — the period is part of the allowance, not decoration.
+  ///
+  /// Six days a year and half a day a month are different sentences about the
+  /// same policy, and the number alone is only an answer when everybody
+  /// already knows which one their company wrote down.
+  String _allowance(Map<String, dynamic> person) {
+    final days = person['allowance'] as int? ?? 0;
+    final period = switch (_policy['allowance_period']) {
+      'week' => 'a week',
+      'month' => 'a month',
+      _ => 'a year',
+    };
+
+    return '${days == 1 ? '1 day' : '$days days'} $period';
+  }
+
+  /// "90 days", "3 months" — said the way the setting says it.
+  ///
+  /// Never converted to days: three months from 30 November is 28 February and
+  /// ninety days is 1 March in three years out of four, so a conversion here
+  /// would hand somebody a wrong date about their own leave.
+  String _waitingPhrase() {
+    final n = _policy['waiting'] as int? ?? 0;
+    final word = switch (_policy['waiting_unit']) {
+      'week' => 'week',
+      'month' => 'month',
+      'year' => 'year',
+      _ => 'day',
+    };
+
+    return '$n ${n == 1 ? word : '${word}s'}';
   }
 
   // ── phone 4: you first, everybody after ──────────────────────────
@@ -271,7 +304,6 @@ class _PtoTabState extends State<PtoTab> {
     String? heading,
   }) {
     final theme = Theme.of(context);
-    final days = person['days_per_year'] as int? ?? 0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,7 +313,7 @@ class _PtoTabState extends State<PtoTab> {
           const SizedBox(height: 12),
         ],
         Text(
-          days == 1 ? '1 day' : '$days days',
+          _allowance(person),
           // headlineMedium, not displaySmall. A TextTheme slot theme.dart
           // leaves out does NOT fall back to Material's default — it renders
           // with no size and no weight at all, at whatever the surrounding
@@ -319,11 +351,24 @@ class _PtoTabState extends State<PtoTab> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    final waiting = _policy['waiting_days'] as int? ?? 0;
+    final waiting = _waitingPhrase();
+    final noWait = (_policy['waiting'] as int? ?? 0) == 0;
     final unknown = person['started_on'] == null;
     final eligible = person['eligible'] == true;
 
-    final (String value, String why) = switch ((unknown, eligible)) {
+    // Eligible is asked FIRST, because a policy with no waiting period makes
+    // the unknown start date stop mattering: there is nothing to count from
+    // when there is nothing to count. Asking `unknown` first would tell
+    // everybody who predates the employment record that we cannot say, about a
+    // policy that opens on day one for anybody.
+    final (String value, String why) = switch ((eligible, unknown)) {
+      (true, _) => (
+        'Now',
+        noWait
+            ? 'Paid time off can be used from somebody’s first day here.'
+            : 'Paid time off becomes available $waiting after somebody starts '
+                  'here, and that has passed.',
+      ),
       // NOT "somebody in HR can add it". There is no way to record a start
       // date that already happened: both writers of a `started` employment
       // event stamp today, so the only action resembling that advice —
@@ -331,25 +376,21 @@ class _PtoTabState extends State<PtoTab> {
       // ninety days out and fire `user.activated` on the way past. UI/UX caught
       // that in a sentence I proposed; it explains instead of pointing at a
       // door that does harm.
-      (true, _) => (
-        'We cannot tell you',
-        'Paid time off becomes available $waiting days after somebody starts '
-            'here, and there is no record of when you started — so any date '
-            'would be a guess. Start dates have only been kept since this was '
-            'added, so people who were already here do not have one.',
-      ),
       (false, true) => (
-        'Now',
-        'Paid time off becomes available $waiting days after somebody starts '
-            'here, and that has passed.',
+        'We cannot tell you',
+        'Paid time off becomes available $waiting after somebody starts here, '
+            'and there is no record of when you started — so any date would be '
+            'a guess. Start dates have only been kept since this was added, so '
+            'people who were already here do not have one.',
       ),
       (false, false) => (
         _date(person['eligible_from']),
-        // The NUMBER, never "three months" — 90 is the setting and "three
-        // months" is a description of it, so the sentence cannot go stale when
-        // somebody changes it.
-        'Paid time off becomes available $waiting days after somebody starts '
-            'here. You started on ${_date(person['started_on'])}.',
+        // The SETTING's own words — "90 days" or "3 months", whichever was
+        // chosen — never a phrase describing it. A hardcoded "three months"
+        // would go stale the moment somebody changed the number, and would
+        // then be wrong in both directions at once.
+        'Paid time off becomes available $waiting after somebody starts here. '
+            'You started on ${_date(person['started_on'])}.',
       ),
     };
 
