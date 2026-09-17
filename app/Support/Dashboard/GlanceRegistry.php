@@ -101,9 +101,22 @@ class GlanceRegistry
          * box would therefore have to make that call on every home-screen
          * load, for every viewer, to summarise numbers nobody asked for yet.
          *
-         * So this is the permanent answer and not a queue entry. It stops
-         * being true the day a period is cached, which is the same line that
-         * would make it an automation subject.
+         * I wrote that as "the permanent answer and not a queue entry", and
+         * that part was not mine to decide. Whether a business owner wants a
+         * profit figure on the home screen is REPORTS' call and Jose's, not
+         * the dashboard's — I own the surface, not what a module puts on it.
+         * The reasoning above is offered, not imposed.
+         *
+         * THIS ENTRY DOES NOT BLOCK A REAL GLANCE. A live class registered on
+         * this key wins over the placeholder without anybody removing it —
+         * `test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key`
+         * pins that. It exists so a module can reach the sidebar without the
+         * completeness test holding a release.
+         *
+         * The one case where it must come out: if Reports decides Profit &
+         * Loss should NOT be its own sidebar module, this entry and its ORDER
+         * line go in the SAME commit, or the completeness test fails the
+         * other way round — a glance for a tab that no longer exists.
          */
         'profit_loss' => [
             'label' => 'Profit & Loss',
