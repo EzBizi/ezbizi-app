@@ -30,7 +30,7 @@ class ReportsModuleTest extends TestCase
         $registry = app(ModuleRegistry::class);
 
         $this->assertSame(
-            ['ads_performance'],
+            ['ads_performance', 'profit_loss'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
