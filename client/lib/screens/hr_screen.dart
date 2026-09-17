@@ -58,7 +58,7 @@ class HrScreen extends StatefulWidget {
 }
 
 class _HrScreenState extends State<HrScreen> {
-  /// Dashboard's place in [_tabs] below, and where this screen opens.
+  /// Dashboard's place in [_declaredTabs] below, and where this screen opens.
   ///
   /// The rule has always been "the first tab in the owner's order that actually
   /// does something", and the landing tab has moved twice under it: Records
@@ -288,7 +288,7 @@ class _HrScreenState extends State<HrScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_tabs.isEmpty) return _noTabGranted(context);
+    if (_shownTabs.isEmpty) return _noTabGranted(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
