@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Composing a report (spec 2026-09-10, Jose's option 1).
 ///
@@ -365,14 +366,19 @@ class _ReportBuilderState extends State<ReportBuilder> {
             child: Text('${filter.resource} · ${filter.column}'),
           ),
           const SizedBox(width: 12),
-          DropdownButton<String>(
-            value: filter.op,
-            items: [
-              for (final entry in _operators.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-            ],
-            onChanged: (value) =>
-                setState(() => _filters[i] = filter.withOp(value ?? 'eq')),
+          SizedBox(
+            width: 170,
+            child: SearchPickerField<String>(
+              value: filter.op,
+              border: InputBorder.none,
+              isDense: true,
+              options: [
+                for (final entry in _operators.entries)
+                  SearchOption(value: entry.key, label: entry.value),
+              ],
+              onChanged: (value) =>
+                  setState(() => _filters[i] = filter.withOp(value ?? 'eq')),
+            ),
           ),
           const SizedBox(width: 12),
           SizedBox(

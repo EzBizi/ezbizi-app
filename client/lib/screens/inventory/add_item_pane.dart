@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'item_pane.dart';
 
 /// Add is the same 75% pane as an item, not a modal.
@@ -130,24 +131,21 @@ class _AddItemPaneState extends State<AddItemPane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (_showCompanyField) ...[
-                  DropdownButtonFormField<String>(
-                    initialValue: _companyId ?? inventoryOrgValue,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Company',
-                      helperText: _companyId == null && _atOrganization
-                          ? '$inventoryGeneralLabel — the whole group can see it.'
-                          : null,
-                      helperMaxLines: 3,
-                    ),
-                    items: [
+                  SearchPickerField<String>(
+                    value: _companyId ?? inventoryOrgValue,
+                    label: 'Company',
+                    helperText: _companyId == null && _atOrganization
+                        ? '$inventoryGeneralLabel — the whole group can see it.'
+                        : null,
+                    helperMaxLines: 3,
+                    options: [
                       if (_atOrganization)
-                        DropdownMenuItem(
+                        SearchOption(
                           value: inventoryOrgValue,
-                          child: Text(_me.organization.name),
+                          label: _me.organization.name,
                         ),
                       for (final c in _me.companiesInView)
-                        DropdownMenuItem(value: c.id, child: Text(c.name)),
+                        SearchOption(value: c.id, label: c.name),
                     ],
                     onChanged: _busy
                         ? null
@@ -159,29 +157,27 @@ class _AddItemPaneState extends State<AddItemPane> {
                   const SizedBox(height: 12),
                 ],
                 if (_showFranchiseField)
-                  DropdownButtonFormField<String>(
+                  SearchPickerField<String>(
                     key: ValueKey(_companyId),
-                    initialValue: _franchiseId ?? inventoryGeneralValue,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: _me.organization.franchiseLabel,
-                      helperText:
-                          '$inventoryGeneralLabel is visible to everyone who can see this company.',
-                      helperMaxLines: 3,
-                    ),
-                    items: [
-                      const DropdownMenuItem(
+                    value: _franchiseId ?? inventoryGeneralValue,
+                    label: _me.organization.franchiseLabel,
+                    helperText:
+                        '$inventoryGeneralLabel is visible to everyone who can see this company.',
+                    helperMaxLines: 3,
+                    options: [
+                      const SearchOption(
                         value: inventoryGeneralValue,
-                        child: Text(inventoryGeneralLabel),
+                        label: inventoryGeneralLabel,
                       ),
                       for (final f in _places)
-                        DropdownMenuItem(value: f.id, child: Text(f.name)),
+                        SearchOption(value: f.id, label: f.name),
                     ],
                     onChanged: _busy
                         ? null
                         : (v) => setState(
-                            () => _franchiseId =
-                                v == inventoryGeneralValue ? null : v,
+                            () => _franchiseId = v == inventoryGeneralValue
+                                ? null
+                                : v,
                           ),
                   ),
                 const SizedBox(height: 12),
@@ -198,13 +194,12 @@ class _AddItemPaneState extends State<AddItemPane> {
                   decoration: const InputDecoration(labelText: 'SKU'),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _unit,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Unit'),
-                  items: [
+                SearchPickerField<String>(
+                  value: _unit,
+                  label: 'Unit',
+                  options: [
                     for (final u in inventoryUnits)
-                      DropdownMenuItem(value: u.$1, child: Text(u.$2)),
+                      SearchOption(value: u.$1, label: u.$2),
                   ],
                   onChanged: _busy
                       ? null

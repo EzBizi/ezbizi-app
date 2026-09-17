@@ -4,7 +4,11 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
 use Illuminate\Support\Str;
+use App\Models\Company;
+use App\Models\Franchise;
 use App\Models\Automation;
+use App\Support\Automations\EventScope;
+use App\Support\Scoping\ViewScope;
 use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\AutomationEvent;
@@ -440,6 +444,29 @@ class AutomationsController extends Controller
                     ->map(fn (SavedReport $r) => ['id' => $r->id, 'label' => $r->name])
                     ->all(),
 
+                /*
+                 * WHERE A RULE CAN BE POINTED, in this person's own reach.
+                 *
+                 * id/label like every other list here, and the id is the stored
+                 * shape — `organization`, `company:<uuid>`, `franchise:<uuid>` —
+                 * so the builder posts back what it was given rather than
+                 * assembling a scope out of two fields and getting the pairing
+                 * wrong. `reachableCompanies` and `reachableFranchises` are §4's
+                 * own answer, so somebody cannot point a rule at a place they
+                 * cannot see.
+                 */
+                'places' => array_merge(
+                    [['id' => 'organization', 'label' => 'Everywhere in this business']],
+                    $request->user()->reachableCompanies()
+                        ->sortBy('name')
+                        ->map(fn (Company $c) => ['id' => 'company:'.$c->id, 'label' => $c->name.' and everything under it'])
+                        ->values()->all(),
+                    $request->user()->reachableFranchises()
+                        ->sortBy('name')
+                        ->map(fn (Franchise $f) => ['id' => 'franchise:'.$f->id, 'label' => $f->name])
+                        ->values()->all(),
+                ),
+
                 'roles' => Role::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -817,11 +844,43 @@ class AutomationsController extends Controller
     {
         $this->authorize('viewAny', Automation::class);
 
+        /*
+         * WHAT REACHES THIS VIEW, which is not the same as what exists.
+         *
+         * Jose was standing in one company and reading another company's rule:
+         * *"it's applying for everything and im seeing it on any company"*. The
+         * list showed every rule in the organization, so a franchise manager saw
+         * rules that will never run on their work and could switch them off for
+         * everybody.
+         *
+         * Asked through the SAME `coversScope` the engine asks, from the other
+         * end — the engine holds an event and wants its rules, this holds a view
+         * and wants the rules that reach it. A second derivation here would
+         * eventually show a rule that does not run, or hide one that does, and
+         * neither would look like a bug from the screen.
+         *
+         * An organization-wide rule stays visible everywhere, because it DOES
+         * act there; the tag is what says so.
+         */
+        $view = ViewScope::forUser($request->user());
+        $chain = EventScope::chainFor(
+            $view->type === ViewScope::ORGANIZATION ? null : $view->type,
+            $view->id,
+        );
+
         $automations = Automation::query()
             ->with('activeVersion')
             ->withCount(['runs'])
             ->orderBy('name')
             ->get()
+            ->filter(fn (Automation $a) => $view->type === ViewScope::ORGANIZATION
+                // AT THE TOP, EVERYTHING IS LISTED — including a rule for one
+                // franchise, which does not "reach" the organization view and
+                // would vanish under the same test the narrower views use. The
+                // person standing at the organization is the one who has to be
+                // able to find every rule in the business.
+                || $a->coversScope($view->type, $view->id, companyChain: $chain))
+            ->values()
             ->map(fn (Automation $a) => $this->present($a));
 
         return response()->json(['data' => $automations]);
@@ -860,13 +919,43 @@ class AutomationsController extends Controller
 
         $input = $this->validated($request);
 
-        $automation = DB::transaction(function () use ($input, $request) {
+        /*
+         * A RULE BELONGS WHERE IT WAS MADE.
+         *
+         * Jose, 2026-09-17: *"i made an automation for a-1chimney, but it's
+         * applying for everything and im seeing it on any company"*. The engine
+         * was never the problem — `coversScope` has honoured company and
+         * franchise since it was written. What was missing is that nothing ever
+         * SET a scope: the builder does not send one, so every rule was stored
+         * with a null scope, which means organization-wide, which means every
+         * company in the business.
+         *
+         * So the default is now the view the person is standing in. Somebody
+         * looking at one franchise who writes a rule has said which franchise
+         * it is for by being there — the same way a job they create belongs to
+         * the place they made it, rather than to the whole organization.
+         *
+         * AN EXPLICIT SCOPE STILL WINS, including an explicit null: the key
+         * being PRESENT is what distinguishes "make this one apply everywhere"
+         * from "the builder said nothing".
+         */
+        $view = ViewScope::forUser($request->user());
+
+        $scopeType = array_key_exists('scope_type', $input)
+            ? $input['scope_type']
+            : ($view->type === ViewScope::ORGANIZATION ? null : $view->type);
+
+        $scopeId = array_key_exists('scope_type', $input)
+            ? ($input['scope_id'] ?? null)
+            : ($view->type === ViewScope::ORGANIZATION ? null : $view->id);
+
+        $automation = DB::transaction(function () use ($input, $request, $scopeType, $scopeId) {
             $automation = Automation::create([
                 'name' => $input['name'],
                 'description' => $input['description'] ?? null,
                 'trigger_key' => $input['trigger_key'],
-                'scope_type' => $input['scope_type'] ?? null,
-                'scope_id' => $input['scope_id'] ?? null,
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
                 // Off until somebody switches it on. A rule that starts firing
                 // the instant it is saved will fire before it has been read back.
                 'is_active' => false,
@@ -1908,6 +1997,29 @@ class AutomationsController extends Controller
         }, $actions);
     }
 
+    /**
+     * What to write on a rule's chip: a place, or "Everywhere".
+     *
+     * A DELETED COMPANY STILL GETS A WORD. `scope_id` outlives the row it
+     * points at, and a chip reading "Company" with no name is at least honest;
+     * an empty chip reads as an organization-wide rule, which is the one thing
+     * it definitely is not.
+     */
+    private function scopeLabel(Automation $automation): string
+    {
+        if ($automation->scope_type === null) {
+            return 'Everywhere';
+        }
+
+        $name = $automation->scope_type === 'company'
+            ? Company::query()->whereKey($automation->scope_id)->value('name')
+            : Franchise::query()->whereKey($automation->scope_id)->value('name');
+
+        return $name ?? ($automation->scope_type === 'company'
+            ? 'A company that no longer exists'
+            : 'A place that no longer exists');
+    }
+
     private function present(Automation $automation, bool $detailed = false): array
     {
         $base = [
@@ -1920,6 +2032,11 @@ class AutomationsController extends Controller
             'scope' => [
                 'type' => $automation->scope_type,
                 'id' => $automation->scope_id,
+                // THE NAME, because an id on a chip tells nobody anything. At
+                // the organization every rule in the business is listed, so the
+                // only thing separating one company's rule from another's is
+                // this word.
+                'label' => $this->scopeLabel($automation),
             ],
             // Surfaced rather than buried: a rule that switched itself off after
             // repeated failure must say so where somebody will see it.

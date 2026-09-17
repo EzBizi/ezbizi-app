@@ -520,7 +520,7 @@ class HrInvitationsTest extends TestCase
         });
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.create', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
             onlyAt: $alpha['franchise'],
         );
 
@@ -547,7 +547,7 @@ class HrInvitationsTest extends TestCase
         $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.create', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
             onlyAt: $alpha['franchise'],
         );
 
@@ -565,7 +565,7 @@ class HrInvitationsTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
 
-        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.create']);
+        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create']);
         $adminRole = $this->inTenant($alpha['org'], fn () => $alpha['admin']->role);
 
         // Handing out Administrator grants everything without naming anything —
@@ -584,7 +584,7 @@ class HrInvitationsTest extends TestCase
         $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.create', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
             onlyAt: $alpha['franchise'],
         );
 
@@ -629,7 +629,7 @@ class HrInvitationsTest extends TestCase
             'role_id' => $role->id, 'scope_id' => $elsewhere->id]);
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'customers.view'], onlyAt: $alpha['franchise'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'customers.view'], onlyAt: $alpha['franchise'],
         );
 
         $emails = $this->signedInAs($manager)->getJson('/api/v1/hr/invitations')
@@ -660,7 +660,7 @@ class HrInvitationsTest extends TestCase
         $role    = $this->roleIn($alpha, 'Dispatcher', ['customers.view', 'customers.edit']);
         $manager = $this->userWithRole(
             $alpha, 'Branch Manager',
-            ['hr.view', 'hr.create', 'customers.view', 'customers.edit'],
+            ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view', 'customers.edit'],
         );
 
         $token = $this->inviteAs($manager, $alpha, [
@@ -671,7 +671,7 @@ class HrInvitationsTest extends TestCase
         // carries — so they could not send this invitation today. The
         // organization can still offer it, which is the question that counts.
         $this->inTenant($alpha['org'], fn () => $manager->role->syncPermissionKeys(
-            ['hr.view', 'hr.create', 'customers.view'],
+            ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
         ));
 
         $this->acceptWith($token, ['password' => 'a-real-password'])->assertCreated();
@@ -691,7 +691,7 @@ class HrInvitationsTest extends TestCase
         $alpha   = $this->provisionTenant('Alpha');
         $role    = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.create', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
         );
 
         $token = $this->inviteAs($manager, $alpha, [
@@ -1057,7 +1057,7 @@ class HrInvitationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
 
-        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view', 'hr.invitations.view']);
 
         $reader->refresh();
 
@@ -1313,7 +1313,7 @@ class HrInvitationsTest extends TestCase
         $role  = $this->roleIn($alpha, 'Dispatcher', ['customers.view']);
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.create', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.invitations.view', 'hr.create', 'customers.view'],
         );
 
         // Invited at organization level, which the manager can reach today.

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Numbers › Edit — the settings Twilio owns.
 ///
@@ -204,24 +206,14 @@ class _CarrierSettingsState extends State<CarrierSettings> {
         ),
 
         const SizedBox(height: 12),
-        DropdownButtonFormField<String?>(
-          initialValue:
-              _addresses.any((a) => a.sid == _addressSid) ? _addressSid : null,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Emergency address',
-            border: OutlineInputBorder(),
-          ),
-          items: [
-            const DropdownMenuItem<String?>(
-              value: null,
-              child: Text('None — 911 will not work'),
-            ),
+        SearchPickerField<String?>(
+          value: _addresses.any((a) => a.sid == _addressSid) ? _addressSid : null,
+          label: 'Emergency address',
+          border: OutlineInputBorder(),
+          options: [
+            const SearchOption(value: null, label: 'None — 911 will not work'),
             for (final address in _addresses)
-              DropdownMenuItem<String?>(
-                value: address.sid,
-                child: Text(address.label, overflow: TextOverflow.ellipsis),
-              ),
+              SearchOption(value: address.sid, label: address.label),
           ],
           onChanged: (sid) {
             setState(() => _addressSid = sid);

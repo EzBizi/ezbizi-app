@@ -192,7 +192,15 @@ final class PageFields
                     ? 'Shared text. The same on every page that uses it.'
                     : 'Free text for '.($path === '' ? 'this site' : $path).'.',
                 'requirement' => SeoFields::OPTIONAL,
-                'section' => SeoFields::GENERAL,
+                /*
+                 * Never GENERAL. These were sectioned general when they were
+                 * written, which put every page's text fields onto the SITE's
+                 * screen — Jose opened General and found a hundred boxes
+                 * belonging to pages he was not looking at. General is a
+                 * section with a tab; these two are sections with none, so the
+                 * only screens that draw them are the ones that ask by name.
+                 */
+                'section' => $template ? SeoFields::TEMPLATE : SeoFields::PAGE,
                 'shortcode' => '[ezbizi_'.$key.']',
                 /*
                  * The page it belongs to, so a screen can group them without

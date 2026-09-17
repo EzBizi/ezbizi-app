@@ -8,6 +8,47 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0238',
+      date: '17 Sep 2026',
+      items: [
+        'Typing into a website form question keeps the letters in that question. Every keystroke used to rebuild the box, so the rest of what you typed landed in another field.',
+        'Every popup dropdown in the app is now a list you can search. On short lists it still just opens, so nothing asks you to type where you could point.',
+        'Inspections now have a Flow view beside the phone preview in the Builder, drawn the same way as the call flow chart. It shows the order a technician walks the screens in, and marks any screen that can never be shown - a condition asking about an answer that has not been given yet looks identical to a working one in the list.',
+        'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
+        'A role can be given single tabs inside a module rather than the whole module. Human Resources is the first, and nobody loses a tab they could open before.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0237',
+      date: '17 Sep 2026',
+      items: [
+        'Notifications work on iPhone. EzBizi never asked for permission, so it was not even listed under Settings then Notifications, and everything behind that was working and invisible.',
+        'Google Ads campaigns can be filtered to Local Services or Search, beside Active and Paused.',
+        'Another thirty-four screens moved off the old popup dropdown to a list you can search.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0236',
+      date: '17 Sep 2026',
+      items: [
+        'A website General tab shows the website settings again. It had filled with a text box for every field on every page, plus Group, Author and Category, which mean nothing for a whole site.',
+        'Three website fields you could not see before: City link, State link and Website address.',
+        'Paid time off. Turn it on for the business, set how many days a year, how long somebody waits before using them, and whether unused days carry over. Everybody can see their own balance; seeing anybody else needs the HR permission. Off until you set it up, so nothing changes for anyone today.',
+        'Twenty screens moved off the old popup dropdown to a list you can search.',
+        'A desktop notification now carries its own icon rather than looking one up.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0235',
+      date: '17 Sep 2026',
+      items: [
+        'An inspection is drawn as the shape somebody walks through, rather than as a list of questions.',
+        'Emailing a report to a customer is back, rebuilt rather than restored.',
+        'A picker you can search, on the screen that needed it.',
+        'Work Hours reads in Spanish everywhere, including the week arrows and the still-clocked-in row.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0234',
       date: '17 Sep 2026',
       items: [

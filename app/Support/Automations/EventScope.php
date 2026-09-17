@@ -22,16 +22,35 @@ final class EventScope
                 }
             }
         }
+        return ['type' => $type, 'id' => $id, 'company_chain' => self::chainFor($type, $id)];
+    }
+
+    /**
+     * Every company above a place, nearest first.
+     *
+     * Split out because the RULE LIST asks the same question the engine asks,
+     * from the other end: the engine holds an event and wants the rules that
+     * cover it, the list holds a view and wants the rules that reach it. Both
+     * answers turn on this walk, and two copies of it would drift into a list
+     * showing rules that do not run and hiding rules that do.
+     *
+     * @return list<string>
+     */
+    public static function chainFor(?string $type, ?string $id): array
+    {
         $company = match ($type) {
             'company' => Company::query()->find($id),
             'franchise' => Franchise::query()->find($id)?->company,
             default => null,
         };
+
         $chain = [];
+
         while ($company !== null && ! in_array($company->getKey(), $chain, true)) {
             $chain[] = $company->getKey();
             $company = $company->parent;
         }
-        return ['type' => $type, 'id' => $id, 'company_chain' => $chain];
+
+        return $chain;
     }
 }

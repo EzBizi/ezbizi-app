@@ -150,6 +150,20 @@ void main() {
         'all_conversions': 0,
         'cost': 0,
       },
+      // Google generates this name; the word in it is the only thing that says
+      // what kind of campaign it is. Capitalised exactly as Google writes it,
+      // so a case-sensitive match would pass here and fail on real data typed
+      // any other way.
+      {
+        'id': '333',
+        'name': 'LocalServicesCampaign:SystemGenerated:00062050e55e652b',
+        'status': 'ENABLED',
+        'clicks': 43,
+        'impressions': 251,
+        'conversions': 2,
+        'all_conversions': 2,
+        'cost': 60.92,
+      },
     ],
   };
 
@@ -237,6 +251,107 @@ void main() {
     // A round number rendered as money. Had the widget cast it to double it
     // would have thrown before reaching here.
     expect(find.text('900.00 USD'), findsOneWidget);
+  });
+
+  /// LS ADS / SEARCH ADS. Jose, 2026-09-17.
+  ///
+  /// Google names every Local Services campaign
+  /// `LocalServicesCampaign:SystemGenerated:...`, and there is no field on the
+  /// campaign saying which kind it is — the name IS the type. So the split is a
+  /// string match, and the test that matters is the one that proves each chip
+  /// leaves the OTHER kind out rather than merely showing its own.
+  testWidgets('LS Ads shows only the Local Services campaigns', (tester) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    // The control: all three kinds are there before anything is filtered.
+    expect(find.textContaining('LocalServicesCampaign'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Search'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('ads-type-local_services')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('LocalServicesCampaign'), findsOneWidget);
+    expect(
+      find.text('Chimney - Cleveland - Search'),
+      findsNothing,
+      reason: 'LS Ads must drop the Search campaigns, not merely include its own',
+    );
+    expect(find.text('Chimney - Cleveland - Display'), findsNothing);
+  });
+
+  testWidgets('Search Ads shows everything that is not Local Services', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ads-type-search')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chimney - Cleveland - Search'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+    expect(
+      find.textContaining('LocalServicesCampaign'),
+      findsNothing,
+      reason: 'Search Ads is defined as the rest, so the generated ones must go',
+    );
+  });
+
+  /// BOTH SELECTED IS ALL OF THEM, not none.
+  ///
+  /// The two chips partition the list, so asking for both is asking for the
+  /// whole thing. A pair of booleans would have needed a fourth case here and
+  /// somebody would have picked the wrong one; a set makes the right answer the
+  /// only one that can happen.
+  testWidgets('selecting both kinds shows every campaign', (tester) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ads-type-local_services')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-type-search')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('LocalServicesCampaign'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Search'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+  });
+
+  /// The kind and the state are different questions and must combine.
+  ///
+  /// "What are my Search ads doing while Local Services is paused" is the
+  /// question a business actually asks, and it needs both filters at once. If
+  /// these shared one set of chips it could not be expressed.
+  testWidgets('the kind filter combines with the status filter', (
+    tester,
+  ) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('ads-type-search')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-status-PAUSED')));
+    await tester.pumpAndSettle();
+
+    // Search AND paused: the Display one only.
+    expect(find.text('Chimney - Cleveland - Display'), findsOneWidget);
+    expect(find.text('Chimney - Cleveland - Search'), findsNothing);
+    expect(find.textContaining('LocalServicesCampaign'), findsNothing);
+
+    // And the obligation neither filter may break.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('ads-campaigns')),
+        matching: find.text('All conversions'),
+      ),
+      findsOneWidget,
+      reason: 'hiding rows is a choice; dropping a required FIELD is a breach',
+    );
   });
 
   testWidgets('the status filter hides rows and never the column', (

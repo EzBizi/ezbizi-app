@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › Numbers › Buy a new line.
 ///
@@ -431,24 +432,20 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
             if (_mode == 'toll_free')
               SizedBox(
                 width: 200,
-                child: DropdownMenu<String?>(
+                child: SearchPickerField<String?>(
                   key: const Key('buy-toll-free-prefix'),
-                  initialSelection: _tollFreePrefix,
-                  width: 200,
-                  label: const Text('Prefix'),
-                  inputDecorationTheme: const InputDecorationTheme(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  dropdownMenuEntries: [
+                  value: _tollFreePrefix,
+                  label: 'Prefix',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  options: [
                     // "Any" first, because the reason most people buy
                     // toll-free is that it is toll-free, not that it is 833.
-                    const DropdownMenuEntry(value: null, label: 'Any'),
+                    const SearchOption<String?>(value: null, label: 'Any'),
                     for (final prefix in _tollFreePrefixes)
-                      DropdownMenuEntry(value: prefix, label: prefix),
+                      SearchOption<String?>(value: prefix, label: prefix),
                   ],
-                  onSelected: (value) =>
-                      setState(() => _tollFreePrefix = value),
+                  onChanged: (value) => setState(() => _tollFreePrefix = value),
                 ),
               ),
 
@@ -456,20 +453,17 @@ class _BuyNumberPanelState extends State<BuyNumberPanel> {
             if (_mode == 'vanity') ...[
               SizedBox(
                 width: 190,
-                child: DropdownMenu<String>(
+                child: SearchPickerField<String>(
                   key: const Key('buy-vanity-type'),
-                  initialSelection: _vanityType,
-                  width: 190,
-                  label: const Text('On a'),
-                  inputDecorationTheme: const InputDecorationTheme(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  dropdownMenuEntries: const [
-                    DropdownMenuEntry(value: 'local', label: 'Local number'),
-                    DropdownMenuEntry(value: 'toll_free', label: 'Toll-free'),
+                  value: _vanityType,
+                  label: 'On a',
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                  options: const [
+                    SearchOption(value: 'local', label: 'Local number'),
+                    SearchOption(value: 'toll_free', label: 'Toll-free'),
                   ],
-                  onSelected: (value) =>
+                  onChanged: (value) =>
                       setState(() => _vanityType = value ?? 'local'),
                 ),
               ),

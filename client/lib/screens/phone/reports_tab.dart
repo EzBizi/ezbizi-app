@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Reports — counting the calls.
 ///
@@ -263,17 +264,15 @@ class _ReportsTabState extends State<ReportsTab> {
       children: [
         SizedBox(
           width: 200,
-          child: DropdownButtonFormField<String>(
+          child: SearchPickerField<String>(
             key: const ValueKey('report-period'),
-            initialValue: _period,
-            decoration: const InputDecoration(
-              labelText: 'When',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: [
+            value: _period,
+            label: 'When',
+            border: OutlineInputBorder(),
+            isDense: true,
+            options: [
               for (final entry in _periods.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                SearchOption(value: entry.key, label: entry.value),
             ],
             onChanged: (v) {
               if (v == null) return;
@@ -284,17 +283,15 @@ class _ReportsTabState extends State<ReportsTab> {
         ),
         SizedBox(
           width: 220,
-          child: DropdownButtonFormField<String>(
+          child: SearchPickerField<String>(
             key: const ValueKey('report-grouping'),
-            initialValue: _groupBy,
-            decoration: const InputDecoration(
-              labelText: 'Broken down',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: [
+            value: _groupBy,
+            label: 'Broken down',
+            border: OutlineInputBorder(),
+            isDense: true,
+            options: [
               for (final entry in _groupings.entries)
-                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                SearchOption(value: entry.key, label: entry.value),
             ],
             onChanged: (v) {
               if (v == null) return;
@@ -305,18 +302,16 @@ class _ReportsTabState extends State<ReportsTab> {
         ),
         SizedBox(
           width: 180,
-          child: DropdownButtonFormField<String?>(
+          child: SearchPickerField<String?>(
             key: const ValueKey('report-direction'),
-            initialValue: _direction,
-            decoration: const InputDecoration(
-              labelText: 'Direction',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: const [
-              DropdownMenuItem<String?>(value: null, child: Text('In and out')),
-              DropdownMenuItem<String?>(value: 'inbound', child: Text('Incoming')),
-              DropdownMenuItem<String?>(value: 'outbound', child: Text('Outgoing')),
+            value: _direction,
+            label: 'Direction',
+            border: OutlineInputBorder(),
+            isDense: true,
+            options: const [
+              SearchOption(value: null, label: 'In and out'),
+              SearchOption(value: 'inbound', label: 'Incoming'),
+              SearchOption(value: 'outbound', label: 'Outgoing'),
             ],
             onChanged: (v) {
               setState(() => _direction = v);
@@ -399,11 +394,23 @@ class _ReportsTabState extends State<ReportsTab> {
       runSpacing: 12,
       children: [
         _stat('Calls', '$calls', theme),
-        _stat('Incoming', '${(_totals['inbound'] as num?)?.toInt() ?? 0}', theme),
-        _stat('Outgoing', '${(_totals['outbound'] as num?)?.toInt() ?? 0}', theme),
+        _stat(
+          'Incoming',
+          '${(_totals['inbound'] as num?)?.toInt() ?? 0}',
+          theme,
+        ),
+        _stat(
+          'Outgoing',
+          '${(_totals['outbound'] as num?)?.toInt() ?? 0}',
+          theme,
+        ),
         _stat('Missed', '${(_totals['missed'] as num?)?.toInt() ?? 0}', theme),
         _stat('Missed rate', rate == null ? '—' : '$rate%', theme),
-        _stat('Voicemails', '${(_totals['voicemails'] as num?)?.toInt() ?? 0}', theme),
+        _stat(
+          'Voicemails',
+          '${(_totals['voicemails'] as num?)?.toInt() ?? 0}',
+          theme,
+        ),
         _stat(
           'Average call',
           _duration((_totals['average_seconds'] as num?)?.toInt() ?? 0),
@@ -418,7 +425,11 @@ class _ReportsTabState extends State<ReportsTab> {
         // Not a vanity number: an untagged call is one that will not appear in
         // any breakdown by what it was about, so the tag report is only as
         // honest as this figure is small.
-        _stat('Not tagged', '${(_totals['untagged'] as num?)?.toInt() ?? 0}', theme),
+        _stat(
+          'Not tagged',
+          '${(_totals['untagged'] as num?)?.toInt() ?? 0}',
+          theme,
+        ),
       ],
     );
   }
@@ -626,7 +637,12 @@ class _Choice {
 
     return data
         .whereType<Map<String, dynamic>>()
-        .map((r) => _Choice(id: r['id'].toString(), name: r['name']?.toString() ?? ''))
+        .map(
+          (r) => _Choice(
+            id: r['id'].toString(),
+            name: r['name']?.toString() ?? '',
+          ),
+        )
         .toList(growable: false);
   }
 }
@@ -655,20 +671,23 @@ class _Saved {
     final data = payload is Map ? payload['data'] : payload;
     if (data is! List) return const [];
 
-    return data.whereType<Map<String, dynamic>>().map((r) {
-      return _Saved(
-        id: r['id'].toString(),
-        name: r['name']?.toString() ?? '',
-        period: r['period']?.toString() ?? 'last_30',
-        groupBy: r['group_by']?.toString() ?? 'day',
-        direction: r['direction'] as String?,
-        numberIds: (r['number_ids'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-        tagIds: (r['tag_ids'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList(),
-      );
-    }).toList(growable: false);
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((r) {
+          return _Saved(
+            id: r['id'].toString(),
+            name: r['name']?.toString() ?? '',
+            period: r['period']?.toString() ?? 'last_30',
+            groupBy: r['group_by']?.toString() ?? 'day',
+            direction: r['direction'] as String?,
+            numberIds: (r['number_ids'] as List? ?? const [])
+                .map((e) => e.toString())
+                .toList(),
+            tagIds: (r['tag_ids'] as List? ?? const [])
+                .map((e) => e.toString())
+                .toList(),
+          );
+        })
+        .toList(growable: false);
   }
 }

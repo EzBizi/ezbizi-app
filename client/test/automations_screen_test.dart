@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -214,23 +215,25 @@ void main() {
       await _tap(tester, find.text('Add a step'));
       await _tap(tester, _inStep(find.text('Update a field')));
 
-      // The button inside the form field, which is where the options live.
-      final field = tester.widget<DropdownButton<String>>(
-        find.byType(DropdownButton<String>),
+      final field = tester.widget<SearchPickerField<String>>(
+        find.byType(SearchPickerField<String>),
       );
 
       // The job's fields and only the job's — `email` is a customer's, and the
       // engine would have refused it every time.
-      expect(field.items!.map((i) => i.value), ['status', 'scheduled_for']);
+      expect(field.options.map((o) => o.value), ['status', 'scheduled_for']);
 
       // And read as words. "scheduled_for" is a wire name, and the person
       // choosing runs a chimney business.
-      expect(field.items!.map((i) => (i.child as Text).data), [
+      expect(field.options.map((o) => o.label), [
         'Status',
         'Date and time',
       ]);
 
-      await _tap(tester, find.byType(DropdownButtonFormField<String>));
+      await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
       await _tap(tester, find.text('Date and time').last);
       await _type(tester, 'Set to', '2026-09-01');
 
@@ -263,7 +266,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Update a field')));
 
     // An empty dropdown is a dead end that explains nothing.
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(SearchPickerField<String>), findsNothing);
     expect(
       find.textContaining('Choose what this reacts to first'),
       findsOneWidget,
@@ -343,7 +346,10 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
     await _tap(tester, find.text('Email').last);
 
     expect(_saveButton(tester).onPressed, isNotNull);
@@ -420,7 +426,7 @@ void main() {
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, _inStep(find.text('Update a field')));
 
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(SearchPickerField<String>), findsNothing);
     expect(find.textContaining('cannot offer the list'), findsOneWidget);
 
     await _type(tester, 'Field', 'status');
@@ -661,7 +667,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Phone')));
     await _tap(tester, _inStep(find.text('Send a message')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Marketing'), findsWidgets);
@@ -719,7 +725,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Template'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -742,7 +748,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Send to'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -831,7 +837,7 @@ void main() {
     expect(find.text('Search people'), findsOneWidget);
     expect(find.text('Email address'), findsNothing);
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('An address I type').last);
 
@@ -921,6 +927,95 @@ void main() {
     );
   });
 
+  /// AN UNTOUCHED PICKER SENDS NOTHING, and that is the whole fix.
+  ///
+  /// Jose, 2026-09-17: *"i made an automation for a-1chimney, but it's applying
+  /// for everything"*. Nothing ever set a scope, so every rule was stored
+  /// organization-wide. The server now scopes a new rule to the view it was
+  /// written in — which only works while the builder stays SILENT about scope
+  /// unless somebody chooses.
+  ///
+  /// So the assertion is an absence. Sending `organization` by default would
+  /// look identical on screen and would put every rule back to applying across
+  /// the whole business, this time explicitly and with a control agreeing.
+  testWidgets('a new rule says nothing about where it applies until asked', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithPlaces(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Only here');
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
+    await _tap(tester, find.text('Date and time').last);
+    await _type(tester, 'Set to', '2026-09-01');
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent, isNotNull);
+    expect(
+      sent!.containsKey('scope_type'),
+      isFalse,
+      reason: 'an untouched picker must leave the server free to use the view',
+    );
+
+  });
+
+  /// And choosing one sends the PAIR the server stores.
+  ///
+  /// The catalogue hands out `franchise:f-1` as one string precisely so the
+  /// builder cannot mispair a type with another place's id; this is the split
+  /// back into the two columns, which is the only place that can go wrong.
+  testWidgets('choosing where it applies sends the type and the id', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithPlaces(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+
+    await _type(tester, 'Name', 'Only here');
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Where it applies'),
+    );
+    await _tap(tester, find.text('Connecticut').last);
+
+    await _tap(tester, find.text('Jobs'));
+    await _tap(tester, find.text('Status changed'));
+
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Update a field')));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Field'),
+    );
+    await _tap(tester, find.text('Date and time').last);
+    await _type(tester, 'Set to', '2026-09-01');
+
+    await _tap(tester, find.text('Create automation'));
+
+    expect(sent!['scope_type'], 'franchise');
+    expect(sent!['scope_id'], 'f-1');
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -953,7 +1048,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Field'),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -1150,6 +1245,13 @@ void main() {
     expect(sent, {
       'name': 'Chase completions',
       'description': 'Tell the office when a job finishes.',
+      // AN EDIT ALWAYS RESTATES WHERE IT APPLIES, including "everywhere". There
+      // is no view to fall back on when saving an existing rule, so silence
+      // would let a save re-scope a rule to wherever the person happened to be
+      // standing — which is the bug this whole change is about, arriving
+      // through the edit path instead of the create one.
+      'scope_type': null,
+      'scope_id': null,
       // Sent back as the list it was stored as, not as one comma-joined
       // string that would match nothing.
       'conditions': {
@@ -1198,6 +1300,8 @@ void main() {
     expect(sent, {
       'name': 'Chase completions, renamed',
       'description': 'Tell the office when a job finishes.',
+      'scope_type': null,
+      'scope_id': null,
     });
   });
 
@@ -1329,10 +1433,10 @@ void main() {
     );
     expect(_saveButton(tester).onPressed, isNull);
 
-    // The MENU, not its label: a DropdownMenu's label is a Text inside the
-    // decoration and is not a hit target, so tapping it lands on the field
-    // behind and opens nothing.
-    await _tap(tester, find.byType(DropdownMenu<String>));
+    await _tap(
+      tester,
+      find.widgetWithText(SearchPickerField<String>, 'Timezone'),
+    );
     await _tap(tester, find.text('Eastern — New York').last);
 
     // Now weekly, with no day ticked — the second way this cannot come round.
@@ -1480,7 +1584,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Send a message')));
 
     // The line is chosen from what the company holds.
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
 
@@ -1528,7 +1632,7 @@ void main() {
     await _tap(tester, _inStep(find.text('Phone')));
     await _tap(tester, _inStep(find.text('Send a message')));
 
-    await _tap(tester, find.byType(DropdownButtonFormField<String>).last);
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await tester.pumpAndSettle();
     await _tap(tester, find.text('Marketing · +1 (239) 456-0829').last);
     await _type(tester, 'Send to', '+13057242199');
@@ -2250,6 +2354,15 @@ const _catalogue = {
 /// written before schedules keeps the vocabulary it was written against — a
 /// trigger appearing in a picker it did not have changes what "the first row"
 /// means in half a dozen assertions.
+Map<String, dynamic> _catalogueWithPlaces() => {
+  ...Map<String, dynamic>.from(_catalogue),
+  'places': const [
+    {'id': 'organization', 'label': 'Everywhere in this business'},
+    {'id': 'company:c-1', 'label': 'A-1 Chimney and everything under it'},
+    {'id': 'franchise:f-1', 'label': 'Connecticut'},
+  ],
+};
+
 Map<String, dynamic> _catalogueWithTheClock() {
   final modules = [
     ...(_catalogue['modules'] as List),

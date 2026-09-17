@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+
 import '../core/session.dart';
+import '../widgets/search_picker.dart';
 
 /// Picking a place, when several of them share a name (plan §3).
 ///
@@ -102,25 +104,16 @@ class FranchiseField extends StatelessWidget {
     // itself off the edge of a narrow field.
     final ambiguous = sorted.map((f) => f.companyId).toSet().length > 1;
 
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: InputDecoration(
-        labelText: label ?? me.organization.franchiseLabel,
-        helperText: helperText,
-        helperMaxLines: 3,
-      ),
-      items: [
+    return SearchPickerField<String>(
+             value: value,
+             label: label ?? me.organization.franchiseLabel,
+             helperText: helperText,
+             helperMaxLines: 3,
+             options: [
         for (final f in sorted)
-          DropdownMenuItem(
-            value: f.id,
-            child: Text(
-              ambiguous ? franchisePath(me, f) : f.name,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
+          SearchOption(value: f.id, label: ambiguous ? franchisePath(me, f) : f.name),
       ],
-      onChanged: enabled ? onChanged : null,
-    );
+             onChanged: enabled ? onChanged : null,
+           );
   }
 }

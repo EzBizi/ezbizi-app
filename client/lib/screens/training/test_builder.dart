@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 
 import '../../core/api_client.dart';
@@ -6,6 +7,7 @@ import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 
 /// The test builder — the right half of layout 8's storyboard
 /// (`docs/previews/training-layouts.html`, task-15 brief), and also its own
@@ -487,25 +489,18 @@ class _TestEditorPanelState extends State<TestEditorPanel> {
             // effect, which is what stops a long title from being the
             // thing that overflows once the button itself no longer does.
             trailingWidth: 200,
-            trailing: DropdownButtonFormField<String?>(
-              key: const Key('training.option-guide-id'),
-              initialValue: _guideId,
-              isDense: true,
-              isExpanded: true,
-              decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('None')),
+            trailing: SearchPickerField<String?>(
+                        key: const Key('training.option-guide-id'),
+                        value: _guideId,
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        options: [
+                const SearchOption(value: null, label: 'None'),
                 for (final guide in widget.availableGuides)
-                  DropdownMenuItem<String?>(
-                    value: guide['id'] as String?,
-                    child: Text(
-                      guide['title'] as String? ?? '',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+                  SearchOption(value: guide['id'] as String?, label: guide['title'] as String? ?? ''),
               ],
-              onChanged: (value) => setState(() => _guideId = value),
-            ),
+                        onChanged: (value) => setState(() => _guideId = value),
+                      ),
           ),
         _OptionRow(
           label: 'Pass mark',

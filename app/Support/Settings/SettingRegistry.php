@@ -1009,6 +1009,91 @@ class SettingRegistry
                 allowedScopes: $orgOnly,
                 help: 'When on, Your account offers Edit on the work schedule. Human Resources can always edit it.',
             ),
+
+            /*
+             * PAID TIME OFF — the allowance, not the days taken.
+             *
+             * From a production suggestion (Toula Elwell, A1-Group, 2026-09-08):
+             * "how much paid pto we all have and when it can be used". Approved
+             * by Jose 2026-09-17. The second half of her sentence is why these
+             * are settings and not a number on a screen: "when it can be used"
+             * is a waiting period, and it is the part nobody can look up today.
+             *
+             * EZBIZI DOES NOT DECIDE ANY OF THESE VALUES. Days, waiting periods
+             * and carryover are terms of employment; they vary by company and
+             * by state law, and the one place they exist in this product today
+             * is the contract templates — where exactly ONE of eleven mentions
+             * PTO at all (Project Manager: six days a year, usable after three
+             * months, no carryover). So the defaults below are the SAFE ones
+             * rather than the common ones: off, and zero days. A company that
+             * has a policy says so; one that has not is not told it has six.
+             */
+            new SettingDefinition(
+                key: 'pto.enabled',
+                label: 'Paid time off',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: $orgOnly,
+                help: 'When on, Human Resources shows what paid time off each person has and when they may start using it. Off is the honest default: a company with no written policy should not be shown a balance it never agreed to.',
+            ),
+            new SettingDefinition(
+                key: 'pto.allowance',
+                label: 'Paid days off',
+                type: SettingDefinition::TYPE_INT,
+                default: 0,
+                allowedScopes: $orgOnly,
+                help: 'The allowance somebody earns in the period below, before anything they have taken. This is your policy, not ours — whatever your contracts say.',
+            ),
+            new SettingDefinition(
+                key: 'pto.allowance_period',
+                label: 'Earned per',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'year',
+                options: ['week', 'month', 'year'],
+                optionLabels: ['week' => 'Week', 'month' => 'Month', 'year' => 'Year'],
+                allowedScopes: $orgOnly,
+                // Six days a year and half a day a month are the same allowance
+                // said two ways, and EzBizi converting between them would put
+                // words in a contract's mouth. So the screen says back whichever
+                // one you chose, and nothing is annualised behind your back.
+                help: 'Most written policies say a number of days a year. Per month or per week is for policies that accrue as somebody works.',
+            ),
+            new SettingDefinition(
+                key: 'pto.waiting',
+                label: 'Can be used after',
+                type: SettingDefinition::TYPE_INT,
+                default: 0,
+                allowedScopes: $orgOnly,
+                help: 'Counted from the day somebody started. Zero means it can be used from their first day.',
+            ),
+            new SettingDefinition(
+                key: 'pto.waiting_unit',
+                label: 'Counted in',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'day',
+                options: ['day', 'week', 'month', 'year'],
+                optionLabels: [
+                    'day' => 'Days',
+                    'week' => 'Weeks',
+                    'month' => 'Months',
+                    'year' => 'Years',
+                ],
+                allowedScopes: $orgOnly,
+                // Months rather than ninety days, when that is what the contract
+                // says. They are not the same date — three months from 30
+                // November is 28 February, ninety days is 28 February in a leap
+                // year and 1 March otherwise — and the one the screen should be
+                // able to say back is the one somebody signed.
+                help: 'A contract that says "after three months of continuous employment" is three months, not ninety days. Say it the way your contract says it.',
+            ),
+            new SettingDefinition(
+                key: 'pto.carry_over',
+                label: 'Unused days carry over',
+                type: SettingDefinition::TYPE_BOOL,
+                default: false,
+                allowedScopes: $orgOnly,
+                help: 'When off, the allowance starts again each period and unused days are lost. Check your own contracts and your state law before turning this on or leaving it off — both are lawful somewhere.',
+            ),
         ];
     }
 

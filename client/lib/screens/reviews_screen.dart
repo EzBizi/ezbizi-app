@@ -5,6 +5,7 @@ import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/connect_account.dart';
 import '../widgets/connected_account.dart';
+import '../widgets/search_picker.dart';
 
 /// Reviews — what the public said, and the answer.
 ///
@@ -201,19 +202,26 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 },
               ),
               const SizedBox(width: 12),
-              DropdownButton<int?>(
-                value: _rating,
-                underline: const SizedBox.shrink(),
-                hint: const Text('Any rating'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Any rating')),
-                  for (var s = 5; s >= 1; s--)
-                    DropdownMenuItem(value: s, child: Text('$s star${s == 1 ? '' : 's'}')),
-                ],
-                onChanged: (v) {
-                  setState(() => _rating = v);
-                  _load();
-                },
+              SizedBox(
+                width: 150,
+                child: SearchPickerField<int?>(
+                  value: _rating,
+                  border: InputBorder.none,
+                  isDense: true,
+                  hint: 'Any rating',
+                  options: [
+                    const SearchOption<int?>(value: null, label: 'Any rating'),
+                    for (var s = 5; s >= 1; s--)
+                      SearchOption<int?>(
+                        value: s,
+                        label: '$s star${s == 1 ? '' : 's'}',
+                      ),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _rating = v);
+                    _load();
+                  },
+                ),
               ),
               const Spacer(),
               FilledButton.tonalIcon(

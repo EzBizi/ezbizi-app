@@ -11,6 +11,7 @@ import 'package:ezbizi_client/screens/hr/contract_form_preview.dart';
 import 'package:ezbizi_client/screens/hr/contracts_tab.dart';
 import 'package:ezbizi_client/widgets/numbered_step.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -83,7 +84,7 @@ void main() {
 
     final types = _dropdown(tester, 'Kind of answer');
 
-    expect(types.items!.map((i) => (i.child as Text).data), [
+    expect(types.options.map((o) => o.label), [
       'A line of words',
       'Pick from a list',
       'A day',
@@ -1806,19 +1807,14 @@ Future<void> _type(WidgetTester tester, String label, String text) async {
 Future<void> _choose(WidgetTester tester, String label, String option) async {
   await _tap(
     tester,
-    find.widgetWithText(DropdownButtonFormField<String>, label),
+    find.widgetWithText(SearchPickerField<String>, label),
   );
   await _tap(tester, find.text(option).last);
 }
 
-DropdownButton<String> _dropdown(WidgetTester tester, String label) =>
-    tester.widget<DropdownButton<String>>(
-      find
-          .descendant(
-            of: find.widgetWithText(DropdownButtonFormField<String>, label),
-            matching: find.byType(DropdownButton<String>),
-          )
-          .first,
+SearchPickerField<String> _dropdown(WidgetTester tester, String label) =>
+    tester.widget<SearchPickerField<String>>(
+      find.widgetWithText(SearchPickerField<String>, label).first,
     );
 
 // ── the server, as this screen sees it ─────────────────────────────

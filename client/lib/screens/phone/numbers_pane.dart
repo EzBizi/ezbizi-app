@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'settings_pane.dart';
 import '../../widgets/refused.dart';
 import 'buy_number_panel.dart';
@@ -471,21 +472,18 @@ class _NumbersPaneState extends State<NumbersPane> {
       children: [
         SizedBox(
           width: 260,
-          child: DropdownButtonFormField<String>(
-            isExpanded: true,
-            initialValue: _scope?.id,
+          child: SearchPickerField<String>(
+            value: _scope?.id,
             // The label goes INSIDE the field rather than beside it. Beside it
             // this was a Row of two parts that together wanted more width than
             // the header can spare, and a trailing that does not fit is how
             // this broke in the first place. One self-sizing control cannot.
-            decoration: const InputDecoration(
-              labelText: 'Phone account',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: [
+            label: 'Phone account',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            options: [
               for (final c in _connections)
-                DropdownMenuItem(value: c.id, child: Text(c.label)),
+                SearchOption(value: c.id, label: c.label),
             ],
             onChanged: (id) {
               final next = _connections.where((c) => c.id == id).firstOrNull;
@@ -877,67 +875,43 @@ class _LineFormState extends State<_LineForm> {
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String?>(
-          // The chosen item's text can grow — "Nobody — go straight to
-          // voicemail" — and without this the dropdown lays out at its
-          // natural width and overflows the field on a narrow pane.
-          isExpanded: true,
-          initialValue: _groupId,
-          decoration: const InputDecoration(
-            labelText: 'Who it rings',
-            border: OutlineInputBorder(),
-          ),
-          items: [
-            const DropdownMenuItem<String?>(
+        SearchPickerField<String?>(
+          value: _groupId,
+          label: 'Who it rings',
+          border: const OutlineInputBorder(),
+          options: [
+            const SearchOption<String?>(
               value: null,
-              child: Text('Nobody — go straight to voicemail'),
+              label: 'Nobody — go straight to voicemail',
             ),
             for (final g in widget.groups)
-              DropdownMenuItem<String?>(value: g.id, child: Text(g.name)),
+              SearchOption<String?>(value: g.id, label: g.name),
           ],
           onChanged: (v) => setState(() => _groupId = v),
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String?>(
-          // The chosen item's text can grow — "Nobody — go straight to
-          // voicemail" — and without this the dropdown lays out at its
-          // natural width and overflows the field on a narrow pane.
-          isExpanded: true,
-          initialValue: _scheduleId,
-          decoration: const InputDecoration(
-            labelText: 'Opening hours',
-            border: OutlineInputBorder(),
-          ),
-          items: [
-            const DropdownMenuItem<String?>(
-              value: null,
-              child: Text('Always open'),
-            ),
+        SearchPickerField<String?>(
+          value: _scheduleId,
+          label: 'Opening hours',
+          border: const OutlineInputBorder(),
+          options: [
+            const SearchOption<String?>(value: null, label: 'Always open'),
             for (final s in widget.schedules)
-              DropdownMenuItem<String?>(value: s.id, child: Text(s.name)),
+              SearchOption<String?>(value: s.id, label: s.name),
           ],
           onChanged: (v) => setState(() => _scheduleId = v),
         ),
 
         const SizedBox(height: 16),
-        DropdownButtonFormField<String>(
-          // The chosen item's text can grow — "Nobody — go straight to
-          // voicemail" — and without this the dropdown lays out at its
-          // natural width and overflows the field on a narrow pane.
-          isExpanded: true,
-          initialValue: _afterHours,
-          decoration: const InputDecoration(
-            labelText: 'When it is closed',
-            border: OutlineInputBorder(),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'voicemail', child: Text('Take a voicemail')),
-            DropdownMenuItem(value: 'forward', child: Text('Forward the call')),
-            DropdownMenuItem(
-              value: 'closed',
-              child: Text('Say it is closed and hang up'),
-            ),
+        SearchPickerField<String>(
+          value: _afterHours,
+          label: 'When it is closed',
+          border: const OutlineInputBorder(),
+          options: const [
+            SearchOption(value: 'voicemail', label: 'Take a voicemail'),
+            SearchOption(value: 'forward', label: 'Forward the call'),
+            SearchOption(value: 'closed', label: 'Say it is closed and hang up'),
           ],
           onChanged: (v) => setState(() => _afterHours = v ?? 'voicemail'),
         ),

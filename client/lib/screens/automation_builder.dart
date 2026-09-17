@@ -1,11 +1,13 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
+
 import '../core/api_client.dart';
 import '../core/automation_catalogue.dart';
 import '../core/timestamps.dart';
 import '../widgets/catalogue_picker.dart';
 import '../widgets/error_note.dart';
 import '../widgets/numbered_step.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/tag.dart';
 
 /// Building one automation, on the page rather than in a panel (plan §5.5).
@@ -494,6 +496,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   /// entry means "not yours to see", never "this field does not exist".
   Map<String, String> _fieldSamples = const {};
 
+  /// Where this rule applies, in the stored shape the catalogue hands out:
+  /// `organization`, `company:<id>` or `franchise:<id>`.
+  ///
+  /// Null on a NEW rule until somebody chooses, and null means the field is not
+  /// sent — which is what lets the server scope the rule to the view it was
+  /// written in. Defaulting to `organization` here would put every rule back to
+  /// applying across the whole business, this time explicitly.
+  String? _place;
+
   Future<void> _loadTriggerFields() async {
     final key = _trigger;
 
@@ -563,6 +574,13 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       _name.text = editing['name'] as String? ?? '';
       _description.text = editing['description'] as String? ?? '';
       _trigger = editing['trigger_key'] as String?;
+      // AN EXISTING RULE ALWAYS RESTATES ITS SCOPE, "everywhere" included.
+      // There is no view to fall back on when saving one, so silence would let
+      // a save re-scope a rule to wherever the person happened to be standing.
+      final scope = editing['scope'] as Map?;
+      _place = scope == null || scope['type'] == null
+          ? 'organization'
+          : '${scope['type']}:${scope['id']}';
       _adoptActions(editing['actions']);
       _adoptSchedule(editing['schedule']);
       _adoptConditions(editing['conditions']);
@@ -1230,6 +1248,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       // rule, and every run already recorded would describe something it no
       // longer does. The API refuses the field outright.
       if (!_isEdit) 'trigger_key': _trigger,
+      // Only when somebody chose, or when editing a rule that already has one.
+      // An untouched picker on a NEW rule leaves the field out entirely and the
+      // server scopes it to the view it was written in — the difference between
+      // "apply this everywhere" and "nobody said".
+      if (_place != null) ...{
+        'scope_type': _place == 'organization' ? null : _place!.split(':').first,
+        'scope_id': _place == 'organization' ? null : _place!.split(':').last,
+      },
       // Sent on create AND on edit: retiming a rule is the one thing about a
       // scheduled rule that can legitimately change without it becoming a
       // different rule. The server recomputes the next run from it.
@@ -1377,32 +1403,60 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       1,
       'Name it',
       'What you will see in the list, and in every run it records.',
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _name,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'Tell the office when a job is completed',
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  controller: _name,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    hintText: 'Tell the office when a job is completed',
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: TextField(
-              controller: _description,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'What it is for (optional)',
-                hintText: 'Why this rule exists, for whoever reads it next',
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _description,
+                  enabled: !_busy,
+                  decoration: const InputDecoration(
+                    labelText: 'What it is for (optional)',
+                    hintText: 'Why this rule exists, for whoever reads it next',
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
+          if (widget.catalogue.places.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SearchPickerField<String>(
+              value: _place,
+              label: 'Where it applies',
+              // SAYS WHAT SILENCE MEANS. On a new rule an untouched picker
+              // scopes to wherever the person is standing, and a control that
+              // acts without being touched has to say so — otherwise a rule's
+              // reach is decided by a chip in the top bar that nobody would
+              // ever connect to it.
+              helperText: _place == null
+                  ? 'Left alone, it applies where you are now. A company also '
+                        'covers everything under it.'
+                  : 'A company covers its franchises, its sub companies and '
+                        'theirs.',
+              helperMaxLines: 3,
+              options: [
+                for (final place in widget.catalogue.places)
+                  SearchOption(value: place.key, label: place.label),
+              ],
+              onChanged: _busy ? null : (value) => setState(() => _place = value),
+            ),
+          ],
         ],
       ),
     );
@@ -1584,13 +1638,17 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           const SizedBox(height: 12),
           Text('Day of the month', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 6),
-          DropdownMenu<int>(
-            initialSelection: _scheduleDayOfMonth,
-            dropdownMenuEntries: [
-              for (var d = 1; d <= 31; d++)
-                DropdownMenuEntry(value: d, label: '$d'),
-            ],
-            onSelected: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+          SizedBox(
+            width: 200,
+            child: SearchPickerField<int>(
+              value: _scheduleDayOfMonth,
+              label: 'Day of the month',
+              options: [
+                for (var d = 1; d <= 31; d++)
+                  SearchOption(value: d, label: '$d'),
+              ],
+              onChanged: (d) => setState(() => _scheduleDayOfMonth = d ?? 1),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1616,15 +1674,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: DropdownMenu<String>(
-                width: double.infinity,
-                initialSelection: _scheduleZone,
-                label: const Text('Timezone'),
-                dropdownMenuEntries: [
+              child: SearchPickerField<String>(
+                value: _scheduleZone,
+                label: 'Timezone',
+                options: [
                   for (final zone in zones)
-                    DropdownMenuEntry(value: zone.key, label: zone.label),
+                    SearchOption(value: zone.key, label: zone.label),
                 ],
-                onSelected: (z) => setState(() => _scheduleZone = z),
+                onChanged: (z) => setState(() => _scheduleZone = z),
               ),
             ),
           ],
@@ -1805,25 +1862,18 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         const SizedBox(width: 8),
         Expanded(
           flex: 3,
-          child: DropdownButtonFormField<String>(
-            initialValue: row.op,
-            // Without this the button sizes itself to its widest option and
-            // overflows the column it was given — "is not one of" does not fit
-            // a third of a narrow window, and the ellipsis on the item below
-            // only takes effect once the button fills its box.
-            isExpanded: true,
-            decoration: const InputDecoration(labelText: 'Is', isDense: true),
-            items: [
+          child: SearchPickerField<String>(
+                   value: row.op,
+                   label: 'Is',
+                   isDense: true,
+                   options: [
               for (final operator in widget.catalogue.operators)
-                DropdownMenuItem(
-                  value: operator.key,
-                  child: Text(operator.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: operator.key, label: operator.label),
             ],
-            onChanged: _busy
+                   onChanged: _busy
                 ? null
                 : (value) => setState(() => row.op = value ?? row.op),
-          ),
+                 ),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -2176,16 +2226,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             // A line is picked from the ones this company holds. The value
             // stored is an id, and asking somebody to type one is asking them
             // to fail — which is what a plain text field here would do.
-            DropdownButtonFormField<String>(
-              initialValue:
-                  row.parameter(definition.parameters[i].key).text.isEmpty
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
                   ? null
                   : row.parameter(definition.parameters[i].key).text,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: definition.parameters[i].label,
-                isDense: true,
-                helperText: _lines.isNotEmpty
+              label: definition.parameters[i].label,
+              helperText: _lines.isNotEmpty
                     ? 'Only lines approved for messaging are listed.'
                     : _linesHeld == 0
                     ? 'No phone lines on this company yet.'
@@ -2196,13 +2242,10 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                     : 'This company has $_linesHeld phone '
                           '${_linesHeld == 1 ? 'line' : 'lines'}, and none are '
                           'approved for text messaging yet.',
-              ),
-              items: [
+              isDense: true,
+              options: [
                 for (final line in _lines)
-                  DropdownMenuItem(
-                    value: line.$1,
-                    child: Text(line.$2, overflow: TextOverflow.ellipsis),
-                  ),
+                  SearchOption(value: line.$1, label: line.$2),
               ],
               onChanged: _busy
                   ? null
@@ -2431,30 +2474,21 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<String>(
-          initialValue: kind,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: label, isDense: true),
-          items: [
-            const DropdownMenuItem(
-              value: 'person',
-              child: Text('Somebody who works here'),
-            ),
+        SearchPickerField<String>(
+          value: kind,
+          label: label,
+          isDense: true,
+          options: [
+            const SearchOption(value: 'person', label: 'Somebody who works here'),
             if (typedAllowed)
-              DropdownMenuItem(
-                value: 'typed',
-                child: Text(wantsPhone
+              SearchOption(value: 'typed', label: wantsPhone
                     ? 'A number I type'
                     : 'An address I type'),
-              ),
-            DropdownMenuItem(
-              value: 'field',
-              child: Text(kindOf == 'person_or_field'
+            SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
                       ? 'A number from the event'
                       : 'An address from the event'),
-            ),
           ],
           onChanged: _busy
               ? null
@@ -2842,18 +2876,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_whatsAppNumbers.length > 1) ...[
-          DropdownButtonFormField<String>(
-            initialValue: from.isEmpty ? null : from,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Send from',
-              isDense: true,
-              helperText: 'Templates are approved per number, so this decides '
+          SearchPickerField<String>(
+            value: from.isEmpty ? null : from,
+            label: 'Send from',
+            helperText: 'Templates are approved per number, so this decides '
                   'which are available.',
-            ),
-            items: [
+            isDense: true,
+            options: [
               for (final n in _whatsAppNumbers)
-                DropdownMenuItem(value: n.from, child: Text('${n.label} · ${n.from}')),
+                SearchOption(value: n.from, label: '${n.label} · ${n.from}'),
             ],
             onChanged: _busy
                 ? null
@@ -2871,23 +2902,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           ),
           const SizedBox(height: 10),
         ],
-        DropdownButtonFormField<String>(
-          initialValue: row.whatsAppTemplate.isEmpty ? null : row.whatsAppTemplate,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Template',
-            isDense: true,
-            helperText: 'Only templates Meta has approved are listed.',
-          ),
-          items: [
+        SearchPickerField<String>(
+          value: row.whatsAppTemplate.isEmpty ? null : row.whatsAppTemplate,
+          label: 'Template',
+          helperText: 'Only templates Meta has approved are listed.',
+          isDense: true,
+          options: [
             for (final t in number?.templates ?? const [])
-              DropdownMenuItem(
-                value: t.name,
-                child: Text(
-                  t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              SearchOption(value: t.name, label: t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}'),
           ],
           onChanged: _busy
               ? null
@@ -2998,33 +3020,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: DropdownButtonFormField<String>(
-            // Null for anything the subject does not have, because the dropdown
-            // asserts on a value with no matching item — and a saved rule can
-            // legitimately carry one, from before any of this was checked.
-            initialValue: known ? current : null,
-            isExpanded: true,
-            decoration: InputDecoration(
-              labelText: 'Field',
-              isDense: true,
-              helperText: known || current.isEmpty
-                  ? 'On ${_article(subject.label)} — whichever one the event '
-                        'was about.'
-                  : null,
-              // Named, not silently dropped. Somebody chose that value, or the
-              // server stored it, and a box that just went blank is the thing
-              // people file bugs about.
-              errorText: known || current.isEmpty
-                  ? null
-                  : '“$current” is not something a rule may set on '
-                        '${_article(subject.label)}.',
-            ),
-            items: [
+          child: SearchPickerField<String>(
+            // Null for anything the subject does not have, because the picker
+            // shows nothing for a value with no matching option — and a saved
+            // rule can legitimately carry one, from before any of this was
+            // checked.
+            value: known ? current : null,
+            label: 'Field',
+            isDense: true,
+            helperText: known || current.isEmpty
+                ? 'On ${_article(subject.label)} — whichever one the event '
+                      'was about.'
+                : null,
+            // Named, not silently dropped. Somebody chose that value, or the
+            // server stored it, and a box that just went blank is the thing
+            // people file bugs about.
+            errorText: known || current.isEmpty
+                ? null
+                : '“$current” is not something a rule may set on '
+                      '${_article(subject.label)}.',
+            options: [
               for (final field in fields)
-                DropdownMenuItem(
-                  value: field.key,
-                  child: Text(field.label, overflow: TextOverflow.ellipsis),
-                ),
+                SearchOption(value: field.key, label: field.label),
             ],
             onChanged: _busy
                 ? null

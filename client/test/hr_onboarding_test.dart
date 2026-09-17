@@ -10,6 +10,7 @@ import 'package:ezbizi_client/screens/hr/onboarding_form.dart';
 import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -556,22 +557,25 @@ void main() {
     final subjects = _dropdownIn(tester, 'Who is this for');
 
     // Bea's invitation already carries onboarding o-1.
-    expect(subjects.items!.firstWhere((i) => i.value == 'i-2').enabled, isFalse);
     expect(
-      subjects.items!.map((i) => (i.child as Text).data),
+      subjects.options.firstWhere((o) => o.value == 'i-2').enabled,
+      isFalse,
+    );
+    expect(
+      subjects.options.map((o) => o.label),
       contains('Bea Okafor (bea@example.com) — already onboarding'),
     );
 
     // One nobody has accepted is a valid subject: the employer can fill in the
     // wage before the person has an account at all.
     expect(
-      subjects.items!.map((i) => (i.child as Text).data),
+      subjects.options.map((o) => o.label),
       contains('Kit Weaver (kit@example.com)'),
     );
 
     // Withdrawn and lapsed are the two the server can never accept, so they are
     // not offered at all.
-    expect(subjects.items!.map((i) => i.value), isNot(contains('i-3')));
+    expect(subjects.options.map((o) => o.value), isNot(contains('i-3')));
   });
 
   testWidgets('a reader who may not start one is told that, not shown an error',
@@ -655,7 +659,20 @@ Future<void> _pumpForm(WidgetTester tester, MockClientHandler handler) async {
 Future<void> _pumpTab(
   WidgetTester tester,
   MockClientHandler handler, {
-  List<String> permissions = const ['hr.view', 'hr.create', 'hr.edit'],
+  // Per-tab grants arrived in `08d98e07`: a chip needs `hr.<tab>.view` as well
+  // as the module, so a default of module-only now draws no chips at all.
+  List<String> permissions = const [
+    'hr.view',
+    'hr.create',
+    'hr.edit',
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
+  ],
 }) async {
   final api = ApiClient(client: MockClient(_withMe(handler, permissions)));
   final session = Session(api);
@@ -677,6 +694,15 @@ Future<void> _pumpHr(WidgetTester tester, MockClientHandler handler) async {
     'hr.view',
     'hr.create',
     'hr.edit',
+    // And the per-tab grants (`08d98e07`), without which the whole strip is
+    // empty and the Records chip this test taps does not exist.
+    'hr.dashboard.view',
+    'hr.hours.view',
+    'hr.onboarding.view',
+    'hr.records.view',
+    'hr.invitations.view',
+    'hr.pto.view',
+    'hr.contracts.view',
   ])));
   final session = Session(api);
 
@@ -757,7 +783,7 @@ Future<void> _type(
 Future<void> _choose(WidgetTester tester, String label, String option) async {
   await _tap(
     tester,
-    find.widgetWithText(DropdownButtonFormField<String>, label),
+    find.widgetWithText(SearchPickerField<String>, label),
   );
   await _tap(tester, find.text(option).last);
 }
@@ -773,21 +799,18 @@ TextField _box(WidgetTester tester, String fieldKey) =>
 CalendarDayField _day(WidgetTester tester, String fieldKey) =>
     tester.widget<CalendarDayField>(find.byKey(answerKey(fieldKey)));
 
-DropdownButtonFormField<String> _dropdown(
+SearchPickerField<String> _dropdown(
   WidgetTester tester,
   String fieldKey,
-) => tester.widget<DropdownButtonFormField<String>>(
+) => tester.widget<SearchPickerField<String>>(
   find.byKey(answerKey(fieldKey)),
 );
 
 /// A form field's own DropdownButton, which is where the items live —
 /// `DropdownButtonFormField` is a FormField and does not expose them.
-DropdownButton<String> _dropdownIn(WidgetTester tester, String label) =>
-    tester.widget<DropdownButton<String>>(
-      find.descendant(
-        of: find.widgetWithText(DropdownButtonFormField<String>, label),
-        matching: find.byType(DropdownButton<String>),
-      ),
+SearchPickerField<String> _dropdownIn(WidgetTester tester, String label) =>
+    tester.widget<SearchPickerField<String>>(
+      find.widgetWithText(SearchPickerField<String>, label),
     );
 
 FilledButton _saveButton(WidgetTester tester) =>

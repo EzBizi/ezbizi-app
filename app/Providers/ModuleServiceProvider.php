@@ -26,6 +26,7 @@ use App\Models\WebSite;
 use App\Support\Modules\ActionDefinition;
 use App\Support\Modules\AutomationSubject;
 use App\Support\Modules\ModuleDefinition;
+use App\Support\Modules\TabDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Modules\TriggerDefinition;
 use Illuminate\Support\ServiceProvider;
@@ -438,6 +439,44 @@ class ModuleServiceProvider extends ServiceProvider
                 // Same reasoning that keeps `monitoring.control` off
                 // `monitoring.screenshots.view`.
                 actions: ['view', 'create', 'edit', 'security.reset'],
+                /*
+                 * ── The seven tabs, grantable one at a time ──
+                 *
+                 * Jose, 2026-09-17, naming this module as the example: "i want
+                 * them to see their work hours, but not the onboarding
+                 * information". Dispatchers needed one tab and the only grant
+                 * that existed was `hr.view`, which is every contract, every
+                 * onboarding form and the invitation list.
+                 *
+                 * THE LABELS ARE THE SCREEN'S OWN WORDS, taken from
+                 * hr_screen.dart's `_tabs` rather than written afresh. "Work
+                 * Hours" is `UiStrings.t('time_clock.tab')` and is capitalised
+                 * that way there; matching it matters more than house style,
+                 * because an administrator who ticks "Work hours" and then
+                 * cannot find it has been given a checkbox for something whose
+                 * name they were told wrongly.
+                 *
+                 * Dashboard is a tab like the rest. It is the module's landing
+                 * pane rather than a privilege, but it shows headcount and
+                 * whoever is clocked in right now, and "opens HR and sees
+                 * nothing but a summary of everybody" is exactly the grant this
+                 * change exists to make refusable.
+                 *
+                 * NOTHING CHANGES FOR ANY EXISTING ROLE. The migration that
+                 * accompanies this grants all seven to every role already
+                 * holding `hr.view`, because a permission split that silently
+                 * NARROWS what somebody could do yesterday is the one direction
+                 * nobody notices until they are locked out of their own work.
+                 */
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('hours', 'Work Hours'),
+                    new TabDefinition('onboarding', 'Onboarding'),
+                    new TabDefinition('records', 'Records'),
+                    new TabDefinition('invitations', 'Invitations'),
+                    new TabDefinition('pto', 'Paid time off'),
+                    new TabDefinition('contracts', 'Contracts'),
+                ],
                 triggers: [
                     /*
                      * ── Invitations ─────────────────────────────

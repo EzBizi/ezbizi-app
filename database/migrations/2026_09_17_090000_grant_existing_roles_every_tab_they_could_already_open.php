@@ -1,0 +1,112 @@
+<?php
+
+use App\Models\Permission;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Modules\PermissionCatalogue;
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Nobody loses a tab they had this morning (Jose, 2026-09-17).
+ *
+ * Tabs inside a module became grantable one at a time today. Until now a role
+ * holding `hr.view` saw all seven of Human Resources' tabs, because the module
+ * registry said in as many words that "the tab IS the view permission". After
+ * this change, a role holds tabs explicitly — so without this migration every
+ * existing role would keep `hr.view` and lose all seven panes behind it on the
+ * next deploy.
+ *
+ * ── The direction that nobody notices ────────────────────────────
+ *
+ * A permission split can only go wrong in two ways, and they are not
+ * symmetrical. Granting too much is visible: somebody opens a tab they should
+ * not see and says so. NARROWING is silent — a dispatcher opens Human Resources
+ * on Thursday, finds the pane they used on Wednesday simply absent, and has no
+ * way to tell a permission change from a bug. Nothing errors, nothing logs, and
+ * the only signal is somebody being unable to do their job.
+ *
+ * So the split starts from exactly where every role already stood: whoever
+ * could open the module keeps every tab in it, and an administrator narrows
+ * from there deliberately.
+ *
+ * ── Derived, not listed ──────────────────────────────────────────
+ *
+ * The tabs come from the registry rather than a hand-written list, so the
+ * modules that declare tabs AFTER today are covered by re-running this logic in
+ * their own migration rather than by remembering to edit an array here. A list
+ * typed into a migration is right on the day it is written.
+ *
+ * Administrators are untouched and need to be: `Role::isAdministrator()`
+ * bypasses the permission table entirely, so they hold nothing to add to.
+ */
+return new class extends Migration
+{
+    public function up(): void
+    {
+        $registry  = app(ModuleRegistry::class);
+        $catalogue = app(PermissionCatalogue::class);
+
+        foreach ($registry->all() as $module) {
+            if ($module->tabs === []) {
+                continue;
+            }
+
+            $viewId = Permission::query()->where('key', "{$module->key}.view")->value('id');
+
+            if ($viewId === null) {
+                // The module's own view has never been materialised, so no role
+                // can be holding it. Nothing to widen.
+                continue;
+            }
+
+            $roleIds = DB::table('permission_role')
+                ->where('permission_id', $viewId)
+                ->pluck('role_id');
+
+            if ($roleIds->isEmpty()) {
+                continue;
+            }
+
+            foreach ($module->tabs as $tab) {
+                $key = "{$module->key}.{$tab->action()}";
+
+                /*
+                 * materialise() rather than a firstOrCreate of my own, and the
+                 * first draft of this migration was the latter -- which failed
+                 * on "Field 'module' doesn't have a default value", because a
+                 * permission row carries `module` and `action` as well as the
+                 * key and a hand-written insert here knew about neither.
+                 *
+                 * It is also what makes this safe to run before
+                 * ezbizi:sync-permissions: a migration that depends on a deploy
+                 * STEP having happened first works on the box and not on a
+                 * fresh database.
+                 */
+                $permission = $catalogue->materialise($key);
+
+                $rows = $roleIds
+                    ->map(fn ($roleId) => ['role_id' => $roleId, 'permission_id' => $permission->id])
+                    ->all();
+
+                // insertOrIgnore, because a role may already hold the tab if this
+                // runs twice or if somebody granted it between deploy and
+                // migrate. The pivot has no timestamps.
+                DB::table('permission_role')->insertOrIgnore($rows);
+            }
+        }
+    }
+
+    public function down(): void
+    {
+        /*
+         * Deliberately empty, and this is the honest shape rather than laziness.
+         *
+         * The reverse of "grant every tab" is not "revoke every tab" — by the
+         * time anybody rolls back, an administrator may have narrowed a role on
+         * purpose, and re-granting or revoking wholesale would overwrite a
+         * decision somebody made. The tab keys stop being declared when the code
+         * rolls back, and PermissionCatalogue::withImpliedView drops keys the
+         * registry no longer declares, so the rows become inert on their own.
+         */
+    }
+};

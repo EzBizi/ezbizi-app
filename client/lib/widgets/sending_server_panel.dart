@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/cascade_words.dart';
 import '../core/session.dart';
+import '../widgets/search_picker.dart';
 
 /// Where a business connects the mail server its own mail goes out through.
 ///
@@ -163,7 +164,8 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
 
     setState(() {
       _loading = false;
-      _answer = response.ok &&
+      _answer =
+          response.ok &&
               body is Map<String, dynamic> &&
               body['in_effect'] is Map<String, dynamic>
           ? body
@@ -443,9 +445,9 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
   /// second: nothing set anywhere is a different fact from inheriting a value
   /// somebody in this organization chose.
   String _provenance(Map<String, dynamic>? effective) => provenanceWords(
-        effective?['source_name'] as String?,
-        inherited: effective?['inherited'] as bool? ?? false,
-      );
+    effective?['source_name'] as String?,
+    inherited: effective?['inherited'] as bool? ?? false,
+  );
 
   Widget _fact(
     BuildContext context,
@@ -498,29 +500,30 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
       Row(
         children: [
           Expanded(
-            child: DropdownButtonFormField<int>(
-              initialValue: _port,
-              decoration: const InputDecoration(labelText: 'Port'),
-              // 587 and 465 only, matching the server. 25 is relay rather than
-              // submission and accepting it would let this form reach a class
-              // of machine the submission ports do not.
-              items: const [
-                DropdownMenuItem(value: 587, child: Text('587 — STARTTLS')),
-                DropdownMenuItem(value: 465, child: Text('465 — TLS')),
+            child: SearchPickerField<int>(
+                     value: _port,
+                     label: 'Port',
+                     // 587 and 465 only, matching the server. 25 is relay rather than
+                     // submission and accepting it would let this form reach a class
+                     // of machine the submission ports do not.
+                     options: const [
+                SearchOption(value: 587, label: '587 — STARTTLS'),
+                SearchOption(value: 465, label: '465 — TLS'),
               ],
-              onChanged: (value) => setState(() => _port = value ?? 587),
-            ),
+                     onChanged: (value) => setState(() => _port = value ?? 587),
+                   ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: DropdownButtonFormField<String>(
-              initialValue: _encryption,
-              decoration: const InputDecoration(labelText: 'Encryption'),
-              items: const [
-                DropdownMenuItem(value: 'tls', child: Text('TLS')),
-                DropdownMenuItem(value: 'ssl', child: Text('SSL')),
+            child: SearchPickerField<String>(
+              value: _encryption,
+              label: 'Encryption',
+              options: const [
+                SearchOption(value: 'tls', label: 'TLS'),
+                SearchOption(value: 'ssl', label: 'SSL'),
               ],
-              onChanged: (value) => setState(() => _encryption = value ?? 'tls'),
+              onChanged: (value) =>
+                  setState(() => _encryption = value ?? 'tls'),
             ),
           ),
         ],
@@ -548,9 +551,9 @@ class _SendingServerPanelState extends State<SendingServerPanel> {
             onPressed: _saving
                 ? null
                 : () => setState(() {
-                      _editing = false;
-                      _error = null;
-                    }),
+                    _editing = false;
+                    _error = null;
+                  }),
             child: const Text('Cancel'),
           ),
         ],

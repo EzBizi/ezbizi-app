@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
+import '../../widgets/search_picker.dart';
 
 /// Phone › Settings › IVR menus — the menu a caller hears.
 ///
@@ -88,7 +89,10 @@ class _FlowsPaneState extends State<FlowsPane> {
 
     if (!mounted) return;
 
-    final failed = results.firstWhere((r) => !r.ok, orElse: () => results.first);
+    final failed = results.firstWhere(
+      (r) => !r.ok,
+      orElse: () => results.first,
+    );
 
     if (!failed.ok) {
       setState(() {
@@ -129,20 +133,28 @@ class _FlowsPaneState extends State<FlowsPane> {
     // A key set to ring a group with no group chosen would post null and the
     // renderer would fall through to the line's own group — so the caller
     // reaches somebody, but never who this key promised.
-    if (draft.options.any((o) => o.action == 'ring_group' && (o.groupId ?? '').isEmpty)) {
+    if (draft.options.any(
+      (o) => o.action == 'ring_group' && (o.groupId ?? '').isEmpty,
+    )) {
       setState(() => _formError = 'Say which group each ringing key reaches.');
       return;
     }
 
-    if (draft.options.any((o) => o.action == 'forward' && o.number.trim().isEmpty)) {
-      setState(() => _formError = 'Say where each forwarding key sends the call.');
+    if (draft.options.any(
+      (o) => o.action == 'forward' && o.number.trim().isEmpty,
+    )) {
+      setState(
+        () => _formError = 'Say where each forwarding key sends the call.',
+      );
       return;
     }
 
     // A key set to ring one person with nobody chosen posts no digits, and the
     // renderer sends that caller to voicemail — so the key answers, which is
     // exactly why nobody would report it as broken.
-    if (draft.options.any((o) => o.action == 'extension' && o.extension.trim().isEmpty)) {
+    if (draft.options.any(
+      (o) => o.action == 'extension' && o.extension.trim().isEmpty,
+    )) {
       setState(() => _formError = 'Say which extension each key rings.');
       return;
     }
@@ -163,7 +175,8 @@ class _FlowsPaneState extends State<FlowsPane> {
             if (option.action == 'ring_group') 'ring_group_id': option.groupId,
             if (option.action == 'forward') 'number': option.number.trim(),
             if (option.action == 'hangup') 'say': option.say.trim(),
-            if (option.action == 'extension') 'extension': option.extension.trim(),
+            if (option.action == 'extension')
+              'extension': option.extension.trim(),
           },
       ],
     };
@@ -402,7 +415,8 @@ class _FlowsPaneState extends State<FlowsPane> {
         ),
         const SizedBox(height: 8),
 
-        for (var i = 0; i < draft.options.length; i++) _optionRow(draft, i, theme),
+        for (var i = 0; i < draft.options.length; i++)
+          _optionRow(draft, i, theme),
 
         if (draft.options.length < 10)
           Align(
@@ -410,7 +424,8 @@ class _FlowsPaneState extends State<FlowsPane> {
             child: TextButton.icon(
               icon: const Icon(Icons.add),
               label: const Text('Add a key'),
-              onPressed: () => setState(() => draft.options.add(_OptionDraft.blank())),
+              onPressed: () =>
+                  setState(() => draft.options.add(_OptionDraft.blank())),
             ),
           ),
 
@@ -451,38 +466,46 @@ class _FlowsPaneState extends State<FlowsPane> {
                   // A dropdown with a label and a chevron needs about this
                   // much; 64 and 72 both overflowed on a phone.
                   width: 88,
-                  child: DropdownButtonFormField<String>(
+                  child: SearchPickerField<String>(
                     key: ValueKey('digit:$index'),
-                    initialValue: option.digit,
-                    decoration: const InputDecoration(
-                      labelText: 'Key',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
+                    value: option.digit,
+                    label: 'Key',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    options: [
                       for (final d in const [
-                        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '#',
+                        '0',
+                        '1',
+                        '2',
+                        '3',
+                        '4',
+                        '5',
+                        '6',
+                        '7',
+                        '8',
+                        '9',
+                        '*',
+                        '#',
                       ])
-                        DropdownMenuItem(value: d, child: Text(d)),
+                        SearchOption(value: d, label: d),
                     ],
                     onChanged: (v) => setState(() => option.digit = v ?? '1'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: DropdownButtonFormField<String>(
+                  child: SearchPickerField<String>(
                     key: ValueKey('action:$index'),
-                    initialValue: option.action,
-                    decoration: const InputDecoration(
-                      labelText: 'Does what',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
+                    value: option.action,
+                    label: 'Does what',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    options: [
                       for (final (value, label) in _actions)
-                        DropdownMenuItem(value: value, child: Text(label)),
+                        SearchOption(value: value, label: label),
                     ],
-                    onChanged: (v) => setState(() => option.action = v ?? 'voicemail'),
+                    onChanged: (v) =>
+                        setState(() => option.action = v ?? 'voicemail'),
                   ),
                 ),
                 IconButton(
@@ -493,27 +516,29 @@ class _FlowsPaneState extends State<FlowsPane> {
                   // which clears the 44px touch guidance with the row padding.
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
-                  onPressed: () => setState(() => draft.options.removeAt(index)),
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                  onPressed: () =>
+                      setState(() => draft.options.removeAt(index)),
                 ),
               ],
             ),
 
             if (option.action == 'ring_group') ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              SearchPickerField<String>(
                 key: ValueKey('group:$index'),
-                initialValue: _groups.any((g) => g.id == option.groupId)
+                value: _groups.any((g) => g.id == option.groupId)
                     ? option.groupId
                     : null,
-                decoration: const InputDecoration(
-                  labelText: 'Which group',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                items: [
+                label: 'Which group',
+                border: OutlineInputBorder(),
+                isDense: true,
+                options: [
                   for (final g in _groups)
-                    DropdownMenuItem(value: g.id, child: Text(g.name)),
+                    SearchOption(value: g.id, label: g.name),
                 ],
                 onChanged: (v) => setState(() => option.groupId = v),
               ),
@@ -546,25 +571,20 @@ class _FlowsPaneState extends State<FlowsPane> {
 
             if (option.action == 'extension') ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              SearchPickerField<String>(
                 key: ValueKey('extension:$index'),
-                initialValue: _extensions.any((e) => e.extension == option.extension)
+                value: _extensions.any((e) => e.extension == option.extension)
                     ? option.extension
                     : null,
-                decoration: const InputDecoration(
-                  labelText: 'Which extension',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
+                label: 'Which extension',
+                border: OutlineInputBorder(),
+                isDense: true,
                 // The extensions somebody actually holds, not free digits: the
                 // renderer looks these up, and digits nobody holds make a key
                 // that says "there is no extension" to every caller.
-                items: [
+                options: [
                   for (final e in _extensions)
-                    DropdownMenuItem(
-                      value: e.extension,
-                      child: Text('${e.extension} · ${e.name}'),
-                    ),
+                    SearchOption(value: e.extension, label: '${e.extension} · ${e.name}'),
                 ],
                 onChanged: (v) => setState(() => option.extension = v ?? ''),
               ),
@@ -691,25 +711,28 @@ class _Flow {
     final data = payload is Map ? payload['data'] : payload;
     if (data is! List) return const [];
 
-    return data.whereType<Map<String, dynamic>>().map((row) {
-      return _Flow(
-        id: row['id'].toString(),
-        connectionId: row['connection_id']?.toString() ?? '',
-        name: row['name']?.toString() ?? 'Menu',
-        prompt: row['prompt']?.toString() ?? '',
-        options: (row['options'] as List? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .toList(),
-        numberIds: (row['number_ids'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList(),
+    return data
+        .whereType<Map<String, dynamic>>()
+        .map((row) {
+          return _Flow(
+            id: row['id'].toString(),
+            connectionId: row['connection_id']?.toString() ?? '',
+            name: row['name']?.toString() ?? 'Menu',
+            prompt: row['prompt']?.toString() ?? '',
+            options: (row['options'] as List? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .toList(),
+            numberIds: (row['number_ids'] as List? ?? const [])
+                .map((e) => e.toString())
+                .toList(),
 
-        // Absent on an older server. Defaulting to TRUE rather than false:
-        // "this menu never plays" is a serious claim and inventing it from a
-        // missing field would put a warning on every healthy menu.
-        plays: row['plays'] == null ? true : row['plays'] == true,
-      );
-    }).toList(growable: false);
+            // Absent on an older server. Defaulting to TRUE rather than false:
+            // "this menu never plays" is a serious claim and inventing it from a
+            // missing field would put a warning on every healthy menu.
+            plays: row['plays'] == null ? true : row['plays'] == true,
+          );
+        })
+        .toList(growable: false);
   }
 }
 
@@ -726,7 +749,12 @@ class _Group {
 
     return data
         .whereType<Map<String, dynamic>>()
-        .map((r) => _Group(id: r['id'].toString(), name: r['name']?.toString() ?? 'Group'))
+        .map(
+          (r) => _Group(
+            id: r['id'].toString(),
+            name: r['name']?.toString() ?? 'Group',
+          ),
+        )
         .toList(growable: false);
   }
 }
@@ -748,10 +776,12 @@ class _Ext {
     return data
         .whereType<Map<String, dynamic>>()
         .where((r) => (r['extension']?.toString() ?? '').isNotEmpty)
-        .map((r) => _Ext(
-              extension: r['extension'].toString(),
-              name: r['name']?.toString() ?? 'Somebody',
-            ))
+        .map(
+          (r) => _Ext(
+            extension: r['extension'].toString(),
+            name: r['name']?.toString() ?? 'Somebody',
+          ),
+        )
         .toList(growable: false);
   }
 }

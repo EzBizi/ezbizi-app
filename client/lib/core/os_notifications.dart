@@ -78,6 +78,40 @@ class OsNotifications {
   @visibleForTesting
   static const String windowsIconAsset = 'assets/logo/app-icon-120.png';
 
+  /// The same icon, carried ON the toast instead of looked up from the registry.
+  ///
+  /// ── Why both, when one of them ought to be enough ────────────────
+  ///
+  /// `iconPath` is the registry route: the plugin writes it to
+  /// `...\AppUserModelId\EzBizi.DesktopClient\IconUri` and Windows is supposed
+  /// to find it from there. That route was set up correctly and measured
+  /// correct — the value present, the file at the end of it on disk, the name
+  /// beside it in the same key rendering fine on the toast — and Windows drew
+  /// no icon anyway. A registration that is right and does not take is not
+  /// something this code can argue with.
+  ///
+  /// `appLogoOverride` does not ask Windows to resolve anything: the image is
+  /// named in the toast's own XML, per notification, and appears in the banner
+  /// and in the notification centre entry behind it. So the two are not
+  /// belt-and-braces for the same mechanism — one is an app-identity lookup and
+  /// the other is a picture in this specific toast, and only the second is
+  /// under our control at the moment we show it.
+  ///
+  /// Resolved once: it is the same file every time, and `existsSync` inside
+  /// [ClientPlatform.installedAssetPath] is a disk hit that has no business
+  /// running on every notification.
+  static final WindowsImage? _windowsLogo = () {
+    final path = ClientPlatform.installedAssetPath(windowsIconAsset);
+
+    return path == null
+        ? null
+        : WindowsImage(
+            Uri.file(path, windows: true),
+            altText: 'EzBizi',
+            placement: WindowsImagePlacement.appLogoOverride,
+          );
+  }();
+
   static bool _initialised = false;
   static bool _permitted = false;
 
@@ -173,8 +207,11 @@ class OsNotifications {
         // more thing to keep in step with whatever the person chose in
         // Settings. Silence would need an explicit `silent="true"`, so there is
         // no way to end up quiet by accident here.
-        notificationDetails: const NotificationDetails(
-          android: AndroidNotificationDetails(
+        notificationDetails: NotificationDetails(
+          windows: WindowsNotificationDetails(
+            images: <WindowsImage>[?_windowsLogo],
+          ),
+          android: const AndroidNotificationDetails(
             'ezbizi_notifications',
             'EzBizi notifications',
             channelDescription:

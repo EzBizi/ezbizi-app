@@ -8,6 +8,7 @@ import '../widgets/address_fields.dart';
 import '../core/cascade_words.dart';
 import '../widgets/error_note.dart';
 import '../widgets/refused.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/setting_editors.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/sending_server_panel.dart';
@@ -1759,27 +1760,23 @@ class _EnumControl extends StatelessWidget {
       ...choices,
     ];
 
-    return DropdownMenu<Object>(
-      key: ValueKey(selected),
-      initialSelection: selected is Object ? selected : null,
-      enabled: editable,
-      enableFilter: false,
-      requestFocusOnTap: false,
+    return SizedBox(
       width: 260,
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
+      child: SearchPickerField<Object>(
+        key: ValueKey(selected),
+        value: selected is Object ? selected : null,
+        border: const OutlineInputBorder(),
         isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        options: [
+          for (final choice in items)
+            SearchOption(value: choice.value, label: choice.label),
+        ],
+        onChanged: editable
+            ? (picked) {
+                if (picked != null) onChanged(picked);
+              }
+            : null,
       ),
-      dropdownMenuEntries: [
-        for (final choice in items)
-          DropdownMenuEntry(value: choice.value, label: choice.label),
-      ],
-      onSelected: editable
-          ? (picked) {
-              if (picked != null) onChanged(picked);
-            }
-          : null,
     );
   }
 }
@@ -1865,30 +1862,26 @@ class _DurationControlState extends State<_DurationControl> {
           ),
         ),
         const SizedBox(width: 8),
-        DropdownMenu<String>(
-          key: ValueKey(_unit),
-          initialSelection: _unit,
-          enabled: widget.editable,
-          enableFilter: false,
-          requestFocusOnTap: false,
+        SizedBox(
           width: 140,
-          inputDecorationTheme: const InputDecorationTheme(
-            border: OutlineInputBorder(),
+          child: SearchPickerField<String>(
+            key: ValueKey(_unit),
+            value: _unit,
+            border: const OutlineInputBorder(),
             isDense: true,
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            options: const [
+              SearchOption(value: 'minutes', label: 'Minutes'),
+              SearchOption(value: 'hours', label: 'Hours'),
+              SearchOption(value: 'days', label: 'Days'),
+            ],
+            onChanged: widget.editable
+                ? (picked) {
+                    if (picked == null) return;
+                    setState(() => _unit = picked);
+                    _commit();
+                  }
+                : null,
           ),
-          dropdownMenuEntries: const [
-            DropdownMenuEntry(value: 'minutes', label: 'Minutes'),
-            DropdownMenuEntry(value: 'hours', label: 'Hours'),
-            DropdownMenuEntry(value: 'days', label: 'Days'),
-          ],
-          onSelected: widget.editable
-              ? (picked) {
-                  if (picked == null) return;
-                  setState(() => _unit = picked);
-                  _commit();
-                }
-              : null,
         ),
       ],
     );

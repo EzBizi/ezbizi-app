@@ -44,7 +44,7 @@ class HrPeopleTest extends TestCase
         $theirs = $this->userWithRole($alpha, 'Distant', ['customers.view'], onlyAt: $elsewhere);
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'customers.view'], onlyAt: $alpha['franchise'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.records.view', 'customers.view'], onlyAt: $alpha['franchise'],
         );
 
         $names = $this->signedInAs($manager)->getJson('/api/v1/hr/people')
@@ -99,7 +99,7 @@ class HrPeopleTest extends TestCase
 
         $distant = $this->userWithRole($alpha, 'Distant', ['customers.view'], onlyAt: $elsewhere);
         $manager = $this->userWithRole(
-            $alpha, 'Branch Manager', ['hr.view', 'hr.edit', 'customers.view'],
+            $alpha, 'Branch Manager', ['hr.view', 'hr.records.view', 'hr.edit', 'customers.view'],
             onlyAt: $alpha['franchise'],
         );
 
@@ -143,7 +143,7 @@ class HrPeopleTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
 
-        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.edit']);
+        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.records.view', 'hr.edit']);
         $person  = $this->userWithRole($alpha, 'Junior', []);
 
         $this->signedInAs($manager)
@@ -160,7 +160,7 @@ class HrPeopleTest extends TestCase
 
         // Somebody else with hr.edit, so the refusal is about the FLOOR rather
         // than about deactivating yourself.
-        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.edit']);
+        $manager = $this->userWithRole($alpha, 'Branch Manager', ['hr.view', 'hr.records.view', 'hr.edit']);
 
         $this->signedInAs($manager)
             ->patchJson("/api/v1/hr/people/{$alpha['admin']->id}", ['is_active' => false])
@@ -312,7 +312,7 @@ class HrPeopleTest extends TestCase
 
         $this->signedInAs($outsider)->getJson('/api/v1/hr/people')->assertForbidden();
 
-        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view']);
+        $reader = $this->userWithRole($alpha, 'Reader', ['hr.view', 'hr.records.view']);
 
         $this->signedInAs($reader)->getJson('/api/v1/hr/people')->assertOk();
 

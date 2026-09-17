@@ -561,3 +561,43 @@ refuses with *"existing release worktree has a different SHA"* — which reads
 like a version mismatch and is really an orphaned folder. `git worktree list`
 will not show it. Check the artefacts are already in `Distribution/`, then
 remove the directory.
+
+## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
+
+Measured on the box, 2026-09-17:
+
+    plugin_version 1.9.1   110 sites, all seen in the last 30 minutes
+    plugin_version 1.10.0    0 sites
+
+    service_capabilities, identical on all 110:
+      read, upload_files, edit_posts, edit_published_posts, publish_posts,
+      edit_pages, edit_published_pages, publish_pages
+
+No `update_plugins`, no `activate_plugins`, no `install_plugins`. The service
+credentials EzBizi holds can write CONTENT on a customer site and nothing else.
+So "roll the plugin out to the estate" is not a command anybody here can run,
+and the absence is a design property rather than a gap to fill: an integration
+that can install code on 110 businesses' websites is a different and much
+larger thing than one that can edit their pages.
+
+1.10.0 is published on wordpress.org (slug `ezbizi`). The plugin sets no
+`auto_update_plugin` filter, so each site sees it at its own next version check
+and installs it only if that site has auto-updates on; the rest need somebody to
+press Update.
+
+**THE HALF-SHIPPED STATE THAT FOLLOWS.** The two halves of a feature ship
+through two different channels at two different speeds. 6bd90848 put City link,
+State link and Website address into EzBizi and went live in 0.0.0237 within the
+hour; 1.10.0 is what RENDERS them and is on zero sites. So the fields are
+fillable today and do nothing on any customer site, and "those three fields are
+back" is true of our side only.
+
+Before saying a web feature is live, ask which half you measured. `web_sites`
+answers it directly:
+
+    SELECT plugin_version, COUNT(*) FROM web_sites GROUP BY plugin_version;
+
+**OPEN, FOR JOSE.** Whether the plugin should opt into WordPress auto-updates.
+That would close the gap permanently and it means EzBizi code installing itself
+on 110 customer sites unattended — a decision about other businesses' property,
+not a deployment call, so it waits for him even under §11. Raised 2026-09-17.

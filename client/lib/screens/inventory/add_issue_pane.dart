@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/error_note.dart';
+import '../../widgets/search_picker.dart';
 import 'item_pane.dart';
 
 /// Issue stock in the 75% pane, posted on save.
@@ -174,24 +176,15 @@ class _AddIssuePaneState extends State<AddIssuePane> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: _locationId,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'From location',
-                        ),
-                        items: [
+                      SearchPickerField<String>(
+                        value: _locationId,
+                        label: 'From location',
+                        options: [
                           for (final loc in _locations)
-                            DropdownMenuItem(
-                              value: loc['id'] as String?,
-                              child: Text(
-                                inventoryLocationChoiceLabel(
+                            SearchOption(value: loc['id'] as String?, label: inventoryLocationChoiceLabel(
                                   loc,
                                   _me.organization.name,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
+                                )),
                         ],
                         onChanged: _busy
                             ? null
@@ -277,20 +270,13 @@ class _AddIssuePaneState extends State<AddIssuePane> {
                       ),
                       for (var i = 0; i < _lines.length; i++) ...[
                         const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
+                        SearchPickerField<String>(
                           key: ValueKey('issue-item-$i-${_lines[i].itemId}'),
-                          initialValue: _lines[i].itemId,
-                          isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Item'),
-                          items: [
+                          value: _lines[i].itemId,
+                          label: 'Item',
+                          options: [
                             for (final item in _items)
-                              DropdownMenuItem(
-                                value: item['id'] as String?,
-                                child: Text(
-                                  inventoryItemChoiceLabel(item),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
+                              SearchOption(value: item['id'] as String?, label: inventoryItemChoiceLabel(item)),
                           ],
                           onChanged: _busy
                               ? null

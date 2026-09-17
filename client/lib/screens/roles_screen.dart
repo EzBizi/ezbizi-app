@@ -1258,43 +1258,32 @@ class _RoleEditorState extends State<_RoleEditor> {
         LayoutBuilder(
           builder: (context, constraints) => Column(
             children: [
-        for (final action in module.actions)
-          CheckboxListTile(
-            key: ValueKey('action:${action.key}'),
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            value: _held.contains(action.key),
-            onChanged: live && action.grantable
-                ? (_) => _toggleAction(module, action)
-                : null,
-            title: _actionTitle(
-              context,
-              action,
-              muted,
-              narrow: constraints.maxWidth < 400,
-            ),
-            subtitle: _requirementLine(
-              context,
-              action,
-              narrow: constraints.maxWidth < 400,
-            ),
-            // Shown rather than hidden, and shown as held when it is held. §4:
-            // nobody grants what they do not have — but a role can hold what
-            // the person editing it does not, and pretending otherwise draws an
-            // editor that misrepresents the role it is describing.
-            secondary: action.grantable
-                ? null
-                // R8: what the person can do about it, in words they recognise
-                // from the screen in front of them. The permission key was here
-                // and said nothing to anybody who has not read the source.
-                : _lockedMark(
-                    theme,
-                    'Your own role does not include '
-                    '${action.label.toLowerCase()} under ${module.label}, so '
-                    'you cannot hand it out or take it back.',
-                  ),
+        // TABS FIRST, UNDER THEIR OWN HEADING, and then what may be done.
+        //
+        // Added 2026-09-17 with per-tab grants. Human Resources went from four
+        // checkboxes to eleven, and a flat list mixing "Work Hours" with "Edit"
+        // asks the reader to work out which of two questions each row is
+        // answering. The headings answer it once.
+        //
+        // Both headings are conditional on tabs EXISTING: a module with none
+        // draws exactly what it drew yesterday, with no lone "What they can do"
+        // caption over the same four rows it always had.
+        if (module.actions.any((a) => a.tab)) ...[
+          _grantHeading(
+            theme,
+            'Tabs',
+            'Which tabs inside ${module.label} this role may open.',
           ),
+          for (final action in module.actions.where((a) => a.tab))
+            _actionRow(context, module, action, muted, live, constraints),
+          _grantHeading(
+            theme,
+            'What they can do',
+            'Applies wherever ${module.label} allows it, in the tabs above.',
+          ),
+        ],
+        for (final action in module.actions.where((a) => !a.tab))
+          _actionRow(context, module, action, muted, live, constraints),
             ],
           ),
         ),
@@ -1303,6 +1292,88 @@ class _RoleEditorState extends State<_RoleEditor> {
       ],
     );
   }
+
+  /// One grant, drawn the same whether it opens a tab or permits an act.
+  ///
+  /// Extracted on 2026-09-17 rather than duplicated into the two groups: the
+  /// refusal wording, the requirement line and the narrow-layout threshold all
+  /// live here, and a second copy for tabs would be a second place for them to
+  /// drift. The rows differ by which list they are drawn FROM, not by how.
+  Widget _actionRow(
+    BuildContext context,
+    PermissionModule module,
+    PermissionAction action,
+    Color? muted,
+    bool live,
+    BoxConstraints constraints,
+  ) {
+    final theme = Theme.of(context);
+
+    return CheckboxListTile(
+      key: ValueKey('action:${action.key}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      value: _held.contains(action.key),
+      onChanged: live && action.grantable
+          ? (_) => _toggleAction(module, action)
+          : null,
+      title: _actionTitle(
+        context,
+        action,
+        muted,
+        narrow: constraints.maxWidth < 400,
+      ),
+      subtitle: _requirementLine(
+        context,
+        action,
+        narrow: constraints.maxWidth < 400,
+      ),
+      // Shown rather than hidden, and shown as held when it is held. §4:
+      // nobody grants what they do not have — but a role can hold what
+      // the person editing it does not, and pretending otherwise draws an
+      // editor that misrepresents the role it is describing.
+      secondary: action.grantable
+          ? null
+          // R8: what the person can do about it, in words they recognise
+          // from the screen in front of them. The permission key was here
+          // and said nothing to anybody who has not read the source.
+          : _lockedMark(
+              theme,
+              'Your own role does not include '
+              '${action.label.toLowerCase()} under ${module.label}, so '
+              'you cannot hand it out or take it back.',
+            ),
+    );
+  }
+
+  /// A caption over one group of grants, and the sentence that says what the
+  /// group is FOR.
+  ///
+  /// The sentence is not decoration. "Tabs" alone leaves an administrator to
+  /// infer whether ticking one opens a pane or permits something inside it —
+  /// which is exactly the confusion the split was made to end.
+  Widget _grantHeading(ThemeData theme, String heading, String explanation) =>
+      Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              heading,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              explanation,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
 
   /// How many of the organization's inboxes this role can open, said on the
   /// collapsed row.
