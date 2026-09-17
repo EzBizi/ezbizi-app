@@ -149,6 +149,39 @@ class LeadsGlanceTest extends TestCase
     }
 
     /**
+     * The box sends what it draws, and nothing else.
+     *
+     * `organization_total` sat in this payload and came out with the source
+     * filter; no test moved when it did, which is also how the same field
+     * reached FIVE glances, each written by starting from the last.
+     *
+     * The two controls above the assertion are the point: an absence on its
+     * own is satisfied by a payload that is empty, errored, or scoped to
+     * nothing. With the series and the sentences asserted PRESENT, a missing
+     * key means withheld. Pinned as the whole key list rather than by name, so
+     * a sixth organization-wide figure added the same way cannot pass it.
+     */
+    public function test_the_box_sends_no_figure_it_does_not_draw(): void
+    {
+        $this->lead($this->alpha['franchise']);
+        $this->lead($this->alpha['franchise'], status: Lead::STATUS_BOOKED);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $this->assertFalse($data['empty']);
+        $this->assertNotEmpty($data['series'][0]['points']);
+        $this->assertNotEmpty($data['sentences']);
+
+        $this->assertSame(
+            ['empty', 'series', 'slices', 'sentences'],
+            array_keys($data),
+            'the Leads box draws a line, its slices and its sentences; any other key '
+            .'is a query on every dashboard load for a figure nobody sees, and an '
+            .'organization-wide one reaches a reader scoped to one franchise',
+        );
+    }
+
+    /**
      * THE DEFECT. A reader who sees none is not told the business has none.
      *
      * The fixture is the real shape: enquiries placed in one branch, read by a

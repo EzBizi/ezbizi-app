@@ -339,6 +339,39 @@ class MarketingGlanceTest extends TestCase
     }
 
     /**
+     * The box sends no figure it does not draw.
+     *
+     * Dashboard's rule, 2026-09-17: a glance sends what its box draws and
+     * nothing else. Five glances were shipping `organization_total`, an
+     * organization-wide count with no reader in `client/lib` — invisible on
+     * screen and plain in the network tab to somebody whose reach is one
+     * franchise. Two of them turned out to be a bare `Model::query()->count()`
+     * with no reach clause at all, sitting beside scoped sentences.
+     *
+     * This box never had one. The guard is here because the reason those five
+     * existed is that each was written by starting from the last one, and this
+     * file was written by starting from `ReviewsGlance` — which still has it.
+     * Nothing in the suite would have noticed the key being copied back in.
+     *
+     * The positive control is what makes the absence mean something: a payload
+     * that carried NO keys at all would satisfy the first assertion on its own.
+     */
+    public function test_the_box_sends_no_figure_it_does_not_draw(): void
+    {
+        $account = $this->connection(SocialConnection::SCOPE_ORGANIZATION, null, 'head');
+        $this->target($account, SocialPostTarget::STATUS_SENT, now()->subDay()->toDateTimeString());
+
+        $data = $this->payloadFor($this->alpha['admin'])['data'];
+
+        $this->assertArrayNotHasKey('organization_total', $data);
+
+        // The control: this payload is populated, so the absence above is the
+        // key being withheld rather than an empty box.
+        $this->assertArrayHasKey('series', $data);
+        $this->assertArrayHasKey('sentences', $data);
+    }
+
+    /**
      * The box is live, so the placeholder must be gone.
      *
      * Asserted through what the registry actually HANDS OUT rather than
