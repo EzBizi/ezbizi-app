@@ -311,7 +311,7 @@ class HrAutomationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
 
         $builder = $this->userWithRole($alpha, 'Rule builder', [
-            'automations.view', 'automations.create', 'automations.build.view', 'jobs.view',
+            'automations.view', 'automations.build.view', 'automations.create', 'jobs.view',
         ]);
 
         $modules = $this->modulesInCatalogue($builder);
@@ -343,7 +343,7 @@ class HrAutomationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
 
         $builder = $this->userWithRole($alpha, 'Rule builder', [
-            'automations.view', 'automations.create', 'jobs.view',
+            'automations.view', 'automations.build.view', 'automations.create', 'jobs.view',
         ]);
 
         // The premise: HR is genuinely closed to them.
@@ -395,7 +395,7 @@ class HrAutomationsTest extends TestCase
         ]));
 
         $manager = $this->userWithRole(
-            $alpha, 'Branch manager', ['automations.view', 'hr.view'],
+            $alpha, 'Branch manager', ['automations.view', 'automations.build.view', 'hr.view'],
             'f2@alpha.test', onlyAt: $elsewhere,
         );
 
@@ -448,7 +448,7 @@ class HrAutomationsTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
 
         $hr = $this->userWithRole($alpha, 'People manager', [
-            'automations.view', 'automations.create', 'automations.build.view', 'hr.view',
+            'automations.view', 'automations.build.view', 'automations.create', 'hr.view',
         ]);
 
         $catalogue = $this->catalogue($hr);
@@ -523,7 +523,7 @@ class HrAutomationsTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $hr    = $this->userWithRole($alpha, 'People manager', [
-            'automations.view', 'automations.create', 'hr.view',
+            'automations.view', 'automations.build.view', 'automations.create', 'hr.view',
         ]);
 
         $response = $this->signedInAs($hr)->postJson('/api/v1/automations', [

@@ -360,6 +360,139 @@ class CallsController extends Controller
     }
 
     /**
+     * POST /api/v1/phone/calls/silence
+     *
+     * I have dealt with this call on THIS device. Stop my other phones.
+     *
+     * ── What Jose reported ──────────────────────────────────────────
+     *
+     * 2026-09-17: *"all 3 ring, i decline on desktop, it should update that it
+     * was declined on the others and stop ringing"*. Same for answering.
+     *
+     * ── Why Twilio does not do this by itself ───────────────────────
+     *
+     * A `<Dial>` makes one child leg per `<Client>` noun, and one person with
+     * three devices is three nouns. ANSWERING ends the siblings, because a
+     * Dial connects the first to answer and hangs up the rest. DECLINING does
+     * not, and should not: a leg refused by one person must leave the call
+     * ringing for the colleagues it is also offered to. Twilio cannot tell
+     * "this person is not taking it" from "this person's other phone already
+     * has it", because it does not know two identities are one human.
+     *
+     * We do. So this ends the legs belonging to the person asking, except the
+     * device that asked — and touches nothing belonging to anybody else.
+     *
+     * ── Why the device that asked is spared rather than trusted ─────
+     *
+     * A device that answered is mid-conversation and ending its leg would drop
+     * the call it just took. A device that declined has already ended its own
+     * leg, so sparing it costs nothing. One rule covers both, which is why
+     * accepting and declining call the same endpoint: two endpoints would be
+     * two chances to end the wrong leg.
+     *
+     * ── Why the call is found rather than named ─────────────────────
+     *
+     * The client holds the SID of its OWN leg, not the parent's, and the
+     * parent is what the other legs hang off. So this looks for calls ringing
+     * on lines this person can be rung on — a small set, and empty most of the
+     * time — rather than trusting a sid the caller could not know.
+     */
+    public function silence(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            // Required, unlike on transfer(). There, a missing device id means
+            // the asking device also gets rung, which is visible and harmless.
+            // Here it would mean ending the leg of the device that just
+            // answered — silently hanging up on a customer.
+            'from_device_id' => ['required', 'string', 'max:64'],
+        ]);
+
+        $user = $request->user();
+        $from = (string) $input['from_device_id'];
+
+        $connectionIds = $this->access->readable($user)
+            ->pluck('connection_id')
+            ->unique()
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($connectionIds === []) {
+            return response()->json(['data' => ['ended' => 0]]);
+        }
+
+        // RINGING, and recently. `status` is moved by Twilio's callbacks and a
+        // call whose last one never arrives stays ringing in this table for
+        // ever — the same ceiling the call-flow chart applies, and for the same
+        // reason: without it this would hunt legs of calls that ended days ago
+        // on every decline.
+        $ringing = PhoneCall::query()
+            ->whereIn('connection_id', $connectionIds)
+            ->where('status', PhoneCall::STATUS_RINGING)
+            ->where('created_at', '>=', now()->subMinutes(2))
+            ->get();
+
+        $ended = 0;
+
+        foreach ($ringing as $call) {
+            $connection = $call->connection;
+            if ($connection === null) {
+                continue;
+            }
+
+            try {
+                $legs = $this->twilio->childLegs($connection, (string) $call->twilio_sid);
+            } catch (\Throwable) {
+                // Twilio unreachable. Nothing to report as broken: the other
+                // phones keep ringing, which is the behaviour this improves on
+                // rather than the behaviour it depends on.
+                continue;
+            }
+
+            foreach ($legs as $leg) {
+                $to = (string) ($leg['to'] ?? '');
+                if (! str_starts_with($to, 'client:')) {
+                    continue;
+                }
+
+                $identity = substr($to, strlen('client:'));
+
+                // SOMEBODY ELSE'S PHONE IS NOT MINE TO HANG UP. This is the
+                // clause the whole endpoint turns on: a ring group offers one
+                // call to several people, and ending a colleague's leg because
+                // I declined would take the call away from the person about to
+                // answer it.
+                if (! ClientIdentity::belongsTo($identity, $user)) {
+                    continue;
+                }
+
+                // The device that asked. Answered, so ending it would drop the
+                // conversation; or declined, so its leg is already gone.
+                if (ClientIdentity::devicePartOf($identity) === $from) {
+                    continue;
+                }
+
+                // Still ringing. A leg that already ended does not need
+                // ending, and asking Twilio to complete a completed call is a
+                // request that can only fail.
+                if (! in_array((string) ($leg['status'] ?? ''), ['queued', 'initiated', 'ringing'], true)) {
+                    continue;
+                }
+
+                try {
+                    $this->twilio->endCall($connection, (string) $leg['sid']);
+                    $ended++;
+                } catch (\Throwable) {
+                    // One phone that would not stop is not a reason to leave
+                    // the others ringing.
+                }
+            }
+        }
+
+        return response()->json(['data' => ['ended' => $ended]]);
+    }
+
+    /**
      * POST /api/v1/phone/calls/park
      *
      * Set the call I am on down, so anybody can pick it up.

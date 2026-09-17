@@ -191,7 +191,20 @@ List<MailSpan> _spans(Object? json) {
           // at all gets plain text, which is the safe direction to be wrong in.
           strong: entry['strong'] == true,
           emphasis: entry['emphasis'] == true,
-          link: _string(entry['link']),
+          // `href`, which is the key Span::toArray publishes. It was read as
+          // `link` from the day this was written, so EVERY address in EVERY
+          // message has been dropped in production and the run below it drawn
+          // as plain prose -- the anti-phishing affordance this file argues
+          // for at length, absent for as long as it has existed. Nothing
+          // reported it because a message with no visible address looks
+          // exactly like a message with no links in it.
+          //
+          // Caught against a captured production payload
+          // (message_body_desktop_test.dart): 8 addressed spans, 0 read. Every
+          // fixture here said `link`, so the eleven tests in
+          // email_blocks_test.dart agreed with the reader and neither of them
+          // with the server.
+          link: _string(entry['href']),
         ),
   ];
 }

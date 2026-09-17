@@ -38,7 +38,7 @@ class InventoryItemsApiTest extends TestCase
         $local = $this->userWithRole(
             $tenant,
             'Local',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
             onlyAt: $tenant['franchise'],
         );
 
@@ -213,9 +213,9 @@ class InventoryItemsApiTest extends TestCase
             ]);
         });
 
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view']);
         $money = $this->userWithRole($tenant, 'Money', [
-            'inventory.view',
+            'inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view',
             'inventory.financials',
         ]);
 
@@ -376,7 +376,7 @@ class InventoryItemsApiTest extends TestCase
             $tenant,
             $tenant['company'],
             'CompanyClerk',
-            ['inventory.view', 'inventory.edit', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.edit', 'inventory.create'],
         );
 
         $ownEmpty = $this->inTenant($tenant['org'], function () use ($tenant) {
@@ -451,7 +451,7 @@ class InventoryItemsApiTest extends TestCase
             $tenant,
             $tenant['company'],
             'CompanyClerk',
-            ['inventory.view', 'inventory.create'],
+            ['inventory.view', 'inventory.stock.view', 'inventory.items.view', 'inventory.orders.view', 'inventory.locations.view', 'inventory.create'],
         );
 
         $this->signedInAs($local)

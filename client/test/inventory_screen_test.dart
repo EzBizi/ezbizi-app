@@ -206,6 +206,10 @@ void main() {
         'inventory.create',
         'inventory.edit',
         'inventory.financials',
+        'inventory.stock.view',
+        'inventory.items.view',
+        'inventory.orders.view',
+        'inventory.locations.view',
       ],
       stock: [
         _balanceOf('10.000', lastCost: 1250),
@@ -241,7 +245,13 @@ void main() {
   });
 
   testWidgets('Add item is not drawn without create', (tester) async {
-    await _pumpScreen(tester, permissions: const ['inventory.view']);
+    // No `inventory.create`, but the Items TAB is granted — otherwise this
+    // asserts the absence of Add on a screen with no Items chip to open, which
+    // would pass for the wrong reason.
+    await _pumpScreen(
+      tester,
+      permissions: const ['inventory.view', 'inventory.items.view'],
+    );
 
     await tester.tap(find.text('Items'));
     await tester.pumpAndSettle();
@@ -803,6 +813,14 @@ Future<void> _pumpScreen(
     'inventory.view',
     'inventory.create',
     'inventory.edit',
+    // The four tab grants (Jose, 2026-09-17). A role holding `inventory.view`
+    // and none of these draws no chips at all, so every fixture that opens a
+    // tab needs them — the migration grants them to existing roles for the
+    // same reason.
+    'inventory.stock.view',
+    'inventory.items.view',
+    'inventory.orders.view',
+    'inventory.locations.view',
   ],
   Map<String, dynamic>? me,
   List<Map<String, dynamic>> stock = const [],
@@ -857,6 +875,14 @@ MockClientHandler _handler({
     'inventory.view',
     'inventory.create',
     'inventory.edit',
+    // The four tab grants (Jose, 2026-09-17). A role holding `inventory.view`
+    // and none of these draws no chips at all, so every fixture that opens a
+    // tab needs them — the migration grants them to existing roles for the
+    // same reason.
+    'inventory.stock.view',
+    'inventory.items.view',
+    'inventory.orders.view',
+    'inventory.locations.view',
   ],
   Map<String, dynamic>? me,
   List<Map<String, dynamic>> stock = const [],

@@ -602,6 +602,31 @@ final class HttpTwilioGateway implements TwilioGateway
             ->update(['twiml' => $twiml]);
     }
 
+    public function childLegs(PhoneConnection $connection, string $parentCallSid): array
+    {
+        $out = [];
+
+        foreach ($this->connectionClient($connection)->calls->read(
+            ['parentCallSid' => $parentCallSid],
+            30,
+        ) as $leg) {
+            $out[] = [
+                'sid' => (string) $leg->sid,
+                'to' => (string) $leg->to,
+                'status' => (string) $leg->status,
+            ];
+        }
+
+        return $out;
+    }
+
+    public function endCall(PhoneConnection $connection, string $callSid): void
+    {
+        $this->connectionClient($connection)
+            ->calls($callSid)
+            ->update(['status' => 'completed']);
+    }
+
     public function queueSizes(PhoneConnection $connection): array
     {
         $out = [];

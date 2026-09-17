@@ -69,6 +69,19 @@ class Win32Window {
    */
   void ShowFromTray();
 
+  /* The tray menu's "Open EzBizi" command, as a WM_COMMAND id.
+   *
+   * Public because a SECOND process needs it. The single-instance handler
+   * in main.cpp cannot call ShowFromTray() -- the window belongs to the
+   * running copy -- so it posts this and the owning process runs the one
+   * show path. It used to reimplement the show itself and drifted: it
+   * restored a MINIMISED window and did nothing for a HIDDEN one, which is
+   * the state close-to-tray leaves behind. So clicking the taskbar button
+   * did nothing while the tray menu worked. Two copies of a three-line
+   * sequence is all it took.
+   */
+  static constexpr UINT kCommandShowFromTray = 1001;
+
   // Really exit, as opposed to hiding. Used by the tray menu and by Windows
   // when it is shutting down or an installer has asked us to close.
   void RequestQuit();

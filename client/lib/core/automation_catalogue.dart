@@ -350,6 +350,7 @@ class AutomationCatalogue {
     this.people = const [],
     this.reports = const [],
     this.places = const [],
+    this.templates = const [],
     this.actionBudget,
   });
 
@@ -372,6 +373,10 @@ class AutomationCatalogue {
       // constructs it and cannot construct it wrongly.
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
+      templates: [
+        for (final one in (json['templates'] as List? ?? const []))
+          if (one is Map) Map<String, dynamic>.from(one),
+      ],
       people: [
         for (final row in (json['people'] as List? ?? const []))
           if (row is Map<String, dynamic> && row['id'] is String)
@@ -410,6 +415,14 @@ class AutomationCatalogue {
   /// `franchise:<id>` — so the builder hands back what it was given instead of
   /// assembling a scope from two fields and mispairing them.
   final List<CatalogueChoice> places;
+
+  /// Ready-made rules, the same in every business.
+  ///
+  /// Held as raw maps rather than a typed class on purpose: a template IS a
+  /// rule's payload — trigger, conditions, actions — and the builder already
+  /// knows how to read that shape from a saved rule. Typing it here would mean
+  /// a second reader of the same JSON, which is the thing that drifts.
+  final List<Map<String, dynamic>> templates;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

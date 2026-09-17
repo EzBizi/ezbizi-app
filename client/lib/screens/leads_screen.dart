@@ -371,6 +371,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
       if (c['provider'] == 'thumbtack') c,
   ];
 
+  /// Connecting is module-level, NOT per source - decided 2026-09-17.
+  ///
+  /// The sources panel sits above the list rather than inside a source tab, so
+  /// the provider sections are drawn for anybody holding `leads.edit` even if
+  /// they were not granted that source's chip. An account connected by somebody
+  /// who does not watch the Google tab still delivers every enquiry to the
+  /// people who do; the reasoning, and the case where the opposite is right, is
+  /// in SocialProvider::connectPermission.
   bool get _canConnect => widget.session.me?.can('leads.edit') ?? false;
 
   /// One tab per source, because the two are not one list yet.

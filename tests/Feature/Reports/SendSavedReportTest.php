@@ -14,6 +14,7 @@ use App\Support\Mail\SendingState;
 use App\Support\Reports\ReportCsv;
 use App\Support\Reports\ReportResult;
 use App\Support\Reports\SendSavedReport;
+use App\Support\Reports\SentReport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use RuntimeException;
@@ -263,6 +264,18 @@ class SendSavedReportTest extends TestCase
      * their own cap are still one SES reputation — and nothing ingests bounce
      * or complaint notifications yet, so this cap is doing the work monitoring
      * would otherwise do.
+     *
+     * THIS TEST PASSED FOR MONTHS WHILE THE CAP DID NOTHING (2026-09-16), and
+     * that is worth knowing before trusting it. It runs on `CACHE_STORE=array`,
+     * where a missing key seeds and returns 1. Production runs the DATABASE
+     * store, where `Cache::increment` returns FALSE for a missing key — so the
+     * counter never started and `false > $allowance` never threw. Green here,
+     * inert there, and no amount of thoroughness in this file could reach it.
+     *
+     * Fixed in MailDispatcher at 84ee6cf9 by seeding with `Cache::add` first,
+     * and pinned against the database store in PlatformMailTest, which is where
+     * a store regression belongs. This assertion is about the CALLER: that a
+     * scheduled report is subject to the cap at all.
      */
     public function test_a_business_past_its_hourly_allowance_is_refused(): void
     {
@@ -378,6 +391,50 @@ class SendSavedReportTest extends TestCase
             'Job somewhere else',
             $titles,
             "the report rendered at the author's view rather than its own place",
+        );
+    }
+
+    /**
+     * THE SENTENCE PRODUCTION PRINTS IS THE ONE NO TEST REACHED.
+     *
+     * `MAIL_MAILER=array` in phpunit.xml is one of MailStatus::NON_DELIVERING,
+     * so EVERY send test in this file runs with `transportDelivers` false and
+     * reads the "does not deliver" branch. The ordinary sentence — the only one
+     * a working box ever prints — was produced by nothing, and the assertions
+     * above would have passed with it written any way at all.
+     *
+     * Found by the mirror image of it: the Automations session's caller test
+     * had three refusals and never reached a successful send, so their one
+     * wrong line sat in their one unexercised branch. Same shape, opposite end.
+     *
+     * Constructed directly rather than sent, because the branch is in the value
+     * object and reaching it through the pipeline would mean pointing the test
+     * at a delivering transport — real config for a sentence.
+     */
+    public function test_a_delivering_transport_counts_addresses_and_names_refusals(): void
+    {
+        $this->assertSame(
+            'Sent to 2 addresses. Refused: not-an-address (not a valid address).',
+            (new SentReport(
+                sent: ['owner@example.test', 'accountant@example.test'],
+                refused: ['not-an-address' => 'not a valid address'],
+                rowCount: 3,
+                capped: false,
+                transportDelivers: true,
+            ))->summary(),
+        );
+
+        // Singular, because "Sent to 1 addresses" is the kind of thing that
+        // survives for a year in a run log nobody reads twice.
+        $this->assertSame(
+            'Sent to 1 address.',
+            (new SentReport(
+                sent: ['owner@example.test'],
+                refused: [],
+                rowCount: 3,
+                capped: false,
+                transportDelivers: true,
+            ))->summary(),
         );
     }
 

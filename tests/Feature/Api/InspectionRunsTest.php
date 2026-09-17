@@ -199,7 +199,7 @@ class InspectionRunsTest extends TestCase
     public function test_start_again_after_unpublish_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $tech = $this->tech($tenant, extra: ['inspection.delete']);
+        $tech = $this->tech($tenant, extra: ['inspection.delete', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
         $seeded = $this->seedOffered($tenant, $tech);
 
         $runId = $this->signedInAs($tech)->postJson('/api/v1/inspections/runs', [
@@ -269,7 +269,7 @@ class InspectionRunsTest extends TestCase
     private function tech(array $tenant, string $name = 'Rodrigo', array $extra = [])
     {
         return $this->userWithRole(
-            $tenant, $name, ['inspection.view', 'inspection.create', ...$extra],
+            $tenant, $name, ['inspection.view', 'inspection.create', ...$extra, 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             // Pinned to the tenant's own franchise. The default is ORGANIZATION
             // level, which reaches every franchise — and a scope test written
             // against that passes whether or not scope works at all.

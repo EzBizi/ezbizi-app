@@ -268,6 +268,8 @@ class MarketingModuleTest extends TestCase
         $alpha = $this->provisionTenant('Lambda');
         $caller = $this->userWithRole($alpha, 'Caller', [
             'reviews.view', 'marketing.view', 'automations.view',
+            // `automations/catalogue` is behind the Build tab since 891f8378.
+            'automations.build.view',
         ]);
 
         $modules = collect(
@@ -460,7 +462,10 @@ class MarketingModuleTest extends TestCase
         $alpha = $this->provisionTenant('Epsilon');
 
         $marketer = $this->userWithRole(
-            $alpha, 'Marketer', ['automations.view', 'marketing.view'],
+            $alpha, 'Marketer',
+            // `automations.build.view`: the catalogue moved behind the Build tab
+            // in 891f8378, and this test is about what the catalogue CONTAINS.
+            ['automations.view', 'automations.build.view', 'marketing.view'],
         );
 
         $modules = $this->signedInAs($marketer)
@@ -495,7 +500,11 @@ class MarketingModuleTest extends TestCase
         // The other half: the wording modules write for themselves is real
         // information about the business, so a role without the tab does not
         // get to read Marketing's.
-        $planner = $this->userWithRole($alpha, 'Planner', ['automations.view']);
+        // Holds the Build tab, and deliberately not Marketing: what is being
+        // withheld here is one module's wording, not the whole catalogue.
+        $planner = $this->userWithRole(
+            $alpha, 'Planner', ['automations.view', 'automations.build.view'],
+        );
 
         $withheld = $this->signedInAs($planner)
             ->getJson('/api/v1/automations/catalogue')->assertOk()->json('data.modules');

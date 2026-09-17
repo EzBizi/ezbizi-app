@@ -32,11 +32,13 @@ class TimeClockDayListTest extends TestCase
         $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
 
         $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock')
-            ->assertForbidden()
+            // 409, not 403: the feature being off is not a permission failure,
+            // and this viewer HOLDS the permission.
+            ->assertStatus(409)
             ->assertJsonPath('message', 'Clock in is switched off for this organization.');
     }
 
-    public function test_clock_in_without_hr_view_cannot_read_the_list(): void
+    public function test_punching_does_not_let_you_read_everybodys_hours(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);

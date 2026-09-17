@@ -42,12 +42,23 @@ class OwnedScopeWriteTest extends TestCase
         $actor = $this->userWithRole($this->tenant, 'Manager', [
             'inventory.view', 'inventory.edit', 'inventory.delete', 'services.view', 'services.edit', 'services.delete',
             'training.manage', 'fleet_management.view', 'fleet_management.edit', 'fleet_management.delete',
-            'leads.view', 'leads.edit', 'leads.delete',
+            // A lead is read THROUGH its source since 2026-09-17: the four
+            // sources are granted one at a time and `leads.view` alone reaches
+            // none of them. Deliberate, and pinned by
+            // LeadSourcePermissionsTest::test_the_module_view_alone_carries_no_sources.
+            'leads.view', 'leads.edit', 'leads.delete', 'leads.local_services.view',
         ], onlyAt: $this->tenant['franchise']);
         app(TenantContext::class)->run($this->tenant['org'], function () use ($actor) {
             foreach ($this->models() as $model) {
                 $row = new $model;
                 $row->forceFill(['organization_id' => $this->tenant['org']->id, 'company_id' => $this->tenant['company']->id, 'franchise_id' => null]);
+                // And it needs one: a bare `new Lead` has a null source, which
+                // is no source rather than every source. The column is NOT NULL
+                // in production, so this makes the fixture a row that can exist
+                // rather than weakening the rule it is here to test.
+                if ($row instanceof Lead) {
+                    $row->forceFill(['source' => Lead::SOURCE_LOCAL_SERVICES]);
+                }
                 $this->assertTrue(Gate::forUser($actor)->allows('view', $row), $model.' inherited read');
                 $this->assertFalse(Gate::forUser($actor)->allows('update', $row), $model.' must require hard company authority');
             }

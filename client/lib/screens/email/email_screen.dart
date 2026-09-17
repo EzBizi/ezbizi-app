@@ -159,15 +159,46 @@ class _EmailScreenState extends State<EmailScreen> {
   ///
   /// The mail is what somebody came for; the connections behind it are what
   /// they come for once, or on the day one breaks.
-  static const _inboxTab = 0;
+  static const _inboxTab = 'inbox';
 
-  int _tab = _inboxTab;
+  /// The tab being shown, BY NAME rather than by index.
+  ///
+  /// Indices were fine while everybody saw both. Once a tab can be hidden the
+  /// index of the other one moves -- a role with only Settings would select
+  /// index 0 and be shown the mail, which is the permission failing open in the
+  /// one direction nobody would notice. A name cannot drift.
+  String _tab = _inboxTab;
 
   /// Which sub-tabs have been shown at least once — HrScreen's set, for the
   /// two reasons its own note gives: a tab nobody has opened must not fetch,
   /// and a tab they have opened must not fetch again every time they glance at
   /// the other one.
-  final Set<int> _shown = {_inboxTab};
+  final Set<String> _shown = {_inboxTab};
+
+  /// Every tab this screen has, with the permission key that opens it.
+  ///
+  /// Jose, 2026-09-17: "i should be able to grant access by sub tab as well".
+  /// Each is granted separately as `email.<key>.view`, declared in
+  /// `ModuleServiceProvider` and drawn in the roles editor under a Tabs
+  /// heading. THE KEYS HERE AND THE DECLARATION THERE ARE THE SAME TWO, and
+  /// nothing mechanical can check that across PHP and Dart — but a key with no
+  /// declaration grants nobody, so the tab vanishes for everyone rather than
+  /// appearing for everyone. That is the safe direction of that mistake and the
+  /// one somebody reports.
+  ///
+  /// Labels are the registry's, copied from here rather than the reverse.
+  static const _declaredTabs = <(String, String, IconData)>[
+    (_inboxTab, 'Inbox', Icons.inbox_outlined),
+    ('settings', 'Settings', Icons.settings_outlined),
+  ];
+
+  /// Absent `/me` answers NO, not yes — HrScreen's rule. A null here is a load
+  /// that has not finished, and "I do not know yet" must draw nothing.
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('email.$tab.view') ?? false;
+
+  List<(String, String, IconData)> get _visibleTabs =>
+      [for (final tab in _declaredTabs) if (_mayOpen(tab.$1)) tab];
 
   @override
   void initState() {
@@ -864,20 +895,42 @@ class _EmailScreenState extends State<EmailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = _visibleTabs;
+
+    // Neither tab granted. Said rather than drawn as an empty strip above an
+    // empty pane, which reads as a screen that failed rather than as a
+    // permission somebody has to ask for.
+    if (tabs.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No part of Email has been given to your role yet. Somebody who '
+            'manages roles can grant the Inbox or Settings tab.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      );
+    }
+
+    // The selected tab may have just been taken away -- a role edited while
+    // somebody is looking at the screen. Fall back to the first tab they DO
+    // hold rather than indexing into a list that no longer contains it.
+    final current = tabs.indexWhere((tab) => tab.$1 == _tab);
+    final selected = current == -1 ? 0 : current;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
-            labels: const [
-              ('Inbox', Icons.inbox_outlined),
-              ('Settings', Icons.settings_outlined),
-            ],
-            selected: _tab,
-            onSelected: (tab) => setState(() {
-              _tab = tab;
-              _shown.add(tab);
+            labels: [for (final tab in tabs) (tab.$2, tab.$3)],
+            selected: selected,
+            onSelected: (index) => setState(() {
+              _tab = tabs[index].$1;
+              _shown.add(_tab);
             }),
           ),
         ),
@@ -892,10 +945,12 @@ class _EmailScreenState extends State<EmailScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != _inboxTab, child: _inbox()),
-              Offstage(
-                offstage: _tab == _inboxTab,
-                child: _shown.contains(1)
+              if (_mayOpen(_inboxTab))
+                Offstage(offstage: _tab != _inboxTab, child: _inbox()),
+              if (_mayOpen('settings'))
+                Offstage(
+                  offstage: _tab != 'settings',
+                  child: _shown.contains('settings')
                     ? MailboxSettingsTab(
                         api: widget.api,
                         session: widget.session,

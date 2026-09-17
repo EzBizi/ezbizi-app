@@ -153,6 +153,32 @@ void main() {
       expect(find.text('Company'), findsNothing);
     },
   );
+
+  testWidgets('a role without the Settings chip is not shown it', (tester) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['services.view', 'services.catalogue.view'],
+    );
+
+    // Positive control in the same test: if the chip bar were simply broken,
+    // or the fixture were wrong, Catalogue would be missing too and the
+    // findsNothing below would pass while proving nothing.
+    expect(find.text('Catalogue'), findsOneWidget);
+    expect(find.text('Settings'), findsNothing);
+  });
+
+  testWidgets('a role with neither chip is told, not shown an empty bar', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, permissions: const ['services.view']);
+
+    expect(find.text('Catalogue'), findsNothing);
+    expect(find.text('Settings'), findsNothing);
+    expect(
+      find.text('No Services tabs have been granted to your role.'),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _pumpShell(WidgetTester tester) async {
@@ -192,6 +218,8 @@ Future<void> _pumpScreen(
     'services.create',
     'services.edit',
     'services.delete',
+    'services.catalogue.view',
+    'services.settings.view',
   ],
   Map<String, dynamic>? me,
   List<Map<String, dynamic>> services = const [],
@@ -236,6 +264,8 @@ MockClientHandler _handler({
     'services.create',
     'services.edit',
     'services.delete',
+    'services.catalogue.view',
+    'services.settings.view',
   ],
   Map<String, dynamic>? me,
   List<Map<String, dynamic>> services = const [],

@@ -228,7 +228,7 @@ class MailboxMessagesApiTest extends TestCase
         $company   = $this->inbox($t, 'info@a-1chimney.com', 'company', $t['company']->id);
         $ownBranch = $this->inbox($t, 'connecticut@a-1chimney.com', 'franchise', $t['franchise']->id);
 
-        $jenny = $this->userWithRole($t, 'Branch Manager', ['email.view'], onlyAt: $t['franchise']);
+        $jenny = $this->userWithRole($t, 'Branch Manager', ['email.view', 'email.inbox.view', 'email.settings.view'], onlyAt: $t['franchise']);
 
         // Her role is granted BOTH inboxes.
         $this->grant($t, $company, 'Branch Manager');
@@ -313,7 +313,7 @@ class MailboxMessagesApiTest extends TestCase
         $info    = $this->inbox($t, 'info@a-1chimney.com');
         $payroll = $this->inbox($t, 'payroll@a-1chimney.com');
 
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $info, 'Clerk');
 
@@ -470,7 +470,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         FakeMailboxReader::$page = new MessagePage([
@@ -503,7 +503,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $this->signedInAs($clerk)
@@ -520,7 +520,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $this->signedInAs($clerk)
@@ -544,8 +544,8 @@ class MailboxMessagesApiTest extends TestCase
 
         $mailbox = $this->inbox($t);
 
-        $jenny = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
-        $sam   = $this->userWithRole($t, 'Dispatcher', ['email.view'], email: 'sam@a1.test');
+        $jenny = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
+        $sam   = $this->userWithRole($t, 'Dispatcher', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'sam@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
         $this->grant($t, $mailbox, 'Dispatcher');
@@ -589,8 +589,8 @@ class MailboxMessagesApiTest extends TestCase
 
         $mailbox = $this->inbox($t);
 
-        $jenny = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
-        $sam   = $this->userWithRole($t, 'Dispatcher', ['email.view'], email: 'sam@a1.test');
+        $jenny = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
+        $sam   = $this->userWithRole($t, 'Dispatcher', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'sam@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
         $this->grant($t, $mailbox, 'Dispatcher');
@@ -638,7 +638,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $mailbox, 'Clerk');
 
@@ -659,7 +659,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $mailbox, 'Clerk');
 
@@ -827,7 +827,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -867,7 +867,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -893,7 +893,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->signedInAs($clerk)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/reply", ['body' => 'Hello'])
@@ -950,7 +950,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -978,7 +978,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1001,7 +1001,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->signedInAs($clerk)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages/m-1/dealt")
@@ -1216,7 +1216,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1245,7 +1245,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1281,7 +1281,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1310,7 +1310,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->signedInAs($clerk)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->id}/messages", [
@@ -1330,7 +1330,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1354,7 +1354,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1396,7 +1396,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1425,7 +1425,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view'], email: 'jenny@a1.test');
+        $jenny   = $this->userWithRole($t, 'Front desk', ['email.view', 'email.inbox.view', 'email.settings.view'], email: 'jenny@a1.test');
 
         $this->grant($t, $mailbox, 'Front desk');
 
@@ -1456,7 +1456,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $mailbox, 'Clerk');
 
@@ -1505,7 +1505,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         FakeMailboxReader::$detail = new MessageDetail(
@@ -1536,7 +1536,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         FakeMailboxReader::$detail = new MessageDetail(
@@ -1567,7 +1567,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $token = Crypt::encryptString('http://93.184.216.34/logo.png');
@@ -1585,7 +1585,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $token = Crypt::encryptString('http://169.254.169.254/latest/meta-data/');
@@ -1601,7 +1601,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $token = Crypt::encryptString("m-1\natt-1");
@@ -1625,7 +1625,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $this->signedInAs($clerk)
@@ -1641,7 +1641,7 @@ class MailboxMessagesApiTest extends TestCase
 
         $t = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
-        $clerk = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
         $this->grant($t, $mailbox, 'Clerk');
 
         $token = Crypt::encryptString("m-1\natt-1");
@@ -1671,7 +1671,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $mailbox, 'Clerk');
 
@@ -1705,7 +1705,7 @@ class MailboxMessagesApiTest extends TestCase
         $t = $this->provisionTenant('A1-Group');
 
         $mailbox = $this->inbox($t);
-        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view']);
+        $clerk   = $this->userWithRole($t, 'Clerk', ['email.view', 'email.inbox.view', 'email.settings.view']);
 
         $this->grant($t, $mailbox, 'Clerk');
 

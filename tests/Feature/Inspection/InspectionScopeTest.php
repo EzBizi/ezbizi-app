@@ -76,7 +76,7 @@ class InspectionScopeTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $tech = $this->userWithRole(
-            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             // Pinned to ONE franchise. userWithRole assigns at organization
             // level by default, which reaches every franchise — and would make
             // the sideways test pass for the wrong reason, then keep passing
@@ -99,7 +99,7 @@ class InspectionScopeTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $tech = $this->userWithRole(
-            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             // Pinned to ONE franchise. userWithRole assigns at organization
             // level by default, which reaches every franchise — and would make
             // the sideways test pass for the wrong reason, then keep passing
@@ -124,7 +124,7 @@ class InspectionScopeTest extends TestCase
     {
         $tenant = $this->provisionTenant('Alpha');
         $tech = $this->userWithRole(
-            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create'],
+            $tenant, 'Rodrigo', ['inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'],
             // Pinned to ONE franchise. userWithRole assigns at organization
             // level by default, which reaches every franchise — and would make
             // the sideways test pass for the wrong reason, then keep passing
