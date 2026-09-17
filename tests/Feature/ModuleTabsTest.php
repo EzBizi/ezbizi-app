@@ -183,6 +183,50 @@ class ModuleTabsTest extends TestCase
         );
     }
 
+    public function test_a_tab_may_name_an_action_the_module_already_has(): void
+    {
+        /*
+         * Training's case, and the reason the option exists at all.
+         *
+         * Their three tabs were three grants before this mechanism existed:
+         * `training.view` is the learner's Learn pane, `training.monitor` is
+         * everybody's results, `training.manage` is the authoring surface.
+         * Minting `training.dashboard.view` beside `monitor` would have put two
+         * names on one authority — and an administrator could then grant the
+         * tab without the read, producing a Dashboard that opens and refuses
+         * every request inside it.
+         */
+        $module = $this->module(
+            tabs: [new TabDefinition('dashboard', 'Dashboard', action: 'monitor')],
+            actions: ['view', 'monitor'],
+        );
+
+        $this->assertSame('monitor', $module->tabs[0]->action());
+
+        // NOTHING WAS MINTED. The control for this test is a count: a module
+        // that appended `dashboard.view` as well would still satisfy an
+        // assertContains on 'monitor'.
+        $this->assertSame(['view', 'monitor'], $module->actions);
+        $this->assertSame(['demo.view', 'demo.monitor'], $module->permissionKeys());
+    }
+
+    public function test_a_tab_naming_an_action_the_module_lacks_is_refused(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/does not declare/');
+
+        /*
+         * A typo points the editor at a key the module never declares:
+         * `materialise()` refuses it on save, so the failure would arrive on
+         * somebody's first tick rather than at boot, on a checkbox that looked
+         * exactly like the working ones beside it.
+         */
+        $this->module(
+            tabs: [new TabDefinition('dashboard', 'Dashboard', action: 'moniter')],
+            actions: ['view', 'monitor'],
+        );
+    }
+
     public function test_a_tab_without_a_label_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);

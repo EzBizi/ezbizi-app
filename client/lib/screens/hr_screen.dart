@@ -71,9 +71,22 @@ class _HrScreenState extends State<HrScreen> {
   /// It is also the right landing tab on its own merits: it is the only one that
   /// says how the module is doing rather than asking the reader to go and find
   /// out, and its empty state names the next thing to do.
-  static const _dashboard = 0;
+  static const _dashboard = 'dashboard';
 
-  int _tab = _dashboard;
+  /// The tab being looked at, BY KEY rather than by position.
+  ///
+  /// It was an index until 2026-09-17, and the filter added that day is what
+  /// made an index wrong: the list's length now depends on what the reader may
+  /// open, so slot 1 is Onboarding for one person and Records for another. Two
+  /// other modules found the same defect in their own screens within the hour
+  /// — Scheduling's visibility check was `_tab == 2`, which told the only
+  /// visible pane it was off-screen, and Automations moved to keys for the same
+  /// reason. A screen that decides which pane is live by position is one grant
+  /// away from opening the wrong one.
+  ///
+  /// The docblock under `_shown` used to say "a tab's position never moves".
+  /// That was true when it was written and my own change falsified it.
+  String _tab = _dashboard;
 
   /// Which tabs have been shown at least once.
   ///
@@ -84,24 +97,14 @@ class _HrScreenState extends State<HrScreen> {
   /// is the "it reloads for every change" complaint AsyncBody's docblock is
   /// about.
   ///
-  /// A tab's position never moves (Clock in–out is appended) and its State
-  /// survives every switch after the first; only the CONTENT of a slot
-  /// arrives late.
-  final Set<int> _shown = {_dashboard};
+  /// Keyed, for the reason `_tab` is: a set of POSITIONS would mark a
+  /// different pane as already-loaded for two people holding different grants.
+  final Set<String> _shown = {_dashboard};
 
   /// Owner's order: Dashboard · Onboarding · Records · Invitations ·
   /// Contracts · Clock in–out. The sixth chip is absent unless the
   /// organization has turned Clock in on (and this person holds `hr.view`).
   ///
-  /// One list rather than a list of labels beside a switch on the index, so a
-  /// name can never end up above the wrong page. The pages are built on demand
-  /// — see [_shown] — which is why the third element is a function and not a
-  /// widget.
-  List<(String, IconData, Widget Function())> get _tabs => [
-    for (final tab in _declaredTabs)
-      if (_mayOpen(tab.$1)) (tab.$2, tab.$3, tab.$4),
-  ];
-
   /// Every tab this screen has, with the permission key that opens it.
   ///
   /// ── Why the key is in the list rather than checked at each site ──
@@ -167,6 +170,39 @@ class _HrScreenState extends State<HrScreen> {
     ),
   ];
 
+  /// The tabs actually drawn: declared, minus the ones this role cannot open.
+  ///
+  /// One list, read by the bar and by the stack, so the two cannot disagree
+  /// about what exists.
+  List<(String, String, IconData, Widget Function())> get _shownTabs =>
+      [for (final tab in _declaredTabs) if (_mayOpen(tab.$1)) tab];
+
+  /// The tab actually on screen: `_tab` if they may open it, else the first
+  /// one they may.
+  ///
+  /// `_tab` starts at `dashboard` because that is the right landing pane for
+  /// almost everybody — and a role granted Records and Contracts and nothing
+  /// else holds no such tab. THE FIRST VERSION OF THIS FIX FELL BACK IN THE
+  /// BAR ONLY: the bar highlighted the first tab while the stack compared
+  /// every pane against a key nobody had, so all of them stayed offstage and
+  /// the screen rendered blank. A widget test with two grants and neither of
+  /// them Dashboard caught it; the twenty-six tests that grant all seven
+  /// passed against it.
+  ///
+  /// So the fallback belongs HERE, where both readers get it, rather than in
+  /// the index conversion where only one did.
+  String get _activeTab =>
+      _shownTabs.any((tab) => tab.$1 == _tab) || _shownTabs.isEmpty
+          ? _tab
+          : _shownTabs.first.$1;
+
+  /// Where the active tab sits in what is drawn, for the bar alone.
+  int get _selectedIndex {
+    final at = _shownTabs.indexWhere((tab) => tab.$1 == _activeTab);
+
+    return at < 0 ? 0 : at;
+  }
+
   /// May this person open one named tab?
   ///
   /// Absent `/me` answers NO rather than yes. The screen is reached only with a
@@ -185,7 +221,7 @@ class _HrScreenState extends State<HrScreen> {
         me.permissions.contains('hr.view');
   }
 
-  void _select(int tab) => setState(() {
+  void _select(String tab) => setState(() {
     _tab = tab;
     _shown.add(tab);
   });
@@ -198,9 +234,12 @@ class _HrScreenState extends State<HrScreen> {
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
-            labels: [for (final tab in _tabs) (tab.$1, tab.$2)],
-            selected: _tab,
-            onSelected: _select,
+            labels: [for (final tab in _shownTabs) (tab.$2, tab.$3)],
+            // TabBarLike speaks positions, so the conversion happens HERE and
+            // nowhere else: one place that knows both, rather than an index
+            // leaking back into the state it was just taken out of.
+            selected: _selectedIndex,
+            onSelected: (i) => _select(_shownTabs[i].$1),
           ),
         ),
         const Divider(height: 1),
@@ -214,11 +253,11 @@ class _HrScreenState extends State<HrScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              for (var i = 0; i < _tabs.length; i++)
+              for (final tab in _shownTabs)
                 Offstage(
-                  offstage: i != _tab,
-                  child: _shown.contains(i)
-                      ? _tabs[i].$3()
+                  offstage: tab.$1 != _activeTab,
+                  child: _shown.contains(tab.$1) || tab.$1 == _activeTab
+                      ? tab.$4()
                       : const SizedBox.shrink(),
                 ),
             ],

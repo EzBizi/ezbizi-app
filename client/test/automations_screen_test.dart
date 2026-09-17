@@ -450,7 +450,7 @@ void main() {
     testWidgets('is refused the controls it cannot use, and told why', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       // Still on screen. Hiding it is not compliance — somebody looking for
       // "New automation" and not finding it concludes the app is broken.
@@ -479,7 +479,7 @@ void main() {
     testWidgets('sees the reason inside the row menu, not a grey line', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       await _tap(tester, find.byType(PopupMenuButton<String>));
 
@@ -504,7 +504,7 @@ void main() {
     testWidgets('cannot reach the builder by opening the tab directly', (
       tester,
     ) async {
-      await _pump(tester, _handler(permissions: const ['automations.view']));
+      await _pump(tester, _handler(permissions: const ['automations.view', 'automations.rules.view', 'automations.build.view']));
 
       await _tap(tester, find.text('Build'));
 
@@ -1014,6 +1014,31 @@ void main() {
 
     expect(sent!['scope_type'], 'franchise');
     expect(sent!['scope_id'], 'f-1');
+  });
+
+  /// A TAB SOMEBODY MAY NOT OPEN IS NOT DRAWN, and the one they may still is.
+  ///
+  /// Jose, 2026-09-17: *"i should be able to grant access by sub tab as well"*.
+  /// Build hands somebody the catalogue — a map of every trigger and action
+  /// this installation can perform — so it is a separate grant from reading the
+  /// rules that already exist.
+  ///
+  /// THE POSITIVE HALF IS THE ONE THAT MATTERS. A screen that drew nothing at
+  /// all would pass an assertion that only checked Build was gone, and a rule
+  /// reader losing their rules is the failure nobody reports as a permission
+  /// change — they report that their automations have disappeared.
+  testWidgets('without the build grant the tab is gone and the list remains', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        permissions: const ['automations.view', 'automations.rules.view'],
+      ),
+    );
+
+    expect(find.text('Build'), findsNothing);
+    expect(find.text('Chase completions'), findsOneWidget);
   });
 
   /// "Set to" is a list when the field has one, and a box when it does not.
@@ -1973,6 +1998,11 @@ MockClientHandler _handler({
   // tests was written against.
   List<String> permissions = const [
     'automations.view',
+    // The two TABS, since 2026-09-17. Absent, the screen draws no tab bar and
+    // no panes — which is correct behaviour and would red every test here for a
+    // reason that has nothing to do with what each one is about.
+    'automations.rules.view',
+    'automations.build.view',
     'automations.create',
     'automations.edit',
     'automations.delete',

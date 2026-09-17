@@ -58,7 +58,29 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
   AutomationCatalogue? _catalogue;
 
   /// 0 is the list, 1 is the builder.
-  int _tab = 0;
+  /// Which pane is showing, by KEY rather than by index.
+  ///
+  /// An index into a list that changes length with permissions is a bug waiting
+  /// for the first person who cannot open Build: the same `1` means a different
+  /// pane depending on who is looking, and nothing would say so.
+  String _tab = 'rules';
+
+  /// The tabs this person may open, in the order the bar draws them.
+  ///
+  /// ABSENT `/me` ANSWERS NO. A screen that defaults to showing everything
+  /// while its permissions load is a screen that shows the builder to somebody
+  /// who may not have it, for as long as the request takes.
+  List<(String, String, IconData)> get _tabs => [
+    for (final tab in const [
+      ('rules', 'Your automations', Icons.list_alt_outlined),
+      ('build', 'Build', Icons.handyman_outlined),
+    ])
+      if (widget.session.me?.permissions.contains(
+            'automations.${tab.$1}.view',
+          ) ??
+          false)
+        tab,
+  ];
 
   /// The automation the builder is editing, as `GET /automations/{id}` gave it.
   /// Null means the builder is making a new one.
@@ -87,7 +109,13 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
     });
 
     final automations = await widget.api.get('/automations');
-    final catalogue = await widget.api.get('/automations/catalogue');
+    // NOT ASKED FOR WHEN THE BUILDER IS NOT THIS PERSON'S. The catalogue is the
+    // build tab's own endpoint and now answers 403 without that grant, so
+    // requesting it anyway would put "Could not load what this system can
+    // automate" across the top of a list that loaded perfectly.
+    final catalogue = _mayOpen('build')
+        ? await widget.api.get('/automations/catalogue')
+        : null;
 
     // Superseded by a newer load — applying this would undo it.
     if (!mounted || request != _request) return;
@@ -103,7 +131,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       _automations = List<Map<String, dynamic>>.from(automations.data as List);
       // The catalogue is what makes the builder possible at all; without it the
       // create button would offer nothing, so its failure is worth saying.
-      if (catalogue.ok) {
+      if (catalogue == null) {
+        // Nothing to say: a person without the build tab is not missing
+        // anything they can see.
+      } else if (catalogue.ok) {
         _catalogue = AutomationCatalogue.fromJson(
           catalogue.data as Map<String, dynamic>,
         );
@@ -113,6 +144,9 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       }
     });
   }
+
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('automations.$tab.view') ?? false;
 
   /// Why this person may not build one, or null when they may.
   ///
@@ -141,7 +175,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           note:
               'When something happens, do something. Rules are yours — they '
               'never need a new release.',
-          action: _tab != 0
+          action: _tab != 'rules'
               ? null
               : Refused(
                   // Visible and refused, never hidden: somebody looking for
@@ -157,17 +191,15 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                   ),
                 ),
         ),
-        Material(
-          color: Theme.of(context).colorScheme.surface,
-          child: TabBarLike(
-            labels: const [
-              ('Your automations', Icons.list_alt_outlined),
-              ('Build', Icons.handyman_outlined),
-            ],
-            selected: _tab,
-            onSelected: (i) => setState(() => _tab = i),
+        if (_tabs.length > 1)
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: TabBarLike(
+              labels: [for (final tab in _tabs) (tab.$2, tab.$3)],
+              selected: _tabs.indexWhere((tab) => tab.$1 == _tab),
+              onSelected: (i) => setState(() => _tab = _tabs[i].$1),
+            ),
           ),
-        ),
         const Divider(height: 1),
         Expanded(
           // Both tabs stay alive. Glancing at the list halfway through writing a
@@ -183,8 +215,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Offstage(offstage: _tab != 0, child: _listTab(context)),
-              Offstage(offstage: _tab != 1, child: _buildTab(context)),
+              if (_mayOpen('rules'))
+                Offstage(offstage: _tab != 'rules', child: _listTab(context)),
+              if (_mayOpen('build'))
+                Offstage(offstage: _tab != 'build', child: _buildTab(context)),
             ],
           ),
         ),
@@ -444,12 +478,12 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
       editing: _editing,
       onCancel: () => setState(() {
         _editing = null;
-        _tab = 0;
+        _tab = 'rules';
       }),
       onSaved: () {
         setState(() {
           _editing = null;
-          _tab = 0;
+          _tab = 'rules';
         });
         _load();
       },
@@ -458,7 +492,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
 
   void _new() => setState(() {
     _editing = null;
-    _tab = 1;
+    _tab = 'build';
   });
 
   /// Read a rule back before editing it.
@@ -480,7 +514,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
 
     setState(() {
       _editing = Map<String, dynamic>.from(response.data as Map);
-      _tab = 1;
+      _tab = 'build';
     });
   }
 

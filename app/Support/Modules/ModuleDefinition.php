@@ -89,20 +89,28 @@ final class ModuleDefinition
         /**
          * Permissions an action cannot work without, as full keys.
          *
-         *     actionRequires: ['assign' => ['training.monitor']]
+         *     actionRequires: ['build' => ['reports.view']]
          *
          * The roles editor draws a checkbox and one word per action and could
-         * not say this, so an administrator could grant `training.assign`
-         * alone and hand somebody a permission with nothing to click: the
-         * assign control lives inside the Dashboard pane, which `monitor`
-         * opens. Nothing on the screen explained it and nothing stopped it.
+         * not say this, so an administrator could grant `reports.build` alone
+         * and hand somebody a permission with nothing to click: a report is
+         * built from the list `reports.view` opens.
+         *
+         * THE EXAMPLE HERE USED TO BE `training.assign` => `training.monitor`,
+         * and it was wrong in a way worth keeping rather than quietly
+         * replacing. Training removed that entry on 2026-09-14 after
+         * disproving its premise BY EXECUTION: an automation runs as the rule's
+         * creator and `AssignmentWriter::create` gates on `training.assign`
+         * alone, so assign-without-monitor was never a permission with nothing
+         * to click — the refusal was making its own premise true. This docblock
+         * went on describing the belief after the code had moved, which is the
+         * failure it is now an example of twice over.
          *
          * A requirement REFUSES the save; it does not quietly add the missing
          * key the way `withImpliedView` adds `.view`. That asymmetry is the
          * point. `.view` is the smallest thing in a module, so implying it
-         * widens nothing. `monitor` is the LARGER disclosure — everyone's
-         * scores — and implying it from the lesser act would silently hand out
-         * more than the administrator ticked. The person saving is the one who
+         * widens nothing. A LARGER disclosure implied from a lesser act would
+         * silently hand out more than the administrator ticked. The person saving is the one who
          * should decide, so they are told what is missing and asked again.
          *
          * @var array<string, string[]> action => permission keys it needs
@@ -331,11 +339,42 @@ final class ModuleDefinition
                 );
             }
 
+            /*
+             * A tab either MINTS its action or NAMES one this module already
+             * has, and the two are checked in opposite directions.
+             *
+             * Minting: the key must be free, or the module would carry one
+             * permission under two declarations and only one of them a label.
+             *
+             * Naming: the action must EXIST, or the tab is a typo pointing at
+             * nothing — the editor would draw a checkbox for a key the module
+             * never declares, `materialise()` would refuse it on save, and the
+             * failure would arrive on somebody's first tick rather than at
+             * boot. Training asked for this half: their three tabs are already
+             * `training.view`, `training.monitor` and `training.manage`, and
+             * minting `training.dashboard.view` beside `monitor` would be two
+             * names for one authority.
+             */
+            if ($tab->namesExistingAction()) {
+                if (! in_array($tab->action(), $actions, true)) {
+                    throw new InvalidArgumentException(
+                        "Module '{$key}' has a tab '{$tab->key}' naming action "
+                        ."'{$tab->action()}', which it does not declare. Name one of: "
+                        .implode(', ', $actions).'.'
+                    );
+                }
+
+                $seenTab[$tab->key] = true;
+
+                continue;
+            }
+
             if (in_array($tab->action(), $actions, true)) {
                 throw new InvalidArgumentException(
                     "Module '{$key}' declares both a tab '{$tab->key}' and an action "
                     ."'{$tab->action()}'. They are the same permission key, and only one of "
-                    .'them carries a label.'
+                    .'them carries a label. If the action is the one you mean, say so: '
+                    ."new TabDefinition('{$tab->key}', '{$tab->label}', action: '{$tab->action()}')."
                 );
             }
 

@@ -66,6 +66,9 @@ class WindowsVoiceDevice implements VoiceDevice {
   void Function()? onRegistrationChanged;
 
   @override
+  void Function()? onTokenExpiring;
+
+  @override
   void Function()? onEnded;
 
   /// Same as the browser: the desk's own button does the answering.
@@ -214,6 +217,12 @@ class WindowsVoiceDevice implements VoiceDevice {
         onIncoming?.call(
           VoiceIncoming(from: (message['from'] ?? '').toString()),
         );
+      case 'tokenExpiring':
+        // The bridge's own comment said "Dart owns the token lifecycle; it
+        // refetches and sends setup again". This is the line that makes that
+        // true; until it existed the message was sent into nothing and a
+        // desktop desk went quiet an hour after launch.
+        onTokenExpiring?.call();
       case 'ended':
         // This used to `break` with a comment saying the Dial tab tracked its
         // own on-call state. That was true when CallTab owned the device; it
