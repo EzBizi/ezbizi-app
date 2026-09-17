@@ -127,6 +127,44 @@ class ReviewsGlanceTest extends TestCase
             ->toArray()['data'];
     }
 
+    /**
+     * The box sends what it draws, and nothing else.
+     *
+     * ── Why an absence needs the two assertions above it ─────────────
+     *
+     * `organization_total` sat here for weeks and no test moved when it was
+     * removed - this suite asserted the sentences and never the key, which is
+     * also how the same field reached FIVE glances, each written by starting
+     * from the last. An absence on its own is satisfied by a payload that is
+     * empty, errored, or scoped to nothing, so the series and the sentences
+     * are asserted PRESENT first: then the missing key means withheld rather
+     * than nothing happened.
+     *
+     * Written against the whole payload rather than that one key, so a sixth
+     * organization-wide figure added by the same copy cannot pass it.
+     */
+    public function test_the_box_sends_no_figure_it_does_not_draw(): void
+    {
+        $this->review($this->alpha['franchise']);
+        $this->review($this->alpha['franchise'], rating: 3);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        // The controls: this payload is populated, so the absence below is a
+        // decision rather than an empty answer.
+        $this->assertFalse($data['empty']);
+        $this->assertNotEmpty($data['series'][0]['points']);
+        $this->assertNotEmpty($data['sentences']);
+
+        $this->assertSame(
+            ['empty', 'series', 'slices', 'sentences'],
+            array_keys($data),
+            'the Reviews box draws a line, its slices and its sentences; any other '
+            .'key is a query on every dashboard load for a figure nobody sees, and '
+            .'an organization-wide one reaches a reader scoped to one franchise',
+        );
+    }
+
     public function test_a_reader_who_sees_none_is_not_told_the_business_has_none(): void
     {
         [, $branch] = $this->branchReader();

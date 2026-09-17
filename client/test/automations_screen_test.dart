@@ -605,7 +605,7 @@ void main() {
   /// label, because the label is for the reader and the engine compares the
   /// value - a dropdown that showed the right words and sent the wrong string
   /// would look completely correct on screen.
-  testWidgets('a value with a fixed set is a dropdown, and sends the wire value', (
+  testWidgets('a value with a fixed set is a picker, and sends the wire value', (
     tester,
   ) async {
     Map<String, dynamic>? sent;
@@ -628,10 +628,12 @@ void main() {
     await _tap(tester, find.text('Add a condition'));
     await _type(tester, 'Field', 'source');
 
-    // The entries do not exist until the menu is open, which is also the point:
-    // before this change the same spot was a TextField and nothing listed the
-    // values at all.
-    await _tap(tester, find.byType(DropdownMenu<String>).last);
+    // The options do not exist until the picker is open, which is also the
+    // point: before this change the same spot was a TextField and nothing
+    // listed the values at all.
+    // The LAST picker in the condition row is the value: the field picker sits
+    // before it, and both are the same widget type now.
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
     await _tap(tester, find.text('Website live chat  (website_chat)').last);
 
     await _tap(tester, find.text('Add a step'));
@@ -1041,6 +1043,80 @@ void main() {
     expect(find.text('Chase completions'), findsOneWidget);
   });
 
+  /// THE CATALOGUE ANSWERS THE QUESTION A PICKER CANNOT.
+  ///
+  /// Jose, 2026-09-17: *"i set website_chat manually cause i knew it, but i
+  /// dont know the rest ... give me a catalog as well to see them all"*. A
+  /// picker answers "what goes in THIS box", which requires already knowing
+  /// which field to hang it off; this answers "what is there at all".
+  ///
+  /// Asserted on a field with a closed set AND one without, because the two
+  /// say different things and a catalogue that only listed the closed ones
+  /// would leave somebody believing the others do not exist.
+  testWidgets('the catalogue lists every field and the values it allows', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        triggerFields: const ['source', 'contact_name'],
+        triggerFieldValues: const {
+          'source': [
+            {'value': 'website_chat', 'label': 'Website live chat'},
+            {'value': 'thumbtack', 'label': 'Thumbtack'},
+          ],
+        },
+        fieldSamples: const {'contact_name': 'Marta Ruiz'},
+      ),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Created'));
+
+    await _tap(tester, find.textContaining('What this event carries'));
+
+    // The closed set, both values, with the wire name beside the plain one.
+    expect(find.text('Website live chat - website_chat'), findsOneWidget);
+    expect(find.text('Thumbtack - thumbtack'), findsOneWidget);
+
+    // And the open field, named, with a real example rather than nothing.
+    expect(find.textContaining('Last one seen: Marta Ruiz'), findsOneWidget);
+  });
+
+  /// A TEMPLATE FILLS THE FORM AND SAVES NOTHING.
+  ///
+  /// Jose, 2026-09-17: *"i want to have Templates as well ... so people can
+  /// easily select them and apply them."*
+  ///
+  /// The half worth asserting is the one that is easy to get wrong: applying a
+  /// template must not create anything. A version that saved directly would
+  /// look identical here — a rule appears — and would have switched something
+  /// on that nobody read first.
+  testWidgets('a template fills the builder in and creates nothing by itself', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithTemplates(), onCreate: (b) => sent = b),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
+    await _tap(tester, find.text('Tell the office about website chats only').last);
+
+    // The name, the trigger, the condition and the step all arrive together.
+    expect(
+      find.widgetWithText(TextField, 'Tell the office about website chats only'),
+      findsOneWidget,
+    );
+    expect(find.text('Somebody is chatting on the website.'), findsOneWidget);
+
+    // AND NOTHING WAS SAVED. The person still has to press the button.
+    expect(sent, isNull);
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -1085,7 +1161,7 @@ void main() {
       tester,
       find.ancestor(
         of: find.text('Set to'),
-        matching: find.byType(DropdownMenu<String>),
+        matching: find.byType(SearchPickerField<String>),
       ),
     );
     await tester.pumpAndSettle();
@@ -2384,6 +2460,26 @@ const _catalogue = {
 /// written before schedules keeps the vocabulary it was written against — a
 /// trigger appearing in a picker it did not have changes what "the first row"
 /// means in half a dozen assertions.
+Map<String, dynamic> _catalogueWithTemplates() => {
+  ...Map<String, dynamic>.from(_catalogue),
+  'templates': const [
+    {
+      'key': 'website-chat-only',
+      'name': 'Tell the office about website chats only',
+      'description': 'Narrowed to the live chat on your own website.',
+      'trigger_key': 'customer.created',
+      'conditions': {
+        'all': [
+          {'field': 'source', 'op': 'eq', 'value': 'website_chat'},
+        ],
+      },
+      'actions': [
+        {'type': 'notify', 'message': 'Somebody is chatting on the website.'},
+      ],
+    },
+  ],
+};
+
 Map<String, dynamic> _catalogueWithPlaces() => {
   ...Map<String, dynamic>.from(_catalogue),
   'places': const [

@@ -20,6 +20,7 @@ use App\Services\Hr\Invitations;
 use App\Support\Automations\AutomationEngine;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Modules\ModuleAvailability;
+use App\Support\Access\Refusal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\Concerns\BuildsTenants;
@@ -1063,17 +1064,27 @@ class HrInvitationsTest extends TestCase
 
         $this->signedInAs($reader)->getJson('/api/v1/hr/invitations')->assertOk();
 
-        // View is the tab; it is not permission to act.
+        // View is the tab; it is not permission to act. PAST the tab gate and
+        // refused by the policy, which is what makes this the assertion that
+        // still tells the two layers apart.
         $this->signedInAs($reader)->postJson('/api/v1/hr/invitations', [
             'email'      => 'someone@example.test',
             'role_id'    => $role->id,
             'scope_type' => 'organization',
             'scope_id'   => $alpha['org']->id,
-        ])->assertForbidden();
+        ])->assertForbidden()->assertJsonMissingPath('code');
 
         $outsider = $this->userWithRole($alpha, 'Outsider', ['customers.view']);
 
-        $this->signedInAs($outsider)->getJson('/api/v1/hr/invitations')->assertForbidden();
+        // And this one is the TAB GATE answering, not the policy — since
+        // per-tab permissions it is in front, and `withImpliedView` means
+        // everybody who passes it also satisfies `hr.view`. Named rather than
+        // left as a bare 403, which would keep passing if the policy behind it
+        // were deleted. See the longer note in HrPeopleTest.
+        $this->signedInAs($outsider)->getJson('/api/v1/hr/invitations')
+            ->assertForbidden()
+            ->assertJsonPath('code', 'permission_denied')
+            ->assertJsonPath('message', Refusal::permission('open this tab')->message());
     }
 
     public function test_an_invitation_belongs_to_its_own_organization_only(): void

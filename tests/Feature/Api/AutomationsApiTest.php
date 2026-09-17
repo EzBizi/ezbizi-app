@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'reports', 'places', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'reports', 'places', 'templates', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -1075,5 +1075,80 @@ class AutomationsApiTest extends TestCase
         $this->assertContains($here, $atTheTop->pluck('id'));
         $this->assertContains($elsewhere, $atTheTop->pluck('id'));
         $this->assertSame('Second Franchise', $atTheTop->firstWhere('id', $elsewhere)['scope']['label']);
+    }
+
+    /**
+     * EVERY TEMPLATE MUST NAME A TRIGGER AND ACTIONS THAT REALLY EXIST.
+     *
+     * Jose, 2026-09-17: *"i want to have Templates as well, these will be
+     * global, with basic actions ... we'll be adding more"*. The whole value is
+     * that somebody presses one and gets a working rule, so a template naming a
+     * trigger nothing raises, or an action the engine cannot run, is worse than
+     * no template at all: it applies cleanly, looks configured, and then fails
+     * at save or silently never fires.
+     *
+     * This is the guard for the ones added LATER, which is where it will
+     * actually earn its keep — the five here were checked by hand once.
+     */
+    public function test_every_template_names_a_real_trigger_and_runnable_actions(): void
+    {
+        $registry = app(ModuleRegistry::class);
+
+        $runnable = collect($this->as()->getJson('/api/v1/automations/catalogue')
+            ->assertOk()->json('data.action_types'))->pluck('key')->all();
+
+        foreach (\App\Support\Automations\AutomationTemplates::all() as $template) {
+            $trigger = $registry->findTrigger($template['trigger_key']);
+
+            $this->assertNotNull(
+                $trigger,
+                "Template {$template['key']} fires on {$template['trigger_key']}, which no module declares.",
+            );
+
+            $this->assertTrue(
+                $trigger->isRaised,
+                "Template {$template['key']} fires on {$template['trigger_key']}, which nothing ever raises, "
+                .'so applying it would produce a rule that can never run.',
+            );
+
+            foreach ($template['actions'] as $action) {
+                // Asked of the CATALOGUE rather than of a private constant:
+                // what the builder is told is runnable is what a template has
+                // to stay inside.
+                $this->assertContains(
+                    $action['type'],
+                    $runnable,
+                    "Template {$template['key']} uses {$action['type']}, which the engine cannot perform.",
+                );
+            }
+        }
+    }
+
+    /**
+     * A TEMPLATE THIS PERSON COULD NOT BUILD IS NOT OFFERED.
+     *
+     * Applying one that names a module they cannot open would fill the form in
+     * and then save into a 403, which reads as the app changing its mind rather
+     * than as a permission.
+     */
+    public function test_templates_are_filtered_to_the_modules_in_reach(): void
+    {
+        $offered = collect($this->as()->getJson('/api/v1/automations/catalogue')
+            ->assertOk()->json('data.templates'));
+
+        // THE CONTROL: an administrator reaches everything, so the list is not
+        // empty and the assertion below is about filtering rather than about a
+        // key that is always absent.
+        $this->assertNotEmpty($offered);
+
+        $modules = collect($this->as()->getJson('/api/v1/automations/catalogue')
+            ->assertOk()->json('data.modules'))->pluck('key');
+
+        foreach ($offered as $template) {
+            $this->assertNotNull($template['trigger_key']);
+            $this->assertNotEmpty($template['actions']);
+        }
+
+        $this->assertNotEmpty($modules);
     }
 }

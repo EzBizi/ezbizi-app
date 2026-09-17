@@ -61,6 +61,24 @@ final class ClientIdentity
     }
 
     /**
+     * WHICH DEVICE an identity names, or '' when it names only a person.
+     *
+     * The mirror of [userPartOf], and safe for the same reason: the person
+     * half is a hyphen-stripped UUID and cannot contain an underscore, so the
+     * first underscore is the only split there is.
+     *
+     * Wanted because a leg's `to` is the only record of which of somebody's
+     * phones Twilio is ringing, and "stop my OTHER phones" has to spare the
+     * one that asked.
+     */
+    public static function devicePartOf(string $identity): string
+    {
+        $at = strpos($identity, '_');
+
+        return $at === false ? '' : substr($identity, $at + 1);
+    }
+
+    /**
      * The user id an identity names, in the shape the database stores it.
      *
      * `of()` strips the hyphens because Twilio allows only alphanumerics and

@@ -23,25 +23,38 @@ class _ServicesScreenState extends State<ServicesScreen> {
   int _tab = 0;
   final Set<int> _shown = {0};
 
-  late final List<(String, IconData, Widget Function())> _tabs = [
+  /// Every chip this screen can draw, each carrying the tab key its permission
+  /// is named for. The builder is handed its own visibility rather than
+  /// comparing against a hard-coded index: once a chip can be filtered out,
+  /// position 1 is no longer always Settings.
+  late final List<(String, String, IconData, Widget Function(bool))> _all = [
     (
+      'catalogue',
       'Catalogue',
       Icons.handyman_outlined,
-      () => ServiceList(
-        api: widget.api,
-        session: widget.session,
-        visible: _tab == 0,
-      ),
+      (visible) =>
+          ServiceList(api: widget.api, session: widget.session, visible: visible),
     ),
     (
+      'settings',
       'Settings',
       Icons.tune,
-      () => ServiceSettings(
+      (visible) => ServiceSettings(
         api: widget.api,
         session: widget.session,
-        visible: _tab == 1,
+        visible: visible,
       ),
     ),
+  ];
+
+  /// An absent `/me` answers NO. A chip drawn while the answer is still
+  /// arriving is a chip that appears, briefly, to somebody who may not have it.
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('services.$tab.view') ?? false;
+
+  List<(String, String, IconData, Widget Function(bool))> get _tabs => [
+    for (final tab in _all)
+      if (_mayOpen(tab.$1)) tab,
   ];
 
   void _select(int tab) => setState(() {
@@ -51,14 +64,29 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = _tabs;
+
+    // Reachable: the module gate is `services.view`, and a role can hold that
+    // with neither chip granted. Say so rather than drawing an empty bar.
+    if (tabs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No Services tabs have been granted to your role.'),
+        ),
+      );
+    }
+
+    final selected = _tab < tabs.length ? _tab : 0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Material(
           color: Theme.of(context).colorScheme.surface,
           child: TabBarLike(
-            labels: [for (final tab in _tabs) (tab.$1, tab.$2)],
-            selected: _tab,
+            labels: [for (final tab in tabs) (tab.$2, tab.$3)],
+            selected: selected,
             onSelected: _select,
           ),
         ),
@@ -67,11 +95,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              for (var i = 0; i < _tabs.length; i++)
+              for (var i = 0; i < tabs.length; i++)
                 Offstage(
-                  offstage: i != _tab,
+                  offstage: i != selected,
                   child: _shown.contains(i)
-                      ? _tabs[i].$3()
+                      ? tabs[i].$4(i == selected)
                       : const SizedBox.shrink(),
                 ),
             ],

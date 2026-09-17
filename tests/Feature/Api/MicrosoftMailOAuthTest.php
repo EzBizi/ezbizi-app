@@ -112,13 +112,63 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $reader = $this->userWithRole($t, 'Reader', ['email.view']);
+        // Holds the Settings TAB and not `email.edit`, deliberately.
+        //
+        // Since 2026-09-17 these routes sit behind `email.settings.view` as
+        // well, and a Reader without it is refused by the tab -- which would
+        // pass this assertion while proving nothing about the authority the
+        // docblock names. Giving them the tab puts the refusal back on
+        // `email.edit`, which is the thing under test. The tab's own refusal
+        // is covered by EmailTabPermissionsTest.
+        $reader = $this->userWithRole($t, 'Reader', ['email.view', 'email.settings.view']);
 
         $this->signedInAs($reader)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
-            ->assertForbidden();
+            ->assertForbidden()
+            // And it says WHICH refusal, which is the half that cannot rot.
+            //
+            // Both causes available to this request answer 403: the missing
+            // `email.edit`, which is what this test is about, and the
+            // `email.settings.view` tab in front of the route. Holding the tab
+            // in the fixture above keeps them apart today -- but that is a rule
+            // somebody has to remember, and a fixture tidied in a year turns
+            // this green assertion into one that measures the wrong thing
+            // silently. The sentence cannot be confused: the tab refuses with
+            // "permission to open this tab" and MailboxAccess with this.
+            //
+            // The shape came from the Web Management session, 2026-09-17,
+            // who found it in their own WebTenantIsolationTest: where a refusal
+            // has more than one possible cause, assert something the other
+            // causes cannot produce.
+            //
+            // ── TWO WAYS TO CHECK THIS ASSERTION EARNS ITS PLACE ──
+            //
+            // Both were run against this file on 2026-09-17; neither is being
+            // described from memory.
+            //
+            //   1. Take `email.settings.view` off the Reader above. It goes red
+            //      HERE, on the message rather than the status, which is the
+            //      migration that was passing silently before. Stronger, because
+            //      it exercises the real thing -- but it only works where the
+            //      tab gate sits on some routes and not others. Web Management
+            //      copied it into a module whose gate covers the GET too, where
+            //      removing the key reds the positive control first and this
+            //      line is never reached. Same manoeuvre, opposite result,
+            //      decided by route topology.
+            //
+            //   2. Swap the expected sentence below for 'open this tab'. Both
+            //      refusals in this file go red. Weaker in principle -- it does
+            //      not exercise the tab path -- but it proves the two halves
+            //      that matter (the assertion really reads the message, and the
+            //      message really is MailboxAccess's rather than the
+            //      middleware's) and it does not care how the routes are gated.
+            //      This is the one to use somewhere new.
+            ->assertJsonPath(
+                'message',
+                fn (string $said) => str_contains($said, 'connect this inbox'),
+            );
 
-        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.edit']);
+        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.settings.view', 'email.edit']);
 
         $this->signedInAs($manager)
             ->postJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/start")
@@ -365,7 +415,7 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.edit']);
+        $manager = $this->userWithRole($t, 'Manager', ['email.view', 'email.settings.view', 'email.edit']);
         $state   = $this->beginSignIn($t, $mailbox, $manager);
 
         $this->inTenant($t['org'], fn () => $manager->forceFill(['is_active' => false])->save());
@@ -612,11 +662,17 @@ class MicrosoftMailOAuthTest extends TestCase
         $t       = $this->provisionTenant('A1-Group');
         $mailbox = $this->inbox($t);
 
-        $reader = $this->userWithRole($t, 'Reader', ['email.view']);
+        $reader = $this->userWithRole($t, 'Reader', ['email.view', 'email.settings.view']);
 
         $this->signedInAs($reader)
             ->getJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/status")
-            ->assertForbidden();
+            ->assertForbidden()
+            // Names the refusal rather than its status -- see the note on the
+            // first of these. A tab refusal says "open this tab".
+            ->assertJsonPath(
+                'message',
+                fn (string $said) => str_contains($said, 'connect this inbox'),
+            );
 
         $this->signedInAs($t['admin'])
             ->getJson("/api/v1/email/mailboxes/{$mailbox->getKey()}/oauth/status")

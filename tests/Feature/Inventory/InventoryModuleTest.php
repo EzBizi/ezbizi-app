@@ -18,12 +18,20 @@ class InventoryModuleTest extends TestCase
 {
     private const MODULE = 'inventory';
 
-    public function test_the_module_offers_view_create_edit_delete_and_financials(): void
+    public function test_the_module_offers_view_create_edit_delete_financials_and_a_grant_per_tab(): void
     {
         $module = app(ModuleRegistry::class)->get(self::MODULE);
 
         $this->assertNotNull($module);
         $this->assertSame('Inventory', $module->label);
+
+        /*
+         * Order matters here and is the registry's, not this list's: the module
+         * actions first, then one `view` per tab in the order the chip row
+         * draws them. Asserting the whole array rather than four `contains`
+         * calls is deliberate — a tab silently dropped from the declaration
+         * would still pass every containment check for the three that remain.
+         */
         $this->assertSame(
             [
                 'inventory.view',
@@ -31,10 +39,31 @@ class InventoryModuleTest extends TestCase
                 'inventory.edit',
                 'inventory.delete',
                 'inventory.financials',
+                'inventory.stock.view',
+                'inventory.items.view',
+                'inventory.orders.view',
+                'inventory.locations.view',
             ],
             $module->permissionKeys(),
         );
         $this->assertNull($module->automationExemptBecause);
+    }
+
+    public function test_every_declared_tab_is_labelled_with_the_word_the_chip_row_shows(): void
+    {
+        $tabs = app(ModuleRegistry::class)->get(self::MODULE)->tabs;
+
+        /*
+         * The label is what an administrator ticks in the roles editor, so it
+         * has to be the word they will then look for on screen. These four are
+         * copied from `inventory_screen.dart`'s chip row; a tab renamed there
+         * and not here hands somebody a checkbox for a tab whose name they were
+         * told wrongly, and nothing errors.
+         */
+        $this->assertSame(
+            ['stock' => 'Stock', 'items' => 'Items', 'orders' => 'Orders', 'locations' => 'Locations'],
+            collect($tabs)->mapWithKeys(fn ($tab) => [$tab->key => $tab->label])->all(),
+        );
     }
 
     public function test_events_are_about_an_item(): void

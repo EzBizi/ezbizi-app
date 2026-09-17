@@ -90,8 +90,7 @@ class InspectionAccessTest extends TestCase
     private function tech(array $tenant, string $name): \App\Models\User
     {
         return $this->userWithRole($tenant, $name, [
-            'inspection.view', 'inspection.create',
-        ]);
+            'inspection.view', 'inspection.create', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
     }
 
     private function grant(array $tenant, InspectionDefinition $definition, string $roleId): void

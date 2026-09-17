@@ -42,7 +42,8 @@ class GlanceRegistry
         'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
-        'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
+        'automations', 'monitoring', 'newsletter', 'reports', 'profit_loss',
+        'ads_performance',
     ];
 
     /**
@@ -90,6 +91,37 @@ class GlanceRegistry
          * wins on this key without this entry being removed first - and if it
          * ever is, it needs a quota story, not just a query.
          */
+        /*
+         * Reports' other child, and the same answer as Google Ads above for
+         * the same reason rather than by copying it.
+         *
+         * The figures are read from the Airtable base a business connected,
+         * when somebody opens the screen, and are never stored — the module's
+         * own `automationExemptBecause` says so in as many words. A dashboard
+         * box would therefore have to make that call on every home-screen
+         * load, for every viewer, to summarise numbers nobody asked for yet.
+         *
+         * I wrote that as "the permanent answer and not a queue entry", and
+         * that part was not mine to decide. Whether a business owner wants a
+         * profit figure on the home screen is REPORTS' call and Jose's, not
+         * the dashboard's — I own the surface, not what a module puts on it.
+         * The reasoning above is offered, not imposed.
+         *
+         * THIS ENTRY DOES NOT BLOCK A REAL GLANCE. A live class registered on
+         * this key wins over the placeholder without anybody removing it —
+         * `test_a_live_glance_wins_when_coming_soon_still_lists_the_same_key`
+         * pins that. It exists so a module can reach the sidebar without the
+         * completeness test holding a release.
+         *
+         * The one case where it must come out: if Reports decides Profit &
+         * Loss should NOT be its own sidebar module, this entry and its ORDER
+         * line go in the SAME commit, or the completeness test fails the
+         * other way round — a glance for a tab that no longer exists.
+         */
+        'profit_loss' => [
+            'label' => 'Profit & Loss',
+            'sentence' => 'Profit and loss is in the Profit & Loss tab under Reports. The figures are read from your connected Airtable base when you open it, so they are not summarised here.',
+        ],
         'ads_performance' => [
             'label' => 'Google Ads',
             'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',

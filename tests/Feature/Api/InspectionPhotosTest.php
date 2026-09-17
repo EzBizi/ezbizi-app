@@ -157,7 +157,7 @@ class InspectionPhotosTest extends TestCase
     public function test_a_photo_in_a_submitted_report_cannot_be_removed(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $tech = $this->tech($tenant, extra: ['inspection.archive']);
+        $tech = $this->tech($tenant, extra: ['inspection.archive', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
         $seeded = $this->seedOffered($tenant, $tech, screens: $this->photoScreen());
 
         $runId = $this->startRun($tech, $seeded);
@@ -253,8 +253,7 @@ class InspectionPhotosTest extends TestCase
     private function tech(array $tenant, string $name = 'Rodrigo', array $extra = [])
     {
         return $this->userWithRole($tenant, $name, [
-            'inspection.view', 'inspection.create', ...$extra,
-        ]);
+            'inspection.view', 'inspection.create', ...$extra, 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
     }
 
     private function grant(array $tenant, InspectionDefinition $definition, string $roleId): void

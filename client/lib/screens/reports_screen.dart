@@ -173,9 +173,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final me = widget.session.me;
 
     return [
-      ('Reports', Icons.list_alt_outlined, null),
-      if (canBuildHere) ('Builder', Icons.build_outlined, null),
-      if (canExperiment) ('Experimental', Icons.science_outlined, null),
+      /*
+       * ── EACH TAB IS ITS OWN GRANT NOW (Jose, 2026-09-17) ──────
+       *
+       * "i should be able to grant access by sub tab as well ... so this
+       * applies to every tab and it's sub tabs".
+       *
+       * The two conditions are ANDed rather than swapped. `canBuildHere` is
+       * still what decides whether building is possible at all; the tab grant
+       * decides whether this person is shown the pane. Replacing the first with
+       * the second would hand the Builder to somebody who cannot save anything
+       * out of it.
+       *
+       * Absent `/me` answers NO. A null session is a load that has not
+       * finished, and the safe reading of "I do not know yet" is to draw
+       * nothing rather than everything.
+       */
+      if (_mayOpen('library')) ('Reports', Icons.list_alt_outlined, null),
+      if (canBuildHere && _mayOpen('builder'))
+        ('Builder', Icons.build_outlined, null),
+      if (canExperiment && _mayOpen('experimental'))
+        ('Experimental', Icons.science_outlined, null),
       if (me != null)
         for (final module in me.reachableModules)
           if (module.parent == 'reports')
@@ -187,6 +205,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
     ];
   }
+
+  /// Whether this person may open one of Reports' own tabs.
+  ///
+  /// The child MODULES below — Google Ads, Profit & Loss — are not tabs and do
+  /// not come through here: each is a module with a grant of its own, and
+  /// `reachableModules` has already decided them.
+  bool _mayOpen(String tab) =>
+      widget.session.me?.permissions.contains('reports.$tab.view') ?? false;
 
   List<(String, IconData)> _chipLabels({
     required bool canBuildHere,

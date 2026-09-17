@@ -216,6 +216,44 @@ if [ -n "$UNTRACKED_MODELS" ]; then
   echo "     Commit them with their migration, or neither."
 fi
 
+# ── THE TWO FILES EVERY MODULE EDITS ─────────────────────────────
+#
+# 2026-09-17: three sessions were bitten by routes/api.php in one afternoon,
+# from three different directions, and every one of them was textually clean
+# and showed as an ordinary `M`:
+#
+#   * a stale index holding a pre-merge copy  — 10 insertions, 108 DELETIONS
+#   * a formatter — Pint reflowed the whole file while somebody formatted
+#     their own five lines. The nastiest of the three, because you run a
+#     formatter ON PURPOSE to be careful and it produces the same time bomb
+#     as forgetting.
+#   * a checkout restoring the file under somebody else's uncommitted work
+#
+# A whole-file operation on either of these is a silent revert of every other
+# module. Insertions tell you nothing; the DELETION count is the instrument.
+# The recovery is the same in all three cases: restore the file to HEAD and
+# re-apply your own lines by hand.
+#
+# READ THE DELETED LINES BEFORE REPORTING A REVERT. The count is the signal,
+# not the finding. Web Management's 108 was about half comment: a stale copy of
+# this file reports every explanatory block in the range as deleted too, and
+# they named three of Inventory's gates as removed when one of them was a
+# COMMENT saying that route is deliberately NOT gated. Confirm a named gate
+# against an actual `Route::middleware(` line before calling it lost.
+for shared in routes/api.php app/Providers/ModuleServiceProvider.php; do
+  [ -f "$shared" ] || continue
+  dels=$(git diff HEAD --numstat -- "$shared" | awk '{print $2+0}')
+  [ -n "${dels:-}" ] || continue
+  if [ "$dels" -gt 12 ]; then
+    echo
+    echo "  ** $shared removes $dels lines against HEAD. **"
+    echo "     Every module edits that file. Check you are not reverting"
+    echo "     somebody else before you commit it:"
+    echo "       git diff HEAD -- $shared"
+    echo "     If those deletions are not yours: git checkout HEAD -- $shared"
+    echo "     then re-apply your own lines by hand."
+  fi
+done
 echo
 echo "  $stale stale, $live live"
 

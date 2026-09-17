@@ -106,6 +106,13 @@ prefix, and gating it refused a branch manager mid-invitation. Both were caught
 by existing suites within a minute. For routes like these the tab gate belongs
 beside the split already inside the controller, not in front of it.
 
+**The shape that proves it, from Clock In, once they moved their platform
+refusal off 403:** one test, one endpoint, three assertions — somebody without
+the tab gets 403 with `code: permission_denied`; somebody WITH the tab in an
+organization that has the feature switched off gets 409; then the switch goes on
+and the granted one gets through. The third line is the one that matters, and it
+is the one a permission suite never writes on its own.
+
 **Write the positive control first.** A role holding `hr.hours.view` was refused
 with *"Clock in is switched off for this organization"* — §2.1's platform layer
 answering before any permission is consulted. A suite of 403 assertions with no
@@ -190,6 +197,18 @@ And when you fix it, **fall back in every reader, not just the bar**. HR's first
 fix resolved the missing tab for the tab bar and left the pane stack comparing
 against a key nobody held: bar highlighted, every pane offstage, screen blank.
 
+**The symptom depends on WHEN your pane loads, so ask that question rather than
+the other one.** Scheduling's refinement, after finding the identical defect in
+their screen and discovering their test passed against it. A pane whose
+`initState` fetches unconditionally is ALREADY loaded when the disagreement
+happens, so the bug shows as a stale pane after a revocation; a pane that loads
+on becoming visible shows as a BLANK screen, because nothing ever told it to
+load. Same structure, two symptoms, and a module that loads eagerly hides it.
+
+So the question for your screen is not "does my bar renumber" — it is **"does my
+pane load in `initState` or on becoming visible"**, because that decides which
+failure you are looking for.
+
 **2. YOUR EXISTING TESTS PASS AGAINST THE BROKEN VERSION.** They grant every tab,
 because before today there was nothing else to grant. The test that can tell the
 difference holds TWO tabs, neither of them the one your screen lands on by
@@ -200,6 +219,99 @@ Scheduling adds the reason this is so easy to miss: their capacity tests build
 the pane directly, so the tab bar — the widget this whole step changes — had no
 coverage at all. **A module with good pane tests can still have none on the tab
 bar.**
+
+## A refusal that is not about permission must not answer 403
+
+Communication's rule, and it is sharper than the "check what your module refuses
+first" I had been repeating. `ConnectionsController::store` authorises
+correctly and THEN refuses an unapproved company with `HTTP_FORBIDDEN`. So a
+test asserting 403 for "this role may not create a phone connection" passes
+identically when the role HOLDS the permission and EzBizi has simply not
+switched phone service on for that company. The assertion is true for two
+different reasons and cannot tell them apart — and it hides inside a passing
+negative test, where nothing draws attention to it.
+
+The fix was already one line above it in the same file: the Twilio-not-configured
+gate answers `501 NOT_IMPLEMENTED`, which no permission failure ever returns, so
+it is distinguishable by construction.
+
+**THE RULE IS "NOT 403", NOT "USE 501".** Clock In took the same finding and
+chose `409 Conflict` for theirs, on a distinction worth copying: 501 says EzBizi
+cannot do this, which is false when an administrator flipping one switch turns
+it on, while 409 says the request conflicts with the current state of the thing
+— which is exactly what "this organization has Clock in switched off" is.
+Communication's 501 is right for THEIR case for the same reason: Twilio missing
+from the box really is "not implemented here". Pick the code that is true about
+who can fix it; the only constraint this brief imposes is that it must not be
+the one a permission failure returns.
+
+Check the client before you change a code, as they did: `ApiClient` exposes
+`forbidden` as `statusCode == 403`, so a gate moving off 403 could change what a
+screen renders. Theirs renders `response.reason` either way, which made it a
+test-distinguishability fix rather than a client-visible one.
+
+**Cheap check before you write a tab gate: grep your own controllers for
+`HTTP_FORBIDDEN` and read each one.** If any of them is about the platform
+rather than the person, every 403 in that endpoint's suite is ambiguous, and a
+positive control does not save it — the positive case can pass while every
+negative passes for the wrong reason.
+
+Human Resources has an instance: `TimeClockController:30` and `:52` abort 403
+with "Clock in is switched off for this organization". That is the refusal that
+fooled the first version of HR's own suite.
+
+## If your tabs are a FILTER rather than panes, the gate is on the data
+
+Leads' shape, and it has no route to put middleware in front of: one list behind
+one endpoint, with the four sources as chips over it. Filtering the chip strip
+alone would have left every hidden row in `All` — the pane a person is refused,
+visible inside the pane they are allowed. So the gate is a scope applied on
+every request INCLUDING the one with no filter parameter, plus a policy refusing
+the individual record — 404 rather than 403, so nobody learns the id exists.
+
+Two consequences worth copying:
+
+**Anything that COUNTS the module's rows needs the same clause.** Their
+dashboard glance would otherwise have said "38 enquiries" over a list showing
+four, and a number nobody can reconcile is the one people believe.
+
+**Build the chip strip from the FILTERED list, not the full one.** Hiding chips
+for drawing while the index still comes from the const list makes tap index 2
+mean the wrong source — and it passes every "is the chip drawn" test. Same
+family as the tab-index trap above, one level down.
+
+## A tab is an AND on top of the capability, not an alternative to it
+
+Before concluding that a tab grant widened anything, **read the controller behind
+it.** I did not, and got it wrong in public: I told Reports and Marketing that
+somebody holding `reports.experimental.view` without `reports.build` could now
+read the Experimental report but not connect the Workiz account it reads from —
+an affordance and its gate disagreeing. Measured afterwards, at Reports'
+correction: `ExperimentalCallReportController:83` authorises
+`createOnOrganization`, and `SavedReportPolicy::permission()` maps everything
+but `view` to `reports.build`. The tab never became a way IN.
+
+Reports pinned it rather than only replying —
+`test_the_tab_alone_does_not_open_the_pane_without_the_capability` — which is
+the assertion that goes red if a route gate ever becomes the only one.
+
+**The entry beside it WAS wrong**, which is why the check matters in both
+directions: `Airtable => 'reports.build'` was written when only a report would
+read a base, and Profit & Loss is its own module now. An accountant reading the
+figures weekly could not attach a base, and somebody holding `reports.build` was
+offered Connect for figures they cannot open. It is `profit_loss.view` now —
+Connect follows the screen that reads it.
+
+## A refusal test whose subject holds NONE of the candidates proves nothing
+
+Reports again, from their own suite. `AirtableConnectTest`'s gate case was named
+"without `reports.build`" and held a role with NEITHER permission, so it passed
+under the old rule and the new one and distinguished nothing. The role has to
+hold the OTHER candidate specifically — that is the only fixture that can tell
+which rule is in force.
+
+Same family as the administrator fixture below: a 403 arriving for a reason
+other than the one in the test's name.
 
 ## An ADMINISTRATOR fixture cannot test a permission at all
 
@@ -219,6 +331,88 @@ reaches the test environment — a permission test one step from making live API
 calls to a third party. Unconfigure explicitly in the fixture rather than
 relying on the environment being empty.
 
+## Two widget-test harness traps that make a permission test prove nothing
+
+Both Scheduling's, both likely to be general.
+
+**`Session` is a ChangeNotifier.** A bare `pumpWidget` holds the first permission
+set for ever, so a test that revokes a grant and re-pumps passes against ANY
+implementation, including one that ignores permissions entirely. It needs a
+`ListenableBuilder` for the rebuild to happen at all.
+
+**Choose a tab whose fetch is observable.** They had to pick which tab survives
+the revocation on purpose: their Settings pane fetches when it becomes visible,
+so "did it believe it was visible" leaves a trace, while the Availability pane
+waits for a search and looks identical whether it believed it or not. A test
+aimed at the second one cannot fail.
+
+And the module-with-no-tab case is reachable **without anybody doing anything
+wrong**: an administrator grants the module, is distracted before granting a
+tab, and somebody opens a screen with nothing in it. A sentence beats a blank
+pane.
+
+## Ship the gate in the SAME COMMIT as every fixture that crosses it
+
+Human Resources' line, and it has two instances behind it from one split:
+
+> "The gate belongs in the same commit as the fixture updates for every suite
+> that crosses it, or the red lands on a session that has no idea why."
+
+**The set of suites that break is the set that TESTS THROUGH a newly gated
+route — which is not the set of modules that own tabs.** Clock In owns no HR tab
+and took 23 failures, because `hr/time-clock` and `hr/time-clock/week` are gated
+on `hr.hours.view` and their fixtures granted `hr.view` and stopped. Ten more
+landed inside a commit whose subject was about search pickers.
+
+That set is findable BEFORE you commit: grep the route path across `tests/`. It
+is much cheaper than finding it from a red gate on somebody else's branch, where
+the failure looks like a broken module rather than a stale fixture.
+
+## The coarse key survives the split and stops meaning what it did
+
+Also HR's, and every module doing this inherits it. `hr.view` is still grantable
+on its own, beside the seven tabs and independent of them — and a user holding
+exactly it comes back from `modulesFor` as `reachable: true`: module in the
+navigation, every tab filtered out, blank pane, nothing logged. HR now draws a
+named state for it (`488a1698`).
+
+**Check what your surface draws for somebody holding only the old key.** It is
+reachable without anybody doing anything wrong: grant the module, be distracted
+before granting a tab.
+
+**And check the administrator path against the SERVER, not a fixture.** `/me`
+sends an administrator 121 expanded keys including every `hr.*.view`, so an
+organization's owner never meets that state — which is why it surfaced as one
+misconfigured role rather than as every tenant at once. No client test could have
+found it either way: they all state their permissions explicitly, so a fixture
+cannot discover what the server derives.
+
+## Two patterns from modules that finished
+
+**Pin NAMES-rather-than-MINTS per tab, not per module.** Training's guard asserts
+learn→view, dashboard→monitor, settings→manage individually. The blanket form
+("this module declares no minting tabs") goes red the day they add a fourth tab
+that legitimately needs its own key — and a guard that fires on a correct change
+gets weakened rather than obeyed. The boot-time check in `ModuleDefinition`
+catches a typo pointing at nothing; theirs catches somebody DELETING `action:`
+and silently creating the duplicate key, which is valid to the validator and is
+the actual harm.
+
+**Where a route genuinely cannot be gated, say so in three places and test it.**
+Inventory's `/inventory/items` is read by six panes and `/inventory/locations`
+by seven — every new order, sale, issue and transfer form has to name an item
+and a place. There is no split inside the controller to hang a gate beside,
+because the picker needs the SAME rows the list does. So those two grants hide
+the list in the chip row and do not withhold the data, and that is written in
+the registry block, the routes comment, and a test asserting both routes still
+answer WITHOUT their tab grant — with a control asserting the same fixture is
+refused Stock. A later session tidying them behind middleware goes red with the
+reason attached.
+
+Their honest fix, flagged rather than smuggled in: a narrow id-and-name picker
+endpoint for the forms, which would let both be gated properly. New API surface
+plus five pane changes. **That is the one thing this sweep could not reach.**
+
 ## Your fixtures may not be the ones you break
 
 Automations' declaration reddened four tests in their own suite and **two in
@@ -232,6 +426,57 @@ grants every tab to every role already holding the module's view, and it is
 **derived from the registry** — so it covers your module automatically if it
 runs after your declaration. If your tabs land in a later deploy than that
 migration, copy it with a new timestamp; do not edit the spent one.
+
+**WRITE YOUR OWN COPY ANYWAY, AND DO NOT LET IT RE-DERIVE.** Inspection's
+argument, and it is stronger than the instruction above. 090000 is
+registry-derived AT EXECUTION: run it against a tree that does not yet carry
+your declaration and it grants nothing for your module, marks itself run, and
+never looks again. Your declaration then arrives and every existing role holds
+none of your tab keys — and the client filters on exactly those, so every tab
+vanishes at once, silently, in the direction nobody notices.
+
+Not hypothetical: their declaration was blocked out of main for hours by another
+module's uncommitted lines while 090000 sat Pending and deployable.
+
+So their copy hard-codes its own keys with `insertOrIgnore` rather than reading
+the registry, because **a copy that re-derives inherits the failure it insures
+against.** And they tested it against the PIVOT rather than the console output,
+because a migration that inserts nothing prints the same DONE as one that works.
+
+**CORRECTED by the same session, and it lowers the urgency: a re-deriving copy
+committed IN THE SAME CHANGE as the declaration cannot fail this way**, because
+both are in the same tree on every path git offers. That is a property, not
+timing luck — so the four copies already written do not need rewriting.
+
+What breaks it is later editing: a squash that keeps the migration and drops the
+declaration, a revert of the declaration alone, or somebody marking 090000 run
+by hand. So the cheap check for a module that has already shipped is **"are the
+declaration and the copy in the same commit"**, and the hard-coded form is what
+you want if they are not.
+
+## A dirty shared file blocks everybody's merge, not just yours
+
+`git merge` refuses to touch a file with uncommitted changes. So while any
+session holds `routes/api.php` or `app/Providers/ModuleServiceProvider.php`
+dirty, nobody else can land their tabs — two modules queued behind that today,
+and the deploy desk held five branches for the same reason. **Commit those two
+files promptly rather than across a gate run**; a green suite you are still
+holding is somebody else's blocked merge.
+
+The refusal NAMES the files, so it tells you who to ask. And `git stash` is the
+wrong reach: it stashes the whole shared tree rather than your files, which
+takes every other session's work with it.
+
+## A branch behind main fails peer tests for the wrong reason
+
+Inspection nearly reported having broken three peer suites. Their branch was 58
+commits behind, and the tests passed on main. **The control run is what separates
+staleness from breakage**, and a stale branch's red looks exactly like your
+change's red.
+
+The method, in their words: run the same filter in the PRIMARY tree, which is at
+main, before believing your branch broke anything. "Three peer suites red" is
+the shape to distrust, and it is cheap to check.
 
 The reason this matters more than it looks: a permission split fails silently in
 exactly one direction. Granting too much gets reported by whoever sees a pane

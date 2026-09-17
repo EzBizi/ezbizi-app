@@ -23,7 +23,7 @@ class DefinitionGraphEndpointTest extends TestCase
     public function test_the_builder_can_fetch_the_graph_for_a_draft(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $author = $this->userWithRole($tenant, 'Manager', ['inspection.view', 'inspection.edit']);
+        $author = $this->userWithRole($tenant, 'Manager', ['inspection.view', 'inspection.edit', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view']);
 
         $definition = $this->inTenant($tenant['org'], fn () => InspectionDefinition::create([
             'name' => 'Level 1',

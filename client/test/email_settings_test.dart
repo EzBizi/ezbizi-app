@@ -2002,9 +2002,13 @@ void main() {
           _row(id: 'mb-1', address: 'info@a-1chimney.com', mayManage: false),
         ],
       ),
-      // The tab permission and nothing else — the ordinary case for anybody
-      // who answers mail without looking after the connections.
-      permissions: const ['email.view'],
+      // The Settings TAB and no action keys: somebody who may look at the
+      // connections and may not change them. `email.view` alone stopped being
+      // enough on 2026-09-17, when the tabs became separately granted -- with
+      // it and nothing else this screen correctly draws its "no part of Email
+      // has been given to your role" sentence instead, and every assertion
+      // below looks for controls that were never built.
+      permissions: const ['email.view', 'email.settings.view'],
     );
 
     await _openSettings(tester);
@@ -2355,7 +2359,13 @@ Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
   Size size = const Size(1500, 1000),
-  List<String> permissions = const ['email.view', 'email.create', 'email.edit'],
+  List<String> permissions = const [
+    'email.view',
+    'email.inbox.view',
+    'email.settings.view',
+    'email.create',
+    'email.edit',
+  ],
   Map<String, dynamic>? me,
 }) async {
   tester.view.physicalSize = size;
@@ -2399,7 +2409,13 @@ Future<void> _pumpSettings(
   required _FakeConsentWindow? window,
   VoidCallback? onOpen,
   Size size = const Size(1500, 1000),
-  List<String> permissions = const ['email.view', 'email.create', 'email.edit'],
+  List<String> permissions = const [
+    'email.view',
+    'email.inbox.view',
+    'email.settings.view',
+    'email.create',
+    'email.edit',
+  ],
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -2818,7 +2834,20 @@ const _me = {
   'email': 'jose@example.com',
   'has_avatar': false,
   'role': {'id': 'role-1', 'name': 'Administrator'},
-  'permissions': ['email.view', 'email.create', 'email.edit'],
+  // Both tabs, named one at a time and never by pattern.
+  //
+  // A fixture that granted `email.*` would be shorter and would make this
+  // suite unable to show the thing the split exists for -- that a tab nobody
+  // granted does not appear. The test that proves it lives in
+  // email_screen_test.dart; this list is what keeps the rest of the suite
+  // about the screens rather than about the gate.
+  'permissions': [
+    'email.view',
+    'email.inbox.view',
+    'email.settings.view',
+    'email.create',
+    'email.edit',
+  ],
   'modules': [
     {'key': 'email', 'label': 'Email', 'available': true, 'reachable': true},
   ],

@@ -237,7 +237,7 @@ class WebsiteEnquiriesTest extends TestCase
         $editor = $this->userWithRole(
             $tenant,
             'Web Editor',
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
         );
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
@@ -387,7 +387,7 @@ class WebsiteEnquiriesTest extends TestCase
         $editor = $this->userWithRole(
             $tenant,
             'Web Editor',
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
         );
 
         $created = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
@@ -438,7 +438,7 @@ class WebsiteEnquiriesTest extends TestCase
         $editor = $this->userWithRole(
             $made['tenant'],
             'Widget Editor',
-            ['web_management.view', 'web_management.edit'],
+            ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
         );
 
         $this->signedInAs($editor)

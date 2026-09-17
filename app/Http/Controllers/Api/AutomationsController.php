@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\Automation;
+use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
 use App\Support\Scoping\ViewScope;
 use App\Models\Role;
@@ -467,6 +468,24 @@ class AutomationsController extends Controller
                         ->values()->all(),
                 ),
 
+                /*
+                 * READY-MADE RULES, filtered to what this person could build.
+                 *
+                 * A template naming a trigger whose module this person cannot
+                 * open would apply cleanly and then save into a 403 — worse than
+                 * not being offered, because it looks like the app changed its
+                 * mind. `modulesInReach` is the same answer the trigger list
+                 * above is filtered by, so the two cannot disagree.
+                 */
+                'templates' => array_values(array_filter(
+                    AutomationTemplates::all(),
+                    fn (array $template) => in_array(
+                        $this->registry->moduleKeyOfTrigger($template['trigger_key']),
+                        $this->modulesInReach($request),
+                        true,
+                    ),
+                )),
+
                 'roles' => Role::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -715,9 +734,16 @@ class AutomationsController extends Controller
         $samples = [];
 
         foreach ($events as $event) {
-            $subject = $event->subject_type !== null && $event->subject_id !== null
-                ? $event->subject()->first()
-                : null;
+            // RESOLVED THE WAY THE ENGINE RESOLVES IT. `AutomationEvent` has no
+            // `subject()` relation — asking for one answered 500 the moment an
+            // event with a subject reached this, which every test here missed
+            // because their events carry none. A delete event's subject is also
+            // legitimately gone, so a miss is null rather than an error.
+            $subject = $event->subject_type !== null
+                && $event->subject_id !== null
+                && class_exists($event->subject_type)
+                    ? $event->subject_type::query()->find($event->subject_id)
+                    : null;
 
             [$type, $id] = $subject instanceof CarriesAutomationScope
                 ? $subject->automationScope()

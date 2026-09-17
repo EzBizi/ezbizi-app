@@ -297,7 +297,6 @@ class InspectionServicesTest extends TestCase
     private function tech(array $tenant, string $name = 'Rodrigo')
     {
         return $this->userWithRole($tenant, $name, [
-            'inspection.view', 'inspection.create', 'jobs.view', 'jobs.edit', 'services.view',
-        ], onlyAt: $tenant['franchise']);
+            'inspection.view', 'inspection.create', 'jobs.view', 'jobs.edit', 'services.view', 'inspection.new.view', 'inspection.reports.view', 'inspection.builder.view'], onlyAt: $tenant['franchise']);
     }
 }

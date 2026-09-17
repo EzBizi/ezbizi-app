@@ -21,6 +21,11 @@ class ServiceModuleTest extends TestCase
                 'services.create',
                 'services.edit',
                 'services.delete',
+                // The two chips. Their labels live in the registry beside
+                // these keys and are copied from the chip bar; the keys are
+                // what a role actually holds.
+                'services.catalogue.view',
+                'services.settings.view',
             ],
             $module->permissionKeys(),
         );
