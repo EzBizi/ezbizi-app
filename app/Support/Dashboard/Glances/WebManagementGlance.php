@@ -70,13 +70,10 @@ final class WebManagementGlance extends DescribedGlance
                      * This query is scoped by company_id, so a franchise reader
                      * sees a subset — and "none are set up" is a claim about
                      * the whole organization that this box cannot support. The
-                     * count in the box and the count in the business are two
-                     * different facts, and only the first one is ours to state.
-                     *
-                     * This used to cite `organization_total`, which the branch
-                     * below sent, as proof the module knew the difference. That
-                     * field is gone (see the note there) and the reasoning never
-                     * depended on it.
+                     * branch below already proves the module knows the
+                     * difference: it sends `organization_total` separately,
+                     * because the count in the box and the count in the
+                     * business are two different facts.
                      *
                      * "to show", not "yet": the ruling took BOTH words. All
                      * six "yet" boxes were scoped too, so there was no
@@ -114,36 +111,10 @@ final class WebManagementGlance extends DescribedGlance
                     $total === 1 ? '1 website, connected.' : "All {$total} websites connected.",
                 ];
 
-            /*
-             * NO `organization_total`, removed 2026-09-17 on Dashboard's rule:
-             * a glance sends what its box draws and nothing else.
-             *
-             * It had no reader. `grep -rn organization_total client/lib
-             * client/test` found nothing — five glances were sending it and the
-             * client read it in none of them, which is the tell that it was
-             * copied rather than decided. A figure nobody draws is a query on
-             * every dashboard load and a disclosure on every response, bought
-             * for nothing.
-             *
-             * WHAT IT DISCLOSED, since the key name does not say. The rest of
-             * this method is scoped by `company_id` narrowed by ViewScope, so a
-             * franchise reader sees their own sites. That line was
-             * `WebSite::query()->count()` with neither filter — every site in
-             * the organization. Not across tenants: WebSite is BelongsToTenant
-             * and this runs inside TenantContext::run, so the global scope held
-             * and the 110 sites of other companies were never in it. The
-             * exposure was one organization wide, invisible on screen and
-             * plainly readable in the response.
-             *
-             * CustomersGlance keeps its copy and is the real exception: §5.2
-             * shares the book, so the figure is not withheld from that reader
-             * anyway, and its docblock argues the case. If this box ever needs
-             * a number it does not draw, the cost is one sentence saying why —
-             * here, at the line that sends it.
-             */
             return $this->payload([
                 'empty' => false,
                 'sentences' => $sentences,
+                'organization_total' => WebSite::query()->count(),
             ]);
         });
     }
