@@ -298,7 +298,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      Tag(live ? 'Live' : 'Off', warn: !live),
+                      Tag(live ? 'Live' : 'Off', warn: !live, good: live),
                       if (disabledReason != null)
                         const Tag('Auto-disabled', warn: true),
                       // WHERE IT APPLIES. At the organization every rule in the

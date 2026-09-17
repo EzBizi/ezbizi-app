@@ -2230,6 +2230,13 @@ class ActionRunner
             (array) ($action['role_ids'] ?? []),
         ), fn (string $id) => $id !== ''));
 
+        // Named people, beside the roles. Same filtering as the role list: an
+        // empty box means "narrow nothing", never "somebody whose id is empty".
+        $userIds = array_values(array_filter(array_map(
+            fn ($id) => trim((string) $id),
+            (array) ($action['user_ids'] ?? []),
+        ), fn (string $id) => $id !== ''));
+
         $sent = $this->notifications->dispatch(
             title: $title,
             body: $action['body'] ?? null,
@@ -2238,6 +2245,7 @@ class ActionRunner
             eventId: $event->getKey(),
             inAppOnly: $inAppOnly,
             roleIds: $roleIds,
+            userIds: $userIds,
         );
 
         return [
