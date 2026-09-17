@@ -643,13 +643,16 @@ class _ShiftRow extends StatelessWidget {
           // -- the old tests pinned all three, which is how I found out.
           if (shift.endedBy == 'schedule') ...[
             const SizedBox(width: 8),
-            _Chip(text: 'Auto', colour: scheme.onSurfaceVariant),
+            _Chip(
+              text: UiStrings.t('time_clock.auto'),
+              colour: scheme.onSurfaceVariant,
+            ),
           ],
           if (shift.outsideSchedule) ...[
             const SizedBox(width: 6),
             Flexible(
               child: _Chip(
-                text: 'Outside schedule',
+                text: UiStrings.t('time_clock.outside'),
                 colour: const Color(0xFF8A5A00),
               ),
             ),

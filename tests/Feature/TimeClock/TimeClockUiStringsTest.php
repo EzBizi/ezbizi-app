@@ -49,4 +49,26 @@ class TimeClockUiStringsTest extends TestCase
             UiString::query()->where('key', 'time_clock.extend')->where('locale', 'en')->value('text'),
         );
     }
+
+    /**
+     * What the one-day list took with it, and what survived it (2026-09-17).
+     *
+     * The second half is the half worth having: four refusal sentences are
+     * unreferenced by any call site and are KEPT, because they are the only
+     * Spanish those sentences have. A later tidy-up reading only unused
+     * would delete them, and this says no.
+     */
+    public function test_the_day_lists_copy_is_retired_and_the_refusals_are_not(): void
+    {
+        foreach (['time_clock.empty', 'time_clock.times_in', 'time_clock.in'] as $gone) {
+            $this->assertSame(0, UiString::query()->where('key', $gone)->count(), $gone);
+        }
+
+        foreach ([
+            'time_clock.already_in', 'time_clock.not_in', 'time_clock.off',
+            'time_clock.not_scheduled', 'time_clock.auto', 'time_clock.outside',
+        ] as $kept) {
+            $this->assertSame(2, UiString::query()->where('key', $kept)->count(), $kept);
+        }
+    }
 }
