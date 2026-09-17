@@ -86,6 +86,38 @@ return new class extends Migration
             }
 
             foreach ($module->tabs as $tab) {
+                /*
+                 * A TAB THAT NAMES AN EXISTING ACTION IS SKIPPED, AND WITHOUT
+                 * THIS LINE THIS FILE WIDENS AUTHORITY.
+                 *
+                 * Raised by the deploy desk, 2026-09-17, before the first
+                 * deploy that would have run it. `TabDefinition::action()`
+                 * returns the NAMED action when a tab supplies one, so
+                 * Training's three - learn->view, dashboard->monitor,
+                 * settings->manage - would have handed `training.monitor` and
+                 * `training.manage` to every role holding `training.view`. A
+                 * learner comes out able to author training material and read
+                 * every colleague's score.
+                 *
+                 * The premise of this file is "nobody loses what they had". A
+                 * minted `{tab}.view` WAS part of the module's view grant until
+                 * today, so restoring it preserves. A named action never was:
+                 * `monitor` is a disclosure boundary a role holding only `view`
+                 * has never held, so granting it is new authority rather than
+                 * preservation - the opposite of this file's purpose, in the
+                 * file written to prevent the other direction.
+                 *
+                 * Leads' own four sources are unaffected; it is the
+                 * whole-registry sweep that reaches Training. The sweep stays,
+                 * because it is the property that makes this file cover a
+                 * module declaring tabs after it was written - and that same
+                 * property is what let another module's later decision reach
+                 * in here.
+                 */
+                if ($tab->namesExistingAction()) {
+                    continue;
+                }
+
                 $key = "{$module->key}.{$tab->action()}";
 
                 /*
