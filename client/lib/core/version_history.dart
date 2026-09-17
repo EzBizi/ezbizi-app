@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0239',
+      date: '17 Sep 2026',
+      items: [
+        'The chat bubble is on a website only while somebody is there to answer it. Set the hours per site under Web Management, and the page decides in the reader own browser, so a cached page cannot show the bubble at midnight.',
+        'The phone stays registered on a handset too. The desktop fix went out last release; a phone gets no expiry warning from the network at all, so it now renews on the clock instead.',
+        'Monitoring tabs are granted one at a time too: the floor plan, PC specs, cameras and desktop screenshots are four separate ticks on a role. Everybody keeps the tabs they could already open, and a tab you may not open stays visible and locked rather than vanishing, so you can tell a missing permission from a missing feature.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0238',
       date: '17 Sep 2026',
       items: [
@@ -16,7 +25,6 @@ class VersionHistory {
         'Inspections now have a Flow view beside the phone preview in the Builder, drawn the same way as the call flow chart. It shows the order a technician walks the screens in, and marks any screen that can never be shown - a condition asking about an answer that has not been given yet looks identical to a working one in the list.',
         'Paid time off: the allowance and the waiting period can each be set by day, week, month or year, instead of only in days a year.',
         'A role can be given single tabs inside a module rather than the whole module, and the sub tabs inside those. Nobody loses a tab they could open before, and a module with no tab opened to you now says so rather than showing a blank pane.',
-        'Monitoring tabs are granted one at a time too: the floor plan, PC specs, cameras and desktop screenshots are four separate ticks on a role. Everybody keeps the tabs they could already open, and a tab you may not open stays visible and locked rather than vanishing, so you can tell a missing permission from a missing feature.',
         'The phone stays registered. A desk left open all day keeps ringing, instead of going quiet after an hour.',
         'Clicking the EzBizi button on the taskbar brings the window back after you have closed it to the notification area. It used to do nothing, so the only way back in was the small icon beside the clock.',
         'Answering or declining a call on one device stops your other phones ringing.',
