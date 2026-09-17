@@ -385,6 +385,7 @@ final class TimeClock
      *     starts_on: string,
      *     timezone: string,
      *     timezone_label: string,
+     *     days: list<array{date: string, weekday: string, label: string}>,
      *     people: list<array<string, mixed>>
      * }
      */
@@ -394,6 +395,9 @@ final class TimeClock
         $tz = (string) $this->settings->get('timezone', $view->settingsScope());
         $timeFormat = (string) $this->settings->get('time_format', $view->settingsScope());
         $startsOn = (string) $this->settings->get('time_clock.week_starts_on', $actor->organization);
+
+        $locale = (string) $this->settings->get('locale', $view->settingsScope());
+        $dateFormat = (string) $this->settings->get('date_format', $view->settingsScope());
 
         $weekStart = $this->weekStart($this->resolveDate($on, $tz), $tz, $startsOn);
         $weekEnd = $weekStart->copy()->addDays(7);
@@ -419,6 +423,7 @@ final class TimeClock
             'starts_on' => $startsOn,
             'timezone' => $tz,
             'timezone_label' => SettingRegistry::timezoneLabel($tz),
+            'days' => $this->weekDays($weekStart, $locale, $dateFormat),
             'people' => $people
                 ->map(fn (User $person) => $this->presentWeekPerson(
                     $person,
@@ -444,6 +449,45 @@ final class TimeClock
         $local = Carbon::parse($date, $tz)->startOfDay();
 
         return $local->subDays(((int) $local->dayOfWeek - $target + 7) % 7);
+    }
+
+    /**
+     * The seven headings of the week, named and in order.
+     *
+     * Here rather than on the client for the reason the clock times are: the
+     * weekday name is words, the app ships in two languages, and there is no
+     * shared date formatter on that side — `hours_pane.dart` and `web/hours.dart`
+     * each carry their own English `['Monday', ...]`, and a third copy in a
+     * screen that ships in Spanish would simply be wrong.
+     *
+     * Every day is here, including the ones nobody worked. A day with no shifts
+     * still needs a heading to say so, and deriving it by walking dates from
+     * `week_start` would mean the client guessing both the length of a week and
+     * the name of a day.
+     *
+     * @return list<array{date: string, weekday: string, label: string}>
+     */
+    private function weekDays(Carbon $weekStart, string $locale, string $dateFormat): array
+    {
+        $days = [];
+
+        for ($offset = 0; $offset < 7; $offset++) {
+            $day = $weekStart->copy()->addDays($offset);
+
+            $days[] = [
+                'date' => $day->toDateString(),
+                // The English key, untranslated, for anything that has to branch
+                // on the day rather than print it.
+                'weekday' => strtolower($day->locale('en')->isoFormat('dddd')),
+                // Month before day where the organization writes dates that way,
+                // so a heading does not contradict every other date on screen.
+                'label' => $day->locale($locale)->isoFormat(
+                    str_starts_with($dateFormat, 'M') ? 'dddd, MMM D' : 'dddd D MMM'
+                ),
+            ];
+        }
+
+        return $days;
     }
 
     /**
