@@ -2894,6 +2894,60 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 21 · HR · PTO balances — **DRAWN, awaiting Jose**
+
+`docs/previews/pto-balances-layouts.html`. Approved by Jose 2026-09-17 — *"PTO Balances is good we
+should add that to Human Resources Tab"* — from a real production suggestion. Toula Elwell at
+A1-Group, 2026-09-08, her spelling kept:
+
+> *"a part for us where we can see howq much paidf pto we all have and when it can be used"*
+
+**Two asks in that sentence, and the second is the hard one.** *"we ALL have"* is a view across
+people rather than self-service. *"when it can be USED"* is a waiting period rather than a number
+— so on a screen called balances, **the date is often the answer and the number is the
+decoration**. Every layout gives the date its own box rather than a footnote.
+
+> **THE EMPTY STATE IS THE COMMON STATE, and that is what shapes all six.** HR measured
+> production: **one of eleven contract templates mentions PTO, the other ten are silent**. So
+> *"this organization has not set up paid time off"* is probably the FIRST thing most people ever
+> see here. *(Their count is of tenant rows and is relayed — I verified the models and the
+> employment-events migration they name, not the eleven.)*
+>
+> Two consequences drawn rather than described. **State A is organization-wide, not one quiet
+> row** — I drew it per-person first, which made the common case look like an edge case in my own
+> gallery after I had written the warning saying it was not. And **the remedy belongs to somebody
+> else**: it is set on a contract template, so state A says who can change it instead of offering
+> a button most readers cannot use.
+
+**The five states are switchable on every layout**, because a layout that only reads well at "6
+days available" is a layout for the rarest case. **D is the one worth clicking**: nobody on the
+books before the employment-events table has a start date, the migration deliberately refused to
+invent them, so eligibility is genuinely unanswerable for those people. It says so. Being told you
+may book when your contract says otherwise is worse than being told we cannot tell.
+
+**Recommendation: 3 and 6.**
+
+**3 is the table**, and it is the only layout that already has a column for the number nobody can
+compute yet. Nothing in EzBizi records a day off — HR measured that too — so whether a balance
+can say "2 taken" is undecided and sits between Scheduling and HR. **Taken** is drawn as an em
+dash in every row: present, empty, honest. The day that is settled the column fills and nothing
+moves, which is the constraint HR asked me to design for. It is also the densest, sorts by "when",
+and answers "who becomes eligible in January" at a glance.
+
+**Its cost is state A, the common one** — five columns of em dashes is a lot of furniture around
+one sentence. So in state A the table is **replaced wholesale** by the notice rather than drawn
+empty. Worth knowing that my note claimed this before the drawing did it; caught by reading my own
+prose back against my own screen.
+
+**2 is the one worth arguing for.** A card per person puts the mixed states side by side, and
+three facts sitting together — Sam has no policy, Jon has no start date, Maria waits until
+December — is what tells an owner the policy is half configured. No other layout shows that
+without going looking.
+
+**6 on the phone**: one list, you inside it rather than above it, each row carrying its state in
+words. It is the only phone option where *"we all have"* is the whole screen rather than a section
+of it, which is her phrasing. **5 hides the across-people view behind a tab**, which is the ask.
+
 ### 20b · HR · Work Hours, the drawing — **DRAWN, awaiting Jose**
 
 Companion to **entry 20 above**, which is Clock In's brief and holds Jose's requirements verbatim. Numbered 20b rather than 20 because two headings with one number is how a reader ends up quoting the wrong half.
