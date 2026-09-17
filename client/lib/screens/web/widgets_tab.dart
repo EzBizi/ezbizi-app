@@ -1149,6 +1149,12 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 /// controller cannot do either, and a key made once per row keeps focus with
 /// the row it belongs to. Same shape as `_ConditionRow` in the automation
 /// builder, for the same reason.
+///
+/// Guarded by "focus stays in the question being typed into" in
+/// web_widgets_test.dart. Four earlier attempts could not fail against the old
+/// shape; that one does, because it asks where FOCUS is after a keystroke
+/// rather than what the widget looks like — which is the thing the bug
+/// destroys.
 class _QuestionRow {
   _QuestionRow({String label = '', this.type = 'text', this.required = false})
     : label = TextEditingController(text: label);
@@ -1275,33 +1281,15 @@ class _FieldListState extends State<_FieldList> {
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 2,
-<<<<<<< main
                   child: SearchPickerField<String>(
-                           value: types.contains(fields[i]['type'])
-                        ? '${fields[i]['type']}'
-                        : types.first,
-                           label: 'Answer',
-                           isDense: true,
-                           options: [
-                      for (final type in types)
-                        SearchOption(value: type, label: type),
-                    ],
-                           onChanged: canEdit
-                        ? (value) =>
-                            value == null ? null : _replace(i, 'type', value)
-=======
-                  child: DropdownButtonFormField<String>(
-                    // See the note on the other one: sizes to its slot, so a
-                    // narrowed pane ellipsises instead of overflowing.
-                    isExpanded: true,
-                    initialValue: row.type,
-                    decoration: const InputDecoration(
-                      labelText: 'Answer',
-                      isDense: true,
-                    ),
-                    items: [
+                    // Its chosen label ellipsises rather than pushing the row
+                    // wider, which is what the dropdown's isExpanded was for.
+                    value: row.type,
+                    label: 'Answer',
+                    isDense: true,
+                    options: [
                       for (final type in widget.types)
-                        DropdownMenuItem(value: type, child: Text(type)),
+                        SearchOption(value: type, label: type),
                     ],
                     onChanged: widget.canEdit
                         ? (value) {
@@ -1310,9 +1298,8 @@ class _FieldListState extends State<_FieldList> {
                             setState(() => row.type = value);
                             _publish();
                           }
->>>>>>> session/web-management
                         : null,
-                         ),
+                  ),
                 ),
                 IconButton(
                   tooltip: 'Remove',
