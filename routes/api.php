@@ -1010,6 +1010,9 @@ Route::prefix('v1')
         // `?on=` is a calendar date in the current view timezone (design §9).
         Route::get('hr/time-clock', [TimeClockController::class, 'index']);
 
+        // Work Hours: one week, grouped by person, with totals (2026-09-17).
+        Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
+
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
         // headcount on somebody's main dashboard are the same code.

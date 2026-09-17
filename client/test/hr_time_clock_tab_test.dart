@@ -25,7 +25,7 @@ void main() {
         'Invitations',
         'Contracts',
       ]);
-      expect(_tab('Clock in\u2013out'), findsNothing);
+      expect(_tab('Work Hours'), findsNothing);
     },
   );
 
@@ -50,11 +50,11 @@ void main() {
 
       expect(_chips(tester), [
         'Dashboard',
+        'Work Hours',
         'Onboarding',
         'Records',
         'Invitations',
         'Contracts',
-        'Clock in\u2013out',
       ]);
       expect(
         clockRequests,
@@ -62,7 +62,7 @@ void main() {
         reason: 'Fetch only once the chip is shown.',
       );
 
-      await _tap(tester, _tab('Clock in\u2013out'));
+      await _tap(tester, _tab('Work Hours'));
 
       expect(clockRequests, hasLength(1));
       expect(clockRequests.single.path, '/api/v1/hr/time-clock');
@@ -100,7 +100,7 @@ void main() {
       ),
     );
 
-    await _tap(tester, _tab('Clock in\u2013out'));
+    await _tap(tester, _tab('Work Hours'));
 
     expect(find.text('Auto'), findsOneWidget);
     expect(find.text('Outside schedule'), findsOneWidget);
@@ -114,7 +114,7 @@ void main() {
       onClock: (_, _) => _day(date: '2026-08-25', shifts: const []),
     );
 
-    await _tap(tester, _tab('Clock in\u2013out'));
+    await _tap(tester, _tab('Work Hours'));
 
     expect(find.text('Nobody clocked in on this day.'), findsOneWidget);
     expect(find.text('Bea Okafor'), findsNothing);
@@ -140,7 +140,7 @@ void main() {
       ),
     );
 
-    await _tap(tester, _tab('Clock in\u2013out'));
+    await _tap(tester, _tab('Work Hours'));
 
     expect(find.text('Bea Okafor'), findsOneWidget);
     expect(find.text('8:00 AM'), findsOneWidget);
@@ -166,7 +166,7 @@ void main() {
       },
     );
 
-    await _tap(tester, _tab('Clock in\u2013out'));
+    await _tap(tester, _tab('Work Hours'));
 
     expect(ons, [null]);
     expect(find.text('2026-08-25'), findsOneWidget);
