@@ -29,7 +29,16 @@ Read off production rather than off this file, because this file had been wrong 
 ten days. The numbers block above says `0.0.0239`; here is the evidence behind that, and the
 one thing to distrust below.
 
-- **`0.0.0239` NOW NAMES TWO DIFFERENT TREES, and one of them is live.** Measured
+- **RESOLVED the same afternoon by cutting `0.0.0240` (`7ceefd9a`) through `release.sh`.**
+  Web, Windows, Android, macOS and iOS all built from one commit, the installer and
+  `windows.json` are published at `https://www.ezbizi.com/download/`, and the macOS and iOS
+  builds are delivered to App Store Connect (delivered is not accepted — TestFlight > Build
+  Uploads is the only thing that can say). The duplicate-build-number hazard below never
+  fired: neither `0.0.0239` artefact was uploaded. **The lesson survives the fix** — a deploy
+  is not a release, and an installed client is only offered an update when `client/VERSION`
+  moves, which only `release.sh` does. Jose found this the obvious way: his app still said
+  `0.0.0239 · 2832a607` after the work was "shipped".
+- **`0.0.0239` NAMED TWO DIFFERENT TREES, and one of them was live.** Measured
   2026-09-18 13:05. Production serves `1e53de9c` (release `20260918164659`, `main.dart.js`
   carries the commit); the version number behind it is still `0.0.0239`, because
   `client/VERSION` is bumped by `release.sh` and this work deployed through `deploy.sh` and

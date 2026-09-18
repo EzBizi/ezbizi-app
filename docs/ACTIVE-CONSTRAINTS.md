@@ -573,19 +573,34 @@ The day before it read 1.9.1 on 110 and 1.10.0 on zero, so the estate moved two
 releases in a day. It moved because we HOST these sites; the capability argument
 below is about a customer's own server, and is unchanged.
 
-**BUT "WE HOST THESE SITES" DOES NOT MEAN A SESSION CAN PUSH TO THEM.** Measured
-2026-09-18 16:55 while trying to ship plugin 1.12.0, because "push it to the
-fleet" had been sitting on a todo list as though it were a command:
+**WRONG FOR THREE HOURS ON 2026-09-18, AND THE WRONG VERSION IS KEPT HERE
+BECAUSE THE MISTAKE IS THE USEFUL PART.** This section said a session could not
+reach the estate, on this measurement:
 
     ssh websites                     reached, as `ubuntu` on panel.triplexhost.net
     ls -d /var/www/vhosts/*/         46 vhosts, NAMES readable
     ls /var/www/vhosts/<domain>/     Permission denied
 
-The login can enumerate the estate and cannot enter one directory of it, so it
-can neither read the installed plugin nor write a new one. Rolling the estate
-forward needs Plesk admin, which is Jose. **1.12.0 is committed and rendering
-nowhere**; the server half is live and the five new shortcodes resolve to
-nothing until somebody with that access moves the files.
+Every line is true and the conclusion drawn from it was false. **`ubuntu` has
+passwordless sudo and `plesk` is on its PATH.** The probe simply never tried
+`sudo`, and `Permission denied` reads like an answer about authority when it is
+only an answer about the command as typed. Jose corrected it in four words.
+
+    sudo -n true                     YES
+    sudo ls /var/www/vhosts/<d>/     the site
+    sudo find … -name ezbizi.php     110 installs
+
+The estate went 1.11.0 → 1.12.0 the same afternoon with
+`scripts/plugin-rollout.sh`. **Before concluding that access is missing, run the
+privileged form of the command.** A capability this repo already had sat
+recorded as an impossibility, and a todo waited on Jose for something he had
+already given.
+
+**What is actually true, and still worth defending:** EzBizi's WORDPRESS
+credentials carry no `update_plugins` (the capability list below is unchanged),
+so nothing the PRODUCT does at runtime can install code on a customer's site.
+That is the design property. It is not a statement about what an operator with
+a shell on our own hosting can do, and the two had been collapsed into one.
 
 **AND THE `sg-*` SSH ALIASES ARE NOT THE ESTATE — a loop over them ships to
 nobody and reports success.** There are 42 of them in `~/.ssh/config`, they
@@ -611,6 +626,32 @@ release everywhere — with the deploy log saying it worked. **`web_sites`
 `plugin_version` is the only honest check, and it is a check of the LIVE site
 rather than of anything we pushed.** §14's own rule applies to its own rollout:
 which half is live is a measurement, not an inference.
+
+**The estate is `/var/www/vhosts/<domain>/{httpdocs,<subdomain>}/` on the Plesk
+box** — 46 vhosts holding 110 WordPress installs, because most domains carry
+their state subdomains as directories inside one vhost.
+
+**Two things that will damage a site during a rollout, both handled in
+`scripts/plugin-rollout.sh` and both silent for weeks if you get them wrong:**
+
+*Ownership is per subscription.* Each install belongs to that customer's FTP
+user with group `psacln` — `a1c_ftp`, `cstar_ftp`, `roof_ftp`. Copy as root and
+PHP still serves the site perfectly, so nothing looks wrong; the failure
+arrives the next time anybody edits through Plesk, FTP or the File Manager and
+gets a permission error nobody can place. Read the owner off the directory
+before the copy and restore it after, per install.
+
+*A backup must not live inside `wp-content/plugins/`.* WordPress reads every
+directory in there as a plugin, so `ezbizi.bak/` shows up in the customer's
+plugin list as a second EzBizi — and somebody will deactivate one of them.
+Backups go to `/var/backups/ezbizi-plugin/<stamp>/`, one tarball per install,
+and `--rollback` puts them back.
+
+**And `ssh` inside a `while read` loop eats the loop's own list.** The first
+`--all` run applied to exactly one site and exited 0 having printed one line.
+`ssh -n`. The reason this is worth a paragraph is the direction it fails in: a
+partial rollout reports success, and the estate quietly stays on the old
+release while the log says otherwise.
 
     service_capabilities, identical on all 110:
       read, upload_files, edit_posts, edit_published_posts, publish_posts,
