@@ -154,6 +154,35 @@ Access*. Signed in as an account with a linked profile.
 - Settle the storage question in [Reviews §5](REVIEWS.md) before approval —
   the form's *General API Question* option costs nothing.
 
+## 9a · Measured 18 September 2026 — window closed, quota still zero
+
+**Not approved.** Read off the Console rather than inferred from silence:
+
+    console.cloud.google.com/apis/api/mybusinessbusinessinformation
+      .googleapis.com/quotas?project=ezbizi-506117
+
+    Requests per minute                     0      <- the gate
+    Create Location requests per day      100
+    SearchGoogleLocation requests per day 200
+    Update Location requests per day   10,000
+
+**Zero QPM is the refusal**, and the three non-zero rows are why it has to be
+read this way: a page showing 100 / 200 / 10,000 looks like a project with
+quota. Google's own note at the top of that same page says it plainly — *"If
+you have a quota of 0 after enabling the API, please request GBP API access"*.
+The per-day rows exist on every project; only the per-minute row moves on
+approval, from **0 to 300**.
+
+**Eleven business days elapsed** (4, 7–11, 14–18 September), against the
+confirmation screen's *"7-10 business days"*. So the window §9 said would close
+around 17–22 September has closed at the early end with nothing granted and
+nothing said.
+
+**Approval may never arrive as an email.** §9 records that Google sent no
+acknowledgement for this case either — only the confirmation screen. So the
+quota page above is the instrument to re-read, not the inbox, and the inbox
+search is the second check rather than the first.
+
 ## 9 · Measured 14 September 2026 — filed, inside the window, nothing back
 
 Filed **3 September** (517ef1bf). Google's confirmation screen quoted *"7-10
