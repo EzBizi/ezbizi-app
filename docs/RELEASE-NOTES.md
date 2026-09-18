@@ -2,6 +2,16 @@
 
 This file distinguishes reviewed implementation from deployment. Current production measurements remain in [STATUS](EZBIZI-STATUS.md); the application version is sourced from `client/VERSION`. Earlier implementation history remains in [BUILD-LOG](EZBIZI-BUILD-LOG.md).
 
+## 2026-09-18 — where production actually is, and the gap in this file
+
+**Production runs `0.0.0239`, built from commit `2832a607`**, serving since 2026-09-17 22:32 UTC. Measured from the deployed bundle's compiled-in `BUILD_ID` rather than from any document; `build-web.sh` writes it with `--dart-define` on every build, so it moves whether or not `client/VERSION` was touched.
+
+**Nothing between `0.0.0153` and `0.0.0239` has an entry below.** Eighty-seven versions shipped in ten days across many concurrent sessions, and this file was not written in the same pass. The record that *was* kept is `client/lib/core/version_history.dart`: its own docblock requires an entry in the same commit as the version bump, it is what the version stamp in the app's sidebar opens, and it matches `git log` for the versions spot-checked here. **Read it, not this file, for what a given version shipped.** This entry exists so the gap is stated rather than discovered.
+
+What that means for the claims in this file: the passing test counts recorded under `0.0.0152` belong to that release and to no later one. No gated release has been recorded here since, so there is **no measured suite result for the code now in production**. `scripts/release.sh --gates` is what produces one.
+
+Deployment state on 2026-09-18, checked rather than assumed: `app.ezbizi.com`, `dev.ezbizi.com` and `ezbizi.com` answer 200; `/api/v1/me` refuses unauthenticated callers with 401; `main` is three commits ahead of the deployed client and none of them touches `client/` or `app/`. The marketing site was separately published at `7d296a90` (2026-09-18 14:52 UTC, all seven pages byte-verified by `deploy-www.sh`) to correct a `/privacy/` sentence that denied EzBizi ever carries a business's mail, which three automation actions do.
+
 ## 2026-09-08 — 0.0.0152 review remediation deployed
 
 **0.0.0152** shipped from commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf` through the gated release pipeline. Web/API and Windows publication are verified. The [review ledger](PROJECT-REVIEW-2026-09-08.md) records finding-by-finding status and verification; [TODO](EZBIZI-TODO.md) and the work board retain unrelated obligations and external blockers.
