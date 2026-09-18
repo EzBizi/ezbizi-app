@@ -573,6 +573,45 @@ The day before it read 1.9.1 on 110 and 1.10.0 on zero, so the estate moved two
 releases in a day. It moved because we HOST these sites; the capability argument
 below is about a customer's own server, and is unchanged.
 
+**BUT "WE HOST THESE SITES" DOES NOT MEAN A SESSION CAN PUSH TO THEM.** Measured
+2026-09-18 16:55 while trying to ship plugin 1.12.0, because "push it to the
+fleet" had been sitting on a todo list as though it were a command:
+
+    ssh websites                     reached, as `ubuntu` on panel.triplexhost.net
+    ls -d /var/www/vhosts/*/         46 vhosts, NAMES readable
+    ls /var/www/vhosts/<domain>/     Permission denied
+
+The login can enumerate the estate and cannot enter one directory of it, so it
+can neither read the installed plugin nor write a new one. Rolling the estate
+forward needs Plesk admin, which is Jose. **1.12.0 is committed and rendering
+nowhere**; the server half is live and the five new shortcodes resolve to
+nothing until somebody with that access moves the files.
+
+**AND THE `sg-*` SSH ALIASES ARE NOT THE ESTATE — a loop over them ships to
+nobody and reports success.** There are 42 of them in `~/.ssh/config`, they
+reach SiteGround accounts holding a full WordPress tree per domain, and they are
+the obvious thing a session reaches for. They are stale:
+
+    sg-a-1chimney:/home/customer/www/a-1chimney.com/public_html
+      wp-content/plugins/ezbizi/ezbizi.php   Version 1.0.1, mtime 2026-08-31
+
+    the same host, as EzBizi hears it
+      a-1chimney.com                         1.11.0, seen 2026-09-18 16:47
+
+One file says 1.0.1 and has not been touched since August; the live site
+reported 1.11.0 nine minutes before the file was read. Both are real — they are
+**different servers**. `a-1chimney.com` resolves to 32.194.222.151, the Plesk
+box; the SiteGround copies are pre-migration leftovers that serve nothing, and
+some read 1.10.0 while others read 1.0.2, which is what a dead estate drifting
+looks like.
+
+So a rollout written as `for h in sg-*; do scp ...; done` would exit 0 across 42
+hosts, change 42 copies nobody loads, and leave `plugin_version` reading the old
+release everywhere — with the deploy log saying it worked. **`web_sites`
+`plugin_version` is the only honest check, and it is a check of the LIVE site
+rather than of anything we pushed.** §14's own rule applies to its own rollout:
+which half is live is a measurement, not an inference.
+
     service_capabilities, identical on all 110:
       read, upload_files, edit_posts, edit_published_posts, publish_posts,
       edit_pages, edit_published_pages, publish_pages

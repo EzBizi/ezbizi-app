@@ -17,7 +17,7 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | Not measured by this deploy — it ran without gates. Run `scripts/release.sh --gates` for a current count. |
+| Tests | ? backend · 1 client, from the last deploy that ran them. Gates are opt-in: `release.sh --gates`. |
 | Client version | `v0.0.0239` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
 | Production data | **2 organization(s) · 14 companies · 25 franchises · 25 users · 15 customers · 25 jobs.** Counted 2026-09-18 against the live database by `scripts/status-numbers.sh`, not typed. |
 | Permissions in production | **142 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
@@ -29,7 +29,22 @@ Read off production rather than off this file, because this file had been wrong 
 ten days. The numbers block above says `0.0.0239`; here is the evidence behind that, and the
 one thing to distrust below.
 
-- **The client in production is `0.0.0239`, built from commit `2832a607`.** Taken from the
+- **`0.0.0239` NOW NAMES TWO DIFFERENT TREES, and one of them is live.** Measured
+  2026-09-18 13:05. Production serves `1e53de9c` (release `20260918164659`, `main.dart.js`
+  carries the commit); the version number behind it is still `0.0.0239`, because
+  `client/VERSION` is bumped by `release.sh` and this work deployed through `deploy.sh` and
+  built through `build-app.sh`, neither of which touches it. So `0.0.0239` means `2832a607`
+  in yesterday's artefacts and `1e53de9c` in today's.
+  **The consequence is in `Distribution/Apple/`,** which holds
+  `EzBizi-0.0.0239-2832a607.ipa` and `EzBizi-0.0.0239-1e53de9c.ipa` side by side. `BUILD_NUMBER`
+  is derived from `VERSION` (`build-app.sh:144`), so both are Apple build 239 and Play
+  versionCode 239 — whichever is uploaded second is refused as a duplicate, and the number
+  cannot be reused. Neither has been uploaded. **The next cut must go through `release.sh` so
+  the bump happens**; do not hand-collect the `0.0.0239` artefacts. Today's Android `.aab` and
+  Windows `.exe` were deliberately left in `client/build/` rather than collected, for the same
+  reason.
+- **The client in production is `0.0.0239`, built from commit `1e53de9c`** (was `2832a607`
+  until this afternoon). Taken from the
   deployed bundle's own `BUILD_ID` — `build-web.sh` compiles the commit in with
   `--dart-define`, and it is the one identifier that cannot lie, because it changes whether or
   not anybody remembered to touch `client/VERSION`. `main.dart.js` has been served since
