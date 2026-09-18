@@ -63,6 +63,7 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 | **That a call reaches an ANDROID handset** | **NEW 2026-09-10, and it is the understatement trap running backwards.** `0.0.0184` gave Android the device token for the calling network and later work declared the service an incoming push arrives on — both were missing, and the release notes read like a phone that rings. **The desk said it twice, unprompted, in `0042` and again in `0043`: nobody has yet observed an Android handset register or ring.** Registering with a calling network is not a handset ringing, and the release note says so in its own bullet rather than leaving the reader to infer it. The site says nothing about mobile calling today and must not start: the Communication card is about numbers, roles, dial, texts and voicemail, and none of that implies a device. **The checkable test is an observation, not a row count** — somebody has to watch an Android handset ring. Invert it when the desk says they did, not when a manifest entry appears. |
 | **Monitoring — PUBLISHED 2026-09-15. What stays forbidden is that ANYBODY IS TOLD.** | **Jose lifted the hold, verbatim: "5 - publish, why not"** (relayed by the deploy desk, 2026-09-15). The hold was never about accuracy — 2 floor plans and 49 devices had already made built-and-unused false — it was about copy describing watching employees' screens, and that was his to decide. **Shipped: a Monitoring card, AND the `/privacy/` section that had to precede it.** `privacy/` disclosed monitoring NOWHERE before this — zero hits for monitor, screen, capture, remote control, open programs, browser tab or employee — so the card would have sold the most intrusive thing in the product while the notice was silent about it. The disclosure is **derived from the modules' own `PersonalDataEntry` declarations** (`MonitoredDevice`, `MonitoringScreenshot`, `MonitoringActivity`), which is the inventory the app already publishes to whoever asks what is held about them — not from my reading of the columns. **THE STANDING RULE, and it is the opposite of what a relay would have had me write:** no sentence may say or imply that a person is informed. `SettingRegistry` defines `monitoring.control_indicator` as `default: false`, help text "Off by default, and fully silent when off", plus "Watching a live view stays silent — only taking control shows this". The desk relayed that the notice now appears in-app rather than only in the tray — **true** (`version_history.dart:52`) — and framed it as "that sentence is now true in a way it was not when you drafted it", which invited a reassurance that is **false on a default install and false for live view even when switched on**. The improvement was to WHERE the notice appears, not to WHETHER it appears. The checkable test: `monitoring.control_indicator`'s `default:` in `SettingRegistry`. **Also corrected in the same pass:** privacy claimed "EzBizi collects no location data of any kind", a universal negative that went false as the surface grew — the agent reports "its wifi network and local address" and `ip_address` is a stored column. Narrowed to what is still true: no satellite or phone-mast position, and no location permission requested on any device. | 
 | **Marketing** | **Its placeholder reason expired 2026-09-09 and it changes nothing on the site.** `0.0.0181` gave Marketing a real home-screen box and `GlanceRegistry::GLANCES` lists `MarketingGlance::class`. Everything Marketing contains is already sold under its own cards (Social media, Newsletter), so no Marketing claim ever rested on this row — **do not add one now on the strength of a glance. A dashboard box is not a capability.** |
+| **The five rendered WordPress widgets** | **NEW 2026-09-18, and the test is the DIRECTORY, not our estate.** Plugin 1.12.0 adds `[ezbizi_social_links]` `[ezbizi_google_map]` `[ezbizi_post_title]` `[ezbizi_hours_table]` `[ezbizi_city_list]` (each an Elementor widget too, `preset="name"` their only argument), and they are genuinely rendering: 110/110 installs on our own hosting are at 1.12.0, pushed by an operator with a shell (`scripts/plugin-rollout.sh`). **That is not a customer being able to get it.** `curl -s "https://api.wordpress.org/plugins/info/1.0/ezbizi.json"` -> `"version": "1.10.0"` (2026-09-17), so a business that installs the EzBizi plugin the only way a stranger can install it gets a plugin with none of these shortcodes in it. An operator pushing code to sites we happen to host is not a release. **The row inverts when that one command returns 1.12.0 or later** — and note it is the same shape as the WhatsApp row above: finished code, on main, not reachable by the customer. |
 <!-- superseded row retained below for its history -->
 | **Monitoring, Marketing (superseded 2026-09-15)** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. **THE MONITORING REASON IS REPLACED, 2026-09-10, and the row still holds.** The row count it named was taken by the desk in `0042`: `monitoring_floor_plans` **2**, `monitored_devices` **49**. So built-and-unused is FALSE — somebody drew plans and forty-nine machines are checking in, and the Inspections precedent would ordinarily make that sellable. **It is held for a reason no count can settle:** the copy would be about watching employees' screens, and `0.0.0189` widened exactly that — the desktop app now reports open programs, which programs talk to the internet, and the titles of open browser tabs. **That needs a decision from Jose, not a measurement**, and it is the one item on this list where "do as you recommend" does not obviously reach, because the risk is not accuracy. **Do not invert this on the strength of 2 and 49.** Whoever writes the sentence checks it against `privacy/` as well as against the count. The old reason — "its dashboard summary is a placeholder" — is now the WRONG REASON rather than a wrong conclusion: `GlanceRegistry::COMING_SOON` still holds `monitoring` deliberately. |
 
@@ -1570,3 +1571,117 @@ was derived entirely from that tree** — the release note pointed, the code
 answered. Row counts still need the desk: Training's `training_attempts`, the
 Local Services and Thumbtack `is_test = 0` counts, the resolved ring-group
 fraction, and the `automations` count the card above is waiting on.
+
+## 2026-09-18: one release, and the capability that shipped is one a customer cannot install
+
+**Production moved `0.0.0239` → `0.0.0240`** (`2832a607` → `7ceefd9a`,
+`/download/windows.json`, fetched). Twenty commits, **one** release tag, and
+`git log 2832a607..HEAD -- www/` is a single commit — yesterday's own privacy
+correction, which **is deployed**: `36dbbc52` is an ancestor of `7ceefd9a`, and
+production `/privacy/` is byte-identical to `www/privacy/index.html`. `0052`
+asked for that publish as the urgent kind; it went out.
+
+`HEAD` (`5d0ea1e1`) is two commits past the deployed SHA and **both are
+`docs/` and `scripts/` only** (`git diff --stat 7ceefd9a HEAD` → 4 files, no
+`app/`, no `client/`). So the deployed tree is readable here, and every code
+claim below was read off it rather than asked for.
+
+**The audit was clean and no page needed an edit.** All seven pages fetched
+from production byte-identical to `www/` after stripping CR, `Last-Modified`
+**Fri, 18 Sep 2026 19:10:26 GMT**. `python www/check-site.py` →
+`ok - 7 pages, 7 sitemap entries`. `./scripts/index-landmines.sh` →
+`0 stale, 0 live`. Forbidden terms, parsed from this file and **split on
+LINES** → `ok - 4 terms, none present`. Control, method stated: python
+`.count('ezbizi')` lowercased over `www/**/*.html` = **395**, up 2 from
+yesterday's 393 by the same method, which is the privacy edit and nothing else;
+negative control `zzzznotpresent` = **0**.
+
+### `/download/windows.json` is right, and the reason it was wrong this morning is worth keeping
+
+Manifest `0.0.0240`, `built` `7ceefd9a`, repo `client/VERSION` `0.0.0240`. No
+mismatch, and nothing to report — but for one afternoon **`0.0.0239` named two
+different trees and the newer one was live.** The web parity work reached
+production through `deploy.sh` and `build-app.sh`, neither of which touches
+`client/VERSION`, so production served `1e53de9c` under the number `2832a607`
+had. Jose found it the obvious way: his app still read `0.0.0239 · 2832a607`.
+**A deploy is not a release, and this page's own rule — compare the manifest to
+what production *runs*, never to the repo — is what would have caught it**:
+comparing manifest to `client/VERSION` agreed with itself all afternoon while
+the served bundle was three days newer.
+
+### The finding: a capability shipped, is rendering on 110 sites, and is still not sellable
+
+Plugin **1.12.0** adds five rendered widgets — `social_links`, `google_map`,
+`post_title`, `hours_table`, `city_list` — and they are not a promise:
+110/110 installs on our own hosting are at 1.12.0, sampled hosts return 200
+with markup and no leaked shortcodes, and `google_map` degrading to a Maps link
+without a latitude is documented behaviour rather than a failure.
+
+**And a customer cannot get any of it.** One command, and it is the row's test:
+
+```
+curl -s "https://api.wordpress.org/plugins/info/1.0/ezbizi.json"   # -> "version":"1.10.0"
+```
+
+The directory serves **1.10.0**. The estate is at 1.12.0 because an operator
+with a shell and passwordless sudo pushed it there, one tarball per install.
+**Somebody installing the EzBizi plugin the only way a stranger can install it
+gets a plugin with none of these shortcodes in it.** Filed as a row in the
+do-not table above.
+
+This is the WhatsApp shape in a second outfit — finished code on `main`,
+reachable by nobody who is not us — and the trap is sharper here, because the
+usual refutation *"but is it live?"* has an honest yes attached to it. It is
+live on sites **we** host. The site sells to people we do not.
+
+**The chat switch and the Cities pane are refinements under the published Web
+management card and need no edit.** The switch defaults on and works by
+omitting the chat block rather than sending a flag, so it bites on the 1.10.0
+and 1.11.0 plugins already out there; the card's "Add the chat bubble and
+contact form in your own brand colour" is true before and after. Cities is an
+editor pane, and the card never described the editor.
+
+### Re-measured at `7ceefd9a`, not carried
+
+`Publishers::for()` still returns **five** — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok — with `default => null`, so *"Five
+networks send today"* holds and **no sixth publisher was written**.
+`NewsletterSenders::for()` is still `Mailchimp` and `default => null`.
+`ReportMap::all()` still holds **eleven** keys, re-counted from the method body:
+jobs, customers, franchises, services, inventory_items, vehicles,
+training_guides, leads, service_areas, monitored_devices, users. Stores: Play
+`200`; Apple lookup `resultCount` **1**, `trackId` 6805979795, `version`
+**0.0.0222**, `currentVersionReleaseDate` 2026-09-17 — unchanged since
+yesterday and both pages already correct. (`0.0.0240`'s iOS build is
+*delivered* to App Store Connect, which is not accepted and not a store
+version; the page says nothing that depends on it.)
+
+**`git diff --name-only 2832a607 7ceefd9a -- database/migrations/` is EMPTY** —
+zero migrations, so the structural scheduling test cannot have moved: still no
+table carrying both a job reference and a date-or-slot reference.
+
+### The channel: the tool is gone on a schedule, not the desk
+
+`ccd_session_mgmt send_message` to the Deployment id
+(`local_072bee23-…`, the durable address `docs/SESSIONS.md` names) returned
+**"This tool is unavailable in unattended sessions (scheduled-task runs and
+remote-dispatched trees)."** That is a property of *this* run, not of the desk:
+the same id reached it by hand on other days. **So a scheduled run of this check
+can never ask for a row count**, and the daily task file's step 1 cannot be
+completed on a schedule at all — worth knowing before somebody reads "no desk
+answered" as "no desk was running". Five peers were up in `ListAgents`.
+
+Nothing above needed one: production being two docs-commits behind `main` made
+the deployed tree readable here. **Still owed, and all of them row counts:**
+`automations` (the Automations card's own test), `training_attempts`, the Local
+Services and Thumbtack `is_test = 0` counts, and the resolved ring-group
+fraction. Ask by hand, not from a scheduled run.
+
+### New this window, deliberately unpublished
+
+- **The five rendered widgets** — the row above.
+- **Chat on/off per site**, **Cities pane**, **selection by key rather than
+  list position** — refinements under the Web management card.
+- **A guard against naming a field after a plugin-owned shortcode**
+  (`WidgetPresets::PLUGIN_OWNED_SHORTCODES`) — internal, and nothing the site
+  sells.
