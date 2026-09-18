@@ -183,6 +183,45 @@ acknowledgement for this case either — only the confirmation screen. So the
 quota page above is the instrument to re-read, not the inbox, and the inbox
 search is the second check rather than the first.
 
+### Somebody else had exactly this, and re-filing fixed it — 18 September 2026
+
+Searched because our own evidence was circumstantial. It is no longer.
+
+**The documented behaviour**: Google sends a confirmation email carrying a
+case ID to confirm the application is in the queue, and a second email once
+the request has been reviewed. Review is quoted as 7–10 business days on the
+form and "within 14 days" in the developer FAQ.
+
+**The identical case**, on Google's own developer forum, thread 389462:
+
+> applied **28 July 2026**, received **no confirmation email**, quota still 0
+> after **10 business days**; re-submitted **12 August** and *"got a proper
+> confirmation with case ID 1-8807000041926, citing another 7-10 business day
+> review"*.
+
+Same symptom, same duration, and the fix was to file it again — the second
+attempt was accepted immediately where the first had silently not been. That
+is the nearest thing to a controlled experiment available: one applicant, two
+submissions, one acknowledgement.
+
+**So the reading of our silence is:** a missing confirmation email means the
+application is not in the queue, whatever the confirmation SCREEN said. The
+screen is generated before the case is filed; the email is generated after.
+
+**A separate risk the same thread raises, and it is ours.** Several
+developers report that Basic Access does **not** unlock the legacy
+`mybusiness.googleapis.com/v4` reviews endpoint, and that *"there is currently
+no documented path for an approved developer to reach reviews access at all"*.
+Secondary write-ups claim the opposite — that approval enables v4 reviews — so
+this is contested rather than settled. It matters here because REVIEWS.md's
+fourteen call sites are all on v4 with no v1 replacement: approval of this
+application may unlock Business Profile and still leave Reviews shut. Watch
+for it as a second gate rather than assuming one approval covers both.
+
+Sources: `discuss.google.dev/t/...389462`,
+`developers.google.com/my-business/content/prereqs`,
+`developers.google.com/my-business/content/limits`.
+
 ### A control for the silence — 18 September 2026
 
 **Google acknowledges every registered case by email, with the case ID in the
