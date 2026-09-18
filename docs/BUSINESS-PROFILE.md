@@ -183,6 +183,43 @@ acknowledgement for this case either — only the confirmation screen. So the
 quota page above is the instrument to re-read, not the inbox, and the inbox
 search is the second check rather than the first.
 
+### A control for the silence — 18 September 2026
+
+**Google acknowledges every registered case by email, with the case ID in the
+subject line.** That is the fact the silence on `6-2027000041783` has to be
+read against, and it is now measured rather than assumed.
+
+Jose, as Workspace admin, exported the email log for `rodrigo@a-1chimney.com`
+— metadata only, senders and subjects, no bodies — covering **22 March to 18
+September 2026, 2,749 rows**, which includes over two thousand messages from
+`*.google.com`. Rodrigo runs the A1 Leads system this module was rebuilt from,
+so his mailbox is the nearest thing to a worked example we have.
+
+Every Google case in it acknowledged itself by email:
+
+    2026-04-01  no-reply@google.com   [0-6030000040862] Your Google Ads API Basic Access Application
+    2026-04-16  no-reply@google.com   [1-0391000040805] Your Google Ads API Standard Access application
+    2026-05-15  no-reply@google.com   [0-3236000040380] Your Google Ads API Standard Access application
+    2026-06-04  no-reply@google.com   [4-8878000041870] Your Google Ads API Standard Access application
+    2026-05-06  googlebusinessprofile-support@google.com  [9-2798000040124] Your Business Profile support inquiry
+    2026-05-22  googlebusinessprofile-support@google.com  [7-9089000040856] Your Business Profile support inquiry
+
+Five case types, two products, **six for six**. A Business Profile support
+case produces `[case-id] Your Business Profile support inquiry` from
+`googlebusinessprofile-support@google.com`. We have never received one for
+`6-2027000041783`, in any of the four mailboxes searched. **That is no longer
+"Google is quiet"; it is the one outcome this pattern does not produce.**
+
+**And a correction to the premise that sent us looking.** There is no Business
+Profile API grant anywhere in those six months. What Rodrigo was granted is
+**Google Ads API Basic Access, approved 2 April 2026** — *"You have been
+approved for Google Ads API Basic Access!"*. The two Business Profile items
+above are generic support inquiries, and his profile had a duplicate-listing
+problem that June, which is the likelier subject. His code does call
+`mybusiness*`, on Cloud project **429753364855**, but nothing in his mail
+shows that project being granted access — and access is per Cloud project, so
+it would not reach `ezbizi-506117` either way.
+
 ### Chased, 18 September 2026 — case `3-1318000041937`
 
 Jose's word, asked and given. Filed through the SAME form as the application,
