@@ -16,12 +16,12 @@
 
 ## Repository
 
-**`H:\Development\EzBizi`** — deliberately **outside `H:\AWS`**, so no credential file or `.pem` can ever
+**`H:\Development\EzBizi`** — deliberately **outside** the credentials folder, so no credential file or `.pem` can ever
 be swept into a `git add`. First commit `0520deb`, 56 files. Copied here from `H:\EzBizi` on 2026-08-19; the original remains.
 
 The product documentation moved *into* this repo on 2026-08-17 and now lives in `docs/`.
-`H:\AWS\Application\` is the **server's** folder — its credentials and its key. `H:\AWS\_secrets\`
-holds keys and credentials and is never a repo.
+`H:\Development\AWS\Application\` is the **server's** folder. Keys and passwords live in
+`H:\Development\Credentials\AWS\` and are never a repo.
 
 > **That move is exactly the hazard the separation was designed against**, and it caught this
 > file: the credentials table below carried a live database password, and moving the file into
@@ -35,7 +35,7 @@ holds keys and credentials and is never a repo.
 |---|---|
 | DB name | `ezbizi` |
 | DB user | `ezbizi`@`127.0.0.1` and `@localhost` |
-| DB password | **`H:\AWS\_secrets\`** — not here, and not in any file inside this repo |
+| DB password | **`H:\Development\Credentials\AWS\`** — not here, and not in any file inside this repo |
 | `APP_KEY` | generated on the server, in `/var/www/ezbizi/.env` — **not in git** |
 
 > The password was written out in this table until 2026-08-17, when this document moved into

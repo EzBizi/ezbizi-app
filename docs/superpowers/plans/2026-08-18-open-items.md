@@ -151,7 +151,7 @@ This machine only. Not production. First so later phases can use the real gate.
 
 - [ ] Install MySQL 8 (or start it if it is already installed but has no service).
 - [ ] `CREATE DATABASE ezbizi_testing;` — name **must** contain `testing`.
-- [ ] Local `.env` / user with rights only on that schema. Password stays out of git (`H:\AWS\_secrets\` or Windows user env).
+- [ ] Local `.env` / user with rights only on that schema. Password stays out of git (`H:\Development\Credentials\AWS\` or Windows user env).
 - [ ] Run `php artisan test` **without** sqlite overrides. That is the first honest local gate.
 - [ ] Update `docs/EZBIZI-DEV-ENVIRONMENT.md`: MySQL row from **open** to **fixed**, with the date. Do not claim GD/Dompdf unless those are also installed (optional extras, not required to close Q17).
 

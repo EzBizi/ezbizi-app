@@ -1088,7 +1088,7 @@ Further modules get ported from A1 Tools one at a time, dropping what isn't wort
 | fail2ban | **inactive** |
 | Backups | **none configured** |
 
-Credentials: `H:\AWS\_secrets\Application-credentials.md` (non-secret pointer stub at `H:\AWS\Application\CREDENTIALS.md`) · SSH keys: `H:\AWS\_secrets\`
+Credentials: `H:\Development\Credentials\AWS\Application-credentials.md` (non-secret pointer stub at `H:\Development\AWS\Application\CREDENTIALS.md`) · SSH keys: `H:\Development\Credentials\AWS\`
 
 ### ⚠️ Web serving changed on 2026-08-05 — wildcard subdomain routing
 
@@ -1327,7 +1327,7 @@ impossible to change later.
 ### Phase 0 — reconciliation and safety *(do this first, no application code)*
 
 1. ~~Reconcile infrastructure docs~~ ✅ done 2026-08-05
-2. ~~Move secrets out of the future repo tree~~ ✅ done — now `H:\AWS\_secrets\`
+2. ~~Move secrets out of the future repo tree~~ ✅ done — now `H:\Development\Credentials\AWS\`
 3. **Upgrade PHP 8.2 → 8.4** (Laravel 13 won't run otherwise)
 4. **Add `ns2` as a BIND secondary on the Websites box** (DNS stays self-hosted — §15), rotate
    the shared SSH key, restrict Webmin, enable fail2ban
