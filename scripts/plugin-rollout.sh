@@ -83,7 +83,11 @@ stage() {
 # is told what is THERE rather than what was sent.
 apply_one() {
   local target="$1"
-  ssh "$REMOTE" "set -e
+  # `ssh -n`, and it is not cosmetic. Without it ssh reads the caller's stdin —
+  # which in `--all` is the list of installs being looped over — so the first
+  # site swallows the other 109 and the run reports success having touched one.
+  # It did exactly that on the first attempt.
+  ssh -n "$REMOTE" "set -e
     dir=\$(dirname '$target')
     own=\$(sudo -n stat -c '%U:%G' \"\$dir\")
     safe=\$(echo \"\$dir\" | sed 's|/var/www/vhosts/||; s|/|__|g')
