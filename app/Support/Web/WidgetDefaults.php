@@ -49,6 +49,30 @@ final class WidgetDefaults
     public static function chat(): array
     {
         return [
+            /*
+             * ── Whether this site has a live chat at all ──
+             *
+             * Mia, 2026-09-18: "i also want to have a toggle to turn it on or
+             * off, on being the default, (by turning it off, it basically
+             * disappears on the website, effectively disabling the chat)".
+             *
+             * ON BY DEFAULT, and that is the whole difference between this and
+             * the switch that was removed on 2026-09-15. That one could be off
+             * on a site nobody had configured, so every site was built
+             * correctly and the bubble appeared nowhere — Jose's "get rid of
+             * the switches, they should just be on". A default of true cannot
+             * produce that state: the only thing that takes a chat off a
+             * website is somebody deciding to.
+             *
+             * It is one switch rather than two because the chat is the only
+             * widget that puts ITSELF on every page, through `wp_footer`. The
+             * form appears where a person placed a shortcode, so taking it off
+             * a site is deleting that shortcode, and a second invisible way to
+             * blank something deliberately placed is exactly the failure above.
+             *
+             * `false` does not travel as `false`. See `published()`.
+             */
+            'enabled' => true,
             'title' => 'Chat with us',
             'intro' => 'We are online and ready to help.',
             'button' => 'Chat',
@@ -288,23 +312,16 @@ final class WidgetDefaults
         return [
             'chat' => [
                 /*
-                 * `enabled` is sent, always true, and means nothing.
+                 * MEANINGFUL AGAIN as of 2026-09-18, and the only widget key
+                 * that is. See `chat()` for why the chat has a switch and the
+                 * form does not, and `published()` for how `false` reaches a
+                 * website that is running a plugin which ignores this key.
                  *
-                 * Jose removed the switches on 2026-09-15: "get rid of the
-                 * switches, they should just be on". Placing the widget on a
-                 * page is the decision to show it, and a second invisible
-                 * switch that can blank something you deliberately placed has
-                 * one failure mode — the one it produced, where every site was
-                 * built correctly and nothing appeared anywhere.
-                 *
-                 * The key stays on the wire because plugin 1.4.0 and earlier
-                 * render nothing when it is absent, and those are installed on
-                 * real sites. Dropping it would black out every widget on any
-                 * site that had not updated yet. Remove it when no install
-                 * below 1.5.0 is left; `plugin_version` comes in on every
-                 * payload request, so that is a question we can answer.
+                 * It still travels as `true` when on, because plugin 1.4.0 and
+                 * earlier render nothing when it is ABSENT and those may exist
+                 * outside the fleet. So "on" has to look the way it always did.
                  */
-                'enabled' => true,
+                'enabled' => self::flag($chat['enabled'] ?? true),
                 'title' => self::text($chat['title'] ?? '', 80),
                 'intro' => self::text($chat['intro'] ?? '', 300),
                 'button' => self::text($chat['button'] ?? '', 40),
@@ -338,13 +355,21 @@ final class WidgetDefaults
                 })(),
             ],
             'form' => [
-                // Always on; see the note above.
+                // Always on, and not an oversight: see `chat()`.
                 'enabled' => true,
                 'button' => self::text($form['button'] ?? '', 40),
                 'thanks' => self::text($form['thanks'] ?? '', 300),
                 'error' => self::text($form['error'] ?? '', 300),
                 'fields' => self::fields($form['fields'] ?? []),
             ],
+            /*
+             * How the RENDERED widgets look, as named bundles. Beside the chat
+             * and the form rather than inside either, because they belong to
+             * neither and because they inherit from the primary site by being
+             * part of this config — which is the property that makes one edit
+             * reach every subdomain. See `WidgetPresets`.
+             */
+            'presets' => WidgetPresets::resolve($stored['presets'] ?? []),
             'style' => [
                 'accent' => self::colour($style['accent'] ?? '', $brand ?? Branding::FALLBACK_COLOUR),
                 'on_accent' => self::colour(
@@ -357,6 +382,62 @@ final class WidgetDefaults
                 'radius' => max(0, min(40, (int) ($style['radius'] ?? 12))),
             ],
         ];
+    }
+
+    /**
+     * The same config with the switched-off widgets taken OUT, for the readers.
+     *
+     * ── Why absence rather than `enabled: false` ──
+     *
+     * Because `false` does not work, and absence does, on the plugins that are
+     * actually installed. Versions 1.5.0 through 1.11.0 do not read
+     * `chat.enabled` at all — the switches had been removed, so there was
+     * nothing to read it for — and on 2026-09-18 the entire fleet of 110 sites
+     * was on 1.11.0. A flag would have been a switch that did nothing until
+     * every customer pressed Update, which for the wordpress.org half is not a
+     * thing anybody here can make happen (`ACTIVE-CONSTRAINTS.md` §14).
+     *
+     * Every plugin since 1.2.0 already draws nothing when a widget's config
+     * block is MISSING: `ezbizi_widget_config()` returns empty, the shortcode
+     * returns an empty string, and the `wp_footer` injector skips. That is the
+     * path a site with a refused token already takes, so it is not a new
+     * behaviour to trust — it is the oldest one in the plugin.
+     *
+     * So "off" is said in the one vocabulary every installed version speaks.
+     *
+     * ── Why this is separate from `resolve()` ──
+     *
+     * The editing screen needs the switch it is about to flip, and a payload
+     * with no `chat` key cannot draw an off switch — it looks identical to a
+     * site whose chat is on and unconfigured. Same split, for the same reason,
+     * as `ValueResolver::forReaders` against `forEditor`.
+     *
+     * @param  array<string, mixed>  $resolved  output of `resolve()` or `all()`
+     * @return array<string, mixed>
+     */
+    public static function published(array $resolved): array
+    {
+        if (empty($resolved['chat']['enabled'])) {
+            unset($resolved['chat']);
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * A stored boolean, read the way a checkbox means it.
+     *
+     * `filter_var` rather than a cast because this arrives from JSON that the
+     * client wrote and the API may be called by hand: `"false"` and `"0"` are
+     * both what somebody means by off, and both are `true` to a plain cast.
+     * Anything unrecognisable keeps the default rather than becoming off — a
+     * malformed config must not take a working chat off a website.
+     */
+    private static function flag($raw, bool $default = true): bool
+    {
+        $read = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        return $read ?? $default;
     }
 
     /**

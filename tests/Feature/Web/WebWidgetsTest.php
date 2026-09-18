@@ -5,6 +5,7 @@ namespace Tests\Feature\Web;
 use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Web\WidgetDefaults;
+use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
@@ -774,24 +775,25 @@ class WebWidgetsTest extends TestCase
     }
 
     /**
-     * A site that had switched a widget off still gets it, and old plugins
-     * still render it.
+     * The FORM's switch is still ignored, and old plugins still render it.
      *
-     * Two things are being held at once. The switches are gone, so a stored
-     * `false` from before today must not go on hiding anything. And plugin
-     * 1.4.0 and earlier render NOTHING when `enabled` is absent or false, and
-     * they are installed on real sites — so the key has to keep arriving, true,
-     * until no such install is left. Drop the key and every widget on a site
-     * that has not updated goes dark, with no error anywhere.
+     * Two things are being held at once. The form has no switch — placing the
+     * shortcode is the decision — so a stored `false` from before 2026-09-15
+     * must not go on hiding anything. And plugin 1.4.0 and earlier render
+     * NOTHING when `enabled` is absent or false, and they may be installed on
+     * sites outside the fleet, so the key has to keep arriving, true. Drop it
+     * and the form on any such site goes dark with no error anywhere.
+     *
+     * The chat is the exception now, and it has its own tests below.
      */
-    public function test_a_stored_off_switch_is_ignored_and_the_key_still_says_on(): void
+    public function test_a_stored_off_switch_on_the_form_is_ignored_and_the_key_still_says_on(): void
     {
         ['site' => $site, 'editor' => $editor] = $this->site();
 
         $this->signedInAs($editor)
             ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
                 'config' => [
-                    'chat' => ['enabled' => false, 'title' => 'Talk to A-1'],
+                    'chat' => ['title' => 'Talk to A-1'],
                     'form' => ['enabled' => false],
                 ],
             ])->assertOk();
@@ -801,8 +803,136 @@ class WebWidgetsTest extends TestCase
             ->assertOk()
             ->json();
 
-        $this->assertTrue($body['config']['chat']['enabled']);
         $this->assertTrue($body['config']['form']['enabled']);
         $this->assertSame('Talk to A-1', $body['config']['chat']['title']);
+    }
+
+    /**
+     * A site nobody has configured has a chat. This is THE test of the default.
+     *
+     * The switch that was removed on 2026-09-15 failed in exactly this case:
+     * every site was built correctly and the bubble appeared nowhere. A default
+     * of true is the whole fix, so it gets an assertion of its own rather than
+     * riding along inside a bigger one.
+     */
+    public function test_a_site_that_has_said_nothing_has_its_chat_on(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($body['config']['chat']['enabled']);
+        $this->assertTrue($body['defaults']['chat']['enabled']);
+    }
+
+    /**
+     * Switching the chat off takes the whole block out of what a website reads,
+     * and leaves it in what the screen reads.
+     *
+     * The absence is the mechanism, not a detail of it: plugins 1.5.0 through
+     * 1.11.0 do not read `chat.enabled`, and on 2026-09-18 that was the entire
+     * fleet. They DO draw nothing when the block is missing. So this assertion
+     * is the feature — if `chat` ever comes back in the plugin payload with
+     * `enabled: false`, the switch silently stops working on every live site
+     * and nothing else in the suite would notice.
+     */
+    public function test_a_chat_switched_off_is_absent_from_the_website_and_present_on_the_screen(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => ['enabled' => false, 'title' => 'Talk to A-1']],
+            ])->assertOk();
+
+        // What the editing screen gets: the block, and the off switch in it.
+        $screen = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+            ->assertOk()
+            ->json();
+
+        $this->assertFalse($screen['config']['chat']['enabled']);
+        $this->assertSame('Talk to A-1', $screen['config']['chat']['title']);
+
+        // What the website gets: no chat at all, and everything else intact.
+        $payload = $this->withToken($site['token'])
+            ->getJson('/api/v1/web/plugin/values?host='.$site['data']['host'])
+            ->assertOk()
+            ->json();
+
+        $this->assertArrayNotHasKey('chat', $payload['widgets']);
+        $this->assertArrayHasKey('form', $payload['widgets']);
+        $this->assertArrayHasKey('style', $payload['widgets']);
+    }
+
+    /** On, it looks exactly the way it always did — including for 1.4.0. */
+    public function test_a_chat_left_on_still_carries_the_key_the_oldest_plugins_read(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $payload = $this->withToken($site['token'])
+            ->getJson('/api/v1/web/plugin/values?host='.$site['data']['host'])
+            ->assertOk()
+            ->json();
+
+        $this->assertTrue($payload['widgets']['chat']['enabled']);
+    }
+
+    /**
+     * A visitor cannot open a conversation on a site whose chat is off.
+     *
+     * Not covered by the absence above: a cached page, or a tab left open
+     * since yesterday, still holds the widget and the public key. A switch
+     * that leaves those able to file enquiries into a business that stopped
+     * answering them has not disabled anything.
+     *
+     * 409 rather than 403 — nothing here is signed in, so a permission code
+     * would be describing the wrong kind of refusal, and a test asserting 403
+     * would pass for two different reasons.
+     */
+    public function test_a_visitor_cannot_start_a_chat_once_it_is_switched_off(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $key = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$site['data']['id']}")
+            ->assertOk()
+            ->json('data.public_key');
+
+        // The positive control FIRST. Without it, the refusal below could be
+        // arriving for any of the reasons this endpoint refuses.
+        $this->postJson('/api/v1/web/chat', ['key' => $key, 'message' => 'Hello?'])
+            ->assertCreated();
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => ['enabled' => false]],
+            ])->assertOk();
+
+        $this->postJson('/api/v1/web/chat', ['key' => $key, 'message' => 'Hello?'])
+            ->assertStatus(409);
+    }
+
+    /** Presets always carry a default, whatever is stored, so a typo renders. */
+    public function test_every_preset_family_has_a_default_even_when_nothing_is_stored(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['social_links' => ['footer' => ['size' => 999]]]],
+            ])->assertOk()->json();
+
+        foreach (WidgetPresets::WIDGETS as $widget) {
+            $this->assertArrayHasKey('default', $body['config']['presets'][$widget]);
+        }
+
+        // Named presets survive, and a number outside the range is clamped
+        // rather than refused: this renders on a customer's page, and a saved
+        // config that fails to load would take the widget with it.
+        $this->assertSame(64, $body['config']['presets']['social_links']['footer']['size']);
     }
 }

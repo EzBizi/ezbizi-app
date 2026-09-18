@@ -790,6 +790,19 @@ Route::prefix('v1')
              * segment registered after a wildcard one is unreachable.
              */
             Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
+
+            /*
+             * The city pages, separated out of Pages at Mia's request on
+             * 2026-09-18. Read from OUR values rather than from the website, so
+             * it answers when the customer's WordPress does not; `?scan=1` is
+             * the opt-in that also asks the site which towns it has pages for.
+             *
+             * Same tab gate as the rest of SEO, and no new permission: a pane
+             * inside a tab is not a grant. See `PageKinds` for what makes a
+             * page a city page, and the comment on `web/sites` above for why
+             * the gate is per route rather than on the resource.
+             */
+            Route::get('web/sites/{site}/cities', [WebContentController::class, 'cities']);
         });
 
         Route::middleware('permission:web_management.widgets.view')->group(function () {
