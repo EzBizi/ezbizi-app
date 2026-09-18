@@ -183,6 +183,35 @@ acknowledgement for this case either — only the confirmation screen. So the
 quota page above is the instrument to re-read, not the inbox, and the inbox
 search is the second check rather than the first.
 
+### Chased, 18 September 2026 — case `3-1318000041937`
+
+Jose's word, asked and given. Filed through the SAME form as the application,
+`support.google.com/business/contact/api_default`, signed in as
+`info@ezbizi.com`, option **General API Question** — §8 records that this
+option costs nothing, which is why the chase does not risk the application.
+The confirmation screen read: *"Your email has been sent … your case ID is
+3-1318000041937"*, and that number is here because it was read off the screen.
+
+**There was no thread to reply to, and that is a finding rather than a
+detail.** The plan was to reply to Google on the existing case; searching
+`info@ezbizi.com` with `in:anywhere` for `2027000041783`, for *Business
+Profile API*, for `api_default` and for *API access* returned **nothing**,
+while a control search for `google` in the same mailbox returned 43
+conversations — so the instrument works and the absence is real. Google has
+never written to us about this case at all.
+
+**And the filing account's own support page does not list it.** The form's
+"Use past details" panel, signed in as `info@ezbizi.com`, says *"No matching
+past cases found"*. That is soft evidence — the panel may simply not surface
+API cases — but it points the same way as the silence, which is why the chase
+asks Google to confirm the case was REGISTERED and offers to re-file, rather
+than only asking for a decision date.
+
+**What to watch, in this order:** the per-minute quota on the Console (§9a),
+then `info@ezbizi.com` for a reply to `3-1318000041937`. If an acknowledgement
+arrives for this case and none ever arrived for `6-2027000041783`, that is the
+answer about the original.
+
 ## 9 · Measured 14 September 2026 — filed, inside the window, nothing back
 
 Filed **3 September** (517ef1bf). Google's confirmation screen quoted *"7-10
