@@ -27,6 +27,7 @@ void main() {
     Map<String, Object?>? saved,
     Map<String, Object?> chat = const {},
     List<Map<String, dynamic>>? sent,
+    Size size = const Size(1280, 2400),
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -124,6 +125,35 @@ void main() {
                 {'label': 'What needs doing?', 'type': 'textarea'},
               ],
             },
+            // Exactly what WidgetPresets::resolve() guarantees: four widgets,
+            // each with a `default`, whatever is stored. A fixture with fewer
+            // would let the screen invent the missing ones and agree with
+            // itself about values the server never sent.
+            'presets': const {
+              'social_links': {
+                'default': {
+                  'style': 'plain',
+                  'shape': 'circle',
+                  'size': 28,
+                  'gap': 10,
+                  'labels': false,
+                },
+              },
+              'city_list': {
+                'default': {
+                  'layout': 'columns',
+                  'columns': 3,
+                  'group': true,
+                  'link': true,
+                },
+              },
+              'hours_table': {
+                'default': {'today': true, 'compact': false},
+              },
+              'google_map': {
+                'default': {'height': 320, 'zoom': 14},
+              },
+            },
             'style': style ??
                 const {
                   'accent': '#aa0000',
@@ -165,7 +195,7 @@ void main() {
 
     await tester.runAsync(() => session.adopt('tok'));
 
-    tester.view.physicalSize = const Size(1280, 2400);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -248,6 +278,10 @@ void main() {
       },
     );
 
+    // Save is lazily built at the bottom of the editor, and the sections below
+    // this one put it past the fold even on a tall test window.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+
     final save = find.text('Save');
     expect(save, findsOneWidget);
     expect(
@@ -307,6 +341,12 @@ void main() {
 
     expect(find.textContaining('Following the primary website'), findsNothing);
 
+    await tester.scrollUntilVisible(
+      find.text('Follow the primary again'),
+      300,
+      scrollable: _editor,
+    );
+
     expect(find.text('Follow the primary again'), findsOneWidget);
   });
 
@@ -362,10 +402,16 @@ void main() {
     // The pair it starts on is one the screen complains about.
     expect(find.textContaining('1.1:1'), findsOneWidget);
 
-    final swatch = find.byTooltip('#00838f');
-    await tester.scrollUntilVisible(swatch, 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester.tap(swatch);
+    // Scrolled to the FIELD rather than to the swatch, because ensureVisible
+    // parks its target against the leading edge — aiming at the swatch puts
+    // the two boxes this test reads above the top of the pane, where a finder
+    // cannot see them.
+    await tester.scrollUntilVisible(
+      find.text('Accent colour (#rrggbb)'),
+      200,
+      scrollable: _editor,
+    );
+    await tester.tap(find.byTooltip('#00838f'));
     await tester.pumpAndSettle();
 
     // Both halves moved: the accent AND the text that has to be legible on it.
@@ -478,18 +524,10 @@ void main() {
     await tester.tap(find.text('Set chat hours'));
     await tester.pumpAndSettle();
 
-    // Named by its ancestor rather than by `.last`: this screen has a site
-    // list, the editor and the preview, and which Scrollable is 'last'
-    // is paint order rather than anything this test knows. The editor is
-    // the one containing the Live chat heading. Save is lazily built at
-    // the bottom of it, so an unscrolled tap finds no element at all.
-    await tester.scrollUntilVisible(
-      find.text('Save'),
-      300,
-      scrollable: find
-          .ancestor(of: find.text('Live chat'), matching: find.byType(Scrollable))
-          .first,
-    );
+    // Save is lazily built at the bottom of the editor, so an unscrolled tap
+    // finds no element at all. See `_editor` for why the pane is named by its
+    // key rather than by a heading inside it.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
@@ -563,18 +601,10 @@ void main() {
     await tester.tap(find.text('Show at all hours'));
     await tester.pumpAndSettle();
 
-    // Named by its ancestor rather than by `.last`: this screen has a site
-    // list, the editor and the preview, and which Scrollable is 'last'
-    // is paint order rather than anything this test knows. The editor is
-    // the one containing the Live chat heading. Save is lazily built at
-    // the bottom of it, so an unscrolled tap finds no element at all.
-    await tester.scrollUntilVisible(
-      find.text('Save'),
-      300,
-      scrollable: find
-          .ancestor(of: find.text('Live chat'), matching: find.byType(Scrollable))
-          .first,
-    );
+    // Save is lazily built at the bottom of the editor, so an unscrolled tap
+    // finds no element at all. See `_editor` for why the pane is named by its
+    // key rather than by a heading inside it.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
@@ -606,19 +636,360 @@ void main() {
     expect(box.onChanged, isNull);
   });
 
-  testWidgets('nothing offers to switch a widget off', (tester) async {
+  /// ── The chat's switch, and the form's absent one ─────────────────
+  ///
+  /// Mia, 2026-09-18: "i also want to have a toggle to turn it on or off, on
+  /// being the default, (by turning it off, it basically disappears on the
+  /// website, effectively disabling the chat)".
+  ///
+  /// This is the older "nothing offers to switch a widget off" test, narrowed
+  /// rather than deleted. Both switches were removed on 2026-09-15 because
+  /// every site had both off and so every site showed nothing; the chat's came
+  /// back with a default of `true`, which cannot produce that state. The form
+  /// still has none, and `WidgetDefaults::chat()` says why: the chat injects
+  /// itself into every page's footer, so a switch is the only way off, while
+  /// the form appears where somebody placed a shortcode.
+  testWidgets('only the chat can be switched off, and the form cannot', (
+    tester,
+  ) async {
     await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Preview'), findsOneWidget);
 
-    expect(find.byType(Switch), findsNothing);
-    expect(find.text('Show the chat bubble'), findsNothing);
+    expect(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+      findsOneWidget,
+    );
+
     expect(find.text('Show the contact form'), findsNothing);
+    expect(find.textContaining('form on this website'), findsNothing);
+
+    // The phrase the old preview used to carry. It read as styling, which is
+    // how a hundred switched-off sites went unnoticed.
     expect(find.text('off on your site'), findsNothing);
 
     // The control: the editor and the preview are both still drawn, so the
     // assertions above are about an absent switch rather than an absent screen.
     expect(find.text('Talk to A-1'), findsNWidgets(2));
+  });
+
+  /// ON is the default, and that is the whole difference from the switches
+  /// that were removed. A site nobody has configured must arrive with a chat.
+  testWidgets('the chat switch is on for a site with no config of its own', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: false,
+    );
+
+    final control = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+    );
+
+    expect(control.value, isTrue);
+    expect(control.onChanged, isNotNull);
+  });
+
+  /// Asserted on the REQUEST BODY, not on the switch.
+  ///
+  /// A switch that flips and never reaches `config.chat.enabled` looks
+  /// identical on screen to one that works, and the site keeps its chat.
+  testWidgets('switching the chat off sends chat.enabled false on save', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+    );
+
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+
+    expect(chat['enabled'], isFalse);
+
+    // The wording travels with it. The server stores the whole config through
+    // the sanitiser, so a payload that sent the flag alone would blank every
+    // other field on the chat.
+    expect(chat['title'], 'Talk to A-1');
+  });
+
+  /// Off means off on the WEBSITE, and still editable here.
+  ///
+  /// Somebody switches the chat off because the wording is wrong, fixes the
+  /// wording, and switches it back on. A section greyed out forces the
+  /// opposite order, with the unfinished wording live while they work.
+  testWidgets('an off chat leaves the preview but not the fields', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      chat: const {'enabled': false},
+    );
+
+    // ONE, not two: the box somebody types in, and no bubble beside it. Two
+    // would mean the preview is still drawing a chat this site does not have.
+    expect(find.text('Talk to A-1'), findsOneWidget);
+    expect(find.textContaining('nothing here for a visitor to open'),
+        findsOneWidget);
+
+    // Said in the editor as well, because the preview is a pane somebody can
+    // drag shut.
+    expect(find.textContaining('No visitor sees a bubble'), findsOneWidget);
+
+    final title = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Talk to A-1'),
+    );
+
+    expect(title.enabled, isTrue);
+  });
+
+  // ── Rendered widgets: presets ────────────────────────────────────
+
+  /// The name is the only argument a rendered shortcode takes, so the string
+  /// this screen prints is the string somebody pastes. If it disagreed with
+  /// the stored name by one character the page would quietly render the
+  /// default instead.
+  testWidgets('a named preset is added and wears its own shortcode', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_social_links preset="footer"]'), findsOneWidget);
+
+    // The default keeps the bare shortcode, which is what every page that has
+    // not asked for anything is already using.
+    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+
+    // Named on the widget it belongs to: "footer" means one thing to a row of
+    // icons and another to a list of towns, so the two do not share a name.
+    expect(find.text('[ezbizi_city_list preset="footer"]'), findsNothing);
+  });
+
+  /// `default` is what catches a typo — `preset="foter"` renders it rather
+  /// than rendering nothing into somebody's footer. Offering to delete it
+  /// would be offering to remove the safety net, and the server would put it
+  /// straight back.
+  testWidgets('the default preset offers no way to delete or rename it', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    for (final tooltip in const ['Delete this preset', 'Rename this preset']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('preset:social_links:default')),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsNothing,
+        reason: '"$tooltip" is offered on a preset the server will not drop.',
+      );
+
+      // The control: the named preset beside it has both, so the assertion
+      // above is about `default` rather than about buttons that never render.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('preset:social_links:footer')),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
+  /// `WidgetPresets::name` lowercases and STRIPS — "Footer Icons" is stored as
+  /// `footericons`, not `footer-icons`. A box that accepted the typed form
+  /// would print a shortcode nobody could paste: the page would ask for a
+  /// preset by a name the server never stored and get the default.
+  testWidgets('a name typed with capitals and spaces is normalised in the box',
+      (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    final box = find.byKey(const ValueKey('preset-add:social_links'));
+
+    await tester.enterText(box, 'Footer Icons');
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(box).controller?.text,
+      'footericons',
+      reason: 'The name changes on save rather than while it is being typed.',
+    );
+
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('[ezbizi_social_links preset="footericons"]'),
+      findsOneWidget,
+    );
+  });
+
+  /// A preset that is edited on a site following the primary makes that site
+  /// its own, exactly as every other field here does — one mechanism, not two.
+  testWidgets('a preset edited on a following site goes up with the config', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: false,
+      sent: sent,
+    );
+
+    expect(find.textContaining('Following the primary website'), findsOneWidget);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final presets = (sent.single['config'] as Map)['presets'] as Map;
+    final social = presets['social_links'] as Map;
+
+    // The inherited default travelled with it. A payload carrying only the new
+    // name would hand this site a `default` it never chose.
+    expect(social.keys, containsAll(<String>['default', 'footer']));
+    expect((social['default'] as Map)['size'], 28);
+  });
+
+  /// Renaming is a dialog because it changes a KEY. Applied per keystroke it
+  /// would walk through `s`, `si`, `sid` as three differently named presets,
+  /// each advertising its own shortcode on the way past.
+  testWidgets('a named preset can be renamed and then deleted', (tester) async {
+    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'hours_table');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:hours_table')),
+      'footer',
+    );
+    await tester.tap(_addPreset('hours_table'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsOneWidget);
+
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('preset:hours_table:footer')),
+      matching: find.byTooltip('Rename this preset'),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Side Bar',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsOneWidget);
+    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsNothing);
+
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('preset:hours_table:sidebar')),
+      matching: find.byTooltip('Delete this preset'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsNothing);
+
+    // The default outlives every named one, which is what makes a mistyped
+    // `preset=` render something rather than nothing.
+    expect(find.text('[ezbizi_hours_table]'), findsOneWidget);
+  });
+
+  testWidgets('a viewer is offered no way to add or delete a preset', (
+    tester,
+  ) async {
+    await pump(tester, permissions: ['web_management.view']);
+
+    await _reachPresets(tester, 'social_links');
+
+    expect(find.byKey(const ValueKey('preset-add:social_links')), findsNothing);
+    expect(find.byTooltip('Delete this preset'), findsNothing);
+
+    // Still shown the shortcode: reading which one a page should use is not
+    // editing anything.
+    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+  });
+
+  /// Four widgets, each with a dropdown, a slider or two and a switch, is the
+  /// section most likely to run off the side of a phone.
+  testWidgets('the presets lay out at 375 without overflowing', (tester) async {
+    await pump(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit'],
+      size: const Size(375, 2400),
+    );
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'a-very-long-preset-name-indeed',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'A RenderFlex overflow here is the yellow-and-black bar on a '
+          'phone, and it takes the rest of the pane with it.',
+    );
+
+    expect(
+      find.text('[ezbizi_social_links preset="a-very-long-preset-name-indeed"]'),
+      findsOneWidget,
+    );
   });
 
   /// The preview is what makes a colour mean something, so it has to follow the
@@ -947,6 +1318,51 @@ void main() {
     );
   });
 }
+
+/// The editor pane's own scrollable.
+///
+/// Named by the pane's key rather than by a heading inside it. The anchor used
+/// to be `find.text('Live chat')`, which worked only while the form was short
+/// enough that nothing had to scroll: a heading at the top of a ListView is
+/// disposed once the list moves past it, so the finder driving the scroll
+/// vanishes part-way through the scroll it is driving. `.last` is no better —
+/// this screen has three scrollables and which one is last is paint order
+/// rather than anything a test knows.
+/// `.first` because every TextField carries a Scrollable of its own for the
+/// text inside it, and the pane's own is the outermost of them.
+final Finder _editor = find
+    .descendant(
+      of: find.byKey(const ValueKey('widgets-editor')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
+/// Scroll down until one widget's presets are built.
+///
+/// The whole Rendered widgets section is a single child of the editor's
+/// ListView, so reaching any part of it builds all four cards — but a ListView
+/// builds nothing it has not scrolled near, and a finder cannot match what was
+/// never built.
+Future<void> _reachPresets(WidgetTester tester, String widget) =>
+    tester.scrollUntilVisible(
+      find.byKey(ValueKey('preset:$widget:default')),
+      300,
+      scrollable: _editor,
+    );
+
+/// The Add beside one widget's new-preset box.
+///
+/// Scoped to its own row: there is one of these per widget, so a bare
+/// `find.text('Add')` matches four buttons and taps whichever came first.
+Finder _addPreset(String widget) => find.descendant(
+      of: find
+          .ancestor(
+            of: find.byKey(ValueKey('preset-add:$widget')),
+            matching: find.byType(Row),
+          )
+          .first,
+      matching: find.text('Add'),
+    );
 
 /// What the box actually contains, read from its controller rather than from
 /// the widget tree's text — a stale render would otherwise pass.

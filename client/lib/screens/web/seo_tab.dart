@@ -8,6 +8,7 @@ import '../../core/session.dart';
 import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/search_picker.dart';
+import 'cities_pane.dart';
 import 'content_tab.dart';
 import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
@@ -158,10 +159,35 @@ class _SeoTabState extends State<SeoTab> {
           ...((response.body['sections'] as List<dynamic>?) ?? [])
               .cast<Map<String, dynamic>>(),
           const {'key': _pagesKey, 'label': 'Pages'},
+          /*
+           * Cities sits next to Pages because it IS pages — the ones Toula has
+           * published a town onto, 8,956 of them, which Pages no longer lists.
+           * See `PageKinds` for what separates the two lists and why they can
+           * never both claim a page.
+           */
+          const {'key': _citiesKey, 'label': 'Cities'},
           const {'key': _postsKey, 'label': 'Posts'},
           const {'key': _templatesKey, 'label': 'Templates'},
         ];
-        if (_section >= _sections.length) _section = 0;
+
+        /*
+         * The selection is a KEY and is re-found here, because this list is
+         * rebuilt every time a different site is chosen and the field sections
+         * come from the server — so its LENGTH and its ORDER both change under
+         * somebody who is reading a pane.
+         *
+         * It used to be an index with a `>= length` guard, which survived the
+         * list getting shorter and quietly moved you to a different pane when
+         * it changed shape. Inserting Cities in the middle is what turns that
+         * from a latent defect into a visible one: sitting on Posts and
+         * switching site would land on Cities. It is the same trap Settings
+         * described for tab bars (`docs/agents/inbox/0051`), one level down, in
+         * a strip of panes rather than tabs — and it needs no permissions to
+         * bite, only a list that changes length.
+         */
+        if (!_sections.any((section) => section['key'] == _sectionKey)) {
+          _sectionKey = _generalKey;
+        }
       } else {
         _error = response.message;
       }
@@ -191,9 +217,17 @@ class _SeoTabState extends State<SeoTab> {
   /// the field catalogue, and a copy in Dart is a second place to edit and a
   /// second place to be wrong. Empty until the first load, which is why the
   /// strip is hidden rather than empty below.
-  /// The two sections that show the website's own content rather than fields.
+  /// The sections that show content rather than fields.
   static const String _pagesKey = 'pages';
   static const String _postsKey = 'posts';
+
+  /// Her city pages, separated out of Pages on 2026-09-18.
+  static const String _citiesKey = 'cities';
+
+  /// The one the strip falls back to. Named rather than "the first", because
+  /// the first is only General by convention and the fallback has to be a pane
+  /// that exists whatever the server sent.
+  static const String _generalKey = 'general';
 
   /// Text shared by many pages, so it belongs beside Pages and Posts rather
   /// than among the field groups: like them it is content, not a field group.
@@ -204,11 +238,10 @@ class _SeoTabState extends State<SeoTab> {
 
   List<Map<String, dynamic>> _sections = [];
 
-  int _section = 0;
-
-  String get _sectionKey => _section < _sections.length
-      ? _sections[_section]['key'] as String
-      : 'general';
+  /// Which pane is showing, BY KEY.
+  ///
+  /// Not an index. See `_load`.
+  String _sectionKey = _generalKey;
 
   @override
   Widget build(BuildContext context) {
@@ -222,11 +255,13 @@ class _SeoTabState extends State<SeoTab> {
               spacing: 4,
               runSpacing: 4,
               children: [
-                for (var i = 0; i < _sections.length; i++)
+                for (final section in _sections)
                   _SectionTab(
-                    label: _sections[i]['label'] as String,
-                    selected: i == _section,
-                    onTap: () => setState(() => _section = i),
+                    label: section['label'] as String,
+                    selected: section['key'] == _sectionKey,
+                    onTap: () => setState(
+                      () => _sectionKey = section['key'] as String,
+                    ),
                   ),
               ],
             ),
@@ -391,6 +426,16 @@ class _SeoTabState extends State<SeoTab> {
     if (_sectionKey == _templatesKey) {
       return TemplatesPane(
         key: ValueKey('${site['id']}:templates'),
+        api: widget.api,
+        siteId: site['id'] as String,
+        host: site['host'] as String,
+        canEdit: _canEdit,
+      );
+    }
+
+    if (_sectionKey == _citiesKey) {
+      return CitiesPane(
+        key: ValueKey('${site['id']}:cities'),
         api: widget.api,
         siteId: site['id'] as String,
         host: site['host'] as String,

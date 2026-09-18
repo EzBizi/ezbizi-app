@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.11.0
+Stable tag: 1.12.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -43,6 +43,34 @@ for a value you have not filled in yet: `[ezbizi key="phone" default="Call us"]`
 
 The list is not hardcoded. It comes from your EzBizi account, so a field added
 there starts working here without updating this plugin.
+
+= Five that render more than a line of text =
+
+These take your values and lay them out for you:
+
+* `[ezbizi_social_links]` — every social and directory link you have filled in,
+  as a row of icons. Networks you have not filled in are left out.
+* `[ezbizi_google_map]` — a map of where the business is, drawn from the
+  latitude and longitude in EzBizi. No Google API key is needed. If you have
+  not set coordinates it shows a link to your Google listing instead.
+* `[ezbizi_hours_table]` — your opening hours as a table, one row per day, with
+  today marked. If your hours are written as a sentence rather than set on the
+  grid, it prints the sentence, exactly as `[ezbizi_hours]` does.
+* `[ezbizi_city_list]` — the towns you have pages for, linked, grouped by the
+  group label you gave each page.
+* `[ezbizi_post_title]` — the title of the page it is on, so one template can
+  head every town page with the name of that town.
+
+Each of them accepts one setting, the name of a preset:
+
+    [ezbizi_social_links preset="footer"]
+
+A preset is a named bundle of sizes and spacing, set up in EzBizi under **Web
+Management → Marketing → Widgets**, so a company with several websites sets its
+icon size once. Leave the name out for the default. A name that does not exist
+falls back to the default, so a typo in a footer never blanks the footer.
+
+All five are also Elementor widgets. Search "EzBizi" in the Elements panel.
 
 = Your site keeps working when ours does not =
 
@@ -105,6 +133,16 @@ neither sends anything until a visitor uses one. When a visitor does:
 
 If you switch both widgets off, none of the above happens and this plugin sends
 nothing about your visitors at all.
+
+**The map shortcode loads a map from Google, and only where you place it
+(added in 1.12.0).** `[ezbizi_google_map]` and the EzBizi Map Elementor widget
+embed Google Maps in a frame, so a page carrying one asks a visitor's browser
+to load that frame from Google — which means Google receives their IP address
+and whatever cookies they already hold for it, as it would on any site with a
+map. It uses the keyless embed, so no account or API key of ours is involved,
+and nothing about your visitor is sent to us. The only information in the
+address is the latitude and longitude you entered in EzBizi. A page without
+that shortcode on it loads nothing from Google.
 
 **What data is received:** Only the business details you entered in EzBizi for
 this site — company name, phone number, email, address, opening hours, licence
@@ -194,6 +232,25 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.12.0 =
+* Five new shortcodes, and an Elementor widget for each:
+  [ezbizi_social_links] for your social and directory links as a row of icons,
+  [ezbizi_google_map] for a map of where you are, [ezbizi_hours_table] for your
+  opening hours as a table with today marked, [ezbizi_city_list] for the towns
+  you have pages for, and [ezbizi_post_title] for the title of the page it sits
+  on.
+* Each takes the name of a preset — `[ezbizi_social_links preset="footer"]` —
+  set up in EzBizi under Web Management > Marketing > Widgets. Sizes and
+  spacing are still edited in one place for every site you run. A preset name
+  that does not exist shows the default rather than nothing.
+* The map needs no Google API key, and no icons, fonts or scripts are loaded
+  from anywhere: everything the new widgets draw is in the plugin.
+* The hours table falls back to your hours line as written, so a site that
+  never used the hours grid is unchanged.
+* Supports the new Second phone number, Second email address, Leave-a-review
+  link, Latitude and Longitude fields, which appear in EzBizi under Web
+  Management.
 
 = 1.11.0 =
 * The live chat can now be limited to working hours. Set them in EzBizi

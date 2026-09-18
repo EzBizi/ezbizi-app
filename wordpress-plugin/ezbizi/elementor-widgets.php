@@ -1,9 +1,9 @@
 <?php
 /**
- * The two Elementor widget classes.
+ * The Elementor widget classes.
  *
  * Loaded from `elementor.php` only once Elementor has announced itself, because
- * both extend `\Elementor\Widget_Base` and a site without Elementor would
+ * they extend `\Elementor\Widget_Base` and a site without Elementor would
  * fatal on the class declaration alone.
  *
  * Each one renders the shortcode that already exists. That is on purpose: one
@@ -117,5 +117,204 @@ class EzBizi_Elementor_Chat extends EzBizi_Elementor_Widget {
         }
 
         echo ezbizi_chat_shortcode(array());
+    }
+}
+
+/**
+ * The widgets that render published values, and the one control they share.
+ *
+ * ── Why a preset NAME is the only control ──
+ *
+ * The presets are the styling, and they live in EzBizi so that a company with
+ * six subdomains sets its icon size once. A size control here would be a
+ * second place to set the same thing, disagreeing with the first, on the one
+ * page somebody edited — which is the arrangement `elementor.php` was written
+ * to avoid. A name is not a value: it points at the bundle, and the bundle is
+ * still edited in one place and still reaches every site at once.
+ *
+ * Leaving it empty is the normal case and resolves to the default, so the
+ * widget draws the moment it is dropped on the canvas.
+ */
+abstract class EzBizi_Elementor_Preset_Widget extends EzBizi_Elementor_Widget {
+    /** The shortcode this widget is a face for. */
+    abstract protected function ezbizi_draw($preset);
+
+    protected function register_controls() {
+        $this->start_controls_section('ezbizi_preset_section', array(
+            'label' => esc_html__('EzBizi', 'ezbizi'),
+        ));
+
+        $this->add_control('ezbizi_preset', array(
+            'label' => esc_html__('Preset', 'ezbizi'),
+            'type' => \Elementor\Controls_Manager::TEXT,
+            'placeholder' => 'default',
+            'description' => esc_html__(
+                'The name of a preset set up in EzBizi, under Web Management → Marketing → Widgets. Leave it empty for the default. A name that does not exist falls back to the default rather than showing nothing.',
+                'ezbizi'
+            ),
+        ));
+
+        $this->end_controls_section();
+    }
+
+    protected function render() {
+        if (ezbizi_in_elementor_editor()) {
+            echo ezbizi_elementor_placeholder($this->get_title());
+
+            return;
+        }
+
+        $settings = $this->get_settings_for_display();
+        $preset = isset($settings['ezbizi_preset']) && is_string($settings['ezbizi_preset'])
+            ? $settings['ezbizi_preset']
+            : '';
+
+        // The shortcodes escape everything they print; see widgets.php.
+        echo $this->ezbizi_draw($preset);
+    }
+}
+
+/** The row of social links. */
+class EzBizi_Elementor_Social_Links extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-social-links';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Social Links', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-social-icons';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('social', 'icons', 'facebook', 'instagram'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_social_links_shortcode(array('preset' => $preset));
+    }
+}
+
+/** The map of where the business is. */
+class EzBizi_Elementor_Google_Map extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-google-map';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Map', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-google-maps';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('map', 'google maps', 'location', 'address'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_google_map_shortcode(array('preset' => $preset));
+    }
+}
+
+/** The week, as a table. */
+class EzBizi_Elementor_Hours_Table extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-hours-table';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Hours Table', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-table';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('hours', 'opening hours', 'schedule', 'table'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_hours_table_shortcode(array('preset' => $preset));
+    }
+}
+
+/** The towns this site has pages for. */
+class EzBizi_Elementor_City_List extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-city-list';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi City List', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-bullet-list';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('cities', 'towns', 'service area', 'locations'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_city_list_shortcode(array('preset' => $preset));
+    }
+}
+
+/**
+ * This page's own title.
+ *
+ * The one widget with no preset, because it has no presentation to bundle: it
+ * renders a heading's worth of text and the page styles it. A preset control
+ * that resolved to nothing would be a box somebody fills in and then wonders
+ * about, so it gets the notice instead.
+ */
+class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
+    public function get_name() {
+        return 'ezbizi-post-title';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Page Title', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-post-title';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('title', 'page title', 'heading'));
+    }
+
+    protected function register_controls() {
+        $this->start_controls_section('ezbizi_where', array(
+            'label' => esc_html__('EzBizi', 'ezbizi'),
+        ));
+
+        $this->add_control('ezbizi_notice', array(
+            'type' => \Elementor\Controls_Manager::RAW_HTML,
+            'raw' => esc_html__(
+                'Shows the title of the page it is placed on, so one template can head every town page with its own name. There is nothing to configure.',
+                'ezbizi'
+            ),
+            'content_classes' => 'elementor-descriptor',
+        ));
+
+        $this->end_controls_section();
+    }
+
+    protected function render() {
+        if (ezbizi_in_elementor_editor()) {
+            echo ezbizi_elementor_placeholder(esc_html__('EzBizi Page Title', 'ezbizi'));
+
+            return;
+        }
+
+        echo ezbizi_post_title_shortcode(array());
     }
 }

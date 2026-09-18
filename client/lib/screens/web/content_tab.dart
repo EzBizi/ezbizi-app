@@ -92,8 +92,20 @@ class _SiteContentListState extends State<SiteContentList> {
           .cast<Map<String, dynamic>>();
       _total = (response.body['total'] as num?)?.toInt() ?? 0;
       _pages = (response.body['pages'] as num?)?.toInt() ?? 0;
+      _movedToCities =
+          (response.body['moved_to_cities'] as num?)?.toInt() ?? 0;
     });
   }
+
+  /// How many rows of THIS batch went to the Cities pane instead.
+  ///
+  /// Said out loud because the alternative is somebody counting. Most city
+  /// pages never reach here at all — WordPress excludes them by author, so
+  /// they are not in the total either — and this covers the other way of being
+  /// one: a page she typed a city onto that the brand account authored. A
+  /// batch of fifty arriving as forty-eight with nothing to explain it is the
+  /// kind of thing that gets reported as a bug.
+  int _movedToCities = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -151,6 +163,17 @@ class _SiteContentListState extends State<SiteContentList> {
             ],
           ),
         ),
+        if (_movedToCities > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              _movedToCities == 1
+                  ? '1 city page on this list is in Cities instead.'
+                  : '$_movedToCities city pages on this list are in Cities '
+                      'instead.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
         const Divider(height: 1),
         Expanded(
           child: AsyncBody(

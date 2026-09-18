@@ -17,6 +17,9 @@ namespace Elementor {
 
         public $ezbizi_sections = [];
 
+        /** What the page author typed into the controls, as Elementor hands it back. */
+        public $ezbizi_settings = [];
+
         public function start_controls_section($id, $args = [])
         {
             $this->ezbizi_sections[$id] = $args;
@@ -49,11 +52,22 @@ namespace Elementor {
         {
             return [];
         }
+
+        public function get_settings_for_display($key = null)
+        {
+            if ($key === null) {
+                return $this->ezbizi_settings;
+            }
+
+            return $this->ezbizi_settings[$key] ?? null;
+        }
     }
 
     class Controls_Manager
     {
         const RAW_HTML = 'raw_html';
+
+        const TEXT = 'text';
     }
 
     /** `Plugin::$instance->editor->is_edit_mode()` and nothing else. */
