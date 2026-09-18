@@ -8,7 +8,8 @@
 | Where it is drawn | Inside Marketing, via `ModuleDefinition::$parent`. It is **not** a part of Marketing the way Newsletter and Social Media Management are — those have no permission of their own. Somebody with `leads.view` and nothing else in Marketing gets this tab and no Newsletter. |
 | Google product | Google Ads API |
 | Host | `googleads.googleapis.com` |
-| Access | **Basic Access — APPROVED 3 September 2026.** Standard Access applied 2026-09-08 (case 3-8972000040872), **DENIED 2026-09-09**: reserved for integrations regularly exceeding 15,000/day with RESOURCE_EXHAUSTED errors; reapply when the box logs them |
+| Access | **Basic Access — APPROVED 3 September 2026.** Standard Access **applied twice**: case 3-8972000040872 on 2026-09-08, **DENIED 2026-09-09** (reserved for integrations regularly exceeding 15,000/day with RESOURCE_EXHAUSTED errors — which the box then did, for four hours on 2026-09-16); reapplied, **case 9-3038000041842 OPEN**, our RMF correction the last word on the thread. The thread lives in `development@ezbizi.com`, not Jose's inbox — it is why this looked unapplied-for once |
+| OAuth scope verification | **`.../auth/adwords` APPROVED 18 September 2026** by Google's Third Party Data Safety team, on project `ezbizi-506117`. Filed 2026-09-16 with the second demo video. Two conditions ride with it: a change to the OAuth consent screen configuration requires a NEW request, and the verification is not inheritable by a new sensitive scope. Separate from the Standard Access track below — this one is about the consent screen, that one about the developer token's quota |
 | API contact email | google-ads-api@ezbizi.com, an alias of development@ezbizi.com, set in the API Center 2026-09-09 at Google's request for a role-based address |
 | Quota | 15,000 operations/day |
 | Permissible use | Reporting; one write, a person's reply to a text enquiry (see §7) |
