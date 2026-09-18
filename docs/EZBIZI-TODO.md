@@ -142,7 +142,9 @@ org `ezbizi.com` / `940564858837`). Keys go on the box `.env`, never in the repo
 **Left to do:**
 
 - GBP API quota — https://support.google.com/business/contact/api_default, select
-  **"Application for Basic API Access"**. On or after **2026-10-24** (#30).
+  **"Application for Basic API Access"**. ALREADY FILED 3 Sept 2026, case
+  `6-2027000041783` — these steps are for a RE-file if it is rejected on profile
+  age, which the 60-day rule permits from **2026-10-24** (#30).
 - Two OAuth clients — https://console.cloud.google.com/auth/clients?project=ezbizi-506117 (#33).
 - Associate the developer token with the project: one Ads API call using OAuth credentials from
   `ezbizi-506117`. Success or failure does not matter, only that the call is made (#31).
