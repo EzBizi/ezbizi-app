@@ -240,6 +240,28 @@ list — the values half has already succeeded by then.
 `web_values`, its shape, its contents, and `PageEditor`. Toula's 8,956 rows are
 read, never rewritten. Pages keeps its live WordPress read; it just filters.
 
+### Inserting a section into an index-tracked strip
+
+`seo_tab.dart` holds the selected section as an **int** (`_section`, `:207`) and
+derives the key from it (`_sectionKey`, `:209`). Cities goes in at position four,
+so every index after it shifts — and the sections list is rebuilt whenever a
+different site is selected (`:152`), with only a `_section >= length` guard
+(`:164`). Somebody sitting on Posts who switches site would land on Cities.
+
+So the insertion also changes `_section` to be **re-resolved by key** after a
+reload: remember `_sectionKey` across the rebuild and find it again, falling back
+to zero when it is genuinely gone. This is the trap in Settings' standing
+broadcast (`docs/agents/inbox/0051`, "a screen that tracks the selected tab by
+index is already broken once you filter the list") one level down, in a strip of
+panes rather than tabs. It is a real defect today, not one this adds — a site
+with different page fields already rebuilds the strip — and the fix belongs in
+the commit that makes the strip longer.
+
+No new permission key. Cities is a pane of SEO, and the same broadcast is
+explicit that declaring a key per pane produces a roles editor nobody can read.
+Web Management's two tabs (`seo`, `widgets`) are already declared in
+`ModuleServiceProvider:1462-1465`.
+
 ### Files
 
 New: `app/Support/Web/PageKinds.php`, a controller method for the cities read,

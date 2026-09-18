@@ -564,10 +564,14 @@ remove the directory.
 
 ## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
 
-Measured on the box, 2026-09-17:
+Measured on the box, **2026-09-18**:
 
-    plugin_version 1.9.1   110 sites, all seen in the last 30 minutes
-    plugin_version 1.10.0    0 sites
+    plugin_version 1.11.0   110 sites, 109 seen in the last 15 minutes
+    never read                1 site
+
+The day before it read 1.9.1 on 110 and 1.10.0 on zero, so the estate moved two
+releases in a day. It moved because we HOST these sites; the capability argument
+below is about a customer's own server, and is unchanged.
 
     service_capabilities, identical on all 110:
       read, upload_files, edit_posts, edit_published_posts, publish_posts,
@@ -580,17 +584,21 @@ and the absence is a design property rather than a gap to fill: an integration
 that can install code on 110 businesses' websites is a different and much
 larger thing than one that can edit their pages.
 
-1.10.0 is published on wordpress.org (slug `ezbizi`). The plugin sets no
-`auto_update_plugin` filter, so each site sees it at its own next version check
-and installs it only if that site has auto-updates on; the rest need somebody to
-press Update.
+**1.10.0** is what wordpress.org publishes (slug `ezbizi`, added 2026-08-31, 100
+active installs, asked of api.wordpress.org on 2026-09-18). The repo is at
+1.11.0, so **the directory is one release behind us** and anybody installing
+from it gets no chat working hours. The plugin sets no `auto_update_plugin`
+filter, so each site sees a new version at its own next check and installs it
+only if that site has auto-updates on; the rest need somebody to press Update.
 
 **THE HALF-SHIPPED STATE THAT FOLLOWS.** The two halves of a feature ship
 through two different channels at two different speeds. 6bd90848 put City link,
 State link and Website address into EzBizi and went live in 0.0.0237 within the
-hour; 1.10.0 is what RENDERS them and is on zero sites. So the fields are
-fillable today and do nothing on any customer site, and "those three fields are
-back" is true of our side only.
+hour; 1.10.0 is what RENDERS them, and on 2026-09-17 it was on zero sites — the
+fields were fillable and did nothing anywhere. The next day the estate was on
+1.11.0 and both of those, plus the chat hours, render. **The lesson survives the
+example:** which half is live is a measurement, not an inference, and the two
+halves can sit apart for a day or for a month depending on who owns the server.
 
 Before saying a web feature is live, ask which half you measured. `web_sites`
 answers it directly:
