@@ -52,6 +52,31 @@ final class WidgetPresets
     public const DEFAULT = 'default';
 
     /**
+     * Names the plugin has already taken as shortcodes of its own.
+     *
+     * The plugin registers `[ezbizi_city_list]` and its four siblings from
+     * `widgets.php`, and THEN walks the field catalogue registering
+     * `[ezbizi_<key>]` for every key this server sends. The second loop wins.
+     * So a field added here called `city_list` would not clash loudly — it
+     * would quietly turn a rendered list of towns into a plain string on 110
+     * websites, and the only symptom is somebody's footer going flat.
+     *
+     * `post_title` is in the list although it carries no preset: it is a
+     * shortcode the plugin owns, which is what makes it collidable.
+     *
+     * Kept here rather than in `SeoFields` because it is a fact about the
+     * PLUGIN, and `SeoFields` is the file somebody edits while thinking about
+     * fields. `WebManagementTest` asserts the two sets stay disjoint.
+     */
+    public const PLUGIN_OWNED_SHORTCODES = [
+        'social_links',
+        'city_list',
+        'hours_table',
+        'google_map',
+        'post_title',
+    ];
+
+    /**
      * What each widget looks like before anybody names a preset, and the only
      * keys a stored preset may carry.
      *
