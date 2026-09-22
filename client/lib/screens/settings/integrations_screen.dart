@@ -454,7 +454,15 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                 children: [
                   SocialNetworkMark(network: provider, size: 28),
                   const Spacer(),
-                  _pill(theme, rows: rows, broken: broken),
+                  // Flexible, because the pill is the only thing on this card
+                  // that can grow. Its three labels fit English comfortably in
+                  // a 240pt card -- about 66pt of slack on the longest -- and
+                  // that slack is the ONLY thing preventing an overflow. A
+                  // fourth status word, or the same words in another language,
+                  // spends it with no warning: a RenderFlex overflow is a
+                  // paint-time exception, so nothing that merely reads the
+                  // text would notice.
+                  Flexible(child: _pill(theme, rows: rows, broken: broken)),
                 ],
               ),
               const SizedBox(height: 10),
@@ -534,6 +542,8 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: theme.textTheme.labelSmall?.copyWith(color: colour),
       ),
     );
