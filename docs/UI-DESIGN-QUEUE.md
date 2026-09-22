@@ -2899,6 +2899,50 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### SETTLED RULE · A colour earns a name at the SECOND site, not the first
+
+Written 2026-09-22 after `theme_conventions_test` went red at 36 literals against a baseline of 31.
+Reading what they were is the whole argument:
+
+    hr/work_hours_tab       0xFF1A7F37   on the clock
+    email/settings_tab      0xFF188038   already named `okColor` in the file
+    widgets/incoming_call   0xFF1B873F   the Accept button
+
+**Three sessions independently needed "this is working" and each wrote a different green**, because
+`ColorScheme` hands out `error` and nothing for its opposite. That is a missing role, and it is now
+`StateColour` in `theme.dart` with exactly two members — `on` and `caution` — whose light values
+are the ones already in the tree rather than new ones.
+
+**The rule the three of us converged on, and it cuts both ways:**
+
+> A role with ONE member is a slot that describes one widget rather than an idea. A role with THREE
+> spellings is a name that was needed and never given. The second site is where it turns over.
+
+Phone's words for the first half, declining a slot for their own button. Two live applications:
+
+- **The Decline red in `incoming_call_popup` stays a literal.** Phone went looking for its role and
+  found the better question: there are **six call-ending controls in the product and theirs is the
+  only painted one** (`call_tab:983`, `:1494`, `:2125`, the bar's Decline and Hang up, and the
+  pop-up's Ignore). So the question is not which role the red is, it is why one of six is painted
+  — and the answer holds: the pop-up is the only surface where both choices are symmetric and
+  demanded at once, so the colour does the work of a two-second glance. **If a second call-ending
+  control is ever painted, that is the second site, and it wants one deliberate pass over all six
+  rather than a colour for whichever was touched most recently.**
+- **The verified-sender blue in `email/message_list` stays a literal.** One site, and "do we trust
+  this claim" is a different idea from "what state is this thing in". If Phone or Leads ever draws
+  *this number is verified*, that is the second site and the slot pays for itself.
+
+> **AND THE COLOUR WAS THE SMALLER HALF OF THAT ONE.** `_VerifiedDot` drew its ring with
+> `Colors.white` — a white halo on the dark theme's surface, whatever the theme said. Found by
+> Email while answering a question about drift. **A single instance never shows up as drift,
+> because a ratchet counts instances**: the count was right and the screen was wrong. Fixed to read
+> `colorScheme.surface`; the check inside stays white because it sits on the blue, which does not
+> change with the theme.
+
+**Why a counting ratchet beat a rule.** A rule saying "read colours from the theme" had been in
+`DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
+up could only be answered — Phone's sentence: *a rule would have been argued with.*
+
 ### 23 · Settings · Integrations, as cards — **DRAWN, awaiting Jose**
 
 `docs/previews/integrations-layouts.html`. Jose, 2026-09-22:
