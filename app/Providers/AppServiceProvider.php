@@ -3,9 +3,10 @@
 namespace App\Providers;
 
 use App\Models\ApiToken;
-use App\Observers\JobThumbtackObserver;
-use App\Models\Job;
 use App\Models\InspectionReport;
+use App\Models\Job;
+use App\Models\Lead;
+use App\Observers\JobThumbtackObserver;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
 use App\Services\Leads\ThumbtackLeads;
@@ -13,10 +14,13 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Files\Attachables;
 use App\Support\Leads\LeadReplies;
+use App\Support\Leads\LeadThread;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Phone\HttpTwilioGateway;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Social\MetaMessageReplies;
+use App\Support\Social\MetaMessages;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteChatReplies;
@@ -67,11 +71,38 @@ class AppServiceProvider extends ServiceProvider
          * easier to compare one above the other. The tag is what the
          * controller reads, so neither module learns the other's name.
          */
+        /*
+         * Meta's two are bound by NAME rather than tagged by class, because
+         * `MetaMessageReplies` takes its source as a constructor argument -
+         * one class answering for Messenger and Instagram so the 24-hour rule
+         * cannot drift between them. The container cannot build that from a
+         * bare class name, so each source gets a binding and both are tagged.
+         */
+        $this->app->bind(
+            'lead-reply-channel.facebook',
+            fn ($app) => new MetaMessageReplies(
+                Lead::SOURCE_FACEBOOK,
+                $app->make(MetaMessages::class),
+                $app->make(LeadThread::class),
+            ),
+        );
+
+        $this->app->bind(
+            'lead-reply-channel.instagram',
+            fn ($app) => new MetaMessageReplies(
+                Lead::SOURCE_INSTAGRAM,
+                $app->make(MetaMessages::class),
+                $app->make(LeadThread::class),
+            ),
+        );
+
         $this->app->tag(
             [
                 LocalServicesLeads::class,
                 ThumbtackLeads::class,
                 WebsiteChatReplies::class,
+                'lead-reply-channel.facebook',
+                'lead-reply-channel.instagram',
             ],
             LeadReplies::TAG,
         );

@@ -171,6 +171,11 @@ return [
         'whatsapp_token' => env('META_WHATSAPP_TOKEN'),
         'whatsapp_verify_token' => env('META_WHATSAPP_VERIFY_TOKEN'),
 
+        // Messenger and Instagram Direct share one webhook and therefore one
+        // verify token. Separate from WhatsApp's on purpose: rotating one
+        // subscription must not silently break the other.
+        'messages_verify_token' => env('META_MESSAGES_VERIFY_TOKEN'),
+
         'threads_id' => env('META_THREADS_APP_ID'),
         'threads_secret' => env('META_THREADS_APP_SECRET'),
         'threads_redirect' => env('META_THREADS_REDIRECT_URI')

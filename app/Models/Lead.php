@@ -56,6 +56,23 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_WEBSITE_FORM = 'website_form';
 
     /**
+     * A message sent to the business's Facebook Page, and to its Instagram.
+     *
+     * Two sources rather than one, for the same reason chat and form are two:
+     * they are different inboxes to the person answering. A Page message and an
+     * Instagram DM arrive from different audiences, are answered in different
+     * tones, and a business that has one may not have the other - so a single
+     * "social" chip would hide which of the two somebody is actually reading.
+     *
+     * They arrive THROUGH a connected account, so both are in
+     * SOURCES_VIA_CONNECTION: losing the connection row is a fact about the
+     * enquiries and not only about the account.
+     */
+    public const SOURCE_FACEBOOK = 'facebook';
+
+    public const SOURCE_INSTAGRAM = 'instagram';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -71,6 +88,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCES_VIA_CONNECTION = [
         self::SOURCE_LOCAL_SERVICES,
         self::SOURCE_THUMBTACK,
+        self::SOURCE_FACEBOOK,
+        self::SOURCE_INSTAGRAM,
     ];
 
     /**
@@ -168,6 +187,8 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_THUMBTACK,
         self::SOURCE_WEBSITE_CHAT,
         self::SOURCE_WEBSITE_FORM,
+        self::SOURCE_FACEBOOK,
+        self::SOURCE_INSTAGRAM,
     ];
 
     /**

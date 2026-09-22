@@ -114,6 +114,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
+    ('facebook', 'Messenger'),
+    ('instagram', 'Instagram'),
   ];
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
@@ -126,6 +128,11 @@ class _LeadsScreenState extends State<LeadsScreen> {
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
+    // Messenger and Instagram have no Material glyph of their own, and a
+    // wrong-brand icon reads worse than a generic one. These say "a message"
+    // and "a photo account" rather than pretending to be the logos.
+    Icons.forum_outlined,
+    Icons.camera_alt_outlined,
   ];
 
   /// The sources this person was granted, with their icons - Jose,

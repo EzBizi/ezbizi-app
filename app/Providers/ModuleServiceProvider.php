@@ -2066,6 +2066,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
+                    new TabDefinition('facebook', 'Messenger'),
+                    new TabDefinition('instagram', 'Instagram'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
