@@ -646,8 +646,22 @@ class PlatformMailTest extends TestCase
         // apologised for.
         Mail::assertSentCount(3);
 
-        // And the way out is named, because a cap with no remedy is a dead end.
-        $this->assertStringContainsString('its own mail server', $refused->getMessage());
+        /*
+         * The way out is named AND it is one that exists. This used to require
+         * the sentence "its own mail server", which pointed at the Settings
+         * card — and on 2026-09-22 that turned out to be advice to spend a
+         * password on nothing: every sender moved to platformForTenant on
+         * 2026-09-16 and NOTHING calls throughTenantProvider, so connecting a
+         * server does not raise this cap by one message.
+         *
+         * So the assertion is now both halves. Waiting is named, because a cap
+         * with no remedy is a dead end. And the card is named as something the
+         * message must NOT send them to, which is the half that would have
+         * caught the old sentence: a test that only reads "is a remedy named"
+         * passes just as happily when the named remedy is imaginary.
+         */
+        $this->assertStringContainsString('next hour', $refused->getMessage());
+        $this->assertStringNotContainsString('mail server', $refused->getMessage());
     }
 
     public function test_the_cap_fires_on_the_cache_store_production_actually_runs(): void

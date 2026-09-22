@@ -297,10 +297,18 @@ class MailDispatcher
 
         if ($sent > $allowance) {
             throw new CannotSendMail(sprintf(
+                /*
+                 * The third sentence used to say a business that emails a lot
+                 * should connect its own mail server under Settings. That was
+                 * advice to spend a password on nothing: since 2026-09-16
+                 * every sender here uses platformForTenant and NOTHING calls
+                 * throughTenantProvider, so connecting one does not raise this
+                 * cap by a single message. Removed rather than reworded — the
+                 * only honest instruction today is to wait or send fewer.
+                 */
                 'This business has sent %d automated emails in the last hour, which is the '
                 .'most EzBizi sends on its own address for one business. Nothing was sent. '
-                .'Automations that email a lot of people need the business to have its own '
-                .'mail server connected under Settings, Mail server for sending.',
+                .'Sending starts again at the top of the next hour.',
                 $allowance,
             ));
         }

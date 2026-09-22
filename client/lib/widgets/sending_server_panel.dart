@@ -7,10 +7,13 @@ import '../widgets/search_picker.dart';
 
 /// Where a business connects the mail server its own mail goes out through.
 ///
-/// Saved reports, inspection reports and automations that email somebody leave
-/// through this. EzBizi's own transport carries signing in, password resets and
-/// joining messages, and only those — Jose's ruling of 2026-09-14, which is why
-/// this screen exists at all and why the one it replaced was deleted.
+/// Jose's ruling of 2026-09-14 is why this screen exists at all and why the one
+/// it replaced was deleted. His ruling of 2026-09-16 — "Email ( the Ezbizi SES
+/// one, not the company one )" — then moved reports and automations onto
+/// EzBizi's own SES, and NOTHING has called
+/// `MailDispatcher::throughTenantProvider` since. So this card stores a mail
+/// server that nothing sends through. Its copy said otherwise until 2026-09-22;
+/// see `purpose` below.
 ///
 /// ── NOT the sending-identity panel ──────────────────────────────
 ///
@@ -69,13 +72,26 @@ class SendingServerPanel extends StatefulWidget {
 
   static const String heading = 'Mail server for sending';
 
+  /// MEASURED, 2026-09-22, and it used to say the opposite.
+  ///
+  /// This read "Saved reports, inspection reports and automations that email
+  /// somebody go out through this", which was true the day it shipped and
+  /// stopped being true on 2026-09-16 when Jose moved that traffic onto
+  /// EzBizi's own SES. Nothing calls `MailDispatcher::throughTenantProvider`
+  /// any more — grep it, the only hits are its own definition and comments
+  /// about it — so a business could type its mail server password in here and
+  /// be told its reports leave through it while every one of them left from
+  /// ezbizi.com. The copy is what changed under the feature, not the feature.
   static const String purpose =
-      'Saved reports, inspection reports and automations that email somebody go '
-      'out through this. Signing in, password resets and joining messages '
-      'always come from EzBizi.';
+      'Nothing sends through this yet. Saved reports, inspection reports and '
+      'automations all go out from EzBizi at the moment, and so do signing in, '
+      'password resets and joining messages.';
 
-  static const String nothingConnected =
-      'Nothing is connected, so these are not going out.';
+  /// No consequence clause, because there is no consequence. Connecting a
+  /// server here changes nothing that is sent today, so a line claiming mail
+  /// is held back by its absence would be the same false claim as the one
+  /// above, phrased as an empty state.
+  static const String nothingConnected = 'Nothing is connected.';
 
   /// Does the search box on the settings screen match this card?
   static bool matchesSearch(String term) {

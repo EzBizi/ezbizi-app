@@ -34,8 +34,8 @@ void main() {
         /*
          * THE distinguishing state. "No row at this scope" and "nothing is
          * sending" are different facts, and a card that rounds the first into
-         * the second tells a branch its reports are not going out while its
-         * company is sending them perfectly well.
+         * the second tells a branch nothing is set up for it while its company
+         * has a server set up that covers it.
          *
          * It is also the state a null check alone gets wrong: connected_here is
          * null in BOTH cases.
@@ -207,8 +207,8 @@ void main() {
        * draws no provenance row at all, and every path that DOES draw one has a
        * source to name. Both shapes are fed a null source_name here so that the
        * day somebody adds a provenance row to the empty state, this goes red
-       * rather than the sentence quietly appearing above "Nothing is connected,
-       * so these are not going out" and contradicting it.
+       * rather than the sentence quietly appearing above "Nothing is
+       * connected" and contradicting it.
        */
       await _pump(tester, connectedHere: null, inEffect: _platform());
 
