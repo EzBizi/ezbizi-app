@@ -2899,7 +2899,7 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
-### SETTLED RULE · A colour earns a name at the SECOND site, not the first
+### SETTLED RULE · A colour earns a name at the first DISAGREEMENT, not the second site
 
 Written 2026-09-22 after `theme_conventions_test` went red at 36 literals against a baseline of 31.
 Reading what they were is the whole argument:
@@ -2916,7 +2916,22 @@ are the ones already in the tree rather than new ones.
 **The rule the three of us converged on, and it cuts both ways:**
 
 > A role with ONE member is a slot that describes one widget rather than an idea. A role with THREE
-> spellings is a name that was needed and never given. The second site is where it turns over.
+> spellings is a name that was needed and never given.
+
+**The first draft of this rule said "the second SITE", and Email corrected it with my own case:
+that is not what happened here.** There were already three sites and no name, and the thing that
+forced it was that the three spellings **disagreed**. So:
+
+> **The trigger is the first DISAGREEMENT, not the count.** Two sites sharing one literal are
+> invisible and fine — nothing is going wrong yet. Two that spell the same idea differently are
+> loud, because the disagreement is the proof that the idea exists and has no home. One site cannot
+> disagree with anything, which is why a lone literal never qualifies however obviously
+> "semantic" it looks.
+
+Applied literally, "second site" would mint a role the moment a second widget copies the first
+one's hex — which is the case that least needs one. **The corrected rule yields the same three
+answers as the decisions already taken below**, which is the evidence it describes what was done
+rather than a new policy invented afterwards.
 
 Phone's words for the first half, declining a slot for their own button. Two live applications:
 
