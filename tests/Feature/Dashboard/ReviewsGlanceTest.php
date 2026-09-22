@@ -184,19 +184,32 @@ class ReviewsGlanceTest extends TestCase
 
         $points = $data['series'][0]['points'];
 
-        $this->assertCount(
-            4,
-            $points,
-            'the line must carry every week of the period, including the quiet ones - '
-            .'a dropped zero bucket changes no other number and no other assertion here sees it',
+        /*
+         * THE KEYS, NOT A COUNT - Customers' correction, 2026-09-22, and it is
+         * the better assertion.
+         *
+         * A count cannot say the axis STARTS at the period's start rather than
+         * at the first day that had data: four columns beginning a week late is
+         * still four columns. The labels can only be produced by zero-filling
+         * from the period's own start, and nothing supplies them as a fallback.
+         */
+        $this->assertSame(
+            ['2026-08-30', '2026-09-06', '2026-09-13', '2026-09-20'],
+            array_column($points, 'at'),
+            'the axis must begin at the period start and carry every week of it, '
+            .'including the quiet ones - a dropped or shifted bucket changes no '
+            .'other number and no other assertion here sees it',
         );
 
-        // And the quiet ones really are quiet rather than absent: exactly one
-        // column holds the row above, the other three are zeros.
+        /*
+         * And the VALUES, because an axis with the right labels and no zeros
+         * would otherwise pass. The quiet weeks are the whole point: three of
+         * the four had nothing, and each must still be a column.
+         */
         $this->assertSame(
-            [0, 0, 1],
-            [$points[0]['value'], $points[1]['value'], $points[3]['value']],
-            'three of the four weeks had nothing, and each must still be a column',
+            [0, 0, 0, 1],
+            array_column($points, 'value'),
+            'the three quiet weeks must be zeros rather than absent',
         );
     }
 
