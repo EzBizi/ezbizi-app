@@ -180,7 +180,7 @@ final class SendSavedReport
             }
 
             try {
-                $this->mail->platformForTenant($scope, new SavedReportMail($report, $result), $address);
+                $this->mail->platformForTenant($scope, new SavedReportMail($report, $result, (string) ($scope->name ?? '')), $address);
                 $sent[] = $address;
             } catch (CannotSendMail $e) {
                 // NOT a per-address problem: the business has no mail server of
