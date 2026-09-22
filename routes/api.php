@@ -146,6 +146,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
@@ -389,6 +390,17 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
 | delivery loses a customer's message, and Meta disables a subscription that
 | keeps failing.
 */
+/*
+ * Messenger and Instagram Direct, on one endpoint because Meta delivers both
+ * here and tells them apart with `object`. Unauthenticated and signature-
+ * checked, exactly like the WhatsApp pair below it.
+ */
+Route::get('v1/social/meta/messages/webhook', [MetaMessagesWebhookController::class, 'verify'])
+    ->name('social.meta.messages.verify');
+
+Route::post('v1/social/meta/messages/webhook', MetaMessagesWebhookController::class)
+    ->name('social.meta.messages.webhook');
+
 Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify'])
     ->middleware('throttle:60,1')
     ->name('social.whatsapp.verify');
@@ -1683,6 +1695,11 @@ Route::prefix('v1')
         // Pickup: what is ringing elsewhere, and taking one. {call} last, so
         // the literal paths above cannot be swallowed by the parameter.
         Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+
+        // Who a ringing number belongs to, for the incoming pop-up. Asked by
+        // the app SHELL rather than by Communication, because the pop-up
+        // appears on top of whatever module is open.
+        Route::get('phone/caller', [PhoneCallsController::class, 'caller']);
         Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live']);
         Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
 

@@ -46,6 +46,7 @@ import 'widgets/scope_switcher.dart';
 import 'widgets/user_avatar.dart';
 import 'widgets/availability_button.dart';
 import 'widgets/incoming_call_bar.dart';
+import 'widgets/incoming_call_popup.dart';
 import 'core/phone_call_service.dart';
 import 'screens/phone/voice_view.dart';
 
@@ -165,6 +166,27 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * not a branding decision and does not belong to their employer.
        */
       themeMode: EzBiziTheme.modeFor(_session.me?.theme ?? 'system'),
+
+      /*
+       * The incoming-call window, above every screen in the app.
+       *
+       * `builder` rather than a Stack inside the shell's Scaffold, because a
+       * ringing phone is not a property of one screen: somebody on the sign-in
+       * screen has nobody to ring, but somebody reading a report, an
+       * inspection or a staff page does, and each of those is a different
+       * Scaffold. This is the one place above all of them.
+       *
+       * It draws nothing unless a call is actually ringing AND the person has
+       * switched it on — `phone.incoming_popup`, off by default. The strip in
+       * the shell is unaffected and appears either way; see IncomingCallPopup
+       * for why both exist.
+       */
+      builder: (context, child) => Stack(
+        children: [
+          ?child,
+          IncomingCallPopup(api: _api, session: _session),
+        ],
+      ),
       home: _home(),
     );
   }
