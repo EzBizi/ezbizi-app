@@ -261,11 +261,46 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                 ),
               ),
             )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              itemCount: _automations.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, i) => _row(context, _automations[i]),
+          : LayoutBuilder(
+              // CARDS ACROSS, NOT ONE PER LINE. Jose, 2026-09-22: "i would also
+              // like to see the current automations in card format too, so i
+              // can see more at the same time." A full-width row on a 27-inch
+              // screen spent about a fifth of its width on the rule and the
+              // rest on nothing, so four rules filled a display that could show
+              // sixteen.
+              //
+              // The count comes from the WIDTH rather than from a breakpoint
+              // name: this pane sits beside a sidebar that opens and closes, so
+              // "desktop" is not one width here. 400 is where the name, its
+              // tags and the switch stop competing for the same line.
+              builder: (context, constraints) {
+                const target = 400.0;
+                const gap = 12.0;
+                const sides = 48.0;
+
+                final columns = ((constraints.maxWidth - sides) / target)
+                    .floor()
+                    .clamp(1, 4);
+
+                final width =
+                    (constraints.maxWidth - sides - (columns - 1) * gap) /
+                    columns;
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  child: Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      for (final automation in _automations)
+                        SizedBox(
+                          width: width,
+                          child: _row(context, automation),
+                        ),
+                    ],
+                  ),
+                );
+              },
             ),
     );
   }
@@ -289,14 +324,22 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
             Row(
               children: [
                 Expanded(
-                  child: Row(
+                  // A WRAP, NOT A ROW, since these cards became three abreast.
+                  // A Tag sizes to its own text and takes no part in a Row's
+                  // negotiation, so at card width a long place name pushed the
+                  // switch off the edge instead of ellipsising — the name was
+                  // Flexible and the tags beside it were not. Wrapping puts the
+                  // tags on their own line when they no longer fit, which is
+                  // the only outcome that keeps every one of them readable.
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 0,
+                    runSpacing: 4,
                     children: [
-                      Flexible(
-                        child: Text(
-                          automation['name'] as String,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                      Text(
+                        automation['name'] as String,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       Tag(live ? 'Live' : 'Off', warn: !live, good: live),
                       if (disabledReason != null)
