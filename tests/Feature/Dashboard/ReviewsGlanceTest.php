@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\ReviewsGlance;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -179,6 +180,23 @@ class ReviewsGlanceTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-09-22 12:00:00', 'America/New_York'));
 
         $this->review($this->alpha['franchise']);
+
+        /*
+         * THE WEEK START IS STATED HERE, NOT INHERITED.
+         *
+         * The axis below is hand-derived from a SUNDAY week start. Until now
+         * that half of the expectation came from the registry default and this
+         * test read as though it had chosen it. A neighbouring glance test
+         * asserting the same inherited premise failed once, alone, with its
+         * first column missing - precisely the axis a MONDAY start draws - and
+         * has not reproduced. Cause still open (see CustomersGlanceTest and
+         * 726768d0); ordering rules out a peer's test writing the setting.
+         *
+         * Pinning the input costs a line and makes the expectation depend on a
+         * value this test declares rather than one it borrows.
+         */
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('week_starts_on', $this->alpha['org'], 'sunday'));
 
         $data = $this->glance($this->alpha['admin']);
 
