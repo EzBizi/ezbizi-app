@@ -12,6 +12,7 @@ use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -54,6 +55,20 @@ class ReviewsGlanceTest extends TestCase
             'org' => $r['organization'], 'admin' => $r['administrator'],
             'company' => $r['company'], 'franchise' => $r['franchise'],
         ];
+    }
+
+    /**
+     * The frozen clock must not outlive the test that froze it.
+     *
+     * Without this, the bucket test's 22 September becomes "now" for every case
+     * that runs after it in this class, and a fixture written with now()->subDay()
+     * lands in a period the next test did not intend.
+     */
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function inTenant(callable $fn): mixed
@@ -125,6 +140,64 @@ class ReviewsGlanceTest extends TestCase
         return app(ReviewsGlance::class)
             ->resolve($user, DashboardPeriod::for($user), [])
             ->toArray()['data'];
+    }
+
+    /**
+     * The line has one column per period bucket, zeros included.
+     *
+     * ── The case every other assertion here is blind to ──────────────
+     *
+     * Raised by Dashboard and the deploy desk, 2026-09-22: this suite asserted
+     * the series was NOT EMPTY and never how long it was. A dropped bucket
+     * carrying the identity value - a zero - leaves assertNotEmpty true, moves
+     * no other number, and is invisible. It is also self-healing: one new row
+     * the next day shifts the series and a later correct write restores a green
+     * that never covered the gap.
+     *
+     * That is the case the buckets exist FOR. The docblock on emptyBuckets
+     * promises a quiet stretch still draws zeros, and a line going quiet is the
+     * thing somebody reads this box to see.
+     *
+     * ── Why the clock is frozen and the number is written out ────────
+     *
+     * The default period is the calendar MONTH, so the bucket count depends on
+     * today's date - which is why no fixed number could be asserted before. A
+     * frozen clock makes it fixed, and the expected count is derived here by
+     * hand rather than from the code, so this cannot pass by agreeing with the
+     * implementation it is checking:
+     *
+     *   period `month` runs 1 September to 22 September 2026
+     *   buckets are start-of-week (Sunday) dates for those days:
+     *     1-5 Sep  -> Sun 30 Aug
+     *     6-12 Sep -> Sun 6 Sep
+     *     13-19    -> Sun 13 Sep
+     *     20-22    -> Sun 20 Sep
+     *   = FOUR columns
+     */
+    public function test_the_series_draws_one_column_per_bucket_including_zeros(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-22 12:00:00', 'America/New_York'));
+
+        $this->review($this->alpha['franchise']);
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $points = $data['series'][0]['points'];
+
+        $this->assertCount(
+            4,
+            $points,
+            'the line must carry every week of the period, including the quiet ones - '
+            .'a dropped zero bucket changes no other number and no other assertion here sees it',
+        );
+
+        // And the quiet ones really are quiet rather than absent: exactly one
+        // column holds the row above, the other three are zeros.
+        $this->assertSame(
+            [0, 0, 1],
+            [$points[0]['value'], $points[1]['value'], $points[3]['value']],
+            'three of the four weeks had nothing, and each must still be a column',
+        );
     }
 
     /**
