@@ -2899,6 +2899,46 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### 23 · Settings · Integrations, as cards — **DRAWN, awaiting Jose**
+
+`docs/previews/integrations-layouts.html`. Jose, 2026-09-22:
+
+> *"I want to revamp the Integrations Screen, i'd like to have cards instead each with their own
+> screen for connections, etc, something like the second image as an example but with our style of
+> course. Remember to take into account org - company - franchise ownership, etc."*
+
+Announced by Settings before building it, which was the right call and the reason this is drawn
+rather than shipped: *"a grid of provider cards"* and *"a per-provider screen"* each name a NEW
+thing, so it is design by the test in this file, not craft.
+
+**THE CAUSE IS SMALLER THAN THE SYMPTOM, and it changes what these options cost.** The screen
+scrolls four pages because A1-Group has 53 Google Ads accounts, but what makes it *answer nothing*
+is that every row says the same words. `scopeWord` (`integrations_screen.dart:434`) maps a scope
+TYPE to a phrase — "this company", "this branch". **The identity never reaches the client at
+all**: `SocialConnectionsController:92` already sends `scope_id` and `_Connection.fromJson` drops
+it. So "grouped by named company" is one field in a parser and no server change. `last_reached_at`
+is sent and dropped the same way.
+
+**THE STATUS LINE IS THE REAL DECISION, NOT THE CARD SHAPE.** Settings proposed *"53 connected"*.
+That is a count with no subject — the same failure as "this company", one level up — and
+nobody opens this screen to be told things work. `status`, `status_reason` and `last_reached_at`
+are all on the wire, so a card can say **"1 of 53 needs attention"**, which is the question people
+arrive with. Every option leads with what is wrong when anything is, and falls back to the plain
+count when nothing is.
+
+**Five states on the switcher, because a layout that only reads at "53, all fine" is a layout for
+one afternoon:** 53 healthy · 1 of 53 broken · nothing connected · a branch-level
+reader · one of each.
+
+**Desktop 3 is deliberately not a card grid.** This screen's own docblock says it exists because
+*"what is this company connected to"* was not answerable. Cards-by-provider answer *"who uses
+Google Ads"*. Those are different questions and only one is the written one, so option 3 groups by
+PLACE and lets him see both readings before choosing.
+
+> **NOT SETTLED, AND SETTINGS OWNS IT:** which scopes may hold which provider, and what a
+> branch-level reader may see of a company-level connection. State **D** draws a guess (a branch
+> reader sees only their own). If the rule differs, the drawing changes and the layout does not.
+
 ### 22 · App-wide · Popup dropdowns → search pickers — **DONE, AND PINNED AT ZERO**
 
 Jose, 2026-09-17, on a twelve-name person dropdown running off the bottom of the window:
