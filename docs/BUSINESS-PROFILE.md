@@ -183,6 +183,57 @@ acknowledgement for this case either — only the confirmation screen. So the
 quota page above is the instrument to re-read, not the inbox, and the inbox
 search is the second check rather than the first.
 
+## 9b · GOOGLE ANSWERED, 22 September 2026 — REJECTED on the 60-day rule
+
+Two replies, and between them they settle every open question in §9a and
+overturn the conclusion I had drawn there.
+
+**The verdict, from the Google Business Profile API Team, verbatim in
+substance:** *"we are unable to proceed with your application for Basic API
+Access because the eligibility criteria have not been fully met. Specifically,
+the email address used to submit the application must belong to an Owner or
+Manager of a business listing that has been verified for at least 60 days."*
+Two mandatory requirements are then named: a **verified listing over 60 days
+old**, and a **working website on its own unique domain whose URL exactly
+matches the URL displayed on the Business Profile**. We are invited to submit
+a new allowlist request once the listing has been verified for 60 days.
+
+**And a second reply, from GBP API support (Kona), answering the chase:**
+*"your allowlist request is currently queued … we cannot provide a specific
+estimated completion time … we kindly ask … that you refrain from submitting
+additional allowlist inquiries, as duplicate requests can lead to further
+delays."*
+
+### I was wrong, and the file said so in writing
+
+§9a concluded that the missing confirmation email meant *"the application is
+not in the queue, whatever the confirmation SCREEN said"*, and the
+recommendation that followed was to re-file at once. **Both are wrong.** The
+application registered, a human reviewed it, and it was refused on its merits.
+Google never sent an acknowledgement and still processed it, so the inference
+from the forum thread — real for that developer — did not transfer to us.
+
+The reasoning error is worth naming because it is repeatable: an external
+report of *"no email, therefore not queued"* was treated as a general rule
+after matching on one symptom. The symptom was shared; the cause was not.
+
+**Had we acted on it, we would have filed a duplicate that Google has now
+explicitly asked us not to file.**
+
+### What is actually true now
+
+| | |
+|---|---|
+| The 60-day rule | **Enforced, confirmed in writing.** §4 recorded it as *unknown* whether the form gates on age. It does, and it is the stated reason for this refusal |
+| Earliest re-file | **24 October 2026** — profile verified 25 August, plus 60 days |
+| Website criterion | **Already satisfied, checked 22 September.** The profile's Website field reads `https://www.ezbizi.com/` and the application submitted `https://www.ezbizi.com/` — exact match, own domain, working site. Nothing to fix here |
+| Duplicate requests | **Do not file any.** Google asked directly. That covers both a re-file before the date and any further chase |
+
+**So the only thing standing between EzBizi and the API is the calendar.**
+Nothing to build, nothing to correct, nothing to chase. Re-file on or after
+**24 October 2026** through the same form, and expect the same 7–10 business
+day window from that point.
+
 ### Somebody else had exactly this, and re-filing fixed it — 18 September 2026
 
 Searched because our own evidence was circumstantial. It is no longer.
@@ -207,6 +258,14 @@ submissions, one acknowledgement.
 **So the reading of our silence is:** a missing confirmation email means the
 application is not in the queue, whatever the confirmation SCREEN said. The
 screen is generated before the case is filed; the email is generated after.
+
+> **WRONG, and §9b above has the answer Google gave four days later.** The
+> application WAS in the queue; it was reviewed and refused on the 60-day
+> rule, with no acknowledgement email at any point. This paragraph is left
+> standing rather than deleted because the mistake it records is the useful
+> part: a matching symptom in somebody else's report was promoted to a general
+> rule about the cause. Acting on it would have produced exactly the duplicate
+> filing Google has since asked us not to make.
 
 **A separate risk the same thread raises, and it is ours.** Several
 developers report that Basic Access does **not** unlock the legacy
