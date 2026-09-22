@@ -181,6 +181,68 @@ class DefinitionGraphTest extends TestCase
         $this->assertSame('option_field', $edits['Nested note']['pane']);
     }
 
+    /**
+     * THE SPINE IS UNBROKEN, which no other test here can see.
+     *
+     * Every other case names the screens it cares about, so a dropped screen
+     * fails them with an undefined key — but only because the fixtures are two
+     * and three screens long and name all of them. Give the walk ten screens
+     * and lose the fifth and the edges simply connect around it: 4 to 6, a
+     * chart that looks entirely reasonable, and nothing anywhere fails.
+     *
+     * That is the deploy desk's changelog defect in another costume. Theirs
+     * compared the TOP note to the version, so a missing row in the MIDDLE was
+     * invisible the moment it stopped being newest; it went red for a day and
+     * then healed itself while the hole stayed. An assertion about one end of
+     * an ordered thing cannot see a gap in it.
+     *
+     * So this asserts the whole chain rather than its ends: every screen
+     * present, in order, each joined to the next.
+     */
+    public function test_every_screen_is_on_the_spine_and_none_is_skipped(): void
+    {
+        $screens = [];
+        foreach (range(1, 6) as $n) {
+            $screens[] = ['name' => "Screen {$n}", 'fields' => [
+                ['key' => "f{$n}", 'label' => "Question {$n}", 'type' => 'text'],
+            ]];
+        }
+
+        $graph = DefinitionGraph::of($screens);
+
+        $spine = [];
+        foreach ($graph['nodes'] as $node) {
+            if ($node['kind'] === 'screen') {
+                $spine[] = $node['title'];
+            }
+        }
+
+        $this->assertSame(
+            ['Screen 1', 'Screen 2', 'Screen 3', 'Screen 4', 'Screen 5', 'Screen 6'],
+            $spine,
+            'every screen, in the order a technician walks them',
+        );
+
+        // And the edges joining them: five, each from one screen to the next.
+        // Asserted as the whole list rather than a count, because five edges
+        // that skip a screen and double back would satisfy a count.
+        $links = [];
+        foreach ($graph['edges'] as $edge) {
+            if (str_starts_with($edge['from'], 'screen:') && ! str_contains($edge['from'], ':field:')
+                && str_starts_with($edge['to'], 'screen:') && ! str_contains($edge['to'], ':field:')) {
+                $links[] = $edge['from'].' -> '.$edge['to'];
+            }
+        }
+
+        $this->assertSame([
+            'screen:0 -> screen:1',
+            'screen:1 -> screen:2',
+            'screen:2 -> screen:3',
+            'screen:3 -> screen:4',
+            'screen:4 -> screen:5',
+        ], $links, 'an unbroken chain — a gap here is a screen nobody is taken to');
+    }
+
     /** @param array{nodes: list<array<string, mixed>>, edges: list<array<string, mixed>>} $graph */
     private static function statesByTitle(array $graph): array
     {
