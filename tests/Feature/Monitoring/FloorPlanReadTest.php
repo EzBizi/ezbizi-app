@@ -57,7 +57,7 @@ class FloorPlanReadTest extends TestCase
         $franchisePlan = $this->makePlan($alpha, 'Franchise A plan', ['assigned_franchise_id' => $franchiseA->id]);
 
         // An org viewer lists all three.
-        $orgViewer = $this->userWithRole($alpha, 'Org Viewer', ['monitoring.view', 'monitoring.general.view']);
+        $orgViewer = $this->userWithRole($alpha, 'Org Viewer', ['monitoring.view', 'monitoring.map.view']);
         $data = collect(
             $this->signedInAs($orgViewer)->getJson('/api/v1/monitoring/floor-plans')->assertOk()->json('data')
         )->keyBy('id');
@@ -261,7 +261,7 @@ class FloorPlanReadTest extends TestCase
         ]);
 
         $manager = $this->companyManager(
-            $alpha, $companyA, 'Company A Mgr', ['monitoring.view', 'monitoring.general.view', 'monitoring.specs.view']
+            $alpha, $companyA, 'Company A Mgr', ['monitoring.view', 'monitoring.map.view', 'monitoring.specs.view']
         );
 
         $status = $this->signedInAs($manager)
@@ -295,7 +295,7 @@ class FloorPlanReadTest extends TestCase
         // the same withholding DevicesController::present does. `last_seen_at`
         // is still there, which is what proves the key is gone because of the
         // grant and not because this caller resolved nothing.
-        $viewerOnly = $this->companyManager($alpha, $companyA, 'Company A Viewer', ['monitoring.view', 'monitoring.general.view']);
+        $viewerOnly = $this->companyManager($alpha, $companyA, 'Company A Viewer', ['monitoring.view', 'monitoring.map.view']);
 
         $plain = $this->signedInAs($viewerOnly)
             ->getJson('/api/v1/monitoring/floor-plans/'.$plan->id)
@@ -343,7 +343,7 @@ class FloorPlanReadTest extends TestCase
      * @param  array{org: \App\Models\Organization}  $tenant
      * @param  string[]  $perms
      */
-    private function companyManager(array $tenant, Company $company, string $name, array $perms = ['monitoring.view', 'monitoring.general.view']): User
+    private function companyManager(array $tenant, Company $company, string $name, array $perms = ['monitoring.view', 'monitoring.map.view']): User
     {
         return $this->inTenant($tenant['org'], function () use ($tenant, $company, $name, $perms) {
             $role = Role::create(['organization_id' => $tenant['org']->id, 'name' => $name, 'is_system' => false]);

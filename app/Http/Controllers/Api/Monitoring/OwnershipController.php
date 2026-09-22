@@ -1,0 +1,213 @@
+<?php
+
+namespace App\Http\Controllers\Api\Monitoring;
+
+use App\Http\Controllers\Api\Controller;
+use App\Models\MonitoredDevice;
+use App\Models\MonitoringFloorPlan;
+use App\Models\User;
+use App\Support\Access\ScopeReach;
+use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+/**
+ * The ownership chart — Monitoring's General tab (Jose, 2026-09-22).
+ *
+ *   "an Ownership Chart, where basically the Information Displayed on Map is
+ *    presented in a sort of table fashion"
+ *
+ * The same office the floor plan draws, as rows: who, what they do, which desk,
+ * which machine, whether they are on, the hours they are expected, where they
+ * report and which office plan they sit on.
+ *
+ * ── It is a chart of PEOPLE, not of devices ──────────────────────
+ *
+ * DevicesController answers "what machines are reporting". This answers "who
+ * works here and what did we give them", which is a different question with a
+ * different subject: somebody with a desk and no computer belongs on it, and a
+ * spare machine nobody is signed in on does not. So the query starts from the
+ * people this actor may see and hangs everything else off that.
+ *
+ * ── Three columns are not Monitoring's to give away ──────────────
+ *
+ * PC name comes from `specs`, which is gated on `monitoring.specs.view` here
+ * exactly as it is on the roster — seeing who is online has never included
+ * seeing what they are running.
+ *
+ * SCHEDULE HOURS is HR's. `User::work_schedule` is a §9 ACTIVITY entry — "which
+ * weekdays and hours they are expected to work" — and the module that owns that
+ * disclosure is Human Resources, whose Work Hours tab is `hr.hours.view`. So
+ * this asks for THAT grant rather than inventing a Monitoring key that would
+ * let an administrator route around HR's boundary without noticing. A viewer
+ * without it gets the column absent, not empty: absent is "we are not telling
+ * you", empty would read as "this person has no hours set".
+ *
+ * DESK and OFFICE come from the floor plans this actor can reach, which is the
+ * same §3 constraint the Map tab uses. A person sitting on a plan outside the
+ * viewer's reach has no desk here rather than a desk with no name.
+ */
+class OwnershipController extends Controller
+{
+    /**
+     * Same window the roster and the floor plan use for "on right now".
+     *
+     * Its own copy rather than an import, for the reason PcSpecsTab's is its
+     * own: three surfaces that happen to agree today, each free to be tuned.
+     * They are kept in step by MonitoringOwnershipTest asserting this one.
+     */
+    private const ONLINE_WITHIN_MINUTES = 5;
+
+    public function __construct(
+        private readonly ScopeReach $reach,
+        private readonly SettingsResolver $settings,
+        private readonly TenantContext $tenant,
+    ) {}
+
+    public function index(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+
+        $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
+        $canSeeHours = $actor->hasPermission('hr.hours.view');
+
+        $people = User::query()
+            ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
+            ->with('role:id,name')
+            ->orderBy('name')
+            ->get();
+
+        $devices = $this->newestDeviceFor($people->modelKeys());
+        $seats = $this->seatsFor($actor);
+        $fallbackHours = $this->settings->get('ops.business_hours', $actor->organization);
+
+        $cutoff = now()->subMinutes(self::ONLINE_WITHIN_MINUTES);
+
+        $rows = $people->map(function (User $person) use (
+            $devices, $seats, $canSeeSpecs, $canSeeHours, $fallbackHours, $cutoff
+        ) {
+            $device = $devices[$person->getKey()] ?? null;
+            $seat = $seats[$person->getKey()] ?? null;
+            $seen = $device?->last_seen_at;
+
+            $row = [
+                'user' => ['id' => $person->getKey(), 'name' => $person->name],
+                'role' => $person->role?->name,
+                'desk' => $seat['desk'] ?? null,
+                'office' => $seat['office'] ?? null,
+                'online' => $seen !== null && $seen->greaterThanOrEqualTo($cutoff),
+                'last_seen_at' => $seen?->toIso8601String(),
+                'assignment' => $this->assignmentLabel($person),
+            ];
+
+            if ($canSeeSpecs) {
+                $specs = $device?->specs;
+                $row['computer_name'] = is_array($specs) ? ($specs['computer_name'] ?? null) : null;
+            }
+
+            if ($canSeeHours) {
+                // The person's own schedule, or the organization's business
+                // hours where nobody has typed one. The fallback matters: a
+                // column that is blank until HR fills a form reads as "this
+                // person has no hours", when what is true is "the office
+                // hours apply".
+                $row['schedule'] = $person->work_schedule ?: $fallbackHours;
+            }
+
+            return $row;
+        })->all();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * The newest reporting device per person, keyed by user id.
+     *
+     * One query for the whole page rather than one per row — the chart lists
+     * everybody, so a per-row lookup is an N+1 that grows with the company.
+     *
+     * @param  array<int, string>  $userIds
+     * @return array<string, MonitoredDevice>
+     */
+    private function newestDeviceFor(array $userIds): array
+    {
+        if ($userIds === []) {
+            return [];
+        }
+
+        $newest = [];
+
+        MonitoredDevice::query()
+            ->whereIn('user_id', $userIds)
+            ->orderByDesc('last_seen_at')
+            ->get(['user_id', 'last_seen_at', 'specs'])
+            ->each(function (MonitoredDevice $device) use (&$newest) {
+                // Ordered newest first, so the FIRST row seen for a person is
+                // theirs. A device that never beat sorts last under DESC.
+                $newest[$device->user_id] ??= $device;
+            });
+
+        return $newest;
+    }
+
+    /**
+     * Desk and office per person, from the floor plans this actor may reach.
+     *
+     * A person can appear on more than one plan; the first wins and that is
+     * deliberate rather than arbitrary — a chart that showed "Front desk,
+     * Spare desk" for one person would be reporting a data problem as a
+     * value. The Map tab is where that is visible and fixable.
+     *
+     * @return array<string, array{desk: string, office: string}>
+     */
+    private function seatsFor(User $actor): array
+    {
+        $seats = [];
+
+        $plans = MonitoringFloorPlan::query();
+        $this->reach->constrain($plans, $actor);
+
+        foreach ($plans->get(['name', 'layout']) as $plan) {
+            foreach ($plan->layout['nodes'] ?? [] as $node) {
+                $userId = $node['user_id'] ?? null;
+
+                if (! is_string($userId) || $userId === '' || isset($seats[$userId])) {
+                    continue;
+                }
+
+                $seats[$userId] = [
+                    'desk' => (string) ($node['label'] ?? ''),
+                    'office' => $plan->name,
+                ];
+            }
+        }
+
+        return $seats;
+    }
+
+    /**
+     * Where this person reports, in the words the rest of the app uses.
+     *
+     * Null rather than "Organization" when they carry no assignment row: the
+     * chart is for spotting who has not been placed yet, and a default that
+     * reads like a real answer hides exactly that.
+     */
+    private function assignmentLabel(User $person): ?string
+    {
+        $assignment = $person->assignments()
+            ->with(['assignedCompany:id,name', 'assignedFranchise:id,name'])
+            ->first();
+
+        if ($assignment === null) {
+            return null;
+        }
+
+        // Narrowest first: a franchise assignment says more than the company
+        // above it, and the company says more than "somewhere in the org".
+        return $assignment->assignedFranchise?->name
+            ?? $assignment->assignedCompany?->name
+            ?? null;
+    }
+}

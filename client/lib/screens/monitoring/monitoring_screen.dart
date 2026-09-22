@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
 import 'general_tab.dart';
+import 'ownership_tab.dart';
 import 'pc_specs_tab.dart';
 
 /// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs,
@@ -49,10 +50,19 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { general, pcSpecs, desktopMonitoring, cameraMonitoring }
+enum _SubTab { general, map, pcSpecs, desktopMonitoring, cameraMonitoring }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
-  _SubTab _active = _SubTab.pcSpecs;
+  /// Opens on General — the ownership chart — rather than PC Specs.
+  ///
+  /// Jose, 2026-09-22: "When opening the monitoring tab it opens on PC Specs,
+  /// it should open on General." The chart is the whole office in one table,
+  /// which is the question the module gets asked first; PC Specs answers a
+  /// narrower one about machines.
+  ///
+  /// `_body` still falls through to PC Specs, so a viewer without the General
+  /// tab lands somewhere real rather than on a blank pane.
+  _SubTab _active = _SubTab.general;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +82,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     // from ever falling through to a pane nobody may see.
     final canViewGeneral =
         widget.session.me?.can('monitoring.general.view') ?? false;
+    final canViewMap = widget.session.me?.can('monitoring.map.view') ?? false;
     final canViewScreenshots =
         widget.session.me?.can('monitoring.screenshots.view') ?? false;
     final canViewCameras =
@@ -97,6 +108,14 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                   )
                 else
                   const _LockedChip('General'),
+                if (canViewMap)
+                  ChoiceChip(
+                    label: const Text('Map'),
+                    selected: _active == _SubTab.map,
+                    onSelected: (_) => setState(() => _active = _SubTab.map),
+                  )
+                else
+                  const _LockedChip('Map'),
                 ChoiceChip(
                   label: const Text('PC Specs'),
                   selected: _active == _SubTab.pcSpecs,
@@ -126,7 +145,12 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: _body(canViewGeneral, canViewScreenshots, canViewCameras),
+          child: _body(
+            canViewGeneral,
+            canViewMap,
+            canViewScreenshots,
+            canViewCameras,
+          ),
         ),
       ],
     );
@@ -134,11 +158,16 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _body(
     bool canViewGeneral,
+    bool canViewMap,
     bool canViewScreenshots,
     bool canViewCameras,
   ) {
     if (_active == _SubTab.general && canViewGeneral) {
-      // The General map's person summary offers a jump to Desktop Monitoring.
+      return OwnershipTab(api: widget.api);
+    }
+
+    if (_active == _SubTab.map && canViewMap) {
+      // The Map's person summary offers a jump to Desktop Monitoring.
       // The sub-tab is not a route, so nothing below this screen can switch
       // it — the switch is handed down as a callback. It is handed down ONLY
       // with `monitoring.screenshots.view`: without it the Desktop Monitoring

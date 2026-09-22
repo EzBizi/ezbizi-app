@@ -56,7 +56,7 @@ class FloorPlanWriteTest extends TestCase
      * @param  array{org: \App\Models\Organization}  $tenant
      * @param  string[]  $perms
      */
-    private function companyManager(array $tenant, Company $company, string $name, array $perms = ['monitoring.general.view', 'monitoring.map.manage']): User
+    private function companyManager(array $tenant, Company $company, string $name, array $perms = ['monitoring.map.view', 'monitoring.map.manage']): User
     {
         return $this->inTenant($tenant['org'], function () use ($tenant, $company, $name, $perms) {
             $role = Role::create(['organization_id' => $tenant['org']->id, 'name' => $name, 'is_system' => false]);
@@ -114,7 +114,7 @@ class FloorPlanWriteTest extends TestCase
 
         // A franchise-level manager: reaches their franchise, not the company
         // above it nor the organization.
-        $franchiseMgr = $this->userWithRole($alpha, 'Franchise Mgr', ['monitoring.general.view', 'monitoring.map.manage'], onlyAt: $franchiseA);
+        $franchiseMgr = $this->userWithRole($alpha, 'Franchise Mgr', ['monitoring.map.view', 'monitoring.map.manage'], onlyAt: $franchiseA);
 
         // Naming the COMPANY above them → 422 on scope.
         $this->signedInAs($franchiseMgr)->postJson('/api/v1/monitoring/floor-plans', [
@@ -151,7 +151,7 @@ class FloorPlanWriteTest extends TestCase
         $alpha = $this->provisionTenant('Alpha');
         $companyA = $alpha['company'];
 
-        $orgManager = $this->userWithRole($alpha, 'Org Mgr', ['monitoring.general.view', 'monitoring.map.manage']);
+        $orgManager = $this->userWithRole($alpha, 'Org Mgr', ['monitoring.map.view', 'monitoring.map.manage']);
 
         $orgRows = $this->signedInAs($orgManager)
             ->getJson('/api/v1/monitoring/floor-plans/scope-options')
@@ -185,7 +185,7 @@ class FloorPlanWriteTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
 
-        $viewer = $this->userWithRole($alpha, 'Viewer', ['monitoring.view', 'monitoring.general.view']);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['monitoring.view', 'monitoring.map.view']);
 
         $this->signedInAs($viewer)
             ->getJson('/api/v1/monitoring/floor-plans/scope-options')
@@ -409,7 +409,7 @@ class FloorPlanWriteTest extends TestCase
         $plan = $this->makePlan($alpha, 'A plan', ['assigned_company_id' => $companyA->id]);
 
         // A view-only user: the read still works (Task 3), but writes are refused.
-        $viewer = $this->userWithRole($alpha, 'Viewer', ['monitoring.view', 'monitoring.general.view']);
+        $viewer = $this->userWithRole($alpha, 'Viewer', ['monitoring.view', 'monitoring.map.view']);
 
         $this->signedInAs($viewer)->getJson('/api/v1/monitoring/floor-plans/'.$plan->id)->assertOk();
 

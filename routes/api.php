@@ -54,6 +54,7 @@ use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
+use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
@@ -2119,7 +2120,11 @@ Route::prefix('v1')
         // ScopeReach::assertCovers and every node assignee against
         // constrainToVisiblePeople — see FloorPlansController.
         /*
-         * GATED ON THE TAB, because these six serve exactly one — measured, not
+         * GATED ON THE MAP TAB. The floor plan moved out of General on
+         * 2026-09-22 when General became the ownership chart, so these follow
+         * the pane rather than the old key.
+         *
+         * Gated on the tab because these six serve exactly one — measured, not
          * assumed: `grep -rn "floor-plans" client/lib` answers general_tab.dart
          * and floor_plan_canvas.dart, and nothing else in the app reads a floor
          * plan. Where a Monitoring route feeds several panes (`monitoring/devices`
@@ -2130,7 +2135,20 @@ Route::prefix('v1')
          * permission: the URL is one paste away from anybody who has ever had the
          * pane open.
          */
+        /*
+         * The ownership chart — Monitoring's General tab. Gated on that tab
+         * because it serves exactly one pane (`grep -rn "monitoring/ownership"
+         * client/lib` answers ownership_tab.dart alone), and the two columns
+         * that are not Monitoring's own are withheld per COLUMN inside the
+         * controller rather than by this gate: PC name needs
+         * monitoring.specs.view, and the work schedule needs HR's own
+         * hr.hours.view, because it is HR's disclosure to make.
+         */
         Route::middleware('permission:monitoring.general.view')->group(function () {
+            Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
+        });
+
+        Route::middleware('permission:monitoring.map.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
         // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
