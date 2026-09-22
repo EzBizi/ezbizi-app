@@ -5,6 +5,7 @@ import '../../core/session.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/api_key_connect_form.dart';
 import '../../widgets/social_network_mark.dart';
+import 'integration_provider_screen.dart';
 
 /// Settings › Integrations — every outside account this view is connected to,
 /// in one place.
@@ -18,16 +19,29 @@ import '../../widgets/social_network_mark.dart';
 /// built the app and useless when you did not.
 ///
 /// This does not replace those screens and deliberately does not duplicate
-/// their panels: Connect here opens the module that owns the account, because
-/// the module is where the connecting is understood. What lives here is the
+/// their panels: Connect opens the module that owns the account, because the
+/// module is where the connecting is understood. What lives here is the
 /// INVENTORY — what is connected, at what scope, and what is not.
+///
+/// ── A CARD PER PROVIDER, not a row per connection (2026-09-22) ──
+///
+/// It listed every connection flat under four family headings, which was
+/// legible with six of them. Jose sent a screenshot of the real thing: fifty-
+/// three Google Ads accounts and a column of identical "A1 Chimney · Thumbtack
+/// · this company" rows, four pages of scrolling, answering nothing. His words:
+/// *"i'd like to have cards instead each with their own screen for connections,
+/// etc ... Remember to take into account org - company - franchise ownership"*.
+///
+/// So this screen now answers ONE question — what is this business connected
+/// to, and is any of it broken — and [IntegrationProviderScreen] answers the
+/// next one, which connections and whose. Neither page repeats the other.
 ///
 /// ── Scope, and why the list can look short ──────────────────────
 ///
 /// It answers for the CURRENT VIEW, the same as every other list in the app
 /// (§3). Standing in A-1 Chimney you see A-1 Chimney's connections and the
 /// organization's; you never see Premier Garage's. An administrator switching
-/// views will see the list change, and that is correct rather than a bug.
+/// views will see the cards change, and that is correct rather than a bug.
 class IntegrationsScreen extends StatefulWidget {
   const IntegrationsScreen({
     super.key,
@@ -43,7 +57,18 @@ class IntegrationsScreen extends StatefulWidget {
 }
 
 class _IntegrationsScreenState extends State<IntegrationsScreen> {
-  List<_Connection> _connections = const [];
+  List<IntegrationConnection> _connections = const [];
+
+  /// Every provider the software offers, so a card can be drawn for one with
+  /// NOTHING connected.
+  ///
+  /// The catalogue rather than a list in this file: a provider added to the
+  /// registry appears here with no edit, and the alternative is a second list
+  /// that is right on the day somebody writes it. Same endpoint Marketing's
+  /// composer reads, and it needs `marketing.view`, which is already what puts
+  /// this chip in the Settings shell.
+  Map<String, String> _catalogue = const {};
+
   bool _loading = true;
   String? _error;
 
@@ -66,6 +91,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     final response = await widget.api.get('/social/connections', {
       'include': 'data_sources',
     });
+
+    final catalogue = await widget.api.get('/social/providers');
+
     if (!mounted) return;
 
     setState(() {
@@ -79,19 +107,57 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       _error = null;
       _connections = ((response.body['data'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
-          .map(_Connection.fromJson)
+          .map(IntegrationConnection.fromJson)
           .toList();
+
+      /*
+       * A FAILED CATALOGUE IS NOT AN ERROR HERE, deliberately.
+       *
+       * It only adds cards for providers with nothing connected. If it does
+       * not answer, the screen still shows everything this business actually
+       * has — which is the question it exists for — rather than refusing the
+       * page over a list of things that are absent.
+       */
+      if (catalogue.ok) {
+        _catalogue = {
+          for (final entry
+              in ((catalogue.body['data'] as List<dynamic>?) ?? const [])
+                  .whereType<Map<String, dynamic>>())
+            (entry['value'] as String? ?? ''): (entry['label'] as String? ?? ''),
+        }..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+      }
     });
   }
+
+  /// Which family a provider belongs to, for a provider with no connections.
+  ///
+  /// [IntegrationConnection.family] answers the same question from a row. This
+  /// is the same switch and they must agree — a provider filed under one
+  /// heading when empty and another when connected would move on screen the
+  /// moment somebody connected it.
+  String _familyOf(String provider) => IntegrationConnection(
+    id: '',
+    provider: provider,
+    providerLabel: '',
+    displayName: '',
+    scopeType: '',
+    scopeId: '',
+    connected: false,
+  ).family;
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
 
-    final byFamily = <String, List<_Connection>>{};
+    final byProvider = <String, List<IntegrationConnection>>{};
     for (final c in _connections) {
-      byFamily.putIfAbsent(c.family, () => []).add(c);
+      byProvider.putIfAbsent(c.provider, () => []).add(c);
     }
+
+    // Everything connected, plus everything offered. A provider with rows but
+    // no catalogue entry still gets a card: the connection is the stronger
+    // evidence that it exists.
+    final providers = {...byProvider.keys, ..._catalogue.keys};
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -104,7 +170,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           context,
           title: 'Mailing',
           icon: Icons.drafts_outlined,
-          rows: byFamily['mailing'] ?? const [],
+          family: 'mailing',
+          providers: providers,
+          byProvider: byProvider,
           empty:
               'No mailing account connected in $_viewName. A newsletter is '
               'sent through the company\'s own account, so one has to be '
@@ -116,7 +184,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           context,
           title: 'Social',
           icon: Icons.share_outlined,
-          rows: byFamily['social'] ?? const [],
+          family: 'social',
+          providers: providers,
+          byProvider: byProvider,
           empty: 'No social account connected in $_viewName.',
           where: 'Marketing › Social Media Management › Accounts',
         ),
@@ -125,7 +195,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           context,
           title: 'Advertising and listings',
           icon: Icons.campaign_outlined,
-          rows: byFamily['leads'] ?? const [],
+          family: 'leads',
+          providers: providers,
+          byProvider: byProvider,
           empty: 'No advertising account connected in $_viewName.',
           where: 'Leads',
         ),
@@ -134,15 +206,13 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           context,
           title: 'Reporting',
           icon: Icons.assessment_outlined,
-          rows: byFamily['reporting'] ?? const [],
+          family: 'reporting',
+          providers: providers,
+          byProvider: byProvider,
           empty:
               'No reporting source connected in $_viewName. Reports read '
               'these directly, so a report covering a business with none '
               'connected has nothing to show.',
-          // The one family that connects HERE rather than elsewhere, which is
-          // why it passes forms instead of a `where` sentence.
-          connect: _reportingForms(),
-
           // Only the reporting sources, for now. The others are named where
           // they are connected, and this screen is not trying to become the
           // place every account is administered.
@@ -152,78 +222,6 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     );
   }
 
-  /// Give a connection a name a person recognises.
-  ///
-  /// The endpoint has existed since before this screen did — nothing listed
-  /// the label, so naming a connection had no visible effect and nobody could
-  /// tell it had worked. A write with no read.
-  ///
-  /// In a dialog rather than in place, and that is a deliberate exception to
-  /// the house rule: this row sits in a list of rows, and an inline field would
-  /// reflow every connection under it while somebody types.
-  Future<void> _rename(_Connection row) async {
-    final controller = TextEditingController(text: row.label ?? '');
-
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Name this ${row.providerLabel} connection'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Name',
-            // The id, so somebody naming several in a row can tell them apart
-            // while the dialog is covering the list.
-            helperText: row.displayName,
-          ),
-          onSubmitted: (value) => Navigator.of(context).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    controller.dispose();
-
-    // Null is Cancel. An EMPTY string is not — it is "take the name off",
-    // which the endpoint accepts and stores as null.
-    if (name == null || !mounted) return;
-
-    final response = await widget.api.patch(
-      '/social/connections/${row.id}/label',
-      {'label': name.trim()},
-    );
-
-    if (!mounted) return;
-
-    if (!response.ok) {
-      setState(() => _error = response.message);
-      return;
-    }
-
-    _load();
-  }
-
-  /// The connect forms for the Reporting family.
-  ///
-  /// Jose, 2026-09-16: "make the connection in Integrations", and for both
-  /// Airtable and Workiz — "make it as well so any company can make workiz
-  /// connections via api as well, same set it up on integrations".
-  ///
-  /// Airtable has no other connect screen, so this is its only home. Workiz
-  /// also has one on Reports › Experimental; that one stays for now because a
-  /// branch connecting its own book from the screen that reads it is a real
-  /// path, and both go through the same endpoint and the same shared form
-  /// rather than being two implementations.
   /// Whether this person may connect the source behind one of these forms.
   ///
   /// The two are DIFFERENT permissions and were not always: connecting an
@@ -251,15 +249,33 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   ///
   /// The server permission is deliberately left alone. It is an authorisation
   /// floor and `reports.build` is the right one; what was wrong is the OFFER,
-  /// and offering is this screen's job. A single connect permission cannot
-  /// express "both of these", and widening the controller so one key would do
-  /// it would hand the pane to everybody holding `reports.view`.
+  /// and offering is this screen's job.
   bool get _maySeeExperimental =>
       _mayConnect('reports.build') && _mayConnect('reports.experimental.view');
 
-  List<Widget> _reportingForms() => [
-    if (_mayConnect('profit_loss.view')) ...[
-      Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
+  /// The connect form for ONE reporting source.
+  ///
+  /// Per provider rather than per family, because the family's card grid is
+  /// now a screen each: offering both forms on the Airtable screen would ask
+  /// somebody looking at their bases for a Workiz token, which is the shape
+  /// this redesign exists to remove one level up.
+  List<Widget> Function()? _formsFor(String provider) => switch (provider) {
+    'airtable' when _mayConnect('profit_loss.view') => _airtableForm,
+    'workiz' when _maySeeExperimental => _workizForm,
+    _ => null,
+  };
+
+  /// The connect forms for the Reporting family.
+  ///
+  /// Jose, 2026-09-16: "make the connection in Integrations", and for both
+  /// Airtable and Workiz — "make it as well so any company can make workiz
+  /// connections via api as well, same set it up on integrations".
+  ///
+  /// They live on the provider's own screen now rather than under the family
+  /// heading, which is what "each with their own screen for connections" asked
+  /// for: the form to connect a base sits beside the bases already connected.
+  List<Widget> _airtableForm() => [
+    Text('Airtable', style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
       Text(
         'One connection is one base. Connect as many bases as this business '
@@ -277,10 +293,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         ],
         onConnected: _load,
       ),
-      const SizedBox(height: 16),
-    ],
-    if (_maySeeExperimental) ...[
-      Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
+  ];
+
+  List<Widget> _workizForm() => [
+    Text('Workiz', style: Theme.of(context).textTheme.titleSmall),
       const SizedBox(height: 4),
       Text(
         'One connection is one Workiz account. Switch to the branch it belongs '
@@ -298,20 +314,29 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         ],
         onConnected: _load,
       ),
-    ],
   ];
 
   Widget _family(
     BuildContext context, {
     required String title,
     required IconData icon,
-    required List<_Connection> rows,
+    required String family,
+    required Set<String> providers,
+    required Map<String, List<IntegrationConnection>> byProvider,
     required String empty,
     String? where,
-    List<Widget>? connect,
     bool canName = false,
   }) {
-    final theme = Theme.of(context);
+    final mine = providers.where((p) => _familyOf(p) == family).toList()
+      ..sort((a, b) {
+        // Connected first, then alphabetically. What a business HAS is the
+        // thing it came to look at; what it could have is a catalogue.
+        final byCount = (byProvider[b]?.length ?? 0).compareTo(
+          byProvider[a]?.length ?? 0,
+        );
+
+        return byCount != 0 ? byCount : _label(a).compareTo(_label(b));
+      });
 
     return DashboardCard(
       title: title,
@@ -319,53 +344,26 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (rows.isEmpty)
+          if (mine.isEmpty)
             DashboardNote(empty)
           else
-            for (final row in rows)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: SocialNetworkMark(network: row.provider, size: 24),
-                title: Text(
-                  row.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                // `appadTMQltMGmGrse` tells nobody anything, so a named
-                // connection leads with its name - and still shows the id
-                // underneath, because that is what identifies it to Airtable
-                // when something is wrong.
-                subtitle: Text(
-                  [
-                    if (row.beneath != null) row.beneath!,
-                    row.providerLabel,
-                    row.scopeWord,
-                  ].join(' · '),
-                ),
-                onTap: canName ? () => _rename(row) : null,
-                trailing: row.connected
-                    ? (canName
-                          ? IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 18),
-                              tooltip: 'Name this connection',
-                              onPressed: () => _rename(row),
-                            )
-                          : null)
-                    // A broken connection is the whole reason somebody comes
-                    // looking at this screen, so it says so here rather than
-                    // only on the module that owns it.
-                    : Tooltip(
-                        message:
-                            row.statusReason ??
-                            'This connection needs attention.',
-                        child: Icon(
-                          Icons.error_outline,
-                          size: 18,
-                          color: theme.colorScheme.error,
-                        ),
-                      ),
-              ),
+            // A grid that reflows rather than a fixed column count: this pane
+            // is 1400pt on a desktop window and 380pt on a phone, and a card
+            // narrower than its own provider name is not a card.
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final provider in mine)
+                  _providerCard(
+                    context,
+                    provider: provider,
+                    rows: byProvider[provider] ?? const [],
+                    where: where,
+                    canName: canName,
+                  ),
+              ],
+            ),
           const SizedBox(height: 8),
 
           /*
@@ -382,74 +380,162 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
            * Experimental as well, and two forms posting to one endpoint would
            * be two sets of field names to keep in step.
            */
-          if (connect != null)
-            ...connect
-          else
+          if (where != null)
             Text(
               'Connect and disconnect under $where.',
-              style: theme.textTheme.bodySmall,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
         ],
       ),
     );
   }
-}
 
-class _Connection {
-  const _Connection({
-    required this.id,
-    required this.provider,
-    required this.providerLabel,
-    required this.displayName,
-    required this.scopeType,
-    required this.connected,
-    this.label,
-    this.statusReason,
-  });
+  String _label(String provider) =>
+      _catalogue[provider] ??
+      // A provider with rows but no catalogue entry — the connection's own
+      // label is better than the raw key, which is what this fell back to
+      // before and read as `google_business_profile` on screen.
+      _connections
+          .firstWhere(
+            (c) => c.provider == provider && c.providerLabel.isNotEmpty,
+            orElse: () => IntegrationConnection(
+              id: '',
+              provider: provider,
+              providerLabel: provider,
+              displayName: '',
+              scopeType: '',
+              scopeId: '',
+              connected: false,
+            ),
+          )
+          .providerLabel;
 
-  final String id;
-  final String provider;
-  final String providerLabel;
-  final String displayName;
+  /// One provider, and what this view has of it.
+  Widget _providerCard(
+    BuildContext context, {
+    required String provider,
+    required List<IntegrationConnection> rows,
+    String? where,
+    bool canName = false,
+  }) {
+    final theme = Theme.of(context);
+    final broken = rows.where((r) => !r.connected).length;
 
-  /// What this business calls it. Null until somebody names it.
-  ///
-  /// Kept beside `displayName` rather than replacing it: an Airtable base's
-  /// display name is its BASE ID, so a named connection still has to be able
-  /// to show which base it is.
-  final String? label;
-  final String scopeType;
-  final bool connected;
-  final String? statusReason;
+    return SizedBox(
+      width: 240,
+      child: InkWell(
+        key: ValueKey('provider:$provider'),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => IntegrationProviderScreen(
+              api: widget.api,
+              session: widget.session,
+              provider: provider,
+              providerLabel: _label(provider),
+              connections: rows,
+              connectWhere: where,
+              connectForms: _formsFor(provider),
+              canName: canName,
+              onChanged: _load,
+            ),
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  SocialNetworkMark(network: provider, size: 28),
+                  const Spacer(),
+                  _pill(theme, rows: rows, broken: broken),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _label(provider),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                /*
+                 * WHAT IT IS CONNECTED AT, not just how many.
+                 *
+                 * "53 connected" is the number Jose's screenshot already made
+                 * useless — fifty-three rows that each said "this company".
+                 * The scope words are what an administrator is deciding about,
+                 * and the detail screen behind this card names the companies
+                 * and branches themselves.
+                 */
+                _beneath(rows),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: broken > 0
+                      ? theme.colorScheme.error
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-  /// Which screen owns this account. Grouped rather than listed flat, because
-  /// "where do I go to fix this" is the question the screen is answering.
-  String get family => switch (provider) {
-    'mailchimp' => 'mailing',
-    'google_ads' || 'google_business_profile' || 'thumbtack' => 'leads',
-    'airtable' || 'workiz' => 'reporting',
-    _ => 'social',
-  };
+  String _beneath(List<IntegrationConnection> rows) {
+    if (rows.isEmpty) return 'Nothing connected here yet.';
 
-  String get scopeWord => switch (scopeType) {
-    'organization' => 'the whole organization',
-    'company' => 'this company',
-    'franchise' => 'this branch',
-    _ => scopeType,
-  };
+    final broken = rows.where((r) => !r.connected).length;
 
-  /// What to put in front of a person, and what to put under it.
-  String get title => (label ?? '').isNotEmpty ? label! : displayName;
-  String? get beneath => (label ?? '').isNotEmpty ? displayName : null;
+    final scopes = <String>{
+      for (final row in rows)
+        switch (row.scopeType) {
+          'organization' => 'the organization',
+          'company' => 'a company',
+          'franchise' => 'a branch',
+          _ => row.scopeType,
+        },
+    };
 
-  factory _Connection.fromJson(Map<String, dynamic> json) => _Connection(
-    id: json['id'] as String? ?? '',
-    label: json['label'] as String?,
-    provider: json['provider'] as String? ?? '',
-    providerLabel: json['provider_label'] as String? ?? '',
-    displayName: json['display_name'] as String? ?? '',
-    scopeType: json['scope_type'] as String? ?? '',
-    connected: (json['status'] as String? ?? '') == 'connected',
-    statusReason: json['status_reason'] as String?,
-  );
+    final where = scopes.isEmpty ? '' : ' at ${scopes.join(', ')}';
+
+    // The broken count leads when there is one, because a connection that has
+    // stopped working is the whole reason somebody opens this screen.
+    return broken > 0
+        ? '$broken of ${rows.length} need attention$where'
+        : '${rows.length} connected$where';
+  }
+
+  Widget _pill(
+    ThemeData theme, {
+    required List<IntegrationConnection> rows,
+    required int broken,
+  }) {
+    final (label, colour) = switch ((rows.isEmpty, broken > 0)) {
+      (true, _) => ('Set up', theme.colorScheme.onSurfaceVariant),
+      (false, true) => ('Needs attention', theme.colorScheme.error),
+      (false, false) => ('Connected', theme.colorScheme.primary),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colour.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(color: colour),
+      ),
+    );
+  }
 }

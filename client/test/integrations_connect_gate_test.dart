@@ -28,10 +28,17 @@ void main() {
   ) async {
     await _pump(tester, permissions: const ['profit_loss.view']);
 
-    expect(find.text('Airtable'), findsOneWidget);
+    // BOTH CARDS ARE DRAWN — the card is inventory, the form is the act.
+    // Somebody who may not connect a Workiz account may still see that one is
+    // not connected, which is what this screen is for.
+    expect(find.byKey(const ValueKey('provider:airtable')), findsOneWidget);
+    expect(find.byKey(const ValueKey('provider:workiz')), findsOneWidget);
+
+    await _open(tester, 'airtable');
     expect(find.text('Connect base'), findsOneWidget);
 
-    expect(find.text('Workiz'), findsNothing);
+    await _back(tester);
+    await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsNothing);
   });
 
@@ -49,10 +56,11 @@ void main() {
       permissions: const ['reports.build', 'reports.experimental.view'],
     );
 
-    expect(find.text('Workiz'), findsOneWidget);
+    await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsOneWidget);
 
-    expect(find.text('Airtable'), findsNothing);
+    await _back(tester);
+    await _open(tester, 'airtable');
     expect(find.text('Connect base'), findsNothing);
   });
 
@@ -71,7 +79,7 @@ void main() {
     // the pane to everybody holding `reports.view`.
     await _pump(tester, permissions: const ['reports.build']);
 
-    expect(find.text('Workiz'), findsNothing);
+    await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsNothing);
   });
 
@@ -80,9 +88,39 @@ void main() {
   ) async {
     await _pump(tester, permissions: const ['marketing.edit']);
 
+    await _open(tester, 'airtable');
     expect(find.text('Connect base'), findsNothing);
+
+    await _back(tester);
+    await _open(tester, 'workiz');
     expect(find.text('Connect account'), findsNothing);
   });
+}
+
+/// Open a provider's card, which is where the forms live since 2026-09-22.
+///
+/// The form used to be under the family heading on the grid itself. Jose asked
+/// for "cards instead each with their own screen for connections", so the
+/// affordance moved one tap deeper — and these tests navigate rather than
+/// asserting on a screen that no longer draws it. A suite that had been
+/// loosened to `findsNothing` everywhere would have passed against a screen
+/// with no forms at all.
+Future<void> _open(WidgetTester tester, String provider) async {
+  final card = find.byKey(ValueKey('provider:$provider'));
+
+  expect(
+    card,
+    findsOneWidget,
+    reason: 'No $provider card to open, so nothing below this proves anything.',
+  );
+
+  await tester.tap(card);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _back(WidgetTester tester) async {
+  await tester.pageBack();
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(
@@ -105,6 +143,19 @@ Future<void> _pump(
 
       if (path.endsWith('/social/connections')) {
         return _json({'data': const []});
+      }
+
+      // The catalogue is what draws a card for a provider with NOTHING
+      // connected, and both reporting sources are that case here. Without it
+      // there is no card to open and every assertion below would pass against
+      // a screen that simply has no reporting section.
+      if (path.endsWith('/social/providers')) {
+        return _json({
+          'data': const [
+            {'value': 'airtable', 'label': 'Airtable'},
+            {'value': 'workiz', 'label': 'Workiz'},
+          ],
+        });
       }
 
       return _json({'message': 'Nothing stubbed for $path.'}, 500);
