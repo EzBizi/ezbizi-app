@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\CustomersGlance;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -117,6 +118,18 @@ class CustomersGlanceTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00', 'America/New_York'));
         $this->customer($this->alpha['franchise']);
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+
+        // The axis below is hand-derived from a SUNDAY week start, which this
+        // test until now inherited from the registry default rather than stated.
+        // On 2026-09-22 this assertion failed ONCE, alone, with ['2026-08-24'] --
+        // precisely the axis a MONDAY start draws -- and has not reproduced. It
+        // is not a peer's test leaking: the only two tests that write
+        // week_starts_on (DashboardPeriodTest, SettingsCascadeTest) both sort
+        // AFTER this one, in the filtered run and the full suite alike. Cause
+        // still open. Pinning the input costs a line and stops the expectation
+        // depending on a value this test does not choose.
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('week_starts_on', $this->alpha['org'], 'sunday'));
 
         $payload = app(CustomersGlance::class)->resolve(
             $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
