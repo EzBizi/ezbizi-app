@@ -17,7 +17,12 @@ Showing the first {{ number_format($count) }} rows. This report matched more.
 @endif
 
 @component('mail::subcopy')
+@if ($business !== '')
+Sent by {{ $business }} through EzBizi, from an automation rule. Somebody at
+{{ $business }} who can edit automations can change or stop it.
+@else
 This was sent by an automation rule in EzBizi. Somebody who can edit automations
 can change or stop it.
+@endif
 @endcomponent
 @endcomponent
