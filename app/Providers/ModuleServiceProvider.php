@@ -3136,6 +3136,14 @@ class ModuleServiceProvider extends ServiceProvider
                  * `monitoring.view` — and the backfill could not have restored
                  * it, correctly, because a named action is skipped there.
                  *
+                 * GENERAL AND MAP ARE TWO TABS NOW (Jose, 2026-09-22). The
+                 * floor-plan map moved to `map` and General became the
+                 * ownership chart — the same people and machines as a table
+                 * rather than a picture. Both mint, and the migration beside
+                 * this hands `map.view` to everybody who held `general.view`,
+                 * because the thing they could open yesterday is the thing
+                 * that moved.
+                 *
                  * `general` is the one that MINTS, and it is the only one that
                  * should. The floor-plan map has ridden on the module's own
                  * `monitoring.view` since it shipped, so a tab key for it is
@@ -3145,6 +3153,7 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('general', 'General'),
+                    new TabDefinition('map', 'Map'),
                     new TabDefinition('specs', 'PC Specs', action: 'view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),

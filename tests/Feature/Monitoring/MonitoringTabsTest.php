@@ -47,7 +47,7 @@ class MonitoringTabsTest extends TestCase
         $tabs = $this->tabs();
 
         $this->assertSame(
-            ['general', 'specs', 'cameras', 'desktop'],
+            ['general', 'map', 'specs', 'cameras', 'desktop'],
             array_keys($tabs),
             'The declared order is the order MonitoringScreen draws the chips.'
         );
@@ -61,14 +61,19 @@ class MonitoringTabsTest extends TestCase
         $this->assertSame('cameras.view', $tabs['cameras']->action());
         $this->assertSame('screenshots.view', $tabs['desktop']->action());
 
-        // The one that mints. The floor-plan map rode on plain `monitoring.view`
-        // until tabs existed, so this key is new and the backfill below is what
-        // keeps it from being a narrowing.
+        // The two that mint. General is the ownership chart; Map is the floor
+        // plan, which moved out of General on 2026-09-22 and took a key of its
+        // own — with a migration handing it to everybody who held general.view,
+        // because the pane they were using is the one that moved.
         $this->assertSame('general.view', $tabs['general']->action());
-        $this->assertNull(
-            $tabs['general']->action,
-            'general must MINT: a named action here would mean nothing to backfill.'
-        );
+        $this->assertSame('map.view', $tabs['map']->action());
+
+        foreach (['general', 'map'] as $key) {
+            $this->assertNull(
+                $tabs[$key]->action,
+                "{$key} must MINT: a named action would mean nothing to backfill."
+            );
+        }
     }
 
     public function test_pc_specs_is_the_module_view_because_the_roster_is_not_the_specs_grant(): void
@@ -121,20 +126,24 @@ class MonitoringTabsTest extends TestCase
         );
     }
 
-    public function test_the_floor_plan_routes_refuse_without_the_general_tab(): void
+    public function test_the_floor_plan_routes_refuse_without_the_map_tab(): void
     {
         // The gate, and its positive control. Without the control this passes
         // for a role that could not reach floor plans for any number of other
         // reasons.
         $alpha = $this->provisionTenant('Alpha');
 
-        $withoutTab = $this->userWithRole($alpha, 'No Map', ['monitoring.view', 'monitoring.specs.view']);
+        // Holds the CHART's key and not the MAP's — the fixture that can tell
+        // the two tabs apart now that they are two.
+        $withoutTab = $this->userWithRole($alpha, 'No Map', [
+            'monitoring.view', 'monitoring.specs.view', 'monitoring.general.view',
+        ]);
         $this->signedInAs($withoutTab)->getJson('/api/v1/monitoring/floor-plans')
             ->assertForbidden();
 
         // Control: the SAME endpoint answers somebody who holds the tab, so the
         // refusal above is this gate rather than the route being unreachable.
-        $withTab = $this->userWithRole($alpha, 'Map Viewer', ['monitoring.view', 'monitoring.general.view']);
+        $withTab = $this->userWithRole($alpha, 'Map Viewer', ['monitoring.view', 'monitoring.map.view']);
         $this->signedInAs($withTab)->getJson('/api/v1/monitoring/floor-plans')
             ->assertOk();
 
