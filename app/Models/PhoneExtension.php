@@ -17,7 +17,51 @@ class PhoneExtension extends Model implements StatesRetention
 
     protected $fillable = [
         'organization_id', 'connection_id', 'user_id', 'number_id', 'extension',
+        'ring_group_id', 'flow_id',
     ];
+
+    /** Dialling these digits rings one person. */
+    public const TARGET_USER = 'user';
+
+    /** Dialling these digits rings a team. */
+    public const TARGET_RING_GROUP = 'ring_group';
+
+    /** Dialling these digits plays a menu. */
+    public const TARGET_MENU = 'menu';
+
+    /**
+     * What these digits reach, derived rather than stored.
+     *
+     * Exactly one of `user_id`, `ring_group_id` and `flow_id` is set, so the
+     * kind is readable from the row and a fourth column holding the word would
+     * be one more thing to keep in step with the other three. See the
+     * migration for why this deliberately differs from
+     * `phone_numbers.answer_with`, where the discriminator carries something
+     * no column can.
+     *
+     * Null is a real answer and the Extensions screen shows it: an extension
+     * whose team or menu was deleted keeps its digits — somebody has told
+     * customers to dial 300 — and points at nothing until it is repointed.
+     */
+    public function targetKind(): ?string
+    {
+        return match (true) {
+            $this->user_id !== null => self::TARGET_USER,
+            $this->ring_group_id !== null => self::TARGET_RING_GROUP,
+            $this->flow_id !== null => self::TARGET_MENU,
+            default => null,
+        };
+    }
+
+    public function ringGroup(): BelongsTo
+    {
+        return $this->belongsTo(PhoneRingGroup::class, 'ring_group_id');
+    }
+
+    public function flow(): BelongsTo
+    {
+        return $this->belongsTo(PhoneFlow::class, 'flow_id');
+    }
 
     /**
      * Goes with the phone account, and with the person.

@@ -655,6 +655,46 @@ final class TwimlRenderer
             return;
         }
 
+        // ── A TEAM, rather than a person ────────────────────────────
+        //
+        // Jose, 2026-09-17: extensions for "users, ivr menus, ring groups".
+        // The group's own dial is reused rather than copied — `overflow_group`
+        // is the context key that already means "ring THIS group whatever the
+        // line would otherwise do", so an extension and a queue hand-back
+        // reach the same code and cannot drift apart.
+        if ($row->targetKind() === PhoneExtension::TARGET_RING_GROUP) {
+            // No null check on the group, and that is deliberate rather than
+            // missing. `ring_group_id` is a foreign key with `nullOnDelete`,
+            // so a deleted team NULLS the column — and a row with all three
+            // targets null has no kind at all, which the branch below catches.
+            // I wrote the null check first; sabotaging it left the suite green
+            // because the case cannot arise, and a branch nothing can reach is
+            // a branch the next person has to reason about for nothing.
+            $this->ringOrVoicemail($response, $number, [
+                ...$context,
+                'overflow_group' => $row->ringGroup,
+                'batch' => 0,
+            ]);
+
+            return;
+        }
+
+        // A menu extension is NOT handled here, deliberately — see the
+        // Extensions screen and `PhoneExtension::TARGET_MENU`. Playing the
+        // prompt is easy; carrying WHICH flow through the webhook round trip
+        // that follows a keypress is not, and a half-built version would read
+        // the right prompt and then route the keypress to the LINE's menu. The
+        // row cannot be created yet, so this is unreachable rather than broken.
+        if ($row->targetKind() !== PhoneExtension::TARGET_USER) {
+            $response->say(
+                'That extension is not set up right now.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
         $available = PhonePresence::query()
             ->where('connection_id', $connection->id)
             ->where('user_id', $row->user_id)
