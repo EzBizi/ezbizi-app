@@ -16,6 +16,15 @@ class VersionHistory {
       ],
     ),
     VersionRelease(
+      version: '0.0.0240',
+      date: '18 Sep 2026',
+      items: [
+        'The live chat has an on and off switch per website, under Web Management, and it starts on. Turning it off leaves the chat out of what the website is sent, so it works on whichever version of the plugin a site happens to be running.',
+        'A Cities pane for website content, and five more widgets a website can draw from EzBizi.',
+        'Our privacy page had said EzBizi never carries mail your business writes to its own customers. Three automation actions do, so the page now says which and when.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0239',
       date: '17 Sep 2026',
       items: [
