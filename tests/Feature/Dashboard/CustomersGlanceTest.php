@@ -122,11 +122,30 @@ class CustomersGlanceTest extends TestCase
             $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []
         )->toArray();
 
-        $sum = array_sum(array_column($payload['data']['series'][0]['points'], 'value'));
+        $points = $payload['data']['series'][0]['points'];
+        $sum = array_sum(array_column($points, 'value'));
         $this->assertFalse($payload['data']['empty']);
         $this->assertContains('1 customer listed.', $payload['data']['sentences']);
         $this->assertContains('0 new this week.', $payload['data']['sentences']);
         $this->assertSame(0, $sum);
+
+        // The assertion the three above cannot make. A dropped bucket carries
+        // the identity value, so the sum stays 0 and the payload stays
+        // non-empty whether this week drew every day or only the one the
+        // customer landed in -- the case the docblock promises to draw,
+        // "zeros included so the line does not skip quiet days", is exactly the
+        // case those cannot distinguish.
+        //
+        // Axis keys rather than a count, because the count alone would not say
+        // the axis STARTS at the week's start. The clock is pinned to Monday
+        // 2026-08-24 and the week begins Sunday the 23rd, so a correct series
+        // is those two days and no others -- the 23rd being a day with nothing
+        // on it, which is the whole point. NOT seven: this period runs from the
+        // week's start to NOW, not to the week's end (`DashboardPeriod::for`
+        // takes `endsOn` from `$now`), so seven columns would be right only
+        // when the week is over.
+        $this->assertSame(['2026-08-23', '2026-08-24'], array_column($points, 'at'));
+        $this->assertSame([0, 0], array_column($points, 'value'));
     }
 
     public function test_organization_total_is_the_whole_book(): void
