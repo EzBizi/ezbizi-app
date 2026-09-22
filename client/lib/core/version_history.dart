@@ -11,6 +11,8 @@ class VersionHistory {
       version: '0.0.0242',
       date: '22 Sep 2026',
       items: [
+        'Extensions now begin with a zero, and the nine that already existed were moved to match -- 101 became 0101, keeping each person their own number rather than renumbering anybody. A menu offers 1 to 9, so an extension starting with one of those digits cannot be told from a menu choice at the instant a caller presses it.',
+        'A saved report emailed out says which business it is from. It named the rule that sent it and never the business.',
         'Integrations shows a card for what your business actually uses. Fifteen providers drew fifteen cards and thirteen of them offered to set up something nobody here had connected, so Mailing, Social and Advertising now carry only what is connected, each keeping the sentence that says where to connect more. Reporting keeps all of its cards, because there the card is the only way in.',
         'Facebook Messenger and Instagram arrive in Leads as sources of their own, beside Google, Thumbtack, Chat and Forms, and you answer them from the same thread as everything else.',
         'A window for an incoming call, naming the customer when the number is one of yours and showing the number when it is not, with Accept and Ignore. It is off until you switch it on, from the Dial pad: the strip stays the default, so a ringing phone does not take the app away from whatever you were in the middle of writing.',
