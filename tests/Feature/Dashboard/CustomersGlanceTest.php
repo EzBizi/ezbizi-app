@@ -125,9 +125,24 @@ class CustomersGlanceTest extends TestCase
         // precisely the axis a MONDAY start draws -- and has not reproduced. It
         // is not a peer's test leaking: the only two tests that write
         // week_starts_on (DashboardPeriodTest, SettingsCascadeTest) both sort
-        // AFTER this one, in the filtered run and the full suite alike. Cause
-        // still open. Pinning the input costs a line and stops the expectation
-        // depending on a value this test does not choose.
+        // AFTER this one, in the filtered run and the full suite alike. Pinning
+        // the input costs a line and stops the expectation depending on a value
+        // this test does not choose.
+        //
+        // The serious half of that is now CLOSED. A resolver returning nothing
+        // cannot draw a Monday axis: DashboardPeriod::weekStartsAtFor ends in
+        // `$startsOn === 'monday' ? MONDAY : SUNDAY`, so null, absent and the
+        // registry default (SettingRegistry:212, 'sunday') all give Sunday.
+        // Only the literal string 'monday' gives Monday, so a real row said so.
+        //
+        // Which leaves a row that should not have been visible. The gate runs
+        // serially (deploy.sh:132 -- the schema is shared, so it cannot go
+        // parallel), but a LOCAL run does not: several sessions share this box,
+        // and one running against `ezbizi_testing` instead of its own schema
+        // sees another session's writes mid-run. Once, alone, never reproduced,
+        // and a value only a real row can produce is that, not a defect here.
+        // If it recurs, dump scope_type/scope_id/value at the failure before
+        // believing anything else.
         $this->inTenant(fn () => app(SettingsResolver::class)
             ->set('week_starts_on', $this->alpha['org'], 'sunday'));
 
