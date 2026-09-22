@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Integrations is a card for each provider, each with its own screen, and every card says which part of the business the accounts on it belong to.',
         'Automations are cards laid out across the width instead of one full-width row each, so you can see more rules at once, and the template picker draws each template as a card naming the trigger it runs on.',
+        'Settings, Mail server for sending, no longer says your saved reports and automations go out through a server you connect there. They go out from EzBizi, and have since 16 September. The screen was still describing the week it was built, and it was asking for a password on the strength of it.',
       ],
     ),
     VersionRelease(
