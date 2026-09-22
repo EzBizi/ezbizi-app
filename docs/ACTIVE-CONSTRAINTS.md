@@ -564,14 +564,22 @@ remove the directory.
 
 ## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
 
-Measured on the box, **2026-09-18**:
+Measured on the box, **2026-09-22**:
 
-    plugin_version 1.11.0   110 sites, 109 seen in the last 15 minutes
+    plugin_version 1.12.0   110 sites, 64 seen in the last 15 minutes
     never read                1 site
 
-The day before it read 1.9.1 on 110 and 1.10.0 on zero, so the estate moved two
-releases in a day. It moved because we HOST these sites; the capability argument
-below is about a customer's own server, and is unchanged.
+On 2026-09-17 it read 1.9.1 on 110 and 1.10.0 on zero; on the 18th, 1.11.0 on
+110 and then 1.12.0 the same afternoon. Three releases in two days.
+
+**The headline figure above was 1.11.0 until 2026-09-22 while the body of this
+very section said the estate had gone to 1.12.0 that same afternoon.** A
+section can contradict itself and stay believable, because a reader takes the
+number from the top and the reasoning from the bottom. Re-measure the headline
+when you add to the body.
+
+The estate moves because we HOST these sites; the capability argument below is
+about a customer's own server, and is unchanged.
 
 **WRONG FOR THREE HOURS ON 2026-09-18, AND THE WRONG VERSION IS KEPT HERE
 BECAUSE THE MISTAKE IS THE USEFUL PART.** This section said a session could not
