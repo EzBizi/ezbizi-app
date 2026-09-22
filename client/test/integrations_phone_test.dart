@@ -113,6 +113,51 @@ void main() {
           'The phrase the redesign exists to remove came back at phone width.',
     );
   });
+
+  /// The wall of cards, and the one family that must keep them.
+  ///
+  /// EzBizi offers seventeen providers and a business connects three. Before
+  /// this, a catalogue of fifteen drew FIFTEEN cards with THIRTEEN reading
+  /// "Set up" — measured, not estimated — which is the same four-pages-of-
+  /// scrolling Jose photographed, rebuilt in a nicer shape.
+  ///
+  /// The second assertion is the one that matters and is a positive control on
+  /// the first: Reporting has no "connect it over there" pointer, so tapping
+  /// an unconnected Airtable card IS the only route to its connect form.
+  /// Tidying that family the same way would remove the only door, and nothing
+  /// else in the suite would notice.
+  testWidgets('a provider you do not use is not a card, unless the card is '
+      'the only way to connect it', (tester) async {
+    await _pumpCatalogue(tester);
+
+    Finder cards() => find.byWidgetPredicate(
+      (w) =>
+          w is InkWell &&
+          w.key is ValueKey &&
+          (w.key as ValueKey).value.toString().startsWith('provider:'),
+    );
+
+    // EXACTLY TWO, and which two is the whole point: Reporting's pair. Not
+    // `findsNothing`, which would go red on the correct behaviour, and not an
+    // unbounded count, which would pass if the other eleven came back.
+    expect(
+      find.text('Set up'),
+      findsNWidgets(2),
+      reason:
+          'Either a family that connects elsewhere drew cards for providers '
+          'nobody uses, or Reporting lost the cards that are its only connect '
+          'form.',
+    );
+
+    // The two connected ones, plus Reporting's two, which stay because the
+    // card is their connect form's only entrance.
+    expect(cards(), findsNWidgets(4));
+    expect(find.byKey(const ValueKey('provider:airtable')), findsOneWidget);
+    expect(find.byKey(const ValueKey('provider:workiz')), findsOneWidget);
+
+    // And discovery survives the collapse.
+    expect(find.textContaining('Also available:'), findsWidgets);
+  });
 }
 
 Future<void> _pump(WidgetTester tester, {required double width}) async {
@@ -149,6 +194,49 @@ Future<void> _pump(WidgetTester tester, {required double width}) async {
   final session = Session(api);
   await tester.runAsync(() => session.adopt('tok'));
   expect(session.signedIn, isTrue, reason: 'the /me stub made no session');
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(body: IntegrationsScreen(api: api, session: session)),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+
+/// The real catalogue, near enough: fifteen providers against two connections.
+Future<void> _pumpCatalogue(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(1280, 4000);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  const all = [
+    'facebook_page', 'instagram_professional', 'threads', 'linkedin', 'tiktok',
+    'pinterest', 'youtube', 'x', 'bluesky', 'google_business_profile',
+    'google_ads', 'thumbtack', 'mailchimp', 'workiz', 'airtable',
+  ];
+
+  final api = ApiClient(
+    client: MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) return _json({'data': _me});
+      if (path.endsWith('/social/connections')) {
+        return _json({'data': _connections});
+      }
+      if (path.endsWith('/social/providers')) {
+        return _json({
+          'data': [
+            for (final p in all) {'value': p, 'label': p},
+          ],
+        });
+      }
+      return _json({'message': 'Nothing stubbed for $path.'}, 500);
+    }),
+  );
+
+  final session = Session(api);
+  await tester.runAsync(() => session.adopt('tok'));
 
   await tester.pumpWidget(
     MaterialApp(

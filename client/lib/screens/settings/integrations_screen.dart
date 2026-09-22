@@ -327,7 +327,27 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     String? where,
     bool canName = false,
   }) {
-    final mine = providers.where((p) => _familyOf(p) == family).toList()
+    final all = providers.where((p) => _familyOf(p) == family).toList();
+
+    /*
+     * WHAT YOU HAVE, NOT WHAT EXISTS — except where the card is the only door.
+     *
+     * The software offers seventeen providers and a business connects three.
+     * Drawing a card for every one put THIRTEEN "Set up" cards on screen next
+     * to two real ones (measured), which is the four-pages-of-scrolling Jose
+     * photographed wearing different clothes: a screen mostly about things you
+     * do not have.
+     *
+     * The boundary is not taste, it is whether the card DOES anything. Three
+     * families connect elsewhere and say so in a sentence at the foot of this
+     * block, so an unconnected card there is a second copy of that sentence
+     * shaped like a control. Reporting has no `where`: its connect form lives
+     * inside the provider screen, reachable only by tapping the card, so
+     * hiding an unconnected Airtable would remove the only way to add one.
+     */
+    final mine =
+        (where == null ? all : all.where((p) => (byProvider[p] ?? const []).isNotEmpty))
+            .toList()
       ..sort((a, b) {
         // Connected first, then alphabetically. What a business HAS is the
         // thing it came to look at; what it could have is a catalogue.
@@ -365,6 +385,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
               ],
             ),
           const SizedBox(height: 8),
+
+          // Named rather than merely absent, so somebody can still discover
+          // that EzBizi speaks TikTok without a card each for the fifteen it
+          // speaks and they do not use.
+          if (where != null && all.length > mine.length)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Also available: '
+                '${(all.where((p) => (byProvider[p] ?? const []).isEmpty).map(_label).toList()..sort()).join(', ')}.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
 
           /*
            * A SENTENCE FOR MOST FAMILIES, A FORM FOR ONE.
