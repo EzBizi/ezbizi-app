@@ -67,6 +67,38 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 <!-- superseded row retained below for its history -->
 | **Monitoring, Marketing (superseded 2026-09-15)** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. **THE MONITORING REASON IS REPLACED, 2026-09-10, and the row still holds.** The row count it named was taken by the desk in `0042`: `monitoring_floor_plans` **2**, `monitored_devices` **49**. So built-and-unused is FALSE — somebody drew plans and forty-nine machines are checking in, and the Inspections precedent would ordinarily make that sellable. **It is held for a reason no count can settle:** the copy would be about watching employees' screens, and `0.0.0189` widened exactly that — the desktop app now reports open programs, which programs talk to the internet, and the titles of open browser tabs. **That needs a decision from Jose, not a measurement**, and it is the one item on this list where "do as you recommend" does not obviously reach, because the risk is not accuracy. **Do not invert this on the strength of 2 and 49.** Whoever writes the sentence checks it against `privacy/` as well as against the count. The old reason — "its dashboard summary is a placeholder" — is now the WRONG REASON rather than a wrong conclusion: `GlanceRegistry::COMING_SOON` still holds `monitoring` deliberately. |
 
+## Load-bearing sentences — re-check these, they go false silently
+
+**The `forbidden-terms` grep below catches a claim we REMOVED coming back. This
+table is the opposite failure and there is no grep for it: a claim that is on the
+site, was true when written, and goes false because a feature landed somewhere
+else.** It has happened twice in a week — "no location data of any kind" (overtaken
+by the monitoring agent) and "mail your business writes does not go out over ours"
+(false two days after publishing, when three automation actions started sending).
+Both were caught by somebody happening to look.
+
+**Each row names the test, not the answer.** A row stating the current fact decays
+the day it changes; a row naming where to look does not. Walk this table when the
+deploy desk reports anything shipping in these areas, and after any release that
+touches apps, monitoring, social, Google or mail.
+
+| The sentence | Page | What makes it true, and where to look |
+|---|---|---|
+| "The apps ask for no device permissions … no camera, no photo library, no location, no microphone, no contacts, no calendar" | `/privacy/` | `client/android/app/src/main/AndroidManifest.xml` declares only `INTERNET`; `client/ios/Runner/Info.plist` has no `NS*UsageDescription`; `client/pubspec.yaml` pulls nothing for camera/location/contacts. **Any one of the three gaining an entry breaks it.** |
+| "no satellite or phone-mast position … no location permission on any device" | `/privacy/` | Same three files. Narrowed from a universal negative on 2026-09-15 *because* the agent reports "its wifi network and local address" — do not widen it back. |
+| "whether anybody is told … the answer is no unless they change it" | `/privacy/` | `SettingRegistry` → `monitoring.control_indicator` → `default:`. If that ever becomes `true`, this sentence is wrong in the reassuring direction. |
+| "We do not aggregate or anonymise Google user data … not combine it across customers" | `/privacy/` | No cross-organization read in `app/Services/Leads/`, `app/Support/Leads/`, `app/Services/Ads/`. **Filed with Google against `ezbizi-506117`, so a reviewer can re-read it.** Any benchmark, "average in your industry" or analytics rollup is a COMPLIANCE change and the policy moves first. |
+| "cost, clicks, impressions and conversions" | `/privacy/` | `app/Services/Ads/CampaignPerformance.php` — the `metrics.*` it actually requests. Became true 2026-09-16; a widened request makes the list short rather than wrong, which is the quieter failure. |
+| "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. |
+| "Either stops the texts; neither needs a password" | `/terms/` | `SmsCodesController::disable()` takes only `$request->user()`. Load-bearing: add a confirmation step and this page is false. |
+| "Facebook Pages, Instagram, Threads, Pinterest and TikTok send today" · "Pinterest images only" · "TikTok drafts, not the profile" | `/`, `/social-media/` | `Publishers::for()` — which providers return non-null. Was two, corrected upward to five on 2026-09-02; the site was the last to hear. |
+| "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
+| "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
+
+**Adding a row costs nothing and omitting one costs two days.** If you write a
+sentence on the site that would be false if somebody changed code you do not own,
+it belongs here with the file that decides it.
+
 ## Enforced at publish time
 
 `scripts/deploy-www.sh` refuses to publish if any page about to ship matches one
