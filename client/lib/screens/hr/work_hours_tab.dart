@@ -38,6 +38,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/theme.dart';
 import '../../core/ui_strings.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/user_avatar.dart';
@@ -352,7 +353,7 @@ class _PersonRow extends StatelessWidget {
                       width: 11,
                       height: 11,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A7F37),
+                        color: StateColour.of(context).on,
                         shape: BoxShape.circle,
                         border: Border.all(color: scheme.surface, width: 2),
                       ),
@@ -630,7 +631,7 @@ class _ShiftRow extends StatelessWidget {
         children: [
           // Green in, red out — his words. The times are the server's own
           // strings; nothing here formats a clock.
-          _Pip(colour: const Color(0xFF1A7F37)),
+          _Pip(colour: StateColour.of(context).on),
           const SizedBox(width: 6),
           Text(shift.clockedIn, style: theme.textTheme.bodySmall),
           const SizedBox(width: 12),
@@ -638,7 +639,7 @@ class _ShiftRow extends StatelessWidget {
             Text(
               UiStrings.t('time_clock.still_in'),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: const Color(0xFF1A7F37),
+                color: StateColour.of(context).on,
                 fontWeight: FontWeight.w700,
               ),
             )
@@ -663,7 +664,7 @@ class _ShiftRow extends StatelessWidget {
             Flexible(
               child: _Chip(
                 text: UiStrings.t('time_clock.outside'),
-                colour: const Color(0xFF8A5A00),
+                colour: StateColour.of(context).caution,
               ),
             ),
           ],

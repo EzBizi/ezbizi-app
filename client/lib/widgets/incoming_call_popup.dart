@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme.dart';
 import '../core/api_client.dart';
 import '../core/phone_call_service.dart';
 import '../core/phone_numbers.dart';
@@ -195,7 +196,7 @@ class _IncomingCallPopupState extends State<IncomingCallPopup> {
                           child: FilledButton.icon(
                             key: const Key('incoming-call-popup-accept'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF1B873F),
+                              backgroundColor: StateColour.of(context).on,
                               foregroundColor: Colors.white,
                             ),
                             onPressed: _service.accept,
