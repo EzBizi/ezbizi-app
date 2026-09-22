@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0241',
+      date: '22 Sep 2026',
+      items: [
+        'Integrations is a card for each provider, each with its own screen, and every card says which part of the business the accounts on it belong to.',
+        'Automations are cards laid out across the width instead of one full-width row each, so you can see more rules at once, and the template picker draws each template as a card naming the trigger it runs on.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0239',
       date: '17 Sep 2026',
       items: [
