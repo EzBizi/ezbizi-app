@@ -1040,6 +1040,8 @@ String leadHeaderLine(Map<String, dynamic> lead) {
 /// Web Management's website chat and forms are their own sources.
 String sourceWord(String? source) => switch (source) {
   'website_chat' => 'Website chat',
+  'facebook' => 'Facebook Messenger',
+  'instagram' => 'Instagram',
   'website_form' => 'Website form',
   'thumbtack' => 'Thumbtack',
   _ => 'Google Ads',

@@ -1408,6 +1408,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
+  'facebook' => 'Messenger',
+  'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
   _ => 'Google',
