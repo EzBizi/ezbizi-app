@@ -428,7 +428,7 @@ class PhoneAnswerWithTest extends TestCase
                     'connection_id' => $connection->id,
                     'user_id' => $me->id,
                     'number_id' => $number->id,
-                    'extension' => '204',
+                    'extension' => '0204',
                 ]);
             }
 

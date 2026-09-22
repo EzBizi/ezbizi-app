@@ -12,8 +12,9 @@ import 'settings_pane.dart';
 /// ── The two halves of one question ───────────────────────────────
 ///
 /// A person has an inbound identity and an outbound one, and they are
-/// independent. The EXTENSION is how a caller reaches them: press 101 and it
-/// rings Analorena. The NUMBER is what a customer sees when they ring back.
+/// independent. The EXTENSION is how a caller reaches them: dial 0101 and it
+/// rings Analorena — every extension begins with a zero, which is what tells
+/// one apart from a menu key as a caller types. The NUMBER is what a customer sees when they ring back.
 /// Somebody can have either without the other, which is why neither field
 /// requires the other and why the row survives with only one filled in.
 ///
@@ -286,7 +287,13 @@ class _TeamTabState extends State<TeamTab> {
               ],
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                hintText: 'None',
+                // The rule, said in the field rather than only in the 422.
+                // Jose, 2026-09-22: every extension begins with a zero — it is
+                // what tells an extension apart from a menu key at the moment
+                // a caller presses it. Somebody typing 101 here would
+                // otherwise learn that only when the save came back refused.
+                hintText: '0101',
+                helperText: 'Starts with 0',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),

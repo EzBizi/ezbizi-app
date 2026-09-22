@@ -171,12 +171,12 @@ class PhoneTeamExtensionTest extends TestCase
                     // A MENU KEY BOUND TO A FIXED EXTENSION, which is the only
                     // way `dialExtension` is reached today: there is no
                     // "type the extension you want" entry anywhere in the
-                    // product. My first fixture dialled '300' directly and
+                    // product. My first fixture dialled '0300' directly and
                     // every case failed identically, because an unrecognised
                     // key falls through to the line's own group.
                     'options' => [
-                        ['digit' => '2', 'action' => 'extension', 'extension' => '201'],
-                        ['digit' => '3', 'action' => 'extension', 'extension' => '300'],
+                        ['digit' => '2', 'action' => 'extension', 'extension' => '0201'],
+                        ['digit' => '3', 'action' => 'extension', 'extension' => '0300'],
                     ],
                 ],
             ]);
@@ -194,14 +194,14 @@ class PhoneTeamExtensionTest extends TestCase
                 'organization_id' => $t['org']->id,
                 'connection_id' => $connection->id,
                 'user_id' => $alice->id,
-                'extension' => '201',
+                'extension' => '0201',
             ]);
 
             PhoneExtension::query()->create([
                 'organization_id' => $t['org']->id,
                 'connection_id' => $connection->id,
                 'ring_group_id' => $team->id,
-                'extension' => '300',
+                'extension' => '0300',
             ]);
 
             return $number;

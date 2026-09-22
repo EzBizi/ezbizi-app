@@ -20,6 +20,25 @@ class PhoneExtension extends Model implements StatesRetention
         'ring_group_id', 'flow_id',
     ];
 
+    /**
+     * What an extension may look like: a leading zero, then one to seven more.
+     *
+     * ── Why the zero is load-bearing and not a house style ──────────
+     *
+     * Jose, 2026-09-22: *"all extensions should also be forced to begin with 0
+     * as in 001 002"*.
+     *
+     * It is what makes an extension tellable apart from a menu key while a
+     * caller is typing. A menu offers 1 to 9; if extensions could start with
+     * those digits, a caller pressing 1 could be choosing option one or
+     * beginning extension 103, and nothing in the keypress says which. A
+     * leading zero answers that on the first digit.
+     *
+     * Two to eight characters total, unchanged — `0` alone is not an
+     * extension, and eight is the column.
+     */
+    public const PATTERN = '/^0\d{1,7}$/';
+
     /** Dialling these digits rings one person. */
     public const TARGET_USER = 'user';
 

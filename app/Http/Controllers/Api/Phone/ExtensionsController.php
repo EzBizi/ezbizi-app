@@ -112,9 +112,11 @@ class ExtensionsController extends Controller
             'connection_id' => ['required', 'uuid'],
             'user_id' => ['required', 'uuid'],
 
-            // Digits only. Letters would be unreachable from a phone keypad,
-            // which is the one place this has to work.
-            'extension' => ['present', 'nullable', 'string', 'regex:/^\d{2,8}$/'],
+            // Digits only, and a LEADING ZERO. Letters would be unreachable
+            // from a phone keypad, which is the one place this has to work;
+            // the zero is what tells an extension apart from a menu key while
+            // somebody is typing. See PhoneExtension::PATTERN.
+            'extension' => ['present', 'nullable', 'string', 'regex:'.PhoneExtension::PATTERN],
 
             // The line this person's outbound calls go out from. Independent
             // of the extension: somebody can be given a number to call from
