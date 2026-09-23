@@ -129,7 +129,18 @@ class SchedulingImportA1Areas extends Command
                 continue;
             }
 
-            $seen[$franchise->getKey().'|'.mb_strtolower($name)] = true;
+            /*
+             * By NAME ONLY, matching the existence check above.
+             *
+             * Keyed by franchise this was WRONG IN THE REPORT and the dry-run
+             * against production is what showed it: "Upstate New York" and
+             * "New York" came back as retire candidates having taken 125 and 62
+             * bookings in the window. Their busiest account is Nationwide while
+             * the area sits under the New York franchise, so the pair never
+             * matched and two live areas were named as dead. A retire list that
+             * names a live area is worse than no retire list.
+             */
+            $seen[mb_strtolower($name)] = true;
 
             if (isset($existing[mb_strtolower($name)])) {
                 continue;
@@ -151,7 +162,7 @@ class SchedulingImportA1Areas extends Command
         // Ours that the measurement did not mention. Reported, never touched —
         // see the class docblock.
         $unmentioned = ServiceArea::query()->get()
-            ->reject(fn (ServiceArea $a) => isset($seen[$a->franchise_id.'|'.mb_strtolower(trim($a->name))]));
+            ->reject(fn (ServiceArea $a) => isset($seen[mb_strtolower(trim($a->name))]));
 
         if ($unmentioned->isNotEmpty()) {
             $this->newLine();
@@ -188,6 +199,10 @@ class SchedulingImportA1Areas extends Command
      */
     private function franchise(Organization $organization, string $name): ?Franchise
     {
+        if (isset($this->resolved[$name])) {
+            return $this->resolved[$name];
+        }
+
         $candidates = Franchise::query()
             ->where('organization_id', $organization->getKey())
             ->where('name', $name)
@@ -199,7 +214,7 @@ class SchedulingImportA1Areas extends Command
         }
 
         if ($candidates->count() === 1) {
-            return $candidates->first();
+            return $this->resolved[$name] = $candidates->first();
         }
 
         $withAreas = $candidates->first(
@@ -211,6 +226,9 @@ class SchedulingImportA1Areas extends Command
         $this->warn("  {$candidates->count()} franchises named {$name}; using "
             .$picked->getKey().' ('.($withAreas !== null ? 'has areas' : 'oldest').')');
 
-        return $picked;
+        return $this->resolved[$name] = $picked;
     }
+
+    /** @var array<string, Franchise> Resolved once per name, so the duplicate warning prints once. */
+    private array $resolved = [];
 }

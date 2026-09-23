@@ -425,6 +425,11 @@ lifetime and 0 recent — consolidated into DFW), East and South New Jersey,
 Kansas City, Nashville ×2, Tampa, Baltimore MD, Salt Lake City, San Diego,
 San Fransisco, Seattle Washington.
 
+**RUN AGAINST PRODUCTION 2026-09-23** on Jose's "do it": 19 created, 15 skipped,
+A1-Group now holds **45** service areas. The command was staged into the release
+tree, run, and removed — it is not in a deployed cut yet, so re-running it needs
+the branch merged first.
+
 **It never deletes.** Areas of ours the measurement does not mention are printed
 as retire candidates and left standing — `Atlanta North` (0 bookings in 30 days),
 `Rhode Island` (0), `All areas` (0), with `Atlanta South` on 3 and fading.

@@ -222,4 +222,44 @@ class ImportA1AreasTest extends TestCase
             'One territory ended up with two capacity buckets under two franchises.',
         );
     }
+
+    /**
+     * A LIVE AREA IS NEVER NAMED AS A RETIRE CANDIDATE because its busiest
+     * account is not the franchise it sits under.
+     *
+     * Found by dry-running against production: "Upstate New York" and "New
+     * York" were listed as having no bookings while they had taken 125 and 62.
+     * Their busiest Workiz account is Nationwide, the areas sit under the New
+     * York franchise, and the report matched the two as a pair. A retire list
+     * that names a live area is worse than no retire list — it invites
+     * deleting configured capacity.
+     */
+    public function test_a_live_area_under_another_franchise_is_not_called_a_retire_candidate(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        app(TenantContext::class)->set($tenant['org']);
+
+        $nationwide = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Nationwide',
+        ]);
+
+        // The area sits under Alpha's own franchise...
+        ServiceArea::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'name' => 'Upstate New York',
+        ]);
+
+        // ...while the measurement puts its busiest account at Nationwide.
+        $this->artisan('scheduling:import-a1-areas', [
+            'file' => $this->file([
+                ['franchise' => $nationwide->name, 'name' => 'Upstate New York', 'booked_30d' => 125],
+            ]),
+            '--organization' => 'Alpha',
+        ])
+            ->doesntExpectOutputToContain('Upstate New York')
+            ->assertSuccessful();
+    }
 }
