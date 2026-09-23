@@ -18,6 +18,8 @@ use App\Support\Fleet\VehicleAssignments;
 use App\Models\Vehicle;
 use App\Mail\AutomationMessage;
 use Illuminate\Support\Facades\Mail;
+use App\Support\Reports\SendSavedReport;
+use App\Support\Reports\SentReport;
 use App\Support\Automations\ActionRunner;
 use App\Support\Phone\TwilioGateway;
 use App\Models\AutomationRun;
@@ -1664,6 +1666,86 @@ class AutomationEngineTest extends TestCase
 
         $this->assertFalse($result['ok']);
         $this->assertStringContainsString('no longer exists', $result['detail']);
+    }
+
+    /**
+     * AN AUDIT ENTRY NAMES WHAT WAS SENT, NOT WHAT WAS ASKED FOR.
+     *
+     * The arm logged the addresses the RULE names, before reading the result —
+     * so a run where every address was refused wrote `automation.report_sent`
+     * naming people nobody wrote to.
+     *
+     * An audit trail is where somebody goes when they need to be certain
+     * rather than approximately right, which is why a false entry costs more
+     * than a missing one: nothing later can tell it apart from a true one.
+     *
+     * THE PAIR IS THE TEST. A good send must still log, or "never log anything"
+     * passes the half above and quietly removes the trail altogether.
+     */
+    public function test_a_report_that_reached_nobody_writes_no_audit_entry(): void
+    {
+        Mail::fake();
+
+        $automation = $this->automation(
+            'automation.schedule_reached', null, [], $this->org['admin']->id,
+        );
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'automation.schedule_reached',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $report = $this->inTenant(fn () => SavedReport::create([
+            'organization_id' => $this->org['organization']->id,
+            'name'            => 'Weekly numbers',
+            'definition'      => [
+                'root'    => 'jobs',
+                'columns' => [['resource' => 'jobs', 'column' => 'title']],
+                'filters' => [],
+            ],
+        ]));
+
+        $runner = app(ActionRunner::class);
+
+        $entries = fn () => $this->inTenant(
+            fn () => AuditEvent::where('action', 'automation.report_sent')->count(),
+        );
+
+        // THE CONTROL FIRST: a real send logs, so the assertion below is about
+        // the refusal and not about an arm that stopped logging entirely.
+        $this->inTenant(fn () => $runner->run([
+            'type' => 'report.send', 'report_id' => $report->id,
+            'to' => ['owner@example.test'],
+        ], $event, null, false, $automation));
+
+        $this->assertSame(1, $entries());
+
+        // AND A RUN THAT SENT NOTHING WRITES NOTHING.
+        //
+        // Reached through the real sender rather than a stub: with
+        // `skip_when_empty` and a report that returns no rows, `send()` returns
+        // with an empty `sent` and without throwing, which is exactly the shape
+        // an all-refused send has. `SendSavedReport` is final, so there was no
+        // honest way to force this before that option existed.
+        //
+        // The first version of this test used a `user:` id that does not exist.
+        // That refuses BEFORE the send, never reaches the audit line at all,
+        // and passed just as happily with the fix reverted.
+        $quiet = $this->inTenant(fn () => $runner->run([
+            'type' => 'report.send', 'report_id' => $report->id,
+            'to' => ['owner@example.test'], 'skip_when_empty' => true,
+        ], $event, null, false, $automation));
+
+        // A rule doing exactly what it was asked is a SUCCESS. Five failures
+        // auto-disable a rule, so a warning that correctly finds nothing five
+        // days running would switch itself off before the day it matters.
+        $this->assertTrue($quiet['ok'], $quiet['detail']);
+        $this->assertStringContainsString('found nothing', $quiet['detail']);
+
+        $this->assertSame(1, $entries(), 'a report that reached nobody was audited as sent');
     }
 
     /**
