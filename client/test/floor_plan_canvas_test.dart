@@ -291,6 +291,51 @@ void main() {
     }
   });
 
+  testWidgets('walls and tiles agree on the cell size at every zoom',
+      (tester) async {
+    // Jose, 2026-09-23: "if u zoom in or out things get displaced or
+    // deformed." Two layers draw this map — the painter draws the walls, the
+    // Stack positions the tiles — and they compute the cell size separately.
+    // The painter divides the size it is GIVEN; the tiles multiply the size
+    // the canvas COMPUTED. While a tight parent stretched the board those two
+    // were different numbers, so the walls squashed to the pane's aspect and
+    // every tile landed somewhere the walls no longer were.
+    //
+    // THE TIGHT BOX IS THE WHOLE TEST. The first version of this pumped the
+    // canvas the way the rest of this file does — inside a scroll view, which
+    // hands down LOOSE constraints — and passed with the fix reverted. It was
+    // measuring a stretch that cannot happen in its own harness. The tab gives
+    // this widget a tight box, so the test has to as well.
+    for (final zoom in const [0.5, 1.0, 2.0]) {
+      await _pumpTightCanvas(tester, zoom: zoom);
+
+      final boardFinder = _boardFinder();
+      final board = tester.getSize(boardFinder);
+      final painter =
+          tester.widget<CustomPaint>(boardFinder).painter as FloorPlanPainter;
+
+      // The painter's own two cell sizes. A board that kept its computed size
+      // keeps these equal; unequal ones ARE the deformation.
+      final painterCellX = board.width / painter.cols;
+      final painterCellY = board.height / painter.rows;
+
+      expect(painterCellX, closeTo(painterCellY, 0.01),
+          reason: 'At zoom $zoom the painter is drawing non-square cells, so '
+              'the plan is squashed to the pane instead of to its own shape.');
+
+      // And the tile layer, measured against the board rather than assumed.
+      final origin = tester.getTopLeft(boardFinder);
+      final tile = tester.getTopLeft(
+        find.byKey(const ValueKey('floor-plan-node-n-far')),
+      );
+
+      expect(tile.dx - origin.dx, closeTo(15 * painterCellX, 0.5),
+          reason: 'At zoom $zoom the tile is not on the cell the walls are '
+              'drawn against — the two layers are using different cell sizes.');
+      expect(tile.dy - origin.dy, closeTo(19 * painterCellY, 0.5));
+    }
+  });
+
   testWidgets('a wall point lands on the cell under the finger once scrolled',
       (tester) async {
     // THE BUG Jose reported: "zooming in out messes up the drawing wall
@@ -417,6 +462,45 @@ void main() {
 
     expect(moves, [(0, -2, 0)]);
   });
+}
+
+/// The canvas inside a TIGHTLY constrained box, which is what the tab gives it
+/// and what the rest of this file's helper does not. 932x594 is the pane the
+/// real tab measured at.
+Future<void> _pumpTightCanvas(WidgetTester tester, {required double zoom}) async {
+  tester.view.physicalSize = const Size(1000, 800);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: SizedBox(
+          width: 932,
+          height: 594,
+          child: FloorPlanCanvas(
+            key: ValueKey('tight-$zoom'),
+            layout: _layout(
+              cols: 40,
+              rows: 28,
+              nodes: const [
+                {'id': 'n-far', 'x': 15, 'y': 19, 'label': 'Desk 3'},
+              ],
+              walls: const [
+                {'x1': 2, 'y1': 26, 'x2': 38, 'y2': 26},
+              ],
+            ),
+            status: const {},
+            zoom: zoom,
+            selectedNodeId: null,
+            onSelectNode: (_) {},
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
 }
 
 /// The canvas in wall mode on a board of a known size, so a drag in pixels has
