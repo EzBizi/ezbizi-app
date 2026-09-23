@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -42,6 +43,23 @@ class A1LeadsGbpSourceTest extends TestCase
         config()->set('services.a1leads.receipt', $this->receiptFile('2026-09-23T15:01:07.302Z'));
     }
 
+    /**
+     * A reader at the organization A1 Leads' data belongs to.
+     *
+     * Every test here grants the permission AND names the organization, because
+     * the permission alone is not the boundary: this module is available to
+     * every tenant by default and holds one business's reviews. The test below
+     * that varies only the organization is the one that proves it.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    private function readerAt(array $t): User
+    {
+        config()->set('services.a1leads.organization_id', $t['org']->getKey());
+
+        return $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+    }
+
     /** A receipt on disk, because that is how the real one arrives. */
     private function receiptFile(string $capturedAt, ?string $installedAt = null): string
     {
@@ -67,7 +85,19 @@ class A1LeadsGbpSourceTest extends TestCase
                 'meta' => ['total' => 13169],
             ], 200),
             '*/api/v1/gbp/health' => Http::response(['data' => ['locations' => 3]], 200),
+            '*/api/v1/gbp/locations' => Http::response(['data' => [
+                [
+                    'gbp_location_name' => 'accounts/a/locations/l',
+                    'title' => 'A1 Chimney',
+                    'address' => '204 Ark Rd, Mt Laurel Township, NJ, 08054',
+                ],
+            ]], 200),
         ]);
+
+        // Anything this file does not stub is a real request leaving the
+        // machine, and the first one only surfaced as a two-second cURL timeout
+        // inside an unrelated assertion.
+        Http::preventStrayRequests();
     }
 
     /** THE POSITIVE CONTROL, first: the tab reads and says when the data is from. */
@@ -77,7 +107,7 @@ class A1LeadsGbpSourceTest extends TestCase
         $this->fakeA1Leads();
 
         $t = $this->provisionTenant('Alpha');
-        $reader = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+        $reader = $this->readerAt($t);
 
         $data = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data');
 
@@ -103,7 +133,7 @@ class A1LeadsGbpSourceTest extends TestCase
         $this->fakeA1Leads();
 
         $t = $this->provisionTenant('Bravo');
-        $reader = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+        $reader = $this->readerAt($t);
 
         $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
 
@@ -129,7 +159,7 @@ class A1LeadsGbpSourceTest extends TestCase
         $this->fakeA1Leads();
 
         $t = $this->provisionTenant('Charlie');
-        $reader = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+        $reader = $this->readerAt($t);
 
         $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
 
@@ -149,7 +179,7 @@ class A1LeadsGbpSourceTest extends TestCase
         ]);
 
         $t = $this->provisionTenant('Delta');
-        $reader = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+        $reader = $this->readerAt($t);
 
         $data = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data');
 
@@ -165,7 +195,7 @@ class A1LeadsGbpSourceTest extends TestCase
         config()->set('services.a1leads.api_key', null);
 
         $t = $this->provisionTenant('Echo');
-        $reader = $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+        $reader = $this->readerAt($t);
 
         $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
 
@@ -180,9 +210,140 @@ class A1LeadsGbpSourceTest extends TestCase
 
         $t = $this->provisionTenant('Foxtrot');
 
+        config()->set('services.a1leads.organization_id', $t['org']->getKey());
+
         $this->signedInAs($this->userWithRole($t, 'Reviews', ['reviews.view']))
             ->getJson(self::ENDPOINT)
             ->assertForbidden();
+    }
+
+    /**
+     * THE PERMISSION IS NOT THE BOUNDARY: the organization is.
+     *
+     * A module with no platform flag is available to every organization -
+     * `ModuleAvailability` fails open, deliberately - so an administrator at
+     * any other tenant can grant themselves `a1leads_gbp.view` from their own
+     * Roles screen. A1 Leads holds one business's thirteen thousand reviews,
+     * and no role at another company can say anything about whose they are.
+     *
+     * The two halves are asserted in one run against the same fake, so the
+     * refusal cannot be an unreachable service or a missing key.
+     */
+    public function test_only_the_organization_the_data_belongs_to_may_read_it(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $owner = $this->provisionTenant('Owner');
+        $stranger = $this->provisionTenant('Stranger');
+
+        // Named to the owner, and both users hold the identical grant.
+        config()->set('services.a1leads.organization_id', $owner['org']->getKey());
+
+        $mine = $this->signedInAs($this->userWithRole($owner, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $theirs = $this->signedInAs($this->userWithRole($stranger, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertTrue($mine['source']['configured'], 'the positive control');
+        $this->assertNotEmpty($mine['reviews']);
+
+        $this->assertFalse($theirs['source']['configured']);
+        $this->assertSame([], $theirs['reviews'], 'and not one row of somebody else\'s reviews');
+        $this->assertStringContainsString(
+            'not the one it belongs to',
+            (string) $theirs['source']['because'],
+            'and it says which kind of nothing this is',
+        );
+    }
+
+    /**
+     * Unset fails CLOSED, which is the opposite of the module flag.
+     *
+     * An absent platform flag means nobody has restricted the module. An absent
+     * organization here means nobody has said whose data this is, and the safe
+     * answer to that is nobody.
+     */
+    public function test_an_unnamed_organization_reads_nothing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Golf');
+        config()->set('services.a1leads.organization_id', null);
+
+        $data = $this->signedInAs($this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertFalse($data['source']['configured']);
+        $this->assertSame([], $data['reviews']);
+    }
+
+    /**
+     * THE FILTERS REACH THE OTHER SERVICE, which is the whole of the tab.
+     *
+     * A screen that drew "Negative (1-3 stars)" in its dropdown and sent no
+     * `rating` would look correct and answer the wrong question: thirteen
+     * thousand five-star reviews on top of the four somebody opened the tab
+     * for. The list route is asserted as well as the tab route, because paging
+     * that quietly dropped the filters would widen the list a page at a time.
+     */
+    public function test_the_filters_are_passed_through_to_a1_leads(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Hotel');
+        $reader = $this->readerAt($t);
+
+        $this->signedInAs($reader)
+            ->getJson(self::ENDPOINT.'/reviews?rating=negative&replied=false&matched=true'
+                .'&sort=oldest&from=2026-01-01T00:00:00Z&offset=40&limit=25')
+            ->assertOk();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v1/reviews')) {
+                return false;
+            }
+
+            return str_contains($request->url(), 'rating=negative')
+                && str_contains($request->url(), 'replied=false')
+                && str_contains($request->url(), 'matched=true')
+                && str_contains($request->url(), 'sort=oldest')
+                && str_contains($request->url(), 'offset=40')
+                && str_contains($request->url(), 'limit=25');
+        });
+    }
+
+    /**
+     * And a filter neither side understands does not travel.
+     *
+     * The discriminating half of the test above: a pass-through built by
+     * forwarding the query string wholesale would satisfy it. A1 Leads ignores
+     * what it does not know, so a filter that reached it and did nothing would
+     * come back as a list that looks narrowed and is not.
+     */
+    public function test_a_filter_neither_side_knows_is_dropped(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('India');
+
+        $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT.'/reviews?rating=5&franchise_id=abc&order_by=whatever')
+            ->assertOk();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v1/reviews')) {
+                return false;
+            }
+
+            return str_contains($request->url(), 'rating=5')
+                && ! str_contains($request->url(), 'franchise_id')
+                && ! str_contains($request->url(), 'order_by');
+        });
     }
 
     /**

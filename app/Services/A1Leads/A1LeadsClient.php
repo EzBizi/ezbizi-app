@@ -110,12 +110,97 @@ class A1LeadsClient
      *
      * @return array<string, mixed>
      */
-    public function reviews(int $limit = 20, int $offset = 0): array
+    public function reviews(int $limit = 20, int $offset = 0, array $filters = []): array
     {
         return $this->get('reviews', [
+            ...$this->filters($filters),
             'limit' => max(1, min($limit, 100)),
             'offset' => max(0, $offset),
         ]);
+    }
+
+    /**
+     * The filters `/api/v1/reviews` understands, and no others.
+     *
+     * Taken from A1 Tools' own reader rather than from a specification: it is
+     * the consumer that has been asking this endpoint these questions for
+     * months, so this list is measured rather than hoped for. Anything else a
+     * request carries is dropped here instead of being forwarded, because a
+     * filter the other service ignores is worse than one it refuses - the list
+     * comes back wrong and looks right.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, string>
+     */
+    private function filters(array $filters): array
+    {
+        $allowed = ['city', 'location', 'rating', 'replied', 'matched', 'from', 'to', 'sort'];
+
+        $out = [];
+
+        foreach ($allowed as $key) {
+            $value = $filters[$key] ?? null;
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $out[$key] = is_bool($value) ? ($value ? 'true' : 'false') : (string) $value;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The GBP locations, for the tab's location filter.
+     *
+     * A1 Tools reads its own location list from `/api/v1/reviews/locations`,
+     * which is NOT one of the five routes this consumer was granted and would
+     * answer 403. `/api/v1/gbp/locations` is granted and describes the same
+     * listings, so the tab asks that one and the shapes are read tolerantly -
+     * every field is optional and a location missing its name is dropped rather
+     * than drawn as a blank row.
+     *
+     * @return list<array{name: string, title: ?string, address: ?string}>
+     */
+    public function locations(): array
+    {
+        $rows = $this->get('gbp_locations')['data'] ?? [];
+
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        $out = [];
+
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = $row['gbp_location_name'] ?? $row['name'] ?? null;
+
+            if (! is_string($name) || trim($name) === '') {
+                continue;
+            }
+
+            $out[] = [
+                'name' => $name,
+                'title' => self::text($row['title'] ?? $row['location_title'] ?? null),
+                'address' => self::text($row['address'] ?? $row['location_address'] ?? null),
+            ];
+        }
+
+        return $out;
+    }
+
+    private static function text(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        return trim($value) === '' ? null : trim($value);
     }
 
     /** @return array<string, mixed> */

@@ -738,8 +738,14 @@ Route::prefix('v1')
          * serves exactly one tab, which is the condition inbox 0051 sets for
          * the middleware being the right place.
          */
-        Route::middleware('permission:a1leads_gbp.view')
-            ->get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
+        Route::middleware('permission:a1leads_gbp.view')->group(function () {
+            Route::get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
+
+            // The list on its own, for filter changes and paging. Same grant,
+            // same tab; a separate route so changing a dropdown costs one
+            // upstream read rather than four.
+            Route::get('a1leads-gbp/reviews', [A1LeadsGbpController::class, 'reviews']);
+        });
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/async_body.dart';
+import '../widgets/search_picker.dart';
 
 /// A1Leads GBP — a read-only window onto Rodrigo's A1 Leads, and only that.
 ///
@@ -18,6 +20,26 @@ import '../core/session.dart';
 /// *"we still need our system in place for when we get OUR GBP Credentials and
 /// we'll need the google reviewers to see it. SO PUT IT BACK WHERE IT WAS, THE
 /// A1LEADS GBP TAB IS A NEW ENTIRE THING."*
+///
+/// ── The A1 Tools tab this replaces, and the two things it cannot carry ──
+///
+/// The layout is A1 Tools' Customer Experience → Google Reviews tab: the same
+/// six filters in the same order, the same triage line under every review, the
+/// same reply bubble. Somebody who used that tab this morning should not have
+/// to learn this one.
+///
+/// Two of its affordances are deliberately absent, and neither is an oversight:
+///
+///  - **Reply on Google.** A1 Leads is still the only writer to that Business
+///    Profile. Our consumer is admitted to five GET routes and the service runs
+///    with `MIGRATION_READ_ONLY=1`, so a Reply button here could only ever
+///    produce a 503. A button whose sole outcome is a refusal is worse than no
+///    button: it teaches somebody the feature is broken rather than elsewhere.
+///  - **Match manually / Report spam.** Writes, for the same reason. The match
+///    A1 Leads computed is SHOWN, because that is a read.
+///
+/// Both stay in A1 Tools until EzBizi holds the Google credential itself, and
+/// this whole module is deleted the day it does.
 ///
 /// ── Why the date is the first thing on the screen ────────────────
 ///
@@ -42,9 +64,30 @@ class A1LeadsGbpScreen extends StatefulWidget {
 }
 
 class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
-  Map<String, dynamic>? _data;
-  String? _error;
+  Map<String, dynamic> _source = const {};
+  List<Map<String, dynamic>> _reviews = const [];
+  List<Map<String, dynamic>> _locations = const [];
+  int _total = 0;
+
   bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
+
+  /// Which load is current. A filter changed twice quickly must not be
+  /// overwritten by the slower of the two answers.
+  int _request = 0;
+
+  /// Opens on the negative reviews, exactly as the A1 Tools tab does.
+  ///
+  /// Not a default inherited by accident: nobody opens this to browse thirteen
+  /// thousand five-star reviews. They open it because a one-star is sitting at
+  /// the top of a Google listing being the first thing a stranger reads.
+  String _rating = 'negative';
+  String _replied = '';
+  String _match = '';
+  String _range = '';
+  String _sort = 'newest';
+  String? _location;
 
   @override
   void initState() {
@@ -52,64 +95,149 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     unawaited(_load());
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  /// The filters, as the API takes them.
+  ///
+  /// `from` is computed here rather than sent as `3m`, because the cutoff is a
+  /// fact about the reader's clock and the snapshot's clock is a day behind it.
+  Map<String, String> get _query {
+    final from = _fromForRange(_range);
 
-    try {
-      final response = await widget.api.get('/a1leads-gbp');
-      if (!mounted) return;
+    return {
+      if (_rating.isNotEmpty) 'rating': _rating,
+      if (_replied.isNotEmpty) 'replied': _replied,
+      if (_match == 'matched') 'matched': 'true',
+      if (_match == 'unverified') 'matched': 'false',
+      'from': ?from,
+      'location': ?_location,
+      'sort': _sort,
+      'limit': '20',
+    };
+  }
+
+  String? _fromForRange(String range) {
+    final now = DateTime.now();
+
+    final cut = switch (range) {
+      'd7' => now.subtract(const Duration(days: 7)),
+      'd30' => now.subtract(const Duration(days: 30)),
+      '3m' => DateTime(now.year, now.month - 3, now.day),
+      '6m' => DateTime(now.year, now.month - 6, now.day),
+      '12m' => DateTime(now.year - 1, now.month, now.day),
+      'ytd' => DateTime(now.year, 1, 1),
+      _ => null,
+    };
+
+    return cut?.toUtc().toIso8601String();
+  }
+
+  /// The whole tab: source, locations and the first page.
+  Future<void> _load() async {
+    final request = ++_request;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/a1leads-gbp', _query);
+
+    if (!mounted || request != _request) return;
+
+    setState(() {
+      _loading = false;
+
       if (!response.ok) {
-        setState(() {
-          _error = 'A1 Leads returned ${response.statusCode}.';
-          _loading = false;
-        });
+        _error = response.message;
         return;
       }
-      setState(() {
-        _data = (response.body['data'] as Map?)?.cast<String, dynamic>();
-        _error = null;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _loading = false;
-      });
-    }
+
+      final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _source = (data['source'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _reviews = _rows(data['reviews']);
+      _locations = _rows(data['locations']);
+      _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
+    });
   }
+
+  /// A filter changed: the list only.
+  ///
+  /// Deliberately not `_load`. Re-asking the whole tab would spend four
+  /// upstream reads on a service we were asked to keep under 120 a minute, to
+  /// re-fetch a location list that cannot have changed since the dropdown was
+  /// drawn from it.
+  Future<void> _reload() async {
+    final request = ++_request;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/a1leads-gbp/reviews', _query);
+
+    if (!mounted || request != _request) return;
+
+    setState(() {
+      _loading = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _source = (data['source'] as Map?)?.cast<String, dynamic>() ?? _source;
+      _reviews = _rows(data['reviews']);
+      _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _loadingMore = true);
+
+    final response = await widget.api.get('/a1leads-gbp/reviews', {
+      ..._query,
+      'offset': '${_reviews.length}',
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      _loadingMore = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _reviews = [..._reviews, ..._rows(data['reviews'])];
+      _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _total;
+    });
+  }
+
+  List<Map<String, dynamic>> _rows(Object? value) => List<Map<String, dynamic>>.from(
+        (value as List? ?? const []).whereType<Map>().map((m) => m.cast<String, dynamic>()),
+      );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_error != null) {
-      return _sentence(
-        theme,
-        icon: Icons.error_outline,
-        title: 'A1 Leads could not be read',
-        body: _error!,
-      );
-    }
-
-    final source = (_data?['source'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final reviews = (_data?['reviews'] as List?) ?? const [];
-
     // The source is unusable: say which kind of unusable, and never fall
     // through to a list. `because` carries the server's own words.
-    if (source['configured'] != true || source['reachable'] != true) {
+    if (!_loading &&
+        _error == null &&
+        _source.isNotEmpty &&
+        (_source['configured'] != true || _source['reachable'] != true)) {
       return _sentence(
         theme,
         icon: Icons.link_off,
-        title: source['configured'] == true
+        title: _source['configured'] == true
             ? 'A1 Leads is not answering'
-            : 'A1 Leads is not connected yet',
+            : 'A1 Leads is not connected here',
         body:
-            '${source['because'] ?? 'The connection to A1 Leads is not available.'}\n\n'
+            '${_source['because'] ?? 'The connection to A1 Leads is not available.'}\n\n'
             'Nothing is missing and nothing is broken here — there is simply '
             'nothing to show until the connection is in place. EzBizi\'s own '
             'Reviews and Business Profile are in Marketing, unchanged.',
@@ -119,34 +247,28 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _sourceBand(theme, source),
+        if (_source.isNotEmpty) _sourceBand(theme),
+        _filters(theme),
         const Divider(height: 1),
         Expanded(
-          child: reviews.isEmpty
-              ? _sentence(
-                  theme,
-                  icon: Icons.inbox_outlined,
-                  title: 'No reviews in this snapshot',
-                  body:
-                      'The snapshot installed on ${_short(source['captured_at'])} '
-                      'carries no reviews for this page.',
-                )
-              : ListView.separated(
-                  itemCount: reviews.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) =>
-                      _review(theme, (reviews[i] as Map).cast<String, dynamic>()),
-                ),
+          child: AsyncBody(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
+            child: _reviews.isEmpty ? _empty(theme) : _list(theme),
+          ),
         ),
       ],
     );
   }
 
   /// The band that makes the age of the data impossible to miss.
-  Widget _sourceBand(ThemeData theme, Map<String, dynamic> source) {
-    final stale = source['stale'] == true;
-    final colour = stale ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest;
-    final onColour = stale ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant;
+  Widget _sourceBand(ThemeData theme) {
+    final stale = _source['stale'] == true;
+    final colour =
+        stale ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest;
+    final onColour =
+        stale ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant;
 
     return Material(
       color: colour,
@@ -159,11 +281,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             Expanded(
               child: Text(
                 stale
-                    ? 'This data is from ${_short(source['captured_at'])} and has not '
-                          'refreshed since — ${source['hours_old']} hours old. Treat it as '
-                          'historical rather than current.'
-                    : 'Read from A1 Leads. Snapshot captured ${_short(source['captured_at'])}, '
-                          'installed ${_short(source['installed_at'])}.',
+                    ? 'This data is from ${_short(_source['captured_at'])} and has not '
+                        'refreshed since — ${_source['hours_old']} hours old. Treat it as '
+                        'historical rather than current.'
+                    : 'Read from A1 Leads. Snapshot captured ${_short(_source['captured_at'])}, '
+                        'installed ${_short(_source['installed_at'])}.',
                 style: theme.textTheme.bodySmall?.copyWith(color: onColour),
               ),
             ),
@@ -179,28 +301,387 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     );
   }
 
-  Widget _review(ThemeData theme, Map<String, dynamic> review) {
-    final rating = review['rating'];
+  /// The same six filters as the A1 Tools tab, in the same order.
+  Widget _filters(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _picker<String>(
+            width: 180,
+            value: _rating,
+            hint: 'Any rating',
+            options: const [
+              SearchOption(value: '', label: 'Any rating'),
+              SearchOption(value: 'positive', label: 'Positive (4–5★)'),
+              SearchOption(value: 'negative', label: 'Negative (1–3★)'),
+              SearchOption(value: '5', label: '5★'),
+              SearchOption(value: '4', label: '4★'),
+              SearchOption(value: '3', label: '3★'),
+              SearchOption(value: '2', label: '2★'),
+              SearchOption(value: '1', label: '1★'),
+            ],
+            onChanged: (v) => setState(() => _rating = v ?? ''),
+          ),
+          _picker<String>(
+            width: 180,
+            value: _replied,
+            hint: 'Any reply status',
+            options: const [
+              SearchOption(value: '', label: 'Any reply status'),
+              SearchOption(value: 'false', label: 'Not replied'),
+              SearchOption(value: 'true', label: 'Replied'),
+            ],
+            onChanged: (v) => setState(() => _replied = v ?? ''),
+          ),
+          _picker<String>(
+            width: 170,
+            value: _range,
+            hint: 'All time',
+            options: const [
+              SearchOption(value: '', label: 'All time'),
+              SearchOption(value: 'd7', label: 'Last 7 days'),
+              SearchOption(value: 'd30', label: 'Last 30 days'),
+              SearchOption(value: '3m', label: 'Last 3 months'),
+              SearchOption(value: '6m', label: 'Last 6 months'),
+              SearchOption(value: '12m', label: 'Last 12 months'),
+              SearchOption(value: 'ytd', label: 'This year'),
+            ],
+            onChanged: (v) => setState(() => _range = v ?? ''),
+          ),
+          _picker<String>(
+            width: 160,
+            value: _sort,
+            hint: 'Newest first',
+            options: const [
+              SearchOption(value: 'newest', label: 'Newest first'),
+              SearchOption(value: 'oldest', label: 'Oldest first'),
+              SearchOption(value: 'highest', label: 'Highest rated'),
+              SearchOption(value: 'lowest', label: 'Lowest rated'),
+            ],
+            onChanged: (v) => setState(() => _sort = v ?? 'newest'),
+          ),
+          // Drawn only when the source could name the listings. A dropdown
+          // holding nothing but "All locations" is a control that cannot do
+          // anything, and this list comes from another service.
+          if (_locations.isNotEmpty)
+            _picker<String>(
+              width: 240,
+              value: _location ?? '',
+              hint: 'All locations',
+              options: [
+                const SearchOption(value: '', label: 'All locations'),
+                for (final l in _locations)
+                  SearchOption(
+                    value: '${l['name']}',
+                    label: _locationLabel(l),
+                    detail: l['address'] as String?,
+                  ),
+              ],
+              onChanged: (v) => setState(() => _location = (v ?? '').isEmpty ? null : v),
+            ),
+          _picker<String>(
+            width: 190,
+            value: _match,
+            hint: 'Any match',
+            options: const [
+              SearchOption(value: '', label: 'Any match'),
+              SearchOption(value: 'matched', label: 'Matched to customer'),
+              SearchOption(value: 'unverified', label: 'Unverified (no match)'),
+            ],
+            onChanged: (v) => setState(() => _match = v ?? ''),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        child: Text('$rating', style: theme.textTheme.labelLarge),
+  Widget _picker<T>({
+    required double width,
+    required T? value,
+    required String hint,
+    required List<SearchOption<T>> options,
+    required ValueChanged<T?> onChanged,
+  }) {
+    return SizedBox(
+      width: width,
+      child: SearchPickerField<T>(
+        value: value,
+        hint: hint,
+        isDense: true,
+        options: options,
+        onChanged: (v) {
+          onChanged(v);
+          unawaited(_reload());
+        },
       ),
-      title: Text('${review['reviewer_name'] ?? 'Anonymous'}'),
-      subtitle: Text(
-        '${review['comment'] ?? ''}'.trim().isEmpty
-            ? 'No comment'
-            : '${review['comment']}',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// "Mt Laurel Township, NJ" rather than "A1 Chimney", nine times over.
+  ///
+  /// Every one of these listings is titled with the bare brand, so the title
+  /// alone cannot tell two of them apart. The address can.
+  String _locationLabel(Map<String, dynamic> location) {
+    final address = '${location['address'] ?? ''}'.trim();
+    final title = '${location['title'] ?? ''}'.trim();
+
+    if (address.isNotEmpty) return address;
+    if (title.isNotEmpty) return title;
+
+    return '${location['name']}';
+  }
+
+  Widget _list(ThemeData theme) {
+    final more = _reviews.length < _total;
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 24),
+      itemCount: _reviews.length + 1,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        if (index == _reviews.length) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
+              child: more
+                  ? OutlinedButton.icon(
+                      icon: _loadingMore
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.expand_more, size: 18),
+                      label: Text(
+                        _loadingMore
+                            ? 'Loading…'
+                            : 'Load more (${_reviews.length} of $_total)',
+                      ),
+                      onPressed: _loadingMore ? null : _loadMore,
+                    )
+                  : Text(
+                      'All $_total shown',
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+            ),
+          );
+        }
+
+        return _row(theme, _reviews[index]);
+      },
+    );
+  }
+
+  Widget _row(ThemeData theme, Map<String, dynamic> review) {
+    final reply = '${review['reply'] ?? ''}'.trim();
+    final comment = '${review['comment'] ?? ''}'.trim();
+    final name = '${review['reviewer_name'] ?? ''}'.trim();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _stars(theme, (review['rating'] as num?)?.toInt()),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  name.isEmpty ? 'A Google user' : name,
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (reply.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    'No reply',
+                    style: theme.textTheme.labelSmall
+                        ?.copyWith(color: theme.colorScheme.onErrorContainer),
+                  ),
+                ),
+            ],
+          ),
+          if (comment.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(comment, style: theme.textTheme.bodyMedium),
+          ],
+          const SizedBox(height: 6),
+          Text(
+            [
+              _placeOf(review),
+              if (review['review_created_at'] != null) _short(review['review_created_at']),
+            ].where((s) => s.isNotEmpty).join(' · '),
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          _matchLine(theme, review),
+          if (reply.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Replied on Google',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall,
+                        ),
+                      ),
+                      if (review['reply_at'] != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          _short(review['reply_at']),
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(reply, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
-      trailing: Text(
-        _short(review['review_created_at']),
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+    );
+  }
+
+  /// A-1's own triage, shown and not recomputed.
+  ///
+  /// `match_tier` is A1 Leads' answer to "is this reviewer a customer we have a
+  /// record of". A null tier means it has not been computed, which is a third
+  /// state and not a no — drawing it as "unverified" would put real customers
+  /// in the possible-spam queue.
+  Widget _matchLine(ThemeData theme, Map<String, dynamic> review) {
+    final tier = review['match_tier'] as String?;
+
+    if (tier == null) return const SizedBox.shrink();
+
+    final matched = tier == 'high' || tier == 'medium';
+    final customer = '${review['match_customer_name'] ?? ''}'.trim();
+    final tenant = '${review['workiz_tenant'] ?? ''}'.trim();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Icon(
+            matched ? Icons.verified_user : Icons.help_outline,
+            size: 14,
+            color: matched ? theme.colorScheme.tertiary : theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              matched
+                  ? (customer.isEmpty ? 'Matched customer' : 'Matched: $customer')
+                  : 'Unverified — no customer match',
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: matched ? theme.colorScheme.tertiary : theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          // The Workiz job is NAMED and not linked. The link A1 Leads returns
+          // only resolves for whoever already has that sub-account open, so it
+          // is a fact about where the job is rather than somewhere to go.
+          if (matched && tenant.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Workiz · $tenant',
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  String _placeOf(Map<String, dynamic> review) {
+    final address = '${review['location_address'] ?? ''}'.trim();
+    final title = '${review['location_title'] ?? ''}'.trim();
+
+    if (address.isNotEmpty) return _cityState(address) ?? address;
+    if (title.isNotEmpty) return title;
+
+    return '';
+  }
+
+  /// "204 Ark Rd, Mt Laurel Township, NJ, 08054" → "Mt Laurel Township, NJ".
+  String? _cityState(String address) {
+    final parts = address
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    for (var i = 1; i < parts.length; i++) {
+      final match = RegExp(r'^([A-Z]{2})\b').firstMatch(parts[i]);
+      if (match != null) return '${parts[i - 1]}, ${match.group(1)}';
+    }
+
+    return null;
+  }
+
+  Widget _stars(ThemeData theme, int? rating) {
+    if (rating == null) {
+      return Text('no rating', style: theme.textTheme.bodySmall);
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Icon(
+            i <= rating ? Icons.star : Icons.star_border,
+            size: 15,
+            color: i <= rating
+                ? theme.colorScheme.primary
+                : theme.colorScheme.outlineVariant,
+          ),
+      ],
+    );
+  }
+
+  /// Nothing came back — and which nothing it is matters.
+  ///
+  /// "No reviews at all" is never one of the answers this can give: the source
+  /// being unusable is handled above, so anything empty here is a filter.
+  Widget _empty(ThemeData theme) {
+    return _sentence(
+      theme,
+      icon: Icons.filter_alt_off_outlined,
+      title: 'Nothing matches these filters',
+      body: 'The snapshot captured ${_short(_source['captured_at'])} has no review '
+          'matching all of them. Widen the rating or the date range to see more.',
     );
   }
 
@@ -224,9 +705,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               const SizedBox(height: 8),
               Text(
                 body,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],

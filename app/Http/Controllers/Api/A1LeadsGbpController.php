@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Services\A1Leads\A1LeadsClient;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -28,12 +29,15 @@ use RuntimeException;
  */
 class A1LeadsGbpController extends Controller
 {
-    public function __construct(private readonly A1LeadsClient $a1leads) {}
+    public function __construct(
+        private readonly A1LeadsClient $a1leads,
+        private readonly TenantContext $tenant,
+    ) {}
 
     /** GET /api/v1/a1leads-gbp */
     public function index(Request $request): JsonResponse
     {
-        $source = $this->a1leads->source();
+        $source = $this->source();
 
         /*
          * The source is answered even when it is unusable, and that is the
@@ -59,8 +63,10 @@ class A1LeadsGbpController extends Controller
             $reviews = $this->a1leads->reviews(
                 limit: (int) $request->integer('limit', 20),
                 offset: (int) $request->integer('offset', 0),
+                filters: $this->filters($request),
             );
             $health = $this->a1leads->gbpHealth()['data'] ?? null;
+            $locations = $this->a1leads->locations();
         } catch (RuntimeException $e) {
             /*
              * A refusal from the other side is reported as a source problem,
@@ -75,6 +81,7 @@ class A1LeadsGbpController extends Controller
                 'summary' => null,
                 'reviews' => [],
                 'health' => null,
+                'locations' => [],
             ]]);
         }
 
@@ -84,6 +91,106 @@ class A1LeadsGbpController extends Controller
             'reviews' => $reviews['data'] ?? [],
             'meta' => $reviews['meta'] ?? null,
             'health' => $health,
+            'locations' => $locations,
         ]]);
+    }
+
+    /**
+     * GET /api/v1/a1leads-gbp/reviews - one filtered page, and nothing else.
+     *
+     * Separate from `index` because the two are asked at different rates. The
+     * tab loads its context once; the list is re-asked on every filter change
+     * and every "Load more". Answering those from `index` would spend four
+     * upstream requests to change one dropdown, against a service Rodrigo asked
+     * us to keep under 120 reads a minute.
+     *
+     * `source` travels with this one too. A list must never be drawn without
+     * the date it was captured on, and the page somebody scrolls to is as
+     * capable of being a week old as the first.
+     */
+    public function reviews(Request $request): JsonResponse
+    {
+        $source = $this->source();
+
+        if (! $source['configured'] || ! $source['reachable']) {
+            return response()->json(['data' => [
+                'source' => $source,
+                'reviews' => [],
+                'meta' => null,
+            ]]);
+        }
+
+        try {
+            $reviews = $this->a1leads->reviews(
+                limit: (int) $request->integer('limit', 20),
+                offset: (int) $request->integer('offset', 0),
+                filters: $this->filters($request),
+            );
+        } catch (RuntimeException $e) {
+            return response()->json(['data' => [
+                'source' => [...$source, 'reachable' => false, 'because' => $e->getMessage()],
+                'reviews' => [],
+                'meta' => null,
+            ]]);
+        }
+
+        return response()->json(['data' => [
+            'source' => $source,
+            'reviews' => $reviews['data'] ?? [],
+            'meta' => $reviews['meta'] ?? null,
+        ]]);
+    }
+
+    /**
+     * ONE ORGANIZATION MAY READ THIS, and it is named in configuration.
+     *
+     * A1 Leads holds one business's reviews - A-1 Chimney's - and this module
+     * is available to every organization by default, because a module with no
+     * platform flag fails OPEN (see `ModuleAvailability`). Without this, an
+     * administrator at any other tenant could grant themselves
+     * `a1leads_gbp.view` from their own Roles screen and read thirteen thousand
+     * of somebody else's reviews. The permission is not the boundary here: the
+     * data belongs to one organization, and nothing a role can say expresses
+     * that.
+     *
+     * Unset fails CLOSED, unlike the module flag, and for the opposite reason.
+     * An absent flag means nobody has restricted the module; an absent
+     * organization here means nobody has said whose data this is.
+     *
+     * @return array<string, mixed>
+     */
+    private function source(): array
+    {
+        $allowed = config('services.a1leads.organization_id');
+
+        if (! is_string($allowed) || $allowed === '' || $this->tenant->id() !== $allowed) {
+            return [
+                'configured' => false,
+                'reachable' => false,
+                'captured_at' => null,
+                'installed_at' => null,
+                'generation' => null,
+                'hours_old' => null,
+                'stale' => false,
+                'because' => 'A1 Leads holds one business\'s Business Profile, and this '
+                    .'organization is not the one it belongs to.',
+            ];
+        }
+
+        return $this->a1leads->source();
+    }
+
+    /**
+     * The filters the screen may pass through, read off the request.
+     *
+     * Named here rather than forwarded wholesale. The client drops anything it
+     * does not recognise, and a request carrying a filter neither side
+     * understands should fail to narrow the list rather than quietly widen it.
+     *
+     * @return array<string, mixed>
+     */
+    private function filters(Request $request): array
+    {
+        return $request->only(['city', 'location', 'rating', 'replied', 'matched', 'from', 'to', 'sort']);
     }
 }

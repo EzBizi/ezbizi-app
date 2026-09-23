@@ -266,6 +266,19 @@ return [
         'api_key' => env('A1LEADS_API_KEY'),
         'receipt' => env('A1LEADS_RECEIPT', '/var/lib/a1leads-receipt/installed-receipt.json'),
 
+        /*
+         * WHOSE Business Profile this is, and the only organization allowed to
+         * read it.
+         *
+         * A1 Leads holds one business's reviews. The module that shows them is
+         * available to every organization by default - a module with no
+         * platform flag fails open - so without this an administrator at
+         * another tenant could grant themselves the permission from their own
+         * Roles screen. Unset means nobody reads it, which is the right answer
+         * to "nobody has said whose data this is".
+         */
+        'organization_id' => env('A1LEADS_ORGANIZATION_ID'),
+
         // The snapshot is refreshed daily at 05:00 New York. Rodrigo's number:
         // warn after thirty hours without a successful installation, which is
         // one missed run plus room for a late one rather than an alarm every
