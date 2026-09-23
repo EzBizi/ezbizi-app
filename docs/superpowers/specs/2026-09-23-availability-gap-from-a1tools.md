@@ -297,8 +297,57 @@ real with 3.3.
   disagree on exactly those rows, so anything reading "service_area implies
   franchise" out of that table is wrong 0.5% of the time and silently.
 
-## 7. Still open, for Jose
+## 7. Jose's ruling, 2026-09-23
 
-- **The 31 Workiz service areas with no EzBizi area** (1,603 jobs, 21% of the
-  history). Create them all, fold the naming-drift ones into the areas that
-  already exist, or leave the long tail out? See 3.1 — the list is there.
+> "the service areas are fine as they are, that's how they are in workiz right
+> now as how they should remain, the only ones that needed adding were the
+> nationwide ones."
+
+**So nothing folds.** The analysis in 3.1 offered to collapse `Connecticut`
+into East/West, `Atlanta` into North/South, `Dallas` + `Fort Worth` into `DFW`,
+`Wisconsin` into `Milwaukee`. That is refused: Workiz's names are the names, and
+the importer mirrors them rather than interpreting them. The zip overlaps that
+suggested folding are still true and are now just a fact about the territory —
+two areas can be evidenced by the same zip, and the `job_count` tie-break is
+what decides which one owns it.
+
+### The premise to check before acting on it
+
+The ruling says the missing areas are the Nationwide ones. Measured, they are
+not the only ones. Every one of the 31 names is in CURRENT use — the whole
+synced history is about six months deep and every name has jobs inside it — so
+none of these are legacy labels:
+
+| Missing name | Workiz account | jobs |
+|---|---|---|
+| Connecticut | **Connecticut** | 222 |
+| Dallas | **Texas** | 163 |
+| Fort Worth | **Texas** | 156 |
+| Atlanta | **Georgia** | 126 |
+| Seattle | **NY** (101) + Nationwide (3) | 104 |
+| Wisconsin | **Illinois** | 55 |
+| Long Island, NY | **New Jersey** | 16 |
+| Portland | **NY** (11) + Nationwide (1) | 12 |
+| East / South New Jersey | **New Jersey** | 12 |
+| Detroit, Boston North, Denver, Minneapolis, Sacramento, Riverside, Charlotte, Kansas City, Greensboro, Saint Louis, Los Angeles, Washington / Virginia, Nashville (×2), Miami, Tampa, Baltimore MD, Salt Lake City, Seattle Washington, San Diego, San Fransisco | Nationwide | ~700 |
+
+Adding only the Nationwide ones leaves roughly 750 jobs — Connecticut, Dallas,
+Fort Worth, Atlanta, Seattle, Wisconsin and the New Jersey pair — with no area,
+so their zips never resolve. That is a question for Jose, not a decision to take
+on his behalf: he may want exactly that, or he may not know those eight are
+missing too.
+
+**The rule that satisfies the ruling either way**, and what the importer should
+do unless told otherwise: mirror Workiz. A ServiceArea name with no matching
+area gets one created under the franchise of the account that reported it.
+Then "how they are in Workiz" is how they are here, permanently, including for
+names nobody has typed yet.
+
+### Blocker before any area can be created
+
+`franchises` in A1-Group holds **duplicate names**: Connecticut ×8, Texas ×3,
+Nationwide ×2, DMV ×2. Only one of each carries service areas — they are the
+batch created 2026-08-06; the rest were created 2026-09-10 and 2026-09-14 with
+zero areas and zero jobs. An importer resolving a franchise by NAME cannot pick,
+and "Nationwide" is one of the duplicated ones, which is precisely where the new
+areas go. Not Scheduling's table to clean.
