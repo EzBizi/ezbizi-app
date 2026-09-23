@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0245',
+      date: '23 Sep 2026',
+      items: [
+        'A shift always gets an end now, from the schedule or from a new limit in Settings that starts at 16 hours. Five shifts had been left open, the oldest since 14 September, and nothing that existed was ever going to close them. They close at that limit rather than at the running total they had reached.',
+        'Reviews and Business Profile have a tab of their own instead of sitting inside Marketing. Nothing about either one changes except where it is drawn.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0244',
       date: '23 Sep 2026',
       items: [
