@@ -485,6 +485,100 @@ class SendSavedReportTest extends TestCase
         $this->assertStringContainsString('change or stop it', $body);
     }
 
+    // ── a warning that found nothing ────────────────────
+
+    /**
+     * NOTHING SENT, AND THE RUN SUCCEEDED.
+     *
+     * The success half is the point, not the silence. `AutomationEngine:260`
+     * marks a run failed on any action returning `ok: false`, and
+     * `Automation::FAILURE_LIMIT` (5) disables the rule at five consecutive
+     * ones — so a daily "warn me if a service area is booked out" rule that
+     * correctly found nothing Monday to Friday would be DISABLED on Friday and
+     * switched off on the Saturday it mattered.
+     *
+     * Asserting only "no mail went" would pass against that bug perfectly.
+     */
+    public function test_a_report_that_found_nothing_sends_nothing_and_still_succeeds(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        // No job made, so the report matches nothing.
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+            skipWhenNoRows: true,
+        ));
+
+        Mail::assertNothingSent();
+
+        $this->assertTrue(
+            $outcome->ok(),
+            'a rule doing exactly what it was asked reported failure, which '
+            .'auto-disables it on the fifth quiet day',
+        );
+
+        // "Ran and sent nothing" and "did not run" are different facts, and a
+        // run record showing neither is how somebody concludes it is broken.
+        $this->assertSame('Ran, found nothing, sent nothing.', $outcome->summary());
+        $this->assertNotNull($outcome->suppressed);
+    }
+
+    /**
+     * A SUPPRESSED RUN IS NOT AN EVERY-ADDRESS-REFUSED RUN.
+     *
+     * Both end with an empty `sent`, and before `suppressed` existed they were
+     * indistinguishable to the caller — which is the whole reason `ok()` could
+     * not answer the question. This is the case that tells them apart: a real
+     * failure must still fail.
+     */
+    public function test_a_send_where_everything_was_refused_still_fails(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['not-an-address'],
+            $this->rule($tenant),
+            $tenant['admin'],
+            skipWhenNoRows: true,
+        ));
+    }
+
+    /**
+     * THE DEFAULT IS UNCHANGED, which is what makes this safe to land alone.
+     *
+     * Every rule that exists today mails an empty report and should keep doing
+     * it — "nothing happened this week" is the answer a digest was asked for.
+     * Only a caller that says `skipWhenNoRows` gets the new behaviour.
+     */
+    public function test_by_default_an_empty_report_is_still_sent(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        Mail::assertSent(SavedReportMail::class);
+        $this->assertNull($outcome->suppressed);
+        $this->assertTrue($outcome->ok());
+    }
+
     // ── the CSV ──────────────────────────────────────────────────
 
     public function test_the_csv_carries_the_labels_and_the_rows(): void
