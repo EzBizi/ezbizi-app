@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Mail\SavedReportMail;
+use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -483,6 +484,84 @@ class SendSavedReportTest extends TestCase
 
         // And the half that was already right survives: who can stop it.
         $this->assertStringContainsString('change or stop it', $body);
+    }
+
+    /**
+     * A RUN THAT SENT NOTHING LEAVES NO `report.sent` BEHIND.
+     *
+     * This logged the audit entry and threw afterwards, so a send where every
+     * address was refused left an event NAMED as a send. The metadata was
+     * honest — `recipients` empty, `refused` carrying the reasons — but the
+     * verb was not, and anybody counting `report.sent` to answer "how often did
+     * this go out" counted runs that went nowhere.
+     *
+     * Audit is where people go to be certain rather than approximately right,
+     * so an entry that is only true if you open it is worse than no entry. The
+     * failure is not lost: the exception carries `summary()` and the automation
+     * run record keeps it.
+     *
+     * Asserted on the audit ROW rather than on the ordering of two calls — the
+     * ordering is the mechanism, the row is the claim, and a later refactor
+     * that reaches the same result differently should not fail.
+     */
+    public function test_a_send_that_reached_nobody_writes_no_sent_audit_entry(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $report = $this->report($tenant);
+
+        try {
+            $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+                $report,
+                ['not-an-address'],
+                $this->rule($tenant),
+                $tenant['admin'],
+            ));
+
+            $this->fail('an all-refused send must still fail the run');
+        } catch (RuntimeException) {
+            // The failure is the point; the audit trail is what is asserted.
+        }
+
+        $this->assertSame(
+            0,
+            $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+                ->where('action', 'report.sent')
+                ->count()),
+            'a run that reached nobody recorded itself as a send',
+        );
+    }
+
+    /**
+     * THE CONTROL: a run that DID send still writes one.
+     *
+     * Without this, deleting the audit call entirely passes the test above
+     * perfectly — and an audit trail that records nothing is the other way to
+     * get this wrong.
+     */
+    public function test_a_send_that_reached_somebody_writes_one(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $this->assertSame(
+            1,
+            $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+                ->where('action', 'report.sent')
+                ->count()),
+        );
     }
 
     // ── a warning that found nothing ────────────────────
