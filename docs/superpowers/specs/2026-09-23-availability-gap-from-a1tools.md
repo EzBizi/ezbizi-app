@@ -311,12 +311,43 @@ suggested folding are still true and are now just a fact about the territory —
 two areas can be evidenced by the same zip, and the `job_count` tie-break is
 what decides which one owns it.
 
-### The premise to check before acting on it
+### The 26 DID mirror Workiz. Workiz has changed since.
 
-The ruling says the missing areas are the Nationwide ones. Measured, they are
-not the only ones. Every one of the 31 names is in CURRENT use — the whole
-synced history is about six months deep and every name has jobs inside it — so
-none of these are legacy labels:
+Jose, asked again: *"The Service Areas that we have on EzBizi are perfect as
+they are, except for Nationwide which was empty. They already mirror workiz
+correctly."*
+
+That is true of the configuration EzBizi was built against, and the disagreement
+is not about names — it is about WHEN. The decisive measure is not when a job
+was scheduled (a job booked in June can be scheduled for October and makes a
+dead label look alive); it is when a job was last BOOKED under the name.
+`CreatedDate`, jobs booked in the LAST 30 DAYS:
+
+| Name we have no area for | booked, 30d | The area we do have | booked, 30d |
+|---|---|---|---|
+| Connecticut | **209** | West Connecticut / East Connecticut | 32 / 24 |
+| Atlanta | **80** | Atlanta North / Atlanta South | **0** / 3 |
+| Wisconsin | **47** | Milwaukee | 67 |
+| Fort Worth | 19 | DFW | 99 |
+| Long Island, NY | 11 | New York / NYC | 62 / 7 |
+
+Atlanta North has taken **no** booking in thirty days while `Atlanta` took 80.
+Connecticut outbooks both halves six to one. So Workiz has CONSOLIDATED since
+our list was made — the halves are being retired in favour of the whole — and
+our 26 mirror the older shape. Dallas has taken none in thirty days and is
+genuinely fading, which is the opposite direction from Fort Worth's 19.
+
+Plus the genuinely new, and this is the part the ruling is unambiguous about:
+Detroit 69, Boston North 78, Seattle 26 in the last thirty days, none of which
+has an area anywhere.
+
+**Nothing here is decided.** The ruling stands as written — mirror Workiz, fold
+nothing — and this table is only the evidence that "already mirrors" has an
+expiry date. The authoritative answer is Workiz's CURRENT service-area list per
+account, which is an API question for the Workiz session, not an inference from
+job history.
+
+Full list of the 31, for the record:
 
 | Missing name | Workiz account | jobs |
 |---|---|---|
