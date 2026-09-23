@@ -75,6 +75,43 @@ void main() {
     expect(find.text('The list'), findsOneWidget);
   });
 
+  testWidgets('an account can be connected from here, not just listed', (
+    tester,
+  ) async {
+    /*
+     * Jose, 2026-09-23: "the point of the Integration tab by itself is to be
+     * able to connect stuff from here, not just list it."
+     *
+     * Before this the pane said "Accounts are connected in Leads" and that was
+     * the whole of it — an inventory somebody had to LEAVE in order to act on.
+     */
+    await _pump(tester);
+
+    await _open(tester, 'google_ads');
+
+    expect(find.byKey(const ValueKey('connect:google_ads')), findsOneWidget);
+  });
+
+  testWidgets('and is not offered to somebody who may not connect it', (
+    tester,
+  ) async {
+    /*
+     * The case that distinguishes: this fixture holds `leads.edit`, so the test
+     * above would pass against a pane that offered Connect to everybody.
+     * Mailchimp needs `newsletter.send`, which it does not hold.
+     *
+     * Absent rather than disabled — §4: a control that is offered must work,
+     * and a Connect button answering 403 has told somebody the app is for
+     * other people.
+     */
+    await _pump(tester);
+
+    await _open(tester, 'mailchimp');
+
+    expect(find.byKey(const ValueKey('connect:mailchimp')), findsNothing);
+    expect(find.textContaining('needs to connect'), findsOneWidget);
+  });
+
   testWidgets('a connection whose scope this view cannot name is still shown', (
     tester,
   ) async {
@@ -128,9 +165,27 @@ Future<void> _pump(WidgetTester tester) async {
       if (path.endsWith('/social/providers')) {
         return _json({
           'data': const [
-            {'value': 'google_ads', 'label': 'Google Ads'},
-            {'value': 'mailchimp', 'label': 'Mailchimp'},
-            {'value': 'thumbtack', 'label': 'Thumbtack'},
+            {
+              'value': 'google_ads',
+              'label': 'Google Ads',
+              'connects_by': 'sign_in',
+              'start_path': '/social/google-ads/start',
+              'permission': 'leads.edit',
+            },
+            {
+              'value': 'mailchimp',
+              'label': 'Mailchimp',
+              'connects_by': 'api_key',
+              'start_path': '/social/mailchimp/start',
+              'permission': 'newsletter.send',
+            },
+            {
+              'value': 'thumbtack',
+              'label': 'Thumbtack',
+              'connects_by': 'sign_in',
+              'start_path': '/social/thumbtack/start',
+              'permission': 'leads.edit',
+            },
           ],
         });
       }
@@ -222,7 +277,7 @@ const _me = {
   'role': {'name': 'Administrator'},
   'has_avatar': false,
   'preferences': <String, dynamic>{},
-  'permissions': ['marketing.view'],
+  'permissions': ['marketing.view', 'leads.edit'],
   'modules': <dynamic>[],
   'companies': [
     {'id': 'co-a1', 'name': 'A-1 Chimney'},

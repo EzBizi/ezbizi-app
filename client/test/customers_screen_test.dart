@@ -136,6 +136,113 @@ void main() {
       findsOneWidget,
     );
   });
+
+  /// The sweep, not the create-time check. An import writes duplicates in bulk
+  /// and nobody types them, so the only place they can surface is a list
+  /// somebody can ask for -- which means the button has to be on the screen
+  /// rather than only in the moment after a save.
+  testWidgets('the header opens a sweep of duplicates across the organization', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      // 375 wide, because that is the floor the house holds every screen to and
+      // a panel is where it breaks first: SidePanel is 440 by default and goes
+      // full-width below that, so this is the case where the group header and
+      // the owner tag have the least room they will ever have.
+      size: const Size(375, 812),
+      customers: const [_alice],
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/customers/duplicates')) return null;
+
+        return _json({
+          'mode': 'phone',
+          // Truncating, and saying so with a real number. The screen has to
+          // print "3" and not the 1 group it was handed, or a person who has
+          // seen one duplicate believes they have seen the problem.
+          'limited': true,
+          'total': 3,
+          'data': [
+            {
+              'by': 'phone',
+              'value': '5551234567',
+              'customers': [
+                {
+                  'id': 'c-1',
+                  'number': 'C-1',
+                  'name': 'Philip Ash',
+                  'owning_franchise': {
+                    'id': 'f-1',
+                    'name': 'Florida',
+                    'company': {'id': 'co-1', 'name': 'A-1 Chimney'},
+                  },
+                },
+                {
+                  'id': 'c-2',
+                  'number': 'C-2',
+                  'name': 'Phil Ash',
+                  'owning_franchise': {
+                    'id': 'f-2',
+                    'name': 'New Jersey',
+                    'company': {'id': 'co-1', 'name': 'A-1 Chimney'},
+                  },
+                },
+              ],
+            },
+          ],
+        });
+      },
+    );
+
+    await tester.tap(find.text('Possible duplicates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Philip Ash (C-1)'), findsOneWidget);
+    expect(find.text('Phil Ash (C-2)'), findsOneWidget);
+
+    // The owner tag on both sides, because merging them is a decision about
+    // which branch keeps the relationship and not only which row lives.
+    expect(find.text('A-1 Chimney · Florida'), findsOneWidget);
+    expect(find.text('A-1 Chimney · New Jersey'), findsOneWidget);
+
+    // Said out loud on the screen, every time: nothing here merges anything.
+    expect(find.textContaining('Nothing has been merged'), findsOneWidget);
+
+    expect(find.text('Showing 1 of 3.'), findsOneWidget);
+  });
+
+  /// "We looked and found none" and "nobody is looking" are different answers,
+  /// and an empty panel shows the first for both. The server sends a sentence
+  /// for the second; this pins that the screen prints it rather than an
+  /// all-clear it has not earned.
+  testWidgets('detection switched off says so instead of showing none found', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      customers: const [_alice],
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/customers/duplicates')) return null;
+
+        return _json({
+          'mode': 'off',
+          'limited': false,
+          'data': const [],
+          'message': 'Duplicate detection is switched off for this organization.',
+        });
+      },
+    );
+
+    await tester.tap(find.text('Possible duplicates'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Duplicate detection is switched off for this organization.'),
+      findsOneWidget,
+    );
+    expect(find.text('Nothing looks duplicated.'), findsNothing);
+  });
+
 }
 
 const _alice = {

@@ -660,6 +660,11 @@ Route::prefix('v1')
         // is scoped to the caller's reach. Both are enforced in policies, not
         // here — a route file is a bad place to keep an authorization rule,
         // because the next endpoint added beside it will not inherit the thought.
+        // BEFORE the resource, or `customers/{customer}` claims it: "duplicates"
+        // is a perfectly good uuid-shaped-nothing to a route that accepts any
+        // id, and the failure is a 404 about a customer rather than a route
+        // that was never reached.
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
@@ -1256,6 +1261,24 @@ Route::prefix('v1')
 
             // Work Hours: one week, grouped by person, with totals (2026-09-17).
             Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
+        });
+
+        /*
+         * ── Corrections (2026-09-23) ──
+         *
+         * A SECOND grant on top of the tab, not a wider use of it. Seeing
+         * everybody's hours and rewriting what they are paid for are different
+         * authorities; `hr.hours.correct` is the one that rewrites, and a
+         * dispatcher granted Work Hours to check their own week does not get
+         * it by holding the tab.
+         *
+         * One consumer each — the Work Hours pane — so the middleware is the
+         * right place for the gate, and the policy behind it says the same
+         * thing for anything that reaches these another way.
+         */
+        Route::middleware('permission:hr.hours.correct')->group(function () {
+            Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
+            Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
         });
 
         // The tab the owner asked for. It computes nothing itself — the figures
@@ -2164,6 +2187,20 @@ Route::prefix('v1')
         Route::middleware('permission:monitoring.general.view')->group(function () {
             Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
         });
+
+        /*
+         * Renaming ONE desk, from the ownership chart.
+         *
+         * Outside the Map TAB group on purpose: the person doing this is
+         * looking at General, and an administrator may reasonably grant "may
+         * edit the map" without granting the map's own tab. The edit grant
+         * itself (monitoring.map.manage) is enforced by the policy inside,
+         * along with the §3 scope check every other plan route makes.
+         */
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/label',
+            [MonitoringFloorPlansController::class, 'renameNode']
+        );
 
         Route::middleware('permission:monitoring.map.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);

@@ -455,6 +455,26 @@ arrived at from the other end.
 So there are three answers, and all three are decisions worth recording:
 a tab, an action, or "this is gated by something that is not a role".
 
+**"NOT APPLICABLE" IS DATED, NOT PERMANENT.** Jobs' point, and it is the one
+that keeps this brief useful after the sweep closes. They have no tab bar today
+— one list with a detail panel, the Customers shape — and steps 9 and 10 of
+their build-out plan add Materials, Photos and Inspection panes plus a Schedule
+view, which IS a tab bar. They declare then rather than now, because keys for
+panes that do not exist put checkboxes in the roles editor for things an
+administrator cannot find: step 1's failure, arrived at from the other side.
+
+So a module recorded here as not applicable is answering for the surface it has,
+and the answer expires when the surface grows. Whoever adds a tab bar declares
+with it, in the same commit.
+
+**A tab CANNOT name another module's action**, in case the question comes up
+when a pane reads somebody else's records. `ModuleDefinition` refuses a tab
+naming an action its own module does not declare, so `jobs.materials.view`
+could never point at `inventory.stock.view` — and it should not want to. Reports
+settled the rule: **a tab is an AND on top of the capability, never an
+alternative to it.** The tab decides whether the pane opens; the controller
+behind it still authorises the rows by whatever policy already owns them.
+
 ## Nobody may lose a tab they had this morning
 
 `database/migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php`

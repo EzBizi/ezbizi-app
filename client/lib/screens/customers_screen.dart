@@ -199,6 +199,15 @@ class _CustomersScreenState extends State<CustomersScreen> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              // Deliberately a plain outlined button with no icon. Every icon
+              // that reads as "duplicates" -- merge arrows, a copy glyph --
+              // promises the one thing this does not do: nothing here merges
+              // anything, ever (§5.2), and a control that looks like a merge
+              // button is a worse lie than a wordy one.
+              OutlinedButton(
+                onPressed: _duplicates,
+                child: const Text('Possible duplicates'),
+              ),
               // Transfer sits before the primary action rather than after it,
               // so "Add customer" stays the last and most prominent thing in
               // the header.
@@ -405,6 +414,18 @@ class _CustomersScreenState extends State<CustomersScreen> {
     if (mounted) _load();
   }
 
+  /// The sweep, as opposed to the check that rides along with a create.
+  ///
+  /// Reachable from the header rather than only after saving somebody, because
+  /// the duplicates worth finding are the ones nobody typed -- an import writes
+  /// them in bulk and no create-time check ever sees them.
+  Future<void> _duplicates() async {
+    await showSidePanel<void>(
+      context,
+      builder: (_) => _DuplicatesPanel(api: widget.api),
+    );
+  }
+
   Future<void> _open(Map<String, dynamic> customer) async {
     final changed = await showSidePanel<bool>(
       context,
@@ -608,6 +629,160 @@ class _NewCustomerPanelState extends State<_NewCustomerPanel> {
             const SizedBox(height: 14),
             ErrorNote(_error!),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Customers that look like each other, across the whole organization.
+///
+/// Informational on purpose. It lists and it explains; it offers no merge and
+/// no delete, because merging customer records is unrecoverable when it is
+/// wrong and two people on one household line are two people. The decision and
+/// the edit both belong to a person, on the record itself.
+class _DuplicatesPanel extends StatefulWidget {
+  const _DuplicatesPanel({required this.api});
+
+  final ApiClient api;
+
+  @override
+  State<_DuplicatesPanel> createState() => _DuplicatesPanelState();
+}
+
+class _DuplicatesPanelState extends State<_DuplicatesPanel> {
+  bool _loading = true;
+  String? _error;
+
+  /// The server's sentence when detection is switched off. Held separately from
+  /// an empty list because "we looked and found none" and "nobody is looking"
+  /// are different answers, and an empty panel would show the first for both.
+  String? _note;
+
+  List<Map<String, dynamic>> _groups = const [];
+  bool _limited = false;
+
+  /// How many groups there ACTUALLY are, which stops being the number on screen
+  /// the moment the cap bites. A-1's book holds 149 of them, so this is not a
+  /// hypothetical: "showing 200" and "showing 200 of 1,490" are different
+  /// facts and only the second tells somebody whether they have seen it all.
+  int _total = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final response = await widget.api.get('/customers/duplicates', const {});
+
+    if (!mounted) return;
+
+    setState(() {
+      _loading = false;
+
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      _groups = List<Map<String, dynamic>>.from(response.data as List);
+      _note = response.body['message'] as String?;
+      _limited = response.body['limited'] as bool? ?? false;
+      _total = response.body['total'] as int? ?? _groups.length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+
+    return SidePanel(
+      title: 'Possible duplicates',
+      subtitle: 'Across the whole organization — the same person booked by two '
+          'branches is the one most worth finding.',
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+      child: AsyncBody(
+        loading: _loading,
+        error: _error,
+        onRetry: _load,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_note != null)
+              Text(_note!, style: text.bodyMedium)
+            else if (_groups.isEmpty)
+              Text('Nothing looks duplicated.', style: text.bodyMedium)
+            else ...[
+              Text(
+                'Nothing has been merged, and nothing will be automatically. '
+                'Open a customer to correct or remove one.',
+                style: text.bodyMedium,
+              ),
+              const SizedBox(height: 16),
+              ..._groups.map(_group),
+              if (_limited)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Showing ${_groups.length} of $_total.',
+                    style: text.bodySmall,
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _group(Map<String, dynamic> group) {
+    final text = Theme.of(context).textTheme;
+    final by = group['by'] as String? ?? '';
+    final value = group['value'] as String? ?? '';
+    final members = List<Map<String, dynamic>>.from(
+      group['customers'] as List? ?? const [],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Same $by · ${by == 'phone' ? formatPhoneNumber(value) : value}',
+            style: text.labelLarge,
+          ),
+          ...members.map((member) {
+            final owner = member['owning_franchise'] as Map<String, dynamic>?;
+            final company = (owner?['company'] as Map<String, dynamic>?)?['name'];
+            final franchise = owner?['name'] ?? '';
+
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text('${member['name']} (${member['number']})'),
+              // The owner tag, as everywhere else a customer appears: merging
+              // two of these is a decision about which branch keeps the
+              // relationship, not only about which row survives.
+              subtitle: Text(
+                company is String && company.isNotEmpty
+                    ? '$company · $franchise'
+                    : '$franchise',
+              ),
+            );
+          }),
         ],
       ),
     );

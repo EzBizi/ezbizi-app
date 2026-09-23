@@ -73,7 +73,12 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
-        home: IntegrationProviderScreen(
+        // A Scaffold around it, because the pane no longer carries one:
+        // Jose named the full-screen push as a containment break on
+        // 2026-09-23, so it is rendered in the app shell's body and takes its
+        // Material from whatever already wraps it. Here that is this Scaffold.
+        home: Scaffold(
+          body: IntegrationProviderScreen(
           api: api,
           session: session,
           provider: 'google_ads',
@@ -82,6 +87,8 @@ void main() {
               .map(IntegrationConnection.fromJson)
               .where((c) => c.provider == 'google_ads')
               .toList(),
+          onBack: () {},
+        ),
         ),
       ),
     );

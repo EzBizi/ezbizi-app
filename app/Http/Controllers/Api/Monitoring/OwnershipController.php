@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringFloorPlan;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\ScheduleSummary;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -97,6 +98,11 @@ class OwnershipController extends Controller
                 'role' => $person->role?->name,
                 'desk' => $seat['desk'] ?? null,
                 'office' => $seat['office'] ?? null,
+                // Where that desk name lives, so the chart can rename it in
+                // place. Present only when this actor can see the seat at all,
+                // which is the same §3 reach that produced it.
+                'plan_id' => $seat['plan_id'] ?? null,
+                'node_id' => $seat['node_id'] ?? null,
                 'online' => $seen !== null && $seen->greaterThanOrEqualTo($cutoff),
                 'last_seen_at' => $seen?->toIso8601String(),
                 'assignment' => $this->assignmentLabel($person),
@@ -113,7 +119,16 @@ class OwnershipController extends Controller
                 // column that is blank until HR fills a form reads as "this
                 // person has no hours", when what is true is "the office
                 // hours apply".
-                $row['schedule'] = $person->work_schedule ?: $fallbackHours;
+                //
+                // TWO COLUMNS, NOT THE RAW MAP. It used to send the structure
+                // and the chart printed it, which came out as a paragraph per
+                // row in two different shapes — see ScheduleSummary for why
+                // there are two. A chart is read across, so each cell gets one
+                // short fact.
+                $schedule = $person->work_schedule ?: $fallbackHours;
+
+                $row['work_days'] = ScheduleSummary::workDays($schedule);
+                $row['shift'] = ScheduleSummary::shift($schedule);
             }
 
             return $row;
@@ -160,7 +175,7 @@ class OwnershipController extends Controller
      * Spare desk" for one person would be reporting a data problem as a
      * value. The Map tab is where that is visible and fixable.
      *
-     * @return array<string, array{desk: string, office: string}>
+     * @return array<string, array{desk: string, office: string, plan_id: string, node_id: string}>
      */
     private function seatsFor(User $actor): array
     {
@@ -169,7 +184,7 @@ class OwnershipController extends Controller
         $plans = MonitoringFloorPlan::query();
         $this->reach->constrain($plans, $actor);
 
-        foreach ($plans->get(['name', 'layout']) as $plan) {
+        foreach ($plans->get(['id', 'name', 'layout']) as $plan) {
             foreach ($plan->layout['nodes'] ?? [] as $node) {
                 $userId = $node['user_id'] ?? null;
 
@@ -180,6 +195,8 @@ class OwnershipController extends Controller
                 $seats[$userId] = [
                     'desk' => (string) ($node['label'] ?? ''),
                     'office' => $plan->name,
+                    'plan_id' => $plan->getKey(),
+                    'node_id' => (string) ($node['id'] ?? ''),
                 ];
             }
         }

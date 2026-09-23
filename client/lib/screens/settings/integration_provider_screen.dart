@@ -2,10 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
+import '../../widgets/connect_account.dart';
 import '../../widgets/dashboard_card.dart';
 import '../../widgets/social_network_mark.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
+///
+/// ── IN THE BODY, NEVER A ROUTE (Jose, 2026-09-23) ───────────────
+///
+/// *"Every Single Integration Card violates the containment rule by going full
+/// screen when clicked."* It did: the grid pushed a `MaterialPageRoute` and
+/// this class returned a `Scaffold` with an `AppBar`, so opening a provider
+/// replaced the sidebar, the header and the top bar with a page carrying its
+/// own back arrow.
+///
+/// The fix is the one `TrainingSettingsTab` already documents from the same
+/// correction — *"it should all be within the main UI"*: the grid holds which
+/// provider is open in its own state and SWAPS its body, so this widget is
+/// rendered in place. It needs no `Scaffold` of its own: rendered in-body, the
+/// app shell's `Material` further up the tree already reaches everything here,
+/// and a route push is what used to force the artificial wrap.
+///
+/// So there is no `Navigator` anywhere in this file. Back is [onBack], and a
+/// rename leaves the pane open rather than popping it.
 ///
 /// ── Why this screen exists ──────────────────────────────────────
 ///
@@ -46,6 +65,10 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.connectForms,
     this.canName = false,
     this.onChanged,
+    this.connectsBy,
+    this.startPath,
+    this.mayConnect = false,
+    required this.onBack,
   });
 
   final ApiClient api;
@@ -74,6 +97,28 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// Reload the grid after a rename or a connect, so the card's count and this
   /// list cannot disagree about what exists.
   final Future<void> Function()? onChanged;
+
+  /// How this provider is connected, from the catalogue — `sign_in`,
+  /// `api_key`, `password`.
+  final String? connectsBy;
+
+  /// Where the OAuth flow starts, from the catalogue.
+  final String? startPath;
+
+  /// Whether this person may connect it at all.
+  ///
+  /// Absent rather than disabled when they may not: §4's rule is that a control
+  /// which is offered must work, and a Connect button that answers 403 has told
+  /// somebody the app is for other people. The sentence beneath names who can
+  /// instead, which is the remedy they can act on.
+  final bool mayConnect;
+
+  /// Close this pane and put the grid back.
+  ///
+  /// A callback rather than `Navigator.pop`, because this is NOT a route —
+  /// see the class docblock. The grid swaps its own body; nothing was pushed
+  /// and there is nothing to pop.
+  final VoidCallback onBack;
 
   @override
   State<IntegrationProviderScreen> createState() =>
@@ -187,9 +232,12 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     }
 
     setState(() => _error = null);
-    await widget.onChanged?.call();
 
-    if (mounted) Navigator.of(context).pop();
+    // Reload the grid so its count matches; the pane STAYS OPEN. It used to
+    // pop, which was the route closing itself — without a route there is
+    // nothing to close, and somebody naming three bases in a row should not be
+    // thrown back to the grid after each one.
+    await widget.onChanged?.call();
   }
 
   @override
@@ -197,20 +245,38 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     final theme = Theme.of(context);
     final groups = _groups;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SocialNetworkMark(network: widget.provider, size: 22),
-            const SizedBox(width: 10),
-            Flexible(child: Text(widget.providerLabel)),
-          ],
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+          /*
+           * THE HEADER IS IN THE BODY, because this pane is in the body.
+           *
+           * An `AppBar` belongs to a `Scaffold` and a `Scaffold` belongs to a
+           * route; drawing either here is what put this pane over the whole
+           * window. The back control is a row like any other.
+           */
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('integration-back'),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to integrations',
+                onPressed: widget.onBack,
+              ),
+              const SizedBox(width: 4),
+              SocialNetworkMark(network: widget.provider, size: 22),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  widget.providerLabel,
+                  style: theme.textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           if (_error != null) ...[
             DashboardNote(_error!),
             const SizedBox(height: 12),
@@ -281,22 +347,83 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
             const SizedBox(height: 12),
           ],
 
-          if (widget.connectForms != null) ...[
-            DashboardCard(
-              title: 'Connect another',
-              icon: Icons.add_link,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: widget.connectForms!(),
-              ),
+          /*
+           * CONNECTING HAPPENS HERE (Jose, 2026-09-23).
+           *
+           * "The point of the Integration tab by itself is to be able to
+           * connect stuff from here, not just list it." This used to be a
+           * sentence pointing at the module that owns the account for three of
+           * the four families, which made the screen an inventory somebody had
+           * to leave in order to act on.
+           *
+           * The pointer survives as a FOOTNOTE rather than as the only route:
+           * the module's own screen is still where connecting is explained,
+           * and somebody who wants the explanation should be able to find it.
+           */
+          DashboardCard(
+            title: 'Connect another',
+            icon: Icons.add_link,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                /*
+                 * THE FORM IS ITS OWN GATE, and is asked FIRST.
+                 *
+                 * `_formsFor` in the grid already decides who may see each
+                 * reporting form, and it encodes something the catalogue
+                 * cannot: Workiz needs `reports.build` AND
+                 * `reports.experimental.view`, because the pane it connects for
+                 * is behind the tab. Asking `mayConnect` as well would be a
+                 * second gate over one control, and the two disagree by
+                 * construction — measured, it hid a form the first gate had
+                 * already allowed.
+                 */
+                if (widget.connectForms != null)
+                  ...widget.connectForms!()
+                else if (!widget.mayConnect)
+                  DashboardNote(
+                    'Somebody who can manage ${widget.connectWhere ?? 'this'} '
+                    'needs to connect a ${widget.providerLabel} account.',
+                  )
+                else if (widget.connectsBy == 'sign_in' &&
+                    widget.startPath != null)
+                  ConnectAccount(
+                    key: ValueKey('connect:${widget.provider}'),
+                    api: widget.api,
+                    label: widget.providerLabel,
+                    startPath: widget.startPath!,
+                    onConnected: () async => widget.onChanged?.call(),
+                  )
+                else
+                  /*
+                   * NO CONTROL, AND THE REASON RATHER THAN A DEAD BUTTON.
+                   *
+                   * Mailchimp connects by api_key and has no endpoint to post
+                   * one to — measured, `routes/api.php` has `social/airtable`,
+                   * `social/workiz`, `social/bluesky/connect` and the OAuth
+                   * `social/{network}/start`, and nothing else. Drawing a form
+                   * here would be a control with nowhere to send what somebody
+                   * typed.
+                   */
+                  DashboardNote(
+                    widget.connectWhere == null
+                        ? 'This one cannot be connected from here yet.'
+                        : 'Connect a ${widget.providerLabel} account in '
+                              '${widget.connectWhere}.',
+                  ),
+
+                if (widget.mayConnect && widget.connectWhere != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${widget.connectWhere} is where connecting one is '
+                    'explained, and where it can also be done.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ],
             ),
-          ] else if (widget.connectWhere != null && groups.isNotEmpty)
-            DashboardNote(
-              'Accounts are connected in ${widget.connectWhere}, which is where '
-              'connecting one is explained.',
-            ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

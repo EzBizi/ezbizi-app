@@ -935,4 +935,121 @@ class WebWidgetsTest extends TestCase
         // config that fails to load would take the widget with it.
         $this->assertSame(64, $body['config']['presets']['social_links']['footer']['size']);
     }
+
+    /**
+     * A widget in WIDGETS with no DEFAULTS is a blank box on 110 live sites.
+     *
+     * The guard above derives from `WIDGETS`, so it grows on its own — but it
+     * only asks whether a `default` KEY exists, and `resolve()` manufactures
+     * one for any name it is given. A widget added to the list and forgotten
+     * in `defaults()` therefore passes it with `default => []`, renders
+     * nothing anybody can see, and reports nothing anywhere.
+     *
+     * Jose asked for fourteen more widgets on 2026-09-23. That is fourteen
+     * chances to add a name and forget its values, so the completeness has to
+     * be asserted rather than remembered.
+     */
+    public function test_every_declared_widget_has_values_and_not_just_a_name(): void
+    {
+        $defaults = WidgetPresets::defaults();
+
+        foreach (WidgetPresets::WIDGETS as $widget) {
+            $this->assertArrayHasKey(
+                $widget,
+                $defaults,
+                "{$widget} is declared and has no defaults, so it renders blank.",
+            );
+
+            $this->assertNotSame(
+                [],
+                $defaults[$widget],
+                "{$widget} has an empty default, which is the same blank box.",
+            );
+        }
+
+        // And the inverse, because the pair is what makes it a boundary:
+        // values for a widget nobody declared are values nothing can reach.
+        foreach (array_keys($defaults) as $widget) {
+            $this->assertContains(
+                $widget,
+                WidgetPresets::WIDGETS,
+                "{$widget} has defaults and is not declared, so nothing renders it.",
+            );
+        }
+    }
+
+    /**
+     * ── The three that every A1 Tools page carries ──
+     *
+     * Jose walked me through a-1chimney.com, everdoors.com and crestln.com on
+     * 2026-09-23. Contact Info, the CTA and the standalone phone are on every
+     * page of all three, which is why they are the first of the fourteen.
+     */
+    public function test_the_contact_block_travels_with_its_arrangement(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['contact_info' => [
+                    'default' => ['layout' => 'row', 'icons' => false],
+                    'header' => ['layout' => 'compact'],
+                ]]],
+            ])->assertOk()->json('config.presets.contact_info');
+
+        $this->assertSame('row', $body['default']['layout']);
+        $this->assertFalse($body['default']['icons']);
+        $this->assertSame('compact', $body['header']['layout']);
+
+        // The keys nobody set still arrive, because the plugin reads the
+        // bundle whole and a missing key there is a missing feature. `phone`
+        // rather than the `show` CSV this asserted first: three flags replaced
+        // it before either shipped, because a comma-separated list needs a
+        // text box on the screen and a parser in the plugin to say what three
+        // switches say for nothing.
+        $this->assertArrayHasKey('phone', $body['header']);
+        $this->assertTrue($body['header']['phone']);
+    }
+
+    /**
+     * A bar and a popup cover part of somebody's page, so neither is default.
+     *
+     * The value of this assertion is the DEFAULT rather than the clamping: a
+     * widget that started covering the page the moment it was pasted in would
+     * be a surprise on a live site, and the surprise would arrive on all 110
+     * at once.
+     */
+    public function test_the_call_to_action_sits_inline_until_somebody_says_otherwise(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $chosen = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['cta' => ['sticky' => ['placement' => 'bar']]]],
+            ])->assertOk()->json('config.presets.cta');
+
+        $this->assertSame('inline', $chosen['default']['placement']);
+        $this->assertSame('bar', $chosen['sticky']['placement']);
+    }
+
+    public function test_an_arrangement_nobody_offers_becomes_the_default(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => [
+                    'contact_info' => ['default' => ['layout' => 'carousel']],
+                    'cta' => ['default' => ['placement' => 'takeover']],
+                    'phone_box' => ['default' => ['size' => 'enormous']],
+                ]],
+            ])->assertOk()->json('config.presets');
+
+        // Clamped to the default rather than refused. This renders on a
+        // customer's page and a config that fails to load takes the widget
+        // with it — the same rule the sizes follow.
+        $this->assertSame('stack', $body['contact_info']['default']['layout']);
+        $this->assertSame('inline', $body['cta']['default']['placement']);
+        $this->assertSame('medium', $body['phone_box']['default']['size']);
+    }
 }

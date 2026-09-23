@@ -190,40 +190,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _load();
   }
 
-  Future<void> _setEarnedStatuses(List<String> statuses) async {
-    setState(() {
-      _glances = [
-        for (final glance in _glances)
-          if (glance['key'] == 'jobs')
-            {
-              ...glance,
-              'options': {
-                ..._optionsOf(glance),
-                'earned_statuses': statuses,
-              },
-            }
-          else
-            glance,
-      ];
-    });
-
-    final response = await widget.api.put('/dashboard/layout', {
-      'glances': [for (final glance in _glances) _entryFor(glance)],
-    });
-
-    if (!mounted) return;
-
-    if (response.ok) {
-      _rememberLayout(response.body, fallback: _glances);
-    } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(response.message)));
-    }
-
-    _load();
-  }
-
   /// Keep the stored layout in the session so the HR chip's first save does
   /// not name only `{hr}` and wipe Jobs options the main board just wrote.
   void _rememberLayout(
@@ -238,13 +204,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       for (final item in source)
         if (item is Map) _entryFor(Map<String, dynamic>.from(item)),
     ]);
-  }
-
-  static Map<String, dynamic> _optionsOf(Map<String, dynamic> glance) {
-    final options = glance['options'];
-    return options is Map
-        ? Map<String, dynamic>.from(options)
-        : <String, dynamic>{};
   }
 
   /// A glance as the layout stores it. Presentation and options travel with
@@ -364,12 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ? const Tag('Coming soon', warn: true)
                       : null,
                   controls: _presentationMenu(glance),
-                  body: _GlanceBody(
-                    glance: glance,
-                    onEarnedStatuses: glance['key'] == 'jobs'
-                        ? _setEarnedStatuses
-                        : null,
-                  ),
+                  body: _GlanceBody(glance: glance),
                 ),
             ],
           ),
@@ -386,10 +340,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 /// chart is not a sentence. The BOX around it is DashboardCard, through
 /// DashboardGrid.
 class _GlanceBody extends StatelessWidget {
-  const _GlanceBody({required this.glance, this.onEarnedStatuses});
+  const _GlanceBody({required this.glance});
 
   final Map<String, dynamic> glance;
-  final ValueChanged<List<String>>? onEarnedStatuses;
 
   @override
   Widget build(BuildContext context) {
@@ -411,8 +364,6 @@ class _GlanceBody extends StatelessWidget {
     bool comingSoon,
     String presentation,
   ) {
-    final earned = _earnedControl(data);
-
     if (comingSoon || data['empty'] == true) {
       final notes = _sentencesOf(data);
 
@@ -441,7 +392,6 @@ class _GlanceBody extends StatelessWidget {
           const DashboardNote('Nothing to show.')
         else
           for (final note in notes) DashboardNote(note),
-        ?earned,
       ];
     }
 
@@ -454,67 +404,7 @@ class _GlanceBody extends StatelessWidget {
         ),
       ..._sentences(data),
       ..._money(data),
-      ?earned,
     ];
-  }
-
-  Widget? _earnedControl(Map<String, dynamic> data) {
-    if (onEarnedStatuses == null) return null;
-
-    final choices = _earnedChoices(data);
-    if (choices.isEmpty) return null;
-
-    final selected = _earnedSelected();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 4,
-        children: [
-          for (final status in choices)
-            FilterChip(
-              label: Text(status),
-              selected: selected.contains(status),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              onSelected: (on) {
-                final next = [...selected];
-                if (on) {
-                  if (!next.contains(status)) next.add(status);
-                } else {
-                  next.remove(status);
-                }
-                onEarnedStatuses!(next);
-              },
-            ),
-        ],
-      ),
-    );
-  }
-
-  List<String> _earnedChoices(Map<String, dynamic> data) {
-    final raw = data['status_choices'];
-    if (raw is List && raw.isNotEmpty) {
-      return [for (final item in raw) '$item'];
-    }
-
-    final slices = data['slices'];
-    if (slices is! List) return const [];
-
-    return [
-      for (final item in slices)
-        if (item is Map && '${item['label'] ?? ''}'.isNotEmpty)
-          '${item['label']}',
-    ];
-  }
-
-  List<String> _earnedSelected() {
-    final options = glance['options'];
-    if (options is! Map) return const [];
-    final raw = options['earned_statuses'];
-    if (raw is! List) return const [];
-    return [for (final item in raw) '$item'];
   }
 
   /// Every money list the payload carries, whatever the glance called it.

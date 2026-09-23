@@ -122,6 +122,69 @@ void main() {
       );
     });
 
+    /*
+     * ── The half the height comparison above cannot see ──
+     *
+     * The defect Jose originally reported at 375 WAS an overflow: the plain
+     * Row ran 78 pixels past the right edge, into space nobody can see or tap.
+     * Every test around it compares HEIGHTS, and a row that overflows
+     * sideways is exactly as tall as one that fits — `getSize` returns what
+     * the box was GIVEN, not what it drew.
+     *
+     * So the guard for the original defect could not fail on the original
+     * defect. It would have caught the Wrap's second line, which is the bug
+     * the fix introduced, and been green for the bug the fix was for.
+     *
+     * A Flutter overflow fails nothing by itself: it paints yellow stripes and
+     * carries on. The only way to see one is to take the error over.
+     *
+     * Marketing found this hole after I closed the same one on the widget
+     * cards (f38b29a3) and checked their own suites rather than agreeing with
+     * me — theirs had no `FlutterError.onError` anywhere either.
+     */
+    testWidgets('nothing runs off the edge at phone width', (tester) async {
+      final overflows = <String>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if ('${details.exception}'.contains('overflowed')) {
+          overflows.add('${details.exception}');
+
+          return;
+        }
+
+        previous?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = previous);
+
+      await pump(tester, width: 375);
+
+      expect(
+        overflows,
+        isEmpty,
+        reason: 'the hours grid ran off the edge at 375 — the defect Jose '
+            'reported on 2026-09-08, which every height comparison here is '
+            'blind to',
+      );
+
+      // The control, in the same test: heights still equal. Without it, a
+      // "fix" that stopped the overflow by letting the open row wrap would
+      // pass this and quietly restore the other half of the defect.
+      final monday = tester.getSize(
+        find.ancestor(
+          of: find.text('Monday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+      final sunday = tester.getSize(
+        find.ancestor(
+          of: find.text('Sunday'),
+          matching: find.byType(Container),
+        ).first,
+      );
+
+      expect(monday.height, sunday.height);
+    });
+
     testWidgets('every one of the seven rows is the same height', (
       tester,
     ) async {

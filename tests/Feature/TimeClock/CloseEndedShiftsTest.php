@@ -41,7 +41,11 @@ class CloseEndedShiftsTest extends TestCase
 
         $this->artisan('ezbizi:close-ended-shifts')->assertSuccessful();
 
-        $this->assertSame('2026-09-08 22:00:30', $this->fresh($due)->clocked_out_at->toDateTimeString());
+        // The END it was sweeping, not the half-minute the scheduler took to
+        // get there (2026-09-23). The difference is seconds here and DAYS on a
+        // row the sweep could not see until a backfill gave it an end, which
+        // is where crediting now() would have invented forty hours.
+        $this->assertSame('2026-09-08 22:00:00', $this->fresh($due)->clocked_out_at->toDateTimeString());
         $this->assertSame(TimeClockShift::ENDED_BY_SCHEDULE, $this->fresh($due)->ended_by);
         $this->assertSame(TimeClockShift::ENDED_BY_SCHEDULE, $this->fresh($dueElsewhere)->ended_by);
         $this->assertNull($this->fresh($future)->clocked_out_at);

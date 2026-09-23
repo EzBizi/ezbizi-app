@@ -177,17 +177,71 @@ class GlanceRegistryTest extends TestCase
         $this->assertNotSame('', trim((string) $array['data']['sentence']));
     }
 
+    /**
+     * THE EXEMPTION IS NOT AN ESCAPE HATCH, and this is what makes that true.
+     *
+     * Without this, `glanceExemptBecause` is a line any module can add to stop
+     * owing a dashboard box, and the two assertions below it would go quiet for
+     * exactly the modules a customer most wants a number from.
+     *
+     * So it is refused to any module that HAS records: a declared
+     * `AutomationSubject`, or anything in `$emits`. Those are the modules with
+     * something to count. A container has neither, which is the whole of its
+     * case.
+     *
+     * Derived from the registry rather than naming `a1leads_gbp`, so the second
+     * module to claim it is checked by the same rule rather than by whoever
+     * remembers this file exists.
+     */
+    public function test_a_module_with_records_may_not_decline_its_glance(): void
+    {
+        $offenders = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
+            ->filter(fn ($m) => $m->glanceExemptBecause !== null
+                && ($m->subject !== null || $m->emits !== []))
+            ->keys()->values()->all();
+
+        $this->assertSame(
+            [],
+            $offenders,
+            'A module holding records owes a dashboard box; the exemption is for containers.',
+        );
+
+        // The control: the exemption is actually in use, so this is not a rule
+        // passing over an empty set. If nothing claims it any more, the field
+        // and both filters above should go rather than sit there unexercised.
+        $exempt = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
+            ->filter(fn ($m) => $m->glanceExemptBecause !== null)
+            ->keys()->values()->all();
+
+        $this->assertNotEmpty($exempt, 'nothing declares glanceExemptBecause any more');
+    }
+
     public function test_dashboard_is_not_a_glance(): void
     {
         $this->assertNull(app(GlanceRegistry::class)->find('dashboard', $this->alpha['admin']));
     }
 
+    /**
+     * A module may decline a glance, and it has to say why.
+     *
+     * `glanceExemptBecause` joined `automationExemptBecause` and
+     * `auditExemptBecause` on 2026-09-23, for the first module that could not
+     * satisfy this assertion honestly: `a1leads_gbp` is a container holding
+     * Reviews and Business Profile, with no records of its own. Its only ways
+     * to go green here were to invent a box or to stop being a sidebar tab, and
+     * both are worse than the exemption.
+     *
+     * The exemption is narrow by construction: `exemptions()` below refuses it
+     * to any module that HAS records, so it cannot become the way a real module
+     * skips building its box.
+     */
     public function test_every_sidebar_tab_except_dashboard_has_a_glance(): void
     {
         $registry = app(\App\Support\Modules\ModuleRegistry::class);
         $tabs = collect($registry->all())
             ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
                 && $m->sidebar
+                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->sort()->values()->all();
         $glances = collect(app(GlanceRegistry::class)->all())->map(fn ($g) => $g->key())->sort()->values()->all();
@@ -214,6 +268,10 @@ class GlanceRegistryTest extends TestCase
     {
         $source = file_get_contents(base_path('client/lib/core/dashboard_panels.dart'));
 
+        // A module with no glance draws no panel, so it needs no panel icon.
+        // Its SIDEBAR icon is a different map in a different file
+        // (`module_screens.dart`) and is not what this asserts.
+
         // The dot is in the class deliberately, and it is the whole reason the
         // first version of this guard was decorative in one direction. UI/UX
         // found it by RUNNING the regex rather than reading it (3d3b1f61):
@@ -233,6 +291,7 @@ class GlanceRegistryTest extends TestCase
         $tabs = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
             ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
                 && $m->sidebar
+                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->sort()->values()->all();
 

@@ -54,6 +54,10 @@ Widget? phoneSettingsPane(
   required Session session,
 }) => switch (id) {
   'general' => GeneralPane(api: api, session: session),
+  // No `onOpen` from the shared factory: navigating means SELECTING a
+  // section, and only the tab that owns the section list can do that. The tab
+  // passes its own below; every other door gets a pane whose steps are plain
+  // text rather than buttons that go nowhere.
   'call-flow' => CallFlowPane(api: api),
   'call-flow-chart' => CallFlowChartPane(api: api, session: session),
   'numbers' => NumbersPane(api: api, session: session),
@@ -519,6 +523,13 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
     // flow follows it there, because they answer the same question, one as the
     // form you fill in and one as the report of what that did, and the form
     // comes first because that is the order somebody works in.
+    // The one pane the tab builds itself, because it needs a way back into
+    // the tab. Jose, 2026-09-23: clicking a step on Call flow should "direct
+    // me to the screen where that can be changed".
+    if (id == 'call-flow') {
+      return CallFlowPane(api: widget.api, onOpen: _openSection);
+    }
+
     return phoneSettingsPane(id, api: widget.api, session: widget.session) ??
         // And the three the shared list cannot build, because they need
         // something only this tab has: the loaded scopes, and a section label.
@@ -532,6 +543,25 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
           ),
           _ => _unbuilt('Messaging campaigns will be set here.'),
         };
+  }
+
+  /// Open the section with this id, if this build has one.
+  ///
+  /// Keyed on the id rather than an index for the same reason `_sectionBody`
+  /// is: the rail is grouped and therefore reorderable, and an index would
+  /// quietly point at a different section the day somebody moves one.
+  ///
+  /// Silently does nothing for an id the rail does not list. That is the right
+  /// failure for a step whose pane has not been built yet — a step that took
+  /// somebody to the wrong section would be worse than one that stays put.
+  void _openSection(String id) {
+    for (var i = 0; i < _sections.length; i++) {
+      if (_sections[i].id != id) continue;
+
+      _selectSection(i);
+
+      return;
+    }
   }
 
   Widget _unbuilt(String sentence) {

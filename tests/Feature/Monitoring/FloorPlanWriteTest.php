@@ -424,4 +424,95 @@ class FloorPlanWriteTest extends TestCase
         $this->signedInAs($viewer)->deleteJson('/api/v1/monitoring/floor-plans/'.$plan->id)
             ->assertForbidden()->assertJsonStructure(['message']);
     }
+
+    public function test_renaming_one_desk_leaves_the_rest_of_the_layout_alone(): void
+    {
+        // Jose, 2026-09-23: the desk name is editable from the ownership
+        // chart, which holds no geometry — so this path exists precisely to
+        // avoid a read-modify-write of the whole plan, and the assertion that
+        // matters is that everything it did NOT touch survived.
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+
+        $plan = $this->makePlan($alpha, 'Main Office', [
+            'assigned_organization_id' => $alpha['org']->id,
+            'assigned_company_id' => $companyA->getKey(),
+        ], [
+            'grid' => ['cols' => 20, 'rows' => 14],
+            'walls' => [['x1' => 1, 'y1' => 1, 'x2' => 9, 'y2' => 1]],
+            'nodes' => [
+                ['id' => 'n1', 'x' => 2, 'y' => 3, 'label' => 'Front desk', 'user_id' => null],
+                ['id' => 'n2', 'x' => 6, 'y' => 3, 'label' => 'Back desk', 'user_id' => null],
+            ],
+        ]);
+
+        $manager = $this->companyManager($alpha, $companyA, 'Company A Mgr');
+
+        $this->signedInAs($manager)
+            ->putJson("/api/v1/monitoring/floor-plans/{$plan->getKey()}/nodes/n1/label",
+                ['label' => 'Reception'])
+            ->assertOk()
+            ->assertJsonPath('data.label', 'Reception');
+
+        $layout = $plan->fresh()->layout;
+
+        $this->assertSame('Reception', $layout['nodes'][0]['label']);
+
+        // The rest of the plan, untouched: the other desk, its position, the
+        // wall and the grid. A rename that quietly normalised the document
+        // would pass an assertion about the label alone.
+        $this->assertSame('Back desk', $layout['nodes'][1]['label']);
+        $this->assertSame(2, $layout['nodes'][0]['x']);
+        $this->assertSame(6, $layout['nodes'][1]['x']);
+        $this->assertCount(1, $layout['walls']);
+        $this->assertSame(20, $layout['grid']['cols']);
+    }
+
+    public function test_renaming_a_desk_needs_the_edit_grant_and_is_scope_checked(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+        $companyB = $this->inTenant($alpha['org'], fn () => Company::create([
+            'organization_id' => $alpha['org']->id, 'name' => 'Company B', 'is_active' => true,
+        ]));
+
+        // With a node: the suite's default layout carries none, and a rename
+        // test against a plan with no desks would 404 for the wrong reason.
+        $plan = $this->makePlan($alpha, 'A Office', [
+            'assigned_organization_id' => $alpha['org']->id,
+            'assigned_company_id' => $companyA->getKey(),
+        ], $this->layout([
+            ['id' => 'n1', 'x' => 2, 'y' => 3, 'label' => 'Front desk', 'user_id' => null],
+        ]));
+
+        $nodeId = $plan->layout['nodes'][0]['id'];
+        $path = "/api/v1/monitoring/floor-plans/{$plan->getKey()}/nodes/{$nodeId}/label";
+
+        // Can SEE the map, may not edit it.
+        $viewer = $this->companyManager($alpha, $companyA, 'A Viewer', [
+            'monitoring.view', 'monitoring.map.view',
+        ]);
+        $this->signedInAs($viewer)->putJson($path, ['label' => 'Nope'])->assertForbidden();
+
+        // A manager of another company: 404, not 403 — a plan outside reach
+        // and a plan that never existed must look identical, or the id space
+        // becomes an oracle.
+        $companyBMgr = $this->companyManager($alpha, $companyB, 'Company B Mgr');
+        $this->signedInAs($companyBMgr)->putJson($path, ['label' => 'Nope'])->assertNotFound();
+
+        // A node id that names nothing on a plan this actor CAN reach: also
+        // 404, same reasoning one level down.
+        $manager = $this->companyManager($alpha, $companyA, 'Company A Mgr');
+        $this->signedInAs($manager)
+            ->putJson("/api/v1/monitoring/floor-plans/{$plan->getKey()}/nodes/no-such-node/label",
+                ['label' => 'Nope'])
+            ->assertNotFound();
+
+        // CONTROL: the same manager, the same plan, a real node — so every
+        // refusal above is its own rule rather than this route being shut.
+        $this->signedInAs($manager)->putJson($path, ['label' => 'Reception'])->assertOk();
+
+        // And nothing was renamed by any of the refusals.
+        $this->assertSame('Reception', $plan->fresh()->layout['nodes'][0]['label']);
+    }
 }
