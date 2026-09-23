@@ -47,12 +47,22 @@ use Illuminate\Support\Facades\DB;
  *
  * ── DO NOT RUN THIS BEFORE THE SYNC HAS BACKFILLED ──────────────
  *
- * The sweep that fills `workiz_jobs` runs every minute over a TWO-DAY window;
- * loading the history is a separate act (`--since=` / a wide `--window`), kept
- * separate because Workiz answers `429 "Account reached Api Quotas"` and a
- * five-year window across nine accounts is how you earn one. Measured
- * 2026-09-23: A1 Tools holds 7,793 jobs going back to 2025-04-09, and its
- * derived map is 2,935 rows over 2,717 distinct zips.
+ * THE HISTORY DOES NOT COME FROM WORKIZ AT ALL, and this paragraph said the
+ * opposite for several hours. It said to ask for a backfill with `--since=` or
+ * a wide window. There is no such run: Workiz measured their own API and
+ * `/job/all/` IGNORES `start_date` and does not page — it returns roughly the
+ * next hundred UPCOMING appointments and nothing else.
+ *
+ * Corroborated here rather than relayed. Production `workiz_jobs`, 2026-09-23:
+ * 637 rows, 537 of them scheduled in the FUTURE, earliest 2026-09-21 and
+ * latest 2027-04-01. A window parameter that worked would not produce that.
+ *
+ * A-1's 7,793 historical jobs exist in A1 Tools only because its own sync
+ * caught each one while it was still upcoming, every two minutes, for months.
+ * They are recoverable from `a1tools_workiz_jobs` on the same box and the
+ * Workiz session is building that importer; until it runs, this command sees
+ * only what is upcoming. Its derived map is 2,935 rows over 2,717 distinct
+ * zips, which is what a complete one looks like.
  *
  * So a run against two days of jobs produces a THIN map, and thin is not the
  * same as wrong in an obvious way: a contested zip decided on two days of
@@ -61,9 +71,9 @@ use Illuminate\Support\Facades\DB;
  * between the two, availability answers for that zip name the wrong area, and
  * nothing about the output says the evidence was thin.
  *
- * Ask the Workiz session whether the backfill has run before comparing what
- * this produces against 2,717. Their word for it: "expect your first real map
- * to be thin and do not read that as a defect".
+ * Ask the Workiz session whether the A1 Tools history has been imported before
+ * comparing what this produces against 2,717 — not whether "the backfill has
+ * run", which is the question this file used to ask and which has no answer.
  */
 class SchedulingBuildZipMap extends Command
 {
