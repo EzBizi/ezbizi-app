@@ -861,6 +861,32 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'jobs',
                 label: 'Jobs',
+                /*
+                 * The detail panel's panes, in the order it draws them (0051).
+                 *
+                 * `work` NAMES `jobs.view` rather than minting `jobs.work.view`,
+                 * because that pane has shipped under `jobs.view` since this
+                 * module existed. Minting would create two names for one
+                 * authority and let an administrator grant the tab without the
+                 * read — a pane that opens and refuses everything inside it —
+                 * and it would also take the pane away from everybody who holds
+                 * `jobs.view` today, which is a regression wearing a feature's
+                 * clothes. Training's case, same answer.
+                 *
+                 * `materials` is a real mint because the audience genuinely
+                 * differs: "the technician may see the job but not what the
+                 * parts were" is a sentence somebody says out loud, and the rows
+                 * come from Inventory rather than from this module.
+                 *
+                 * Photos and Inspection are NOT here yet, on purpose. Their
+                 * panes do not exist, and a checkbox for a pane an administrator
+                 * cannot then find is step 1 of the brief failing from the other
+                 * side. They arrive in the commit that builds them.
+                 */
+                tabs: [
+                    new TabDefinition('work', 'Work', action: 'view'),
+                    new TabDefinition('materials', 'Materials'),
+                ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
