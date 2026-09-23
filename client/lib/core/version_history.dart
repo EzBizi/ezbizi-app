@@ -8,6 +8,17 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0250',
+      date: '23 Sep 2026',
+      items: [
+        'Your Workiz customers and jobs appear in EzBizi. They arrive on their own every few minutes. One thing to know before you try to edit one: a job keeps the status Workiz gave it, and until your job statuses in Settings include those words a Workiz job can be read but not saved.',
+        'Turning the live chat off now covers the whole business. The switch was per website, and a company with more than one site kept answering on the others, so the chat you switched off went on collecting. There are buttons to turn it off or on across every site at once, and one to rebuild them all.',
+        'A lead from a website names the website it came from, rather than only the business. Where it used to say Website chat and the company name it now says the address a visitor was actually on.',
+        'A1Leads GBP has the Google Reviews tab brought over, read only, with the same filters in the same order and opening on the negative ones. The location filter lists the cities the service can actually see.',
+        'A job shows what Inventory issued against it, once anything has been. This arrived in version 0.0.0246 without a note, and nothing has been issued against a job yet, so today every job says so.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0249',
       date: '23 Sep 2026',
       items: [
