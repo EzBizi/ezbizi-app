@@ -373,6 +373,65 @@ final class ReportMap
                 'columns' => [
                     'name' => ['label' => 'Service area', 'type' => 'string'],
                     'created_at' => ['label' => 'Created',      'type' => 'datetime'],
+
+                    /*
+                     * ── TWO DERIVED COLUMNS, AND THE POINT IS THE THREE STATES ──
+                     *
+                     * Jose, 2026-09-23, asked to be warned when a service area
+                     * is booked out, so a rule can email or text. Scheduling's
+                     * answer named the trap before either of us built anything:
+                     * "is this area taking work" has THREE ways to be empty and
+                     * they must never collapse into one.
+                     *
+                     *     no capacity left    open, taking nothing more
+                     *     closed              not a working day
+                     *     unconfigured        nobody ever set this area up
+                     *
+                     * Only the first is booked out. Collapse them and an area
+                     * nobody has configured texts somebody "fully booked" every
+                     * day forever — and on production today 21 of 45 areas have
+                     * no slot row at all, so the naive version is wrong for
+                     * nearly half of them on the day it ships.
+                     *
+                     * These two columns separate what is separable TODAY:
+                     *
+                     *     open days a week = 0   never configured, or shut all week
+                     *     open days > 0, jobs = 0   open and configured to take nothing
+                     *     open days > 0, jobs > 0   taking work; whether it is FULL
+                     *                               is not answerable yet
+                     *
+                     * ── WHAT THEY DELIBERATELY DO NOT SAY ──────────────
+                     *
+                     * Neither is "booked out". Nothing links a Job to a service
+                     * area — `SchedulingAvailabilityController`'s own docblock
+                     * says so — so no booked count exists to subtract, and a
+                     * column claiming one would be the confident false statement
+                     * that whole file was written to avoid. This is the
+                     * configured shape of the week; the booked half arrives when
+                     * Scheduling lands the link.
+                     *
+                     * And "a week", not "the next X days", because the data is
+                     * per WEEKDAY: any window of seven days or more contains
+                     * every weekday, so "no open day in the next 14" and "no open
+                     * day at all" are the same question asked twice. A column
+                     * promising a horizon it cannot vary would be a worse lie
+                     * than the honest weekly one.
+                     *
+                     * Nothing records a one-off closure — no holiday table
+                     * exists, checked — so a bank holiday is invisible here.
+                     */
+                    'open_days_a_week' => [
+                        'label' => 'Open days a week',
+                        'type' => 'integer',
+                        'sql' => 'select count(distinct s.weekday) from service_area_slots s '
+                            .'where s.service_area_id = service_areas.id',
+                    ],
+                    'jobs_a_week' => [
+                        'label' => 'Jobs a week (configured)',
+                        'type' => 'integer',
+                        'sql' => 'select coalesce(sum(s.max_jobs), 0) from service_area_slots s '
+                            .'where s.service_area_id = service_areas.id',
+                    ],
                 ],
                 'relations' => [
                     'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],

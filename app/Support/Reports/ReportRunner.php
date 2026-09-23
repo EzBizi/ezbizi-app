@@ -204,11 +204,26 @@ final class ReportRunner
             $declared = $this->columnFor($resource, $column);
             $key = $column['resource'].'.'.$column['column'];
 
+            /*
+             * A DERIVED COLUMN IS A CORRELATED SUBQUERY, not a table column.
+             *
+             * Some facts a report needs are not stored anywhere: "how many days
+             * a week is this service area open" is the number of distinct
+             * weekdays it has slot rows for, and no column holds it. Declaring
+             * it in the map as `sql` lets it be selected AND filtered exactly
+             * like a real column, which is what makes a warning possible — a
+             * report that cannot filter on the derived value has to return
+             * every row, and a rule that always has rows is never a warning.
+             *
+             * The SQL is static and lives in ReportMap. Nothing here
+             * interpolates user input: the operator comes from the OPERATORS
+             * whitelist below and the value is bound.
+             */
             $query->addSelect(
-                DB::raw(
-                    $this->quote($resource['table']).'.'.$this->quote($column['column'])
-                    .' as '.$this->quote($key)
-                )
+                DB::raw(isset($declared['sql'])
+                    ? '('.$declared['sql'].') as '.$this->quote($key)
+                    : $this->quote($resource['table']).'.'.$this->quote($column['column'])
+                        .' as '.$this->quote($key))
             );
 
             $columns[] = ['key' => $key, 'label' => $declared['label'], 'type' => $declared['type']];
@@ -220,7 +235,7 @@ final class ReportRunner
 
         foreach ($definition['filters'] ?? [] as $filter) {
             $resource = $this->resourceFor($filter);
-            $this->columnFor($resource, $filter);
+            $declaredFilter = $this->columnFor($resource, $filter);
 
             $operator = self::OPERATORS[$filter['op'] ?? '']
                 ?? throw new InvalidArgumentException(
@@ -229,10 +244,22 @@ final class ReportRunner
 
             $value = $filter['value'] ?? null;
 
+            $bound = $operator === 'like' ? '%'.$value.'%' : $value;
+
+            if (isset($declaredFilter['sql'])) {
+                // The SAME expression as the select, so the rows a filter keeps
+                // are the rows whose printed value satisfies it. Two spellings
+                // of one derived value is how a report comes to exclude a row
+                // it then displays.
+                $query->whereRaw('('.$declaredFilter['sql'].') '.$operator.' ?', [$bound]);
+
+                continue;
+            }
+
             $query->where(
                 $resource['table'].'.'.$filter['column'],
                 $operator,
-                $operator === 'like' ? '%'.$value.'%' : $value,
+                $bound,
             );
         }
 
