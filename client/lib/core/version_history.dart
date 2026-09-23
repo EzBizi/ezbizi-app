@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0252',
+      date: '23 Sep 2026',
+      items: [
+        'Customer phone numbers read as phone numbers again. Everything imported from Workiz was stored as ten bare digits, so a customer showed 4242095909 rather than +1 (424) 209-5909 - and because the whole app keys on the full form, those numbers were also the wrong thing to call or text. The 617 already in the book have been corrected.',
+        'Settings has an Extensions tab, so an extension can be assigned to a person, a ring group or an IVR menu. A caller can now type the extension they want, which the prompt had been promising for weeks.',
+        'A1Leads GBP has A1 Tools Board and Table toggle, and the table carries the columns that can be filled honestly: the matched customer with the city under it, the review at three lines, date, rating and reply.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0251',
       date: '23 Sep 2026',
       items: [
