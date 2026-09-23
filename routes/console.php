@@ -142,6 +142,22 @@ Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
  */
 Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 
+/*
+ * The mirror is not the product. This is the step that puts Workiz work on the
+ * Customers and Jobs screens, and it runs often because new jobs arrive every
+ * minute.
+ *
+ * Five minutes rather than one: it spends no Workiz quota at all — the client
+ * is derived from payloads already mirrored locally — but it walks the mirror,
+ * so there is no reason to do it sixty times an hour.
+ *
+ * It only ever INSERTS. Re-running is safe by construction: a client that
+ * already names a customer and a job that already names a job are skipped, so
+ * the link is the record of what has been projected and nothing a person
+ * corrected is ever reverted.
+ */
+Schedule::command('ezbizi:project-workiz')->everyFiveMinutes()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
