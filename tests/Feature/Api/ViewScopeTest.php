@@ -91,7 +91,17 @@ class ViewScopeTest extends TestCase
         for ($i = 0; $i < $count; $i++) {
             Customer::create([
                 'owning_franchise_id' => $franchise->id,
-                'number' => "{$franchise->name}-{$i}-".bin2hex(random_bytes(2)),
+                'number' => "{$franchise->id}-{$i}",
+                // UNIQUE BY CONSTRUCTION, and it was not. The unique key is
+                // (organization_id, number), and TWO franchises here are named
+                // "Ohio" in one organization -- w[oh] under Chimney and
+                // w[everOh] under Everdoors. So for every index they share,
+                // "{name}-{i}-" was identical and four hex characters from
+                // random_bytes(2) were the only thing keeping the rows apart:
+                // 1 in 65536 per index across 15 shared indices, about one run
+                // in 4400. It refused the 0.0.0245 gate on Ohio-6 with both
+                // franchises having drawn 9a15. The franchise id is unique and
+                // i is unique within it, so there is nothing left to collide.
                 'name'   => "Person {$franchise->name} {$i}",
             ]);
         }
