@@ -165,19 +165,27 @@ final class JobsGlance extends DescribedGlance
      * the server stopped obeying it would draw a selection that decides
      * nothing.
      *
-     * **MEASURED 2026-09-23, AND IT DOES NOT REACH THE CLIENT YET.**
+     * **MEASURED 2026-09-23, AND IT DOES NOT REACH THE CLIENT.**
      * `DashboardController:69` does `$payload['options'] = $options` after
-     * resolving, overwriting this with the saved layout's own copy — so
-     * `/dashboard` still ships the personal value, sanitised by that
-     * controller's Jobs-specific `asDeclared()`. That whole loop
-     * (`copyEarnedStatusesFromWidgets` → `asDeclared` → :69 → the chip strip in
-     * `dashboard_screen.dart:461`) now writes and echoes a key nothing reads,
-     * and it is Dashboard's to unwind; they have been told.
+     * resolving, so a glance's own options are always discarded in favour of
+     * the saved layout's copy. Nothing is wrong today — with the chip strip
+     * deleted (`e55c99a4`) nothing writes a per-user earned list, so the loop
+     * is inert rather than lossy — but this method cannot ship.
      *
-     * This stays the correct answer rather than being deleted for now, because
-     * the moment :69 stops stomping, a glance with no wireOptions ships no
-     * selection at all. Do not "simplify" it away on the grounds that it is
-     * currently unobservable — that is the stomp's fault, not this method's.
+     * **AND THE OBVIOUS FIX IS THE §8.2 MISTAKE AGAIN, FROM THE OTHER SIDE.**
+     * Dashboard measured it and wrote it at their line, `445765e7`; I had
+     * assumed dropping :69 was all it needed and that is wrong. The client
+     * echoes `options` straight back on the next layout PUT (`_entryFor`) and
+     * `saveLayout` stores what it is sent — so letting the organization's value
+     * through here would write it into EVERY user's stored preference, per
+     * person, chosen by nobody. That is the same authority failure that made
+     * the chips a deletion rather than a repoint.
+     *
+     * One key is carrying two facts: what the BOX is configured with, and what
+     * this READER chose. The fix is two keys, which is a wire change and wants
+     * deciding rather than patching. Until then this stays correct and
+     * unreachable — do not "simplify" it away for being unobservable, and do
+     * not reach for the one-line version of the fix.
      *
      * @param  list<string>  $earned
      */
