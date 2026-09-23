@@ -115,12 +115,40 @@ jobs, 9 Workiz connections.** The areas exist. The zips do not.
 Two decisions EzBizi's schema forces that A1's does not:
 
 - `UNIQUE(franchise_id, zip)` means **one area per zip per franchise** — Jose's
-  own rule. A1's 206 ambiguous zips cannot be carried across as they are; the
-  highest `job_count` has to win, and the loser has to be visible somewhere
-  rather than silently dropped.
-- Area names have to line up. A1 matches Workiz's `ServiceArea` string to an
-  area by lowercased name; EzBizi's 29 areas were typed by hand, so this will
-  partially miss until somebody reconciles the two lists.
+  own rule. The ambiguity is bigger than A1's own table shows, and the two
+  numbers are both right (Workiz session, measured 2026-09-23):
+
+      420 zips map to 2+ service areas in the RAW Workiz history
+        ... of which 339 sit inside a SINGLE Workiz account
+      206 zips are ambiguous in crm_service_area_zips, AFTER A1's rebuild
+
+  The gap between them IS the tie-break. `rebuild` collapses by `job_count`,
+  which is why that column is the asset rather than decoration. And **franchise
+  attribution does not rescue the 339**: they are decided by job history inside
+  one franchise, not by which franchise it is. So the importer needs the same
+  collapse, and the loser has to be visible somewhere rather than silently
+  dropped.
+
+- Area names have to line up, and they do better than expected. Measured
+  2026-09-23 against A1-Group's areas in EzBizi production:
+
+      26 of 26   EzBizi area names match a Workiz ServiceArea EXACTLY
+       0         EzBizi areas with no Workiz name
+      31         Workiz names with no EzBizi area, covering 1,603 jobs (21%)
+
+  So the import matches on a trimmed, lowercased name with nothing clever, and
+  the open question is only what to do with the 31. The largest are Detroit
+  (346 jobs), Connecticut (222), Boston North (186), Dallas (163), Fort Worth
+  (156), Atlanta (125), Seattle (104).
+
+  **Several of the 31 are Workiz-side naming drift, not missing territory** —
+  `Connecticut` beside `East Connecticut`/`West Connecticut`, `Atlanta` beside
+  `Atlanta North`/`Atlanta South`, `Dallas` + `Fort Worth` beside `DFW`,
+  `Seattle Washington` beside `Seattle`, `Nashville Area` beside `Nashville`,
+  `Washington / Virginia` beside `Washington DC` + `Virginia`. Deciding whether
+  those fold into an existing area or become their own is a human call, not an
+  import rule. Four names also carry a trailing space in Workiz; no two values
+  collapse when trimmed, so it is cosmetic.
 
 ### 3.2 A Workiz job sync (blocks every "booked" number)
 
@@ -210,10 +238,34 @@ real with 3.3.
 
 3.7 is independent and can land at any point.
 
-## 6. Open, for Jose
+## 6. Answered since this was written (2026-09-23, Workiz session)
 
-- **Who owns the Workiz sync?** It is not Scheduling's table. A1's sync writes
-  jobs; in EzBizi that is the Jobs module's territory and the Workiz connection
-  already belongs to another session. Availability consumes it either way.
-- **Do the 29 EzBizi areas correspond to A1's 44 active ones by name**, or does
-  the import create what it does not find?
+- **Does v1 carry the fields?** Yes, and not marginally. Presence across 7,739
+  captured payloads: `ServiceArea` 7,733, `PostalCode` 7,724, `Status` 7,738,
+  `JobDateTime` 7,738, `City` 7,647, `State` 7,702, `UUID`/`SerialId` 7,738.
+  Design on `ServiceArea`; no zip clustering needed.
+
+  Worth knowing before trusting either source: the published spec and the live
+  payload disagree in BOTH directions — the payload carries `JobName`,
+  `LineItems`, `LocationId`, `LocationKey` which the doc does not document, and
+  the doc documents `Timezone` and `ReferralCompany` which these rows do not
+  carry. 43 keys live against 41 documented, and not the same 41.
+
+- **Whose table?** A landing table the Workiz session owns, flattening
+  `uuid / client_id / zip / account` beside the raw JSON, the way A1's own
+  `a1tools_workiz_jobs` does. Customers and Jobs project out of it separately.
+  **The zip-map importer is mine and reads their landing table.** They send
+  column names before writing it.
+
+- **Attribution per franchise is free.** Each token returns only its own
+  account's jobs (another account's job id answers 204), so the connection's
+  franchise is the answer and no per-job attribution is needed. But a franchise
+  is not a service area: 57 distinct areas across 10 accounts, one account
+  carrying up to 30 — which is why 339 of the 420 ambiguous zips are not helped
+  by knowing the franchise.
+
+## 7. Still open, for Jose
+
+- **The 31 Workiz service areas with no EzBizi area** (1,603 jobs, 21% of the
+  history). Create them all, fold the naming-drift ones into the areas that
+  already exist, or leave the long tail out? See 3.1 — the list is there.
