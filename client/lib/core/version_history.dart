@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0249',
+      date: '23 Sep 2026',
+      items: [
+        'Drawing a wall on the Map works after you have zoomed or panned. Every tap was landing on the cell that had been in that spot before you moved, and the map was being stretched out of square. A wall can also be dragged by the handle at its middle, and keeps its length when you push it into a corner.',
+        'New Workiz jobs arrive in Leads from now on. Your Workiz history stays where it is - the first run for a branch records where now is rather than pulling years of old records into EzBizi.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0248',
       date: '23 Sep 2026',
       items: [
