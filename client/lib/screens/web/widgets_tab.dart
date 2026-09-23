@@ -1936,7 +1936,7 @@ class _WidgetCard extends StatelessWidget {
      */
     return SizedBox(
       width: 260,
-      height: 132,
+      height: MediaQuery.textScalerOf(context).scale(132),
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,

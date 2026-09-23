@@ -35,6 +35,7 @@ void main() {
     // once. A test that asserts on a field now says which widget it
     // belongs to — information the old flat column let it leave out.
     String? open,
+    double textScale = 1.0,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -208,7 +209,18 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: WidgetsTab(api: api, session: session)),
+      // copyWith rather than a fresh MediaQueryData: a bare one replaces the
+      // whole thing, including the view size, and the four drag tests measure
+      // panes against it. They went red for a reason that had nothing to do
+      // with text.
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: Scaffold(body: WidgetsTab(api: api, session: session)),
+        ),
+      ),
     ));
     await tester.pumpAndSettle();
  
@@ -302,6 +314,61 @@ void main() {
   /// seven compared to the first. A test that only checked the tallest and the
   /// shortest would pass for a grid that had gone uniform at the WRONG height
   /// and started clipping.
+  /// The height is a count of text lines, so it has to grow with the text.
+  ///
+  /// Marketing made the cards uniform at a fixed 132 and flagged this as the
+  /// thing they had not solved. They were right: measured at an OS text scale
+  /// of 1.8 the card overflowed its Column by 46 pixels, and the part that
+  /// went was the status line — the one thing the grid exists to show.
+  ///
+  /// A Flutter overflow is not a test failure by default; it paints stripes
+  /// and carries on. So this catches the exception explicitly rather than
+  /// asserting on a size, because a size assertion would pass on a card that
+  /// is the right height and clipping.
+  testWidgets('the cards hold their content at a large text scale', (
+    tester,
+  ) async {
+    final overflows = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if ('${details.exception}'.contains('overflowed')) {
+        overflows.add('${details.exception}');
+
+        return;
+      }
+
+      previous?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      textScale: 1.8,
+    );
+
+    expect(
+      overflows,
+      isEmpty,
+      reason: 'A card clipped its own content at 1.8x text.',
+    );
+
+    // The control: still uniform at that scale, so the fix is not "let every
+    // card size itself" wearing a passing test.
+    final heights = {
+      for (final name in const ['Live chat', 'Map'])
+        tester
+            .getSize(
+              find
+                  .ancestor(of: find.text(name), matching: find.byType(SizedBox))
+                  .first,
+            )
+            .height,
+    };
+
+    expect(heights, hasLength(1));
+  });
+
   testWidgets('every widget card is the same size', (tester) async {
     await pump(tester, permissions: const ['web_management.view']);
 
