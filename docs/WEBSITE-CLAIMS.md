@@ -96,6 +96,7 @@ touches apps, monitoring, social, Google or mail.
 | "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
 | "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
 | "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
+| "Who we rely on … **these are all of them**" (AWS, SES, Twilio, Apple and Google, Mailchimp, the accounts you connect) | `/privacy/` | `config/services.php`'s top-level keys, against that list. **An exhaustive list is the only kind of sentence that a new integration falsifies by existing**, and nothing announces it — the integration ships in its own module and never reads this page. Mailchimp and the two push services were missing when this row was written (2026-09-23) and had been for weeks. `bedrock` is configured and **off** (`LeadInsights::enabled()` false, no keys) — the day it gains keys, a model is reading lead text and this list needs a line. `google_mail` / `microsoft_mail` are a customer's own mailbox, covered by "the accounts you connect". |
 
 **Adding a row costs nothing and omitting one costs two days.** If you write a
 sentence on the site that would be false if somebody changed code you do not own,
@@ -1899,3 +1900,186 @@ hand.
   change behind a login, and the site sells no screen layout.
 - **Monitoring's General ownership chart and the floor plan's own map tab** —
   refinements under the published Monitoring card.
+
+## 2026-09-23: 133 commits, and the sub-processor list was an exhaustive claim that had stopped being one
+
+**Production is `0.0.0252` at `92dd881e`** (`/download/windows.json`, fetched),
+which is **`main`'s tip** — `git rev-parse HEAD` is the same SHA. So the
+deployed tree is this tree and every code claim below was read off it. No desk
+was asked: `ccd_session_mgmt send_message` refused this run as "unattended", the
+same as 09-18 and 09-22. Row counts remain the only thing owed.
+
+**133 commits since the `049e13a1` baseline of 2026-09-22.** One touches `www/`
+— `1ae78d95`, yesterday's Reviews softening — and **it published**: all seven
+pages fetched byte-identical to `www/` after stripping CR, before this run's own
+edit.
+
+Gate output, after the edit below:
+
+    python www/check-site.py        ok - 7 pages, 7 sitemap entries
+    forbidden-terms (LINE-split)    ok - 4 terms, none present
+    control .count('ezbizi')        399 (was 397 on 09-22, +2 = this edit)
+    negative control                0
+    every JSON-LD block             parses
+
+### The finding: "these are all of them" named four parties and there were seven
+
+`/privacy/` → **Who we rely on** said *"We keep this list short on purpose, and
+these are all of them"* over Amazon Web Services, Amazon SES, Twilio, and *"the
+social networks you connect"*. **Three recipients of personal data were not on
+it**, and one of them carries a customer's own contacts out of EzBizi:
+
+1. **Mailchimp.** `MailchimpSender`'s own docblock, unprompted: *"The push is
+   the moment customer addresses leave EzBizi for a third party."* A `customers`
+   audience is pushed into the tenant's Mailchimp list and then the campaign
+   sends. The Newsletter card was published **2026-09-08**; the sentence
+   describing who receives that data never followed it.
+2. **Apple (APNs) and Google (FCM).** `ApnsSender::deliver()` POSTs
+   `alert => ['title' => ..., 'body' => ...]`, and `PushSender` does the FCM v1
+   equivalent. A notification body names the thing it is about, so the content
+   reaches Apple or Google, not merely a device token.
+3. **Google Ads**, which the page describes at length in its own section above
+   and then omits from the list that claims to be complete — the same shape as
+   the iOS card and the homepage, where the page that was fixed was not the
+   claim that was wrong.
+
+Published the same day, three bullets:
+
+    + Apple and Google — a notification sent to a phone carries its title and
+      text through Apple's or Google's delivery service, because that is the
+      only way to wake an app that is not open.
+    + Mailchimp — only where an organization connects its own Mailchimp account
+      to send a newsletter. If the audience is one kept in EzBizi, those email
+      addresses are added to that organization's own Mailchimp list before the
+      campaign goes out.
+    ~ "The social networks you connect, and only the ones you connect"
+      -> "The accounts you connect, and only the ones you connect — the social
+          networks described above, and any business account EzBizi reads from
+          at your instruction, such as Google Ads."
+
+`Last updated` and `dateModified` moved to 2026-09-23 with it.
+
+**The last bullet is the durable half, and the reason it was widened rather than
+extended.** Workiz and Airtable both became connectable this window; a list
+enumerating *social networks* is falsified by every integration that is not one,
+silently, by a module that has no reason to read this page. A bullet phrased
+around what the customer connects survives the next one. The new row in the
+load-bearing table names `config/services.php` as where to look, because that
+file is the one thing a new integration cannot avoid touching.
+
+**The site was wrong by omission over time rather than by a sentence going
+false, and that is the first of its kind here.** No commit made it wrong. It was
+wrong the day Newsletter shipped and every day since, and nothing in a daily
+diff would ever surface it — a diff shows what changed, and this was a claim
+that did not change while the world around it did. The only thing that finds one
+of these is reading a sentence against the code that would have to be true,
+which is what the load-bearing table is for and why this one now has a row.
+
+### The scheduling test tripped, and the claim did not move
+
+**`workiz_jobs` (created today, `2026_09_23_140000`) carries `job_id`,
+`scheduled_for` and `scheduled_end` in one table.** That is *literally* the
+structural test the do-not row names — *"no table carries both a job reference
+and a date-or-slot reference"* — and it now returns the wrong answer.
+
+**Do not invert the row.** The substance is unchanged, and the code says so in
+its own words: `SchedulingAvailabilityController`'s docblock — *"Nothing yet
+burns a slot: `Job` has `scheduled_for` and no link to a service area, so there
+is no booked count to subtract."* Its response still carries
+`basis: 'configured'`, and the docblock states what flips it: *"The day
+Scheduled Jobs exists this returns `remaining`."*
+
+**So the test is replaced, by the one the code already maintains for its own
+reasons:**
+
+> **`SchedulingAvailabilityController::BASIS_CONFIGURED` is what the
+> availability endpoint answers with.** The day it can answer `remaining`,
+> something is counting bookings against capacity, and that is the day the claim
+> changes.
+
+That is better than the old test on every axis: a module owner maintains it
+against their own product, it cannot be tripped by a mirror of somebody else's
+calendar, and it is one grep. `workiz_jobs` is a **landing table for another
+product's schedule** — its own docblock calls it that — and a read-only copy of
+what Workiz already decided is not EzBizi putting a job on a calendar.
+
+**The lesson is about the shape of a structural test, not about Workiz.** A test
+phrased as "no table anywhere has these two columns" is a claim about the whole
+schema, and a schema grows for reasons that have nothing to do with the claim. A
+test phrased against a named constant in the module that owns the behaviour
+grows with the behaviour.
+
+### Workiz: connectable by any company, and deliberately unpublished
+
+`WorkizConnectController@store` is registered at `social/workiz` and
+`reports/experimental/workiz`, and Jose asked for it in as many words
+(quoted in `integrations_screen.dart:336`): *"make it as well so any company can
+make workiz connections via api as well, same set it up on integrations"*. So it
+is not ours-only.
+
+**It stays off the site**, and the gate is the screen's own: the form is offered
+only to somebody holding **both** `reports.build` and
+`reports.experimental.view` — `_maySeeExperimental`. A capability reachable only
+through a report labelled Experimental is not one to sell, and the site names no
+integration that is not already sold under a card.
+
+`workiz` also became a lead source (`5e930f87`, plus
+`2026_09_23_170000_grant_existing_roles_the_workiz_lead_source`). **Nothing to
+publish, for the reason recorded on 09-22 about `website_chat`:** the Growth
+card names Local Services and Thumbtack and does not claim to be a list of every
+source, so a fourth source makes the site incomplete rather than wrong.
+
+### Re-measured at `92dd881e`, not carried
+
+`Publishers::for()` returns **five** — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok, `default => null`. *"Five networks
+send today"* holds. `NewsletterSenders::for()` is **Mailchimp alone**.
+`ReportMap::all()` holds **eleven** top-level keys (jobs, customers, franchises,
+services, inventory_items, vehicles, training_guides, leads, service_areas,
+monitored_devices, users). `monitoring.control_indicator` is still
+`default: false`. `AndroidManifest.xml` declares `INTERNET` and
+`POST_NOTIFICATIONS`; `Info.plist` declares `NSMicrophoneUsageDescription` and
+nothing else; `pubspec.yaml` pulls no camera, location, contacts, calendar or
+photo package — the two-permission sentence holds on its third run.
+`BusinessProfileReviews` still carries the 0 QPM docblock and the runtime
+refusal at `:313`, so **yesterday's softened Reviews sentence is still the true
+one**; nothing about the 2026-10-24 re-file date has moved.
+
+**`a1leads_gbp_screen.dart` is not a counter-example, and it is worth saying
+why.** A screen shipped this window that shows real Google reviews with replies
+— which reads exactly like the capability the homepage says we do not have. It
+is a **read-only window onto Rodrigo's A1 Leads**, admitted to five GET routes
+against a service running `MIGRATION_READ_ONLY=1`, with Reply and Match
+deliberately absent because *"A1 Leads is still the only writer to that Business
+Profile"*. It is A-1's own data through A-1's own credential, not a customer
+capability, and the file says the module is deleted the day EzBizi holds the
+credential itself.
+
+### `/download/windows.json`, stores and the plugin directory
+
+Manifest `0.0.0252`, `built` `92dd881e`, which is production and `main`'s tip.
+Play returns `200`. The Apple lookup returns `resultCount` **1**, `trackId`
+6805979795, version **0.0.0222**, `currentVersionReleaseDate` 2026-09-17 —
+**unchanged since 09-18, now thirty client releases behind Windows**, and that
+is a fact about the store rather than about this site: both pages are correct
+either way. `api.wordpress.org` still serves the plugin at **1.10.0**, so the
+five-widgets row stands.
+
+### New this window, deliberately unpublished
+
+- **Workiz as an integration and as a lead source** — the section above.
+- **The Workiz job/client/team mirror**, its five-minute projection and the
+  history importer — a mirror of another product is not a capability of ours.
+- **Scheduling's service-area horizon, the derived zip map and the hours grid** —
+  configuration surfaces under the unpublished Scheduling module.
+- **Phone extensions, the extension table view and caller-typed extensions** —
+  the Communication card is still silent on extensions, unchanged from 09-22.
+- **Monitoring's floor-plan walls surviving a zoom, and desk assignment** —
+  refinements under the published Monitoring card.
+
+### Still owed, and all of them row counts a scheduled run cannot take
+
+The `workiz`, `website_chat`, `facebook` and `instagram` lead counts with
+`is_test = 0`; the resolved ring-group fraction; `training_attempts` /
+`training_progress` / `training_assignments`. The 09-18 figures relayed by grok
+are now five days old and were not re-measured here. Ask by hand.
