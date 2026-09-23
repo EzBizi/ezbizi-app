@@ -8,6 +8,7 @@ use App\Support\Reports\ReportRunner;
 use App\Support\Scoping\ViewScope;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -173,6 +174,63 @@ class ServiceAreaShapeReportTest extends TestCase
         // reason there are two columns rather than one "is it working" flag.
         $this->assertSame(1, (int) $rows[0]['service_areas.open_days_a_week']);
         $this->assertSame(0, (int) $rows[0]['service_areas.jobs_a_week']);
+    }
+
+    // ── the assumption both columns rest on ─────────────
+
+    /**
+     * A SLOT IS PER WEEKDAY, NOT PER DATE — and this fails when that changes.
+     *
+     * Both derived columns read `service_area_slots` as a weekly pattern.
+     * `count(distinct weekday)` is "days a week" and
+     * `min((weekday + 7 - today) % 7)` is "days until the next open day" ONLY
+     * while a row means "every Tuesday" rather than "Tuesday the 14th".
+     *
+     * ── WHY THIS IS A TEST AND NOT A NOTE ─────────────────────
+     *
+     * Scheduling's spec has per-date overrides as §3.4, unbuilt. The day it
+     * lands, a row becomes per DATE and `count(distinct weekday)` still returns
+     * a number — it just stops meaning what the column is labelled. Nothing
+     * errors, no existing test reds, and a warning that was true keeps being
+     * sent with a different meaning. They have recorded it on their own model
+     * and in their spec (d89aa2c5) and have said they will tell me.
+     *
+     * That is two people remembering. This is the mechanism: a `date` column
+     * appearing on that table fails HERE, in the suite that owns the claim,
+     * with the reason attached — whether or not anybody remembered.
+     *
+     * Asserted narrowly on purpose. Any new column at all would be noisy and a
+     * noisy guard gets deleted; what invalidates these columns specifically is
+     * a per-date dimension, so that is what is named. A rename of `weekday`
+     * fails the first assertion for the same reason.
+     */
+    public function test_a_slot_is_still_a_weekly_pattern(): void
+    {
+        $columns = collect(Schema::getColumns('service_area_slots'))
+            ->keyBy('name');
+
+        $this->assertTrue(
+            $columns->has('weekday'),
+            'service_area_slots has no `weekday` column, so "days a week" and '
+            .'"days until the next open day" are both reading something else now. '
+            .'Both derived columns in ReportMap need rewriting, not extending.',
+        );
+
+        $dated = $columns
+            ->reject(fn (array $c) => in_array($c['name'], ['created_at', 'updated_at'], true))
+            ->filter(fn (array $c) => in_array($c['type_name'], ['date', 'datetime', 'timestamp'], true))
+            ->keys()
+            ->all();
+
+        $this->assertSame(
+            [],
+            $dated,
+            'service_area_slots gained a date column ('.implode(', ', $dated).'), so a slot row '
+            .'may no longer mean "every week". ReportMap\'s `open_days_a_week` and '
+            .'`days_until_next_open_day` still return numbers and have stopped meaning what they '
+            .'say — and they feed warnings that email and text. Rewrite them against the new '
+            .'grain before this is made green.',
+        );
     }
 
     // ── the rolling window ────────────────────────────
