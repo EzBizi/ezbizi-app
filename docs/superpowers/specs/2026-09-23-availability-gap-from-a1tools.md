@@ -191,6 +191,60 @@ the way A1's `reconcileJobSlots()` maps `TIME(scheduled_start)` into a block).
 Only then can "remaining" exist. Until it does, the Availability tab is honest
 that it shows CONFIGURED capacity, which is what it says today.
 
+#### The booked count does not need the zip map (Reports, 2026-09-23)
+
+Their finding and it is right. `workiz_jobs` carries `service_area`,
+`scheduled_for` and `franchise_id` as columns, and Jose ruled "mirror Workiz,
+fold nothing", so an EzBizi area name and a Workiz `service_area` are the same
+string by construction — 45 of the 57 names now match exactly, covering 97.2%
+of the history.
+
+That splits 3.3 in two, and only one half needs the map:
+
+- *"Which area does this NEW job belong to?"* — needs zip → area, because a new
+  job has an address and no area label. This is the availability SEARCH.
+- *"How many jobs are booked in area A on date D?"* — needs the name and the
+  date, both already columns. This is the booked COUNT.
+
+Counting on Workiz's own label is also more faithful than deriving it: the
+label is what a dispatcher chose, while a derived area is our inference about
+their choice.
+
+#### THE ACTUAL BLOCKER IS WHICH STATUSES ARE A SEAT
+
+Reports flagged this and half of it needs correcting, which matters because the
+correction is where the work is.
+
+Not true that there is no tenant-owned status vocabulary: `jobs.statuses` is an
+organization-scoped setting, and `jobs.earned_statuses` and
+`jobs.thumbtack_status_map` are both "which of YOUR statuses mean X", both empty
+by default on the stated grounds that silence is honest and a guess is not.
+
+The real gap is that those describe EZBIZI's statuses and the landing table
+carries WORKIZ's — a different namespace, so no existing setting can answer it.
+Measured over 7,739 captured payloads, every distinct Workiz status, with how
+many are scheduled in the FUTURE, which is the only part capacity cares about:
+
+    Status                  jobs   future
+    Done                    2,161       5
+    done pending approval   1,982       3
+    Submitted                 916     595
+    Canceled                  856       0     + 546 across 16 sub-statuses, 9 future
+    In progress               806      80
+    Pending                   511      16
+
+So the shape is the Thumbtack map's, one level over: the tenant says which
+Workiz statuses consume a seat, empty means none, and nothing is guessed.
+Proposed default to put to Jose — **Submitted, Pending and In progress consume a
+seat; Canceled and both Done forms do not.**
+
+**And the scale of the harm is smaller than it looks**, which is worth stating
+because "cancelled jobs count as booked" reads as catastrophic: 9 future jobs
+in the whole company are Canceled, against ~690 that are live. It is 1.3%
+company-wide. It could still be decisive for one small area on one day, which
+is why it gets a setting rather than a shrug — but it is not the thing to build
+first, and it is not a reason to delay the count.
+
 ### 3.4 Per-date overrides — "closed on the 18th", "Cleveland varies daily"
 
 EzBizi's granularity stops at the weekday. A1's spec called this tier unused
