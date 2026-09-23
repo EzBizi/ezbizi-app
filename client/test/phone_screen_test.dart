@@ -203,6 +203,24 @@ void main() {
     expect(find.text('Messaging'), findsOneWidget);
     expect(find.text('Activate phone service'), findsNothing);
 
+    // BACK UP THE LIST BEFORE TAPPING, with a NEGATIVE delta because
+    // `Connection` is above. The rail is lazy, so scrolling to the bottom
+    // entry unbuilds the top ones — this passed only for as long as the list
+    // was short enough for both ends to be built at once, and went red the day
+    // a section was added, with a "Bad state: No element" that says nothing
+    // about the cause.
+    await tester.scrollUntilVisible(
+      find.text('Connection'),
+      -240,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView).first,
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+
     await _tap(tester, find.text('Connection'));
 
     expect(find.text('Activate phone service'), findsWidgets);

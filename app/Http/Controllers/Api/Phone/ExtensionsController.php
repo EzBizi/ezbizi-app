@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\Phone\Concerns\ResolvesPhoneConnections;
 use App\Models\PhoneConnection;
 use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
+use App\Models\PhoneRingGroup;
 use App\Models\User;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -39,6 +41,247 @@ class ExtensionsController extends Controller
      * answer, which is the question somebody setting this up is actually
      * asking.
      */
+    /**
+     * GET /api/v1/phone/extensions/directory
+     *
+     * Every extension on this account, and what it reaches.
+     *
+     * ── Why this is not `index()` ───────────────────────────────────
+     *
+     * They read one table and answer two different questions. `index()` is
+     * PEOPLE-shaped: every active person, with the extension they hold — which
+     * is what the Users tab needs, and it keys by `user_id`. An extension that
+     * points at a TEAM has no user, so every one of them would collapse into a
+     * single null key and vanish.
+     *
+     * This is EXTENSION-shaped: one row per set of digits, with whatever it
+     * reaches. The Extensions screen is a list of numbers somebody has
+     * published to customers, and that is the thing it has to be complete
+     * about.
+     *
+     * ── What is sent with it ────────────────────────────────────────
+     *
+     * The assignable targets, for the same reason `index()` sends the lines: a
+     * picker offering a team from another phone account produces an extension
+     * that rings nothing, and the two lists would have to be reconciled
+     * anyway.
+     */
+    public function directory(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneNumber::class);
+
+        $connections = $this->connectionsInReach($request->user());
+
+        if ($connections->isEmpty()) {
+            return response()->json([
+                'data' => [],
+                'connection_id' => null,
+                'people' => [],
+                'ring_groups' => [],
+            ]);
+        }
+
+        $connection = $connections->first();
+
+        $rows = PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->whereNotNull('extension')
+            ->where('extension', '!=', '')
+            ->with(['user', 'ringGroup'])
+            ->orderBy('extension')
+            ->get()
+            ->map(fn (PhoneExtension $row) => [
+                'id' => $row->id,
+                'extension' => $row->extension,
+                'target_kind' => $row->targetKind(),
+                'target_id' => $row->user_id ?? $row->ring_group_id ?? $row->flow_id,
+
+                // Null when the thing it pointed at is gone. A team can be
+                // deleted while its digits stay published to customers, so the
+                // row survives pointing at nothing and the screen shows it as
+                // needing a destination rather than hiding it.
+                'target_name' => $row->user?->name ?? $row->ringGroup?->name,
+            ])
+            ->values()
+            ->all();
+
+        return response()->json([
+            'data' => $rows,
+            'connection_id' => $connection->id,
+            'people' => User::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (User $user) => ['id' => $user->id, 'name' => $user->name])
+                ->all(),
+            'ring_groups' => PhoneRingGroup::query()
+                ->where('connection_id', $connection->id)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (PhoneRingGroup $group) => ['id' => $group->id, 'name' => $group->name])
+                ->all(),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/phone/extensions/directory
+     *
+     * Give a set of digits to a person or a team.
+     *
+     * ── Why this is not `update()` either ───────────────────────────
+     *
+     * `update()` is keyed on a PERSON — it is "set this person's extension",
+     * which is the right shape for the Users tab and cannot express a team.
+     * This is keyed on the DIGITS, which is the right shape for a screen whose
+     * subject is the extension.
+     *
+     * The uniqueness rule is shared and is the one thing that must not be
+     * duplicated: "call 0101" has to mean one thing, whether the row was made
+     * here or there.
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'connection_id' => ['required', 'uuid'],
+            'extension' => ['required', 'string', 'regex:'.PhoneExtension::PATTERN],
+            'target_kind' => ['required', Rule::in([
+                PhoneExtension::TARGET_USER,
+                PhoneExtension::TARGET_RING_GROUP,
+            ])],
+            'target_id' => ['required', 'uuid'],
+        ]);
+
+        $connection = $this->connectionsInReach($request->user())
+            ->firstWhere('id', $input['connection_id']);
+
+        if ($connection === null) {
+            return response()->json([
+                'message' => 'That phone account is not one you can use.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        // On the CONNECTION, the same ability `update()` uses below: giving
+        // out an extension is editing how this phone account answers. `create`
+        // on PhoneNumber is the buy-a-number ability and takes a scope.
+        $this->authorize('update', $connection);
+
+        $user = null;
+        $group = null;
+
+        if ($input['target_kind'] === PhoneExtension::TARGET_RING_GROUP) {
+            // On THIS account. A team from another one expands to Client
+            // identities this line can never reach, so the extension would
+            // ring nobody and look perfectly configured.
+            $group = PhoneRingGroup::query()
+                ->where('connection_id', $connection->id)
+                ->find($input['target_id']);
+
+            if ($group === null) {
+                throw ValidationException::withMessages([
+                    'target_id' => 'That team is not on this phone account.',
+                ]);
+            }
+        } else {
+            $user = User::query()->where('is_active', true)->find($input['target_id']);
+
+            if ($user === null) {
+                throw ValidationException::withMessages([
+                    'target_id' => 'That person was not found.',
+                ]);
+            }
+        }
+
+        $taken = PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->where('extension', $input['extension'])
+            ->first();
+
+        if ($taken !== null) {
+            throw ValidationException::withMessages([
+                'extension' => $this->takenBy($taken, (string) $input['extension']),
+            ]);
+        }
+
+        // One extension per person, which the unique index already enforces —
+        // said here so it arrives as a sentence rather than a 500.
+        if ($user !== null) {
+            $already = PhoneExtension::query()
+                ->where('connection_id', $connection->id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if ($already !== null) {
+                throw ValidationException::withMessages([
+                    'target_id' => $user->name.' already has extension '.$already->extension.'.',
+                ]);
+            }
+        }
+
+        $row = PhoneExtension::query()->create([
+            'organization_id' => $this->tenant->idOrFail(),
+            'connection_id' => $connection->id,
+            'extension' => $input['extension'],
+            'user_id' => $user?->id,
+            'ring_group_id' => $group?->id,
+        ]);
+
+        return response()->json(['data' => [
+            'id' => $row->id,
+            'extension' => $row->extension,
+            'target_kind' => $row->targetKind(),
+            'target_id' => $user?->id ?? $group?->id,
+            'target_name' => $user?->name ?? $group?->name,
+        ]], Response::HTTP_CREATED);
+    }
+
+    /**
+     * DELETE /api/v1/phone/extensions/{extension}
+     *
+     * Take a set of digits out of service.
+     *
+     * Deleted rather than blanked: an extension row with no digits is not a
+     * thing anybody wants to look at, and `update()` already deletes for the
+     * same reason when somebody clears the field.
+     */
+    public function destroy(Request $request, string $extension): JsonResponse
+    {
+        $row = PhoneExtension::query()->find($extension);
+
+        if ($row === null) {
+            return response()->json(['message' => 'That extension is already gone.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $reachable = $this->connectionsInReach($request->user())
+            ->contains(fn ($connection) => (string) $connection->id === (string) $row->connection_id);
+
+        if (! $reachable) {
+            return response()->json([
+                'message' => 'That extension is not on a phone account you can use.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $connection = PhoneConnection::query()->find($row->connection_id);
+        if ($connection !== null) {
+            $this->authorize('update', $connection);
+        }
+
+        $row->delete();
+
+        return response()->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /** Who holds these digits already, said so somebody can go and find them. */
+    private function takenBy(PhoneExtension $taken, string $digits): string
+    {
+        return match ($taken->targetKind()) {
+            PhoneExtension::TARGET_USER => ($taken->user?->name ?? 'Somebody')
+                .' already has extension '.$digits.'.',
+            PhoneExtension::TARGET_RING_GROUP => ($taken->ringGroup?->name ?? 'A team')
+                .' already has extension '.$digits.'.',
+            default => 'Extension '.$digits.' is already taken.',
+        };
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PhoneNumber::class);

@@ -9,6 +9,7 @@ import '../../widgets/tag.dart';
 import 'blocked_numbers_pane.dart';
 import 'call_flow_chart_pane.dart';
 import 'call_flow_pane.dart';
+import 'extensions_pane.dart';
 import 'flows_pane.dart';
 import 'general_pane.dart';
 import 'hours_pane.dart';
@@ -69,6 +70,7 @@ Widget? phoneSettingsPane(
   'blocked' => BlockedNumbersPane(api: api, session: session),
   'trust' => TrustPane(api: api, session: session),
   'tags' => TagsPane(api: api, session: session),
+  'extensions' => ExtensionsPane(api: api, session: session),
   _ => null,
 };
 
@@ -184,6 +186,21 @@ class _PhoneSettingsTabState extends State<PhoneSettingsTab> {
       id: 'voicemail',
       label: 'Voicemail',
       icon: Icons.voicemail_outlined,
+      group: 'Answering',
+    ),
+
+    // INSIDE the Answering block rather than appended, and the rail is why:
+    // it opens a heading whenever the group differs from the previous entry,
+    // so a section added at the end carrying an earlier group opens a SECOND
+    // "ANSWERING" heading at the bottom of the list.
+    //
+    // Safe to insert here, unlike the chart: `_section` is in-memory state on
+    // this State, nothing stores it, no test pins an index, and the default of
+    // 2 names `connection` either way because this sits after it.
+    (
+      id: 'extensions',
+      label: 'Extensions',
+      icon: Icons.tag_outlined,
       group: 'Answering',
     ),
 

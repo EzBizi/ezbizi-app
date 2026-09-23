@@ -1585,6 +1585,14 @@ Route::prefix('v1')
         Route::get('phone/extensions', [PhoneExtensionsController::class, 'index']);
         Route::put('phone/extensions', [PhoneExtensionsController::class, 'update']);
 
+        // The Extensions screen, whose subject is the DIGITS rather than the
+        // person: every extension on the account and what it reaches, plus
+        // creating and retiring one. `index`/`update` above stay the
+        // people-shaped view the Users tab needs.
+        Route::get('phone/extensions/directory', [PhoneExtensionsController::class, 'directory']);
+        Route::post('phone/extensions/directory', [PhoneExtensionsController::class, 'store']);
+        Route::delete('phone/extensions/{extension}', [PhoneExtensionsController::class, 'destroy']);
+
         Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
         Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
         Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
