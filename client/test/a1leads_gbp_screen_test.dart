@@ -11,68 +11,96 @@ import 'package:http/testing.dart';
 
 /// A1Leads GBP — the window onto Rodrigo's system, and only that.
 ///
-/// The first version of this screen drew EzBizi's own Reviews and Business
-/// Profile as chips inside it. That was the wrong shape: ours live in
-/// Marketing, read our own tables, and are what a Google reviewer is shown when
-/// our API access arrives. This one shows A1 Leads' data and nothing of ours.
+/// ── The two readings this screen must never allow ────────────────
 ///
-/// So the assertions are about what the screen says when it has no source yet,
-/// which is the state it is in until the read-only grant is installed on the A1
-/// Leads host — and about it never presenting that state as an empty business.
+/// The data is a daily snapshot of another system, so both of the plausible
+/// wrong impressions are expensive:
+///
+///   - a stale snapshot drawn as current. Every request still answers, the
+///     list still looks right, and it is a week old.
+///   - an unreachable source drawn as an empty list, which says A-1 Chimney
+///     has no reviews. It has over thirteen thousand.
+///
+/// So each case below varies only the server's `source` block and asserts which
+/// sentence the screen chooses.
 void main() {
-  testWidgets('with no source it says so, rather than showing nothing', (
+  testWidgets('a healthy source shows the reviews and when they were captured', (
     tester,
   ) async {
-    await _pump(tester);
+    await _pump(tester, _handler());
 
-    expect(find.textContaining('A1 Leads is not connected yet'), findsOneWidget);
+    expect(find.textContaining('Snapshot captured'), findsOneWidget);
+    expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
-  /// The distinction the whole screen turns on.
-  ///
-  /// A-1 Chimney has over thirteen thousand reviews. A tab that rendered an
-  /// empty list here would say the opposite, and an empty frame would read as
-  /// the app being broken. Both are worse than a sentence.
-  testWidgets('it never reads as a business with no reviews', (tester) async {
-    await _pump(tester);
+  /// The case the whole design exists for.
+  testWidgets('a stale snapshot says so, in words, and is not drawn as current', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(stale: true));
 
+    expect(find.textContaining('has not refreshed since'), findsOneWidget);
     expect(
-      find.textContaining('nothing is broken'),
+      find.textContaining('historical rather than current'),
       findsOneWidget,
-      reason: 'an absent source and an empty business must not look the same',
+      reason: 'a stale list that looks current is the expensive reading',
     );
-    expect(find.byType(ListView), findsNothing);
+
+    // And the rows are still there: stale is a warning about the data, not a
+    // reason to hide it.
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+  });
+
+  /// The opposite failure, and the worse one.
+  testWidgets('an unreachable source is a sentence, never an empty list', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(reachable: false));
+
+    expect(find.textContaining('A1 Leads is not answering'), findsOneWidget);
+    expect(find.textContaining('nothing is broken'), findsOneWidget);
+    expect(
+      find.byType(ListView),
+      findsNothing,
+      reason: 'an empty list here would say the business has no reviews',
+    );
+  });
+
+  testWidgets('an unconfigured source names that as the reason', (tester) async {
+    await _pump(tester, _handler(configured: false));
+
+    expect(find.textContaining('not connected yet'), findsOneWidget);
   });
 
   /// It points at where OUR data lives.
   ///
   /// Written down because the mistake this screen is a correction of was
-  /// exactly this confusion: somebody reading this tab must not conclude that
+  /// exactly this confusion: nobody reading this tab should conclude that
   /// EzBizi's own Reviews and Business Profile moved or went away.
   testWidgets('it says our own modules are still in Marketing', (tester) async {
-    await _pump(tester);
+    await _pump(tester, _handler(reachable: false));
 
     expect(find.textContaining('are in Marketing'), findsOneWidget);
   });
 
   /// And it draws no chips of its own.
   ///
-  /// The negative control for the shape: the previous version of this file
-  /// asserted two ChoiceChips here. If chips ever come back, they are children
-  /// of this module, and this module is not allowed any.
+  /// The negative control for the shape: an earlier version of this file
+  /// asserted two ChoiceChips here, because the module wrongly contained
+  /// EzBizi's own two. Chips coming back would mean that mistake had returned.
   testWidgets('it holds no chips, because it holds no modules', (tester) async {
-    await _pump(tester);
+    await _pump(tester, _handler());
 
     expect(find.byType(ChoiceChip), findsNothing);
   });
 }
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
-  final api = ApiClient(client: MockClient(_handler));
+  final api = ApiClient(client: MockClient(handler));
   final session = Session(api);
 
   await tester.runAsync(() => session.adopt('tok'));
@@ -88,44 +116,82 @@ Future<void> _pump(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<http.Response> _handler(http.Request request) async {
-  if (request.url.path.endsWith('/me')) {
-    return _json({
-      'data': {
-        'id': 'u-1',
-        'name': 'Jose Silva',
-        'email': 'jose@example.com',
-        'has_avatar': false,
-        'role': {'id': 'role-1', 'name': 'Administrator'},
-        'permissions': const ['a1leads_gbp.view'],
-        'modules': [
-          {
-            'key': 'a1leads_gbp',
-            'label': 'A1Leads GBP',
-            'available': true,
-            'reachable': true,
+MockClientHandler _handler({
+  bool configured = true,
+  bool reachable = true,
+  bool stale = false,
+}) {
+  return (request) async {
+    if (request.url.path.endsWith('/me')) {
+      return _json({
+        'data': {
+          'id': 'u-1',
+          'name': 'Jose Silva',
+          'email': 'jose@example.com',
+          'has_avatar': false,
+          'role': {'id': 'role-1', 'name': 'Administrator'},
+          'permissions': const ['a1leads_gbp.view'],
+          'modules': [
+            {
+              'key': 'a1leads_gbp',
+              'label': 'A1Leads GBP',
+              'available': true,
+              'reachable': true,
+            },
+          ],
+          'preferences': <String, dynamic>{},
+          'organization': {
+            'id': 'org-1',
+            'name': 'Everdoors',
+            'franchise_label': 'Franchise',
+            'is_read_only': false,
           },
-        ],
-        'preferences': <String, dynamic>{},
-        'organization': {
-          'id': 'org-1',
-          'name': 'Everdoors',
-          'franchise_label': 'Franchise',
-          'is_read_only': false,
+          'scope': {
+            'type': 'organization',
+            'id': 'org-1',
+            'label': 'Everdoors',
+            'path': ['Everdoors'],
+          },
+          'companies': <Map<String, Object?>>[],
+          'franchises': <Map<String, Object?>>[],
         },
-        'scope': {
-          'type': 'organization',
-          'id': 'org-1',
-          'label': 'Everdoors',
-          'path': ['Everdoors'],
-        },
-        'companies': <Map<String, Object?>>[],
-        'franchises': <Map<String, Object?>>[],
-      },
-    });
-  }
+      });
+    }
 
-  return _json({'data': <dynamic>[]});
+    if (request.url.path.endsWith('/a1leads-gbp')) {
+      return _json({
+        'data': {
+          'source': {
+            'configured': configured,
+            'reachable': configured && reachable,
+            'captured_at': '2026-09-23T15:01:07.302Z',
+            'installed_at': '2026-09-23T15:33:02.864Z',
+            'generation': '20260923T150107Z-23510eb0',
+            'hours_old': stale ? 41.5 : 2.1,
+            'stale': stale,
+            'because': configured
+                ? (reachable ? null : 'A1 Leads refused reviews with HTTP 403.')
+                : 'No A1 Leads key is configured for this environment.',
+          },
+          'summary': configured && reachable ? {'total': 13169} : null,
+          'reviews': configured && reachable
+              ? [
+                  {
+                    'google_review_name': 'accounts/a/locations/l/reviews/r-1',
+                    'reviewer_name': 'Dana Whitfield',
+                    'rating': 5,
+                    'comment': 'They were on time and tidy.',
+                    'review_created_at': '2026-09-23T00:43:20.682472Z',
+                  },
+                ]
+              : <dynamic>[],
+          'health': null,
+        },
+      });
+    }
+
+    return _json({'data': <dynamic>[]});
+  };
 }
 
 http.Response _json(Object body, [int status = 200]) => http.Response(
