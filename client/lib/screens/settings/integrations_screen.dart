@@ -72,6 +72,17 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   bool _loading = true;
   String? _error;
 
+  /// Which provider's pane is open in place of the grid, by catalogue value.
+  ///
+  /// Jose, 2026-09-23: *"Every Single Integration Card violates the containment
+  /// rule by going full screen when clicked."* This used to be a
+  /// `Navigator.push`, which replaced the sidebar, the header and the top bar
+  /// with a page of its own. Swapping the body is the shape
+  /// `TrainingSettingsTab` and `LearnShelves` already use for the same
+  /// correction, and it is why `IntegrationProviderScreen` carries no
+  /// `Scaffold`.
+  String? _open;
+
   String get _viewName =>
       widget.session.me?.scope.label ??
       widget.session.me?.organization.name ??
@@ -129,6 +140,20 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     });
   }
 
+  /// Where a provider is connected, when it is connected somewhere else.
+  ///
+  /// Per provider rather than per family only because the pane needs it that
+  /// way now; the ANSWER is still the family's, which is why this reads the
+  /// same switch rather than a second list that could disagree with the
+  /// headings.
+  String? _whereFor(String provider) => switch (_familyOf(provider)) {
+    'mailing' => 'Marketing › Newsletter',
+    'social' => 'Marketing › Social Media Management › Accounts',
+    'leads' => 'Leads',
+    // Reporting connects HERE — its pane carries the form instead.
+    _ => null,
+  };
+
   /// Which family a provider belongs to, for a provider with no connections.
   ///
   /// [IntegrationConnection.family] answers the same question from a row. This
@@ -158,6 +183,24 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     // no catalogue entry still gets a card: the connection is the stronger
     // evidence that it exists.
     final providers = {...byProvider.keys, ..._catalogue.keys};
+
+    // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
+    final open = _open;
+
+    if (open != null) {
+      return IntegrationProviderScreen(
+        api: widget.api,
+        session: widget.session,
+        provider: open,
+        providerLabel: _label(open),
+        connections: byProvider[open] ?? const [],
+        connectWhere: _whereFor(open),
+        connectForms: _formsFor(open),
+        canName: _familyOf(open) == 'reporting',
+        onChanged: _load,
+        onBack: () => setState(() => _open = null),
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -459,21 +502,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       child: InkWell(
         key: ValueKey('provider:$provider'),
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => IntegrationProviderScreen(
-              api: widget.api,
-              session: widget.session,
-              provider: provider,
-              providerLabel: _label(provider),
-              connections: rows,
-              connectWhere: where,
-              connectForms: _formsFor(provider),
-              canName: canName,
-              onChanged: _load,
-            ),
-          ),
-        ),
+        // Sets state; the body swaps. NOT a push — see [_open]. Everything
+        // the pane needs is read there from the same maps this card read,
+        // so the two cannot show different connections for one provider.
+        onTap: () => setState(() => _open = provider),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

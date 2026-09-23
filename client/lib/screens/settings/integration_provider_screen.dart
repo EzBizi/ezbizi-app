@@ -7,6 +7,24 @@ import '../../widgets/social_network_mark.dart';
 
 /// One provider's connections, grouped by who owns them (Jose, 2026-09-22).
 ///
+/// ── IN THE BODY, NEVER A ROUTE (Jose, 2026-09-23) ───────────────
+///
+/// *"Every Single Integration Card violates the containment rule by going full
+/// screen when clicked."* It did: the grid pushed a `MaterialPageRoute` and
+/// this class returned a `Scaffold` with an `AppBar`, so opening a provider
+/// replaced the sidebar, the header and the top bar with a page carrying its
+/// own back arrow.
+///
+/// The fix is the one `TrainingSettingsTab` already documents from the same
+/// correction — *"it should all be within the main UI"*: the grid holds which
+/// provider is open in its own state and SWAPS its body, so this widget is
+/// rendered in place. It needs no `Scaffold` of its own: rendered in-body, the
+/// app shell's `Material` further up the tree already reaches everything here,
+/// and a route push is what used to force the artificial wrap.
+///
+/// So there is no `Navigator` anywhere in this file. Back is [onBack], and a
+/// rename leaves the pane open rather than popping it.
+///
 /// ── Why this screen exists ──────────────────────────────────────
 ///
 /// Integrations used to list every connection as a flat row under four family
@@ -46,6 +64,7 @@ class IntegrationProviderScreen extends StatefulWidget {
     this.connectForms,
     this.canName = false,
     this.onChanged,
+    required this.onBack,
   });
 
   final ApiClient api;
@@ -74,6 +93,13 @@ class IntegrationProviderScreen extends StatefulWidget {
   /// Reload the grid after a rename or a connect, so the card's count and this
   /// list cannot disagree about what exists.
   final Future<void> Function()? onChanged;
+
+  /// Close this pane and put the grid back.
+  ///
+  /// A callback rather than `Navigator.pop`, because this is NOT a route —
+  /// see the class docblock. The grid swaps its own body; nothing was pushed
+  /// and there is nothing to pop.
+  final VoidCallback onBack;
 
   @override
   State<IntegrationProviderScreen> createState() =>
@@ -187,9 +213,12 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     }
 
     setState(() => _error = null);
-    await widget.onChanged?.call();
 
-    if (mounted) Navigator.of(context).pop();
+    // Reload the grid so its count matches; the pane STAYS OPEN. It used to
+    // pop, which was the route closing itself — without a route there is
+    // nothing to close, and somebody naming three bases in a row should not be
+    // thrown back to the grid after each one.
+    await widget.onChanged?.call();
   }
 
   @override
@@ -197,20 +226,38 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
     final theme = Theme.of(context);
     final groups = _groups;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SocialNetworkMark(network: widget.provider, size: 22),
-            const SizedBox(width: 10),
-            Flexible(child: Text(widget.providerLabel)),
-          ],
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+          /*
+           * THE HEADER IS IN THE BODY, because this pane is in the body.
+           *
+           * An `AppBar` belongs to a `Scaffold` and a `Scaffold` belongs to a
+           * route; drawing either here is what put this pane over the whole
+           * window. The back control is a row like any other.
+           */
+          Row(
+            children: [
+              IconButton(
+                key: const ValueKey('integration-back'),
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to integrations',
+                onPressed: widget.onBack,
+              ),
+              const SizedBox(width: 4),
+              SocialNetworkMark(network: widget.provider, size: 22),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  widget.providerLabel,
+                  style: theme.textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           if (_error != null) ...[
             DashboardNote(_error!),
             const SizedBox(height: 12),
@@ -295,8 +342,7 @@ class _IntegrationProviderScreenState extends State<IntegrationProviderScreen> {
               'Accounts are connected in ${widget.connectWhere}, which is where '
               'connecting one is explained.',
             ),
-        ],
-      ),
+      ],
     );
   }
 }
