@@ -1,0 +1,441 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Settings › Integrations — layouts</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --ok:#1a7f37; --soft:#f6fafa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+blockquote{margin:8px 0 12px;padding:8px 14px;border-left:3px solid var(--line);
+  color:#2b3a41;font-size:13px}
+.bar{display:flex;gap:7px;flex-wrap:wrap;margin:16px 0 4px}
+.bar button{font:600 12.5px/1 inherit;padding:9px 13px;border:1px solid var(--line);
+  background:var(--paper);border-radius:999px;cursor:pointer;color:var(--ink)}
+.bar button[aria-current="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.states{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px;align-items:center}
+.states span.lab{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin-right:4px}
+.states button{font:600 11.5px/1 inherit;padding:7px 10px;border:1px solid var(--line);
+  background:var(--paper);border-radius:8px;cursor:pointer;color:var(--ink)}
+.states button[aria-current="true"]{background:var(--brand);color:#fff;border-color:var(--brand)}
+.cap{font-size:12px;color:var(--muted);margin:10px 0 7px}
+.win{width:1120px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.head{padding:13px 16px;border-bottom:1px solid var(--line);font-weight:700;
+  font-size:14px;display:flex;align-items:center;gap:10px}
+.head .sc{margin-left:auto;font-weight:500;font-size:11.5px;color:var(--muted)}
+.body{min-height:400px;padding:16px 18px;overflow:auto}
+.body.split{display:flex;padding:0}
+.fam{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);margin:16px 0 8px}
+.fam:first-child{margin-top:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:11px;padding:12px 13px;background:var(--paper);
+  cursor:pointer;display:flex;gap:11px;align-items:flex-start}
+.card:hover{border-color:var(--brand)}
+.card.off{background:var(--soft);border-style:dashed}
+.mark{width:32px;height:32px;border-radius:8px;background:#e6eef0;display:flex;
+  align-items:center;justify-content:center;font:800 11px sans-serif;color:#516067;flex:0 0 auto}
+.card .nm{font-weight:700;font-size:13px;line-height:1.25}
+.card .st{font-size:11.5px;color:var(--muted);margin-top:3px}
+.card .st.bad{color:var(--bad);font-weight:700}
+.card .st.none{color:var(--muted)}
+.rail{width:230px;border-right:1px solid var(--line);overflow:auto;padding:10px 0}
+.rrow{display:flex;align-items:center;gap:9px;padding:9px 13px;font-size:12.5px;cursor:pointer}
+.rrow.on{background:#eaf3f2;font-weight:700}
+.rrow .c{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rrow .c.bad{color:var(--bad);font-weight:800}
+.pane{flex:1;padding:16px 18px;overflow:auto}
+.scope{margin-bottom:14px}
+.scope .sh{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.scope .sh b{font-size:13px}
+.scope .sh span{font:800 8.5px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 7px}
+.conn{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--line);
+  border-radius:9px;margin-bottom:6px;font-size:12.5px;background:var(--paper)}
+.conn.bad{border-color:#f0c9c9;background:#fff7f7}
+.conn .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.conn .t i{display:block;font-weight:400;font-style:normal;font-size:11px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:0 0 auto}
+.dot.bad{background:var(--bad)}
+.why{font-size:11.5px;color:var(--bad);font-weight:600}
+.alert{border:1px solid #f0c9c9;background:#fff7f7;border-radius:11px;padding:11px 13px;
+  margin-bottom:14px;font-size:12.5px}
+.alert b{color:var(--bad)}
+.empty{color:var(--muted);font-size:12.5px;padding:26px 4px;text-align:center}
+.phone{width:376px;border:1px solid var(--line);border-radius:22px;overflow:hidden;
+  background:var(--paper);margin:0 auto}
+.phone .ph{padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700;font-size:13.5px}
+.phone .pb{padding:12px 14px;min-height:430px;overflow:auto}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:11.5px;
+  background:var(--paper)}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
+.mrow{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid #eef2f3;
+  font-size:13px}
+.mrow:last-child{border-bottom:0}
+.mrow .t{flex:1;min-width:0;font-weight:600}
+.mrow .t i{display:block;font-weight:400;font-style:normal;font-size:11px;color:var(--muted)}
+.mrow .g{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mrow .g.bad{color:var(--bad);font-weight:800}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:12px;font-size:12.5px;max-width:1120px}
+.note.warn{border-left-color:var(--warn)}
+.note.bad{border-left-color:var(--bad)}
+</style>
+<div class="wrap">
+<h1>Settings &rsaquo; Integrations &mdash; pick one desktop and one mobile</h1>
+
+<p class="sub">Jose, 2026-09-22: <i>&ldquo;I want to revamp the Integrations Screen, i&rsquo;d like
+to have cards instead each with their own screen for connections, etc, something like the second
+image as an example but with our style of course. Remember to take into account org - company -
+franchise ownership, etc.&rdquo;</i></p>
+
+<p class="sub"><b>What is wrong with it today is not that it is crowded.</b> A1-Group has
+fifty-three Google Ads accounts and a column of rows that each read <i>&ldquo;A-1 Chimney &middot;
+Thumbtack &middot; this company&rdquo;</i>. The screen scrolls about four pages and answers
+nothing.</p>
+
+<p class="sub"><b>&#9888; AND THE CAUSE IS SMALLER THAN THE SYMPTOM, WHICH CHANGES WHAT THESE
+OPTIONS COST.</b> <code>scopeWord</code> at <code>integrations_screen.dart:434</code> maps a scope
+<i>type</i> to a phrase &mdash; organization / <i>&ldquo;this company&rdquo;</i> / <i>&ldquo;this
+branch&rdquo;</i>. The identity never reaches the client at all:
+<code>SocialConnectionsController:92</code> already sends <code>scope_id</code>, and
+<code>_Connection.fromJson</code> drops it. <b>So &ldquo;grouped by named company&rdquo; needs one
+field in a parser and no server change.</b> Same for
+<code>last_reached_at</code>, also sent and also dropped.</p>
+
+<p class="sub"><b>&#9888; THE STATUS LINE IS THE REAL DECISION HERE, not the card shape.</b>
+Nobody opens this screen to be told things are connected &mdash; they open it because something
+stopped working. <code>status</code>, <code>status_reason</code> and <code>last_reached_at</code>
+are all on the wire. A card reading <b>&ldquo;53 connected&rdquo;</b> answers a question nobody
+asked and hides the one row out of fifty-three that matters. Every option below leads with what is
+<i>wrong</i> when anything is, and falls back to the plain count when nothing is. <b>Use the state
+switcher &mdash; that is what it is for.</b></p>
+
+<p class="sub"><b>Option 3 is the odd one and it is deliberate.</b> The screen&rsquo;s own docblock
+says it exists because <i>&ldquo;what is this company connected to&rdquo; was not a question
+anybody could answer</i>. Cards-by-provider answer <i>&ldquo;who uses Google Ads&rdquo;</i>.
+Those are different questions and only one of them is the one written down, so one option groups
+by <b>place</b> instead and lets Jose see both readings.</p>
+
+<div class="bar" id="bar"></div>
+<div class="states" id="states"></div>
+<p class="cap" id="cap"></p>
+<div id="hold"></div>
+
+<div class="note warn"><b>What I could not settle and Settings owns:</b> the ownership rules
+&mdash; which scopes may hold which provider, and what a branch-level reader is allowed to see of
+a company-level connection. Every option draws state <b>D</b> as a guess at that
+(<i>a branch reader sees only their own</i>). If the rule is different the drawing changes, not
+the layout.</div>
+
+<div class="note"><b>Everything that works today moves rather than changes</b> &mdash; the rename
+dialog, the Airtable and Workiz connect forms, their two permission gates, and the
+&ldquo;connect it where the module owns it&rdquo; pointer. None of these options alter what
+connecting does; they alter where it is found.</div>
+</div>
+
+<script>
+var ST = 'A';
+var SEL = 1;
+
+var STATES = {
+  A:'53 Ads, all fine',
+  B:'1 of 53 broken',
+  C:'nothing connected',
+  D:'branch reader',
+  E:'one of each'
+};
+
+function adsCount(){
+  if (ST === 'C') return 0;
+  if (ST === 'D') return 4;
+  if (ST === 'E') return 1;
+  return 53;
+}
+function adsBad(){ return ST === 'B' ? 1 : 0; }
+
+/* A provider card's status line. The whole argument of this gallery is in
+   here: trouble first, count second, and "Not connected" never dressed up. */
+function statusLine(n, bad){
+  if (n === 0) return '<div class="st none">Not connected</div>';
+  if (bad > 0) return '<div class="st bad">' + bad + ' of ' + n + ' needs attention</div>';
+  return '<div class="st">' + (n === 1 ? 'Connected' : n + ' connected') + '</div>';
+}
+
+function card(mark, name, n, bad){
+  return '<div class="card' + (n === 0 ? ' off' : '') + '">' +
+    '<div class="mark">' + mark + '</div><div><div class="nm">' + name + '</div>' +
+    statusLine(n, bad) + '</div></div>';
+}
+
+var FAMS = [
+  ['Mailing',                 [['MC','Mailchimp']]],
+  ['Social',                  [['FB','Facebook'],['IG','Instagram'],['LI','LinkedIn'],['BS','Bluesky']]],
+  ['Advertising and listings',[['GA','Google Ads'],['GB','Business Profile'],['TT','Thumbtack']]],
+  ['Reporting',               [['AT','Airtable'],['WZ','Workiz']]]
+];
+
+function countFor(key){
+  if (ST === 'C') return 0;
+  if (key === 'Google Ads') return adsCount();
+  if (ST === 'D') return (key === 'Thumbtack' || key === 'Facebook') ? 1 : 0;
+  if (ST === 'E') return 1;
+  return (key === 'Bluesky' || key === 'LinkedIn' || key === 'Airtable') ? 0 : 1;
+}
+function badFor(key){ return (key === 'Google Ads') ? adsBad() : 0; }
+
+function scopeRows(){
+  /* Named scopes. The point of the whole exercise: not "this company". */
+  if (ST === 'C') return [];
+  if (ST === 'D') return [['Everdoors &mdash; Hartford', 'Branch', 4, adsBad()]];
+  if (ST === 'E') return [['A1-Group', 'Organization', 1, 0]];
+  return [
+    ['A1-Group', 'Organization', 3, 0],
+    ['A-1 Chimney', 'Company', 28, adsBad()],
+    ['Everdoors', 'Company', 14, 0],
+    ['Premier Garage Repair', 'Company', 8, 0]
+  ];
+}
+
+function connList(n, bad, from){
+  if (n === 0) return '<div class="empty">Nothing connected here yet.</div>';
+  var out = '';
+  var show = Math.min(n, 3);
+  for (var i = 0; i < show; i++){
+    var isBad = (bad > 0 && i === 0);
+    out += '<div class="conn' + (isBad ? ' bad' : '') + '">' +
+      '<span class="dot' + (isBad ? ' bad' : '') + '"></span>' +
+      '<div class="t">Roofing &mdash; Search ' + (i + 1) +
+      '<i>' + from + ' &middot; 284-91' + i + '-33' + i + '</i></div>' +
+      (isBad ? '<span class="why">Reauthorise &mdash; token expired 3 Sep</span>'
+             : '<span style="font-size:11px;color:var(--muted)">Last read 4 min ago</span>') +
+      '</div>';
+  }
+  if (n > show) out += '<div style="font-size:11.5px;color:var(--muted);padding:2px 2px 6px">' +
+    'and ' + (n - show) + ' more</div>';
+  return out;
+}
+
+function head(title, extra){
+  return '<div class="head">' + title +
+    '<span class="sc">' + (extra || 'A1-Group &middot; all companies') + '</span></div>';
+}
+
+/* ─── 1 · Desktop: cards by provider, drill into one ─────────────── */
+function D1(){
+  var g = '';
+  for (var f = 0; f < FAMS.length; f++){
+    g += '<div class="fam">' + FAMS[f][0] + '</div><div class="grid">';
+    for (var p = 0; p < FAMS[f][1].length; p++){
+      var k = FAMS[f][1][p][1];
+      g += card(FAMS[f][1][p][0], k, countFor(k), badFor(k));
+    }
+    g += '</div>';
+  }
+  var alert = (ST === 'B')
+    ? '<div class="alert"><b>1 connection needs attention.</b> Google Ads &middot; ' +
+      'A-1 Chimney &mdash; token expired 3 Sep.</div>' : '';
+  return '<div class="win">' + head('Integrations') +
+    '<div class="body">' + alert + g + '</div></div>';
+}
+
+/* ─── 2 · Desktop: a rail of providers, connections beside it ────── */
+function D2(){
+  var rail = '';
+  for (var f = 0; f < FAMS.length; f++){
+    rail += '<div class="fam" style="padding:0 13px">' + FAMS[f][0] + '</div>';
+    for (var p = 0; p < FAMS[f][1].length; p++){
+      var k = FAMS[f][1][p][1];
+      var n = countFor(k), b = badFor(k);
+      rail += '<div class="rrow' + (k === 'Google Ads' ? ' on' : '') + '">' +
+        '<span class="mark" style="width:22px;height:22px;font-size:9px">' +
+        FAMS[f][1][p][0] + '</span>' + k +
+        // "1 of 53", not "1 warning": a warning that replaces the count
+        // loses the number it is warning about, which is the same fault this
+        // whole screen is being redrawn for one level up.
+        '<span class="c' + (b ? ' bad' : '') + '">' +
+        (n === 0 ? '&ndash;' : (b ? b + ' of ' + n : n)) + '</span></div>';
+    }
+  }
+  var rows = scopeRows(), pane = '';
+  if (!rows.length){
+    pane = '<div class="empty">Google Ads is not connected anywhere yet.</div>';
+  } else {
+    for (var i = 0; i < rows.length; i++){
+      pane += '<div class="scope"><div class="sh"><b>' + rows[i][0] + '</b>' +
+        '<span>' + rows[i][1] + '</span></div>' +
+        connList(rows[i][2], rows[i][3], rows[i][0]) + '</div>';
+    }
+  }
+  return '<div class="win">' + head('Integrations') +
+    '<div class="body split"><div class="rail">' + rail + '</div>' +
+    '<div class="pane"><div style="font-weight:700;font-size:15px;margin-bottom:12px">' +
+    'Google Ads' + '</div>' + pane + '</div></div></div>';
+}
+
+/* ─── 3 · Desktop: grouped by PLACE, not by provider ─────────────── */
+function D3(){
+  var rows = scopeRows(), out = '';
+  if (!rows.length){
+    out = '<div class="empty">No company here has connected anything yet.</div>';
+  } else {
+    for (var i = 0; i < rows.length; i++){
+      var g = '<div class="grid">';
+      for (var f = 0; f < FAMS.length; f++){
+        for (var p = 0; p < FAMS[f][1].length; p++){
+          var k = FAMS[f][1][p][1];
+          var n = (k === 'Google Ads') ? rows[i][2] : (i === 0 ? countFor(k) : 0);
+          if (n === 0) continue;
+          g += card(FAMS[f][1][p][0], k, n, (k === 'Google Ads') ? rows[i][3] : 0);
+        }
+      }
+      g += '</div>';
+      out += '<div class="scope"><div class="sh"><b>' + rows[i][0] + '</b>' +
+        '<span>' + rows[i][1] + '</span></div>' + g + '</div>';
+    }
+  }
+  return '<div class="win">' + head('Integrations') +
+    '<div class="body">' + out + '</div></div>';
+}
+
+/* ─── 4 · Phone: provider rows, tap for the scopes ───────────────── */
+function M4(){
+  var out = '';
+  if (ST === 'B') out += '<div class="alert"><b>1 needs attention</b><br>' +
+    'Google Ads &middot; A-1 Chimney</div>';
+  for (var f = 0; f < FAMS.length; f++){
+    out += '<div class="fam">' + FAMS[f][0] + '</div>';
+    for (var p = 0; p < FAMS[f][1].length; p++){
+      var k = FAMS[f][1][p][1], n = countFor(k), b = badFor(k);
+      out += '<div class="mrow"><span class="mark" style="width:26px;height:26px;font-size:9.5px">' +
+        FAMS[f][1][p][0] + '</span><div class="t">' + k +
+        '<i>' + (n === 0 ? 'Not connected' : (b ? b + ' of ' + n + ' needs attention'
+          : (n === 1 ? 'Connected' : n + ' connected'))) + '</i></div>' +
+        '<span class="g' + (b ? ' bad' : '') + '">' + (n === 0 ? '' : '&rsaquo;') + '</span></div>';
+    }
+  }
+  return '<div class="phone"><div class="ph">Integrations</div>' +
+    '<div class="pb">' + out + '</div></div>';
+}
+
+/* ─── 5 · Phone: what is broken, then everything ─────────────────── */
+function M5(){
+  var out = '';
+  if (ST === 'B'){
+    out += '<div class="fam">Needs attention</div>' +
+      '<div class="conn bad"><span class="dot bad"></span><div class="t">Google Ads' +
+      '<i>A-1 Chimney &middot; token expired 3 Sep</i></div></div>';
+  } else if (ST !== 'C') {
+    out += '<div class="fam">Needs attention</div>' +
+      '<div class="empty" style="padding:14px 4px">Everything is reaching its account.</div>';
+  }
+  var any = false;
+  var body = '';
+  for (var f = 0; f < FAMS.length; f++){
+    for (var p = 0; p < FAMS[f][1].length; p++){
+      var k = FAMS[f][1][p][1], n = countFor(k);
+      if (n === 0) continue;
+      any = true;
+      body += '<div class="mrow"><span class="mark" style="width:26px;height:26px;font-size:9.5px">' +
+        FAMS[f][1][p][0] + '</span><div class="t">' + k +
+        '<i>' + FAMS[f][0] + '</i></div><span class="g">' + n + '</span></div>';
+    }
+  }
+  // No heading over an empty group: a "Connected" label with nothing under it
+  // reads as a list that failed to load.
+  out += any ? '<div class="fam">Connected</div>' + body
+             : '<div class="empty">Nothing is connected yet.</div>';
+  return '<div class="phone"><div class="ph">Integrations</div>' +
+    '<div class="pb">' + out + '</div></div>';
+}
+
+/* ─── 6 · Phone: pick the place first ────────────────────────────── */
+function M6(){
+  var rows = scopeRows();
+  var chips = '<div class="chips">';
+  for (var i = 0; i < rows.length; i++){
+    chips += '<span class="chip' + (i === 1 || rows.length === 1 ? ' on' : '') + '">' +
+      rows[i][0] + '</span>';
+  }
+  chips += '</div>';
+  var who = rows.length ? (rows.length === 1 ? rows[0] : rows[1]) : null;
+  var out = chips;
+  if (!who){
+    out += '<div class="empty">Nothing is connected yet.</div>';
+  } else {
+    out += '<div class="fam">' + who[1] + ' &middot; ' + who[0] + '</div>';
+    for (var f = 0; f < FAMS.length; f++){
+      for (var p = 0; p < FAMS[f][1].length; p++){
+        var k = FAMS[f][1][p][1];
+        var n = (k === 'Google Ads') ? who[2] : (countFor(k) && f < 2 ? 1 : 0);
+        if (n === 0) continue;
+        var b = (k === 'Google Ads') ? who[3] : 0;
+        out += '<div class="mrow"><span class="mark" style="width:26px;height:26px;font-size:9.5px">' +
+          FAMS[f][1][p][0] + '</span><div class="t">' + k +
+          '<i>' + (b ? b + ' needs attention' : (n === 1 ? 'Connected' : n + ' connected')) +
+          '</i></div><span class="g' + (b ? ' bad' : '') + '">&rsaquo;</span></div>';
+      }
+    }
+  }
+  return '<div class="phone"><div class="ph">Integrations</div>' +
+    '<div class="pb">' + out + '</div></div>';
+}
+
+var OPT = {
+  1:['1 &middot; Desktop &mdash; a card per provider, under the four families. Jose&rsquo;s reference shape. Tapping one opens that provider&rsquo;s connections grouped by named scope.', D1],
+  2:['2 &middot; Desktop &mdash; providers in a rail, that provider&rsquo;s connections beside it. No drill-down and no back button: the families stay visible while you read.', D2],
+  3:['3 &middot; Desktop &mdash; grouped by PLACE first. Answers the question the screen&rsquo;s own docblock says it exists for: what is THIS company connected to.', D3],
+  4:['4 &middot; Phone &mdash; a row per provider with its count, tap for the scopes. The closest phone reading of option 1.', M4],
+  5:['5 &middot; Phone &mdash; what is broken first, everything under it. On a phone you are almost certainly checking why something stopped.', M5],
+  6:['6 &middot; Phone &mdash; pick the place, then see its connections. One scope at a time instead of one long list.', M6]
+};
+
+function draw(k){
+  SEL = k;
+  document.getElementById('cap').innerHTML = OPT[k][0];
+  document.getElementById('hold').innerHTML = OPT[k][1]();
+  var bs = document.querySelectorAll('#bar button');
+  for (var i = 0; i < bs.length; i++){
+    bs[i].setAttribute('aria-current', bs[i].getAttribute('data-k') === String(k));
+  }
+  var ss = document.querySelectorAll('#states button');
+  for (var j = 0; j < ss.length; j++){
+    ss[j].setAttribute('aria-current', ss[j].getAttribute('data-s') === ST);
+  }
+}
+
+(function(){
+  var bar = document.getElementById('bar');
+  for (var k = 1; k <= 6; k++){
+    var b = document.createElement('button');
+    b.textContent = (k < 4 ? 'Desktop ' : 'Phone ') + k;
+    b.setAttribute('data-k', k);
+    b.onclick = (function(n){ return function(){ draw(n); }; })(k);
+    bar.appendChild(b);
+  }
+  var box = document.getElementById('states');
+  var lab = document.createElement('span');
+  lab.className = 'lab';
+  lab.textContent = 'State';
+  box.appendChild(lab);
+  var keys = ['A','B','C','D','E'];
+  for (var i = 0; i < keys.length; i++){
+    var sb = document.createElement('button');
+    sb.textContent = STATES[keys[i]];
+    sb.setAttribute('data-s', keys[i]);
+    sb.onclick = (function(s){ return function(){ ST = s; draw(SEL); }; })(keys[i]);
+    box.appendChild(sb);
+  }
+  draw(1);
+})();
+</script>

@@ -91,7 +91,7 @@ class PublicValuesController extends Controller
 
             return response()->json([
                 'fields' => SeoFields::catalogue(),
-                'widgets' => WebWidget::resolvedFor($site),
+                'widgets' => WebWidget::publishedFor($site),
                 /*
                  * NOT `withWebsiteUrl()`, deliberately, and this is the one
                  * endpoint where that matters. This response is reachable with

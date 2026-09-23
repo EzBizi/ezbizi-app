@@ -20,13 +20,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class TimeClockShift extends Model implements HoldsPersonalData
 {
-    use HasUuids;
     use BelongsToTenant;
+    use HasUuids;
 
     /** Who closed the shift (design 2026-09-08 §5.2). Null while open. */
     public const ENDED_BY_PERSON = 'person';
+
     public const ENDED_BY_SCHEDULE = 'schedule';
+
     public const ENDED_BY_AUTOMATION = 'automation';
+
+    /*
+     * Somebody with `hr.hours.correct` set this time by hand. It is its own
+     * value for the reason `ended_by` exists at all: a row reading `person`
+     * claims the person clocked out, and on a corrected row that is false —
+     * the commonest correction is exactly the shift they FORGOT to close.
+     */
+    public const ENDED_BY_CORRECTION = 'correction';
 
     // ── §9 data inventory ────────────────────────────────────────
 

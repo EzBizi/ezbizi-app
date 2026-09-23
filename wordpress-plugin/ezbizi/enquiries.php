@@ -405,9 +405,65 @@ function ezbizi_chat_shortcode($atts) {
 
         . '</div></div></div>';
 
+    /*
+     * ── The opening-hours gate, and why it is JAVASCRIPT ──
+     *
+     * Jose, 2026-09-17: the bubble should be on the page during working hours
+     * and gone outside them, "cause if no one is there to answer it's bad".
+     *
+     * The obvious place is here, in PHP: check the clock, return '' when shut.
+     * That is WRONG on these sites and it would have looked right for about a
+     * day. Every site on the estate serves pages from an nginx page cache, so
+     * whatever PHP decides is baked into the cached HTML and served to
+     * everybody afterwards — a page generated at 10am keeps showing the bubble
+     * at midnight, and a page generated at midnight keeps hiding it at 10am.
+     * The bug would be worst on the busiest pages, which are cached longest.
+     *
+     * So the schedule travels to the browser and the browser decides, once,
+     * per view. The cached HTML is the same either way.
+     *
+     * `Intl.DateTimeFormat` with a `timeZone` reads the clock in the
+     * BUSINESS's zone — not the visitor's, who may be anywhere — and it is
+     * built into every browser this plugin supports, so there is no library
+     * and no offset table to keep in step with the next DST change.
+     *
+     * IT FAILS OPEN, everywhere: no schedule, seven-entry mismatch, no zone, a
+     * weekday name it cannot map, an unparseable time, or any throw at all,
+     * and the bubble shows. A wrongly-shown chat is somebody replying late. A
+     * wrongly-hidden one is every enquiry that day going nowhere, with nothing
+     * on any screen to say so.
+     */
     $out .= "<script>(function(){
 var root=document.getElementById(" . wp_json_encode($id) . ");
 if(!root)return;
+var openHours=" . wp_json_encode(isset($config['hours']) && is_array($config['hours']) ? $config['hours'] : array()) . ";
+var openZone=" . wp_json_encode(ezbizi_widget_text($config, 'timezone')) . ";
+function ezbizi_minutes(hhmm){
+  var m=/^([0-9]{2}):([0-9]{2})$/.exec(String(hhmm||''));
+  return m?parseInt(m[1],10)*60+parseInt(m[2],10):null;
+}
+function ezbizi_open_now(){
+  if(!openHours||openHours.length!==7||!openZone)return true;
+  try{
+    var parts=new Intl.DateTimeFormat('en-GB',{timeZone:openZone,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());
+    var got={};
+    for(var i=0;i<parts.length;i++)got[parts[i].type]=parts[i].value;
+    var index={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[got.weekday];
+    if(index===undefined)return true;
+    var day=openHours[index];
+    if(!day)return true;
+    if(day.closed)return false;
+    // '24' is midnight in some engines under hour12:false, and 24*60 would
+    // sit past every close time.
+    var hour=parseInt(got.hour,10)%24;
+    var now=hour*60+parseInt(got.minute,10);
+    var from=ezbizi_minutes(day.open),till=ezbizi_minutes(day.close);
+    if(from===null||till===null||isNaN(now))return true;
+    // A shift that ends after midnight is two ranges, not one backwards range.
+    return till>from?(now>=from&&now<till):(now>=from||now<till);
+  }catch(e){return true;}
+}
+if(!ezbizi_open_now()){if(root.parentNode)root.parentNode.removeChild(root);return;}
 var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ";
 var panel=root.querySelector('.ezbizi-chat-panel'),log=root.querySelector('.ezbizi-chat-log');
 var pre=root.querySelector('.ezbizi-chat-pre'),thread=root.querySelector('.ezbizi-chat-thread');

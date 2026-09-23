@@ -135,9 +135,23 @@ final class TimeClock
                     'user_id' => $user->getKey(),
                     'clocked_in_at' => $now,
                     'clocked_out_at' => null,
-                    // After the scheduled end there is nothing to count down
-                    // to: they are working late, and the chip carries them.
-                    'scheduled_end_at' => $window !== null && $now->lt($window['end_at']) ? $window['end_at'] : null,
+                    /*
+                     * NEVER NULL (2026-09-23). It used to be null whenever the
+                     * schedule gave no end ahead of now, on the reasoning that
+                     * somebody working late has nothing to count down to — and
+                     * that is true about the countdown and was false about the
+                     * close. CloseEndedShifts reads `whereNotNull`, so a null
+                     * here meant no sweep would ever look at the row again.
+                     *
+                     * The schedule's end when there is one ahead; otherwise the
+                     * organization's cap, which is a backstop and not a shift
+                     * length. It also gives Extend something to push: a late
+                     * shift could not be extended before, because extend()
+                     * refuses a row with no scheduled end.
+                     */
+                    'scheduled_end_at' => $window !== null && $now->lt($window['end_at'])
+                        ? $window['end_at']
+                        : $now->copy()->addHours($this->maxHours($user)),
                     // A day off, or well before the start. Informational —
                     // Clock In is never refused by the schedule (design §3.4).
                     'outside_schedule' => $window === null
@@ -190,7 +204,21 @@ final class TimeClock
                 ]);
             }
 
-            $open->clocked_out_at = now();
+            /*
+             * A person's clock-out is now. THE SWEEP'S is the end it was
+             * sweeping — never now.
+             *
+             * Normally those differ by the second the sweep took to get there.
+             * They differ by days on a row the sweep could not see until a
+             * backfill handed it one, and crediting `now()` there would have
+             * paid Adeline for the 40 hours her forgotten punch sat open
+             * instead of the 16 the cap allows. A close cannot invent hours.
+             */
+            $open->clocked_out_at = $endedBy === TimeClockShift::ENDED_BY_SCHEDULE
+                && $open->scheduled_end_at !== null
+                && $open->scheduled_end_at->lt(now())
+                    ? $open->scheduled_end_at->copy()
+                    : now();
             // A rule's punch is an automation's, whatever the caller said.
             $open->ended_by = $causedBy !== null ? TimeClockShift::ENDED_BY_AUTOMATION : $endedBy;
             $open->save();
@@ -204,6 +232,128 @@ final class TimeClock
             );
 
             return $this->payload($user);
+        });
+    }
+
+    /**
+     * Set a shift's times by hand (Jose, 2026-09-23: "we should have a
+     * correction system as well to be able to edit or eliminate shifts").
+     *
+     * ── Why this is not `hr.edit` ──
+     *
+     * These are the hours somebody is PAID for. Maintaining a person's row and
+     * rewriting what they are owed are different authorities, and the module
+     * already makes that distinction for `security.reset`, which is split from
+     * `edit` on the same argument. Folding corrections into `hr.edit` would
+     * have granted them silently, on deploy, to everybody who keeps the people
+     * list.
+     *
+     * ── What it will not do ──
+     *
+     * It cannot invent a shift, and the controller does not let it reopen one
+     * that is finished. An open row is
+     * a claim that somebody is working right now, and a manager creating one
+     * out of a date picker is the shape that turns a clock into a spreadsheet.
+     * If a punch is missing entirely, the shift that exists gets corrected or
+     * deleted; there is no third case yet, and it refuses with a sentence that
+     * says so rather than failing a validator.
+     *
+     * NO AUTOMATION EVENT, deliberately. `time_clock.clocked_in` and its
+     * siblings are things that happened to the business; a correction is an
+     * administrator amending the record afterwards, and a rule firing "when
+     * somebody is clocked out" on it would text a technician who went home
+     * yesterday. The audit entry below is the trail.
+     */
+    public function correct(TimeClockShift $shift, ?Carbon $in, ?Carbon $out): void
+    {
+        DB::transaction(function () use ($shift, $in, $out) {
+            $shift = TimeClockShift::query()->whereKey($shift->getKey())->lockForUpdate()->firstOrFail();
+
+            // Null means UNCHANGED in both arguments. The controller refuses
+            // the reopen, because only the request can tell an absent key from
+            // an explicit null and both reach here as the same value.
+            $in ??= $shift->clocked_in_at;
+            $out ??= $shift->clocked_out_at;
+
+            $now = now();
+
+            if ($in->gt($now) || ($out !== null && $out->gt($now))) {
+                throw ValidationException::withMessages([
+                    'clocked_in_at' => 'A shift cannot be in the future.',
+                ]);
+            }
+
+            if ($out !== null && $out->lte($in)) {
+                throw ValidationException::withMessages([
+                    'clocked_out_at' => 'Clock out must be after clock in.',
+                ]);
+            }
+
+            /*
+             * Overlap is REFUSED rather than allowed-and-flagged, unlike a
+             * punch outside schedule. A person on two shifts at once is not an
+             * unusual day — it is the same hour counted twice, and nothing on
+             * Work Hours could show that the total says so.
+             */
+            $clash = TimeClockShift::query()
+                ->where('user_id', $shift->user_id)
+                ->whereKeyNot($shift->getKey())
+                ->where('clocked_in_at', '<', $out ?? $now->copy()->addCentury())
+                ->where(fn ($q) => $q->whereNull('clocked_out_at')->orWhere('clocked_out_at', '>', $in))
+                ->exists();
+
+            if ($clash) {
+                throw ValidationException::withMessages([
+                    'clocked_in_at' => 'These times overlap another shift for the same person.',
+                ]);
+            }
+
+            $before = [
+                'clocked_in_at' => $this->instant($shift->clocked_in_at),
+                'clocked_out_at' => $this->instant($shift->clocked_out_at),
+            ];
+
+            $shift->clocked_in_at = $in;
+            $shift->clocked_out_at = $out;
+
+            // Only when the end actually moved. Nudging a start must not
+            // rewrite the row's account of who ended it.
+            if ($out !== null && $before['clocked_out_at'] !== $this->instant($out)) {
+                $shift->ended_by = TimeClockShift::ENDED_BY_CORRECTION;
+            }
+
+            $shift->save();
+
+            $this->audit->log('time_clock.corrected', $shift, changes: [
+                'before' => $before,
+                'after' => [
+                    'clocked_in_at' => $this->instant($shift->clocked_in_at),
+                    'clocked_out_at' => $this->instant($shift->clocked_out_at),
+                ],
+            ]);
+        });
+    }
+
+    /**
+     * Delete a shift outright — the punch that should never have existed.
+     *
+     * Hard delete, not a soft one. A shift is a fact about a clock rather than
+     * a record with a life of its own, and every total on Work Hours sums the
+     * table: a soft-deleted row is one `whereNull` away from being counted by
+     * the next query somebody writes. The audit entry carries both times, so
+     * the deletion can be read and undone by hand.
+     */
+    public function remove(TimeClockShift $shift): void
+    {
+        DB::transaction(function () use ($shift) {
+            $this->audit->log('time_clock.deleted', $shift, changes: [
+                'before' => [
+                    'clocked_in_at' => $this->instant($shift->clocked_in_at),
+                    'clocked_out_at' => $this->instant($shift->clocked_out_at),
+                ],
+            ]);
+
+            $shift->delete();
         });
     }
 
@@ -311,6 +461,16 @@ final class TimeClock
      *
      * @return null|array{timezone: string, days: array<string, null|array{start: string, end: string}>}
      */
+    /**
+     * The organization's cap, through the settings cascade like every other
+     * Clock in value — `scheduleFor()` resolves the place, this resolves the
+     * number, and both are read live rather than stamped on the row.
+     */
+    private function maxHours(User $user): int
+    {
+        return (int) $this->settings->get('time_clock.max_hours', $user->organization);
+    }
+
     private function scheduleFor(User $user): ?array
     {
         $assignment = $user->assignments()->orderBy('created_at')->first();

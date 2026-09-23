@@ -4,6 +4,7 @@ namespace Tests\Feature\Fleet;
 
 use App\Support\Fleet\VehicleFinancials;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -14,6 +15,59 @@ class VehicleFinancialsTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
+
+    /**
+     * Every `_cents` column on a fleet table must be a financial key.
+     *
+     * The hand-written list below it drifts in ONE direction only: it goes red
+     * when a key is removed from keys(), and stays green forever when a money
+     * column is ADDED to the schema and nobody adds it to keys(). That is the
+     * silent direction, and it had already happened — `toll_flat_rate_cents`
+     * shipped on 2026-08-28 and never reached that list. It is stripped today
+     * because the person who added the column remembered, which is not a
+     * guarantee, and the test claiming to cover "every money column" could not
+     * see the one it was missing.
+     *
+     * Derived from the schema so the next one cannot be forgotten quietly.
+     */
+    public function test_every_cents_column_on_a_fleet_table_is_a_financial_key(): void
+    {
+        $keys = VehicleFinancials::keys();
+
+        $money = [];
+        foreach ([
+            'vehicles',
+            'vehicle_ownership_periods',
+            'vehicle_insurance_policies',
+            'vehicle_assignments',
+            'vehicle_service_visits',
+            'vehicle_payments',
+        ] as $table) {
+            foreach (Schema::getColumnListing($table) as $column) {
+                if (str_ends_with($column, '_cents')) {
+                    $money[$column] = $table;
+                }
+            }
+        }
+
+        // Control: a derivation that found nothing would pass every assertion
+        // below it. purchase_price_cents has been there since the module
+        // shipped, so its absence means the reading broke, not the schema.
+        $this->assertArrayHasKey(
+            'purchase_price_cents',
+            $money,
+            'schema reading failed — this test proves nothing until it works',
+        );
+
+        foreach ($money as $column => $table) {
+            $this->assertContains(
+                $column,
+                $keys,
+                "{$table}.{$column} is money and is not stripped without "
+                    .'fleet_management.financials — add it to VehicleFinancials::keys()',
+            );
+        }
+    }
 
     public function test_keys_include_every_money_column_and_related_terms(): void
     {

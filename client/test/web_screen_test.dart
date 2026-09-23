@@ -161,9 +161,12 @@ void main() {
     expect(find.text('SEO'), findsNothing);
     expect(find.text('Widgets'), findsOneWidget);
 
-    // Drawn by WidgetsTab and by nothing else on this screen, so it says the
-    // body followed the strip rather than that the strip looks right.
-    expect(find.textContaining('Questions'), findsWidgets);
+    // A widget CARD, drawn by WidgetsTab and by nothing else on this screen,
+    // so it says the body followed the strip rather than that the strip looks
+    // right. It was the form's 'Questions' heading until the tab became a card
+    // grid; that heading is now a tap away and an anchor behind a tap cannot
+    // tell you what was drawn first.
+    expect(find.text('Contact form'), findsOneWidget);
   });
 
   /// Reachable: `web_management.view` draws the sidebar row, and an

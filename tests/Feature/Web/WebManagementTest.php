@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WebSite;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Web\SeoFields;
+use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -884,6 +885,49 @@ class WebManagementTest extends TestCase
                 "{$field['key']} declares a requirement nothing knows how to draw.",
             );
         }
+    }
+
+    /**
+     * No field may be named after a shortcode the plugin already owns.
+     *
+     * The plugin registers `[ezbizi_city_list]` and its four siblings from its
+     * own `widgets.php`, and THEN loops the catalogue this server sends,
+     * registering `[ezbizi_<key>]` for every key in it. WordPress lets the
+     * second registration win. So a field added here called `city_list` does
+     * not collide loudly — it replaces a rendered list of towns with a plain
+     * string on every site running the plugin, and the only symptom is
+     * somebody's footer quietly going flat.
+     *
+     * This is the cheap half of that. The expensive half — ordering the two
+     * loops, or namespacing one of them — buys nothing while the set of names
+     * is five long and lives in this repo. The failure to catch is a field
+     * added in innocence, and adding a field is a one-line change in a file
+     * that says nothing about the plugin's own shortcodes.
+     *
+     * Found by the session that wrote those five widgets, which noted it in a
+     * file header. A header is read by whoever is already in the file; this is
+     * read by whoever is not.
+     */
+    public function test_no_field_is_named_after_a_shortcode_the_plugin_already_owns(): void
+    {
+        $taken = array_intersect(
+            SeoFields::keys(),
+            WidgetPresets::PLUGIN_OWNED_SHORTCODES,
+        );
+
+        $this->assertSame(
+            [],
+            array_values($taken),
+            'These field keys would each silently replace a rendered widget on '
+            .'every site: '.implode(', ', $taken).'. Rename the field — the '
+            .'shortcode name is already published and cannot move.',
+        );
+
+        // The positive control. Without it this passes just as happily against
+        // an empty catalogue or a renamed constant, which is the state a
+        // refactor leaves behind.
+        $this->assertNotEmpty(SeoFields::keys());
+        $this->assertContains('city_list', WidgetPresets::PLUGIN_OWNED_SHORTCODES);
     }
 
     /**

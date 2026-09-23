@@ -106,7 +106,7 @@ class PluginController extends Controller
                  * changing a colour in EzBizi reaches the site without anybody
                  * editing a page or updating a plugin.
                  */
-                'widgets' => WebWidget::resolvedFor($site),
+                'widgets' => WebWidget::publishedFor($site),
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

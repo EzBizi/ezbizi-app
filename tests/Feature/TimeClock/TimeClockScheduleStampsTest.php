@@ -86,23 +86,34 @@ class TimeClockScheduleStampsTest extends TestCase
         $this->assertFalse($this->open($alpha, $person)->outside_schedule);
     }
 
-    public function test_a_day_off_is_outside_with_no_end_and_after_the_end_is_neither(): void
+    /**
+     * RENAMED AND REVERSED 2026-09-23. It used to be called
+     * `..._with_no_end_...` and asserted a null `scheduled_end_at` in both
+     * branches, which is the defect Jose reported: a null end is a row
+     * `CloseEndedShifts` selects past for ever, and five people on production
+     * were still clocked in days after they went home.
+     *
+     * What this pins now is the part that was always right — `today` is null
+     * on a day off and `outside_schedule` tells the two branches apart — plus
+     * the cap that replaced the null.
+     */
+    public function test_a_day_off_is_outside_and_after_the_end_is_not_but_both_get_the_cap(): void
     {
         [$alpha, $person] = $this->scheduled();
 
         Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday
         $block = $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
-        $this->assertNull($block['scheduled_end_at']);
-        $this->assertNull($block['today']);
+        $this->assertSame('2026-09-13T07:00:00Z', $block['scheduled_end_at'], 'sixteen hours on from the punch');
+        $this->assertNull($block['today'], 'there is still no window to show');
         $this->assertTrue($this->open($alpha, $person)->outside_schedule);
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-out')->assertOk();
 
         Carbon::setTestNow(Carbon::parse('2026-09-08 23:30:00', 'UTC')); // Tuesday 18:30 local, after 17:00
         $block = $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
-        $this->assertNull($block['scheduled_end_at']);
+        $this->assertSame('2026-09-09T15:30:00Z', $block['scheduled_end_at']);
         $shift = $this->open($alpha, $person);
-        $this->assertFalse($shift->outside_schedule);
-        $this->assertNull($shift->scheduled_end_at);
+        $this->assertFalse($shift->outside_schedule, 'working late is not working outside the schedule');
+        $this->assertNotNull($shift->scheduled_end_at);
     }
 
     public function test_a_person_closes_with_ended_by_person(): void

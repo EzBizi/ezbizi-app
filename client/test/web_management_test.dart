@@ -241,6 +241,31 @@ void main() {
     expect(find.text('Social links'), findsOneWidget);
     expect(find.text('Pages'), findsOneWidget);
     expect(find.text('Posts'), findsOneWidget);
+
+    /*
+     * Cities, beside Pages, since 2026-09-18. It is a PANE and not a tab on
+     * purpose: it mints no permission, because a key per pane produces a roles
+     * editor nobody can read.
+     */
+    expect(find.text('Cities'), findsOneWidget);
+  });
+
+  /// Cities in the strip reaches the Cities pane and not the Pages one.
+  ///
+  /// The two panes read different endpoints and the same page must never come
+  /// back from both, so the wiring is worth a line here even though the pane's
+  /// own behaviour is pinned in `web_cities_test.dart`. Asserted through the
+  /// pane's empty state, which only the cities endpoint can produce.
+  testWidgets('the Cities section opens the Cities pane', (tester) async {
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+
+    await tester.tap(find.text('Cities'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('publishes nothing about a city'),
+      findsOneWidget,
+    );
   });
 
   /// SEO has sections now, and General is the one that exists.
@@ -592,6 +617,11 @@ Future<http.Response> Function(http.Request) _respond(
           {'key': 'social', 'label': 'Social links'},
         ],
       };
+    } else if (RegExp(r'^/api/v1/web/sites/[^/]+/cities$').hasMatch(path)) {
+      // Its own endpoint, so that a page cannot be answered by both this and
+      // the pages list. Empty here — the pane's own behaviour is pinned in
+      // `web_cities_test.dart`; this fixture only has to let it mount.
+      body = {'cities': const <Object?>[]};
     } else if (RegExp(r'^/api/v1/web/sites/[^/]+/values$').hasMatch(path)) {
       body = {
         'data': {

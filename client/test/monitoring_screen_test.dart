@@ -5,7 +5,7 @@ import 'package:ezbizi_client/core/module_screens.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
-import 'package:ezbizi_client/screens/monitoring/general_tab.dart';
+import 'package:ezbizi_client/screens/monitoring/ownership_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/screens/monitoring/pc_specs_tab.dart';
 import 'package:flutter/material.dart';
@@ -227,25 +227,45 @@ void main() {
 
   testWidgets(
     'the sub-tab strip shows PC Specs active, and Camera Monitoring plus '
-    'Desktop Monitoring locked as soon — neither grant is in the default '
-    'fixture',
+    'Desktop Monitoring LOCKED — neither grant is in the default fixture',
     (tester) async {
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
 
       expect(find.text('PC Specs'), findsOneWidget);
       expect(find.text('Camera Monitoring'), findsOneWidget);
       expect(find.text('Desktop Monitoring'), findsOneWidget);
-      expect(find.text('Soon'), findsNWidgets(2));
+      // Named and locked, never "Soon": both of those tabs shipped long ago,
+      // and the only reason they do not open is the reader's role. Telling
+      // somebody a built feature is coming sends them to wait instead of to
+      // the person who can tick the box.
+      expect(find.text('Soon'), findsNothing);
+
+      // FOUR locked: General, Map, Camera and Desktop. The default fixture
+      // holds `monitoring.view` and `monitoring.specs.view` and nothing else,
+      // and both General and Map mint their own keys. In production nobody
+      // meets this state — the two backfill migrations hand those keys to
+      // every role that already held what they replaced. This fixture is what
+      // those migrations exist to prevent, written down.
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
     },
   );
 
   testWidgets(
-    'the General sub-tab is present, first in the strip, and selectable on '
-    'the module grant — a viewer with monitoring.view can open it',
+    'the General sub-tab is first in the strip and opens the ownership chart '
+    'on its OWN grant — monitoring.general.view',
     (tester) async {
-      // The default fixture holds monitoring.view (the module grant), so the
-      // General chip is live rather than the locked "Soon" fallback.
-      await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
+      // General MINTED its own key when tabs were declared, so the module
+      // grant alone no longer opens it — the backfill migration is what keeps
+      // every role that had it.
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        permissions: [
+          'monitoring.view',
+          'monitoring.specs.view',
+          'monitoring.general.view',
+        ],
+      );
 
       expect(find.text('General'), findsOneWidget);
 
@@ -265,19 +285,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(GeneralTab.noPlansNote),
+        find.text(OwnershipTab.emptyNote),
         findsOneWidget,
-        reason: 'A viewer with monitoring.view switched to General and should '
-            'see the real tab (its empty state), proving the chip is gated on '
-            'the module grant they hold, not locked behind "Soon".',
+        reason: 'A viewer holding monitoring.general.view switched to General '
+            'and should see the ownership chart (its empty state). The floor '
+            'plan moved to Map on 2026-09-22, so finding the map here would '
+            'mean the two panes are the wrong way round.',
       );
-      expect(find.text(GeneralTab.noPermissionNote), findsNothing);
     },
   );
 
   testWidgets(
     'with monitoring.cameras.view granted, the Camera Monitoring sub-tab is '
-    'selectable and no longer locked behind "Soon"',
+    'selectable and no longer locked',
     (tester) async {
       await _pumpScreen(
         tester,
@@ -290,9 +310,9 @@ void main() {
       );
 
       expect(find.text('Camera Monitoring'), findsOneWidget);
-      // Only Desktop Monitoring remains locked — its own grant is still
+      // Desktop stays locked, and so do General and Map — all three keys are
       // absent from this fixture.
-      expect(find.text('Soon'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
 
       await tester.tap(find.text('Camera Monitoring'));
       await tester.pumpAndSettle();
@@ -850,9 +870,14 @@ Future<void> _pumpScreen(
         return _json({'data': live});
       }
 
-      // The General sub-tab lists floor plans on open — stubbed empty so the
-      // one test that switches to it lands on the honest empty state rather
-      // than an error.
+      // General is the ownership chart since 2026-09-22 and loads on open.
+      if (path.endsWith('/monitoring/ownership')) {
+        return _json({'data': <Map<String, dynamic>>[]});
+      }
+
+      // The MAP sub-tab lists floor plans on open — stubbed empty so the one
+      // test that switches to it lands on the honest empty state rather than
+      // an error.
       if (path.endsWith('/monitoring/floor-plans')) {
         return _json({'data': <Map<String, dynamic>>[]});
       }

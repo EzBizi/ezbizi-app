@@ -458,6 +458,61 @@ void main() {
     expect(_lastListQuery.containsKey('source'), isFalse);
   });
 
+
+  testWidgets('Messenger and Instagram are reachable sources', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const [
+        'leads.view',
+        'leads.local_services.view',
+        'leads.thumbtack.view',
+        'leads.website_chat.view',
+        'leads.website_form.view',
+        'leads.facebook.view',
+        'leads.instagram.view',
+      ],
+    );
+
+    // Jose, 2026-09-22: Facebook and Instagram messages belong in Leads rather
+    // than in an inbox of their own. Each is its OWN chip: they arrive in one
+    // webhook envelope and are told apart only by Meta's `object`, so a single
+    // "social" chip would put one of them somewhere nobody can reach.
+    for (final word in ['Messenger', 'Instagram']) {
+      expect(
+        find.widgetWithText(ChoiceChip, word),
+        findsOneWidget,
+        reason:
+            '$word has no chip, so that source can only be reached by '
+            'scrolling the whole list.',
+      );
+    }
+
+    // And the four that were already there still are - a list built by index
+    // from two const lists is exactly where an insertion goes wrong silently.
+    for (final word in ['Google', 'Thumbtack', 'Chat', 'Forms']) {
+      expect(find.widgetWithText(ChoiceChip, word), findsOneWidget);
+    }
+  });
+
+  testWidgets('picking Messenger asks the API for that source', (tester) async {
+    await _pump(
+      tester,
+      leads: const [],
+      connections: const [],
+      permissions: const ['leads.view', 'leads.facebook.view'],
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Messenger'));
+    await tester.pumpAndSettle();
+
+    // The chip label and the API value are different strings, and the mapping
+    // between them lives in one list. Asserting the drawn label alone would
+    // pass with the wrong source wired behind it.
+    expect(_lastListQuery['source'], 'facebook');
+  });
+
   // ── one list across every source (sources layout 1 / 4) ─────────
 
   testWidgets('one list under a source strip: All first, and every source '

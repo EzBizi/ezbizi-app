@@ -217,10 +217,7 @@ class PhoneCallService extends ChangeNotifier {
   /// Takes the connection rather than finding it, because the shell already
   /// knows whether this person has phone access and the service should not
   /// grow a second opinion about that.
-  Future<void> start(
-    ApiClient api, {
-    VoiceDevice? device,
-  }) async {
+  Future<void> start(ApiClient api, {VoiceDevice? device}) async {
     if (_started || _starting) return;
     _starting = true;
 
@@ -309,6 +306,69 @@ class PhoneCallService extends ChangeNotifier {
     if (value.isEmpty) return;
 
     await device.setup(value);
+
+    // STILL THE LIVE DESK. A renewal is several awaits long, and somebody can
+    // sign out inside it — `stop()` cancels the pending timer, and without
+    // this check the request already in flight would schedule a fresh one
+    // afterwards, for a session that no longer exists. Found by four tests
+    // ending with a pending timer, which is the same fact wearing a test
+    // harness.
+    if (_api == null || _device != device) return;
+
+    _scheduleRenewal(token.body['expires_in']);
+  }
+
+  /// The next renewal, on the clock, because two platforms get no event.
+  Timer? _renewal;
+
+  /// Ask again before this token dies, whatever the platform tells us.
+  ///
+  /// ── Why a clock and not only an event ───────────────────────────
+  ///
+  /// The browser and the WebView are told by their SDK that a token is about
+  /// to expire, and [VoiceDevice.onTokenExpiring] carries that. A HANDSET is
+  /// not: Android's `twilio_voice` plugin surfaces `tokenWillExpire` in its
+  /// web half only, and its Kotlin has no expiry callback at all — reported by
+  /// the Android session on 2026-09-17, with the greps.
+  ///
+  /// So the field was assigned on every platform and fired on two, which is
+  /// worse than missing it: the assignment made the wiring look complete
+  /// everywhere. On a phone the renewal has to be predicted rather than
+  /// awaited, and a clock is the only instrument available.
+  ///
+  /// ── Why the SERVER says how long ────────────────────────────────
+  ///
+  /// `expires_in` comes back with the token. A hard-coded hour here would be a
+  /// second copy of a number that lives in `TwilioGateway::TOKEN_TTL_SECONDS`,
+  /// and the day somebody shortens that, this would keep renewing too late
+  /// and every handset would go quiet again with nothing failing.
+  ///
+  /// ── Why five minutes early, and a floor ─────────────────────────
+  ///
+  /// Renewing at the moment of expiry is renewing after it, once a round trip
+  /// and a registration are counted. Five minutes is enough for both and short
+  /// enough that the token is nearly all used. The floor stops an absurd or
+  /// missing value from producing a timer that fires continuously — a
+  /// renewal storm re-registers the device over and over, which would take the
+  /// phone down rather than keep it up.
+  void _scheduleRenewal(Object? expiresIn) {
+    _renewal?.cancel();
+
+    final seconds = switch (expiresIn) {
+      int value => value,
+      String value => int.tryParse(value) ?? 0,
+      _ => 0,
+    };
+
+    // Nothing usable said. Better to leave the desk on the event, where there
+    // is one, than to invent a cadence from a value the server did not send.
+    if (seconds <= 0) return;
+
+    final ahead = seconds - 300;
+    _renewal = Timer(
+      Duration(seconds: ahead < 60 ? 60 : ahead),
+      () => unawaited(_renewToken()),
+    );
   }
 
   /// A renewal fell due while somebody was talking, and is still owed.
@@ -576,6 +636,11 @@ class PhoneCallService extends ChangeNotifier {
 
   /// Somebody signed out. The next person is not this person.
   void stop() {
+    // Before anything else: a renewal that fires after sign-out would mint a
+    // token for the person who just left.
+    _renewal?.cancel();
+    _renewal = null;
+
     _device?.onIncoming = null;
     _device?.onRegistrationChanged = null;
     _device?.dispose();

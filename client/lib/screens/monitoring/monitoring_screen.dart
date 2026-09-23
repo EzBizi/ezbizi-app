@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
-import '../../widgets/tag.dart';
 import 'camera_monitoring_tab.dart';
 import 'desktop_monitoring_tab.dart';
 import 'general_tab.dart';
+import 'ownership_tab.dart';
 import 'pc_specs_tab.dart';
 
 /// Monitoring — a sub-tab strip (spec §"Sub-project 1") holding PC Specs,
@@ -50,20 +50,39 @@ class MonitoringScreen extends StatefulWidget {
   State<MonitoringScreen> createState() => _MonitoringScreenState();
 }
 
-enum _SubTab { general, pcSpecs, desktopMonitoring, cameraMonitoring }
+enum _SubTab { general, map, pcSpecs, desktopMonitoring, cameraMonitoring }
 
 class _MonitoringScreenState extends State<MonitoringScreen> {
-  _SubTab _active = _SubTab.pcSpecs;
+  /// Opens on General — the ownership chart — rather than PC Specs.
+  ///
+  /// Jose, 2026-09-22: "When opening the monitoring tab it opens on PC Specs,
+  /// it should open on General." The chart is the whole office in one table,
+  /// which is the question the module gets asked first; PC Specs answers a
+  /// narrower one about machines.
+  ///
+  /// `_body` still falls through to PC Specs, so a viewer without the General
+  /// tab lands somewhere real rather than on a blank pane.
+  _SubTab _active = _SubTab.general;
 
   @override
   Widget build(BuildContext context) {
-    // The General tab (floor-plan map) rides on the module's own
-    // `monitoring.view` — the same grant that gates reaching this screen at
-    // all — so every viewer here can open it. It is gated anyway, as the same
-    // defence-in-depth the other chips use; the locked fallback is only ever
-    // reached when this screen is built for somebody the module was not meant
-    // to show, and GeneralTab carries its own copy of the check too.
-    final canViewGeneral = widget.session.me?.can('monitoring.view') ?? false;
+    // Each chip is its own grant now (TabDefinition, 2026-09-17). Absent
+    // `/me` answers NO rather than yes, for every one of them.
+    //
+    // `monitoring.general.view` is the one key this module MINTED — the
+    // floor-plan map rode on plain `monitoring.view` until today, so every
+    // role that held that keeps the map by backfill
+    // (2026_09_17_213000). The other three name grants this module already
+    // had, which is why none of them is backfilled: they were never part of
+    // `monitoring.view` to restore.
+    //
+    // PC Specs is NOT filtered here, and deliberately. Its action is the
+    // module's own `view`, so anybody who can reach this screen can open it —
+    // which is also what keeps this strip from ever being empty, and `_body`
+    // from ever falling through to a pane nobody may see.
+    final canViewGeneral =
+        widget.session.me?.can('monitoring.general.view') ?? false;
+    final canViewMap = widget.session.me?.can('monitoring.map.view') ?? false;
     final canViewScreenshots =
         widget.session.me?.can('monitoring.screenshots.view') ?? false;
     final canViewCameras =
@@ -88,11 +107,15 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                         setState(() => _active = _SubTab.general),
                   )
                 else
-                  const ChoiceChip(
-                    label: _SoonLabel('General'),
-                    selected: false,
-                    onSelected: null,
-                  ),
+                  const _LockedChip('General'),
+                if (canViewMap)
+                  ChoiceChip(
+                    label: const Text('Map'),
+                    selected: _active == _SubTab.map,
+                    onSelected: (_) => setState(() => _active = _SubTab.map),
+                  )
+                else
+                  const _LockedChip('Map'),
                 ChoiceChip(
                   label: const Text('PC Specs'),
                   selected: _active == _SubTab.pcSpecs,
@@ -106,11 +129,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                         setState(() => _active = _SubTab.cameraMonitoring),
                   )
                 else
-                  const ChoiceChip(
-                    label: _SoonLabel('Camera Monitoring'),
-                    selected: false,
-                    onSelected: null,
-                  ),
+                  const _LockedChip('Camera Monitoring'),
                 if (canViewScreenshots)
                   ChoiceChip(
                     label: const Text('Desktop Monitoring'),
@@ -119,18 +138,19 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
                         setState(() => _active = _SubTab.desktopMonitoring),
                   )
                 else
-                  const ChoiceChip(
-                    label: _SoonLabel('Desktop Monitoring'),
-                    selected: false,
-                    onSelected: null,
-                  ),
+                  const _LockedChip('Desktop Monitoring'),
               ],
             ),
           ),
         ),
         const Divider(height: 1),
         Expanded(
-          child: _body(canViewGeneral, canViewScreenshots, canViewCameras),
+          child: _body(
+            canViewGeneral,
+            canViewMap,
+            canViewScreenshots,
+            canViewCameras,
+          ),
         ),
       ],
     );
@@ -138,11 +158,16 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
 
   Widget _body(
     bool canViewGeneral,
+    bool canViewMap,
     bool canViewScreenshots,
     bool canViewCameras,
   ) {
     if (_active == _SubTab.general && canViewGeneral) {
-      // The General map's person summary offers a jump to Desktop Monitoring.
+      return OwnershipTab(api: widget.api, session: widget.session);
+    }
+
+    if (_active == _SubTab.map && canViewMap) {
+      // The Map's person summary offers a jump to Desktop Monitoring.
       // The sub-tab is not a route, so nothing below this screen can switch
       // it — the switch is handed down as a callback. It is handed down ONLY
       // with `monitoring.screenshots.view`: without it the Desktop Monitoring
@@ -169,26 +194,53 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
   }
 }
 
-/// A disabled chip's label: a name that can be squeezed, and the "Soon" pill
-/// that cannot.
+/// A tab this person is not granted.
 ///
-/// `Wrap` (this strip's parent) hands each chip a BOUNDED max width — three
-/// chips at 375px is tighter than "Desktop Monitoring" plus the pill's
-/// natural width, and a bare `Text` there overflowed the chip's own RenderFlex
-/// by 13 pixels. `Flexible` is what lets the name give way instead.
-class _SoonLabel extends StatelessWidget {
-  const _SoonLabel(this.name);
+/// ── Why it no longer says "Soon" ─────────────────────────────────
+///
+/// It used to carry a `Soon` pill, borrowed from ComingSoonScreen, and that
+/// was a false sentence even before tabs became grantable: Camera Monitoring
+/// and Desktop Monitoring both shipped long ago, and the only reason this chip
+/// is locked is that the reader's role does not hold the grant. Telling
+/// somebody a built feature is coming soon sends them to wait for something
+/// that already exists instead of to the person who can tick the box.
+///
+/// The chip STAYS rather than being filtered out, which is the opposite of
+/// what most of the sweep did. Monitoring's tabs are few and named after
+/// things people ask for by name — "can I see the cameras" — so showing the
+/// name and refusing it beats a strip that silently varies by role, where
+/// somebody comparing screens with a colleague cannot tell a missing
+/// permission from a missing feature.
+///
+/// `Wrap` (this strip's parent) hands each chip a BOUNDED max width, and three
+/// chips at 375px is tighter than "Desktop Monitoring" — a bare `Text` here
+/// overflowed the chip's own RenderFlex by 13 pixels, so the name must be able
+/// to give way.
+class _LockedChip extends StatelessWidget {
+  const _LockedChip(this.name);
 
   final String name;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
-        const Tag('Soon'),
-      ],
+    return Tooltip(
+      message: 'Your role does not include this tab.',
+      child: ChoiceChip(
+        label: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(name, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.lock_outline,
+              size: 14,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+        selected: false,
+        onSelected: null,
+      ),
     );
   }
 }

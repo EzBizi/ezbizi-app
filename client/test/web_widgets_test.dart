@@ -25,6 +25,16 @@ void main() {
     bool twoSites = false,
     Map<String, Object?> preferences = const {},
     Map<String, Object?>? saved,
+    Map<String, Object?> chat = const {},
+    List<Map<String, dynamic>>? sent,
+    Size size = const Size(1280, 2400),
+    // Which widget card to open before the test looks at anything.
+    //
+    // The screen is a grid of cards now (Jose, 2026-09-23), so one
+    // widget's fields are a tap away rather than all six being present at
+    // once. A test that asserts on a field now says which widget it
+    // belongs to — information the old flat column let it leave out.
+    String? open,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -88,6 +98,9 @@ void main() {
         };
       } else if (path == '/api/v1/web/sites/site-1/widgets' ||
           path == '/api/v1/web/sites/site-2/widgets') {
+        if (request.method == 'PUT') {
+          sent?.add(jsonDecode(request.body) as Map<String, dynamic>);
+        }
         body = {
           'own': own,
           'config': {
@@ -105,6 +118,10 @@ void main() {
               'contact_label': 'Phone or email',
               'message_label': 'How can we help?',
               'start': 'Start chat',
+              // The server always sends both, empty meaning always on.
+              'hours': const <Object?>[],
+              'timezone': '',
+              ...chat,
             },
             'form': {
               'enabled': true,
@@ -114,6 +131,35 @@ void main() {
                 {'label': 'Name', 'type': 'text', 'required': true},
                 {'label': 'What needs doing?', 'type': 'textarea'},
               ],
+            },
+            // Exactly what WidgetPresets::resolve() guarantees: four widgets,
+            // each with a `default`, whatever is stored. A fixture with fewer
+            // would let the screen invent the missing ones and agree with
+            // itself about values the server never sent.
+            'presets': const {
+              'social_links': {
+                'default': {
+                  'style': 'plain',
+                  'shape': 'circle',
+                  'size': 28,
+                  'gap': 10,
+                  'labels': false,
+                },
+              },
+              'city_list': {
+                'default': {
+                  'layout': 'columns',
+                  'columns': 3,
+                  'group': true,
+                  'link': true,
+                },
+              },
+              'hours_table': {
+                'default': {'today': true, 'compact': false},
+              },
+              'google_map': {
+                'default': {'height': 320, 'zoom': 14},
+              },
             },
             'style': style ??
                 const {
@@ -156,7 +202,7 @@ void main() {
 
     await tester.runAsync(() => session.adopt('tok'));
 
-    tester.view.physicalSize = const Size(1280, 2400);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
@@ -165,20 +211,261 @@ void main() {
       home: Scaffold(body: WidgetsTab(api: api, session: session)),
     ));
     await tester.pumpAndSettle();
+ 
+    if (open != null) {
+      await tester.tap(find.text(open));
+      await tester.pumpAndSettle();
+    }
   }
+
+  /// ── The cards ────────────────────────────────────────────────────
+  ///
+  /// Jose, 2026-09-23: *"i'd like to see each widget as a card, so i can click
+  /// on them and focus on it, and so i dont see all the previews at once on
+  /// the right side ... each widget should have a preview, right now only live
+  /// chat and contact form do"*.
+  testWidgets('every widget is a card, and nothing is open yet', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    for (final name in const [
+      'Live chat',
+      'Contact form',
+      'Social links',
+      'Towns served',
+      'Opening hours',
+      'Map',
+      'Look',
+    ]) {
+      expect(find.text(name), findsOneWidget, reason: '$name has no card.');
+    }
+
+    // Nothing is opened for you. The fields and the preview are both absent,
+    // which is the half of the ask about not seeing everything at once.
+    expect(find.widgetWithText(TextField, 'Talk to A-1'), findsNothing);
+    expect(find.text('Preview'), findsNothing);
+  });
+
+  /// A grid that answered "which widgets are there" and not "what are they set
+  /// to" would put that second answer one click further away than the long
+  /// column it replaces.
+  testWidgets('each card says what its widget is set to', (tester) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    expect(find.text('On, at all hours'), findsOneWidget);
+    expect(find.text('2 questions'), findsOneWidget);
+    expect(find.textContaining('#aa0000'), findsOneWidget);
+    expect(find.text('Default look'), findsNWidgets(4));
+  });
+
+  /// One pump per test on purpose.
+  ///
+  /// Pumping a second MaterialApp into the same test reuses the element tree,
+  /// so `WidgetsTab`'s State survives and never re-loads — the second
+  /// fixture is fetched and the first one is what you assert against. It reads
+  /// as the screen ignoring the config.
+  testWidgets('a chat that is off says so on its card', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      chat: const {'enabled': false},
+    );
+
+    expect(find.text('Not on this website'), findsOneWidget);
+  });
+
+  testWidgets('a chat on a schedule says so on its card', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('On, during set hours'), findsOneWidget);
+  });
+
+  /// Jose, 2026-09-23: *"The cards should be uniform, same sizes"*.
+  ///
+  /// They were 260 wide and as tall as whatever they held. `Wrap` does not
+  /// stretch its children, and the blurbs run to one line or two — "Where the
+  /// business is." against "The bubble a visitor opens to start a
+  /// conversation." — so the row came out ragged along the bottom.
+  ///
+  /// Measured rather than asserted by eye: every card's rendered size, all
+  /// seven compared to the first. A test that only checked the tallest and the
+  /// shortest would pass for a grid that had gone uniform at the WRONG height
+  /// and started clipping.
+  testWidgets('every widget card is the same size', (tester) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    final labels = [
+      'Live chat',
+      'Contact form',
+      'Social links',
+      'Towns served',
+      'Opening hours',
+      'Map',
+      'Look',
+    ];
+
+    final sizes = [
+      for (final label in labels)
+        tester.getSize(
+          find.ancestor(of: find.text(label), matching: find.byType(Card)).first,
+        ),
+    ];
+
+    for (var i = 1; i < sizes.length; i++) {
+      expect(
+        sizes[i],
+        sizes.first,
+        reason: '${labels[i]} is ${sizes[i]} and Live chat is ${sizes.first}.',
+      );
+    }
+
+    // And the size is the one that FITS, not merely a shared one. The tallest
+    // content is a two-line blurb plus the status line; a uniform grid shorter
+    // than that would be uniform and clipped.
+    expect(sizes.first.height, greaterThan(100));
+  });
+
+  testWidgets('opening a card shows that widget and the way back', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    await tester.tap(find.text('Towns served'));
+    await tester.pumpAndSettle();
+
+    // Its own settings, and nobody else's.
+    expect(find.text('Arrangement'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Talk to A-1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to the widgets'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Live chat'), findsOneWidget);
+    expect(find.text('Arrangement'), findsNothing);
+  });
+
+  /// THE ONE THAT WOULD HAVE CAUGHT THE OLD SCREEN: four of the six widgets
+  /// had no preview at all, and the pane drew the other two together.
+  /// THE ONE THAT WOULD HAVE CAUGHT THE OLD SCREEN: four of the six widgets
+  /// had no preview at all, and the pane drew the other two together.
+  ///
+  /// One test per widget, because two pumps in one test reuse the State and
+  /// the second fixture never reaches the screen. Each asserts on something
+  /// only ITS preview draws, so a pane that fell back to an empty box fails
+  /// rather than passing on the heading alone.
+  testWidgets('the chat previews, and the form is not beside it', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Live chat');
+
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.text('Talk to A-1'), findsWidgets);
+    expect(find.text('Send it'), findsNothing);
+  });
+
+  testWidgets('social links previews its icons', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Social links');
+
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.byIcon(Icons.facebook), findsOneWidget);
+  });
+
+  testWidgets('towns served previews its towns', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Towns served');
+
+    expect(find.text('Springfield'), findsOneWidget);
+  });
+
+  testWidgets('opening hours previews the week', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Opening hours');
+
+    expect(find.text('8:00 AM – 5:00 PM'), findsWidgets);
+  });
+
+  testWidgets('the map previews at the zoom set', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Map');
+
+    expect(find.text('Zoom 14'), findsOneWidget);
+  });
+
+  testWidgets('look previews what every widget wears', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Look');
+
+    expect(find.text('A panel, in your colours'), findsOneWidget);
+  });
+
+  /// The preview follows the knobs, which is the only reason it is worth
+  /// drawing. Asserted on values the DEFAULT preset decides, so a preview that
+  /// ignored the stored preset would fail rather than pass on shape alone.
+  testWidgets('a rendered preview obeys its preset', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Social links',
+    );
+
+    // `labels: false` by default, so the network names are not drawn.
+    expect(find.text('Facebook'), findsNothing);
+  });
+
+  testWidgets('the towns preview groups them when the preset says to', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Towns served',
+    );
+
+    // `group: true` by default, so the counties head their towns.
+    expect(find.text('Hampden County'), findsOneWidget);
+  });
 
   testWidgets('the widget settings come from the server, not the shortcode', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
+  });
 
-    expect(find.widgetWithText(TextField, '#aa0000'), findsOneWidget);
+  /// Split from the chat's own test when the screen became cards: the three
+  /// values it used to assert together live under three different widgets now,
+  /// and one test that opened one card could only ever see one of them.
+  testWidgets('the form questions are editable rows, not a string', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Contact form',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
 
-    // The form's questions are editable rows, not a comma-separated string.
     expect(find.widgetWithText(TextField, 'What needs doing?'), findsOneWidget);
     expect(find.text('Add a question'), findsOneWidget);
+  });
+
+  testWidgets('the look settings come from the server too', (tester) async {
+    await pump(
+      tester,
+      open: 'Look',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.widgetWithText(TextField, '#aa0000'), findsOneWidget);
   });
 
   /// A branch site showing the primary's colours as if somebody had typed them
@@ -203,6 +490,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -228,6 +516,7 @@ void main() {
   testWidgets('a low-contrast pair still saves', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -238,6 +527,10 @@ void main() {
         'radius': 12,
       },
     );
+
+    // Save is lazily built at the bottom of the editor, and the sections below
+    // this one put it past the fold even on a tall test window.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
 
     final save = find.text('Save');
     expect(save, findsOneWidget);
@@ -255,6 +548,7 @@ void main() {
   testWidgets('three-digit hex is checked, not skipped', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ff0',
@@ -273,6 +567,7 @@ void main() {
   testWidgets('a half-typed colour is not a finding', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#0b5c',
@@ -292,11 +587,18 @@ void main() {
   testWidgets('a site dressing itself can go back to following', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       own: true,
     );
 
     expect(find.textContaining('Following the primary website'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.text('Follow the primary again'),
+      300,
+      scrollable: _editor,
+    );
 
     expect(find.text('Follow the primary again'), findsOneWidget);
   });
@@ -309,6 +611,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: null,
     );
@@ -320,6 +623,7 @@ void main() {
   testWidgets('and names the brand colour when there is one', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: '#7b2d8e',
     );
@@ -339,6 +643,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -353,10 +658,16 @@ void main() {
     // The pair it starts on is one the screen complains about.
     expect(find.textContaining('1.1:1'), findsOneWidget);
 
-    final swatch = find.byTooltip('#00838f');
-    await tester.scrollUntilVisible(swatch, 200,
-        scrollable: find.byType(Scrollable).last);
-    await tester.tap(swatch);
+    // Scrolled to the FIELD rather than to the swatch, because ensureVisible
+    // parks its target against the leading edge — aiming at the swatch puts
+    // the two boxes this test reads above the top of the pane, where a finder
+    // cannot see them.
+    await tester.scrollUntilVisible(
+      find.text('Accent colour (#rrggbb)'),
+      200,
+      scrollable: _editor,
+    );
+    await tester.tap(find.byTooltip('#00838f'));
     await tester.pumpAndSettle();
 
     // Both halves moved: the accent AND the text that has to be legible on it.
@@ -368,7 +679,9 @@ void main() {
   });
 
   testWidgets('a viewer is offered no presets to pick', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Look', permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.byTooltip('#00838f'), findsNothing);
   });
@@ -378,28 +691,43 @@ void main() {
   testWidgets('the preview shows the wording and questions being edited', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // TWO of each is the assertion: the box somebody types in, and the preview
     // drawing the same value. One would mean the preview never rendered it.
     expect(find.text('Talk to A-1'), findsNWidgets(2));
     expect(find.text('We answer fast.'), findsNWidgets(2));
     expect(find.text('Chat'), findsNWidgets(2));
-    expect(find.text('Send it'), findsNWidgets(2));
 
-    // The form section sits below the preview's own fold, and a ListView does
-    // not build what it has not scrolled to — so reach it rather than assert
-    // from where it cannot be seen.
-    // Dragged rather than scrollUntilVisible: every heading in the preview also
-    // appears in the editor beside it, so there is no unique target to scroll
-    // TO — and a finder that matches both panes cannot say which one moved.
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -420));
-    await tester.pumpAndSettle();
+    // 'Send it' is the FORM's button and is no longer here, which is the whole
+    // point of the change: the pane previews the widget that is open and not
+    // the one beside it.
+    expect(find.text('Send it'), findsNothing);
+  });
+
+  /// The other half of the old combined test, under its own card.
+  testWidgets('the form preview draws the questions being edited', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Contact form',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
+
+    // TWO of each: the box somebody types in, and the preview drawing the same
+    // value. One would mean the preview never rendered it.
+    expect(find.text('Send it'), findsNWidgets(2));
 
     // 'Name *' rather than 'Name': the preview marks a required question the
     // way the visitor's form does, which is part of what is being previewed.
     expect(find.text('Name *'), findsOneWidget);
     expect(find.textContaining('What needs doing?'), findsWidgets);
+
+    // And the chat is not here.
+    expect(find.text('Talk to A-1'), findsNothing);
   });
 
   /// The preview shows what a visitor meets FIRST, which is the three
@@ -411,7 +739,9 @@ void main() {
   /// The preview is where he checks that wording, so it has to be the step
   /// the wording belongs to.
   testWidgets('the preview asks before it chats', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // The editable copy, drawn as the visitor will meet it.
     expect(find.textContaining('Quick details first'), findsWidgets);
@@ -432,14 +762,193 @@ void main() {
   /// it used to tap the switch and assert the preview said "off on your site".
   /// Every site had both switched off, so every site showed nothing, and the
   /// only notice of that was a grey phrase in a preview that reads as styling.
-  testWidgets('nothing offers to switch a widget off', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+  /// ── Chat hours ───────────────────────────────────────────────────
+  ///
+  /// Jose, 2026-09-17: the bubble should be on the website during working
+  /// hours and gone outside them, "cause if no one is there to answer it's
+  /// bad". What this side has to get right is the SHAPE that reaches the
+  /// server — the browser on the customer's site reads it and hides the bubble,
+  /// and it fails open on anything it cannot read.
+  testWidgets('a site with no chat hours says the chat is always on', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit']);
+
+    expect(find.textContaining('on every page, at every hour'), findsOneWidget);
+    expect(find.text('Set chat hours'), findsOneWidget);
+
+    // No grid until somebody asks for one: seven rows of times nobody has
+    // chosen would read as a schedule that is already in force.
+    expect(find.text('Mon'), findsNothing);
+  });
+
+  /// Both keys or neither, and this is the assertion that catches the half.
+  ///
+  /// The server drops a schedule with no zone and a zone with no schedule, so a
+  /// screen that set them one at a time would produce a save that silently
+  /// discarded what was just typed — green everywhere, nothing gated.
+  testWidgets('setting hours sends a week AND a zone', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+    );
+
+    await tester.tap(find.text('Set chat hours'));
+    await tester.pumpAndSettle();
+
+    // Save is lazily built at the bottom of the editor, so an unscrolled tap
+    // finds no element at all. See `_editor` for why the pane is named by its
+    // key rather than by a heading inside it.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+    final hours = chat['hours'] as List;
+
+    expect(hours, hasLength(7));
+    expect(chat['timezone'], isNotEmpty);
+
+    // Padded to two digits. The browser's own check wants `08:00` and reads
+    // `8:00` as unparseable — which fails open and leaves the bubble up all
+    // night, the exact thing this feature exists to stop.
+    expect((hours.first as Map)['open'], '08:00');
+    expect((hours.first as Map)['close'], '17:00');
+    expect((hours.first as Map)['closed'], isFalse);
+
+    // A guess somebody can correct in two clicks: weekdays on, weekend off.
+    expect((hours.last as Map)['closed'], isTrue);
+  });
+
+  testWidgets('an existing schedule is drawn as a week with its zone', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 5; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+          {'closed': true, 'open': '00:00', 'close': '00:00'},
+          {'closed': true, 'open': '00:00', 'close': '00:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('Mon'), findsOneWidget);
+    expect(find.text('Sun'), findsOneWidget);
+    expect(find.text('8:00 AM'), findsWidgets);
+    expect(find.text('5:00 PM'), findsWidgets);
+    expect(find.text('No chat this day'), findsNWidgets(2));
+
+    // The zone is shown as a place rather than as an identifier, because
+    // "America/New_York" is not how anybody describes where their office is.
+    expect(find.textContaining('Eastern'), findsOneWidget);
+  });
+
+  /// Clearing IS the always-on setting, and it must clear BOTH.
+  ///
+  /// A zone left behind with no schedule gates nothing and would sit in the
+  /// config looking like a setting that had stopped working.
+  testWidgets('showing at all hours clears the week and the zone', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    await tester.tap(find.text('Show at all hours'));
+    await tester.pumpAndSettle();
+
+    // Save is lazily built at the bottom of the editor, so an unscrolled tap
+    // finds no element at all. See `_editor` for why the pane is named by its
+    // key rather than by a heading inside it.
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+
+    expect(chat['hours'], isEmpty);
+    expect(chat['timezone'], '');
+  });
+
+  testWidgets('a viewer is shown the hours and cannot change them', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('Mon'), findsOneWidget);
+    expect(find.text('Show at all hours'), findsNothing);
+
+    final box = tester.widget<Checkbox>(find.byType(Checkbox).first);
+    expect(box.onChanged, isNull);
+  });
+
+  /// ── The chat's switch, and the form's absent one ─────────────────
+  ///
+  /// Mia, 2026-09-18: "i also want to have a toggle to turn it on or off, on
+  /// being the default, (by turning it off, it basically disappears on the
+  /// website, effectively disabling the chat)".
+  ///
+  /// This is the older "nothing offers to switch a widget off" test, narrowed
+  /// rather than deleted. Both switches were removed on 2026-09-15 because
+  /// every site had both off and so every site showed nothing; the chat's came
+  /// back with a default of `true`, which cannot produce that state. The form
+  /// still has none, and `WidgetDefaults::chat()` says why: the chat injects
+  /// itself into every page's footer, so a switch is the only way off, while
+  /// the form appears where somebody placed a shortcode.
+  testWidgets('only the chat can be switched off, and the form cannot', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Preview'), findsOneWidget);
 
-    expect(find.byType(Switch), findsNothing);
-    expect(find.text('Show the chat bubble'), findsNothing);
+    expect(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+      findsOneWidget,
+    );
+
     expect(find.text('Show the contact form'), findsNothing);
+    expect(find.textContaining('form on this website'), findsNothing);
+
+    // The phrase the old preview used to carry. It read as styling, which is
+    // how a hundred switched-off sites went unnoticed.
     expect(find.text('off on your site'), findsNothing);
 
     // The control: the editor and the preview are both still drawn, so the
@@ -447,12 +956,350 @@ void main() {
     expect(find.text('Talk to A-1'), findsNWidgets(2));
   });
 
+  /// ON is the default, and that is the whole difference from the switches
+  /// that were removed. A site nobody has configured must arrive with a chat.
+  testWidgets('the chat switch is on for a site with no config of its own', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: false,
+    );
+
+    final control = tester.widget<SwitchListTile>(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+    );
+
+    expect(control.value, isTrue);
+    expect(control.onChanged, isNotNull);
+  });
+
+  /// Asserted on the REQUEST BODY, not on the switch.
+  ///
+  /// A switch that flips and never reaches `config.chat.enabled` looks
+  /// identical on screen to one that works, and the site keeps its chat.
+  testWidgets('switching the chat off sends chat.enabled false on save', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      sent: sent,
+    );
+
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Show the chat on this website'),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final chat = (sent.single['config'] as Map)['chat'] as Map;
+
+    expect(chat['enabled'], isFalse);
+
+    // The wording travels with it. The server stores the whole config through
+    // the sanitiser, so a payload that sent the flag alone would blank every
+    // other field on the chat.
+    expect(chat['title'], 'Talk to A-1');
+  });
+
+  /// Off means off on the WEBSITE, and still editable here.
+  ///
+  /// Somebody switches the chat off because the wording is wrong, fixes the
+  /// wording, and switches it back on. A section greyed out forces the
+  /// opposite order, with the unfinished wording live while they work.
+  testWidgets('an off chat leaves the preview but not the fields', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Live chat',
+      permissions: ['web_management.view', 'web_management.edit'],
+      chat: const {'enabled': false},
+    );
+
+    // ONE, not two: the box somebody types in, and no bubble beside it. Two
+    // would mean the preview is still drawing a chat this site does not have.
+    expect(find.text('Talk to A-1'), findsOneWidget);
+    expect(find.textContaining('nothing here for a visitor to open'),
+        findsOneWidget);
+
+    // Said in the editor as well, because the preview is a pane somebody can
+    // drag shut.
+    expect(find.textContaining('No visitor sees a bubble'), findsOneWidget);
+
+    final title = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Talk to A-1'),
+    );
+
+    expect(title.enabled, isTrue);
+  });
+
+  // ── Rendered widgets: presets ────────────────────────────────────
+
+  /// The name is the only argument a rendered shortcode takes, so the string
+  /// this screen prints is the string somebody pastes. If it disagreed with
+  /// the stored name by one character the page would quietly render the
+  /// default instead.
+  testWidgets('a named preset is added and wears its own shortcode', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_social_links preset="footer"]'), findsOneWidget);
+
+    // The default keeps the bare shortcode, which is what every page that has
+    // not asked for anything is already using.
+    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+
+    // Named on the widget it belongs to: "footer" means one thing to a row of
+    // icons and another to a list of towns, so the two do not share a name.
+    expect(find.text('[ezbizi_city_list preset="footer"]'), findsNothing);
+  });
+
+  /// `default` is what catches a typo — `preset="foter"` renders it rather
+  /// than rendering nothing into somebody's footer. Offering to delete it
+  /// would be offering to remove the safety net, and the server would put it
+  /// straight back.
+  testWidgets('the default preset offers no way to delete or rename it', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    for (final tooltip in const ['Delete this preset', 'Rename this preset']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('preset:social_links:default')),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsNothing,
+        reason: '"$tooltip" is offered on a preset the server will not drop.',
+      );
+
+      // The control: the named preset beside it has both, so the assertion
+      // above is about `default` rather than about buttons that never render.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('preset:social_links:footer')),
+          matching: find.byTooltip(tooltip),
+        ),
+        findsOneWidget,
+      );
+    }
+  });
+
+  /// `WidgetPresets::name` lowercases and STRIPS — "Footer Icons" is stored as
+  /// `footericons`, not `footer-icons`. A box that accepted the typed form
+  /// would print a shortcode nobody could paste: the page would ask for a
+  /// preset by a name the server never stored and get the default.
+  testWidgets('a name typed with capitals and spaces is normalised in the box',
+      (tester) async {
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'social_links');
+
+    final box = find.byKey(const ValueKey('preset-add:social_links'));
+
+    await tester.enterText(box, 'Footer Icons');
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<TextField>(box).controller?.text,
+      'footericons',
+      reason: 'The name changes on save rather than while it is being typed.',
+    );
+
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('[ezbizi_social_links preset="footericons"]'),
+      findsOneWidget,
+    );
+  });
+
+  /// A preset that is edited on a site following the primary makes that site
+  /// its own, exactly as every other field here does — one mechanism, not two.
+  testWidgets('a preset edited on a following site goes up with the config', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Social links',
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: false,
+      sent: sent,
+    );
+
+    expect(find.textContaining('Following the primary website'), findsOneWidget);
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'footer',
+    );
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final presets = (sent.single['config'] as Map)['presets'] as Map;
+    final social = presets['social_links'] as Map;
+
+    // The inherited default travelled with it. A payload carrying only the new
+    // name would hand this site a `default` it never chose.
+    expect(social.keys, containsAll(<String>['default', 'footer']));
+    expect((social['default'] as Map)['size'], 28);
+  });
+
+  /// Renaming is a dialog because it changes a KEY. Applied per keystroke it
+  /// would walk through `s`, `si`, `sid` as three differently named presets,
+  /// each advertising its own shortcode on the way past.
+  testWidgets('a named preset can be renamed and then deleted', (tester) async {
+    await pump(
+      tester,
+      // Opening hours, because that is the widget this test works on. Only
+      // the open widget's presets are on screen now.
+      open: 'Opening hours', permissions: ['web_management.view', 'web_management.edit']);
+
+    await _reachPresets(tester, 'hours_table');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:hours_table')),
+      'footer',
+    );
+    await tester.tap(_addPreset('hours_table'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsOneWidget);
+
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('preset:hours_table:footer')),
+      matching: find.byTooltip('Rename this preset'),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      'Side Bar',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsOneWidget);
+    expect(find.text('[ezbizi_hours_table preset="footer"]'), findsNothing);
+
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('preset:hours_table:sidebar')),
+      matching: find.byTooltip('Delete this preset'),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('[ezbizi_hours_table preset="sidebar"]'), findsNothing);
+
+    // The default outlives every named one, which is what makes a mistyped
+    // `preset=` render something rather than nothing.
+    expect(find.text('[ezbizi_hours_table]'), findsOneWidget);
+  });
+
+  testWidgets('a viewer is offered no way to add or delete a preset', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view']);
+
+    await _reachPresets(tester, 'social_links');
+
+    expect(find.byKey(const ValueKey('preset-add:social_links')), findsNothing);
+    expect(find.byTooltip('Delete this preset'), findsNothing);
+
+    // Still shown the shortcode: reading which one a page should use is not
+    // editing anything.
+    expect(find.text('[ezbizi_social_links]'), findsOneWidget);
+  });
+
+  /// Four widgets, each with a dropdown, a slider or two and a switch, is the
+  /// section most likely to run off the side of a phone.
+  testWidgets('the presets lay out at 375 without overflowing', (tester) async {
+    await pump(
+      tester,
+      open: 'Social links',
+      permissions: ['web_management.view', 'web_management.edit'],
+      size: const Size(375, 2400),
+    );
+
+    await _reachPresets(tester, 'social_links');
+
+    await tester.enterText(
+      find.byKey(const ValueKey('preset-add:social_links')),
+      'a-very-long-preset-name-indeed',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(_addPreset('social_links'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'A RenderFlex overflow here is the yellow-and-black bar on a '
+          'phone, and it takes the rest of the pane with it.',
+    );
+
+    expect(
+      find.text('[ezbizi_social_links preset="a-very-long-preset-name-indeed"]'),
+      findsOneWidget,
+    );
+  });
+
   /// The preview is what makes a colour mean something, so it has to follow the
   /// pick rather than the saved value.
   testWidgets('the preview follows a preset before anything is saved', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Look', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final swatch = find.byTooltip('#6a1b9a');
     await tester.scrollUntilVisible(swatch, 200,
@@ -472,7 +1319,9 @@ void main() {
 
   /// The 260 and the 360 were my guesses about somebody else's monitor.
   testWidgets('both panes can be dragged wider and narrower', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     double widthOf(Finder f) => tester.getSize(f).width;
 
@@ -511,7 +1360,9 @@ void main() {
   /// A pane dragged to nothing is not a smaller pane, it is a lost one, and the
   /// way back is a hairline somebody has to find.
   testWidgets('a pane cannot be dragged away entirely', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // Shove both handles far past any sane width.
     await tester.drag(
@@ -538,6 +1389,7 @@ void main() {
   testWidgets('a resized preview survives switching website', (tester) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       twoSites: true,
     );
@@ -556,6 +1408,22 @@ void main() {
     await tester.tap(find.text('nj.a-1chimney.com'));
     await tester.pumpAndSettle();
 
+    /*
+     * A different website opens on its own CARDS, not on whatever card was
+     * open for the last one — the editor is keyed by site id, so its state
+     * goes with the site. That is deliberate: "Live chat" on a-1chimney.com
+     * and on nj.a-1chimney.com are two different configurations, and landing
+     * straight in one of them after clicking a different host in the rail
+     * would make it easy to edit the site you were not looking at.
+     *
+     * The preference under test is the PREVIEW WIDTH, which lives on the tab
+     * rather than on the editor, so it has to survive that reset.
+     */
+    expect(find.text('Preview'), findsNothing);
+
+    await tester.tap(find.text('Live chat'));
+    await tester.pumpAndSettle();
+
     expect(tester.getSize(preview.first).width, resized);
   });
 
@@ -566,6 +1434,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       saved: saved,
     );
@@ -591,6 +1460,7 @@ void main() {
   testWidgets('a saved width is what the screen opens with', (tester) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {
         'web.widgets.list_width': 300,
@@ -613,6 +1483,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {'web.widgets.preview_width': 9999},
     );
@@ -626,7 +1497,9 @@ void main() {
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
     expect(find.text('Save'), findsNothing);
@@ -670,7 +1543,9 @@ void main() {
   /// Verified by putting the original shape back and watching it fail with
   /// "Focus left the question after one character."
   testWidgets('a question is driven by its own controller', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final questions = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',
@@ -717,7 +1592,9 @@ void main() {
   testWidgets('removing a question does not move its text into another', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final before = find
         .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
@@ -752,7 +1629,9 @@ void main() {
   /// the box? The helper shape is the one `structure_canvas_test` already uses
   /// for tab order.
   testWidgets('focus stays in the question being typed into', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final box = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',
@@ -773,6 +1652,51 @@ void main() {
     );
   });
 }
+
+/// The editor pane's own scrollable.
+///
+/// Named by the pane's key rather than by a heading inside it. The anchor used
+/// to be `find.text('Live chat')`, which worked only while the form was short
+/// enough that nothing had to scroll: a heading at the top of a ListView is
+/// disposed once the list moves past it, so the finder driving the scroll
+/// vanishes part-way through the scroll it is driving. `.last` is no better —
+/// this screen has three scrollables and which one is last is paint order
+/// rather than anything a test knows.
+/// `.first` because every TextField carries a Scrollable of its own for the
+/// text inside it, and the pane's own is the outermost of them.
+final Finder _editor = find
+    .descendant(
+      of: find.byKey(const ValueKey('widgets-editor')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
+
+/// Scroll down until one widget's presets are built.
+///
+/// The whole Rendered widgets section is a single child of the editor's
+/// ListView, so reaching any part of it builds all four cards — but a ListView
+/// builds nothing it has not scrolled near, and a finder cannot match what was
+/// never built.
+Future<void> _reachPresets(WidgetTester tester, String widget) =>
+    tester.scrollUntilVisible(
+      find.byKey(ValueKey('preset:$widget:default')),
+      300,
+      scrollable: _editor,
+    );
+
+/// The Add beside one widget's new-preset box.
+///
+/// Scoped to its own row: there is one of these per widget, so a bare
+/// `find.text('Add')` matches four buttons and taps whichever came first.
+Finder _addPreset(String widget) => find.descendant(
+      of: find
+          .ancestor(
+            of: find.byKey(ValueKey('preset-add:$widget')),
+            matching: find.byType(Row),
+          )
+          .first,
+      matching: find.text('Add'),
+    );
 
 /// What the box actually contains, read from its controller rather than from
 /// the widget tree's text — a stale render would otherwise pass.

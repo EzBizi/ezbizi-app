@@ -635,6 +635,55 @@ class CallsController extends Controller
      * filtering by the group would leave the list empty in the one case it is
      * for.
      */
+    /**
+     * GET /api/v1/phone/caller — who is this number, if we know them.
+     *
+     * ── Why the pop-up cannot use what it already has ───────────────
+     *
+     * The softphone learns a caller from the Voice SDK, which gives it a
+     * number and nothing else. Jose asked for the incoming pop-up to show a
+     * NAME when the caller is in the database and the number underneath it, so
+     * something has to turn one into the other — and the number is all the
+     * client holds.
+     *
+     * ── Why it is its own endpoint ──────────────────────────────────
+     *
+     * The pop-up is drawn by the app shell, on top of whatever module is open,
+     * and a shell that had to load the Communication screens to name a caller
+     * would be the tail wagging the dog. This asks one question and answers
+     * it.
+     *
+     * ── What it deliberately does not return ────────────────────────
+     *
+     * Nothing but a name and the id behind it. A ringing phone needs "who is
+     * this"; the address, the balance and the job history belong on the screen
+     * somebody opens afterwards, and a pop-up that carried them would be
+     * putting a customer record on screen for anybody who can hear a phone.
+     */
+    public function caller(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', PhoneCall::class);
+
+        $input = $request->validate([
+            'e164' => ['required', 'string', 'max:32'],
+        ]);
+
+        // Matched on the stored column as it stands, the same way call records
+        // resolve a customer — see customerIdsByPhone(). A looser match would
+        // find more people and would also find the WRONG people, and being
+        // told the wrong name on an incoming call is worse than being told
+        // none.
+        $customer = Customer::query()
+            ->where('phone', $input['e164'])
+            ->first(['id', 'name']);
+
+        return response()->json(['data' => [
+            'e164' => $input['e164'],
+            'name' => $customer?->name,
+            'customer_id' => $customer?->id,
+        ]]);
+    }
+
     public function ringing(Request $request): JsonResponse
     {
         $this->authorize('viewAny', PhoneCall::class);

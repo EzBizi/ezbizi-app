@@ -56,9 +56,22 @@ final class ValueResolver
          * phone number onto a branch's contact page because the URLs happen to
          * match would be a coincidence dressed up as a rule.
          */
+        $values = self::withComposedAddress(array_merge($base, $mine));
+        $week = HoursWeek::parse((string) ($values['hours'] ?? ''));
+
         return [
-            'values' => (object) self::withComposedAddress(array_merge($base, $mine)),
+            'values' => (object) $values,
             'pages' => (object) self::pageMaps($own),
+            /*
+             * The week apart, for `[ezbizi_hours_table]`, when the stored line
+             * is one the grid wrote. Absent otherwise — see `HoursWeek`.
+             *
+             * TOP LEVEL rather than inside `values`, which is not tidiness:
+             * every entry in `values` is a string that a shortcode casts and
+             * prints, and an array in there would reach `[ezbizi key="..."]`
+             * as "Array to string conversion" on a customer's page.
+             */
+            ...($week === null ? [] : ['hours_week' => $week]),
         ];
     }
 

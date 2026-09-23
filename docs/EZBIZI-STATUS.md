@@ -1,6 +1,6 @@
 # EzBizi — where things stand
 
-**2026-09-08.** One page. If something contradicts another document, this one is right —
+**2026-09-18.** One page. If something contradicts another document, this one is right —
 which only works if it is the newest, and on 6 August it was not: it claimed the off-site
 backup was still outstanding some three hours after `EZBIZI-TODO.md` recorded it closed.
 **Update this page in the same pass as the thing it describes, or delete the claim.** The four
@@ -17,17 +17,68 @@ rather than for trying harder.
 | Server panel | https://srv.ezbizi.com (Webmin) |
 | Stack | Laravel 13 · PHP 8.4 · MySQL 8 · Flutter web client |
 <!-- numbers:start -->
-| Tests | Last gated release `3a595a85`: **2,866 backend / 17,119 assertions; 1,276 client**. Subsequent API deployment `c6bb8e55` ran without gates. |
-| Client version | `v0.0.0152` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
-| Production data | **2 organization(s) · 7 companies · 18 franchises · 15 users · 14 customers · 25 jobs.** Counted 2026-09-08 against the live database by `scripts/status-numbers.sh`, not typed. |
-| Permissions in production | **102 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
+| Tests | Not measured by this deploy — it ran without gates. Run `scripts/release.sh --gates` for a current count. |
+| Client version | `v0.0.0239` — shown bottom-left in the app and on sign-in, so a stale cache is visible rather than guessed at. |
+| Production data | **2 organization(s) · 14 companies · 25 franchises · 25 users · 15 customers · 25 jobs.** Counted 2026-09-18 against the live database by `scripts/status-numbers.sh`, not typed. |
+| Permissions in production | **142 rows.** `ezbizi:sync-permissions` runs on every deploy, between the migration and the caches. |
 <!-- numbers:end -->
+
+## What is actually live, 2026-09-18
+
+Read off production rather than off this file, because this file had been wrong about it for
+ten days. The numbers block above says `0.0.0239`; here is the evidence behind that, and the
+one thing to distrust below.
+
+- **RESOLVED the same afternoon by cutting `0.0.0240` (`7ceefd9a`) through `release.sh`.**
+  Web, Windows, Android, macOS and iOS all built from one commit, the installer and
+  `windows.json` are published at `https://www.ezbizi.com/download/`, and the macOS and iOS
+  builds are delivered to App Store Connect (delivered is not accepted — TestFlight > Build
+  Uploads is the only thing that can say). The duplicate-build-number hazard below never
+  fired: neither `0.0.0239` artefact was uploaded. **The lesson survives the fix** — a deploy
+  is not a release, and an installed client is only offered an update when `client/VERSION`
+  moves, which only `release.sh` does. Jose found this the obvious way: his app still said
+  `0.0.0239 · 2832a607` after the work was "shipped".
+- **`0.0.0239` NAMED TWO DIFFERENT TREES, and one of them was live.** Measured
+  2026-09-18 13:05. Production serves `1e53de9c` (release `20260918164659`, `main.dart.js`
+  carries the commit); the version number behind it is still `0.0.0239`, because
+  `client/VERSION` is bumped by `release.sh` and this work deployed through `deploy.sh` and
+  built through `build-app.sh`, neither of which touches it. So `0.0.0239` means `2832a607`
+  in yesterday's artefacts and `1e53de9c` in today's.
+  **The consequence is in `Distribution/Apple/`,** which holds
+  `EzBizi-0.0.0239-2832a607.ipa` and `EzBizi-0.0.0239-1e53de9c.ipa` side by side. `BUILD_NUMBER`
+  is derived from `VERSION` (`build-app.sh:144`), so both are Apple build 239 and Play
+  versionCode 239 — whichever is uploaded second is refused as a duplicate, and the number
+  cannot be reused. Neither has been uploaded. **The next cut must go through `release.sh` so
+  the bump happens**; do not hand-collect the `0.0.0239` artefacts. Today's Android `.aab` and
+  Windows `.exe` were deliberately left in `client/build/` rather than collected, for the same
+  reason.
+- **The client in production is `0.0.0239`, built from commit `1e53de9c`** (was `2832a607`
+  until this afternoon). Taken from the
+  deployed bundle's own `BUILD_ID` — `build-web.sh` compiles the commit in with
+  `--dart-define`, and it is the one identifier that cannot lie, because it changes whether or
+  not anybody remembered to touch `client/VERSION`. `main.dart.js` has been served since
+  **2026-09-17 22:32 UTC**. `main` is three commits ahead of it and none of the three touches
+  `client/` or `app/`: a `/privacy/` correction, one inbox message and one TODO update.
+- **The marketing site is published at `7d296a90`**, 2026-09-18 14:52 UTC, all seven pages
+  byte-verified against the archive by `deploy-www.sh`. It had been two days stale, carrying a
+  sentence saying EzBizi never sends a business's mail — which three automation actions do.
+- **`app.ezbizi.com`, `dev.ezbizi.com` and `ezbizi.com` all answer 200**, and the API refuses
+  an unauthenticated `/api/v1/me` with 401 rather than erroring.
+- **The Tests row above is a fallback, not a result.** `status-numbers.sh` writes that sentence
+  when it is handed no counts, and it was run **by hand** on 2026-09-18 rather than by a
+  deploy. No gated release has been recorded here since `0.0.0152`; the counts that used to
+  sit in that row belonged to `3a595a85` on 2026-09-08 and were 87 versions old.
+- **The Build-phases narrative below is maintained only to `0.0.0152`** (2026-09-08). Eighty-seven
+  versions shipped after it and none of them is described there — per-release detail for
+  `0.0.0153`–`0.0.0239` lives in `client/lib/core/version_history.dart`, which is written in
+  the same commit as the version bump and is therefore the reliable record. Treat a *missing*
+  module below as unrecorded, not as unbuilt.
 
 ## Build phases (§18 of the build plan)
 
 | Phase | State |
 |---|---|
-| 0 — reconciliation & safety | Backups encrypted, **off-site**, and restore-verified nightly — the check pulls the file back down before verifying, so a copy that arrived corrupt is caught rather than assumed good. One gap left: **`ns2` on a second machine** (TODO #3, on hold). |
+| 0 — reconciliation & safety | Backups encrypted and copied **off-site** nightly, and the check pulls the file back down before verifying, so a copy that arrived corrupt is caught rather than assumed good — **but the check itself is failing and has been for weeks**, so nothing here is currently verified to restore. Measured 2026-09-18; see hazard 2. Second gap: **`ns2` on a second machine** (TODO #3, on hold). |
 | 1 — decision records | Captured as docblocks in the code rather than separate pages. Deliberate: a decision written beside the code it constrains is read; one in a folder is not. |
 | 2 — foundation + vertical slice | Done. Organizations → Companies → Franchises → Users, Customers → Jobs. |
 | 3 — cross-cutting | **Done.** Automation engine, notifications, staff control plane, subscription enforcement, import/export. |
@@ -129,7 +180,8 @@ that reason and no other.
 
 Three things that are true right now and will bite if forgotten. Verified 2026-08-07 by
 looking at the box, not by re-reading this list — which is the only way a hazard list stays
-worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1 on
+worth having; hazard 2 was re-asked of the box on 2026-09-18 and had changed, which is the
+argument for doing it rather than for trusting the date above. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1 on
 2026-08-06; the references here still said #21, #22, #24 and #26 and pointed at nothing.
 
 1. **Mail sends, but only to verified addresses — the SES sandbox.** ~~Mail does not send.~~
@@ -149,9 +201,20 @@ worth having. The numbers point at `EZBIZI-TODO.md`, which was renumbered from 1
    AWS still blocks outbound port 25 on both instances; 587 is the path, and the Laravel `ses`
    SDK is still not it.
 
-2. **The off-site backup is off-instance, not off-account.** Encrypted, copied nightly to the
-   websites box, and restore-verified by pulling the file back *down* first — so a copy that
-   arrived corrupt is caught. But that box is a second Lightsail instance in the *same AWS
+2. **The restore-check is failing, and it has been for weeks.** Asked on **2026-09-18**,
+   `ezbizi:check-backups` on the box answers: *"The last backup failed at the restore-check
+   stage: private-file archive would not restore exactly."* The dump and the off-site copy
+   still run — what stopped is the **proof that either restores**, which is the only part of a
+   backup anybody actually needs. This row said "restore-verified nightly" for weeks while the
+   command on the box said otherwise, so read it from the command and not from here. Detection
+   works; the check is the thing reporting its own failure. See the work board track *"Backup
+   restore verification is failing"*, which additionally records an a1tools dump failing on
+   view `v_hr_employees` (a definer missing since the SiteGround import) and the reason one
+   database can cancel everything: `backup.sh` keeps a single global error array, so one
+   unrelated failure cancels verification **and** retention for every database.
+
+   **And even when it passes it is off-instance, not off-account.** Encrypted and copied
+   nightly to the websites box — but that box is a second Lightsail instance in the *same AWS
    account*: a billing suspension or a compromised root login takes both. Lightsail's own
    instance snapshots are the only thing outside that blast radius, and they have never been
    restore-tested. `deploy/backup.sh` states this in its own header.
@@ -170,7 +233,7 @@ Full detail: `DEPLOY.md`, beside this file.
 
 ## The documents
 
-The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. The 2026-09-08 remediation shipped as **0.0.0152**, commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`. At release completion both API/UI markers matched; internal health and public web root returned HTTP 200. A subsequent concurrent session deployed API commit `c6bb8e55fc8334af99bb4a75466d40b5491184d3`; the UI remains at `3a595a85`. That later API deployment did not run gates, so the recorded passing counts belong to the reviewed release, not its newer changes. The full gate passed 2,866 backend tests (17,119 assertions) and 1,276 client tests with clean analysis. Generated measurements above were refreshed by this release. Windows publication is verified; see [release notes](RELEASE-NOTES.md) for native build/upload outcomes and [the review ledger](PROJECT-REVIEW-2026-09-08.md) for ranked findings and operational limits.
+The [documentation index](README.md) is the navigation entry point. [Ownership](OWNERSHIP.md) defines tenant identity, reach, current view and downward write authority. Production now runs **0.0.0239** (`2832a607`) — see *What is actually live* above for how that was measured. The last release recorded here with a full gate behind it is **0.0.0152**, commit `3a595a85e0f56865c5ddbb2297e01dd32f72a9bf`, on 2026-09-08: its gate passed 2,866 backend tests (17,119 assertions) and 1,276 client tests with clean analysis, its API/UI markers matched, and Windows publication was verified. Eighty-seven versions have shipped since without a gate result being written down here, so treat that paragraph as the last *measured* release rather than as the current one. See [release notes](RELEASE-NOTES.md) for release outcomes and [the review ledger](PROJECT-REVIEW-2026-09-08.md) for the 2026-09-08 findings and operational limits.
 
 | File | What it is |
 |---|---|

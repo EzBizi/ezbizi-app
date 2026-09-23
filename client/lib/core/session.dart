@@ -829,6 +829,15 @@ class Me {
           .whereType<String>()
           .toList();
 
+  /// Whether a ringing call opens a window as well as the shell's strip.
+  ///
+  /// Off unless somebody asks for it, and the default is the house rule rather
+  /// than timidity: a ringing phone must not take the app away from somebody
+  /// halfway through writing up a job. Jose asked for the window AND for the
+  /// switch on 2026-09-22, which is what lets both be true — see
+  /// `IncomingCallPopup`.
+  bool get phoneIncomingPopup => preferences['phone.incoming_popup'] == true;
+
   /// Whether the dial pad keeps its customer panel open between calls.
   ///
   /// A preference rather than screen state because the screen is thrown away

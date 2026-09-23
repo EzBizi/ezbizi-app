@@ -2899,6 +2899,105 @@ to have decided the audience first. **3 pairs well with 2** — the glance is wh
 the badge is what keeps it in view while you do not act on it. **6 is drawn to be judged rather
 than assumed**: a dot on a phone's drawer icon says *something, somewhere* and cannot say what.
 
+### SETTLED RULE · A colour earns a name at the first DISAGREEMENT, not the second site
+
+Written 2026-09-22 after `theme_conventions_test` went red at 36 literals against a baseline of 31.
+Reading what they were is the whole argument:
+
+    hr/work_hours_tab       0xFF1A7F37   on the clock
+    email/settings_tab      0xFF188038   already named `okColor` in the file
+    widgets/incoming_call   0xFF1B873F   the Accept button
+
+**Three sessions independently needed "this is working" and each wrote a different green**, because
+`ColorScheme` hands out `error` and nothing for its opposite. That is a missing role, and it is now
+`StateColour` in `theme.dart` with exactly two members — `on` and `caution` — whose light values
+are the ones already in the tree rather than new ones.
+
+**The rule the three of us converged on, and it cuts both ways:**
+
+> A role with ONE member is a slot that describes one widget rather than an idea. A role with THREE
+> spellings is a name that was needed and never given.
+
+**The first draft of this rule said "the second SITE", and Email corrected it with my own case:
+that is not what happened here.** There were already three sites and no name, and the thing that
+forced it was that the three spellings **disagreed**. So:
+
+> **The trigger is the first DISAGREEMENT, not the count.** Two sites sharing one literal are
+> invisible and fine — nothing is going wrong yet. Two that spell the same idea differently are
+> loud, because the disagreement is the proof that the idea exists and has no home. One site cannot
+> disagree with anything, which is why a lone literal never qualifies however obviously
+> "semantic" it looks.
+
+Applied literally, "second site" would mint a role the moment a second widget copies the first
+one's hex — which is the case that least needs one. **The corrected rule yields the same three
+answers as the decisions already taken below**, which is the evidence it describes what was done
+rather than a new policy invented afterwards.
+
+Phone's words for the first half, declining a slot for their own button. Two live applications:
+
+- **The Decline red in `incoming_call_popup` stays a literal.** Phone went looking for its role and
+  found the better question: there are **six call-ending controls in the product and theirs is the
+  only painted one** (`call_tab:983`, `:1494`, `:2125`, the bar's Decline and Hang up, and the
+  pop-up's Ignore). So the question is not which role the red is, it is why one of six is painted
+  — and the answer holds: the pop-up is the only surface where both choices are symmetric and
+  demanded at once, so the colour does the work of a two-second glance. **If a second call-ending
+  control is ever painted, that is the second site, and it wants one deliberate pass over all six
+  rather than a colour for whichever was touched most recently.**
+- **The verified-sender blue in `email/message_list` stays a literal.** One site, and "do we trust
+  this claim" is a different idea from "what state is this thing in". If Phone or Leads ever draws
+  *this number is verified*, that is the second site and the slot pays for itself.
+
+> **AND THE COLOUR WAS THE SMALLER HALF OF THAT ONE.** `_VerifiedDot` drew its ring with
+> `Colors.white` — a white halo on the dark theme's surface, whatever the theme said. Found by
+> Email while answering a question about drift. **A single instance never shows up as drift,
+> because a ratchet counts instances**: the count was right and the screen was wrong. Fixed to read
+> `colorScheme.surface`; the check inside stays white because it sits on the blue, which does not
+> change with the theme.
+
+**Why a counting ratchet beat a rule.** A rule saying "read colours from the theme" had been in
+`DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
+up could only be answered — Phone's sentence: *a rule would have been argued with.*
+
+### 23 · Settings · Integrations, as cards — **DRAWN, awaiting Jose**
+
+`docs/previews/integrations-layouts.html`. Jose, 2026-09-22:
+
+> *"I want to revamp the Integrations Screen, i'd like to have cards instead each with their own
+> screen for connections, etc, something like the second image as an example but with our style of
+> course. Remember to take into account org - company - franchise ownership, etc."*
+
+Announced by Settings before building it, which was the right call and the reason this is drawn
+rather than shipped: *"a grid of provider cards"* and *"a per-provider screen"* each name a NEW
+thing, so it is design by the test in this file, not craft.
+
+**THE CAUSE IS SMALLER THAN THE SYMPTOM, and it changes what these options cost.** The screen
+scrolls four pages because A1-Group has 53 Google Ads accounts, but what makes it *answer nothing*
+is that every row says the same words. `scopeWord` (`integrations_screen.dart:434`) maps a scope
+TYPE to a phrase — "this company", "this branch". **The identity never reaches the client at
+all**: `SocialConnectionsController:92` already sends `scope_id` and `_Connection.fromJson` drops
+it. So "grouped by named company" is one field in a parser and no server change. `last_reached_at`
+is sent and dropped the same way.
+
+**THE STATUS LINE IS THE REAL DECISION, NOT THE CARD SHAPE.** Settings proposed *"53 connected"*.
+That is a count with no subject — the same failure as "this company", one level up — and
+nobody opens this screen to be told things work. `status`, `status_reason` and `last_reached_at`
+are all on the wire, so a card can say **"1 of 53 needs attention"**, which is the question people
+arrive with. Every option leads with what is wrong when anything is, and falls back to the plain
+count when nothing is.
+
+**Five states on the switcher, because a layout that only reads at "53, all fine" is a layout for
+one afternoon:** 53 healthy · 1 of 53 broken · nothing connected · a branch-level
+reader · one of each.
+
+**Desktop 3 is deliberately not a card grid.** This screen's own docblock says it exists because
+*"what is this company connected to"* was not answerable. Cards-by-provider answer *"who uses
+Google Ads"*. Those are different questions and only one is the written one, so option 3 groups by
+PLACE and lets him see both readings before choosing.
+
+> **NOT SETTLED, AND SETTINGS OWNS IT:** which scopes may hold which provider, and what a
+> branch-level reader may see of a company-level connection. State **D** draws a guess (a branch
+> reader sees only their own). If the rule differs, the drawing changes and the layout does not.
+
 ### 22 · App-wide · Popup dropdowns → search pickers — **DONE, AND PINNED AT ZERO**
 
 Jose, 2026-09-17, on a twelve-name person dropdown running off the bottom of the window:
@@ -3346,3 +3445,77 @@ brief; he asked for graphic and it is an indented list with good manners. **4 is
 rejected on purpose**: a canvas that needs panning to answer its own question is a canvas that
 gets opened once.
 
+
+---
+
+## 21 · Work Hours: correcting and deleting a shift — BRIEF, not yet drawn
+
+**Asked for by Jose, 2026-09-23**, in the same message as the never-ending-shift
+bug: *"also we should have a correction system as well to be able to edit or
+eliminate shifts"*.
+
+**The API and the grant are built and merged** (Clock In, `52d210f3`). Nothing
+on this page is waiting on the backend. What is missing is the affordance, and
+it names a new element — a way into editing a row — so it belongs here rather
+than being shipped as craft.
+
+### What exists to draw against
+
+`GET /api/v1/hr/time-clock/week` already returns, per shift row: `id`,
+`clocked_in_at` / `clocked_out_at` (UTC instants), `clocked_in` / `clocked_out`
+(wall clock, already formatted in the viewer's zone and 12h/24h preference),
+`duration_seconds`, `open`, `ended_by`, `outside_schedule`, `extensions`.
+
+- `PATCH /api/v1/hr/time-clock/shifts/{id}` — body may carry
+  `clocked_in_at` and/or `clocked_out_at` as UTC instants. **An absent key means
+  UNCHANGED.** Sending `clocked_out_at: null` on a finished shift is refused
+  (422, `errors.clocked_out_at.0`); on an OPEN shift, omitting it leaves it
+  open.
+- `DELETE /api/v1/hr/time-clock/shifts/{id}`.
+- Both answer `200` with **the whole recomputed week**, same shape as the GET,
+  and honour `?on=`. So the pane can replace its state from the response rather
+  than refetching — the total, days worked and average all move on a correction
+  and none of them can be derived client-side.
+- Refusals arrive as 422 with a sentence: *"Clock out must be after clock in."*,
+  *"A shift cannot be in the future."*, *"These times overlap another shift for
+  the same person."*, *"A finished shift cannot be reopened. Delete it
+  instead."* **Render the server's sentence**; they are worded to be shown.
+- `403` if the viewer lacks `hr.hours.correct`.
+
+### The gate, which the drawing has to respect
+
+`hr.hours.correct` is a **separate grant from the Work Hours tab**. Somebody may
+hold `hr.hours.view` and not this. So Edit and Delete must be absent — not
+present-and-refusing — for a viewer without it, on `me.permissions`. An
+affordance whose gate is elsewhere is the failure this queue has hit twice.
+
+### Three things the design has to answer
+
+1. **Where the affordance lives on a row.** The rows are dense — time in, time
+   out, chips, duration — and a trailing icon pair on every row is a lot of
+   furniture for something used rarely. Hover-reveal is not available on touch.
+2. **Deleting is destructive and has no undo in the product.** The audit keeps
+   both times, but nothing in the UI reads it. A confirm step is expected;
+   whether it is a dialog, an inline two-step, or an undo snackbar that holds
+   the request is a design question.
+3. **An open shift is the commonest correction** — the forgotten punch. Setting
+   only an end, on a row that has no end yet, may deserve its own affordance
+   rather than the full editor.
+
+### One piece of copy the backend did not ship
+
+`ended_by` can now be `correction`. The row chip renderer draws
+`time_clock.auto` for `schedule` and nothing for an unknown value, so a
+corrected shift currently shows no chip at all and does not break. **If the
+design wants an "Edited" chip, the string is yours to add** (`ui_strings`, en +
+es, plus the Dart fallback) — it was deliberately not minted here, because a key
+with no call site is the thing this queue keeps finding unbuilt.
+
+### Context worth having while drawing it
+
+The correction system exists because a cap had to be invented. A shift that
+nobody closes is now auto-closed at `time_clock.max_hours` (org setting, default
+16), and **16 hours is a policy, not a measurement** — the five production rows
+this shipped for were closed at 16h each when nobody knows when those people
+actually went home. Correcting them is the first real use of this screen, and
+Jose will be the one doing it.

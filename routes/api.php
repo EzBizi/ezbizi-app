@@ -54,6 +54,7 @@ use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
+use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
@@ -146,6 +147,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
 use App\Http\Controllers\Api\WorkizConnectController;
@@ -389,6 +391,17 @@ Route::get('v1/social/media/{handle}', [SocialMediaHandoffController::class, 'sh
 | delivery loses a customer's message, and Meta disables a subscription that
 | keeps failing.
 */
+/*
+ * Messenger and Instagram Direct, on one endpoint because Meta delivers both
+ * here and tells them apart with `object`. Unauthenticated and signature-
+ * checked, exactly like the WhatsApp pair below it.
+ */
+Route::get('v1/social/meta/messages/webhook', [MetaMessagesWebhookController::class, 'verify'])
+    ->name('social.meta.messages.verify');
+
+Route::post('v1/social/meta/messages/webhook', MetaMessagesWebhookController::class)
+    ->name('social.meta.messages.webhook');
+
 Route::get('v1/social/whatsapp/webhook', [WhatsAppWebhookController::class, 'verify'])
     ->middleware('throttle:60,1')
     ->name('social.whatsapp.verify');
@@ -790,6 +803,19 @@ Route::prefix('v1')
              * segment registered after a wildcard one is unreachable.
              */
             Route::get('web/sites/{site}/content/options', [WebContentController::class, 'options']);
+
+            /*
+             * The city pages, separated out of Pages at Mia's request on
+             * 2026-09-18. Read from OUR values rather than from the website, so
+             * it answers when the customer's WordPress does not; `?scan=1` is
+             * the opt-in that also asks the site which towns it has pages for.
+             *
+             * Same tab gate as the rest of SEO, and no new permission: a pane
+             * inside a tab is not a grant. See `PageKinds` for what makes a
+             * page a city page, and the comment on `web/sites` above for why
+             * the gate is per route rather than on the resource.
+             */
+            Route::get('web/sites/{site}/cities', [WebContentController::class, 'cities']);
         });
 
         Route::middleware('permission:web_management.widgets.view')->group(function () {
@@ -1232,6 +1258,24 @@ Route::prefix('v1')
             Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
         });
 
+        /*
+         * ── Corrections (2026-09-23) ──
+         *
+         * A SECOND grant on top of the tab, not a wider use of it. Seeing
+         * everybody's hours and rewriting what they are paid for are different
+         * authorities; `hr.hours.correct` is the one that rewrites, and a
+         * dispatcher granted Work Hours to check their own week does not get
+         * it by holding the tab.
+         *
+         * One consumer each — the Work Hours pane — so the middleware is the
+         * right place for the gate, and the policy behind it says the same
+         * thing for anything that reaches these another way.
+         */
+        Route::middleware('permission:hr.hours.correct')->group(function () {
+            Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
+            Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
+        });
+
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
         // headcount on somebody's main dashboard are the same code.
@@ -1670,6 +1714,11 @@ Route::prefix('v1')
         // Pickup: what is ringing elsewhere, and taking one. {call} last, so
         // the literal paths above cannot be swallowed by the parameter.
         Route::get('phone/calls/ringing', [PhoneCallsController::class, 'ringing']);
+
+        // Who a ringing number belongs to, for the incoming pop-up. Asked by
+        // the app SHELL rather than by Communication, because the pop-up
+        // appears on top of whatever module is open.
+        Route::get('phone/caller', [PhoneCallsController::class, 'caller']);
         Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live']);
         Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
 
@@ -2105,6 +2154,50 @@ Route::prefix('v1')
         // find + 404; `store`/`update` validate the chosen scope with
         // ScopeReach::assertCovers and every node assignee against
         // constrainToVisiblePeople — see FloorPlansController.
+        /*
+         * GATED ON THE MAP TAB. The floor plan moved out of General on
+         * 2026-09-22 when General became the ownership chart, so these follow
+         * the pane rather than the old key.
+         *
+         * Gated on the tab because these six serve exactly one — measured, not
+         * assumed: `grep -rn "floor-plans" client/lib` answers general_tab.dart
+         * and floor_plan_canvas.dart, and nothing else in the app reads a floor
+         * plan. Where a Monitoring route feeds several panes (`monitoring/devices`
+         * is read by PC Specs, General AND Desktop Monitoring) the tab gate would
+         * be wrong and the screen filters instead.
+         *
+         * A hidden tab whose endpoints still answer is decoration rather than a
+         * permission: the URL is one paste away from anybody who has ever had the
+         * pane open.
+         */
+        /*
+         * The ownership chart — Monitoring's General tab. Gated on that tab
+         * because it serves exactly one pane (`grep -rn "monitoring/ownership"
+         * client/lib` answers ownership_tab.dart alone), and the two columns
+         * that are not Monitoring's own are withheld per COLUMN inside the
+         * controller rather than by this gate: PC name needs
+         * monitoring.specs.view, and the work schedule needs HR's own
+         * hr.hours.view, because it is HR's disclosure to make.
+         */
+        Route::middleware('permission:monitoring.general.view')->group(function () {
+            Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
+        });
+
+        /*
+         * Renaming ONE desk, from the ownership chart.
+         *
+         * Outside the Map TAB group on purpose: the person doing this is
+         * looking at General, and an administrator may reasonably grant "may
+         * edit the map" without granting the map's own tab. The edit grant
+         * itself (monitoring.map.manage) is enforced by the policy inside,
+         * along with the §3 scope check every other plan route makes.
+         */
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/label',
+            [MonitoringFloorPlansController::class, 'renameNode']
+        );
+
+        Route::middleware('permission:monitoring.map.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
         // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
@@ -2116,6 +2209,7 @@ Route::prefix('v1')
         Route::get('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'show']);
         Route::put('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'update']);
         Route::delete('monitoring/floor-plans/{id}', [MonitoringFloorPlansController::class, 'destroy']);
+        });
 
         // The assign picker's own roster: who this editor may put on a tile.
         // Deliberately NOT hr/people — that is gated on HR grants a map editor

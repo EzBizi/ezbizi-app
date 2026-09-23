@@ -55,6 +55,35 @@ void main() {
     final versions = [for (final r in releases) r.version];
     expect(versions.toSet().length, versions.length);
 
+    // NO HOLE IN THE MIDDLE. The check above compares the TOP note to VERSION,
+    // so it sees a bump that forgot its note only while that bump is the newest
+    // one. The moment the next release lands, both files agree again and the
+    // missing row is invisible to every assertion here.
+    //
+    // That is not hypothetical: 0.0.0240 shipped with no row at all, this test
+    // went red on main for a day, and bumping to 0.0.0241 made it GREEN again
+    // while the hole stayed. Jose found it by opening the sidebar and reading
+    // 0.0.0239 under a heading that said v0.0.0240.
+    final numbers = [
+      for (final v in versions) int.parse(v.split('.').last),
+    ]..sort();
+    const neverBuilt = <int>{
+      72, // no commit ever set VERSION to it and no artefact exists
+      111, // BUILT -- Distribution/Apple/EzBizi-0.0.0111-4bbbea5.ipa -- and its
+      // notes were never written. Left named rather than invented: reconstructing
+      // a month-old release from its commits would put words in it that nobody
+      // shipped, which is worse than an admitted hole.
+    };
+    final holes = [
+      for (var n = numbers.first; n <= numbers.last; n++)
+        if (!numbers.contains(n) && !neverBuilt.contains(n)) n,
+    ];
+    expect(
+      holes,
+      isEmpty,
+      reason: 'These versions have no note and were not recorded as unbuilt. A release nobody wrote a line for is invisible the moment the next one ships.',
+    );
+
     for (final release in releases) {
       expect(release.date, isNotEmpty);
       expect(release.items, isNotEmpty);

@@ -181,3 +181,48 @@ module is a shell" and told the reader to add triggers "when Availability become
 real" — a condition met on 2026-09-09, so it pointed at an event that had already
 happened. Read the exemption TEXT, not just its presence: a stale reason answers
 the question wrongly and looks like an answer.
+
+## What changed on 2026-09-17, and the two decisions that were mine to take
+
+A long day of Jose's requests, recorded here because the reasoning is not
+visible from the diffs.
+
+**A rule now belongs where it was made.** `coversScope` had honoured company
+and franchise since it was written; nothing ever SET a scope, so every rule was
+stored organization-wide. New rules take the scope of the view they were
+written in, an explicit choice still wins, and the list shows what reaches the
+current view — asked through the same `coversScope` the engine asks, so a
+screen cannot drift from what runs. The organization view is deliberately
+exempt from that filter: a franchise rule does not reach it and would vanish.
+
+**Two tabs, two grants.** `automations.rules.view` and `automations.build.view`.
+Build hands somebody the catalogue, which is a map of every trigger and action
+this installation can perform; the list carries run logs, which name records a
+reader may not be able to open directly. Only the builder's own three endpoints
+took the middleware — a blanket group over the block would have taken the rules
+away from everybody who was only meant to lose the builder.
+
+**Templates live in code, not a table.** They are identical in every business,
+so a table would hold one row per tenant and a migration would reconcile them
+on every wording change. Applying one fills the form and saves nothing.
+
+### The two I decided without asking, and why
+
+Jose was away for both.
+
+**Sampling real values into the builder reverses a written rule.** The
+`values` map above `triggerFields` says values are declared and never read off
+this tenant's records, and that was right for a dropdown of allowed values. It
+is wrong for a preview: an invented example cannot answer "what will `{{title}}`
+turn out as", because the failure it exists to show is a field that resolves to
+a blank. The safety moved rather than went — every candidate event is asked
+whose record it is through `ScopeReach`, the same answer the notification
+audience uses, so the per-module gate cannot hand a branch manager a value from
+another branch.
+
+**A corrupted rule is not migrated.** The builder was wrapping stored list
+parameters in another layer on every save, so a live rule reached
+`role_ids: ["[[[]]]"]`. The write path is fixed; the stored value is not
+rewritten by a migration, because guessing what a garbled list was meant to be
+is worse than a refusal that says plainly what is wrong. Opening the rule and
+saving it once clears it.

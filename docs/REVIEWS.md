@@ -6,7 +6,7 @@ carries policy obligations the other two do not.**
 | | |
 |---|---|
 | What it is | A module in full — own permission `reviews.*`, own registry entry, own triggers, own dashboard glance |
-| Where it is drawn | Inside Marketing, via `ModuleDefinition::$parent`. Not a part of Marketing the way Newsletter and Social Media Management are. |
+| Where it is drawn | **Inside A1Leads GBP**, via `ModuleDefinition::$parent` — moved out of Marketing 2026-09-23 on Jose's instruction. A1Leads GBP is a container and nothing else: it holds no records, and its own `view` grants neither child. **Temporary** — it exists while Rodrigo's A1 Leads is the system of record for Google Business Profile, and comes out when EzBizi holds its own API access (§9b). |
 | Google product | Google Business Profile APIs |
 | Host | **`mybusiness.googleapis.com/v4`** — legacy, no v1 replacement |
 | API status | Enabled |

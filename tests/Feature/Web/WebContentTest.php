@@ -115,7 +115,20 @@ class WebContentTest extends TestCase
             ->getJson("/api/v1/web/sites/{$site['data']['id']}/content?type=page")
             ->assertOk();
 
+        /*
+         * SCOPED TO THE PAGES REQUEST, because listing pages now makes two:
+         * the authors are asked for first, to find the accounts this site files
+         * city pages under so they can be left out of this list (`PageKinds`).
+         *
+         * `Http::assertSent` runs its callback against every recorded request,
+         * so an unscoped assertion about `draft` fails on the authors call —
+         * which is what it did, correctly, when the second request appeared.
+         */
         Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), 'wp/v2/pages')) {
+                return false;
+            }
+
             $this->assertSame(
                 'Basic '.base64_encode('ezbizi-service:plain-text-secret'),
                 $request->header('Authorization')[0] ?? '',
@@ -129,6 +142,13 @@ class WebContentTest extends TestCase
 
             return true;
         });
+
+        // And the account is on the authors call too — it is the same
+        // credential reaching the same site, and a public read would return a
+        // different list of authors from the one wp-admin shows.
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'wp/v2/users')
+            && ($request->header('Authorization')[0] ?? '')
+                === 'Basic '.base64_encode('ezbizi-service:plain-text-secret'));
     }
 
     /**

@@ -190,9 +190,13 @@ class TimeClockAutomationsTest extends TestCase
         $this->assertSame(0, $in->payload['extensions']);
         $this->assertNull($in->payload['ended_by']);
 
-        // Not on a scheduled shift (Saturday): extend refuses and raises nothing.
-        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertStatus(422);
+        // A Saturday shift can be extended since 2026-09-23 — it has the cap
+        // for an end, where it used to have a null nothing would ever close.
+        // So the count below is of the extension made on the TUESDAY, and this
+        // one is cleared out with the shift it belongs to.
+        $this->signedInAs($puncher)->postJson('/api/v1/time-clock/extend')->assertOk();
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-out')->assertOk();
+        AutomationEvent::query()->withoutGlobalScopes()->where('event_key', 'time_clock.extended')->delete();
 
         Carbon::setTestNow(Carbon::parse('2026-09-08 14:00:00', 'UTC')); // Tuesday 09:00 local
         $this->signedInAs($puncher)->postJson('/api/v1/time-clock/clock-in')->assertOk();

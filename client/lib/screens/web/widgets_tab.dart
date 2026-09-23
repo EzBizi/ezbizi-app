@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
+import '../../widgets/shortcode_button.dart';
+import 'chat_hours.dart';
+import 'widget_previews.dart';
 
 /// Web Management → Widgets: how a site's chat bubble and contact form look,
 /// and what the form asks.
@@ -454,103 +458,38 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     final form = _section('form');
     final style = _section('style');
 
-    final formPane = ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        if (!_own)
-          Padding(
+    final following = !_own
+        ? Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               'Following the primary website. Change anything here and this '
               'site starts answering for itself.',
               style: theme.textTheme.bodySmall,
             ),
-          ),
+          )
+        : const SizedBox.shrink();
 
-        Text('Live chat', style: theme.textTheme.titleSmall),
-        _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
-        _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
-        _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
-        _text(theme, 'Box placeholder', chat['placeholder'],
-            (v) => _set('chat', 'placeholder', v)),
+    // Nothing chosen: the cards, full width. No preview pane, because a
+    // preview of six widgets at once is the thing being replaced.
+    if (_focus == null) {
+      return ListView(
+        key: const ValueKey('widgets-cards'),
+        padding: const EdgeInsets.all(20),
+        children: [following, ..._cards(theme, chat, style)],
+      );
+    }
 
-        // What the visitor is asked BEFORE the conversation starts. Without
-        // these three answers a chat arrives in Leads with nobody's name on
-        // it, and the only way to reply is to hope they come back.
-        _text(theme, 'Before they start', chat['lead_in'],
-            (v) => _set('chat', 'lead_in', v)),
-        _text(theme, 'Name question', chat['name_label'],
-            (v) => _set('chat', 'name_label', v)),
-        _text(theme, 'Contact question', chat['contact_label'],
-            (v) => _set('chat', 'contact_label', v)),
-        _text(theme, 'Message question', chat['message_label'],
-            (v) => _set('chat', 'message_label', v)),
-        _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
-
-        // Sent back the moment they press it. A real message on the thread, so
-        // whoever picks the conversation up in Leads can see what the person
-        // was already told. Leave it empty to send nothing.
-        _text(theme, 'Automatic first reply', chat['auto_reply'],
-            (v) => _set('chat', 'auto_reply', v)),
-        _dropdown(
-          theme,
-          'Where it sits',
-          '${chat['position'] ?? 'bottom-right'}',
-          const ['bottom-right', 'bottom-left', 'inline'],
-          (v) => _set('chat', 'position', v),
-        ),
-
-        const Divider(height: 32),
-        Text('Contact form', style: theme.textTheme.titleSmall),
-        _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
-        _text(theme, 'Thank you message', form['thanks'],
-            (v) => _set('form', 'thanks', v)),
-        const SizedBox(height: 12),
-        _FieldList(
-          fields: (form['fields'] as List? ?? const [])
-              .whereType<Map>()
-              .map((f) => Map<String, dynamic>.from(f))
-              .toList(),
-          types: _fieldTypes,
-          canEdit: widget.canEdit,
-          onChanged: (fields) => _set('form', 'fields', fields),
-        ),
-
-        const Divider(height: 32),
-        Text('Look', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          _brand == null
-              // Said plainly rather than hidden: a business that has told us no
-              // colour is getting OURS on THEIR website, and the person who
-              // would mind is the one least likely to be reading this screen.
-              ? 'These widgets appear on your own website, so they start from '
-                  'your brand colour — you have not set one, so they are using '
-                  'a neutral blue until you do.'
-              : 'Starting from your brand colour, $_brand. Change anything here '
-                  'and this site keeps its own instead.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Shared by both widgets — a site that sets its accent means it for '
-          'the chat and the form.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        _text(theme, 'Accent colour (#rrggbb)', style['accent'],
-            (v) => _set('style', 'accent', v)),
-        _presets(theme),
-        _text(theme, 'Text on the accent', style['on_accent'],
-            (v) => _set('style', 'on_accent', v)),
-        _pair(theme, style['on_accent'], style['accent'], 'the accent'),
-        _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
-        _text(theme, 'Background', style['background'],
-            (v) => _set('style', 'background', v)),
-        _pair(theme, style['text'], style['background'], 'the background'),
-        _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
-        _text(theme, 'Corner radius', '${style['radius'] ?? 12}',
-            (v) => _set('style', 'radius', int.tryParse(v) ?? 12)),
+    final formPane = ListView(
+      // Named so a test can drive THIS scrollable. There are three on the
+      // screen and the pane's own headings are ListView children, so a finder
+      // anchored on one of those disappears part-way through the scroll it is
+      // driving.
+      key: const ValueKey('widgets-editor'),
+      padding: const EdgeInsets.all(20),
+      children: [
+        following,
+        _focusHeader(theme),
+        ..._focusedFields(theme, chat, form, style),
 
         const SizedBox(height: 16),
         if (_error != null) ErrorNote(_error!),
@@ -592,22 +531,419 @@ class _WidgetEditorState extends State<_WidgetEditor> {
      */
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 920) return formPane;
+      if (constraints.maxWidth < 920) return formPane;
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: formPane),
-            _DragHandle(
-              tooltip: 'Drag to resize the preview',
-              onDelta: widget.onPreviewDelta,
-              onSettled: widget.onPreviewSettled,
-            ),
-            SizedBox(width: widget.previewWidth, child: _preview(theme)),
-          ],
-        );
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: formPane),
+          _DragHandle(
+            tooltip: 'Drag to resize the preview',
+            onDelta: widget.onPreviewDelta,
+            onSettled: widget.onPreviewSettled,
+          ),
+          SizedBox(width: widget.previewWidth, child: _preview(theme)),
+        ],
+      );
       },
     );
+  }
+
+  /// ── One widget at a time ──────────────────────────────────────
+  ///
+  /// Jose, 2026-09-23: *"i'd like to see each widget as a card, so i can click
+  /// on them and focus on it, and so i dont see all the previews at once on
+  /// the right side"*.
+  ///
+  /// The screen used to be one column holding every widget's settings at once,
+  /// with a preview pane showing the chat and the form together. Six widgets
+  /// in, that is a page somebody scrolls past four things to reach the fifth,
+  /// beside a preview of two of them. So the fields below are grouped per
+  /// widget and only the chosen one is drawn.
+  ///
+  /// The SAVE is still one save. A site has one widget config and the API
+  /// takes it whole, so focusing is about what you look at rather than about
+  /// what you are editing — somebody who opens three cards and presses Save
+  /// once saves all three, which is the behaviour that cannot surprise.
+
+  /// Which widget is open, by key, or null for the cards.
+  ///
+  /// A KEY rather than an index: the catalogue below grows, and an index would
+  /// point at a different widget the day somebody adds one.
+  String? _focus;
+
+  /// Every widget this screen dresses, in the order the cards draw them.
+  ///
+  /// `chat`, `form` and `look` are hand-written because they are not rendered
+  /// from a shortcode the way the other four are — the chat and the form are
+  /// placed as widgets or drawn in the footer, and Look is shared by all of
+  /// them rather than being a widget at all.
+  List<_WidgetCardSpec> get _catalogue => [
+    const _WidgetCardSpec(
+      'chat',
+      'Live chat',
+      'The bubble a visitor opens to start a conversation.',
+      Icons.chat_bubble_outline,
+    ),
+    const _WidgetCardSpec(
+      'form',
+      'Contact form',
+      'The questions a visitor answers to send a message.',
+      Icons.assignment_outlined,
+    ),
+    for (final rendered in _renderedCatalogue)
+      _WidgetCardSpec(
+        rendered.key,
+        rendered.label,
+        rendered.blurb,
+        _renderedIcons[rendered.key] ?? Icons.widgets_outlined,
+      ),
+    const _WidgetCardSpec(
+      'look',
+      'Look',
+      'Colours, corners and typeface, shared by every widget above.',
+      Icons.palette_outlined,
+    ),
+  ];
+
+  /// One line under each card saying what it is set to NOW.
+  ///
+  /// The point of a card grid is to answer "what is switched on here" without
+  /// opening anything; six cards that all read the same would put that answer
+  /// one click further away than the old long column did.
+  String _cardStatus(String key, Map<String, dynamic> chat, Map<String, dynamic> style) {
+    switch (key) {
+      case 'chat':
+        if (chat['enabled'] == false) return 'Not on this website';
+
+        final hours = (chat['hours'] as List? ?? const []).length;
+
+        return hours == 7 ? 'On, during set hours' : 'On, at all hours';
+      case 'form':
+        final fields = (_section('form')['fields'] as List? ?? const []).length;
+
+        return fields == 1 ? '1 question' : '$fields questions';
+      case 'look':
+        return '${style['accent'] ?? ''} · ${style['radius'] ?? 12}px corners';
+      default:
+        // `default` is not one of these. Every widget always has it — the
+        // server guarantees it — so counting it would make all four cards read
+        // "1 named preset" for a site where nobody has named anything.
+        final named = Map<String, dynamic>.from(
+          (_config['presets'] as Map? ?? const {})[key] as Map? ?? const {},
+        ).keys.where((name) => name != 'default').length;
+
+        if (named == 0) return 'Default look';
+
+        return named == 1 ? '1 named preset' : '$named named presets';
+    }
+  }
+
+  List<Widget> _cards(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> style,
+  ) => [
+    // No 'Widgets' heading. The tab strip directly above already says it, and
+    // the same word twice reads as two things — the precedent is the HR
+    // dashboard's heading, removed for sitting under a chip of its own name.
+    Text(
+      'Open one to change it and see it previewed on its own. Everything here '
+      'saves together.',
+      style: theme.textTheme.bodySmall,
+    ),
+    const SizedBox(height: 16),
+    Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        for (final spec in _catalogue)
+          _WidgetCard(
+            spec: spec,
+            status: _cardStatus(spec.key, chat, style),
+            onOpen: () => setState(() => _focus = spec.key),
+          ),
+      ],
+    ),
+  ];
+
+  /// The way back, and the name of what is open.
+  Widget _focusHeader(ThemeData theme) {
+    final spec = _catalogue.firstWhere((s) => s.key == _focus);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back to the widgets',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _focus = null),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(spec.label, style: theme.textTheme.titleSmall),
+                Text(spec.blurb, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The fields of whichever widget is open.
+  List<Widget> _focusedFields(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> form,
+    Map<String, dynamic> style,
+  ) {
+    switch (_focus) {
+      case 'chat':
+        return _chatFields(theme, chat);
+      case 'form':
+        return _formFields(theme, form);
+      case 'look':
+        return _lookFields(theme, style);
+      default:
+        return _renderedFields(
+          theme,
+          _renderedCatalogue.firstWhere((r) => r.key == _focus),
+        );
+    }
+  }
+
+  List<Widget> _chatFields(ThemeData theme, Map<String, dynamic> chat) => [
+      _chatSwitch(theme, chat),
+      _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
+      _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
+      _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
+      _text(theme, 'Box placeholder', chat['placeholder'],
+          (v) => _set('chat', 'placeholder', v)),
+
+      // What the visitor is asked BEFORE the conversation starts. Without
+      // these three answers a chat arrives in Leads with nobody's name on
+      // it, and the only way to reply is to hope they come back.
+      _text(theme, 'Before they start', chat['lead_in'],
+          (v) => _set('chat', 'lead_in', v)),
+      _text(theme, 'Name question', chat['name_label'],
+          (v) => _set('chat', 'name_label', v)),
+      _text(theme, 'Contact question', chat['contact_label'],
+          (v) => _set('chat', 'contact_label', v)),
+      _text(theme, 'Message question', chat['message_label'],
+          (v) => _set('chat', 'message_label', v)),
+      _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
+
+      // Sent back the moment they press it. A real message on the thread, so
+      // whoever picks the conversation up in Leads can see what the person
+      // was already told. Leave it empty to send nothing.
+      _text(theme, 'Automatic first reply', chat['auto_reply'],
+          (v) => _set('chat', 'auto_reply', v)),
+      _dropdown(
+        theme,
+        'Where it sits',
+        '${chat['position'] ?? 'bottom-right'}',
+        const ['bottom-right', 'bottom-left', 'inline'],
+        (v) => _set('chat', 'position', v),
+      ),
+
+      const SizedBox(height: 16),
+      /*
+       * Both keys in one call, because the server drops a schedule with no
+       * zone and a zone with no schedule. Setting them one at a time would
+       * mean a save that silently discards the half that arrived first.
+       */
+      ChatHoursField(
+        hours: (chat['hours'] as List? ?? const [])
+            .whereType<Map>()
+            .map((day) => Map<String, dynamic>.from(day))
+            .toList(),
+        timezone: '${chat['timezone'] ?? ''}',
+        enabled: widget.canEdit,
+        onChanged: (hours, timezone) => setState(() {
+          final part = _section('chat');
+          part['hours'] = hours;
+          part['timezone'] = timezone;
+          _config['chat'] = part;
+          _saved = null;
+        }),
+      ),
+
+  ];
+
+  List<Widget> _formFields(ThemeData theme, Map<String, dynamic> form) => [
+      _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
+      _text(theme, 'Thank you message', form['thanks'],
+          (v) => _set('form', 'thanks', v)),
+      const SizedBox(height: 12),
+      _FieldList(
+        fields: (form['fields'] as List? ?? const [])
+            .whereType<Map>()
+            .map((f) => Map<String, dynamic>.from(f))
+            .toList(),
+        types: _fieldTypes,
+        canEdit: widget.canEdit,
+        onChanged: (fields) => _set('form', 'fields', fields),
+      ),
+
+  ];
+
+  /// Shared by every widget, which is why it is its own card rather than a
+  /// section inside one: a colour changed here moves the chat, the form and
+  /// the four rendered widgets together, and a person who found it under
+  /// "Live chat" would reasonably think it belonged to the chat.
+  List<Widget> _lookFields(ThemeData theme, Map<String, dynamic> style) => [
+      const SizedBox(height: 4),
+      Text(
+        _brand == null
+            // Said plainly rather than hidden: a business that has told us no
+            // colour is getting OURS on THEIR website, and the person who
+            // would mind is the one least likely to be reading this screen.
+            ? 'These widgets appear on your own website, so they start from '
+                'your brand colour — you have not set one, so they are using '
+                'a neutral blue until you do.'
+            : 'Starting from your brand colour, $_brand. Change anything here '
+                'and this site keeps its own instead.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Shared by both widgets — a site that sets its accent means it for '
+        'the chat and the form.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      _text(theme, 'Accent colour (#rrggbb)', style['accent'],
+          (v) => _set('style', 'accent', v)),
+      _presets(theme),
+      _text(theme, 'Text on the accent', style['on_accent'],
+          (v) => _set('style', 'on_accent', v)),
+      _pair(theme, style['on_accent'], style['accent'], 'the accent'),
+      _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
+      _text(theme, 'Background', style['background'],
+          (v) => _set('style', 'background', v)),
+      _pair(theme, style['text'], style['background'], 'the background'),
+      _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
+      _text(theme, 'Corner radius', '${style['radius'] ?? 12}',
+          (v) => _set('style', 'radius', int.tryParse(v) ?? 12)),
+
+  ];
+
+  /// Whether this website has a live chat at all.
+  ///
+  /// Mia, 2026-09-18: *"i also want to have a toggle to turn it on or off, on
+  /// being the default, (by turning it off, it basically disappears on the
+  /// website, effectively disabling the chat)"*.
+  ///
+  /// ── Why the wording works so hard to be unlike the schedule ──
+  ///
+  /// Two controls in this one section can take the bubble off a page, and
+  /// somebody who mixes them up switches the chat off for ever believing they
+  /// have set office hours. So each says what the other is not: the schedule
+  /// below hides the bubble outside the hours somebody keeps, this decides
+  /// whether the website has a chat to hide.
+  ///
+  /// ── Why nothing below it is disabled ──
+  ///
+  /// Fixing the wording before switching it back on is the ordinary order of
+  /// doing this, and a greyed-out section forces the opposite: turn the chat
+  /// on, then edit, with the unfinished wording live on the website for as
+  /// long as that takes. Only the preview goes, because the preview is the one
+  /// thing here that claims to be what a visitor sees.
+  ///
+  /// There is no equivalent for the contact form, and that is not an
+  /// oversight — see `WidgetDefaults::chat()`. The chat puts ITSELF on every
+  /// page through `wp_footer`, so a switch is the only way off; the form
+  /// appears where somebody placed a shortcode, so a second invisible way to
+  /// blank it is how a deliberately placed form goes missing.
+  Widget _chatSwitch(ThemeData theme, Map<String, dynamic> chat) {
+    // Absent reads as ON. The key is newer than some stored configs, and the
+    // server's own default is true — a missing key must not read as a chat
+    // somebody switched off.
+    final on = chat['enabled'] != false;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: on,
+        onChanged:
+            widget.canEdit ? (v) => _set('chat', 'enabled', v) : null,
+        title: const Text('Show the chat on this website'),
+        subtitle: Text(
+          'On, the bubble is on every page. Off, there is no chat on the '
+          'website at all — which is not what the chat hours below do: '
+          'those keep the bubble off the page outside your hours.',
+          style: theme.textTheme.bodySmall,
+        ),
+      ),
+      if (!on)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Text(
+              'There is no chat on this website. No visitor sees a bubble on '
+              'any page, and nothing anybody types can reach Leads. The '
+              'wording below is still yours to change — it goes live the '
+              'moment the switch above does.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// One rendered widget's presets, dressed by name.
+  ///
+  /// ── Why a name is the only shortcode argument ──
+  ///
+  /// Every other setting on this screen reaches 110 websites because nobody
+  /// types it into a page. These four cannot be one appearance each — a row of
+  /// small round icons belongs in a footer and big labelled ones belong in a
+  /// contact panel, on the same site — so the name is the argument and the
+  /// values behind it still live here. `WidgetPresets` carries the whole of
+  /// that argument and why it ends this way.
+  ///
+  /// One widget at a time now, rather than all four in a column: the card that
+  /// opened this is the choice the column used to ask for by scrolling.
+  List<Widget> _renderedFields(ThemeData theme, _Rendered rendered) {
+    final stored = Map<String, dynamic>.from(_config['presets'] as Map? ?? {});
+
+    return [
+      Text(
+        'Paste the shortcode where it belongs on the page; everything about '
+        'how it looks is set here. A page that needs a different look asks '
+        'for a preset by name, and a name nobody has made renders the '
+        'default rather than nothing.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 12),
+      _PresetCard(
+        rendered: rendered,
+        presets: Map<String, dynamic>.from(
+          stored[rendered.key] as Map? ?? const {},
+        ),
+        canEdit: widget.canEdit,
+        onChanged: (named) => setState(() {
+          final all = Map<String, dynamic>.from(_config['presets'] as Map? ?? {});
+          all[rendered.key] = named;
+          _config['presets'] = all;
+          _saved = null;
+        }),
+      ),
+    ];
   }
 
   /// The widgets as a visitor meets them, drawn from the values being edited.
@@ -621,12 +957,14 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   /// radius, the wording, and the questions in the order the form asks them.
   /// Those are the things somebody is changing while they look at it.
   ///
-  /// ── Why a switched-off widget still draws ──
+  /// ── Why a switched-off chat is the one thing it will not draw ──
   ///
-  /// Dressing one before turning it on is the ordinary order of doing this. A
-  /// preview that stayed blank until the switch flipped would hide the thing
-  /// during the exact minutes somebody was working on it, so an off widget
-  /// draws and says that it is off.
+  /// Everything else on this screen is dressing, and dressing a widget before
+  /// turning it on is the ordinary order of doing this — so the wording fields
+  /// stay live and this pane keeps following them. The switch is different in
+  /// kind: it is a claim about what is on the website, and a pane that drew a
+  /// bubble for a site with no bubble would be the only thing here that lied.
+  /// So the chat goes, and the space says why.
   Widget _preview(ThemeData theme) {
     final chat = _section('chat');
     final form = _section('form');
@@ -650,9 +988,49 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        _previewHeading(theme, 'Live chat'),
+        _previewHeading(theme, _catalogue.firstWhere((s) => s.key == _focus).label),
         const SizedBox(height: 8),
-        _mockPage(
+        ..._previewFor(theme, chat, form, accent, onAccent, text, surface, radius),
+      ],
+    );
+  }
+
+  /// The preview of whichever widget is open, and only that one.
+  ///
+  /// Jose, 2026-09-23: *"so i dont see all the previews at once on the right
+  /// side"*. The pane used to draw the chat and the form together and nothing
+  /// at all for the other four, which made the right-hand side simultaneously
+  /// too much and too little.
+  ///
+  /// EVERY widget answers here, including the four rendered ones that had no
+  /// preview before. Those are markup the PLUGIN writes on a page we do not
+  /// serve, so what is drawn is an approximation of shape and dressing rather
+  /// than a screenshot — the same honesty the pane has always claimed, applied
+  /// to four more things. What it IS exact about is the values on this screen:
+  /// the colours, the corner radius, the icon size, the column count.
+  List<Widget> _previewFor(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> form,
+    Color accent,
+    Color onAccent,
+    Color text,
+    Color surface,
+    double radius,
+  ) {
+    switch (_focus) {
+      case 'chat':
+        return [
+        if (chat['enabled'] == false)
+          _mockPage(
+            theme,
+            child: Text(
+              'No chat on this website. The bubble is not placed on any page, '
+              'so there is nothing here for a visitor to open.',
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        if (chat['enabled'] != false) _mockPage(
           theme,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -779,9 +1157,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        _previewHeading(theme, 'Contact form'),
-        const SizedBox(height: 8),
+        ];
+      case 'form':
+        return [
         _mockPage(
           theme,
           child: _mockPanel(
@@ -824,18 +1202,107 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ),
           ),
         ),
-      ],
-    );
+        ];
+      case 'look':
+        return _lookPreview(theme, accent, onAccent, text, surface, radius);
+      default:
+        return [
+          _mockPage(
+            theme,
+            child: renderedPreview(
+              key: _focus!,
+              theme: theme,
+              options: _previewOptions(_focus!),
+              accent: accent,
+              onAccent: onAccent,
+              text: text,
+              surface: surface,
+              radius: radius,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Drawn from the DEFAULT preset. A page that asks for one by name '
+            'gets that one instead.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ];
+    }
   }
+
+  /// The default preset's values for one rendered widget, falling back to the
+  /// catalogue's own defaults for anything nobody has set.
+  Map<String, dynamic> _previewOptions(String key) {
+    final rendered = _renderedCatalogue.firstWhere((r) => r.key == key);
+    final named = Map<String, dynamic>.from(
+      (_config['presets'] as Map? ?? const {})[key] as Map? ?? const {},
+    );
+    final stored = Map<String, dynamic>.from(
+      named['default'] as Map? ?? const {},
+    );
+
+    return {
+      for (final knob in rendered.knobs) knob.key: stored[knob.key] ?? knob.fallbackValue,
+    };
+  }
+
+  /// Look has no widget of its own, so it previews what it CHANGES: the same
+  /// dressing every other widget wears, on one panel and one button.
+  List<Widget> _lookPreview(
+    ThemeData theme,
+    Color accent,
+    Color onAccent,
+    Color text,
+    Color surface,
+    double radius,
+  ) => [
+    _mockPage(
+      theme,
+      child: _mockPanel(
+        surface: surface,
+        radius: radius,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A panel, in your colours',
+              style: TextStyle(color: text, fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Body text sits on the background colour, and the corner radius '
+              'below is the one every widget uses.',
+              style: TextStyle(color: text.withValues(alpha: 0.85), fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            _mockInput('A box somebody types in', radius, text),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: _mockButton('A button', accent, onAccent, radius),
+            ),
+          ],
+        ),
+      ),
+    ),
+    const SizedBox(height: 8),
+    Text(
+      'Every widget wears this. Changing it here moves the chat, the form and '
+      'the four rendered widgets together.',
+      style: theme.textTheme.bodySmall,
+    ),
+  ];
 
   static String _line(Object? value) => '${value ?? ''}';
 
-  /// Just the section name now.
+  /// Just the section name.
   ///
-  /// It used to carry "off on your site" beside it, because a widget could be
-  /// switched off while its editor sat there looking live. Jose removed the
-  /// switches on 2026-09-15 — placing the widget is what shows it — so there is
-  /// no off state left to announce.
+  /// It used to carry "off on your site" beside it, and that phrase is what
+  /// made the old switches dangerous: every site was switched off, so every
+  /// site showed nothing, and the only notice of it was grey text in a preview
+  /// that reads as styling. The chat's switch came back on 2026-09-18 and this
+  /// stayed a heading — an off chat is said in the space where the chat would
+  /// have been, which is the part nobody mistakes for decoration.
   Widget _previewHeading(ThemeData theme, String label) {
     return Text(label, style: theme.textTheme.bodyMedium);
   }
@@ -1329,6 +1796,687 @@ class _FieldListState extends State<_FieldList> {
               label: const Text('Add a question'),
             ),
           ),
+      ],
+    );
+  }
+}
+
+// ── Rendered widgets: presets ──────────────────────────────────────
+
+/// The preset every widget has and nobody may take away.
+///
+/// A live page must not go blank over a typo: `preset="foter"` falls back to
+/// this one, so `WidgetPresets::resolve` guarantees it exists whatever is
+/// stored. A screen that offered to delete or rename it would be offering to
+/// remove the thing that catches the typo — the server would put it straight
+/// back, which is worse than not offering.
+const String _defaultPreset = 'default';
+
+/// One option on one widget.
+sealed class _Knob {
+  const _Knob(this.key, this.label);
+
+  final String key;
+  final String label;
+
+  /// What this knob is worth when nobody has set it.
+  ///
+  /// Each subclass already carried its own default under a different name —
+  /// the first option, `fallback`, `fallback` again — and the preview needs
+  /// one question it can ask any knob. The values are unchanged; this only
+  /// gives them a single name to be asked for by.
+  Object get fallbackValue => switch (this) {
+    _Choice(:final options) => options.first,
+    _Number(:final fallback) => fallback,
+    _Flag(:final fallback) => fallback,
+  };
+}
+
+class _Choice extends _Knob {
+  const _Choice(super.key, super.label, this.options);
+
+  /// The server's default FIRST, because that is what an unrecognised stored
+  /// value falls back to there and this has to agree with it.
+  final List<String> options;
+}
+
+class _Number extends _Knob {
+  const _Number(
+    super.key,
+    super.label,
+    this.min,
+    this.max,
+    this.fallback, {
+    this.step = 1,
+    this.suffix = '',
+  });
+
+  final int min;
+  final int max;
+  final int fallback;
+
+  /// What one notch of the slider moves. Height runs 120–900, and 780 notches
+  /// is a control nobody can land on a round number with.
+  final int step;
+  final String suffix;
+
+  int read(Object? raw) {
+    final value = raw is num ? raw.round() : int.tryParse('$raw') ?? fallback;
+
+    return value.clamp(min, max);
+  }
+
+  int snap(double raw) =>
+      (((raw - min) / step).round() * step + min).clamp(min, max);
+}
+
+class _Flag extends _Knob {
+  const _Flag(super.key, super.label, this.fallback);
+
+  final bool fallback;
+}
+
+/// One widget that renders where somebody puts it.
+/// One tile on the widgets grid.
+class _WidgetCardSpec {
+  const _WidgetCardSpec(this.key, this.label, this.blurb, this.icon);
+
+  final String key;
+  final String label;
+  final String blurb;
+  final IconData icon;
+}
+
+/// An icon per rendered widget, kept here rather than in `_renderedCatalogue`
+/// because that list is a hand copy of the SERVER's preset catalogue and
+/// nothing on the server has an opinion about icons.
+const Map<String, IconData> _renderedIcons = {
+  'social_links': Icons.share_outlined,
+  'city_list': Icons.location_city_outlined,
+  'hours_table': Icons.schedule_outlined,
+  'google_map': Icons.map_outlined,
+};
+
+/// A widget as a card: what it is, what it is set to, and a way in.
+///
+/// Fixed width rather than a grid with a column count. The cards wrap, so a
+/// narrow pane gets one per row and a wide one gets four, without this screen
+/// having to know which — and 260 is the width at which the longest status
+/// line ("On, during set hours") fits on one line.
+class _WidgetCard extends StatelessWidget {
+  const _WidgetCard({
+    required this.spec,
+    required this.status,
+    required this.onOpen,
+  });
+
+  final _WidgetCardSpec spec;
+  final String status;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    /*
+     * Jose, 2026-09-23: *"The cards should be uniform, same sizes"*.
+     *
+     * The width was already fixed; the HEIGHT was whatever the content came
+     * to. `Wrap` does not stretch its children, and the blurbs run to one line
+     * or two — "Where the business is." against "The bubble a visitor opens to
+     * start a conversation." — so the row was ragged along the bottom.
+     * Measured before fixing it: 115 against 132.
+     *
+     * 132 is the tallest the content reaches, not a number chosen to look
+     * right: icon row, a two-line blurb (`maxLines: 2` below caps it) and one
+     * status line. The blurb takes the slack via `Expanded`, so a one-line
+     * blurb pads downward and every status line lands on the same baseline
+     * across the row — which is the part that reads as uniform rather than
+     * the outlines matching.
+     */
+    return SizedBox(
+      width: 260,
+      height: 132,
+      child: Card(
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              // No `mainAxisSize.min` any more: the height is the SizedBox's
+              // now, and a Column told to shrink around an `Expanded` child is
+              // two answers to the same question.
+              children: [
+                Row(
+                  children: [
+                    Icon(spec.icon, size: 20, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(spec.label, style: theme.textTheme.titleSmall),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    spec.blurb,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // What it is set to now, so the grid answers "what is on here"
+                // without opening anything.
+                Text(
+                  status,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Rendered {
+  const _Rendered(this.key, this.label, this.blurb, this.knobs);
+
+  /// The shortcode's own name: `[ezbizi_social_links]`.
+  final String key;
+  final String label;
+  final String blurb;
+  final List<_Knob> knobs;
+}
+
+/// The four widgets and every option each one has.
+///
+/// A hand copy of `WidgetPresets::defaults()`, `CHOICES` and `RANGES`, and a
+/// copy on purpose. The server CLAMPS rather than refuses, so a control that
+/// offered a value outside these bounds would save something other than what
+/// it showed and say nothing — the failure that has no symptom. An option
+/// added there has to be added here or it cannot be set at all.
+const List<_Rendered> _renderedCatalogue = [
+  _Rendered(
+    'social_links',
+    'Social links',
+    'The row of icons, usually in a footer.',
+    [
+      _Choice('style', 'Style', ['plain', 'solid', 'outline']),
+      _Choice('shape', 'Shape', ['circle', 'square', 'rounded']),
+      _Number('size', 'Icon size', 16, 64, 28, suffix: 'px'),
+      _Number('gap', 'Space between', 0, 40, 10, suffix: 'px'),
+      _Flag('labels', 'Name each network beside its icon', false),
+    ],
+  ),
+  _Rendered(
+    'city_list',
+    'Towns served',
+    'The places this business covers, linked to their own pages.',
+    [
+      _Choice('layout', 'Arrangement', ['columns', 'list', 'accordion']),
+      _Number('columns', 'Columns', 1, 6, 3),
+      _Flag('group', 'Group them by county', true),
+      _Flag('link', 'Link each town to its page', true),
+    ],
+  ),
+  _Rendered(
+    'hours_table',
+    'Opening hours',
+    'The published week, as a table.',
+    [
+      _Flag('today', 'Mark today’s row', true),
+      _Flag('compact', 'Collapse days that share hours', false),
+    ],
+  ),
+  _Rendered(
+    'google_map',
+    'Map',
+    'Where the business is.',
+    [
+      _Number('height', 'Height', 120, 900, 320, step: 10, suffix: 'px'),
+      _Number('zoom', 'Zoom', 1, 20, 14),
+    ],
+  ),
+];
+
+/// `WidgetPresets::name`, in the box rather than after the save.
+///
+/// It STRIPS rather than substitutes, exactly as the PHP does: "Footer Icons"
+/// becomes `footericons`, not `footer-icons`. Guessing the nicer answer here
+/// would mean the name printed in the shortcode on this screen is not the name
+/// the server stored, and somebody would paste a shortcode that silently
+/// rendered the default.
+String _presetName(String raw) {
+  final clean =
+      raw.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]'), '');
+
+  return clean.length <= 32 ? clean : clean.substring(0, 32);
+}
+
+/// What is wrong with a name, or null.
+String? _presetProblem(String name, Set<String> taken) {
+  if (name.isEmpty) {
+    return 'Lowercase letters, numbers, - and _ only.';
+  }
+
+  if (name == _defaultPreset) {
+    return 'Every widget already has a default.';
+  }
+
+  if (taken.contains(name)) {
+    return 'There is already a preset called “$name”.';
+  }
+
+  return null;
+}
+
+/// Normalises while somebody types, so the name in the box is the name that
+/// will be stored — the surprise this exists to prevent is a name that changes
+/// on save.
+class _PresetNameFormatter extends TextInputFormatter {
+  const _PresetNameFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue old,
+    TextEditingValue next,
+  ) {
+    final clean = _presetName(next.text);
+
+    if (clean == next.text) return next;
+
+    // Only characters are ever removed, so the caret keeps its place by
+    // moving back as far as the text did.
+    final lost = next.text.length - clean.length;
+    final at = (next.selection.baseOffset - lost).clamp(0, clean.length);
+
+    return TextEditingValue(
+      text: clean,
+      selection: TextSelection.collapsed(offset: at),
+    );
+  }
+}
+
+/// One widget's presets: the default, any named ones, and the shortcodes.
+///
+/// ── Why it is a widget of its own rather than four more methods ──
+///
+/// The box somebody types a new name into has to own its controller. Written
+/// as part of the editor it would be a value in the config, so every keystroke
+/// would rebuild the pane and take the cursor with it — the `_QuestionRow` bug,
+/// which cost enough the first time to be worth not repeating. Nothing leaves
+/// here until Add is pressed.
+class _PresetCard extends StatefulWidget {
+  const _PresetCard({
+    required this.rendered,
+    required this.presets,
+    required this.canEdit,
+    required this.onChanged,
+  });
+
+  final _Rendered rendered;
+
+  /// Name → values, as the server sends them. `default` is always among them.
+  final Map<String, dynamic> presets;
+  final bool canEdit;
+
+  /// The whole map for this widget, because adding, renaming and deleting are
+  /// all changes to the set of KEYS and cannot be said one value at a time.
+  final void Function(Map<String, dynamic>) onChanged;
+
+  @override
+  State<_PresetCard> createState() => _PresetCardState();
+}
+
+class _PresetCardState extends State<_PresetCard> {
+  final TextEditingController _name = TextEditingController();
+  String? _problem;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  /// The default first, then the named ones in the order they were added.
+  List<String> get _names {
+    final named =
+        widget.presets.keys.where((key) => key != _defaultPreset).toList();
+
+    return [_defaultPreset, ...named];
+  }
+
+  Set<String> get _taken => widget.presets.keys.toSet();
+
+  Map<String, dynamic> _values(String name) =>
+      Map<String, dynamic>.from(widget.presets[name] as Map? ?? const {});
+
+  void _put(String name, Map<String, dynamic> values) {
+    widget.onChanged(Map<String, dynamic>.from(widget.presets)..[name] = values);
+  }
+
+  void _add() {
+    final name = _presetName(_name.text);
+    final problem = _presetProblem(name, _taken);
+
+    if (problem != null) {
+      setState(() => _problem = problem);
+
+      return;
+    }
+
+    // Starts from the DEFAULT rather than from the catalogue's own values: a
+    // named preset is almost always "the usual one, but smaller", and copying
+    // what is already in use is the shorter way to say that.
+    _put(name, _values(_defaultPreset));
+
+    _name.clear();
+    setState(() => _problem = null);
+  }
+
+  void _delete(String name) {
+    widget.onChanged(Map<String, dynamic>.from(widget.presets)..remove(name));
+  }
+
+  /// Rebuilt in order rather than removed and re-added, so renaming a preset
+  /// does not also move it to the bottom of the list.
+  void _rename(String from, String to) {
+    final next = <String, dynamic>{};
+
+    widget.presets.forEach((key, value) {
+      next[key == from ? to : key] = value;
+    });
+
+    widget.onChanged(next);
+  }
+
+  Future<void> _promptRename(String from) async {
+    final to = await showDialog<String>(
+      context: context,
+      builder: (context) => _PresetNameDialog(
+        heading: 'Rename “$from”',
+        initial: from,
+        taken: _taken.difference({from}),
+        action: 'Rename',
+      ),
+    );
+
+    if (to == null || to == from || !mounted) return;
+
+    _rename(from, to);
+  }
+
+  String _shortcode(String name) => name == _defaultPreset
+      ? '[ezbizi_${widget.rendered.key}]'
+      : '[ezbizi_${widget.rendered.key} preset="$name"]';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.rendered.label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(widget.rendered.blurb, style: theme.textTheme.bodySmall),
+          for (final name in _names) _preset(theme, name),
+          if (widget.canEdit)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: ValueKey('preset-add:${widget.rendered.key}'),
+                      controller: _name,
+                      inputFormatters: const [_PresetNameFormatter()],
+                      style: theme.textTheme.bodyMedium,
+                      decoration: InputDecoration(
+                        labelText: 'Another preset',
+                        hintText: 'footer',
+                        isDense: true,
+                        errorText: _problem,
+                        helperText: 'Lowercase letters, numbers, - and _.',
+                        helperMaxLines: 2,
+                      ),
+                      onSubmitted: (_) => _add(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: TextButton.icon(
+                      onPressed: _add,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _preset(ThemeData theme, String name) {
+    final isDefault = name == _defaultPreset;
+    final values = _values(name);
+
+    return Padding(
+      key: ValueKey('preset:${widget.rendered.key}:$name'),
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isDefault ? 'Default' : name,
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ),
+              if (widget.canEdit && !isDefault) ...[
+                IconButton(
+                  tooltip: 'Rename this preset',
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: () => _promptRename(name),
+                ),
+                IconButton(
+                  tooltip: 'Delete this preset',
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => _delete(name),
+                ),
+              ],
+            ],
+          ),
+          // Left-aligned in a column of its own rather than beside the name: a
+          // 32-character preset makes this chip longer than a phone is wide,
+          // and in a Row it would have nowhere to wrap to.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: ShortcodeButton(code: _shortcode(name)),
+          ),
+          const SizedBox(height: 8),
+          for (final knob in widget.rendered.knobs)
+            _knob(theme, knob, values, name),
+        ],
+      ),
+    );
+  }
+
+  Widget _knob(
+    ThemeData theme,
+    _Knob knob,
+    Map<String, dynamic> values,
+    String preset,
+  ) {
+    void set(Object? chosen) =>
+        _put(preset, Map<String, dynamic>.from(values)..[knob.key] = chosen);
+
+    return switch (knob) {
+      _Choice choice => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: SearchPickerField<String>(
+            value: choice.options.contains('${values[choice.key]}')
+                ? '${values[choice.key]}'
+                : choice.options.first,
+            label: choice.label,
+            isDense: true,
+            options: [
+              for (final option in choice.options)
+                SearchOption(value: option, label: option),
+            ],
+            onChanged: widget.canEdit
+                ? (chosen) => chosen == null ? null : set(chosen)
+                : null,
+          ),
+        ),
+      _Number number => _slider(theme, number, values, set),
+      _Flag flag => SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          value: values[flag.key] == null
+              ? flag.fallback
+              : values[flag.key] == true,
+          onChanged: widget.canEdit ? (on) => set(on) : null,
+          title: Text(flag.label, style: theme.textTheme.bodyMedium),
+        ),
+    };
+  }
+
+  /// A slider with its value in the label above it.
+  ///
+  /// The number has to be readable while the thumb is where it is: Material's
+  /// own bubble only shows during a drag, and "how big are these icons" is a
+  /// question somebody asks without touching anything.
+  Widget _slider(
+    ThemeData theme,
+    _Number number,
+    Map<String, dynamic> values,
+    void Function(Object?) set,
+  ) {
+    final value = number.read(values[number.key]);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${number.label} — $value${number.suffix}',
+            style: theme.textTheme.bodySmall,
+          ),
+          Slider(
+            value: value.toDouble(),
+            min: number.min.toDouble(),
+            max: number.max.toDouble(),
+            divisions: ((number.max - number.min) / number.step).round(),
+            label: '$value${number.suffix}',
+            onChanged: widget.canEdit ? (raw) => set(number.snap(raw)) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Naming a preset, in a box that owns its own text.
+///
+/// A dialog rather than an editable label in the row, because renaming changes
+/// a KEY: a rename applied per keystroke would walk through `f`, `fo`, `foo`
+/// as three differently-named presets, and the shortcode printed beside it
+/// would advertise each one in turn.
+class _PresetNameDialog extends StatefulWidget {
+  const _PresetNameDialog({
+    required this.heading,
+    required this.initial,
+    required this.taken,
+    required this.action,
+  });
+
+  final String heading;
+  final String initial;
+
+  /// Names already in use on this widget, not counting the one being renamed.
+  final Set<String> taken;
+  final String action;
+
+  @override
+  State<_PresetNameDialog> createState() => _PresetNameDialogState();
+}
+
+class _PresetNameDialogState extends State<_PresetNameDialog> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initial,
+  );
+  String? _problem;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _presetName(_name.text);
+    final problem = _presetProblem(name, widget.taken);
+
+    if (problem != null) {
+      setState(() => _problem = problem);
+
+      return;
+    }
+
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.heading),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        inputFormatters: const [_PresetNameFormatter()],
+        decoration: InputDecoration(
+          labelText: 'Preset name',
+          errorText: _problem,
+          helperText: 'Lowercase letters, numbers, - and _.',
+          helperMaxLines: 2,
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(onPressed: _submit, child: Text(widget.action)),
       ],
     );
   }

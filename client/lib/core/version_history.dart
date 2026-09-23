@@ -8,6 +8,73 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0245',
+      date: '23 Sep 2026',
+      items: [
+        'A shift always gets an end now, from the schedule or from a new limit in Settings that starts at 16 hours. Seven shifts had been left open across two businesses, the oldest since 9 September, and nothing that existed was ever going to close them. They close at that limit rather than at the running total they had reached.',
+        'Reviews and Business Profile have a tab of their own instead of sitting inside Marketing. Nothing about either one changes except where it is drawn.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0244',
+      date: '23 Sep 2026',
+      items: [
+        'Web Management, Widgets is a card for each widget, showing what it is set to right now - On during set hours, 2 questions, Default look - and opening one gives you that widget fields and preview on their own. Four of them had no preview at all before.',
+        'Integrations connects accounts as well as listing them. Three of the four families answered with a sentence naming the module that owns the account, so you had to leave the screen to act on what it had just told you.',
+        'Opening an integration keeps the sidebar and the header instead of filling the window with a page of its own. Every card did that, because every card went through the same tap.',
+        'The ownership chart shows work days and shift as two short columns, Mon - Fri and 8:00 AM - 5:00 PM, instead of printing the whole week. Where the working days do not share one set of hours it says Varies rather than picking one.',
+        'A desk can be renamed from the ownership chart, by anyone who may edit the map.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0243',
+      date: '23 Sep 2026',
+      items: [
+        'The Newsletter composer shows the email beside the editor again. The preview was coming back from the server correctly and the panel was not giving it any room to draw in.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0242',
+      date: '22 Sep 2026',
+      items: [
+        'Extensions now begin with a zero, and the nine that already existed were moved to match -- 101 became 0101, keeping each person their own number rather than renumbering anybody. A menu offers 1 to 9, so an extension starting with one of those digits cannot be told from a menu choice at the instant a caller presses it.',
+        'A saved report emailed out says which business it is from. It named the rule that sent it and never the business.',
+        'Integrations shows a card for what your business actually uses. Fifteen providers drew fifteen cards and thirteen of them offered to set up something nobody here had connected, so Mailing, Social and Advertising now carry only what is connected, each keeping the sentence that says where to connect more. Reporting keeps all of its cards, because there the card is the only way in.',
+        'Facebook Messenger and Instagram arrive in Leads as sources of their own, beside Google, Thumbtack, Chat and Forms, and you answer them from the same thread as everything else.',
+        'A window for an incoming call, naming the customer when the number is one of yours and showing the number when it is not, with Accept and Ignore. It is off until you switch it on, from the Dial pad: the strip stays the default, so a ringing phone does not take the app away from whatever you were in the middle of writing.',
+        'Monitoring: General is the ownership chart, and the floor plan map has a tab of its own.',
+        'Settings, Mail server for sending, no longer says your saved reports and automations go out through a server you connect there. They go out from EzBizi, and have since 16 September. The screen was still describing the week it was built, and it was asking for a password on the strength of it.',
+        'The version panel lists 0.0.0240 again. That release shipped with no note of its own, so the panel drew the 0.0.0239 notes under a 0.0.0240 heading.',
+        'Integrations reads properly on a narrow phone screen, and the green that means success is one green across the app rather than three.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0241',
+      date: '22 Sep 2026',
+      items: [
+        'Integrations is a card for each provider, each with its own screen, and every card says which part of the business the accounts on it belong to.',
+        'Automations are cards laid out across the width instead of one full-width row each, so you can see more rules at once, and the template picker draws each template as a card naming the trigger it runs on.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0240',
+      date: '18 Sep 2026',
+      items: [
+        'The live chat has an on and off switch per website, under Web Management, and it starts on. Turning it off leaves the chat out of what the website is sent, so it works on whichever version of the plugin a site happens to be running.',
+        'A Cities pane for website content, and five more widgets a website can draw from EzBizi.',
+        'Our privacy page had said EzBizi never carries mail your business writes to its own customers. Three automation actions do, so the page now says which and when.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0239',
+      date: '17 Sep 2026',
+      items: [
+        'The chat bubble is on a website only while somebody is there to answer it. Set the hours per site under Web Management, and the page decides in the reader own browser, so a cached page cannot show the bubble at midnight.',
+        'The phone stays registered on a handset too. The desktop fix went out last release; a phone gets no expiry warning from the network at all, so it now renews on the clock instead.',
+        'Monitoring tabs are granted one at a time too: the floor plan, PC specs, cameras and desktop screenshots are four separate ticks on a role. Everybody keeps the tabs they could already open, and a tab you may not open stays visible and locked rather than vanishing, so you can tell a missing permission from a missing feature.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0238',
       date: '17 Sep 2026',
       items: [

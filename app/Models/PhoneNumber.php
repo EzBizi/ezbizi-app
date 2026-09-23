@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
+use App\Support\Phone\TwimlRenderer;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use Database\Factories\PhoneNumberFactory;
@@ -19,13 +20,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class PhoneNumber extends Model implements StatesRetention
 {
+    use BelongsToTenant;
+
     /** @use HasFactory<PhoneNumberFactory> */
     use HasFactory;
     use HasUuids;
-    use BelongsToTenant;
 
     public const SCOPE_ORGANIZATION = 'organization';
+
     public const SCOPE_COMPANY = 'company';
+
     public const SCOPE_FRANCHISE = 'franchise';
 
     /**
@@ -35,7 +39,7 @@ class PhoneNumber extends Model implements StatesRetention
      * closed-hours document, so a validator that accepted a fourth spelling
      * would save a line that answers with silence.
      *
-     * @see \App\Support\Phone\TwimlRenderer
+     * @see TwimlRenderer
      */
     public const AFTER_HOURS_VOICEMAIL = 'voicemail';
 
@@ -62,6 +66,7 @@ class PhoneNumber extends Model implements StatesRetention
         'organization_id', 'connection_id', 'scope_type', 'scope_id',
         'twilio_sid', 'e164', 'label',
         'flow_id', 'hours_schedule_id', 'ring_group_id', 'voicemail_box_id',
+        'answer_with', 'answer_user_id',
         'record', 'transcribe',
         'after_hours', 'after_hours_number', 'language',
         'messaging_service_sid', 'sms_outbound_allowed', 'emergency_address_set',
@@ -115,6 +120,63 @@ class PhoneNumber extends Model implements StatesRetention
      * exact failure this module keeps producing. `resolved()` is greppable;
      * the bare attribute is not.
      */
+    /** An IVR menu plays, and the caller chooses. */
+    public const ANSWER_MENU = 'menu';
+
+    /** A team is dialled. */
+    public const ANSWER_RING_GROUP = 'ring_group';
+
+    /** Straight to voicemail, ON PURPOSE. */
+    public const ANSWER_VOICEMAIL = 'voicemail';
+
+    /** One named person's phones. */
+    public const ANSWER_USER = 'user';
+
+    /** Whoever this line belongs to — see [assignedUserId]. */
+    public const ANSWER_SELF = 'self';
+
+    /**
+     * What a line may be set to answer with.
+     *
+     * NULL is not in the list and is not a sixth option: it means "as before"
+     * — a menu if one is attached, otherwise the ring group, otherwise
+     * voicemail — which is how all thirteen production lines behave and will
+     * keep behaving until somebody chooses something here. See the migration.
+     *
+     * @return list<string>
+     */
+    public static function answerChoices(): array
+    {
+        return [
+            self::ANSWER_MENU,
+            self::ANSWER_RING_GROUP,
+            self::ANSWER_VOICEMAIL,
+            self::ANSWER_USER,
+            self::ANSWER_SELF,
+        ];
+    }
+
+    /**
+     * The person this line belongs to, for `self`.
+     *
+     * An extension pointing at this number is what makes a line somebody's —
+     * it is already how the Dial pad decides which line is yours, so `self`
+     * needs no column of its own and cannot drift from what the pad shows.
+     *
+     * Null when nobody holds one, which is a real state and not an error: a
+     * line set to ring "whoever it belongs to" and belonging to nobody reaches
+     * voicemail, and the call-flow chart says so.
+     */
+    public function assignedUserId(): ?string
+    {
+        $id = PhoneExtension::query()
+            ->where('number_id', $this->id)
+            ->orderBy('created_at')
+            ->value('user_id');
+
+        return $id === null ? null : (string) $id;
+    }
+
     public function resolved(string $key): mixed
     {
         $own = $this->getAttribute($key);

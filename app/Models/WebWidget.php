@@ -95,6 +95,31 @@ class WebWidget extends Model implements StatesRetention
     }
 
     /**
+     * What a WEBSITE gets: the resolved config, minus anything switched off.
+     *
+     * The plugin, the browser snippet and nothing else. A widget the customer
+     * has turned off is not sent at all rather than sent with a flag, because
+     * the installed plugins do not read the flag and do honour the absence —
+     * `WidgetDefaults::published()` has the measurement.
+     *
+     * `resolvedFor` stays the unfiltered answer because the editor needs the
+     * off switch in order to draw it. A caller choosing between these two is
+     * answering "am I a website, or am I the screen?".
+     *
+     * @return array<string, mixed>
+     */
+    public static function publishedFor(WebSite $site): array
+    {
+        return WidgetDefaults::published(self::resolvedFor($site));
+    }
+
+    /** Whether a visitor on this site can still open a conversation. */
+    public static function chatIsOn(WebSite $site): bool
+    {
+        return ! empty(self::resolvedFor($site)['chat']['enabled']);
+    }
+
+    /**
      * What the editing screen needs: this site's own config if it has one, and
      * separately what it would inherit — so the screen can say "following
      * a-1chimney.com" rather than showing borrowed values as if they were typed

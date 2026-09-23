@@ -23,6 +23,12 @@
  * So the panel carries one notice saying where the settings are. That is the
  * question somebody has the moment they drop it on a page, and answering it
  * there is cheaper than answering it in support.
+ *
+ * The presentation widgets added in 1.12.0 carry one more: the NAME of a
+ * preset. That is not a second place to set a colour — the bundle it names is
+ * still edited only in EzBizi. It exists because the same row of icons has to
+ * be small in a footer and large in a contact panel, and a page has to be able
+ * to say which. See `widgets.php`.
  */
 
 if (! defined('ABSPATH')) {
@@ -45,6 +51,11 @@ function ezbizi_register_elementor_widgets($widgets_manager) {
 
     $widgets_manager->register(new EzBizi_Elementor_Form());
     $widgets_manager->register(new EzBizi_Elementor_Chat());
+    $widgets_manager->register(new EzBizi_Elementor_Social_Links());
+    $widgets_manager->register(new EzBizi_Elementor_Google_Map());
+    $widgets_manager->register(new EzBizi_Elementor_Post_Title());
+    $widgets_manager->register(new EzBizi_Elementor_Hours_Table());
+    $widgets_manager->register(new EzBizi_Elementor_City_List());
 }
 
 /**

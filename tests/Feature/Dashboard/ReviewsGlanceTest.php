@@ -10,8 +10,10 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\ReviewsGlance;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -54,6 +56,20 @@ class ReviewsGlanceTest extends TestCase
             'org' => $r['organization'], 'admin' => $r['administrator'],
             'company' => $r['company'], 'franchise' => $r['franchise'],
         ];
+    }
+
+    /**
+     * The frozen clock must not outlive the test that froze it.
+     *
+     * Without this, the bucket test's 22 September becomes "now" for every case
+     * that runs after it in this class, and a fixture written with now()->subDay()
+     * lands in a period the next test did not intend.
+     */
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     private function inTenant(callable $fn): mixed
@@ -125,6 +141,94 @@ class ReviewsGlanceTest extends TestCase
         return app(ReviewsGlance::class)
             ->resolve($user, DashboardPeriod::for($user), [])
             ->toArray()['data'];
+    }
+
+    /**
+     * The line has one column per period bucket, zeros included.
+     *
+     * ── The case every other assertion here is blind to ──────────────
+     *
+     * Raised by Dashboard and the deploy desk, 2026-09-22: this suite asserted
+     * the series was NOT EMPTY and never how long it was. A dropped bucket
+     * carrying the identity value - a zero - leaves assertNotEmpty true, moves
+     * no other number, and is invisible. It is also self-healing: one new row
+     * the next day shifts the series and a later correct write restores a green
+     * that never covered the gap.
+     *
+     * That is the case the buckets exist FOR. The docblock on emptyBuckets
+     * promises a quiet stretch still draws zeros, and a line going quiet is the
+     * thing somebody reads this box to see.
+     *
+     * ── Why the clock is frozen and the number is written out ────────
+     *
+     * The default period is the calendar MONTH, so the bucket count depends on
+     * today's date - which is why no fixed number could be asserted before. A
+     * frozen clock makes it fixed, and the expected count is derived here by
+     * hand rather than from the code, so this cannot pass by agreeing with the
+     * implementation it is checking:
+     *
+     *   period `month` runs 1 September to 22 September 2026
+     *   buckets are start-of-week (Sunday) dates for those days:
+     *     1-5 Sep  -> Sun 30 Aug
+     *     6-12 Sep -> Sun 6 Sep
+     *     13-19    -> Sun 13 Sep
+     *     20-22    -> Sun 20 Sep
+     *   = FOUR columns
+     */
+    public function test_the_series_draws_one_column_per_bucket_including_zeros(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-22 12:00:00', 'America/New_York'));
+
+        $this->review($this->alpha['franchise']);
+
+        /*
+         * THE WEEK START IS STATED HERE, NOT INHERITED.
+         *
+         * The axis below is hand-derived from a SUNDAY week start. Until now
+         * that half of the expectation came from the registry default and this
+         * test read as though it had chosen it. A neighbouring glance test
+         * asserting the same inherited premise failed once, alone, with its
+         * first column missing - precisely the axis a MONDAY start draws - and
+         * has not reproduced. Cause still open (see CustomersGlanceTest and
+         * 726768d0); ordering rules out a peer's test writing the setting.
+         *
+         * Pinning the input costs a line and makes the expectation depend on a
+         * value this test declares rather than one it borrows.
+         */
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('week_starts_on', $this->alpha['org'], 'sunday'));
+
+        $data = $this->glance($this->alpha['admin']);
+
+        $points = $data['series'][0]['points'];
+
+        /*
+         * THE KEYS, NOT A COUNT - Customers' correction, 2026-09-22, and it is
+         * the better assertion.
+         *
+         * A count cannot say the axis STARTS at the period's start rather than
+         * at the first day that had data: four columns beginning a week late is
+         * still four columns. The labels can only be produced by zero-filling
+         * from the period's own start, and nothing supplies them as a fallback.
+         */
+        $this->assertSame(
+            ['2026-08-30', '2026-09-06', '2026-09-13', '2026-09-20'],
+            array_column($points, 'at'),
+            'the axis must begin at the period start and carry every week of it, '
+            .'including the quiet ones - a dropped or shifted bucket changes no '
+            .'other number and no other assertion here sees it',
+        );
+
+        /*
+         * And the VALUES, because an axis with the right labels and no zeros
+         * would otherwise pass. The quiet weeks are the whole point: three of
+         * the four had nothing, and each must still be a column.
+         */
+        $this->assertSame(
+            [0, 0, 0, 1],
+            array_column($points, 'value'),
+            'the three quiet weeks must be zeros rather than absent',
+        );
     }
 
     /**

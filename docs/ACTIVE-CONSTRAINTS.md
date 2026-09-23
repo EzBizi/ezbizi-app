@@ -564,10 +564,102 @@ remove the directory.
 
 ## 14 · EzBizi cannot update the plugin on customer sites, and should not gain the power quietly
 
-Measured on the box, 2026-09-17:
+Measured on the box, **2026-09-22**:
 
-    plugin_version 1.9.1   110 sites, all seen in the last 30 minutes
-    plugin_version 1.10.0    0 sites
+    plugin_version 1.12.0   110 sites, 64 seen in the last 15 minutes
+    never read                1 site
+
+On 2026-09-17 it read 1.9.1 on 110 and 1.10.0 on zero; on the 18th, 1.11.0 on
+110 and then 1.12.0 the same afternoon. Three releases in two days.
+
+**The headline figure above was 1.11.0 until 2026-09-22 while the body of this
+very section said the estate had gone to 1.12.0 that same afternoon.** A
+section can contradict itself and stay believable, because a reader takes the
+number from the top and the reasoning from the bottom. Re-measure the headline
+when you add to the body.
+
+The estate moves because we HOST these sites; the capability argument below is
+about a customer's own server, and is unchanged.
+
+**WRONG FOR THREE HOURS ON 2026-09-18, AND THE WRONG VERSION IS KEPT HERE
+BECAUSE THE MISTAKE IS THE USEFUL PART.** This section said a session could not
+reach the estate, on this measurement:
+
+    ssh websites                     reached, as `ubuntu` on panel.triplexhost.net
+    ls -d /var/www/vhosts/*/         46 vhosts, NAMES readable
+    ls /var/www/vhosts/<domain>/     Permission denied
+
+Every line is true and the conclusion drawn from it was false. **`ubuntu` has
+passwordless sudo and `plesk` is on its PATH.** The probe simply never tried
+`sudo`, and `Permission denied` reads like an answer about authority when it is
+only an answer about the command as typed. Jose corrected it in four words.
+
+    sudo -n true                     YES
+    sudo ls /var/www/vhosts/<d>/     the site
+    sudo find … -name ezbizi.php     110 installs
+
+The estate went 1.11.0 → 1.12.0 the same afternoon with
+`scripts/plugin-rollout.sh`. **Before concluding that access is missing, run the
+privileged form of the command.** A capability this repo already had sat
+recorded as an impossibility, and a todo waited on Jose for something he had
+already given.
+
+**What is actually true, and still worth defending:** EzBizi's WORDPRESS
+credentials carry no `update_plugins` (the capability list below is unchanged),
+so nothing the PRODUCT does at runtime can install code on a customer's site.
+That is the design property. It is not a statement about what an operator with
+a shell on our own hosting can do, and the two had been collapsed into one.
+
+**AND THE `sg-*` SSH ALIASES ARE NOT THE ESTATE — a loop over them ships to
+nobody and reports success.** There are 42 of them in `~/.ssh/config`, they
+reach SiteGround accounts holding a full WordPress tree per domain, and they are
+the obvious thing a session reaches for. They are stale:
+
+    sg-a-1chimney:/home/customer/www/a-1chimney.com/public_html
+      wp-content/plugins/ezbizi/ezbizi.php   Version 1.0.1, mtime 2026-08-31
+
+    the same host, as EzBizi hears it
+      a-1chimney.com                         1.11.0, seen 2026-09-18 16:47
+
+One file says 1.0.1 and has not been touched since August; the live site
+reported 1.11.0 nine minutes before the file was read. Both are real — they are
+**different servers**. `a-1chimney.com` resolves to 32.194.222.151, the Plesk
+box; the SiteGround copies are pre-migration leftovers that serve nothing, and
+some read 1.10.0 while others read 1.0.2, which is what a dead estate drifting
+looks like.
+
+So a rollout written as `for h in sg-*; do scp ...; done` would exit 0 across 42
+hosts, change 42 copies nobody loads, and leave `plugin_version` reading the old
+release everywhere — with the deploy log saying it worked. **`web_sites`
+`plugin_version` is the only honest check, and it is a check of the LIVE site
+rather than of anything we pushed.** §14's own rule applies to its own rollout:
+which half is live is a measurement, not an inference.
+
+**The estate is `/var/www/vhosts/<domain>/{httpdocs,<subdomain>}/` on the Plesk
+box** — 46 vhosts holding 110 WordPress installs, because most domains carry
+their state subdomains as directories inside one vhost.
+
+**Two things that will damage a site during a rollout, both handled in
+`scripts/plugin-rollout.sh` and both silent for weeks if you get them wrong:**
+
+*Ownership is per subscription.* Each install belongs to that customer's FTP
+user with group `psacln` — `a1c_ftp`, `cstar_ftp`, `roof_ftp`. Copy as root and
+PHP still serves the site perfectly, so nothing looks wrong; the failure
+arrives the next time anybody edits through Plesk, FTP or the File Manager and
+gets a permission error nobody can place. Read the owner off the directory
+before the copy and restore it after, per install.
+
+*A backup must not live inside `wp-content/plugins/`.* WordPress reads every
+directory in there as a plugin, so `ezbizi.bak/` shows up in the customer's
+plugin list as a second EzBizi — and somebody will deactivate one of them.
+Backups go to `/var/backups/ezbizi-plugin/<stamp>/`, one tarball per install,
+and `--rollback` puts them back.
+
+**And `ssh` inside a `while read` loop eats the loop's own list.** The first
+`--all` run applied to exactly one site and exited 0 having printed one line.
+`ssh -n`. The reason this is worth a paragraph is the direction it fails in: a
+partial rollout reports success, and the estate quietly stays on the old
+release while the log says otherwise.
 
     service_capabilities, identical on all 110:
       read, upload_files, edit_posts, edit_published_posts, publish_posts,
@@ -580,17 +672,21 @@ and the absence is a design property rather than a gap to fill: an integration
 that can install code on 110 businesses' websites is a different and much
 larger thing than one that can edit their pages.
 
-1.10.0 is published on wordpress.org (slug `ezbizi`). The plugin sets no
-`auto_update_plugin` filter, so each site sees it at its own next version check
-and installs it only if that site has auto-updates on; the rest need somebody to
-press Update.
+**1.10.0** is what wordpress.org publishes (slug `ezbizi`, added 2026-08-31, 100
+active installs, asked of api.wordpress.org on 2026-09-18). The repo is at
+1.11.0, so **the directory is one release behind us** and anybody installing
+from it gets no chat working hours. The plugin sets no `auto_update_plugin`
+filter, so each site sees a new version at its own next check and installs it
+only if that site has auto-updates on; the rest need somebody to press Update.
 
 **THE HALF-SHIPPED STATE THAT FOLLOWS.** The two halves of a feature ship
 through two different channels at two different speeds. 6bd90848 put City link,
 State link and Website address into EzBizi and went live in 0.0.0237 within the
-hour; 1.10.0 is what RENDERS them and is on zero sites. So the fields are
-fillable today and do nothing on any customer site, and "those three fields are
-back" is true of our side only.
+hour; 1.10.0 is what RENDERS them, and on 2026-09-17 it was on zero sites — the
+fields were fillable and did nothing anywhere. The next day the estate was on
+1.11.0 and both of those, plus the chat hours, render. **The lesson survives the
+example:** which half is live is a measurement, not an inference, and the two
+halves can sit apart for a day or for a month depending on who owns the server.
 
 Before saying a web feature is live, ask which half you measured. `web_sites`
 answers it directly:

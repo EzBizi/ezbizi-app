@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\LeadConversation;
 use App\Models\WebChat;
 use App\Models\WebSite;
+use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Http\JsonResponse;
@@ -72,6 +73,34 @@ class EnquiriesController extends Controller
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        /*
+         * A chat the customer has switched off does not open, even though the
+         * widget asking is on their own page.
+         *
+         * The bubble goes away by not being sent (`WidgetDefaults::published`),
+         * and that is enough for a browser loading the page now. It is not
+         * enough on its own: page caches, a tab left open since yesterday and
+         * anybody who kept the public key can all still reach this endpoint,
+         * and a switch that leaves those able to file enquiries into a business
+         * that stopped answering them has not disabled anything.
+         *
+         * 409 rather than 403, following Clock In: the request conflicts with
+         * the current state of the site, and an administrator flipping one
+         * switch makes it work. 403 is the code a permission failure returns
+         * and this is not one — nothing here is signed in.
+         *
+         * `say()` and `messages()` are deliberately NOT gated. A visitor
+         * halfway through a conversation when somebody flips the switch is a
+         * person mid-sentence, and the business can still see the thread in
+         * Leads; cutting them off would lose an enquiry that was already made.
+         */
+        if (! $this->tenant->run($organization, fn () => WebWidget::chatIsOn($site))) {
+            return response()->json(
+                ['message' => 'This website is not taking chat messages right now.'],
+                Response::HTTP_CONFLICT,
+            )->withHeaders($this->browserHeaders());
+        }
 
         return $this->tenant->run($organization, function () use ($site, $input): JsonResponse {
             [$chat, $token] = $this->enquiries->startChat($site, $input['message'], [

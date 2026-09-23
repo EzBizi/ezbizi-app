@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../widgets/async_body.dart';
@@ -540,8 +541,11 @@ class _WorkspaceHealth extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final okColor = const Color(0xFF188038);
-    final warnColor = const Color(0xFFE37400);
+    // Were `const Color(0xFF188038)` / `0xFFE37400` — already named for the
+     // two roles, just written out by hand. Three modules had their own
+     // near-identical pair, which is why the theme now has one.
+    final okColor = StateColour.of(context).on;
+    final warnColor = StateColour.of(context).caution;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

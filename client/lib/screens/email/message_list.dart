@@ -405,7 +405,17 @@ class _VerifiedDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1A73E8),
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 1.5),
+        // THE RING SEPARATES THE DOT FROM THE PAGE, so it is the page's
+        // colour and not white. It was `Colors.white`, which drew a white
+        // halo on the dark theme's surface — invisible as drift, because
+        // there is exactly one of these and a ratchet counts instances.
+        //
+        // The CHECK stays white: it sits on the blue, which does not change
+        // with the theme, so white is correct in both.
+        border: Border.all(
+          color: Theme.of(context).colorScheme.surface,
+          width: 1.5,
+        ),
       ),
       child: const Icon(Icons.check, size: 8, color: Colors.white),
     );

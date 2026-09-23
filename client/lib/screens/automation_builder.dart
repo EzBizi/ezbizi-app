@@ -1441,11 +1441,77 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           for (final template in widget.catalogue.templates)
             SearchOption<String>(
               value: template['key'] as String,
+              // STILL REQUIRED with a child, and not decoration: this is what
+              // the search filters on. A card has no single string in it, so
+              // something has to say which words the list matches.
               label: template['name'] as String,
               detail: template['description'] as String?,
+              // A CARD, because the plain two-line row read as a wall. Jose,
+              // 2026-09-22: "perhaps in card format or something, right now
+              // it's just bad". Each one is a thing somebody is choosing
+              // between, and five of them stacked with no edges made it hard
+              // to see where one ended.
+              child: _templateCard(context, template),
             ),
         ],
         onChanged: _busy ? null : _applyTemplate,
+      ),
+    );
+  }
+
+  /// One template, drawn as something you can tell apart from the next one.
+  ///
+  /// The sheet gives each option a `ListTile` title, so this is deliberately a
+  /// bounded card rather than a Column of text: the edge is the whole point —
+  /// it is what says where one choice stops and the next begins.
+  ///
+  /// The trigger is named on it. Two of these differ only in what sets them
+  /// off, and a description alone leaves somebody reading two paragraphs to
+  /// find the difference.
+  Widget _templateCard(BuildContext context, Map<String, dynamic> template) {
+    final text = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final trigger = template['trigger_key'] as String?;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.bolt_outlined, size: 16, color: scheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  template['name'] as String,
+                  style: text.titleSmall,
+                ),
+              ),
+            ],
+          ),
+          if (template['description'] != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              template['description'] as String,
+              style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+          if (trigger != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Runs on: ${widget.catalogue.describeTrigger(trigger)}',
+              style: text.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ],
       ),
     );
   }

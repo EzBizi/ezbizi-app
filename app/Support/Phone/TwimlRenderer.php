@@ -11,6 +11,7 @@ use App\Models\PhoneNumber;
 use App\Models\PhonePresence;
 use App\Models\PhoneRingGroup;
 use App\Models\PhoneVoicemailBox;
+use App\Models\User;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Twilio\TwiML\VoiceResponse;
@@ -84,6 +85,20 @@ final class TwimlRenderer
         // flag would swallow the notice on any call made without it.
         $skipMenu = ! $repeat
             && ($outbound || $digits !== '' || (bool) ($context['skip_menu'] ?? false));
+
+        // AND A LINE THAT HAS CHOSEN SOMETHING ELSE.
+        //
+        // A flow used to win over everything by ORDER: if `flow_id` was set
+        // the menu played, whatever else the line said. So picking "Ring
+        // group" on a line with a menu attached would have changed nothing and
+        // the picker would have been a lie — the commonest way a setting screen
+        // loses somebody's trust.
+        //
+        // `menu` and NULL both leave the menu alone. Null is "as before", and
+        // as before a flow plays if there is one.
+        $chosen = (string) ($number->answer_with ?? '');
+        $skipMenu = $skipMenu || ($chosen !== '' && $chosen !== PhoneNumber::ANSWER_MENU);
+
         $prompt = ($skipMenu || $closed) ? null : $this->menuPrompt($number);
 
         if ($prompt === null) {
@@ -640,6 +655,46 @@ final class TwimlRenderer
             return;
         }
 
+        // ── A TEAM, rather than a person ────────────────────────────
+        //
+        // Jose, 2026-09-17: extensions for "users, ivr menus, ring groups".
+        // The group's own dial is reused rather than copied — `overflow_group`
+        // is the context key that already means "ring THIS group whatever the
+        // line would otherwise do", so an extension and a queue hand-back
+        // reach the same code and cannot drift apart.
+        if ($row->targetKind() === PhoneExtension::TARGET_RING_GROUP) {
+            // No null check on the group, and that is deliberate rather than
+            // missing. `ring_group_id` is a foreign key with `nullOnDelete`,
+            // so a deleted team NULLS the column — and a row with all three
+            // targets null has no kind at all, which the branch below catches.
+            // I wrote the null check first; sabotaging it left the suite green
+            // because the case cannot arise, and a branch nothing can reach is
+            // a branch the next person has to reason about for nothing.
+            $this->ringOrVoicemail($response, $number, [
+                ...$context,
+                'overflow_group' => $row->ringGroup,
+                'batch' => 0,
+            ]);
+
+            return;
+        }
+
+        // A menu extension is NOT handled here, deliberately — see the
+        // Extensions screen and `PhoneExtension::TARGET_MENU`. Playing the
+        // prompt is easy; carrying WHICH flow through the webhook round trip
+        // that follows a keypress is not, and a half-built version would read
+        // the right prompt and then route the keypress to the LINE's menu. The
+        // row cannot be created yet, so this is unreachable rather than broken.
+        if ($row->targetKind() !== PhoneExtension::TARGET_USER) {
+            $response->say(
+                'That extension is not set up right now.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
         $available = PhonePresence::query()
             ->where('connection_id', $connection->id)
             ->where('user_id', $row->user_id)
@@ -745,10 +800,115 @@ final class TwimlRenderer
     /**
      * @param  array<string, mixed>  $context
      */
+    /**
+     * Ring one named person, rather than a team.
+     *
+     * ── Why this is not a ring group of one ─────────────────────────
+     *
+     * It would work, and it would mean somebody maintaining a group per person
+     * — thirteen lines and thirteen groups whose membership is one row each,
+     * every one of them a thing that can drift from the person it is named
+     * after. Jose asked for "User Specific" and "Self" as destinations, not as
+     * a naming convention for groups.
+     *
+     * ── Every device, and nothing if there are none ─────────────────
+     *
+     * One `<Client>` per device, the same rule as a group: an identity naming
+     * only the person rings whichever device Twilio picks, which left a desk
+     * silent while a phone in a pocket rang. Presence is honoured too — a
+     * person on Do Not Disturb is not rung by their own line either, because
+     * Do Not Disturb is about the person and not about the route.
+     *
+     * Nobody reachable means voicemail. That is the honest end for a line
+     * pointed at one person who is away, and it is what the caller would get
+     * from a group in the same state.
+     */
+    private function ringOnePerson(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        ?string $userId,
+        string $language,
+        array $context,
+    ): void {
+        $connection = $number->connection;
+
+        if ($userId === null || $connection === null) {
+            // A line set to ring one person and pointed at nobody. Real state,
+            // not an error: `self` on a line no extension claims looks exactly
+            // like this, and the chart says so rather than pretending.
+            $this->noneUsable($response, $number, $language, $context);
+
+            return;
+        }
+
+        $available = PhonePresence::query()
+            ->where('connection_id', $connection->id)
+            ->available()
+            ->where('user_id', $userId)
+            ->exists();
+
+        $user = $available ? User::query()->find($userId) : null;
+
+        $identities = [];
+        if ($user !== null) {
+            foreach (PhoneDeviceRegistration::liveFor((string) $connection->id, [$userId]) as $device) {
+                $identities[] = ClientIdentity::of($user, (string) $device->device_id);
+            }
+        }
+
+        if ($identities === []) {
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        $dial = $response->dial(null, $this->dialAttributes(
+            $number,
+            timeout: 30,
+            sequential: false,
+            context: $context,
+        ));
+
+        foreach ($identities as $identity) {
+            $dial->client($identity, $this->answeredBy($number, $identity));
+        }
+    }
+
     private function ringOrVoicemail(VoiceResponse $response, PhoneNumber $number, array $context): void
     {
         $language = $this->language($number);
         $connection = $number->connection;
+
+        // WHAT THIS LINE CHOSE, unless a queue is handing a caller back.
+        //
+        // `overflow_group` means a caller is leaving a queue and the group
+        // they waited for is the one to ring — re-deciding from the line's own
+        // setting here would send somebody who held for Appointments to
+        // whatever the line does by default, after they had waited.
+        $chosen = ($context['overflow_group'] ?? null) instanceof PhoneRingGroup
+            ? ''
+            : (string) ($number->answer_with ?? '');
+
+        if ($chosen === PhoneNumber::ANSWER_VOICEMAIL) {
+            // ON PURPOSE, which is a different fact from "nothing is
+            // configured" — and until there was a word for it the two were
+            // indistinguishable, which is why the call-flow chart drew a line
+            // like this as a dead end.
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        if ($chosen === PhoneNumber::ANSWER_USER || $chosen === PhoneNumber::ANSWER_SELF) {
+            $userId = $chosen === PhoneNumber::ANSWER_SELF
+                ? $number->assignedUserId()
+                : ($number->answer_user_id === null ? null : (string) $number->answer_user_id);
+
+            $this->ringOnePerson($response, $number, $userId, $language, $context);
+
+            return;
+        }
+
         $group = ($context['overflow_group'] ?? null) instanceof PhoneRingGroup
             ? $context['overflow_group']
             : ($number->resolved('ring_group_id') === null
@@ -1374,6 +1534,105 @@ final class TwimlRenderer
             $tail = 'open';
         }
 
+        // ── WHAT THIS LINE ANSWERS WITH ─────────────────────────────
+        //
+        // The same `answer_with` the renderer reads, and read here for the
+        // reason this whole method exists: a chart derived from different
+        // predicates than `inbound()` is a second opinion about the call. A
+        // line set to ring one person would otherwise still be drawn ringing
+        // its team, and drawn playing a menu it no longer plays.
+        $chosen = (string) ($number->answer_with ?? '');
+
+        if ($chosen === PhoneNumber::ANSWER_VOICEMAIL) {
+            $box = $number->resolved('voicemail_box_id');
+            $add(
+                'voicemail',
+                'voicemail',
+                'Voicemail',
+                'This line sends every caller to voicemail. Somebody chose that.',
+                'ok',
+                null,
+                edit: $box === null
+                    ? ['pane' => 'numbers', 'id' => (string) $number->id]
+                    : ['pane' => 'voicemail', 'id' => (string) $box],
+            );
+            $link($tail, 'voicemail');
+
+            return ['nodes' => $nodes, 'edges' => $edges];
+        }
+
+        if ($chosen === PhoneNumber::ANSWER_USER || $chosen === PhoneNumber::ANSWER_SELF) {
+            $userId = $chosen === PhoneNumber::ANSWER_SELF
+                ? $number->assignedUserId()
+                : ($number->answer_user_id === null ? null : (string) $number->answer_user_id);
+
+            $person = $userId === null ? null : User::query()->find($userId);
+
+            // Reachable is asked of presence AND of a live device, because a
+            // person with neither is a line that rings nothing — and the whole
+            // point of drawing this is to show that before a caller finds it.
+            $reachablePerson = $person !== null
+                && $connection !== null
+                && PhonePresence::query()
+                    ->where('connection_id', $connection->id)
+                    ->available()
+                    ->where('user_id', $person->id)
+                    ->exists();
+
+            $add(
+                'answer',
+                'person',
+                match (true) {
+                    $person === null && $chosen === PhoneNumber::ANSWER_SELF => 'Nobody owns this line',
+                    $person === null => 'Ring one person — none chosen',
+                    default => 'Ring '.$person->name,
+                },
+                match (true) {
+                    $person === null && $chosen === PhoneNumber::ANSWER_SELF => 'This line rings whoever it belongs to, and no extension claims it — so every caller reaches voicemail.',
+                    $person === null => 'This line rings one person, and nobody is chosen, so every caller reaches voicemail.',
+                    $reachablePerson => 'Only this person is dialled, on every device they have signed in.',
+                    default => $person->name.' is not taking calls, so callers reach voicemail.',
+                },
+                $person !== null && $reachablePerson ? 'ok' : 'dead',
+                $person?->id === null ? null : (string) $person->id,
+                edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+            );
+
+            $link($tail, 'answer');
+
+            $add(
+                'voicemail',
+                'voicemail',
+                'Voicemail',
+                'Where a caller lands when that person is not available.',
+                'ok',
+                null,
+                edit: ['pane' => 'numbers', 'id' => (string) $number->id],
+            );
+            $link('answer', 'voicemail', 'No answer');
+
+            if ($reachablePerson) {
+                $add('answered', 'answered', 'Somebody answers', 'The caller and whoever picked up are connected.');
+                $link('answer', 'answered', 'Answered');
+
+                $requiresTag = $connection !== null && (bool) $connection->require_call_tag;
+                $add(
+                    'wrap-up',
+                    'wrap_up',
+                    'Saved to Records',
+                    $requiresTag
+                        ? 'Who answered, how long it lasted and any recording are kept in Records. This company asks whoever answered to say what the call was about before their desk is free again.'
+                        : 'Who answered, how long it lasted and any recording are kept in Records.',
+                    edit: $connection === null
+                        ? null
+                        : ['pane' => 'connection', 'id' => (string) $connection->id],
+                );
+                $link('answered', 'wrap-up');
+            }
+
+            return ['nodes' => $nodes, 'edges' => $edges];
+        }
+
         // The default destination: what a caller gets having pressed nothing.
         $group = $number->resolved('ring_group_id') === null
             ? null
@@ -1428,7 +1687,13 @@ final class TwimlRenderer
         );
 
         // ── The menu, where one call becomes several ────────────────
-        $prompt = $this->menuPrompt($number);
+        //
+        // Null when the line has chosen the group instead: `inbound()` skips
+        // the menu in that case, so drawing one would be the chart disagreeing
+        // with the phone.
+        $prompt = $chosen === PhoneNumber::ANSWER_RING_GROUP
+            ? null
+            : $this->menuPrompt($number);
         $flowId = $number->resolved('flow_id');
 
         if ($prompt === null) {

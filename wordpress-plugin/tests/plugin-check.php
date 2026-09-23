@@ -39,6 +39,13 @@
  * site into a load generator, the stale-while-revalidate path does not block,
  * the hour ceiling does block, and a blank token field keeps the saved token.
  *
+ * COVERS, since 1.12.0: that a chat whose config block is ABSENT reaches a
+ * page by neither route — the entire mechanism behind the chat switch on the
+ * customer's screen, and a behaviour nothing had ever asserted — and the five
+ * presentation widgets: a preset name that does not exist rendering the default
+ * rather than nothing, the hours table falling back to the hours line, the map
+ * degrading twice, and each of them escaping what a customer stored.
+ *
  * DOES NOT COVER: that WordPress itself loads the plugin, admin screen markup,
  * or real HTTP. Those need a real install; the failures they would catch are
  * shallower than the ones above.
@@ -100,7 +107,12 @@ function wp_remote_retrieve_response_code($r) { return is_array($r) ? ($r['code'
 function wp_remote_retrieve_body($r) { return is_array($r) ? ($r['body'] ?? '') : ''; }
 class WP_Error {}
 
-function home_url() { return $GLOBALS['home'] ?? 'https://a-1chimney.com'; }
+/*
+ * Takes a path, because the city list builds a town's address from the page
+ * path the server sent. A call with no argument answers exactly as it did, so
+ * ezbizi_host() and everything else that asks for the site itself is unmoved.
+ */
+function home_url($path = '') { return ($GLOBALS['home'] ?? 'https://a-1chimney.com').$path; }
 function wp_parse_url($u, $c = -1) { return $c === -1 ? parse_url($u) : parse_url($u, $c); }
 function sanitize_text_field($s) { return is_string($s) ? trim(strip_tags($s)) : ''; }
 function wp_unslash($s) { return is_string($s) ? stripslashes($s) : $s; }
@@ -133,6 +145,17 @@ function add_menu_page($page_title, $menu_title, $cap, $slug, $cb = '', $icon = 
     $GLOBALS['menu'][] = compact('page_title', 'menu_title', 'cap', 'slug', 'cb', 'icon', 'pos');
 }
 function current_user_can() { return $GLOBALS['is_admin'] ?? true; }
+
+/*
+ * The loop, or the absence of one. `post_id` false is a footer, an archive or
+ * a 404 — every place [ezbizi_post_title] must answer with nothing rather than
+ * with the title of whatever WordPress set up last.
+ */
+function get_the_ID() { return $GLOBALS['post_id'] ?? false; }
+function get_the_title($id = 0) { return $GLOBALS['post_title'] ?? ''; }
+
+/** WordPress's own zone, which the hours table falls back to. */
+function wp_timezone() { return new DateTimeZone($GLOBALS['wp_tz'] ?? 'UTC'); }
 function settings_fields() {}
 function submit_button() {}
 function wp_nonce_field() {}
@@ -314,6 +337,10 @@ function reset_site() {
     unset($GLOBALS['filters']['wp_is_application_passwords_available']);
     $GLOBALS['home'] = 'https://a-1chimney.com';
     $_SERVER['REQUEST_URI'] = '/';
+    // No post in scope and no site zone, so a case that wants either says so.
+    $GLOBALS['post_id'] = false;
+    $GLOBALS['post_title'] = '';
+    $GLOBALS['wp_tz'] = 'UTC';
 }
 
 /** The same payload with the chat placed inline rather than floating. */
@@ -1019,6 +1046,548 @@ ezbizi_fetch();
 $GLOBALS['is_admin'] = false;
 check('no key, no bubble', $footer(), '');
 
+echo PHP_EOL . "A chat EzBizi has switched off is not on the page at all" . PHP_EOL;
+/*
+ * How "off" is said, and why these three checks are the feature.
+ *
+ * `WidgetDefaults::published()` takes the whole `chat` block OUT of the
+ * payload rather than sending `enabled: false`, because no shipped plugin
+ * reads that flag and every plugin since 1.2.0 already draws nothing when the
+ * block is MISSING. The switch on the customer's screen therefore rests
+ * entirely on a behaviour nothing had ever asserted — the plugin could be
+ * "improved" into rendering a chat from defaults and the switch would silently
+ * stop working on 110 sites, with the server still perfectly correct.
+ *
+ * So it is pinned here, at the two places a bubble can reach a page: the
+ * shortcode somebody placed, and the footer injector that needs nobody.
+ */
+function widget_payload_without_chat() {
+    $p = json_decode(widget_payload(), true);
+    unset($p['widgets']['chat']);
+
+    return json_encode($p);
+}
+
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload_without_chat()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+check('no chat block, so the shortcode draws nothing', $GLOBALS['sc']['ezbizi_chat']([]), '');
+check('and the footer injects nothing', $footer(), '');
+
+// The form is a different widget and a different decision. Switching the chat
+// off must not take the contact form off the same site.
+check(
+    'the form is unaffected',
+    str_contains($GLOBALS['sc']['ezbizi_form']([]), 'What needs doing?'),
+    true
+);
+
+/*
+ * The positive control, and it is not optional: without it both absences above
+ * pass just as happily on a plugin that renders no chat under any
+ * circumstances, which is the other way to have this feature look correct and
+ * be broken.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+$GLOBALS['is_admin'] = false;
+
+check(
+    'a chat block draws the bubble',
+    str_contains($GLOBALS['sc']['ezbizi_chat']([]), 'Talk to A-1'),
+    true
+);
+check('and the footer injects it', str_contains($footer(), 'ezbizi-chat-open'), true);
+
+// ── The presentation widgets ─────────────────────────────────────
+
+/**
+ * The fifteen networks, in the shape the server's field catalogue sends them.
+ *
+ * `section` is what the row of icons reads — not a list of networks inside the
+ * plugin — so a sixteenth added in EzBizi renders with nothing installed. A
+ * fixture that left the section out would pass against a plugin with the list
+ * hardcoded, which is the thing being ruled out.
+ */
+function social_fields() {
+    $networks = [
+        'facebook' => 'Facebook', 'instagram' => 'Instagram', 'youtube' => 'YouTube',
+        'twitter' => 'Twitter / X', 'linkedin' => 'LinkedIn', 'tiktok' => 'TikTok',
+        'yelp' => 'Yelp', 'google_business' => 'Google Business', 'pinterest' => 'Pinterest',
+        'bbb' => 'BBB', 'nextdoor' => 'Nextdoor', 'houzz' => 'Houzz',
+        'angi' => 'Angi', 'thumbtack' => 'Thumbtack', 'homeadvisor' => 'HomeAdvisor',
+    ];
+
+    $out = [];
+
+    foreach ($networks as $key => $label) {
+        $out[] = [
+            'key' => $key, 'label' => $label, 'hint' => '',
+            'requirement' => 'optional', 'section' => 'social',
+            'shortcode' => '[ezbizi_'.$key.']',
+        ];
+    }
+
+    return $out;
+}
+
+/** What `WidgetPresets::resolve()` sends: a default per widget, and named ones. */
+function preset_bundles() {
+    return [
+        'social_links' => [
+            'default' => ['style' => 'plain', 'shape' => 'circle', 'size' => 28, 'gap' => 10, 'labels' => false],
+            'footer' => ['style' => 'solid', 'shape' => 'square', 'size' => 40, 'gap' => 4, 'labels' => true],
+        ],
+        'city_list' => [
+            'default' => ['layout' => 'columns', 'columns' => 3, 'group' => true, 'link' => true],
+            'plain' => ['layout' => 'list', 'columns' => 1, 'group' => false, 'link' => false],
+            'folded' => ['layout' => 'accordion', 'columns' => 1, 'group' => true, 'link' => true],
+        ],
+        'hours_table' => [
+            'default' => ['today' => true, 'compact' => false],
+            'tight' => ['today' => false, 'compact' => true],
+        ],
+        'google_map' => [
+            'default' => ['height' => 320, 'zoom' => 14],
+            'tall' => ['height' => 600, 'zoom' => 17],
+        ],
+    ];
+}
+
+/** `hours_week`, as `HoursWeek::parse()` returns it — Monday first, seven long. */
+function published_week() {
+    return [
+        ['day' => 'Mon', 'closed' => false, 'open' => '08:00', 'close' => '17:00'],
+        ['day' => 'Tue', 'closed' => false, 'open' => '08:00', 'close' => '17:00'],
+        ['day' => 'Wed', 'closed' => false, 'open' => '08:00', 'close' => '17:00'],
+        ['day' => 'Thu', 'closed' => false, 'open' => '08:00', 'close' => '17:00'],
+        ['day' => 'Fri', 'closed' => false, 'open' => '08:00', 'close' => '17:00'],
+        ['day' => 'Sat', 'closed' => false, 'open' => '09:00', 'close' => '13:00'],
+        ['day' => 'Sun', 'closed' => true, 'open' => '00:00', 'close' => '00:00'],
+    ];
+}
+
+/** Four town pages and one that is not a town. */
+function city_pages() {
+    return [
+        '/chimney-sweep-montclair' => ['city' => 'Montclair', 'state' => 'NJ', 'group' => 'North Jersey'],
+        '/chimney-sweep-caldwell' => ['city' => 'Caldwell', 'state' => 'NJ', 'group' => 'North Jersey', 'phone' => '555-0111'],
+        '/chimney-sweep-vineland' => ['city' => 'Vineland', 'state' => 'NJ', 'group' => 'South Jersey'],
+        // No group, so it has nowhere to be filed and goes last.
+        '/chimney-sweep-dover' => ['city' => 'Dover', 'state' => 'DE'],
+        // Not a town page at all: no city, so nothing may list it.
+        '/about-us' => ['about_us_field_1' => 'We have swept chimneys since 1974.'],
+    ];
+}
+
+/**
+ * The 1.12.0 payload: presets beside the widgets, `hours_week` at top level.
+ *
+ * A key set to null in `$extra` is REMOVED, which is how the absent-`hours_week`
+ * case is written — absence is the server's vocabulary for "this site's hours
+ * are a sentence, not a grid", and a fixture that sent an empty array instead
+ * would be testing something the server never sends.
+ */
+function preset_payload(array $values = [], array $pages = [], array $extra = []) {
+    $general = ['company_name', 'phone', 'hours', 'timezone', 'latitude', 'longitude', 'maps_url', 'review_link'];
+    $fields = [];
+
+    foreach ($general as $key) {
+        $fields[] = [
+            'key' => $key, 'label' => ucfirst(str_replace('_', ' ', $key)), 'hint' => '',
+            'requirement' => 'optional', 'section' => 'general', 'shortcode' => '[ezbizi_'.$key.']',
+        ];
+    }
+
+    $payload = array_merge([
+        'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
+        'fields' => array_merge($fields, social_fields()),
+        'values' => $values,
+        'pages' => $pages,
+        'widgets' => [
+            'presets' => preset_bundles(),
+            'style' => [
+                'accent' => '#aa0000', 'on_accent' => '#ffffff', 'text' => '#111111',
+                'background' => '#ffffff', 'font' => 'inherit', 'radius' => 12,
+            ],
+        ],
+        'hours_week' => published_week(),
+    ], $extra);
+
+    return json_encode(array_filter($payload, static function ($value) {
+        return $value !== null;
+    }));
+}
+
+/** Fetch a 1.12.0 payload and register the shortcodes it names. */
+function serve_preset_payload(array $values = [], array $pages = [], array $extra = []) {
+    $GLOBALS['http_next'] = ['code' => 200, 'body' => preset_payload($values, $pages, $extra)];
+    ezbizi_fetch();
+    do_action('init');
+}
+
+echo PHP_EOL . "Five new shortcodes exist to be asked for" . PHP_EOL;
+reset_site();
+serve_preset_payload();
+
+foreach (['social_links', 'google_map', 'post_title', 'hours_table', 'city_list'] as $tag) {
+    check("[ezbizi_{$tag}] registered", isset($GLOBALS['sc']['ezbizi_'.$tag]), true);
+}
+
+echo PHP_EOL . "The social row draws the networks that have a link" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'facebook' => 'https://www.facebook.com/a1chimney',
+    'instagram' => 'https://www.instagram.com/a1chimney',
+    'tiktok' => 'https://www.tiktok.com/@a1chimney',
+]);
+
+$social = $GLOBALS['sc']['ezbizi_social_links']([]);
+
+// Three of fifteen. The other twelve are not gaps in a row — they are networks
+// this company is not on.
+check('three links, because three are set', substr_count($social, '<a class="ezbizi-social-link'), 3);
+check('facebook among them', str_contains($social, 'facebook.com/a1chimney'), true);
+check('and nothing for a network with no value', str_contains($social, 'pinterest'), false);
+check('each opens away from the site safely', substr_count($social, 'rel="noopener noreferrer"'), 3);
+check('in a new tab', substr_count($social, 'target="_blank"'), 3);
+check('the icons are inline markup, not a request', substr_count($social, '<svg'), 3);
+check('and no icon font or stylesheet is pulled in', str_contains($social, '<link'), false);
+check('named for a screen reader even with the labels off', str_contains($social, 'aria-label="Facebook"'), true);
+
+check('the default preset is round', str_contains($social, 'border-radius:999px'), true);
+check('28 pixels', str_contains($social, 'width:28px'), true);
+check('with the default gap', str_contains($social, 'gap:10px'), true);
+check('and no visible labels', str_contains($social, 'ezbizi-social-label'), false);
+
+$footer_row = $GLOBALS['sc']['ezbizi_social_links'](['preset' => 'footer']);
+
+check('a named preset squares the corners', str_contains($footer_row, 'border-radius:0'), true);
+check('and grows them', str_contains($footer_row, 'height:40px'), true);
+check('and names each one', str_contains($footer_row, 'ezbizi-social-label'), true);
+// Solid takes the accent the customer already set for the chat. An icon colour
+// of its own in every preset would be a second place to set one colour.
+check('and fills them with the accent EzBizi holds', str_contains($footer_row, 'background:#aa0000'), true);
+
+/*
+ * The typo case, which is the reason presets guarantee a default at both ends.
+ * `preset="foter"` is somebody's live footer, so it renders the default row —
+ * not an empty div, and not a message about presets.
+ */
+$typo = $GLOBALS['sc']['ezbizi_social_links'](['preset' => 'foter']);
+
+check('an unknown name renders something', $typo !== '', true);
+check('and it is the default', str_contains($typo, 'border-radius:999px'), true);
+check('not the named one', str_contains($typo, 'ezbizi-social-label'), false);
+
+// A name typed the way somebody would type it still finds the preset: the
+// plugin narrows it by the same rule the server stored it under.
+check(
+    'the name is read the way the server writes it',
+    str_contains($GLOBALS['sc']['ezbizi_social_links'](['preset' => ' Footer ']), 'height:40px'),
+    true
+);
+
+echo PHP_EOL . "The map needs no API key, and degrades twice" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'company_name' => 'A-1 Chimney',
+    'latitude' => '40.8398',
+    'longitude' => '-74.2765',
+    'maps_url' => 'https://maps.app.goo.gl/a1chimney',
+]);
+
+$map = $GLOBALS['sc']['ezbizi_google_map']([]);
+
+check('an iframe', str_contains($map, '<iframe'), true);
+check('at the coordinates', str_contains($map, 'q=40.8398,-74.2765'), true);
+/*
+ * The keyless embed, and the check that matters most on this widget: we have
+ * no Maps API key, and a keyed embed would put "This page can't load Google
+ * Maps correctly" on every site the moment one was missing or over quota.
+ */
+check('the keyless embed form', str_contains($map, 'output=embed'), true);
+check('and no key anywhere in it', str_contains($map, 'key='), false);
+check('the default zoom', str_contains($map, 'z=14'), true);
+check('the default height', str_contains($map, 'height:320px'), true);
+check('lazy, so a map below the fold costs the page nothing', str_contains($map, 'loading="lazy"'), true);
+check('and named, so it is not announced as "frame"', str_contains($map, 'title="A-1 Chimney on Google Maps"'), true);
+
+$tall = $GLOBALS['sc']['ezbizi_google_map'](['preset' => 'tall']);
+check('a named preset changes the height', str_contains($tall, 'height:600px'), true);
+check('and the zoom', str_contains($tall, 'z=17'), true);
+check(
+    'an unknown name is the default, not nothing',
+    str_contains($GLOBALS['sc']['ezbizi_google_map'](['preset' => 'taler']), 'height:320px'),
+    true
+);
+
+// No coordinates. A Google "Share" link refuses to be framed, which is why the
+// coordinates exist at all — but a link to the listing beats an empty box.
+reset_site();
+serve_preset_payload([
+    'company_name' => 'A-1 Chimney',
+    'maps_url' => 'https://maps.app.goo.gl/a1chimney',
+]);
+$link_only = $GLOBALS['sc']['ezbizi_google_map']([]);
+
+check('with no coordinates there is no frame', str_contains($link_only, '<iframe'), false);
+check('but there is a way to the listing', str_contains($link_only, 'maps.app.goo.gl/a1chimney'), true);
+check('and it opens safely', str_contains($link_only, 'rel="noopener noreferrer"'), true);
+
+// Neither. Mid-setup, and an empty space is better than a box explaining our
+// data model to a visitor.
+reset_site();
+serve_preset_payload(['company_name' => 'A-1 Chimney']);
+check('with neither, nothing at all', $GLOBALS['sc']['ezbizi_google_map']([]), '');
+
+echo PHP_EOL . "The page title comes from WordPress, and only when there is one" . PHP_EOL;
+reset_site();
+serve_preset_payload();
+
+$GLOBALS['post_id'] = 12;
+$GLOBALS['post_title'] = 'Chimney Sweep in Caldwell, NJ';
+check('the title of the page it is on', $GLOBALS['sc']['ezbizi_post_title']([]), 'Chimney Sweep in Caldwell, NJ');
+
+// A title has already been through `the_title`, so it arrives as HTML.
+// Escaping it straight would print the entity on the page.
+$GLOBALS['post_title'] = 'Sweeps &amp; Repairs';
+check('an entity is a character, not four', $GLOBALS['sc']['ezbizi_post_title']([]), 'Sweeps &amp; Repairs');
+
+/*
+ * A footer, an archive and a 404 all render with no post in scope, and
+ * `get_the_title()` with nothing to read answers with whatever was set up last
+ * — which is how a footer ends up captioned with an unrelated page.
+ */
+$GLOBALS['post_id'] = false;
+$GLOBALS['post_title'] = 'Whatever WordPress set up last';
+check('outside the loop, nothing', $GLOBALS['sc']['ezbizi_post_title']([]), '');
+
+echo PHP_EOL . "The hours table, and the sentence it falls back to" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'hours' => 'Mon–Fri 8:00 AM – 5:00 PM · Sat 9:00 AM – 1:00 PM · Sun closed',
+    'timezone' => 'America/New_York',
+]);
+
+$table = $GLOBALS['sc']['ezbizi_hours_table']([]);
+
+check('a table', str_contains($table, '<table'), true);
+check('seven days of it', substr_count($table, '<tr'), 7);
+// The customer typed 8:00 AM into the grid and [ezbizi_hours] renders 8:00 AM.
+// A table beside it saying 08:00 would read as different hours.
+check('on the clock the line uses', str_contains($table, '8:00 AM – 5:00 PM'), true);
+check('a closed day says so', str_contains($table, 'Closed'), true);
+check('and exactly one day is today', substr_count($table, 'aria-current="true"'), 1);
+
+$tight = $GLOBALS['sc']['ezbizi_hours_table'](['preset' => 'tight']);
+check('a named preset tightens it', str_contains($tight, 'font-size:.92em'), true);
+check('and can turn today off', str_contains($tight, 'aria-current'), false);
+check(
+    'an unknown name is the default',
+    substr_count($GLOBALS['sc']['ezbizi_hours_table'](['preset' => 'tigt']), 'aria-current="true"'),
+    1
+);
+
+/*
+ * The case the whole fallback exists for. "By appointment, November to March"
+ * is a real value real sites hold, `HoursWeek` refuses to guess a week out of
+ * it, and `hours_week` is therefore absent — so a site that never touched the
+ * grid must still render its hours.
+ */
+reset_site();
+serve_preset_payload(['hours' => 'By appointment, November to March'], [], ['hours_week' => null]);
+
+check(
+    'no week, so the sentence as written',
+    $GLOBALS['sc']['ezbizi_hours_table']([]),
+    'By appointment, November to March'
+);
+check(
+    'which is exactly what [ezbizi_hours] renders',
+    $GLOBALS['sc']['ezbizi_hours_table']([]),
+    $GLOBALS['sc']['ezbizi_hours']([])
+);
+
+// And with neither a week nor a line, nothing — not an empty table.
+reset_site();
+serve_preset_payload([], [], ['hours_week' => null]);
+check('no week and no line is nothing', $GLOBALS['sc']['ezbizi_hours_table']([]), '');
+
+echo PHP_EOL . "The city list is built from the pages themselves" . PHP_EOL;
+reset_site();
+serve_preset_payload(['phone' => '555-0100'], city_pages());
+
+$cities = $GLOBALS['sc']['ezbizi_city_list']([]);
+
+check('four towns', substr_count($cities, '<li>'), 4);
+check('a page with no city is not a town', str_contains($cities, 'about-us'), false);
+check('linked to its own page', str_contains($cities, 'href="https://a-1chimney.com/chimney-sweep-caldwell"'), true);
+check('the state rides along, because two states have a Washington', str_contains($cities, 'Caldwell, NJ'), true);
+check('grouped by the label the customer chose', str_contains($cities, 'North Jersey'), true);
+check('every group of it', str_contains($cities, 'South Jersey'), true);
+check('in three columns by default', str_contains($cities, 'columns:3'), true);
+
+/*
+ * Ungrouped last, and not interleaved. A town with no group has nowhere
+ * honest to be filed, and putting it under the first heading would file it
+ * somewhere wrong rather than nowhere.
+ */
+check(
+    'a town with no group comes after the groups',
+    strpos($cities, 'Dover') > strpos($cities, 'South Jersey'),
+    true
+);
+
+// Sorted, both levels: the payload's order is database order, and a list of
+// towns that reshuffles itself when somebody edits a page is a list nobody
+// trusts.
+check('towns in order inside a group', strpos($cities, 'Caldwell') < strpos($cities, 'Montclair'), true);
+check('and the groups in order', strpos($cities, 'North Jersey') < strpos($cities, 'South Jersey'), true);
+
+$plain = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'plain']);
+check('a named preset can drop the grouping', str_contains($plain, 'North Jersey'), false);
+check('and the links', str_contains($plain, '<a href'), false);
+check('while still listing every town', substr_count($plain, '<li>'), 4);
+check('and no columns', str_contains($plain, 'columns:'), false);
+
+$folded = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded']);
+// `<details>` because the accordion has to work with JavaScript off, and
+// because the alternative is enqueuing a script for a fold.
+check('the accordion folds with no script', str_contains($folded, '<details'), true);
+check('each group is a panel', str_contains($folded, '<summary>North Jersey</summary>'), true);
+check('and nothing is enqueued to make it work', str_contains($folded, '<script'), false);
+
+check(
+    'an unknown name renders the default',
+    str_contains($GLOBALS['sc']['ezbizi_city_list'](['preset' => 'foldd']), 'columns:3'),
+    true
+);
+
+// An accordion with no groups is a list behind a button, so it is a list.
+reset_site();
+serve_preset_payload([], ['/chimney-sweep-dover' => ['city' => 'Dover', 'state' => 'DE']]);
+$unfoldable = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded']);
+check('nothing to fold, so nothing folds', str_contains($unfoldable, '<details'), false);
+check('and the town still renders', str_contains($unfoldable, 'Dover, DE'), true);
+
+// A site with no town pages at all draws nothing rather than an empty list.
+reset_site();
+serve_preset_payload([], ['/about-us' => ['about_us_field_1' => 'Not a town.']]);
+check('no towns, no list', $GLOBALS['sc']['ezbizi_city_list']([]), '');
+
+echo PHP_EOL . "Nothing a customer stored can execute on their website" . PHP_EOL;
+/*
+ * These five widgets print values, page paths, field labels and a post title
+ * into markup, which is more surfaces than every earlier shortcode put
+ * together. The value below is the one somebody gets in through the API, an
+ * imported spreadsheet or a franchise's own screen, and it renders on 110
+ * websites we do not run.
+ *
+ * Two assertions per case on purpose. "No <script>" alone would pass on a
+ * widget that quietly dropped the value, so the escaped form has to be there
+ * too — the customer's text still has to appear, as text.
+ */
+$nasty = '"><script>alert(1)</script>';
+
+reset_site();
+serve_preset_payload([
+    'company_name' => $nasty,
+    'facebook' => 'https://www.facebook.com/a1chimney',
+    'latitude' => '40.8398',
+    'longitude' => '-74.2765',
+    'hours' => $nasty,
+    'timezone' => 'America/New_York',
+], ['/chimney-sweep-caldwell' => ['city' => $nasty, 'group' => $nasty]]);
+
+$GLOBALS['post_id'] = 12;
+$GLOBALS['post_title'] = $nasty;
+
+foreach (['social_links', 'google_map', 'post_title', 'hours_table', 'city_list'] as $tag) {
+    $out = $GLOBALS['sc']['ezbizi_'.$tag]([]);
+    check("[ezbizi_{$tag}] opens no script tag", str_contains($out, '<script'), false);
+    check("[ezbizi_{$tag}] closes no attribute", str_contains($out, $nasty), false);
+}
+
+// And the escaped text is actually on the page, so none of the above passed by
+// dropping the value.
+check('the title is shown, escaped', str_contains($GLOBALS['sc']['ezbizi_post_title']([]), '&lt;script&gt;'), true);
+check('the map is named, escaped', str_contains($GLOBALS['sc']['ezbizi_google_map']([]), '&lt;script&gt;'), true);
+check('the town is listed, escaped', str_contains($GLOBALS['sc']['ezbizi_city_list']([]), '&lt;script&gt;'), true);
+
+// The hours line is the one case where escaping is the entire output, so it is
+// compared against what [ezbizi_hours] does with the same value.
+reset_site();
+serve_preset_payload(['hours' => $nasty], [], ['hours_week' => null]);
+check(
+    'the hours sentence is escaped like every other value',
+    $GLOBALS['sc']['ezbizi_hours_table']([]),
+    $GLOBALS['sc']['ezbizi_hours']([])
+);
+check('and carries no markup', str_contains($GLOBALS['sc']['ezbizi_hours_table']([]), '<script'), false);
+
+/*
+ * A social value that is not a web address is DROPPED rather than drawn with
+ * an empty href. `esc_url` is both the gate and the filter here: a
+ * `javascript:` scheme or something pasted into the wrong box comes back
+ * empty, and a link that goes nowhere is worse than no link.
+ */
+reset_site();
+serve_preset_payload([
+    'facebook' => 'javascript:alert(1)',
+    'instagram' => 'https://www.instagram.com/a1chimney',
+]);
+$guarded = $GLOBALS['sc']['ezbizi_social_links']([]);
+check('one link, not two', substr_count($guarded, '<a class="ezbizi-social-link'), 1);
+check('and it is the real one', str_contains($guarded, 'instagram.com/a1chimney'), true);
+check('no javascript scheme survives', str_contains($guarded, 'javascript:'), false);
+
+echo PHP_EOL . "The new value keys needed no plugin change" . PHP_EOL;
+/*
+ * `phone_secondary`, `email_secondary`, `review_link`, `latitude` and
+ * `longitude` arrived in the catalogue with no plugin release, which is the
+ * property the field loop exists for. `review_link` is the one worth asserting
+ * rather than assuming: it ends in `_link`, so it goes through `esc_url` — and
+ * a link through `esc_html` turns the `&` in a query string into `&amp;` and
+ * does nothing about a `javascript:` scheme.
+ */
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode([
+    'site' => ['host' => 'a-1chimney.com', 'label' => null, 'company' => 'A-1'],
+    'fields' => [
+        ['key' => 'phone_secondary', 'label' => 'Second phone number', 'hint' => '', 'section' => 'general', 'shortcode' => '[ezbizi_phone_secondary]'],
+        ['key' => 'email_secondary', 'label' => 'Second email address', 'hint' => '', 'section' => 'general', 'shortcode' => '[ezbizi_email_secondary]'],
+        ['key' => 'review_link', 'label' => 'Leave-a-review link', 'hint' => '', 'section' => 'general', 'shortcode' => '[ezbizi_review_link]'],
+        ['key' => 'latitude', 'label' => 'Latitude', 'hint' => '', 'section' => 'general', 'shortcode' => '[ezbizi_latitude]'],
+        ['key' => 'longitude', 'label' => 'Longitude', 'hint' => '', 'section' => 'general', 'shortcode' => '[ezbizi_longitude]'],
+    ],
+    'values' => [
+        'phone_secondary' => '555-0199',
+        'email_secondary' => 'office@a-1chimney.com',
+        'review_link' => 'https://g.page/r/a1chimney/review?utm_source=footer&utm_medium=link',
+        'latitude' => '40.8398',
+        'longitude' => '-74.2765',
+    ],
+    'pages' => [],
+])];
+ezbizi_fetch();
+do_action('init');
+
+check('a second phone renders', $GLOBALS['sc']['ezbizi_phone_secondary']([]), '555-0199');
+check('a second email renders', $GLOBALS['sc']['ezbizi_email_secondary']([]), 'office@a-1chimney.com');
+check('latitude renders', $GLOBALS['sc']['ezbizi_latitude']([]), '40.8398');
+check('longitude renders', $GLOBALS['sc']['ezbizi_longitude']([]), '-74.2765');
+
+check('a review link is a link', ezbizi_is_link_key('review_link'), true);
+check(
+    'so its query string survives intact',
+    $GLOBALS['sc']['ezbizi_review_link']([]),
+    'https://g.page/r/a1chimney/review?utm_source=footer&utm_medium=link'
+);
+
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*
  * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
@@ -1040,9 +1609,13 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('both widgets are registered', count($manager->registered), 2);
+check('every widget is registered', count($manager->registered), 7);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
+
+foreach (['social-links', 'google-map', 'post-title', 'hours-table', 'city-list'] as $name) {
+    check("and ezbizi-{$name}", isset($manager->registered['ezbizi-'.$name]), true);
+}
 
 $chat = $manager->registered['ezbizi-chat'];
 $form = $manager->registered['ezbizi-form'];
@@ -1090,6 +1663,79 @@ $live = ob_get_clean();
 // The control: if render() were broken rather than merely guarded, the check
 // above would pass for the wrong reason.
 check('on a real page it is the widget', str_contains($live, 'Talk to A-1'), true);
+
+echo PHP_EOL . "The presentation widgets carry one control, and it is a name" . PHP_EOL;
+/*
+ * A size control here would be a second place to set an icon size, disagreeing
+ * with EzBizi on the one page somebody edited. A preset NAME is not a second
+ * place: it points at a bundle that is still edited once and still reaches
+ * every site at once.
+ */
+reset_site();
+serve_preset_payload([
+    'facebook' => 'https://www.facebook.com/a1chimney',
+    'instagram' => 'https://www.instagram.com/a1chimney',
+], city_pages());
+$GLOBALS['is_admin'] = false;
+
+$social_widget = $manager->registered['ezbizi-social-links'];
+$social_widget->ezbizi_call_register_controls();
+
+check('one control', count($social_widget->ezbizi_controls), 1);
+check('and it is the preset name', isset($social_widget->ezbizi_controls['ezbizi_preset']), true);
+check(
+    'a free-text field, not a copy of the preset',
+    $social_widget->ezbizi_controls['ezbizi_preset']['type'] ?? '',
+    \Elementor\Controls_Manager::TEXT
+);
+check(
+    'which says where the presets are kept',
+    str_contains($social_widget->ezbizi_controls['ezbizi_preset']['description'] ?? '', 'Widgets'),
+    true
+);
+
+elementor_present(false);
+
+// Empty is the normal case: dropped on the canvas and never touched, it draws
+// the default rather than nothing.
+$social_widget->ezbizi_settings = [];
+ob_start();
+$social_widget->ezbizi_call_render();
+$drawn = ob_get_clean();
+check('no name typed, so the default row', str_contains($drawn, 'border-radius:999px'), true);
+
+$social_widget->ezbizi_settings = ['ezbizi_preset' => 'footer'];
+ob_start();
+$social_widget->ezbizi_call_render();
+check('and the name reaches the shortcode', str_contains(ob_get_clean(), 'height:40px'), true);
+
+// The editor gets a still picture of every one of them, for the reason the
+// chat does: an editor that renders live widgets makes real requests.
+elementor_present(true);
+
+foreach (['social-links', 'google-map', 'post-title', 'hours-table', 'city-list'] as $name) {
+    $widget = $manager->registered['ezbizi-'.$name];
+    ob_start();
+    $widget->ezbizi_call_render();
+    $placeholder = ob_get_clean();
+
+    check("ezbizi-{$name} shows a named placeholder in the editor", str_contains($placeholder, 'EzBizi'), true);
+}
+
+elementor_present(false);
+
+// And the published page is the shortcode, so there is one implementation of
+// each widget rather than two that drift.
+$GLOBALS['post_id'] = 12;
+$GLOBALS['post_title'] = 'Chimney Sweep in Caldwell, NJ';
+
+ob_start();
+$manager->registered['ezbizi-city-list']->ezbizi_call_render();
+check('the city list draws on a real page', str_contains(ob_get_clean(), 'North Jersey'), true);
+
+ob_start();
+$manager->registered['ezbizi-post-title']->ezbizi_call_render();
+check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"

@@ -438,6 +438,53 @@ class SendSavedReportTest extends TestCase
         );
     }
 
+    /**
+     * THE BODY NAMES THE BUSINESS, because ezbizi.com/privacy says it does.
+     *
+     * Published in 0.2.0240, of mail EzBizi sends on a tenant's behalf:
+     *
+     *   "Those leave from EzBizi's own address rather than the organization's,
+     *    and the body says which business the work is about."
+     *
+     * True of InspectionReportMail and of AutomationMessage's footer, and false
+     * here until 2026-09-22: this subcopy named the RULE and never the business.
+     * So a customer received a CSV about their own data from noreply@ezbizi.com
+     * and was told an automation rule had sent it — which reads as EzBizi
+     * writing to somebody it has no relationship with. Found by the SES session
+     * reading the live page against all three callers.
+     *
+     * ── Asserted on the RENDERED BODY, not on the mailable ──────
+     *
+     * `$mail->businessName` being set proves the value was passed and says
+     * nothing about whether the template prints it — and the template is where
+     * this was wrong. The claim is about what the recipient reads.
+     */
+    public function test_the_body_names_the_business_the_report_is_about(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant, ['company_id' => $tenant['company']->id]),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $body = Mail::sent(SavedReportMail::class)->first()->render();
+
+        // The scope the report renders at is the company, so that is the name a
+        // recipient must see — not the organization above it, which would name
+        // a business the report is not about.
+        $this->assertStringContainsString($tenant['company']->name, $body);
+        $this->assertStringContainsString('through EzBizi', $body);
+
+        // And the half that was already right survives: who can stop it.
+        $this->assertStringContainsString('change or stop it', $body);
+    }
+
     // ── the CSV ──────────────────────────────────────────────────
 
     public function test_the_csv_carries_the_labels_and_the_rows(): void

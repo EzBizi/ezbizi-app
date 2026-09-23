@@ -63,8 +63,43 @@ SELECT COUNT(*) FROM leads WHERE remote_id NOT LIKE 'DEMO-%';   -- real enquirie
 | **That a call reaches an ANDROID handset** | **NEW 2026-09-10, and it is the understatement trap running backwards.** `0.0.0184` gave Android the device token for the calling network and later work declared the service an incoming push arrives on — both were missing, and the release notes read like a phone that rings. **The desk said it twice, unprompted, in `0042` and again in `0043`: nobody has yet observed an Android handset register or ring.** Registering with a calling network is not a handset ringing, and the release note says so in its own bullet rather than leaving the reader to infer it. The site says nothing about mobile calling today and must not start: the Communication card is about numbers, roles, dial, texts and voicemail, and none of that implies a device. **The checkable test is an observation, not a row count** — somebody has to watch an Android handset ring. Invert it when the desk says they did, not when a manifest entry appears. |
 | **Monitoring — PUBLISHED 2026-09-15. What stays forbidden is that ANYBODY IS TOLD.** | **Jose lifted the hold, verbatim: "5 - publish, why not"** (relayed by the deploy desk, 2026-09-15). The hold was never about accuracy — 2 floor plans and 49 devices had already made built-and-unused false — it was about copy describing watching employees' screens, and that was his to decide. **Shipped: a Monitoring card, AND the `/privacy/` section that had to precede it.** `privacy/` disclosed monitoring NOWHERE before this — zero hits for monitor, screen, capture, remote control, open programs, browser tab or employee — so the card would have sold the most intrusive thing in the product while the notice was silent about it. The disclosure is **derived from the modules' own `PersonalDataEntry` declarations** (`MonitoredDevice`, `MonitoringScreenshot`, `MonitoringActivity`), which is the inventory the app already publishes to whoever asks what is held about them — not from my reading of the columns. **THE STANDING RULE, and it is the opposite of what a relay would have had me write:** no sentence may say or imply that a person is informed. `SettingRegistry` defines `monitoring.control_indicator` as `default: false`, help text "Off by default, and fully silent when off", plus "Watching a live view stays silent — only taking control shows this". The desk relayed that the notice now appears in-app rather than only in the tray — **true** (`version_history.dart:52`) — and framed it as "that sentence is now true in a way it was not when you drafted it", which invited a reassurance that is **false on a default install and false for live view even when switched on**. The improvement was to WHERE the notice appears, not to WHETHER it appears. The checkable test: `monitoring.control_indicator`'s `default:` in `SettingRegistry`. **Also corrected in the same pass:** privacy claimed "EzBizi collects no location data of any kind", a universal negative that went false as the surface grew — the agent reports "its wifi network and local address" and `ip_address` is a stored column. Narrowed to what is still true: no satellite or phone-mast position, and no location permission requested on any device. | 
 | **Marketing** | **Its placeholder reason expired 2026-09-09 and it changes nothing on the site.** `0.0.0181` gave Marketing a real home-screen box and `GlanceRegistry::GLANCES` lists `MarketingGlance::class`. Everything Marketing contains is already sold under its own cards (Social media, Newsletter), so no Marketing claim ever rested on this row — **do not add one now on the strength of a glance. A dashboard box is not a capability.** |
+| **Messenger or Instagram enquiries arriving as leads** | **NEW 2026-09-22, and it is the WhatsApp shape for the third time.** `a486cbbd` (shipped the same day, in production `0.0.0242` at `049e13a1`) gives `Lead` `SOURCE_FACEBOOK` and `SOURCE_INSTAGRAM`, a `MetaMessagesWebhookController`, a reply channel and a tab-grant migration. The code is complete and it is deployed. **It is still Meta's app**, and the WhatsApp row above records that Meta has not published it — so the same gate that stops WhatsApp stops an inbound Messenger or Instagram message arriving at all, and no commit will announce Meta changing its mind. The commit message argues about echo suppression and the 24-hour reply window and says nothing about app review, which is exactly how a finished feature reads when the gate is somebody else's. **Two checkable tests, and either one alone is not enough:** Meta's app status, and `SELECT COUNT(*) FROM leads WHERE source IN ('facebook','instagram') AND is_test = 0` — the count is the one that proves a real person reached a real business. Until then the Growth card names Local Services and Thumbtack and must not grow a third and fourth. |
+| **The five rendered WordPress widgets** | **NEW 2026-09-18, and the test is the DIRECTORY, not our estate.** Plugin 1.12.0 adds `[ezbizi_social_links]` `[ezbizi_google_map]` `[ezbizi_post_title]` `[ezbizi_hours_table]` `[ezbizi_city_list]` (each an Elementor widget too, `preset="name"` their only argument), and they are genuinely rendering: 110/110 installs on our own hosting are at 1.12.0, pushed by an operator with a shell (`scripts/plugin-rollout.sh`). **That is not a customer being able to get it.** `curl -s "https://api.wordpress.org/plugins/info/1.0/ezbizi.json"` -> `"version": "1.10.0"` (2026-09-17), so a business that installs the EzBizi plugin the only way a stranger can install it gets a plugin with none of these shortcodes in it. An operator pushing code to sites we happen to host is not a release. **The row inverts when that one command returns 1.12.0 or later** — and note it is the same shape as the WhatsApp row above: finished code, on main, not reachable by the customer. |
 <!-- superseded row retained below for its history -->
 | **Monitoring, Marketing (superseded 2026-09-15)** | **Half of this row expired on 2026-09-09 and the reason has to be split.** **Marketing's placeholder is gone**: `0.0.0181` gave it a real home-screen box (published / waiting / failed, counted per account), and `GlanceRegistry::GLANCES` now lists `MarketingGlance::class` while `COMING_SOON` holds only `newsletter` and `monitoring`. So the stated reason is false for Marketing. **It changes nothing on the site, and that is the point of writing it down**: everything Marketing contains is already sold under its own cards (Social media, Newsletter), so there was never a Marketing claim resting on this row — do not add one now on the strength of a glance. A dashboard box is not a capability. **Monitoring is still off the site, for a reason that is no longer the glance.** Its `COMING_SOON` entry is deliberate, not pending, and meanwhile the module itself grew real screens: `0.0.0181` a floor plan, `0.0.0176` screen capture, live view and remote control, `0.0.0183` per-device capture-status reasons; `monitoring_floor_plans` and the capture-status column are both in the deployed tree. **The checkable test this row now names is a row count, because the Inspections precedent needs one**: `SELECT COUNT(*) FROM monitoring_floor_plans` and `SELECT COUNT(*) FROM monitored_devices`. Asked of the desk in `0041`. **And a zero would not settle it either way** — this is the one capability on the list whose copy is about watching employees' screens, so built-and-unused does not automatically make it sellable the way Coverage & capacity was. Whoever inverts this row writes the sentence and checks it against the privacy pages, not just against the count. **THE MONITORING REASON IS REPLACED, 2026-09-10, and the row still holds.** The row count it named was taken by the desk in `0042`: `monitoring_floor_plans` **2**, `monitored_devices` **49**. So built-and-unused is FALSE — somebody drew plans and forty-nine machines are checking in, and the Inspections precedent would ordinarily make that sellable. **It is held for a reason no count can settle:** the copy would be about watching employees' screens, and `0.0.0189` widened exactly that — the desktop app now reports open programs, which programs talk to the internet, and the titles of open browser tabs. **That needs a decision from Jose, not a measurement**, and it is the one item on this list where "do as you recommend" does not obviously reach, because the risk is not accuracy. **Do not invert this on the strength of 2 and 49.** Whoever writes the sentence checks it against `privacy/` as well as against the count. The old reason — "its dashboard summary is a placeholder" — is now the WRONG REASON rather than a wrong conclusion: `GlanceRegistry::COMING_SOON` still holds `monitoring` deliberately. |
+
+## Load-bearing sentences — re-check these, they go false silently
+
+**The `forbidden-terms` grep below catches a claim we REMOVED coming back. This
+table is the opposite failure and there is no grep for it: a claim that is on the
+site, was true when written, and goes false because a feature landed somewhere
+else.** It has happened twice in a week — "no location data of any kind" (overtaken
+by the monitoring agent) and "mail your business writes does not go out over ours"
+(false two days after publishing, when three automation actions started sending).
+Both were caught by somebody happening to look.
+
+**Each row names the test, not the answer.** A row stating the current fact decays
+the day it changes; a row naming where to look does not. Walk this table when the
+deploy desk reports anything shipping in these areas, and after any release that
+touches apps, monitoring, social, Google or mail.
+
+| The sentence | Page | What makes it true, and where to look |
+|---|---|---|
+| "The apps ask for no device permissions … no camera, no photo library, no location, no microphone, no contacts, no calendar" | `/privacy/` | `client/android/app/src/main/AndroidManifest.xml` declares only `INTERNET`; `client/ios/Runner/Info.plist` has no `NS*UsageDescription`; `client/pubspec.yaml` pulls nothing for camera/location/contacts. **Any one of the three gaining an entry breaks it.** |
+| "no satellite or phone-mast position … no location permission on any device" | `/privacy/` | Same three files. Narrowed from a universal negative on 2026-09-15 *because* the agent reports "its wifi network and local address" — do not widen it back. |
+| "whether anybody is told … the answer is no unless they change it" | `/privacy/` | `SettingRegistry` → `monitoring.control_indicator` → `default:`. If that ever becomes `true`, this sentence is wrong in the reassuring direction. |
+| "We do not aggregate or anonymise Google user data … not combine it across customers" | `/privacy/` | No cross-organization read in `app/Services/Leads/`, `app/Support/Leads/`, `app/Services/Ads/`. **Filed with Google against `ezbizi-506117`, so a reviewer can re-read it.** Any benchmark, "average in your industry" or analytics rollup is a COMPLIANCE change and the policy moves first. |
+| "cost, clicks, impressions and conversions" | `/privacy/` | `app/Services/Ads/CampaignPerformance.php` — the `metrics.*` it actually requests. Became true 2026-09-16; a widened request makes the list short rather than wrong, which is the quieter failure. |
+| "typically fewer than five a month" · STOP · HELP | `/privacy/`, `/terms/` | `client/lib/widgets/sms_codes_card.dart`. **These three strings must stay word-for-word identical in all three places** — a reviewer compares them, and "almost agree" is what turns a skim into a close read. **RUN 2026-09-22, AND THE ROW FAILED ITS OWN TEST ON ITS FIRST RUN.** STOP and HELP do match, word for word, in all three. The frequency string does not: the site says *"typically fewer than five a month"* and `sms_codes_card.dart:328` says *"typically fewer than 5 messages per month"*. Both are true and they are not the same words, which is the state this row was written to forbid. **It was NOT corrected on the site, deliberately**, and the reason is the only interesting part: the toll-free campaign is in carrier review, the consent language cited in a campaign filing is part of that filing, and nobody here knows which of the two wordings was filed. Editing a published consent sentence mid-review to match an app is a change to evidence somebody is currently reading. **The next person to answer this owns the campaign, not this page** — asked as `0059`. Align to whichever was filed; do not align to whichever is prettier. |
+| "Either stops the texts; neither needs a password" | `/terms/` | `SmsCodesController::disable()` takes only `$request->user()`. Load-bearing: add a confirmation step and this page is false. |
+| "Facebook Pages, Instagram, Threads, Pinterest and TikTok send today" · "Pinterest images only" · "TikTok drafts, not the profile" | `/`, `/social-media/` | `Publishers::for()` — which providers return non-null. Was two, corrected upward to five on 2026-09-02; the site was the last to hear. |
+| "It is not on the App Store yet" | `/download/` | `curl -s "https://itunes.apple.com/lookup?bundleId=com.ezbizi.app"` → `resultCount`. The card owes a link the moment it answers. |
+| "A Google Business Profile can be connected to read and answer reviews" — **REMOVED 2026-09-22** | `/` ×3 | `app/Services/Reviews/BusinessProfileReviews.php` — its own docblock: *"The Business Profile APIs ship at 0 QPM and stay there until Google approves an access application. Every call here will fail until that lands."* The replacement sentence is true while that stays so. **What would let it back:** Google granting Business Profile quota, which `08c2b82e` puts no earlier than **2026-10-24** — the application was REFUSED on the 60-day verified-listing rule and the profile verified 2026-08-25. Re-read the docblock, not this row. |
+| "An organization can also have EzBizi send mail on its behalf" | `/privacy/` | The automation actions that send. Corrected in `0.0.0240` after two days wrong — the previous sentence promised the opposite. |
+
+**Adding a row costs nothing and omitting one costs two days.** If you write a
+sentence on the site that would be false if somebody changed code you do not own,
+it belongs here with the file that decides it.
 
 ## Enforced at publish time
 
@@ -1424,3 +1459,443 @@ traffic, and not a fraction the site may be given.
 tip made the deployed tree readable here, which is the one condition under which
 this check does not need the desk for code claims. It still needs it for row
 counts, which is exactly what the Automations test above is waiting on.
+
+## 2026-09-17: seven releases, and a PRIVACY sentence had been false for a day
+
+**Production moved `0.0.0232` → `0.0.0239`** (`547b74b0` → `2832a607`,
+`/download/windows.json`, fetched). `main`'s tip **is** the deployed SHA, so
+every code claim below was read off the tree production is running.
+`git log 547b74b0..2832a607` is **259 commits and NOT ONE under `www/`**.
+
+**The audit was clean before the edit below.** All seven pages fetched from
+production byte-identical to `www/` after stripping CR, `Last-Modified`
+**Thu, 17 Sep 2026 22:12:22 GMT**. `python www/check-site.py` →
+`ok - 7 pages, 7 sitemap entries`. `./scripts/index-landmines.sh` →
+`0 stale, 0 live`. Forbidden terms, parsed from this file and **split on
+LINES** → `ok - 4 terms, none present`. Control, **method stated**: python
+`.count('ezbizi')` lowercased over `www/**/*.html` = **393**, identical to
+yesterday's number by the same method over an unchanged tree; negative control
+`zzzznotpresent` = **0**.
+
+### The finding: `/privacy/` said EzBizi never carries a business's mail, and it does
+
+**Published 2026-09-14, false since 2026-09-16, corrected today.** The *Email we
+send you* section ended:
+
+> These are EzBizi's own messages about your account, **and they are all of
+> them. Mail your business writes to its own customers does not go out over
+> ours** — a mailing goes through your own Mailchimp account…
+
+**Both bolded clauses are false at `2832a607`.** Three automation actions send a
+tenant's mail over EzBizi's own SES identity, and the code says so in its own
+words — `ActionRunner.php:610-635`, on Jose reversing his 2026-09-14 ruling:
+
+    report.send                ActionRunner:382 -> SendSavedReport:183
+    email.send                 ActionRunner:383 -> ActionRunner:1352
+    inspection_report.email    ActionRunner:391 -> ActionRunner:1354
+
+all three reaching `MailDispatcher::platformForTenant()` (`:178`), which is
+EzBizi's platform identity gated only by an hourly cap. **`asTenant()` is a
+`@throws CannotSendMail always` stub** (`:136`) — retired for putting a
+*tenant's* address on our transport — and the live method puts **EzBizi's**
+address on it instead. Jose's words, quoted in `SendSavedReport`'s docblock:
+*"Email ( the Ezbizi SES one, not the company one )"*, 2026-09-16.
+
+**The sentence was true when it was written and the ruling behind it was
+reversed two days later.** `SendSavedReport:60` records the first ruling
+verbatim — *"EZBIZI EMAIL IS ONLY FOR EZBIZI ACTIONS"* — which is the sentence
+the privacy page was derived from. **A privacy claim derived from a ruling ages
+with the ruling, and nothing on the site is watching the ruling.** The daily
+check found this only because a release note said *"Emailing a report to a
+customer is back"* and the word *customer* did not fit the page.
+
+**What shipped:**
+
+> These are EzBizi's own messages about your account. **An organization can also
+> have EzBizi send mail on its behalf**: an automation rule can email a saved
+> report, an inspection report, or a message the organization writes — to the
+> recipients that rule names, or to an address held on the record it fired on,
+> which may be a customer's. Those leave from EzBizi's own address rather than
+> the organization's, and the body says which business the work is about. A
+> newsletter is not one of these: a mailing goes through your own Mailchimp
+> account, on your list and your sending reputation.
+
+Every clause read out of the deployed tree: recipients-vs-record is the real
+split (`SendSavedReport:167` loops a recipient list; `ActionRunner:1322` reads a
+`to_field` **off the record the rule fired on**, so a customer's address on a
+job is exactly how it is reached — one phrasing covering both would have been
+wrong about one of them). "EzBizi's own address" is `platformForTenant`'s
+`$this->platform->identity()`. "Says which business" is
+`companyName: (string) $scope->name`. The Mailchimp clause survives untouched
+because `NewsletterSenders::for()` is still `Mailchimp` and `default => null`.
+
+**`Last updated` moved to 17 September 2026** — and it read **16** September
+before this edit, set by `7ef75f6f` on the **15th**, a stamp dated into the
+future that nothing would ever have corrected.
+
+**Deliberately NOT written: "or through your own mail server if you connect
+one."** The screen exists (`mail/sending-server`, published in `0.0.0215`) and
+`MailDispatcher::throughTenantProvider()` exists — and **nothing in `app/` calls
+it.** Measured: zero callers outside the dispatcher itself and one test. It is
+the 2026-09-14 trap in its third outfit — an enum, a dispatcher branch, a route
+AND a screen, and still no code path that sends through it. **A privacy page is
+the worst place to describe a route no message takes.**
+
+**This is the first published claim this check has had to pull rather than
+narrow, and grep found it in exactly one place** — `www/privacy/index.html:81`,
+with the homepage's Newsletter card (`index.html:533`) the only other Mailchimp
+sentence and still true. The "a claim is never in one place" rule held anyway
+because it was *checked*, not assumed.
+
+### Four published claims re-measured at `2832a607`
+
+`Publishers.php` still returns five — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok — and `default => null`, so *"Five
+networks send today"* holds and **no sixth publisher was written**.
+`NewsletterSenders.php` is still `Mailchimp` and `default => null`.
+**`ReportMap::all()` still holds ELEVEN keys**, re-counted rather than carried:
+jobs, customers, franchises, services, inventory_items, vehicles,
+training_guides, leads, service_areas, monitored_devices, users. Stores: Play
+`200`; Apple lookup `resultCount` **1**, `trackId` 6805979795, **`version`
+0.0.0222** (was 0.0.0200 for two days), `currentVersionReleaseDate`
+2026-09-17 — both live, both pages already correct.
+
+### Sixteen migrations and not one new table
+
+Every migration in the window is the per-tab permission sweep plus three column
+changes (`pto_allowance_and_waiting_carry_a_unit`,
+`add_answer_with_to_phone_numbers`, the Work Hours copy pair). **Zero
+`Schema::create` across all sixteen**, so the structural scheduling test cannot
+have moved: no table carries both a job reference and a date-or-slot reference,
+and `service_area_slots` is still `(service_area_id, weekday, start_time,
+end_time, max_jobs)` with no `job_id`.
+
+### The Automations card is held again, and its own test is what held it
+
+Yesterday's run named the test: a production row count of `automations`, **and a
+release window with no automation *fix* in it.** The second half fails outright.
+`0.0.0233` shipped three automation fixes — a variable in an email or WhatsApp
+message *"was always blank"*, a rule could not name the caller in a text, and a
+typed quotation mark *"arrived as a string of symbols"*. **A card written today
+would again describe a machine that was demonstrably mis-firing this morning**,
+which is the same sentence yesterday wrote, for a different release. The test
+did its job; nothing about it needs changing.
+
+### New this window, deliberately unpublished
+
+- **Paid time off** (`0.0.0236`) — allowance, waiting period, carry-over, and
+  everybody sees their own balance. Hours old, and *"Off until you set it up"*
+  by its own release note, so built-and-unused **and** unswitched. Candidate for
+  the People card on a later run, under the Coverage & capacity precedent and
+  its tense rule.
+- **Per-tab role permissions** (`0.0.0238`) — the whole of today's sweep. Not a
+  capability the site sells; Roles and permissions are not on the homepage grid
+  at all.
+- **Inspections Flow view**, **searchable dropdowns everywhere**, **iPhone
+  notifications** (`0.0.0237`) — refinements under published cards, or mobile,
+  which the site is silent about on purpose.
+- **Chat-bubble hours per site** (`0.0.0239`) — a refinement to the Web
+  management card, which needs no edit.
+
+### The channel: no desk asked, and this run did not need one for the finding
+
+Production being `main`'s tip made the deployed tree readable here, which is the
+one condition under which the code claims need no desk. **The correction above
+was derived entirely from that tree** — the release note pointed, the code
+answered. Row counts still need the desk: Training's `training_attempts`, the
+Local Services and Thumbtack `is_test = 0` counts, the resolved ring-group
+fraction, and the `automations` count the card above is waiting on.
+
+## 2026-09-18: one release, and the capability that shipped is one a customer cannot install
+
+**Production moved `0.0.0239` → `0.0.0240`** (`2832a607` → `7ceefd9a`,
+`/download/windows.json`, fetched). Twenty commits, **one** release tag, and
+`git log 2832a607..HEAD -- www/` is a single commit — yesterday's own privacy
+correction, which **is deployed**: `36dbbc52` is an ancestor of `7ceefd9a`, and
+production `/privacy/` is byte-identical to `www/privacy/index.html`. `0052`
+asked for that publish as the urgent kind; it went out.
+
+`HEAD` (`5d0ea1e1`) is two commits past the deployed SHA and **both are
+`docs/` and `scripts/` only** (`git diff --stat 7ceefd9a HEAD` → 4 files, no
+`app/`, no `client/`). So the deployed tree is readable here, and every code
+claim below was read off it rather than asked for.
+
+**The audit was clean and no page needed an edit.** All seven pages fetched
+from production byte-identical to `www/` after stripping CR, `Last-Modified`
+**Fri, 18 Sep 2026 19:10:26 GMT**. `python www/check-site.py` →
+`ok - 7 pages, 7 sitemap entries`. `./scripts/index-landmines.sh` →
+`0 stale, 0 live`. Forbidden terms, parsed from this file and **split on
+LINES** → `ok - 4 terms, none present`. Control, method stated: python
+`.count('ezbizi')` lowercased over `www/**/*.html` = **395**, up 2 from
+yesterday's 393 by the same method, which is the privacy edit and nothing else;
+negative control `zzzznotpresent` = **0**.
+
+### `/download/windows.json` is right, and the reason it was wrong this morning is worth keeping
+
+Manifest `0.0.0240`, `built` `7ceefd9a`, repo `client/VERSION` `0.0.0240`. No
+mismatch, and nothing to report — but for one afternoon **`0.0.0239` named two
+different trees and the newer one was live.** The web parity work reached
+production through `deploy.sh` and `build-app.sh`, neither of which touches
+`client/VERSION`, so production served `1e53de9c` under the number `2832a607`
+had. Jose found it the obvious way: his app still read `0.0.0239 · 2832a607`.
+**A deploy is not a release, and this page's own rule — compare the manifest to
+what production *runs*, never to the repo — is what would have caught it**:
+comparing manifest to `client/VERSION` agreed with itself all afternoon while
+the served bundle was three days newer.
+
+### The finding: a capability shipped, is rendering on 110 sites, and is still not sellable
+
+Plugin **1.12.0** adds five rendered widgets — `social_links`, `google_map`,
+`post_title`, `hours_table`, `city_list` — and they are not a promise:
+110/110 installs on our own hosting are at 1.12.0, sampled hosts return 200
+with markup and no leaked shortcodes, and `google_map` degrading to a Maps link
+without a latitude is documented behaviour rather than a failure.
+
+**And a customer cannot get any of it.** One command, and it is the row's test:
+
+```
+curl -s "https://api.wordpress.org/plugins/info/1.0/ezbizi.json"   # -> "version":"1.10.0"
+```
+
+The directory serves **1.10.0**. The estate is at 1.12.0 because an operator
+with a shell and passwordless sudo pushed it there, one tarball per install.
+**Somebody installing the EzBizi plugin the only way a stranger can install it
+gets a plugin with none of these shortcodes in it.** Filed as a row in the
+do-not table above.
+
+This is the WhatsApp shape in a second outfit — finished code on `main`,
+reachable by nobody who is not us — and the trap is sharper here, because the
+usual refutation *"but is it live?"* has an honest yes attached to it. It is
+live on sites **we** host. The site sells to people we do not.
+
+**The chat switch and the Cities pane are refinements under the published Web
+management card and need no edit.** The switch defaults on and works by
+omitting the chat block rather than sending a flag, so it bites on the 1.10.0
+and 1.11.0 plugins already out there; the card's "Add the chat bubble and
+contact form in your own brand colour" is true before and after. Cities is an
+editor pane, and the card never described the editor.
+
+### Re-measured at `7ceefd9a`, not carried
+
+`Publishers::for()` still returns **five** — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok — with `default => null`, so *"Five
+networks send today"* holds and **no sixth publisher was written**.
+`NewsletterSenders::for()` is still `Mailchimp` and `default => null`.
+`ReportMap::all()` still holds **eleven** keys, re-counted from the method body:
+jobs, customers, franchises, services, inventory_items, vehicles,
+training_guides, leads, service_areas, monitored_devices, users. Stores: Play
+`200`; Apple lookup `resultCount` **1**, `trackId` 6805979795, `version`
+**0.0.0222**, `currentVersionReleaseDate` 2026-09-17 — unchanged since
+yesterday and both pages already correct. (`0.0.0240`'s iOS build is
+*delivered* to App Store Connect, which is not accepted and not a store
+version; the page says nothing that depends on it.)
+
+**`git diff --name-only 2832a607 7ceefd9a -- database/migrations/` is EMPTY** —
+zero migrations, so the structural scheduling test cannot have moved: still no
+table carrying both a job reference and a date-or-slot reference.
+
+### The channel: the tool is gone on a schedule, not the desk
+
+`ccd_session_mgmt send_message` to the Deployment id
+(`local_072bee23-…`, the durable address `docs/SESSIONS.md` names) returned
+**"This tool is unavailable in unattended sessions (scheduled-task runs and
+remote-dispatched trees)."** That is a property of *this* run, not of the desk:
+the same id reached it by hand on other days. **So a scheduled run of this check
+can never ask for a row count**, and the daily task file's step 1 cannot be
+completed on a schedule at all — worth knowing before somebody reads "no desk
+answered" as "no desk was running". Five peers were up in `ListAgents`.
+
+Nothing above needed one: production being two docs-commits behind `main` made
+the deployed tree readable here. **Still owed, and all of them row counts:**
+`automations` (the Automations card's own test), `training_attempts`, the Local
+Services and Thumbtack `is_test = 0` counts, and the resolved ring-group
+fraction. Ask by hand, not from a scheduled run.
+
+### New this window, deliberately unpublished
+
+- **The five rendered widgets** — the row above.
+- **Chat on/off per site**, **Cities pane**, **selection by key rather than
+  list position** — refinements under the Web management card.
+- **A guard against naming a field after a plugin-owned shortcode**
+  (`WidgetPresets::PLUGIN_OWNED_SHORTCODES`) — internal, and nothing the site
+  sells.
+
+## 2026-09-22: four days of drift, and the register's second run found a live false claim
+
+**Production is `0.0.0242` at `049e13a1`** (`/download/windows.json`, fetched),
+which is **`main`'s tip** — `git rev-parse HEAD` is the same SHA. So the deployed
+tree is this tree, every code claim below was read off it rather than asked for,
+and the only thing a desk could have added is a row count.
+
+**Forty-five commits since the `7ceefd9a` baseline of 2026-09-18**, and there is
+no section here for 09-19, 09-20 or 09-21 — so this run is a four-day catch-up
+rather than a daily diff. One commit touches `www/`: `72c99ce0`, this morning,
+which added the ten-row register above and corrected `/privacy/`'s
+device-permission sentence. **It published** — all seven pages fetch
+byte-identical to `www/` after stripping CR, `Last-Modified`
+**Tue, 22 Sep 2026 20:07:40 GMT**.
+
+Gate output, before the edit below and again after it:
+
+    python www/check-site.py        ok - 7 pages, 7 sitemap entries
+    forbidden-terms (LINE-split)    ok - 4 terms, none present
+    ./scripts/index-landmines.sh    0 stale, 0 live
+    control .count('ezbizi')        397 (was 395 on 09-18, +2 = the privacy edit)
+    negative control                0
+    every JSON-LD block             parses
+
+### The finding: the homepage said a customer can read and answer Google reviews, and no customer can
+
+**Three places on `/`, published and live.** The FAQPage JSON-LD (`:38`), the
+*"Advertising & reviews"* capability card (`:512`-`:513`) and the visible
+`<details>` answering the same question (`:638`) all said a Google Business
+Profile **can be connected to read and answer reviews**.
+
+Four independent sources say it cannot, and they agree:
+
+1. `BusinessProfileReviews`' own docblock — *"The Business Profile APIs ship at
+   0 QPM and stay there until Google approves an access application. Every call
+   here will fail until that lands."*
+2. Its runtime refusal at `:313` — *"Google has not granted this installation
+   any Business Profile quota yet, so reviews cannot be read."* Note
+   **`this installation`**: it is not per-tenant, so it blocks every customer at
+   once.
+3. `docs/EZBIZI-STATUS.md:122` — quota *"cannot even be applied for before
+   2026-10-24"*.
+4. **`08c2b82e`, committed today**: the application was **REFUSED** on the
+   60-day verified-listing rule. The profile verified 2026-08-25, so 2026-10-24
+   is the earliest re-file.
+
+**Connecting works and that half was true** — TODO #33 closed on 2026-08-26 with
+both OAuth clients live and the driver reporting READY, and `business.manage` is
+non-sensitive so it needs no approval. It is the purpose clause that was false,
+and a purpose clause is the whole reason somebody connects.
+
+Softened the same day, all three places plus the card's own heading:
+
+    h3    Advertising & reviews  ->  Advertising & business profiles
+    card  "...and answer reviews from the same place as the work."
+          -> "Ads brings its Local Services enquiries in as leads; reading and
+              answering Business Profile reviews is waiting on Google to grant
+              us API access."
+    x2    "A Google Business Profile can be connected to read and answer
+           reviews, and a Google Ads account to bring Local Services
+           enquiries..."
+          -> "A Google Ads account can be connected to bring Local Services
+              enquiries in beside the customers and jobs they become. A Google
+              Business Profile can be connected too, though reading and
+              answering its reviews is waiting on Google to grant Business
+              Profile API access."
+
+**Naming the state rather than going silent, on this file's own `/download/`
+precedent** — the iOS card claimed only what was checkable ("built and signed,
+not on the store") and owed a link the day the lookup answered. A reader told
+*why* a thing is not there can tell it from a thing that does not exist.
+
+**Three things worth keeping about how this one hid.** (1) It is the fourth
+member of the family this file keeps meeting — finished code, deployed,
+unreachable because a third party has not said yes — after WhatsApp, the
+WordPress widgets and now Messenger/Instagram. (2) **It is the first one caught
+by the register rather than by somebody happening to look**, one day after the
+register was written; the row that found it did not exist yesterday. (3) It was
+never on the do-not list, because Reviews sits on the **"Live, and safe to
+sell"** list — and it belongs there, since the module, the drafting split and
+the publish permission are all real. **A module can be live and its data path
+blocked, and the safe-to-sell list has no column for that.** The sentence, not
+the module, was the thing that was wrong.
+
+### The Reviews panel in the app mock was left alone, and here is the test that would change it
+
+The mock still carries a Reviews tab showing *RATING 4.8*, *THIS MONTH 17 new
+reviews*, *AWAITING REPLY 2*. **Deliberately not deleted**, and this is the
+weaker half of today's call: the Reviews screen genuinely exists with those
+fields, drafting and publishing are real and separately permissioned, and a mock
+is an illustration of a screen rather than a sentence about what arrives in it.
+The Tasks precedent does **not** reach it — that panel went because the module
+was retired and a customer on the shipped client had no such screen at all.
+
+**If you disagree, the test is the same one as the sentence**: Business Profile
+quota. If 2026-10-24 comes and goes without it, the mock has been showing
+seventeen reviews a month for a module no customer can put one review into, and
+that is a harder sentence to defend every week it stays.
+
+### `/download/windows.json`, stores and the plugin directory
+
+Manifest `0.0.0242`, `built` `049e13a1`, repo `client/VERSION` `0.0.0242` — all
+three agree, and the manifest agreeing with `client/VERSION` is a coincidence of
+today rather than the test. Play returns `200`. The Apple lookup returns
+`resultCount` **1**, `trackId` 6805979795, version **0.0.0222**,
+`currentVersionReleaseDate` 2026-09-17 — unchanged since 09-18, both pages
+already correct. `api.wordpress.org` still serves the plugin at **1.10.0**, so
+the five-widgets row stands exactly as written.
+
+### Re-measured at `049e13a1`, not carried
+
+`Publishers::for()` returns **five** — FacebookPage, Threads,
+InstagramProfessional, Pinterest, TikTok, `default => null`. No sixth publisher,
+so *"Five networks send today"* holds. `NewsletterSenders::for()` is still
+Mailchimp alone. `ReportMap::all()` still holds **eleven** keys, re-counted from
+the method body. `monitoring.control_indicator` is still `default: false`, so
+`/privacy/`'s "the answer is no unless they change it" holds.
+`AndroidManifest.xml` declares `INTERNET` and `POST_NOTIFICATIONS`;
+`Info.plist` declares `NSMicrophoneUsageDescription` and nothing else; `pubspec`
+pulls no camera, location, contacts, calendar or photo package — which is
+exactly what this morning's corrected sentence says, so that row passes on its
+second run. `metrics.*` in `CampaignPerformance` is cost_micros, clicks,
+impressions, conversions, all_conversions — unchanged since the sentence was
+written beside it.
+
+**Four migrations since `7ceefd9a`, and not one creates a table.** Three alter
+`phone_extensions` or grant permissions; the floor-plan one moves a tab. So the
+structural scheduling test cannot have moved: **still no table carrying both a
+job reference and a date-or-slot reference.**
+
+### `0058` is closed by measurement, and `b203303a` is now in main
+
+SES held the `/privacy/` clause *"and the body says which business the work is
+about"* open because `SavedReportMail` named the business nowhere — two of three
+senders named it and the page spoke for all three (`44b190e1`). They asked
+explicitly that the page **not** be narrowed while Reports fixed the code.
+Measured today: `git merge-base --is-ancestor b203303a HEAD` -> **yes**, and
+`resources/views/emails/saved-report.blade.php:20-22` prints *"Sent by
+{{ $business }} through EzBizi..."*. Production is that SHA. **The clause is
+true of all three senders now**; the hold is spent. Read the template, not the
+commit subject — that is how SES caught it in the first place.
+
+### A third lead source is live and the site is incomplete rather than wrong
+
+Relayed by grok (a Cursor session, not the deploy desk) in `0053`, measured on
+production 2026-09-18 ~15:05 UTC through `artisan tinker`, **not re-measured
+here and four days old**: `leads WHERE is_test = 0` -> local_services 41,831,
+thumbtack 2, **website_chat 16**. Also `automations` 10, `training_attempts` 0,
+`training_progress` 0 — so the Training tense rule still holds on a relayed
+zero.
+
+**Nothing to publish, and the reason is that the card already says it.** Web
+management reads *"Add the chat bubble and contact form in your own brand
+colour, and the enquiries they take arrive in Leads"* — written in the
+conditional shape precisely so it would be true before and after, and sixteen
+real enquiries make it true rather than make it need an edit. The Growth card
+names Local Services and Thumbtack and does not claim to be a list of every
+source. **A capability sentence that survives its own inversion needs no work on
+the day it inverts**, which is the whole argument for writing them that way.
+
+### The channel: no desk asked, and nothing above needed one
+
+`ccd_session_mgmt send_message` is unavailable to a scheduled run — recorded on
+09-18 and unchanged — and production being `main`'s tip made every code claim
+readable here. **Still owed, and all of them row counts a scheduled run cannot
+take:** the `facebook`/`instagram` lead count with `is_test = 0`, the resolved
+ring-group fraction, and fresh figures for the three grok gave on 09-18. Ask by
+hand.
+
+### New this window, deliberately unpublished
+
+- **Messenger and Instagram as lead sources** — the do-not row above.
+- **Phone extensions that point at a team or a menu**, paging, call park — the
+  Communication card is silent on extensions and the module is not asking for
+  copy.
+- **The Integrations screen rebuilt as a card per provider** — a presentation
+  change behind a login, and the site sells no screen layout.
+- **Monitoring's General ownership chart and the floor plan's own map tab** —
+  refinements under the published Monitoring card.

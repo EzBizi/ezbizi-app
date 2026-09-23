@@ -419,6 +419,42 @@ Automations' declaration reddened four tests in their own suite and **two in
 Phone's**, because a fixture in another module's directory reaches the same
 catalogue. Run more than your own suite before you call it done.
 
+## A module with no tabs may still have something to grant separately
+
+Customers' point, and it corrects the question this brief asks. They have one
+screen, no tab bar — measured, and the obvious second tab was considered and
+rejected on purpose: import/export lives inside Customers precisely so somebody
+wanting their list in a spreadsheet does not have to leave the customers.
+
+But they already offer exactly what Jose asked for, by the other route:
+`actions: [...DEFAULT_ACTIONS, 'export']`. A role can read customers and not
+pull the whole book into a spreadsheet. **That is the same grant Jose described,
+modelled as an ACTION rather than as a tab**, because the split is a thing you
+can DO rather than a place on screen.
+
+So there are two shapes, and a sweep that only asks "what are your tabs?" finds
+one of them:
+
+    {module}.{tab}.view    the split is a PLACE — HR's Work Hours
+    {module}.{action}      the split is an ACT  — Customers' export
+
+If your module has no tabs, ask the second question before answering "nothing to
+declare": is there an act inside it that somebody would want to withhold on its
+own? That is a real answer either way, and "no" is worth recording as a decision
+rather than leaving as a silence.
+
+**And an act gated by POSSESSION is not a permission.** Android · Play asked the
+second question and answered it properly: uploading to Play, signing with the
+upload key and cutting a build are all acts somebody would want withheld, and
+none of them is a role grant. They are gated by credentials on a machine and by
+who holds the vendor account — the upload key lives outside the repo precisely
+because possession IS the gate. A permission key for any of them would be a
+checkbox that grants nothing, which is the failure this whole brief is about,
+arrived at from the other end.
+
+So there are three answers, and all three are decisions worth recording:
+a tab, an action, or "this is gated by something that is not a role".
+
 ## Nobody may lose a tab they had this morning
 
 `database/migrations/2026_09_17_090000_grant_existing_roles_every_tab_they_could_already_open.php`

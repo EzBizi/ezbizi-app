@@ -551,7 +551,7 @@ final class HttpTwilioGateway implements TwilioGateway
             (string) $connection->account_sid,
             $apiKeySid,
             $secret,
-            3600,
+            TwilioGateway::TOKEN_TTL_SECONDS,
             $identity,
         );
 

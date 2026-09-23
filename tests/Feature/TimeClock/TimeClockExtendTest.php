@@ -70,12 +70,19 @@ class TimeClockExtendTest extends TestCase
         $this->assertSame(422, $response->status());
         $this->assertStringContainsString('You are not on a scheduled shift.', $response->getContent());
 
-        // Open but unscheduled: a Saturday, when the business hours the
-        // fallback reads (2026-09-09) are closed. On a weekday a person with
-        // no personal schedule IS scheduled, by those hours.
+        /*
+         * REVERSED 2026-09-23. A Saturday shift used to be refused here,
+         * because the business hours the fallback reads are closed and the row
+         * carried no scheduled end — and that null is exactly what made the
+         * sweep blind to it. Every shift has an end now, so the person working
+         * a day off can push it, which is the case Extend was least use for
+         * and most needed in.
+         *
+         * The refusal that remains is the one above: not clocked in at all.
+         */
         Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC'));
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
-        $this->signedInAs($person)->postJson('/api/v1/time-clock/extend')->assertStatus(422);
+        $this->signedInAs($person)->postJson('/api/v1/time-clock/extend')->assertOk();
     }
 
     public function test_extend_works_after_the_grant_is_taken_away(): void

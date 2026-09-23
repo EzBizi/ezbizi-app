@@ -3,6 +3,7 @@
 namespace App\Support\Web;
 
 use App\Models\WebSite;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -38,8 +39,13 @@ final class SiteContent
      *
      * @return array{items: array<int, array<string, mixed>>, total: int, pages: int}
      */
-    public function list(WebSite $site, string $type, int $page = 1, string $search = ''): array
-    {
+    public function list(
+        WebSite $site,
+        string $type,
+        int $page = 1,
+        string $search = '',
+        array $excludeAuthors = [],
+    ): array {
         if (! array_key_exists($type, self::TYPES)) {
             throw new RuntimeException('That is not something a website holds.');
         }
@@ -67,6 +73,20 @@ final class SiteContent
                 'orderby' => 'modified',
                 'order' => 'desc',
                 'search' => $search === '' ? null : $search,
+                /*
+                 * City pages are left out HERE rather than after the fact, and
+                 * that is the whole reason this parameter exists.
+                 *
+                 * call.a-1chimney.com has 609 city pages. Dropping them from a
+                 * batch of fifty after WordPress had counted them would leave
+                 * a list showing three rows under "page 1 of 13" — a pager
+                 * describing a list that is not on screen. WordPress's own
+                 * `author_exclude` makes the count and the contents agree,
+                 * because the exclusion happens before either is decided.
+                 */
+                'author_exclude' => $excludeAuthors === []
+                    ? null
+                    : implode(',', array_map('intval', $excludeAuthors)),
                 // Asking for the fields we draw keeps a post's whole rendered
                 // body off the wire; some of these run to megabytes.
                 // author and categories ride along because a page's screen
@@ -120,6 +140,45 @@ final class SiteContent
             'authors' => $this->lookup($site, 'wp/v2/users', 'name'),
             'categories' => $this->lookup($site, 'wp/v2/categories', 'name'),
         ];
+    }
+
+    /**
+     * The ids of the author accounts this site uses for city pages.
+     *
+     * Cached for ten minutes because it is asked on every Pages request and the
+     * answer changes when somebody adds a WordPress user — which is to say
+     * almost never. A miss costs one round trip to the customer's site; without
+     * the cache the Pages list would cost two instead of one, for ever, to
+     * answer a question whose answer is the same all day.
+     *
+     * FAILS TO AN EMPTY LIST rather than throwing, and that is deliberate: the
+     * consequence of not knowing the authors is that a Pages list also shows
+     * city pages, which is what it did last week. The consequence of throwing
+     * would be no Pages list at all. One of those is a worse afternoon.
+     *
+     * @return array<int, int>
+     */
+    public function cityAuthorIds(WebSite $site): array
+    {
+        return Cache::remember(
+            'web:city-authors:'.$site->getKey(),
+            now()->addMinutes(10),
+            function () use ($site): array {
+                try {
+                    $ids = [];
+
+                    foreach ($this->options($site)['authors'] as $author) {
+                        if (PageKinds::authorNamesCity((string) ($author['name'] ?? ''))) {
+                            $ids[] = (int) $author['id'];
+                        }
+                    }
+
+                    return $ids;
+                } catch (RuntimeException) {
+                    return [];
+                }
+            },
+        );
     }
 
     /**

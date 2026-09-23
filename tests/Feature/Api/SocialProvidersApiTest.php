@@ -134,11 +134,24 @@ class SocialProvidersApiTest extends TestCase
         $row = $this->providerNamed($t, 'pinterest');
 
         $this->assertSame(
-            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path'],
+            ['value', 'label', 'usable', 'unusable_because', 'connects_by', 'start_path', 'permission'],
             array_keys($row),
         );
         $this->assertSame('sign_in', $row['connects_by']);
         $this->assertSame('/social/pinterest/start', $row['start_path']);
+
+        /*
+         * `permission` added 2026-09-23 for Settings > Integrations, which
+         * draws a Connect control per provider on Jose's instruction that the
+         * screen exists "to be able to connect stuff from here, not just list
+         * it" — and cannot offer one that answers 403.
+         *
+         * Asserted as the VALUE rather than only as a key, because the point of
+         * putting it on the wire is that the client stops keeping its own copy
+         * of this map: a key present with the wrong answer is the failure that
+         * would produce, and it is invisible to a field-list assertion.
+         */
+        $this->assertSame('marketing.edit', $row['permission']);
     }
 
     /** @return array<string, mixed> */

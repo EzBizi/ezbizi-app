@@ -438,7 +438,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // already keeps the people list — see UserPolicy::resetSecurity.
                 // Same reasoning that keeps `monitoring.control` off
                 // `monitoring.screenshots.view`.
-                actions: ['view', 'create', 'edit', 'security.reset'],
+                // `hours.correct` is split from `edit` on exactly the argument
+                // above it: rewriting the hours somebody is PAID for is a
+                // bigger authority than keeping their row, and folding it into
+                // `edit` would have handed it on deploy to everybody who
+                // already maintains the people list. Jose asked for the
+                // correction system on 2026-09-23; it is the grant that opens
+                // Edit and Delete on a Work Hours row.
+                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct'],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *
@@ -2066,6 +2073,8 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('thumbtack', 'Thumbtack'),
                     new TabDefinition('website_chat', 'Chat'),
                     new TabDefinition('website_form', 'Forms'),
+                    new TabDefinition('facebook', 'Messenger'),
+                    new TabDefinition('instagram', 'Instagram'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -2200,6 +2209,62 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * == A1Leads GBP: a container, and a deliberately temporary one ==
+             *
+             * Jose, 2026-09-23, verbatim: *"this is a temporary thing as we will
+             * replace his system once we get our own GBP, but till then, we need
+             * to move it, which is why i want it separate for now, in fact, just
+             * make it as it's own main tab."*
+             *
+             * So Reviews and Business Profile move OUT of Marketing and into a
+             * row of their own. The comment they each carried - "drawn as a tab
+             * inside Marketing rather than as a row of its own in a sidebar that
+             * already holds fifteen" - was a good reason and is now overruled by
+             * a better one: while A1 Leads is still the system of record for
+             * Google Business Profile, the two screens that read it should be
+             * findable together and removable together.
+             *
+             * == One action, because the registry refuses none ==
+             *
+             * It was written with `actions: []` first, on the argument that
+             * `a1leads_gbp.view` gates nothing: the destination is drawn for
+             * anybody who can reach EITHER child (main.dart `_hasDestination` -
+             * "a module this person CANNOT reach still does, when something
+             * drawn inside it is reachable"), and the screen draws only children.
+             * The registry threw - *"Module 'a1leads_gbp' declares no actions"* -
+             * so that decision is already made and made elsewhere.
+             *
+             * What `view` therefore means here, precisely: holding it and
+             * neither child gets you the row and a screen that says nothing
+             * inside is available. Holding a child and not this still gets you
+             * the row. So it is not a dead checkbox, but it is a small one, and
+             * an administrator granting access to this area should be ticking
+             * Reviews or Business Profile rather than this.
+             *
+             * Reviews and Business Profile keep their own grants untouched.
+             * Nesting is a layout fact, not a grant, so nobody gains or loses
+             * anything on the deploy that moves them.
+             *
+             * == When this is deleted ==
+             *
+             * When EzBizi holds its own Business Profile API access (refused
+             * 2026-09-22 on the 60-day rule, re-file on or after 26 October -
+             * docs/BUSINESS-PROFILE.md 9b), the two modules go back to being
+             * ordinary EzBizi modules and this container has no reason to exist.
+             * It is named after the system it is a bridge to, so that its name
+             * stops making sense at exactly the moment it should be removed.
+             */
+            new ModuleDefinition(
+                key: 'a1leads_gbp',
+                label: 'A1Leads GBP',
+                actions: ['view'],
+                automationExemptBecause: 'A container for two other modules. It holds no '
+                    .'records and raises no events; Reviews and Business Profile declare '
+                    .'their own triggers and subjects, and a rule built here would have '
+                    .'nothing to be about.',
+            ),
+
+            /*
              * ── Reviews: what the public said, and the answer ────
              *
              * Sold separately from Leads on purpose. A business with three Maps
@@ -2240,10 +2305,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'reviews',
                 label: 'Reviews',
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                // Drawn inside A1Leads GBP rather than as a row of its own in a
+                // sidebar that already holds fifteen - moved out of Marketing
+                // 2026-09-23, see that module's block above. Its permissions are
+                // untouched by either move: this says where it appears, not who
+                // reaches it.
+                parent: 'a1leads_gbp',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
@@ -2323,10 +2390,12 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'business_profile',
                 label: 'Business Profile',
                 auditActionPrefixes: ['business_location'],
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                // Drawn inside A1Leads GBP rather than as a row of its own in a
+                // sidebar that already holds fifteen - moved out of Marketing
+                // 2026-09-23, see that module's block above. Its permissions are
+                // untouched by either move: this says where it appears, not who
+                // reaches it.
+                parent: 'a1leads_gbp',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which
@@ -3102,6 +3171,59 @@ class ModuleServiceProvider extends ServiceProvider
                             .'updates on a device as off or paused. Raised once when it '
                             .'happens, not again until it is fixed and happens again.',
                     ),
+                ],
+                /*
+                 * The four chips MonitoringScreen draws, in that order.
+                 *
+                 * THREE OF THESE NAME AN ACTION RATHER THAN MINTING ONE, and
+                 * this module is the case the mechanism was named after:
+                 * `monitoring.specs.view`, `monitoring.cameras.view` and
+                 * `monitoring.screenshots.view` have been separate grants since
+                 * the module shipped, because "may see who is online" and "may
+                 * look at their screen" were never the same permission here.
+                 *
+                 * Minting `monitoring.desktop.view` beside `screenshots.view`
+                 * would put two names on one authority, and an administrator
+                 * could then grant the tab without the read — a Desktop
+                 * Monitoring pane that opens and shows nothing, which is the
+                 * affordance-without-its-gate shape. What was missing was the
+                 * LABEL: the catalogue renders these as "Screenshots.view", so
+                 * somebody hunting for the box that opens Desktop Monitoring
+                 * has to infer it.
+                 *
+                 * PC SPECS NAMES `view`, AND NAMING `specs.view` WOULD HAVE
+                 * BEEN THE SILENT NARROWING THIS WHOLE SWEEP EXISTS TO STOP.
+                 * That tab is the people roster — who is online, on what, seen
+                 * when — and `monitoring.specs.view` gates only the HARDWARE
+                 * DETAIL inside it: DevicesController withholds the `specs` key
+                 * without that grant and the roster still lists everybody. So
+                 * the tab is the module's own view, exactly as Training's Learn
+                 * pane is `training.view`. Naming `specs.view` would have taken
+                 * the roster away from every role holding plain
+                 * `monitoring.view` — and the backfill could not have restored
+                 * it, correctly, because a named action is skipped there.
+                 *
+                 * GENERAL AND MAP ARE TWO TABS NOW (Jose, 2026-09-22). The
+                 * floor-plan map moved to `map` and General became the
+                 * ownership chart — the same people and machines as a table
+                 * rather than a picture. Both mint, and the migration beside
+                 * this hands `map.view` to everybody who held `general.view`,
+                 * because the thing they could open yesterday is the thing
+                 * that moved.
+                 *
+                 * `general` is the one that MINTS, and it is the only one that
+                 * should. The floor-plan map has ridden on the module's own
+                 * `monitoring.view` since it shipped, so a tab key for it is
+                 * new and its backfill genuinely preserves what roles had.
+                 * Naming `view` instead would draw a General checkbox that IS
+                 * the module grant — ticking a tab to gain the module.
+                 */
+                tabs: [
+                    new TabDefinition('general', 'General'),
+                    new TabDefinition('map', 'Map'),
+                    new TabDefinition('specs', 'PC Specs', action: 'view'),
+                    new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
+                    new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),
                 ],
                 subject: new AutomationSubject(MonitoredDevice::class, 'Device', key: 'monitoring'),
                 sidebar: true,

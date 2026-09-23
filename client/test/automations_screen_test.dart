@@ -1117,6 +1117,58 @@ void main() {
     expect(sent, isNull);
   });
 
+  /// CARDS SIT SIDE BY SIDE, and still fit when there is no room for two.
+  ///
+  /// Jose, 2026-09-22: *"i would also like to see the current automations in
+  /// card format too, so i can see more at the same time."* A full-width row
+  /// spent about a fifth of a wide screen on the rule and the rest on nothing.
+  ///
+  /// TWO ASSERTIONS, BECAUSE THEY FAIL DIFFERENTLY. The first is the feature —
+  /// same vertical position means genuinely side by side, which a taller list
+  /// of full-width rows would not produce. The second is the cost of it: at
+  /// card width a `Tag` sizes to its own text and takes no part in a Row's
+  /// negotiation, so a long place name pushed the switch off the edge. An
+  /// overflow throws in a widget test, so pumping a long name and a long scope
+  /// label at a narrow surface is the whole check.
+  testWidgets('rules are laid out as cards across the width', (tester) async {
+    final many = [
+      for (var i = 0; i < 4; i++)
+        {
+          ..._list.first,
+          'id': 'a-$i',
+          'name': 'A rule with a fairly long name number $i',
+          'scope': {
+            'type': 'franchise',
+            'id': 'f-1',
+            'label': 'Connecticut and the surrounding branches',
+          },
+        },
+    ];
+
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await _pump(tester, _handler(list: many));
+
+    final first = tester.getTopLeft(find.byType(Card).at(0));
+    final second = tester.getTopLeft(find.byType(Card).at(1));
+
+    expect(
+      second.dy,
+      first.dy,
+      reason: 'two rules at the same height is what "more at the same time" means',
+    );
+    expect(second.dx, greaterThan(first.dx));
+
+    // And narrow, where there is room for one: no overflow, which a widget
+    // test reports as a failure on its own.
+    tester.view.physicalSize = const Size(520, 900);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Card), findsWidgets);
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this

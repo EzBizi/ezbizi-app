@@ -114,11 +114,35 @@ class SeoFields
                 // The number is the reason this module exists.
                 'requirement' => self::REQUIRED,
             ],
+            /*
+             * A SECOND number and a SECOND address, which is not a duplicate.
+             *
+             * Toula's comparison against A1 Tools, 2026-09-18: both are filled
+             * in on the live sites and had no equivalent here. The shape they
+             * are filled in is a service line and an office line — the number
+             * on the page a customer rings, and the one the trade rings back —
+             * and a site that had to choose one was publishing the wrong one
+             * somewhere.
+             *
+             * CONDITIONAL for the phone and OPTIONAL for the email, following
+             * the primaries above them: a second number is common enough to
+             * offer once, and plenty of businesses have exactly one inbox.
+             */
+            'phone_secondary' => [
+                'label' => 'Second phone number',
+                'hint' => 'An office or after-hours line, if this site shows one.',
+                'requirement' => self::CONDITIONAL,
+            ],
             'email' => [
                 'label' => 'Email address',
                 'hint' => 'The address customers should write to.',
                 // Plenty of trades take calls and no email.
                 'requirement' => self::CONDITIONAL,
+            ],
+            'email_secondary' => [
+                'label' => 'Second email address',
+                'hint' => 'A second inbox, if this site shows one.',
+                'requirement' => self::OPTIONAL,
             ],
             /*
              * The address is FIVE fields and one derived line.
@@ -246,6 +270,39 @@ class SeoFields
                 'label' => 'Google Maps link',
                 'hint' => 'The "Share" link from your Google listing, not the address bar.',
                 // A business with no Google listing yet has nothing to point at.
+                'requirement' => self::OPTIONAL,
+            ],
+            'review_link' => [
+                'label' => 'Leave-a-review link',
+                'hint' => 'Where a "Review us" button should send somebody.',
+                /*
+                 * `_link` rather than A1 Tools' `_url` on purpose: the plugin
+                 * decides what to escape by the suffix of the key, so a field
+                 * holding a web address has to be named like one or it reaches
+                 * the page through `esc_html` and a `&` in it breaks the link.
+                 */
+                'requirement' => self::OPTIONAL,
+            ],
+            /*
+             * WHERE THIS SITE IS, as two numbers, so a map can be drawn.
+             *
+             * `maps_url` cannot do it: a Google "Share" link refuses to be put
+             * in an iframe, which is why A1 Tools carries coordinates as well
+             * and why `[ezbizi_google_map]` needs these. They are also the two
+             * fields JSON-LD wants for a LocalBusiness.
+             *
+             * THIS SITE's, not a branch's. `[a1tools_franchise_latitude]` is a
+             * franchise's and comes from the franchise row — one site can front
+             * several branches, so they are not the same fact.
+             */
+            'latitude' => [
+                'label' => 'Latitude',
+                'hint' => 'From Google Maps, e.g. 40.8398. Needed to draw a map.',
+                'requirement' => self::OPTIONAL,
+            ],
+            'longitude' => [
+                'label' => 'Longitude',
+                'hint' => 'From Google Maps, e.g. -74.2765.',
                 'requirement' => self::OPTIONAL,
             ],
             'timezone' => [

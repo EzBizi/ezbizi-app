@@ -467,3 +467,40 @@ class FlowCanvas {
   static FlowCanvas of(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark ? dark : light;
 }
+
+/// Two states the colour scheme has no word for.
+///
+/// `ColorScheme` gives us `error` and nothing for its opposite, so every screen
+/// that draws "this is working" or "this needs a look" has reached for a
+/// literal — three modules had the same green and the same amber written out by
+/// hand, which is what `theme_conventions_test` is counting.
+///
+/// Not added speculatively: these are the two values already in the tree, moved
+/// rather than invented. A third state gets added here when a third screen
+/// needs one, not before.
+class StateColour {
+  const StateColour({required this.on, required this.caution});
+
+  /// Working, live, clocked in. Jose's words for the clock pip were *"Green in,
+  /// red out"* — red is `colorScheme.error` and this is the other half.
+  final Color on;
+
+  /// Worth a look and not a failure: a shift outside its schedule, a step that
+  /// plays nothing. Amber rather than red on purpose — neither is a fault.
+  final Color caution;
+
+  static const StateColour light = StateColour(
+    on: Color(0xFF1A7F37),
+    caution: Color(0xFF8A5A00),
+  );
+
+  /// Lifted on the dark ground for the same reason every other slot is: the
+  /// light values sit at roughly 3:1 on #1D2025 and disappear at a glance.
+  static const StateColour dark = StateColour(
+    on: Color(0xFF4CC46A),
+    caution: Color(0xFFD9A441),
+  );
+
+  static StateColour of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+}

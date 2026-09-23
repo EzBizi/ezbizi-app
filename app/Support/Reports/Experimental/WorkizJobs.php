@@ -322,6 +322,81 @@ final class WorkizJobs
     }
 
     /**
+     * Every page of ONE connection's jobs, whole and unshaped.
+     *
+     * ── WHY THIS IS NOT `all()` WITH A FLAG ─────────────────────
+     *
+     * `all()` belongs to the Experimental report. Its return shape is pinned by
+     * three tests in a file this session does not own
+     * (`ExperimentalCallReportApiTest`), and `ExperimentalCallReportController`
+     * does `array_column($accounts, 'name')` on `accounts()`. A flag that
+     * widened `all()`'s payload would put the report's contract and the
+     * importer's needs in one signature, and the next change to either would
+     * have to reason about both.
+     *
+     * So: same paging, same "no failure may be built from the request" rule,
+     * one connection at a time — because the importer enters one tenant per
+     * connection and has no use for a cross-account fan-out.
+     *
+     * `$since` is not optional in spirit. The sweep runs every minute and
+     * Workiz refuses with `429 "Account reached Api Quotas"` — measured on
+     * A-1's own live sync, 26 refusals on 2026-09-23 alone at a two-minute
+     * cadence. Reading only what changed is what makes a per-minute sweep
+     * affordable; the five-year default exists for a first backfill and
+     * nothing else.
+     *
+     * @return array{jobs: list<array<string, mixed>>, failed: ?string}
+     */
+    public function raw(SocialConnection $connection, int $limit = 1000, ?string $since = null): array
+    {
+        $token = (string) ($connection->credentials['api_token'] ?? '');
+
+        if ($token === '') {
+            return ['jobs' => [], 'failed' => 'This branch has no stored token.'];
+        }
+
+        $jobs = [];
+
+        for ($offset = 0; $offset < $limit; $offset += self::PAGE) {
+            try {
+                $response = Http::acceptJson()->get(
+                    'https://api.workiz.com/api/v1/'.$token.'/job/all/',
+                    [
+                        'start_date' => $since ?? now()->subYears(5)->toDateString(),
+                        'offset' => $offset,
+                        'records' => min(self::PAGE, $limit - $offset),
+                        'only_open' => 'false',
+                    ],
+                );
+            } catch (ConnectionException) {
+                // Never the exception's message: cURL composes it from the
+                // request, and the token is in the URL.
+                return ['jobs' => $jobs, 'failed' => 'Workiz could not be reached.'];
+            }
+
+            if ($response->failed()) {
+                return ['jobs' => $jobs, 'failed' => 'Workiz refused the job list ('.$response->status().').'];
+            }
+
+            $page = $response->json('data') ?? [];
+
+            foreach ($page as $job) {
+                if (is_array($job)) {
+                    $jobs[] = $job;
+                }
+            }
+
+            // A short page is the last page. Stopping on count alone would loop
+            // for ever against an API that ignored the offset.
+            if (count($page) < self::PAGE) {
+                break;
+            }
+        }
+
+        return ['jobs' => $jobs, 'failed' => null];
+    }
+
+    /**
      * One page of Workiz rows, reduced to what this report reads.
      *
      * @param  list<array<string, mixed>>  $page

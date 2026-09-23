@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | What it is | A module in full — own permission `business_profile.*`, own registry entry, own dashboard glance |
-| Where it is drawn | Inside Marketing, via `ModuleDefinition::$parent`. Not a part of Marketing the way Newsletter and Social Media Management are. |
+| Where it is drawn | **Inside A1Leads GBP**, via `ModuleDefinition::$parent` — moved out of Marketing 2026-09-23 on Jose's instruction. A1Leads GBP is a container and nothing else: it holds no records, and its own `view` grants neither child. **Temporary** — it exists while Rodrigo's A1 Leads is the system of record for Google Business Profile, and comes out when EzBizi holds its own API access (§9b). |
 | Google product | Google Business Profile APIs |
 | Host | `mybusinessaccountmanagement.googleapis.com/v1` |
 | API status | **Enabled** |
@@ -153,6 +153,199 @@ Access*. Signed in as an account with a linked profile.
 - If rejected on profile age, re-file after **24 October 2026**.
 - Settle the storage question in [Reviews §5](REVIEWS.md) before approval —
   the form's *General API Question* option costs nothing.
+
+## 9a · Measured 18 September 2026 — window closed, quota still zero
+
+**Not approved.** Read off the Console rather than inferred from silence:
+
+    console.cloud.google.com/apis/api/mybusinessbusinessinformation
+      .googleapis.com/quotas?project=ezbizi-506117
+
+    Requests per minute                     0      <- the gate
+    Create Location requests per day      100
+    SearchGoogleLocation requests per day 200
+    Update Location requests per day   10,000
+
+**Zero QPM is the refusal**, and the three non-zero rows are why it has to be
+read this way: a page showing 100 / 200 / 10,000 looks like a project with
+quota. Google's own note at the top of that same page says it plainly — *"If
+you have a quota of 0 after enabling the API, please request GBP API access"*.
+The per-day rows exist on every project; only the per-minute row moves on
+approval, from **0 to 300**.
+
+**Eleven business days elapsed** (4, 7–11, 14–18 September), against the
+confirmation screen's *"7-10 business days"*. So the window §9 said would close
+around 17–22 September has closed at the early end with nothing granted and
+nothing said.
+
+**Approval may never arrive as an email.** §9 records that Google sent no
+acknowledgement for this case either — only the confirmation screen. So the
+quota page above is the instrument to re-read, not the inbox, and the inbox
+search is the second check rather than the first.
+
+## 9b · GOOGLE ANSWERED, 22 September 2026 — REJECTED on the 60-day rule
+
+Two replies, and between them they settle every open question in §9a and
+overturn the conclusion I had drawn there.
+
+**The verdict, from the Google Business Profile API Team, verbatim in
+substance:** *"we are unable to proceed with your application for Basic API
+Access because the eligibility criteria have not been fully met. Specifically,
+the email address used to submit the application must belong to an Owner or
+Manager of a business listing that has been verified for at least 60 days."*
+Two mandatory requirements are then named: a **verified listing over 60 days
+old**, and a **working website on its own unique domain whose URL exactly
+matches the URL displayed on the Business Profile**. We are invited to submit
+a new allowlist request once the listing has been verified for 60 days.
+
+**And a second reply, from GBP API support (Kona), answering the chase:**
+*"your allowlist request is currently queued … we cannot provide a specific
+estimated completion time … we kindly ask … that you refrain from submitting
+additional allowlist inquiries, as duplicate requests can lead to further
+delays."*
+
+### I was wrong, and the file said so in writing
+
+§9a concluded that the missing confirmation email meant *"the application is
+not in the queue, whatever the confirmation SCREEN said"*, and the
+recommendation that followed was to re-file at once. **Both are wrong.** The
+application registered, a human reviewed it, and it was refused on its merits.
+Google never sent an acknowledgement and still processed it, so the inference
+from the forum thread — real for that developer — did not transfer to us.
+
+The reasoning error is worth naming because it is repeatable: an external
+report of *"no email, therefore not queued"* was treated as a general rule
+after matching on one symptom. The symptom was shared; the cause was not.
+
+**Had we acted on it, we would have filed a duplicate that Google has now
+explicitly asked us not to file.**
+
+### What is actually true now
+
+| | |
+|---|---|
+| The 60-day rule | **Enforced, confirmed in writing.** §4 recorded it as *unknown* whether the form gates on age. It does, and it is the stated reason for this refusal |
+| Earliest re-file | **24 October 2026** — profile verified 25 August, plus 60 days |
+| Website criterion | **Already satisfied, checked 22 September.** The profile's Website field reads `https://www.ezbizi.com/` and the application submitted `https://www.ezbizi.com/` — exact match, own domain, working site. Nothing to fix here |
+| Duplicate requests | **Do not file any.** Google asked directly. That covers both a re-file before the date and any further chase |
+
+**So the only thing standing between EzBizi and the API is the calendar.**
+Nothing to build, nothing to correct, nothing to chase. Re-file on or after
+**24 October 2026** through the same form, and expect the same 7–10 business
+day window from that point.
+
+### Somebody else had exactly this, and re-filing fixed it — 18 September 2026
+
+Searched because our own evidence was circumstantial. It is no longer.
+
+**The documented behaviour**: Google sends a confirmation email carrying a
+case ID to confirm the application is in the queue, and a second email once
+the request has been reviewed. Review is quoted as 7–10 business days on the
+form and "within 14 days" in the developer FAQ.
+
+**The identical case**, on Google's own developer forum, thread 389462:
+
+> applied **28 July 2026**, received **no confirmation email**, quota still 0
+> after **10 business days**; re-submitted **12 August** and *"got a proper
+> confirmation with case ID 1-8807000041926, citing another 7-10 business day
+> review"*.
+
+Same symptom, same duration, and the fix was to file it again — the second
+attempt was accepted immediately where the first had silently not been. That
+is the nearest thing to a controlled experiment available: one applicant, two
+submissions, one acknowledgement.
+
+**So the reading of our silence is:** a missing confirmation email means the
+application is not in the queue, whatever the confirmation SCREEN said. The
+screen is generated before the case is filed; the email is generated after.
+
+> **WRONG, and §9b above has the answer Google gave four days later.** The
+> application WAS in the queue; it was reviewed and refused on the 60-day
+> rule, with no acknowledgement email at any point. This paragraph is left
+> standing rather than deleted because the mistake it records is the useful
+> part: a matching symptom in somebody else's report was promoted to a general
+> rule about the cause. Acting on it would have produced exactly the duplicate
+> filing Google has since asked us not to make.
+
+**A separate risk the same thread raises, and it is ours.** Several
+developers report that Basic Access does **not** unlock the legacy
+`mybusiness.googleapis.com/v4` reviews endpoint, and that *"there is currently
+no documented path for an approved developer to reach reviews access at all"*.
+Secondary write-ups claim the opposite — that approval enables v4 reviews — so
+this is contested rather than settled. It matters here because REVIEWS.md's
+fourteen call sites are all on v4 with no v1 replacement: approval of this
+application may unlock Business Profile and still leave Reviews shut. Watch
+for it as a second gate rather than assuming one approval covers both.
+
+Sources: `discuss.google.dev/t/...389462`,
+`developers.google.com/my-business/content/prereqs`,
+`developers.google.com/my-business/content/limits`.
+
+### A control for the silence — 18 September 2026
+
+**Google acknowledges every registered case by email, with the case ID in the
+subject line.** That is the fact the silence on `6-2027000041783` has to be
+read against, and it is now measured rather than assumed.
+
+Jose, as Workspace admin, exported the email log for `rodrigo@a-1chimney.com`
+— metadata only, senders and subjects, no bodies — covering **22 March to 18
+September 2026, 2,749 rows**, which includes over two thousand messages from
+`*.google.com`. Rodrigo runs the A1 Leads system this module was rebuilt from,
+so his mailbox is the nearest thing to a worked example we have.
+
+Every Google case in it acknowledged itself by email:
+
+    2026-04-01  no-reply@google.com   [0-6030000040862] Your Google Ads API Basic Access Application
+    2026-04-16  no-reply@google.com   [1-0391000040805] Your Google Ads API Standard Access application
+    2026-05-15  no-reply@google.com   [0-3236000040380] Your Google Ads API Standard Access application
+    2026-06-04  no-reply@google.com   [4-8878000041870] Your Google Ads API Standard Access application
+    2026-05-06  googlebusinessprofile-support@google.com  [9-2798000040124] Your Business Profile support inquiry
+    2026-05-22  googlebusinessprofile-support@google.com  [7-9089000040856] Your Business Profile support inquiry
+
+Five case types, two products, **six for six**. A Business Profile support
+case produces `[case-id] Your Business Profile support inquiry` from
+`googlebusinessprofile-support@google.com`. We have never received one for
+`6-2027000041783`, in any of the four mailboxes searched. **That is no longer
+"Google is quiet"; it is the one outcome this pattern does not produce.**
+
+**And a correction to the premise that sent us looking.** There is no Business
+Profile API grant anywhere in those six months. What Rodrigo was granted is
+**Google Ads API Basic Access, approved 2 April 2026** — *"You have been
+approved for Google Ads API Basic Access!"*. The two Business Profile items
+above are generic support inquiries, and his profile had a duplicate-listing
+problem that June, which is the likelier subject. His code does call
+`mybusiness*`, on Cloud project **429753364855**, but nothing in his mail
+shows that project being granted access — and access is per Cloud project, so
+it would not reach `ezbizi-506117` either way.
+
+### Chased, 18 September 2026 — case `3-1318000041937`
+
+Jose's word, asked and given. Filed through the SAME form as the application,
+`support.google.com/business/contact/api_default`, signed in as
+`info@ezbizi.com`, option **General API Question** — §8 records that this
+option costs nothing, which is why the chase does not risk the application.
+The confirmation screen read: *"Your email has been sent … your case ID is
+3-1318000041937"*, and that number is here because it was read off the screen.
+
+**There was no thread to reply to, and that is a finding rather than a
+detail.** The plan was to reply to Google on the existing case; searching
+`info@ezbizi.com` with `in:anywhere` for `2027000041783`, for *Business
+Profile API*, for `api_default` and for *API access* returned **nothing**,
+while a control search for `google` in the same mailbox returned 43
+conversations — so the instrument works and the absence is real. Google has
+never written to us about this case at all.
+
+**And the filing account's own support page does not list it.** The form's
+"Use past details" panel, signed in as `info@ezbizi.com`, says *"No matching
+past cases found"*. That is soft evidence — the panel may simply not surface
+API cases — but it points the same way as the silence, which is why the chase
+asks Google to confirm the case was REGISTERED and offers to re-file, rather
+than only asking for a decision date.
+
+**What to watch, in this order:** the per-minute quota on the Console (§9a),
+then `info@ezbizi.com` for a reply to `3-1318000041937`. If an acknowledgement
+arrives for this case and none ever arrived for `6-2027000041783`, that is the
+answer about the original.
 
 ## 9 · Measured 14 September 2026 — filed, inside the window, nothing back
 

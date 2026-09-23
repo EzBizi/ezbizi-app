@@ -106,11 +106,11 @@ class PhoneExtensionTest extends TestCase
                 'organization_id' => $t['org']->id,
                 'connection_id' => $t['connection']->id,
                 'user_id' => $bar->id,
-                'extension' => '102',
+                'extension' => '0102',
             ]);
 
             $number = $this->lineWithMenu($t, [
-                ['digit' => '2', 'action' => 'extension', 'extension' => '102'],
+                ['digit' => '2', 'action' => 'extension', 'extension' => '0102'],
             ], '9300');
 
             return [
@@ -148,12 +148,12 @@ class PhoneExtensionTest extends TestCase
                 'organization_id' => $t['org']->id,
                 'connection_id' => $t['connection']->id,
                 'user_id' => $jose->id,
-                'extension' => '103',
+                'extension' => '0103',
             ]);
 
             $number = $this->lineWithMenu($t, [
-                ['digit' => '9', 'action' => 'extension', 'extension' => '999'],
-                ['digit' => '3', 'action' => 'extension', 'extension' => '103'],
+                ['digit' => '9', 'action' => 'extension', 'extension' => '0999'],
+                ['digit' => '3', 'action' => 'extension', 'extension' => '0103'],
             ], '9301');
 
             $renderer = new TwimlRenderer;
@@ -186,14 +186,14 @@ class PhoneExtensionTest extends TestCase
         $this->signedInAs($editor)->putJson('/api/v1/phone/extensions', [
             'connection_id' => $t['connection']->id,
             'user_id' => $bar->id,
-            'extension' => '102',
+            'extension' => '0102',
         ])->assertOk();
 
         // Refused by name, not by a 500 from the unique index.
         $this->signedInAs($editor)->putJson('/api/v1/phone/extensions', [
             'connection_id' => $t['connection']->id,
             'user_id' => $ana->id,
-            'extension' => '102',
+            'extension' => '0102',
         ])->assertStatus(422)->assertJsonValidationErrors('extension');
 
         // Clearing is the same call with nothing in the field.

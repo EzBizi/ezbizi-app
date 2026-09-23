@@ -224,7 +224,10 @@ void main() {
       // screen forgot to pass would look identical from inside the tab.
       await _pumpScreen(tester);
 
-      await tester.tap(find.widgetWithText(ChoiceChip, 'General'));
+      // MAP, not General: the floor plan moved to its own tab on 2026-09-22
+      // and General became the ownership chart, which is also what the screen
+      // now opens on.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Map'));
       await tester.pumpAndSettle();
 
       await _choosePlan(tester);
@@ -399,6 +402,8 @@ Future<void> _pumpTab(
             ..._me,
             'permissions': <String>[
               'monitoring.view',
+              'monitoring.general.view',
+              'monitoring.map.view',
               if (grantScreenshots) 'monitoring.screenshots.view',
             ],
           },
@@ -460,6 +465,8 @@ Future<void> _pumpScreen(WidgetTester tester) async {
             ..._me,
             'permissions': const <String>[
               'monitoring.view',
+              'monitoring.general.view',
+              'monitoring.map.view',
               'monitoring.screenshots.view',
             ],
           },
@@ -510,7 +517,7 @@ const _me = {
   'email': 'jose@example.com',
   'role': {'name': 'Manager'},
   'has_avatar': false,
-  'permissions': <String>['monitoring.view'],
+  'permissions': <String>['monitoring.view', 'monitoring.general.view'],
   'preferences': <String, dynamic>{},
   'organization': {
     'id': 'org-1',
