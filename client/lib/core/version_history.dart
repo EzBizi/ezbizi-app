@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0247',
+      date: '23 Sep 2026',
+      items: [
+        'Reviews and Business Profile are back under Marketing, where they were. Version 0.0.0245 said they had moved to a tab of their own; that was a mistake and this undoes it. The new A1Leads GBP tab is a separate system and EzBizi own Reviews and Business Profile are unchanged.',
+        'A1Leads GBP shows A-1 Chimney real Google Business Profile, read from the A1 Leads system. It is a snapshot taken once a day rather than a live view, so every pane names the date of the snapshot it is drawing instead of leaving you to assume it is current.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0246',
       date: '23 Sep 2026',
       items: [
