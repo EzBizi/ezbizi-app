@@ -178,6 +178,19 @@ EzBizi's granularity stops at the weekday. A1's spec called this tier unused
 Cincinnati are run day to day. It is the most-used part of A1's availability
 system and EzBizi has none of it.
 
+**WHOEVER BUILDS THIS TELLS REPORTS FIRST.** Per-date rows change the grain of
+`service_area_slots`, and Reports derives two columns from that grain with
+`count(distinct weekday)` (28b553bf) which Jose's automations warn from. Over
+per-date rows that count still returns a number and stops meaning "days a
+week" — nothing errors, nothing reds, and a live alert quietly changes meaning.
+The same warning is on `ServiceAreaSlot` itself, which is the file somebody
+would actually be editing.
+
+Their column is a WEEK rather than a horizon for the same reason, and it is
+correct today: the data is per weekday, so any window of seven days or more
+contains every weekday and "no open day in the next 14" is the same question as
+"no open day at all". This section is what makes that stop being true.
+
 ### 3.5 The booking horizon — "we are full until 7 September"
 
 One nullable date per area. Every slot before it is CLOSED — not zero, not
