@@ -264,6 +264,23 @@ real with 3.3.
   carrying up to 30 — which is why 339 of the 420 ambiguous zips are not helped
   by knowing the franchise.
 
+  **THE IMPORTER MUST KEY ON THE AREA NAME, NOT ON THE CONNECTION'S FRANCHISE**,
+  and the landing table will offer a `franchise_id` that makes the wrong choice
+  the easy one. Measured 2026-09-23, per Workiz account, against the franchise
+  that owns each name in EzBizi:
+
+      6,132 jobs whose ServiceArea maps to an EzBizi area
+         31 of them sit in an account whose OTHER areas belong to a different
+            franchise -- 12 Texas-area and 1 Connecticut-area job in the account
+            that is otherwise New York, 17 New York-area jobs in the account
+            that is otherwise Connecticut, 1 DMV-area job in the New Jersey one
+
+  0.5%, so the connection's franchise is a fine attribution for a JOB. It is
+  the wrong key for a ZIP MAP, because it would file those zips under a
+  franchise that does not own the area. Every EzBizi area name resolves to
+  exactly one franchise (checked: no name appears in two), so the name carries
+  the franchise and the connection does not need to.
+
 ## 7. Still open, for Jose
 
 - **The 31 Workiz service areas with no EzBizi area** (1,603 jobs, 21% of the
