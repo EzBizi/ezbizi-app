@@ -174,7 +174,27 @@ class JobsController extends Controller
 
         $input = $request->validate($this->rules(forUpdate: true));
 
-        if (isset($input['status'])) {
+        // Validated when it CHANGES, not when it is merely present.
+        //
+        // The detail panel sends `status` on every save, so the strict version
+        // refused a job whose status the organization does not list even when
+        // the caller was changing the DATE — a refusal naming a field they had
+        // not touched. Measured on production 2026-09-23: 550 of 575 jobs were
+        // in that state, carrying the Workiz mirror's own words while A-1's
+        // list was still the platform default. Not one of the six matched;
+        // `In progress` misses `in_progress` by a space and a capital.
+        //
+        // An unchanged value is already in the database. Refusing it does not
+        // remove it, it only blocks the edit somebody actually asked for — so
+        // the strict form validated history rather than the request. It is not
+        // a Workiz problem either: renaming a status in Settings strands every
+        // job holding the old word in exactly the same way.
+        //
+        // The NEW value is still checked whenever it differs, so a job cannot
+        // be moved onto an unlisted status, nor traded from one unlisted word
+        // to another — and a job that arrived as `Done` can still be tidied
+        // onto `completed`, which is the way out of the state.
+        if (isset($input['status']) && $input['status'] !== $job->status) {
             $this->assertStatusAllowed($input['status'], $job->franchise);
         }
 
