@@ -254,6 +254,34 @@ final class SendSavedReport
          * holds — and because "why did they not get it" is the question that
          * follows.
          */
+        if (! $outcome->ok()) {
+            /*
+             * THROWN BEFORE THE AUDIT ENTRY, and the order is the fix.
+             *
+             * This logged `report.sent` first and threw afterwards, so a run
+             * where every address was refused left an audit event NAMED as a
+             * send. The metadata was honest - `recipients` was the empty list
+             * and `refused` carried the reasons - but the verb was not, and
+             * anybody counting `report.sent` to answer "how often did this
+             * report go out" counted runs that sent nothing.
+             *
+             * Audit is the one place people go when they need to be certain
+             * rather than approximately right, so an entry that is only true
+             * if you open it is worse than no entry: the automation run record
+             * already carries this failure, with `summary()` naming every
+             * refusal.
+             *
+             * Found by the Automations session, 2026-09-23, reporting the same
+             * shape in their own caller. Theirs logs the REQUESTED recipient
+             * list unconditionally, which is the stronger version of it; mine
+             * only overstated the verb. Neither needed the new suppression to
+             * be reachable - an all-refused send has always reached here.
+             */
+            throw new RuntimeException(
+                'Could not send "'.$report->name.'" to anybody. '.$outcome->summary()
+            );
+        }
+
         $this->audit->log('report.sent', $report, [], [
             'name' => $report->name,
             'row_count' => $result->count,
@@ -263,14 +291,6 @@ final class SendSavedReport
             'delivers' => $outcome->transportDelivers,
             'rule' => $rule->getKey(),
         ]);
-
-        if (! $outcome->ok()) {
-            // Nothing left the building, so the run failed - ok:false is for
-            // exactly this and for nothing less.
-            throw new RuntimeException(
-                'Could not send "'.$report->name.'" to anybody. '.$outcome->summary()
-            );
-        }
 
         return $outcome;
     }

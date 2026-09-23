@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Support\Modules\ModuleRegistry;
 use App\Support\Reports\ReportMap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -74,7 +76,7 @@ class ReportMapTest extends TestCase
     {
         $modules = array_map(
             fn ($m) => $m->key,
-            app(\App\Support\Modules\ModuleRegistry::class)->all(),
+            app(ModuleRegistry::class)->all(),
         );
 
         foreach (ReportMap::all() as $key => $resource) {
@@ -178,7 +180,28 @@ class ReportMapTest extends TestCase
 
             $this->assertNotEmpty($actual, "{$resource['table']} is not migrated; this test cannot speak");
 
-            foreach (array_keys($resource['columns']) as $column) {
+            foreach ($resource['columns'] as $column => $declared) {
+                if (isset($declared['sql'])) {
+                    /*
+                     * A DERIVED COLUMN HAS NO TABLE COLUMN, BY DEFINITION — and
+                     * it is checked by the test below rather than skipped.
+                     *
+                     * Exempting it here without asserting anything about it is
+                     * how `sql` would become a way to silence this guard: a
+                     * mistyped real column with a stray `sql` key would pass
+                     * both the exemption and the original assertion.
+                     */
+                    $this->assertNotContains(
+                        $column,
+                        $actual,
+                        "{$key}.{$column} is declared as derived AND exists on {$resource['table']} — "
+                        .'one of the two is a mistake, and a real column read through a subquery '
+                        .'is the slower and less obvious of them',
+                    );
+
+                    continue;
+                }
+
                 $this->assertContains(
                     $column,
                     $actual,
@@ -186,6 +209,56 @@ class ReportMapTest extends TestCase
                 );
             }
         }
+    }
+
+    /**
+     * A DERIVED COLUMN'S SQL RUNS, and returns one value per row.
+     *
+     * `Schema::getColumnListing` cannot check a subquery, so without this a
+     * typo in one would reach a customer's report as a database error at the
+     * moment they pressed Run — the one place where a report is least able to
+     * explain itself.
+     *
+     * Executed against the real schema rather than pattern-matched: the failure
+     * being guarded against is SQL that does not run, and only running it says
+     * that. Asserted for every derived column in the map, so a resource adding
+     * one later is covered without anybody remembering this test exists.
+     */
+    public function test_every_derived_column_is_runnable_sql(): void
+    {
+        $derived = 0;
+
+        foreach (ReportMap::all() as $key => $resource) {
+            foreach ($resource['columns'] as $column => $declared) {
+                if (! isset($declared['sql'])) {
+                    continue;
+                }
+
+                $derived++;
+
+                // Resolved through ReportMap's own substitution, not a copy
+                // of it: a guard that fills placeholders differently from the
+                // runner proves a different string is valid.
+                $value = DB::table($resource['table'])
+                    ->selectRaw('('.ReportMap::resolve($declared['sql'], 3).') as v')
+                    ->limit(1)
+                    ->value('v');
+
+                // Null is a legitimate answer for a table with no rows; what is
+                // being asserted is that the statement PREPARED and ran.
+                $this->assertTrue(
+                    $value === null || is_numeric($value) || is_string($value),
+                    "{$key}.{$column} did not return a scalar",
+                );
+            }
+        }
+
+        $this->assertGreaterThan(
+            0,
+            $derived,
+            'no column in the map is derived, so this test could not distinguish '
+            .'working SQL from none at all',
+        );
     }
 
     public function test_every_relation_column_exists_on_both_tables(): void
