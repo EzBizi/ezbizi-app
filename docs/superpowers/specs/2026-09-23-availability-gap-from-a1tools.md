@@ -392,6 +392,44 @@ area gets one created under the franchise of the account that reported it.
 Then "how they are in Workiz" is how they are here, permanently, including for
 names nobody has typed yet.
 
+### The command, and what it would do
+
+`scheduling:import-a1-areas` creates an area for every Workiz name that has
+none. It follows `fleet:import-a1-tools`: a JSON file rather than a second live
+connection, so the read stays inspectable and the write stays testable. A1 Tools
+is read-only to us.
+
+    php artisan scheduling:import-a1-areas         docs/superpowers/specs/2026-09-23-workiz-service-areas.json         --organization=A1-Group --dry-run
+
+The file is the measurement, committed beside this spec and dated because it
+expires: per ServiceArea name, the account that books into it most, total jobs,
+and jobs BOOKED in the last 30 days. It is produced by a read-only query over
+`a1tools_workiz_jobs` joined to `a1tools_workiz_locations`, grouping on
+`$.ServiceArea` and counting `$.CreatedDate` inside the window. The only hand
+edit is the account name `NY` → the franchise name `New York`; the other eight
+match a franchise name exactly.
+
+As of that snapshot it would create **19** and skip **12**:
+
+    Connecticut  Connecticut            209 booked      Nationwide  Minneapolis      8
+    Georgia      Atlanta                 80             Nationwide  Denver           7
+    Nationwide   Boston North            78             Nationwide  Saint Louis      5
+    Nationwide   Detroit                 69             Nationwide  Washington / Virginia 5
+    Illinois     Wisconsin               47             New York    Portland         5
+    New York     Seattle                 26             Nationwide  Sacramento       4
+    Texas        Fort Worth              19             Nationwide  Riverside, Charlotte,
+    New Jersey   Long Island, NY         11                         Los Angeles, Greensboro, Miami  1 each
+
+The twelve skipped have taken no booking in thirty days: Dallas (163 jobs
+lifetime and 0 recent — consolidated into DFW), East and South New Jersey,
+Kansas City, Nashville ×2, Tampa, Baltimore MD, Salt Lake City, San Diego,
+San Fransisco, Seattle Washington.
+
+**It never deletes.** Areas of ours the measurement does not mention are printed
+as retire candidates and left standing — `Atlanta North` (0 bookings in 30 days),
+`Rhode Island` (0), `All areas` (0), with `Atlanta South` on 3 and fading.
+Retiring them is Jose's call, because an area holds capacity somebody typed.
+
 ### Blocker before any area can be created
 
 `franchises` in A1-Group holds **duplicate names**: Connecticut ×8, Texas ×3,

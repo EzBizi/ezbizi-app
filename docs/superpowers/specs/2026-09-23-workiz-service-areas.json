@@ -1,0 +1,344 @@
+[
+    {
+        "franchise": "New Jersey",
+        "name": "New Jersey",
+        "jobs": 1277,
+        "booked_30d": 433
+    },
+    {
+        "franchise": "Ohio",
+        "name": "Cleveland",
+        "jobs": 877,
+        "booked_30d": 247
+    },
+    {
+        "franchise": "Connecticut",
+        "name": "Connecticut",
+        "jobs": 222,
+        "booked_30d": 209
+    },
+    {
+        "franchise": "Illinois",
+        "name": "Chicago",
+        "jobs": 739,
+        "booked_30d": 203
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Upstate New York",
+        "jobs": 150,
+        "booked_30d": 127
+    },
+    {
+        "franchise": "DMV",
+        "name": "Maryland",
+        "jobs": 297,
+        "booked_30d": 125
+    },
+    {
+        "franchise": "Ohio",
+        "name": "Columbus",
+        "jobs": 399,
+        "booked_30d": 115
+    },
+    {
+        "franchise": "Texas",
+        "name": "DFW",
+        "jobs": 119,
+        "booked_30d": 99
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "Pennsylvania",
+        "jobs": 218,
+        "booked_30d": 89
+    },
+    {
+        "franchise": "Georgia",
+        "name": "Atlanta",
+        "jobs": 126,
+        "booked_30d": 80
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Boston North",
+        "jobs": 187,
+        "booked_30d": 78
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Detroit",
+        "jobs": 345,
+        "booked_30d": 69
+    },
+    {
+        "franchise": "Illinois",
+        "name": "Milwaukee",
+        "jobs": 273,
+        "booked_30d": 67
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "New York",
+        "jobs": 77,
+        "booked_30d": 62
+    },
+    {
+        "franchise": "Ohio",
+        "name": "Cincinnati",
+        "jobs": 165,
+        "booked_30d": 61
+    },
+    {
+        "franchise": "Illinois",
+        "name": "Wisconsin",
+        "jobs": 55,
+        "booked_30d": 47
+    },
+    {
+        "franchise": "Illinois",
+        "name": "Indiana",
+        "jobs": 102,
+        "booked_30d": 40
+    },
+    {
+        "franchise": "Texas",
+        "name": "San Antonio",
+        "jobs": 133,
+        "booked_30d": 37
+    },
+    {
+        "franchise": "Connecticut",
+        "name": "West Connecticut",
+        "jobs": 353,
+        "booked_30d": 32
+    },
+    {
+        "franchise": "New York",
+        "name": "Seattle",
+        "jobs": 101,
+        "booked_30d": 26
+    },
+    {
+        "franchise": "Texas",
+        "name": "Austin",
+        "jobs": 144,
+        "booked_30d": 25
+    },
+    {
+        "franchise": "Connecticut",
+        "name": "East Connecticut",
+        "jobs": 167,
+        "booked_30d": 24
+    },
+    {
+        "franchise": "DMV",
+        "name": "Virginia",
+        "jobs": 127,
+        "booked_30d": 24
+    },
+    {
+        "franchise": "Texas",
+        "name": "Fort Worth",
+        "jobs": 156,
+        "booked_30d": 19
+    },
+    {
+        "franchise": "DMV",
+        "name": "Washington DC",
+        "jobs": 49,
+        "booked_30d": 17
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "Long Island, NY",
+        "jobs": 16,
+        "booked_30d": 11
+    },
+    {
+        "franchise": "Texas",
+        "name": "Houston",
+        "jobs": 78,
+        "booked_30d": 10
+    },
+    {
+        "franchise": "Ohio",
+        "name": "Pittsburgh, PA",
+        "jobs": 22,
+        "booked_30d": 9
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Minneapolis",
+        "jobs": 31,
+        "booked_30d": 8
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "NYC",
+        "jobs": 20,
+        "booked_30d": 7
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Denver",
+        "jobs": 33,
+        "booked_30d": 7
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Saint Louis",
+        "jobs": 13,
+        "booked_30d": 5
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Washington / Virginia",
+        "jobs": 9,
+        "booked_30d": 5
+    },
+    {
+        "franchise": "New York",
+        "name": "Portland",
+        "jobs": 11,
+        "booked_30d": 5
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Sacramento",
+        "jobs": 21,
+        "booked_30d": 4
+    },
+    {
+        "franchise": "Georgia",
+        "name": "Atlanta South",
+        "jobs": 76,
+        "booked_30d": 3
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "Delaware",
+        "jobs": 17,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Riverside",
+        "jobs": 18,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Charlotte",
+        "jobs": 15,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Los Angeles / Orange County",
+        "jobs": 11,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Greensboro",
+        "jobs": 13,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Miami",
+        "jobs": 5,
+        "booked_30d": 1
+    },
+    {
+        "franchise": "Connecticut",
+        "name": "Rhode Island",
+        "jobs": 1,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Georgia",
+        "name": "Atlanta North",
+        "jobs": 181,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "East New Jersey",
+        "jobs": 7,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "New Jersey",
+        "name": "South New Jersey",
+        "jobs": 5,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Kansas City",
+        "jobs": 13,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Nashville Area",
+        "jobs": 7,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "San Fransisco",
+        "jobs": 1,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Seattle Washington",
+        "jobs": 2,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Texas",
+        "name": "Dallas",
+        "jobs": 163,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "New York",
+        "name": "All areas",
+        "jobs": 17,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Tampa",
+        "jobs": 4,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Nashville",
+        "jobs": 3,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "San Diego",
+        "jobs": 1,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Baltimore MD",
+        "jobs": 4,
+        "booked_30d": 0
+    },
+    {
+        "franchise": "Nationwide",
+        "name": "Salt Lake City",
+        "jobs": 2,
+        "booked_30d": 0
+    }
+]
