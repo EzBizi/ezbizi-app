@@ -1,7 +1,10 @@
 # Importing Workiz into EzBizi — design
 
 Workiz session, `local_ea9c0484-3b23-40b6-8262-10a1fccc1a3a`, 2026-09-23.
-Status: **awaiting Jose's approval. Nothing is built.**
+Status: **approved by Jose and BUILT.** The jobs mirror is on `session/workiz`
+(`c91ddd73` … `08306840`), 48 tests / 147 assertions green. Leads, team and the
+write path are still to come — see the decision table below for what is blocked
+on whom.
 
 Jose, 2026-09-23: *"i need to move away from A1Tools and into EzBizi, so we need
 to make some concessions and start importing information from Workiz into EzBizi
@@ -13,17 +16,49 @@ automation module for new possibilities, new fields, etc."*
 
 ---
 
-## Four decisions still open
+## Decisions — three closed, two open
 
-1. **Chase the ten `auth_secret`s now, or ship the mirror first?** Two-way sync
-   needs a credential we do not hold (§6).
-2. **Is duplicate-flagging mine or a Customers ask?** (§4.3)
-3. **Do the 31 unmatched Workiz area names fold or become their own areas?**
-   Scheduling's question, but it decides what the importer does with 21% of
-   A-1's job history (§4.4).
-4. **Does the projection into `customers` / `jobs` ship with the landing table,
-   or after it?** The landing table alone unblocks Scheduling's Availability
-   work; the projection is what puts jobs on screen.
+**Updated 2026-09-23 after Jose's rulings and two peer sessions answered their
+own halves. The four questions this section opened with are mostly settled.**
+
+| | Decision | State |
+|---|---|---|
+| 1 | Chase the `auth_secret`s, or ship the mirror first? | **OPEN — the only original one left.** See below; the question has changed shape. |
+| 2 | Is duplicate-flagging mine or a Customers ask? | **CLOSED.** Jose told Customers to build it; shipped as `GET /customers/duplicates` (`45421e64`). Not mine, and the import adds no duplicate logic. |
+| 3 | Do the unmatched Workiz area names fold? | **CLOSED.** Jose: nothing folds, Workiz's names are the names. Scheduling created 19 areas; A1-Group holds 45, up from 26. |
+| 4 | Landing table with the projection, or before it? | **CLOSED — before.** Built and green; Scheduling's zip map reads it directly and needs nothing from `customers` or `jobs`. |
+| 5 | **Which of A-1's statuses count as EARNED?** | **OPEN — new, and it fails silently.** See below. |
+
+**1 is no longer "chase the ten secrets".** They already exist: all nine Workiz
+locations in A1 Tools hold both `workiz_api_token` and `workiz_api_secret`, with
+`write_enabled = 1`. So the question is whether to move credentials EzBizi
+already has access to, which is Jose's call and not an engineering one. Nobody
+needs to ask Workiz for anything.
+
+**5 was raised by the Jobs session and is the one that produces a wrong number
+rather than an error.** `jobs.earned_statuses` is an organization setting naming
+which statuses mean the money is earned, and as of `b885d666` it drives both
+revenue reporting and the `job.completed` automation trigger. Workiz's status
+vocabulary lands as A-1's status list (§3), but nothing adds `Done` — or
+whichever A-1 uses — to the earned list. Until somebody does, **a year of
+imported completed work reports zero revenue and fires no completion
+automation**, with nothing red anywhere. Jose's setting to choose.
+
+## What Jose ruled after approving this
+
+- **Two-way sync.** *"if i edit something in ezbizi it should get edited in
+  workiz"* — §6, and it also answers the overwrite problem: an edit pushed to
+  Workiz comes back identical on the next sweep.
+- **Every minute.** *"it need to be every 1 minute, we need to be in constant
+  sync"* — §5, affordable only because the window is small.
+- **EzBizi replaces A1 Tools' sync outright.** *"you need to build everything
+  for me to be able to turn the a1tools one off"* — so jobs, leads **and team**,
+  not jobs alone. A1 Tools syncs exactly those three.
+- **A1 Tools' own sync throttled**, on his instruction, to buy room until
+  cutover: cron `*/2` → `*/5`, window 30 days → 2, applied to all nine
+  locations. Backup at `/etc/cron.d/a1tools.bak-20260923-workiz`. Note his
+  "hours to 2" was not expressible — A1's column is `sync_window_days`, an int
+  floored at 1.
 
 ---
 
@@ -129,7 +164,21 @@ copies that split rather than inventing one.
     payload              full raw JSON, all 43 keys
     synced_at
 
-    UNIQUE (connection_id, remote_id)
+    UNIQUE (franchise_id, remote_id)
+
+**Keyed on the franchise, not the connection — corrected after the Jobs session's
+finding.** Disconnecting DELETES the `social_connections` row, so a reconnect
+mints a new id; keyed on it, every job lands again and the table doubles
+silently. Jobs measured the same cause on `leads` with the opposite symptom —
+5,430 adopted rows fell to 2,547 in eight minutes with the connection count
+unchanged. Their sentence for it: *identity built on a value that is reminted
+makes every old row unfindable rather than unowned* — the cause predicts
+instability, not which way it falls. It cannot be `remote_id` alone either:
+Workiz's `UUID` is six characters and unique only within an account.
+
+`job_id` (nullable, `nullOnDelete`) carries the projection link on THIS side,
+per Jobs' ruling and the shape of `leads.job_id`, so `jobs` does not grow a
+column per integration.
 
 Flatten only what something queries; keep `payload` for the rest. `service_area`
 is trimmed on the way in — four live values carry a trailing space
@@ -196,18 +245,30 @@ something waiting. Open decision #2.
 
 ### 4.4 · Area names
 
-**26 of 26** EzBizi area names match a Workiz `ServiceArea` exactly once
-trimmed and lowercased. **31 Workiz names have no EzBizi area — 1,603 jobs, 21%
-of history.** Several are naming drift beside areas that exist (`Connecticut`
-next to East/West Connecticut; `Dallas` + `Fort Worth` next to `DFW`; `Atlanta`
-next to Atlanta North/South).
+**CORRECTED 2026-09-23. The "31 unmatched names, 1,603 jobs, 21% of history"
+this section first carried was Scheduling's measurement, and it went false
+within hours of being written — because Jose ruled and they acted on it.** It is
+replaced rather than deleted, because a stale number that looks precise is worse
+than none, and this one was about to size a piece of work.
+
+Jose's ruling: **nothing folds. Workiz's names are the names.** Scheduling
+created 19 of the missing areas on production the same day; **A1-Group now holds
+45 service areas, up from 26**, so the importer has far more to match against
+than the first draft assumed.
+
+What is actually left:
+
+    12 Workiz names with no EzBizi area, all on ZERO bookings in 30 days
+   212 jobs behind them — 2.8% of history, not 21%
+
+Dallas is 163 of those 212 and is the `DFW` consolidation showing up as data.
 
 **The importer will not auto-create areas and the landing table implies none.**
-Auto-creating would mint a `Dallas` beside `DFW` and split one territory's
-history across two capacity allowances — the exact failure per-area capacity
-exists to prevent. The 31 are visible in the landing table by construction, so
-when Jose rules, the answer is a query over rows that already exist rather than a
-re-sync. Open decision #3.
+A job whose `ServiceArea` matches nothing contributes no evidence and is skipped
+— never guessed at. Scheduling's rule, and it is the right one: **under-
+constraining is safe, mis-attributing is not.** The unmatched rows are visible in
+the landing table by construction, so a later ruling is a query over rows that
+already exist rather than a re-sync.
 
 ---
 
