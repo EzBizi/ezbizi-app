@@ -1918,8 +1918,25 @@ class _WidgetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    /*
+     * Jose, 2026-09-23: *"The cards should be uniform, same sizes"*.
+     *
+     * The width was already fixed; the HEIGHT was whatever the content came
+     * to. `Wrap` does not stretch its children, and the blurbs run to one line
+     * or two — "Where the business is." against "The bubble a visitor opens to
+     * start a conversation." — so the row was ragged along the bottom.
+     * Measured before fixing it: 115 against 132.
+     *
+     * 132 is the tallest the content reaches, not a number chosen to look
+     * right: icon row, a two-line blurb (`maxLines: 2` below caps it) and one
+     * status line. The blurb takes the slack via `Expanded`, so a one-line
+     * blurb pads downward and every status line lands on the same baseline
+     * across the row — which is the part that reads as uniform rather than
+     * the outlines matching.
+     */
     return SizedBox(
       width: 260,
+      height: 132,
       child: Card(
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
@@ -1929,7 +1946,9 @@ class _WidgetCard extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+              // No `mainAxisSize.min` any more: the height is the SizedBox's
+              // now, and a Column told to shrink around an `Expanded` child is
+              // two answers to the same question.
               children: [
                 Row(
                   children: [
@@ -1941,11 +1960,13 @@ class _WidgetCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text(
-                  spec.blurb,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: Text(
+                    spec.blurb,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(height: 10),
                 // What it is set to now, so the grid answers "what is on here"

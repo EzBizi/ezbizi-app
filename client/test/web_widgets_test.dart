@@ -291,6 +291,51 @@ void main() {
     expect(find.text('On, during set hours'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-23: *"The cards should be uniform, same sizes"*.
+  ///
+  /// They were 260 wide and as tall as whatever they held. `Wrap` does not
+  /// stretch its children, and the blurbs run to one line or two — "Where the
+  /// business is." against "The bubble a visitor opens to start a
+  /// conversation." — so the row came out ragged along the bottom.
+  ///
+  /// Measured rather than asserted by eye: every card's rendered size, all
+  /// seven compared to the first. A test that only checked the tallest and the
+  /// shortest would pass for a grid that had gone uniform at the WRONG height
+  /// and started clipping.
+  testWidgets('every widget card is the same size', (tester) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    final labels = [
+      'Live chat',
+      'Contact form',
+      'Social links',
+      'Towns served',
+      'Opening hours',
+      'Map',
+      'Look',
+    ];
+
+    final sizes = [
+      for (final label in labels)
+        tester.getSize(
+          find.ancestor(of: find.text(label), matching: find.byType(Card)).first,
+        ),
+    ];
+
+    for (var i = 1; i < sizes.length; i++) {
+      expect(
+        sizes[i],
+        sizes.first,
+        reason: '${labels[i]} is ${sizes[i]} and Live chat is ${sizes.first}.',
+      );
+    }
+
+    // And the size is the one that FITS, not merely a shared one. The tallest
+    // content is a two-line blurb plus the status line; a uniform grid shorter
+    // than that would be uniform and clipped.
+    expect(sizes.first.height, greaterThan(100));
+  });
+
   testWidgets('opening a card shows that widget and the way back', (
     tester,
   ) async {
