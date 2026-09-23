@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0246',
+      date: '23 Sep 2026',
+      items: [
+        'Revenue counts a job in the period the money was earned rather than the period the job was booked, so a job booked in June and finished in September now counts in September. A closed month also stops changing every time somebody moves an old job along.',
+        'A Possible duplicates button on Customers finds people already in the book who look like the same person. The check that runs while you type can only see the one you are writing, so an import that writes thousands nobody typed was invisible to it. The panel says how many groups there are and not only how many it is showing.',
+        'Guides and tests can be deleted from the Training settings screen. It asks first, in the row itself, and says what goes with them. Deleting is refused with a reason if the guide or test belongs to a company or franchise you cannot write to.',
+        'A person with no desk can be given one straight from the ownership chart - tap the empty Desk cell and pick from the desks nobody is sitting at.',
+        'The Assignment column names somebody assigned at the organisation level instead of leaving the cell blank as though they had not been assigned at all.',
+        'The Map opens showing the whole floor plan instead of the top corner of it, and has zoom in, zoom out and Fit.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0245',
       date: '23 Sep 2026',
       items: [
