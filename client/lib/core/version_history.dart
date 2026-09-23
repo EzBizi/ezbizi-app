@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0246',
       date: '23 Sep 2026',
       items: [
+        'Activity no longer records a report as having gone to people it never reached. The entry naming the recipients was written before the result was read, so a run where every address was refused still logged a delivery. It records what was actually accepted now, and nothing when that is none. Entries written before this release cannot be told apart from true ones.',
         'Revenue counts a job in the period the money was earned rather than the period the job was booked, so a job booked in June and finished in September now counts in September. A closed month also stops changing every time somebody moves an old job along.',
         'A Possible duplicates button on Customers finds people already in the book who look like the same person. The check that runs while you type can only see the one you are writing, so an import that writes thousands nobody typed was invisible to it. The panel says how many groups there are and not only how many it is showing.',
         'Guides and tests can be deleted from the Training settings screen. It asks first, in the row itself, and says what goes with them. Deleting is refused with a reason if the guide or test belongs to a company or franchise you cannot write to.',
