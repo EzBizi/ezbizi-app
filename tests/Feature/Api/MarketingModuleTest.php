@@ -172,19 +172,17 @@ class MarketingModuleTest extends TestCase
      * were the same subject — what the public is told about the business, and
      * what they say back.
      *
-     * THE LIST HAS CHANGED TWICE AND BOTH ARE WORTH KEEPING. Leads left for a
-     * row of its own on 2026-09-03 once Thumbtack became a second source, and
-     * Web Management took its place. Then on 2026-09-23 Reviews and Business
-     * Profile left together for a container of their own, A1Leads GBP — Jose's
-     * call, and a deliberately temporary one: while Rodrigo's A1 Leads is still
-     * the system of record for Google Business Profile, the two screens that
-     * read it are findable together and removable together. See
-     * A1LeadsGbpModuleTest, which holds the other side of that move.
+     * THE LIST CHANGED ONCE AND NEARLY CHANGED TWICE. Leads left for a row of
+     * its own on 2026-09-03 once Thumbtack became a second source, and Web
+     * Management took its place.
      *
-     * So this assertion is now about two modules rather than four, and the
-     * reason it is not simply deleted is that it is the thing which noticed:
-     * a move like this is one word in the registry, and the strip it empties
-     * is somebody else's screen.
+     * On 2026-09-23 Reviews and Business Profile were moved into a new A1Leads
+     * GBP tab and PUT BACK THE SAME DAY. That tab is a read-only window onto
+     * Rodrigo's A1 Leads and is temporary; these two are EzBizi's own modules,
+     * reading EzBizi's own tables, and they are what a Google reviewer is shown
+     * when our own Business Profile API access arrives. Moving them was the
+     * mistake and this assertion is what noticed - which is the argument for it
+     * naming all four rather than being loosened to match whatever is there.
      */
     public function test_the_public_facing_modules_are_drawn_inside_marketing(): void
     {
@@ -195,7 +193,7 @@ class MarketingModuleTest extends TestCase
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['newsletter', 'web_management'],
+            ['newsletter', 'web_management', 'reviews', 'business_profile'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
@@ -242,7 +240,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['newsletter', 'web_management'] as $key) {
+        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -273,13 +271,17 @@ class MarketingModuleTest extends TestCase
          */
         $both = $this->userWithRole($alpha, 'Both', [
             'marketing.view', 'newsletter.view', 'web_management.view',
+            // Reviews and Business Profile are back in this loop after being
+            // briefly moved out on 2026-09-23, so the control has to hold their
+            // grants too or it asserts true about a permission nobody gave.
+            'reviews.view', 'business_profile.view',
         ], 'both@theta.test');
 
         $granted = collect(
             $this->signedInAs($both)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        foreach (['newsletter', 'web_management'] as $key) {
+        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
             $this->assertTrue(
                 $granted[$key]['reachable'],
                 "{$key} is not reachable even when its own view is granted, so "
@@ -351,7 +353,7 @@ class MarketingModuleTest extends TestCase
          * this caller holds `reviews.view`. It failed with "Undefined array key
          * web_management", which is the catalogue working correctly.
          */
-        $this->assertSame('a1leads_gbp', $modules['reviews']['parent']);
+        $this->assertSame(self::MODULE, $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }
 
