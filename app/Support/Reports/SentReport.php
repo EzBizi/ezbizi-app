@@ -35,6 +35,33 @@ final readonly class SentReport
          * bounce, this one IS observable, so it is observed.
          */
         public bool $transportDelivers,
+
+        /*
+         * WHY NOTHING WAS SENT, WHEN NOTHING WAS SENT ON PURPOSE.
+         *
+         * Null means a send was attempted. A sentence means the run decided
+         * not to, and that decision was correct.
+         *
+         * ── It exists because `ok()` could not answer the question ──
+         *
+         * `ok()` means "did anything leave the building", which is the right
+         * question for a rule mailing five people where one address is
+         * malformed. It is the WRONG question for a warning rule that found
+         * nothing to warn about: both return an empty `sent`, and the two are
+         * opposite facts.
+         *
+         * Measured in the engine, because the cost is not cosmetic:
+         * AutomationEngine:260 treats any action returning `ok: false` as the
+         * run's failure, and Automation::FAILURE_LIMIT disables a rule at five
+         * consecutive ones. So a daily "warn me if a service area is booked
+         * out" rule that correctly found nothing Monday to Friday would be
+         * DISABLED on Friday, and switched off on the Saturday it mattered.
+         * The safety feature would eat the warning.
+         *
+         * Found by the Automations session, 2026-09-23, before either half was
+         * built.
+         */
+        public ?string $suppressed = null,
     ) {}
 
     /**
@@ -47,12 +74,21 @@ final readonly class SentReport
      */
     public function ok(): bool
     {
-        return $this->sent !== [];
+        // A deliberate non-send is a success. See `$suppressed` - without this
+        // clause a correctly-silent rule reports failure and auto-disables.
+        return $this->suppressed !== null || $this->sent !== [];
     }
 
     /** One line for the run record, naming what was refused. */
     public function summary(): string
     {
+        if ($this->suppressed !== null) {
+            // Said in full rather than left blank: "ran and sent nothing" and
+            // "did not run" are different facts, and a run record that shows
+            // neither is how somebody concludes the rule is broken.
+            return $this->suppressed;
+        }
+
         $sent = count($this->sent) === 1
             ? 'Sent to 1 address'
             : 'Sent to '.count($this->sent).' addresses';

@@ -109,8 +109,18 @@ final class SendSavedReport
      *                        because ten rules under their own caps are still
      *                        one reputation.
      */
-    public function send(SavedReport $report, array $recipients, Automation $rule, User $as): SentReport
-    {
+    /**
+     * @param  bool  $skipWhenNoRows  send nothing when the report found nothing,
+     *                                and report that as a SUCCESS rather than
+     *                                as a failed run - see {@see SentReport::$suppressed}
+     */
+    public function send(
+        SavedReport $report,
+        array $recipients,
+        Automation $rule,
+        User $as,
+        bool $skipWhenNoRows = false,
+    ): SentReport {
         $this->refuseIfOutOfScope($report, $rule);
 
         if ($recipients === []) {
@@ -149,6 +159,40 @@ final class SendSavedReport
             $report->franchise_id ?? $report->company_id,
         ));
         $scope = $report->franchise ?? $report->company ?? $as->organization;
+
+        /*
+         * ── A WARNING THAT FOUND NOTHING SENDS NOTHING, AND SUCCEEDS ──
+         *
+         * Decided HERE rather than by the caller, because this is the last
+         * point where the row count is known and the mail has not left. The
+         * Automations session asked for it after measuring that they cannot do
+         * it on their side: `SendSavedReport::send()` hands them a `SentReport`
+         * only once the mail has gone, and a second reader of the report
+         * definition on their side is the drift we have both spent a week
+         * avoiding.
+         *
+         * `false` by default, so every existing rule keeps mailing an empty
+         * report. That is right for a digest - "nothing happened this week" is
+         * the answer somebody asked for - and wrong for a warning, which is the
+         * distinction the caller makes rather than this method.
+         *
+         * Returned rather than thrown, and `ok()` is true: the run below throws
+         * when nothing was sent, and a rule doing exactly what it was asked
+         * must not meet that. AutomationEngine:260 marks a run failed on any
+         * action returning ok:false and Automation::FAILURE_LIMIT disables the
+         * rule at five - so a daily warning that correctly found nothing Monday
+         * to Friday would be switched off before the Saturday it mattered.
+         */
+        if ($skipWhenNoRows && $result->count === 0) {
+            return new SentReport(
+                sent: [],
+                refused: [],
+                rowCount: 0,
+                capped: false,
+                transportDelivers: $this->transport->delivers(),
+                suppressed: 'Ran, found nothing, sent nothing.',
+            );
+        }
 
         $sent = [];
         $refused = [];
