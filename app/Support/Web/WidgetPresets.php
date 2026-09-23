@@ -47,7 +47,20 @@ namespace App\Support\Web;
 final class WidgetPresets
 {
     /** The widgets that have a look worth naming. */
-    public const WIDGETS = ['social_links', 'city_list', 'hours_table', 'google_map'];
+    public const WIDGETS = [
+        'social_links',
+        'city_list',
+        'hours_table',
+        'google_map',
+        // Jose, 2026-09-23, after walking A1 Tools' three live sites with me:
+        // "DO ALL OF THEM, END TO END". These three are the ones every page of
+        // a-1chimney.com, everdoors.com and crestln.com carries, so they are
+        // first: contact details as a block, a standing call to action, and
+        // the phone on its own.
+        'contact_info',
+        'cta',
+        'phone_box',
+    ];
 
     public const DEFAULT = 'default';
 
@@ -122,6 +135,71 @@ final class WidgetPresets
                 'height' => 320,
                 'zoom' => 14,
             ],
+            /*
+             * The block in every footer on all three A1 sites: an icon, a
+             * label, a value, three times over.
+             *
+             * `stack` rather than a row, because that is what a footer column
+             * is; `icons` on, because the row reads as a list without them and
+             * the icon is what makes a phone number scannable. `labels` is
+             * separate from `icons` since the compact form in a header wants
+             * the icon and not the word.
+             */
+            'contact_info' => [
+                'layout' => 'stack',
+                'icons' => true,
+                'labels' => true,
+                /*
+                 * Three flags rather than one comma-separated `show`.
+                 *
+                 * A CSV would need a text box on the screen, a parser in the
+                 * plugin, and a rule for what "phone,,emial" means. Three
+                 * switches need none of that and say the same thing — and the
+                 * only cost is that adding a fourth detail later is a fourth
+                 * key rather than a longer string, which is the cheap
+                 * direction.
+                 */
+                'phone' => true,
+                'email' => true,
+                'address' => true,
+            ],
+            /*
+             * A1's sticky yellow "CALL US TODAY" bar, and Everdoors' popup.
+             *
+             * `inline` is the default and the other two are not, deliberately:
+             * a bar and a popup are both things that cover part of somebody's
+             * page, and a widget that did that the moment it was pasted in
+             * would be a surprise on a live site. Somebody choosing `bar` has
+             * decided to take that space.
+             */
+            'cta' => [
+                'placement' => 'inline',
+                'action' => 'call',
+                'icon' => true,
+                'full_width' => false,
+                /*
+                 * Empty means the wording that matches the action — "Call us
+                 * today" for a call, "Book online" for a booking. A1's bar
+                 * says CALL US TODAY and Everdoors' popup says something else
+                 * entirely, so the words have to be settable; making the
+                 * default EMPTY rather than a phrase means a site that says
+                 * nothing still gets a sentence rather than a blank button.
+                 */
+                'text' => '',
+            ],
+            /*
+             * The phone on its own, which is the most-placed single widget on
+             * the estate — headers, hero sections, service cards.
+             *
+             * `link` on, because a phone number that is not tappable on a
+             * phone is the whole value of the widget thrown away.
+             */
+            'phone_box' => [
+                'size' => 'medium',
+                'icon' => true,
+                'link' => true,
+                'label' => '',
+            ],
         ];
     }
 
@@ -134,6 +212,37 @@ final class WidgetPresets
         'city_list' => [
             'layout' => ['columns', 'list', 'accordion'],
         ],
+        'contact_info' => [
+            'layout' => ['stack', 'row', 'compact'],
+        ],
+        'cta' => [
+            // `bar` is fixed to the bottom of the window, `popup` opens over
+            // the page once per visit, `inline` sits where it was pasted.
+            'placement' => ['inline', 'bar', 'popup'],
+            'action' => ['call', 'book', 'form'],
+        ],
+        'phone_box' => [
+            'size' => ['small', 'medium', 'large'],
+        ],
+    ];
+
+    /**
+     * The options that are free text, and the longest each may be.
+     *
+     * DECLARED rather than inferred, because `one()` ends by checking the
+     * value against `CHOICES` and a key with no choices falls to the default
+     * every time. Without this list a text option would look settable on the
+     * screen, save, come back as the default, and report nothing — the
+     * quietest kind of broken. Found by reading `one()` before shipping it,
+     * not by a test.
+     *
+     * The cap is what stops a preset becoming a place to store a paragraph on
+     * somebody else's page. The plugin escapes what it renders, so this is a
+     * size limit rather than a safety one.
+     */
+    private const TEXT = [
+        'cta' => ['text' => 80],
+        'phone_box' => ['label' => 60],
     ];
 
     /** Numbers, with the range a website can survive. */
@@ -218,6 +327,15 @@ final class WidgetPresets
             if (isset(self::RANGES[$widget][$key])) {
                 [$min, $max] = self::RANGES[$widget][$key];
                 $out[$key] = max($min, min($max, (int) $value));
+
+                continue;
+            }
+
+            if (isset(self::TEXT[$widget][$key])) {
+                $clean = trim(strip_tags((string) $value));
+                $clean = preg_replace('/\s+/u', ' ', $clean) ?? '';
+
+                $out[$key] = mb_substr($clean, 0, self::TEXT[$widget][$key]);
 
                 continue;
             }

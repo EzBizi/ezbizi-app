@@ -1829,6 +1829,9 @@ sealed class _Knob {
     _Choice(:final options) => options.first,
     _Number(:final fallback) => fallback,
     _Flag(:final fallback) => fallback,
+    // Empty, and the plugin reads empty as "use the wording that matches the
+    // action" — so a site that says nothing still gets a sentence.
+    _Text() => '',
   };
 }
 
@@ -1876,6 +1879,23 @@ class _Flag extends _Knob {
   final bool fallback;
 }
 
+/// An option somebody types.
+///
+/// The three above cover presentation — which arrangement, how big, on or off
+/// — and that was all the first four widgets needed. A call to action needs
+/// WORDS: A1's bar says "CALL US TODAY" and Everdoors' popup says something
+/// else entirely, and neither is a choice from a list.
+///
+/// `max` matches `WidgetPresets::TEXT` on the server, which truncates. Two
+/// numbers that must agree is worse than one, but the alternative is a box
+/// that accepts eighty characters and silently stores sixty.
+class _Text extends _Knob {
+  const _Text(super.key, super.label, {this.hint = '', this.max = 80});
+
+  final String hint;
+  final int max;
+}
+
 /// One widget that renders where somebody puts it.
 /// One tile on the widgets grid.
 class _WidgetCardSpec {
@@ -1895,6 +1915,9 @@ const Map<String, IconData> _renderedIcons = {
   'city_list': Icons.location_city_outlined,
   'hours_table': Icons.schedule_outlined,
   'google_map': Icons.map_outlined,
+  'contact_info': Icons.contact_page_outlined,
+  'cta': Icons.ads_click_outlined,
+  'phone_box': Icons.phone_outlined,
 };
 
 /// A widget as a card: what it is, what it is set to, and a way in.
@@ -2035,6 +2058,48 @@ const List<_Rendered> _renderedCatalogue = [
     [
       _Flag('today', 'Mark today’s row', true),
       _Flag('compact', 'Collapse days that share hours', false),
+    ],
+  ),
+  /*
+   * Jose, 2026-09-23, after walking A1 Tools' three live sites: "DO ALL OF
+   * THEM, END TO END". These three come first because they are the ones every
+   * page of a-1chimney.com, everdoors.com and crestln.com carries.
+   */
+  _Rendered(
+    'contact_info',
+    'Contact details',
+    'Phone, email and address as one block, the way a footer shows them.',
+    [
+      _Choice('layout', 'Arrangement', ['stack', 'row', 'compact']),
+      _Flag('icons', 'Show an icon beside each one', true),
+      _Flag('labels', 'Label each one', true),
+      _Flag('phone', 'Include the phone number', true),
+      _Flag('email', 'Include the email address', true),
+      _Flag('address', 'Include the address', true),
+    ],
+  ),
+  _Rendered(
+    'cta',
+    'Call to action',
+    'A button that calls, books or jumps to the form — in place, along the '
+        'bottom, or as a panel.',
+    [
+      _Choice('placement', 'Where it sits', ['inline', 'bar', 'popup']),
+      _Choice('action', 'What it does', ['call', 'book', 'form']),
+      _Text('text', 'Wording', hint: 'Leave empty to match what it does.'),
+      _Flag('icon', 'Show an icon', true),
+      _Flag('full_width', 'Fill the width it is given', false),
+    ],
+  ),
+  _Rendered(
+    'phone_box',
+    'Phone button',
+    'The number on its own, big enough to tap.',
+    [
+      _Choice('size', 'Size', ['small', 'medium', 'large']),
+      _Text('label', 'Line above it', hint: 'Optional.', max: 60),
+      _Flag('icon', 'Show an icon', true),
+      _Flag('link', 'Tapping it dials', true),
     ],
   ),
   _Rendered(
@@ -2365,6 +2430,26 @@ class _PresetCardState extends State<_PresetCard> {
               : values[flag.key] == true,
           onChanged: widget.canEdit ? (on) => set(on) : null,
           title: Text(flag.label, style: theme.textTheme.bodyMedium),
+        ),
+      _Text text => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextFormField(
+            // Keyed by preset AND option, so switching preset rebuilds the
+            // box with that preset's words. Without the preset in the key the
+            // field keeps the previous one's text, which is the bug the
+            // question rows on this screen already had once.
+            key: ValueKey('$preset:${text.key}'),
+            initialValue: '${values[text.key] ?? ''}',
+            enabled: widget.canEdit,
+            maxLength: text.max,
+            decoration: InputDecoration(
+              labelText: text.label,
+              helperText: text.hint.isEmpty ? null : text.hint,
+              isDense: true,
+              counterText: '',
+            ),
+            onChanged: set,
+          ),
         ),
     };
   }
