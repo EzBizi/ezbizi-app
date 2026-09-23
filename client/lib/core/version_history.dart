@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0251',
+      date: '23 Sep 2026',
+      items: [
+        'You can save an imported job again. The job screen sends the status with every save, so changing a date came back refusing the status - a field you had not touched and could not see was the problem. A status is only checked when you actually change it now. On this account 550 of 575 jobs were affected.',
+        'A picture in an email that cannot be decoded now says so where it sits, instead of breaking the rest of the message. One whose download comes back empty stops spinning rather than waiting for ever.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0250',
       date: '23 Sep 2026',
       items: [
