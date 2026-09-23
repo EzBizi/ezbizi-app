@@ -163,7 +163,7 @@ class _MonitoringScreenState extends State<MonitoringScreen> {
     bool canViewCameras,
   ) {
     if (_active == _SubTab.general && canViewGeneral) {
-      return OwnershipTab(api: widget.api);
+      return OwnershipTab(api: widget.api, session: widget.session);
     }
 
     if (_active == _SubTab.map && canViewMap) {

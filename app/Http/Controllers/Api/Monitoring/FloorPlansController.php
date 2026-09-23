@@ -305,6 +305,81 @@ class FloorPlansController extends Controller
      * The layout's assignees are validated against what is ALREADY STORED, not
      * from scratch: see `storedAssignees` and `validatedLayout`.
      */
+    /**
+     * PUT /monitoring/floor-plans/{id}/nodes/{node}/label
+     *
+     * Rename ONE desk, without sending the whole layout back.
+     *
+     * Jose, 2026-09-23: "I should be able to edit the desk name myself" — from
+     * the ownership chart, which is where somebody notices a desk is called
+     * the wrong thing. That chart holds a row per person and no geometry, so
+     * asking it to PUT the entire plan would mean fetching a document it does
+     * not otherwise need, editing one string inside it, and sending it back —
+     * a read-modify-write that would quietly overwrite anything a second
+     * person moved on the map in between.
+     *
+     * So this touches the one node and leaves every other key in the layout
+     * exactly as stored.
+     *
+     * Same grant as any other edit to a plan (`update` -> monitoring.map.manage)
+     * and the same §3 constraint, because a desk name is part of a plan and
+     * renaming one is editing it. Deliberately NOT behind the Map TAB: the
+     * person doing this is looking at the chart, and an administrator may
+     * reasonably grant "may edit the map" without granting the map's own tab.
+     */
+    public function renameNode(Request $request, string $id, string $nodeId): JsonResponse
+    {
+        $this->authorize('update', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+        $plan = $this->reachable($actor, $id);
+
+        $data = $request->validate([
+            // 60 because this renders in a table cell and on a map tile, and
+            // a desk called a paragraph breaks both.
+            //
+            // NOTE THE ASYMMETRY, measured rather than assumed: the full-layout
+            // validator (validatedLayout) only checks `is_string` and puts NO
+            // length bound on a node label, so a longer one can still arrive
+            // by saving the whole plan from the Map. This path is the stricter
+            // of the two. Tightening the other one is not free — a plan
+            // already carrying a long label would start failing its next save
+            // — so it is named here rather than changed in passing.
+            'label' => ['required', 'string', 'max:60'],
+        ]);
+
+        $layout = $plan->layout;
+        $nodes = $layout['nodes'] ?? [];
+        $found = false;
+
+        foreach ($nodes as $i => $node) {
+            if (($node['id'] ?? null) !== $nodeId) {
+                continue;
+            }
+
+            $nodes[$i]['label'] = $data['label'];
+            $found = true;
+            break;
+        }
+
+        if (! $found) {
+            // Same word §3 uses for a plan outside reach: a node id that names
+            // nothing and one on a plan this actor cannot see must look alike.
+            abort(404);
+        }
+
+        $layout['nodes'] = $nodes;
+        $plan->layout = $layout;
+        $plan->save();
+
+        $this->audit->log('monitoring.map.updated', $plan, [
+            'fields' => ['layout'],
+            'node' => $nodeId,
+        ]);
+
+        return response()->json(['data' => ['label' => $data['label']]]);
+    }
+
     public function update(Request $request, string $id): JsonResponse
     {
         $this->authorize('update', MonitoringFloorPlan::class);
