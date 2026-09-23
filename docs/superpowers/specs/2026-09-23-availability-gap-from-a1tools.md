@@ -343,9 +343,27 @@ has an area anywhere.
 
 **Nothing here is decided.** The ruling stands as written — mirror Workiz, fold
 nothing — and this table is only the evidence that "already mirrors" has an
-expiry date. The authoritative answer is Workiz's CURRENT service-area list per
-account, which is an API question for the Workiz session, not an inference from
-job history.
+expiry date.
+
+**THE 30-DAY COUNT IS A PROXY, and it is the best signal currently available.**
+There is no Workiz endpoint that lists an account's configured service areas
+(Workiz session, 2026-09-23): the published v1 surface is Jobs, Leads, Team,
+TimeOff, and A1 Tools — which holds write credentials for all nine accounts and
+has synced continuously for months — syncs exactly three entity types, `jobs`,
+`leads`, `team`. Two independent negatives rather than one, which is what the
+earlier Job-shape finding taught: the vendor's doc alone is not enough.
+
+So a booking count cannot separate "retired last week" from "quiet this month".
+Atlanta North's zero in thirty days is suggestive and is not proof.
+
+The candidate that WOULD separate them, unverified: `/team/all/` returns each
+user's `serviceAreas`, which is configuration rather than history — a retired
+area has no active field tech assigned to it, a quiet one still does. Two things
+to know before designing on it: `serviceAreas` is in the published schema and
+the published schema has already been wrong in both directions on the Job shape,
+and **A1's stored team data cannot answer it** — `a1tools_workiz_team_map` keeps
+`workiz_user_id / email / name / role / active` and no service areas and no raw
+payload, so this needs a live call, not a query.
 
 Full list of the 31, for the record:
 
