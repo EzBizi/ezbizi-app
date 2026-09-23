@@ -3445,3 +3445,77 @@ brief; he asked for graphic and it is an indented list with good manners. **4 is
 rejected on purpose**: a canvas that needs panning to answer its own question is a canvas that
 gets opened once.
 
+
+---
+
+## 21 · Work Hours: correcting and deleting a shift — BRIEF, not yet drawn
+
+**Asked for by Jose, 2026-09-23**, in the same message as the never-ending-shift
+bug: *"also we should have a correction system as well to be able to edit or
+eliminate shifts"*.
+
+**The API and the grant are built and merged** (Clock In, `52d210f3`). Nothing
+on this page is waiting on the backend. What is missing is the affordance, and
+it names a new element — a way into editing a row — so it belongs here rather
+than being shipped as craft.
+
+### What exists to draw against
+
+`GET /api/v1/hr/time-clock/week` already returns, per shift row: `id`,
+`clocked_in_at` / `clocked_out_at` (UTC instants), `clocked_in` / `clocked_out`
+(wall clock, already formatted in the viewer's zone and 12h/24h preference),
+`duration_seconds`, `open`, `ended_by`, `outside_schedule`, `extensions`.
+
+- `PATCH /api/v1/hr/time-clock/shifts/{id}` — body may carry
+  `clocked_in_at` and/or `clocked_out_at` as UTC instants. **An absent key means
+  UNCHANGED.** Sending `clocked_out_at: null` on a finished shift is refused
+  (422, `errors.clocked_out_at.0`); on an OPEN shift, omitting it leaves it
+  open.
+- `DELETE /api/v1/hr/time-clock/shifts/{id}`.
+- Both answer `200` with **the whole recomputed week**, same shape as the GET,
+  and honour `?on=`. So the pane can replace its state from the response rather
+  than refetching — the total, days worked and average all move on a correction
+  and none of them can be derived client-side.
+- Refusals arrive as 422 with a sentence: *"Clock out must be after clock in."*,
+  *"A shift cannot be in the future."*, *"These times overlap another shift for
+  the same person."*, *"A finished shift cannot be reopened. Delete it
+  instead."* **Render the server's sentence**; they are worded to be shown.
+- `403` if the viewer lacks `hr.hours.correct`.
+
+### The gate, which the drawing has to respect
+
+`hr.hours.correct` is a **separate grant from the Work Hours tab**. Somebody may
+hold `hr.hours.view` and not this. So Edit and Delete must be absent — not
+present-and-refusing — for a viewer without it, on `me.permissions`. An
+affordance whose gate is elsewhere is the failure this queue has hit twice.
+
+### Three things the design has to answer
+
+1. **Where the affordance lives on a row.** The rows are dense — time in, time
+   out, chips, duration — and a trailing icon pair on every row is a lot of
+   furniture for something used rarely. Hover-reveal is not available on touch.
+2. **Deleting is destructive and has no undo in the product.** The audit keeps
+   both times, but nothing in the UI reads it. A confirm step is expected;
+   whether it is a dialog, an inline two-step, or an undo snackbar that holds
+   the request is a design question.
+3. **An open shift is the commonest correction** — the forgotten punch. Setting
+   only an end, on a row that has no end yet, may deserve its own affordance
+   rather than the full editor.
+
+### One piece of copy the backend did not ship
+
+`ended_by` can now be `correction`. The row chip renderer draws
+`time_clock.auto` for `schedule` and nothing for an unknown value, so a
+corrected shift currently shows no chip at all and does not break. **If the
+design wants an "Edited" chip, the string is yours to add** (`ui_strings`, en +
+es, plus the Dart fallback) — it was deliberately not minted here, because a key
+with no call site is the thing this queue keeps finding unbuilt.
+
+### Context worth having while drawing it
+
+The correction system exists because a cap had to be invented. A shift that
+nobody closes is now auto-closed at `time_clock.max_hours` (org setting, default
+16), and **16 hours is a policy, not a measurement** — the five production rows
+this shipped for were closed at 16h each when nobody knows when those people
+actually went home. Correcting them is the first real use of this screen, and
+Jose will be the one doing it.
