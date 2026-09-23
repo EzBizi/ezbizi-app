@@ -138,6 +138,48 @@ class OwnershipController extends Controller
     }
 
     /**
+     * GET /monitoring/ownership/desks — the desks nobody sits at.
+     *
+     * What the chart offers when somebody taps an empty Desk cell. Only FREE
+     * ones: a desk already occupied is a seat somebody would have to be moved
+     * out of, and quietly displacing a colleague is not what "set this
+     * person's desk" means.
+     *
+     * Creating a desk is deliberately NOT here — see
+     * FloorPlansController::assignNode for why a table cannot invent a
+     * position. When this comes back empty the chart says so and points at
+     * the Map, which is the honest answer rather than an empty picker.
+     */
+    public function desks(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+
+        $plans = MonitoringFloorPlan::query();
+        $this->reach->constrain($plans, $actor);
+
+        $free = [];
+
+        foreach ($plans->orderBy('name')->get(['id', 'name', 'layout']) as $plan) {
+            foreach ($plan->layout['nodes'] ?? [] as $node) {
+                $userId = $node['user_id'] ?? null;
+
+                if (is_string($userId) && $userId !== '') {
+                    continue;
+                }
+
+                $free[] = [
+                    'plan_id' => $plan->getKey(),
+                    'node_id' => (string) ($node['id'] ?? ''),
+                    'label' => (string) ($node['label'] ?? ''),
+                    'office' => $plan->name,
+                ];
+            }
+        }
+
+        return response()->json(['data' => $free]);
+    }
+
+    /**
      * The newest reporting device per person, keyed by user id.
      *
      * One query for the whole page rather than one per row — the chart lists
@@ -207,24 +249,39 @@ class OwnershipController extends Controller
     /**
      * Where this person reports, in the words the rest of the app uses.
      *
-     * Null rather than "Organization" when they carry no assignment row: the
-     * chart is for spotting who has not been placed yet, and a default that
-     * reads like a real answer hides exactly that.
+     * ── The bug this fixes, reported by Jose 2026-09-23 ──────────────
+     *
+     * "a lot of users are not showing as empty on assignment for some reason."
+     * They were assigned — at ORGANIZATION level. This read the franchise, then
+     * the company, and returned null for anything else, so an org-level
+     * assignment rendered as the same em dash as no assignment at all.
+     *
+     * Two different facts under one symbol, and the more misleading direction:
+     * the chart exists partly to show who has NOT been placed, so rendering
+     * "placed at the top of the business" as "not placed" invites somebody to
+     * go and fix a row that is already correct.
+     *
+     * Narrowest first, because a franchise says more than the company above it
+     * and the company says more than the organization above that — the same
+     * order HrPeopleController and Invitation use for the same three columns.
      */
     private function assignmentLabel(User $person): ?string
     {
         $assignment = $person->assignments()
-            ->with(['assignedCompany:id,name', 'assignedFranchise:id,name'])
+            ->with([
+                'assignedOrganization:id,name',
+                'assignedCompany:id,name',
+                'assignedFranchise:id,name',
+            ])
             ->first();
 
         if ($assignment === null) {
+            // Genuinely unplaced. This is the em dash the chart is FOR.
             return null;
         }
 
-        // Narrowest first: a franchise assignment says more than the company
-        // above it, and the company says more than "somewhere in the org".
         return $assignment->assignedFranchise?->name
             ?? $assignment->assignedCompany?->name
-            ?? null;
+            ?? $assignment->assignedOrganization?->name;
     }
 }

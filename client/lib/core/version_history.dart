@@ -8,9 +8,31 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0247',
+      date: '23 Sep 2026',
+      items: [
+        'Reviews and Business Profile are back under Marketing, where they were. Version 0.0.0245 said they had moved to a tab of their own; that was a mistake and this undoes it. The new A1Leads GBP tab is a separate system and EzBizi own Reviews and Business Profile are unchanged.',
+        'A1Leads GBP shows A-1 Chimney real Google Business Profile, read from the A1 Leads system. It is a snapshot taken once a day rather than a live view, so every pane names the date of the snapshot it is drawing instead of leaving you to assume it is current.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0246',
+      date: '23 Sep 2026',
+      items: [
+        'Revenue counts a job in the period the money was earned rather than the period the job was booked, so a job booked in June and finished in September now counts in September. A closed month also stops changing every time somebody moves an old job along.',
+        'A Possible duplicates button on Customers finds people already in the book who look like the same person. The check that runs while you type can only see the one you are writing, so an import that writes thousands nobody typed was invisible to it. The panel says how many groups there are and not only how many it is showing.',
+        'Guides and tests can be deleted from the Training settings screen. It asks first, in the row itself, and says what goes with them. Deleting is refused with a reason if the guide or test belongs to a company or franchise you cannot write to.',
+        'A person with no desk can be given one straight from the ownership chart - tap the empty Desk cell and pick from the desks nobody is sitting at.',
+        'The Assignment column names somebody assigned at the organisation level instead of leaving the cell blank as though they had not been assigned at all.',
+        'The Map opens showing the whole floor plan instead of the top corner of it, and has zoom in, zoom out and Fit.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0245',
       date: '23 Sep 2026',
       items: [
+        'The widget cards under Web Management are the same height as well as the same width, so the status line on each one lands on the same level across a row. The height follows the system text size rather than being a fixed number, so it still holds when that is turned up.',
+        'Each step on a call flow is a link to the screen that changes it, so you can go from the chart straight to the setting it describes.',
         'A shift always gets an end now, from the schedule or from a new limit in Settings that starts at 16 hours. Seven shifts had been left open across two businesses, the oldest since 9 September, and nothing that existed was ever going to close them. They close at that limit rather than at the running total they had reached.',
         'Reviews and Business Profile have a tab of their own instead of sitting inside Marketing. Nothing about either one changes except where it is drawn.',
       ],

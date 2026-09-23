@@ -109,8 +109,18 @@ final class SendSavedReport
      *                        because ten rules under their own caps are still
      *                        one reputation.
      */
-    public function send(SavedReport $report, array $recipients, Automation $rule, User $as): SentReport
-    {
+    /**
+     * @param  bool  $skipWhenNoRows  send nothing when the report found nothing,
+     *                                and report that as a SUCCESS rather than
+     *                                as a failed run - see {@see SentReport::$suppressed}
+     */
+    public function send(
+        SavedReport $report,
+        array $recipients,
+        Automation $rule,
+        User $as,
+        bool $skipWhenNoRows = false,
+    ): SentReport {
         $this->refuseIfOutOfScope($report, $rule);
 
         if ($recipients === []) {
@@ -149,6 +159,40 @@ final class SendSavedReport
             $report->franchise_id ?? $report->company_id,
         ));
         $scope = $report->franchise ?? $report->company ?? $as->organization;
+
+        /*
+         * ── A WARNING THAT FOUND NOTHING SENDS NOTHING, AND SUCCEEDS ──
+         *
+         * Decided HERE rather than by the caller, because this is the last
+         * point where the row count is known and the mail has not left. The
+         * Automations session asked for it after measuring that they cannot do
+         * it on their side: `SendSavedReport::send()` hands them a `SentReport`
+         * only once the mail has gone, and a second reader of the report
+         * definition on their side is the drift we have both spent a week
+         * avoiding.
+         *
+         * `false` by default, so every existing rule keeps mailing an empty
+         * report. That is right for a digest - "nothing happened this week" is
+         * the answer somebody asked for - and wrong for a warning, which is the
+         * distinction the caller makes rather than this method.
+         *
+         * Returned rather than thrown, and `ok()` is true: the run below throws
+         * when nothing was sent, and a rule doing exactly what it was asked
+         * must not meet that. AutomationEngine:260 marks a run failed on any
+         * action returning ok:false and Automation::FAILURE_LIMIT disables the
+         * rule at five - so a daily warning that correctly found nothing Monday
+         * to Friday would be switched off before the Saturday it mattered.
+         */
+        if ($skipWhenNoRows && $result->count === 0) {
+            return new SentReport(
+                sent: [],
+                refused: [],
+                rowCount: 0,
+                capped: false,
+                transportDelivers: $this->transport->delivers(),
+                suppressed: 'Ran, found nothing, sent nothing.',
+            );
+        }
 
         $sent = [];
         $refused = [];
@@ -210,6 +254,34 @@ final class SendSavedReport
          * holds — and because "why did they not get it" is the question that
          * follows.
          */
+        if (! $outcome->ok()) {
+            /*
+             * THROWN BEFORE THE AUDIT ENTRY, and the order is the fix.
+             *
+             * This logged `report.sent` first and threw afterwards, so a run
+             * where every address was refused left an audit event NAMED as a
+             * send. The metadata was honest - `recipients` was the empty list
+             * and `refused` carried the reasons - but the verb was not, and
+             * anybody counting `report.sent` to answer "how often did this
+             * report go out" counted runs that sent nothing.
+             *
+             * Audit is the one place people go when they need to be certain
+             * rather than approximately right, so an entry that is only true
+             * if you open it is worse than no entry: the automation run record
+             * already carries this failure, with `summary()` naming every
+             * refusal.
+             *
+             * Found by the Automations session, 2026-09-23, reporting the same
+             * shape in their own caller. Theirs logs the REQUESTED recipient
+             * list unconditionally, which is the stronger version of it; mine
+             * only overstated the verb. Neither needed the new suppression to
+             * be reachable - an all-refused send has always reached here.
+             */
+            throw new RuntimeException(
+                'Could not send "'.$report->name.'" to anybody. '.$outcome->summary()
+            );
+        }
+
         $this->audit->log('report.sent', $report, [], [
             'name' => $report->name,
             'row_count' => $result->count,
@@ -219,14 +291,6 @@ final class SendSavedReport
             'delivers' => $outcome->transportDelivers,
             'rule' => $rule->getKey(),
         ]);
-
-        if (! $outcome->ok()) {
-            // Nothing left the building, so the run failed - ok:false is for
-            // exactly this and for nothing less.
-            throw new RuntimeException(
-                'Could not send "'.$report->name.'" to anybody. '.$outcome->summary()
-            );
-        }
 
         return $outcome;
     }

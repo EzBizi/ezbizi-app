@@ -9,124 +9,89 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
-/// A1Leads GBP — the container, and only the container.
+/// A1Leads GBP — the window onto Rodrigo's system, and only that.
 ///
-/// ── What this file is about ──────────────────────────────────────
+/// ── The two readings this screen must never allow ────────────────
 ///
-/// Not Reviews and not Business Profile: each has its own screen and its own
-/// tests. This is about the one thing the container decides, which is WHICH
-/// CHIPS APPEAR — and it decides that entirely from `/me`, never from a list in
-/// its own source.
+/// The data is a daily snapshot of another system, so both of the plausible
+/// wrong impressions are expensive:
 ///
-/// That is the property worth pinning. A container that hard-coded its two
-/// chips would look identical on screen today and would keep drawing Reviews
-/// for a role that had lost it, or miss a third module moved in later. So the
-/// assertions below vary `/me` and never the widget.
+///   - a stale snapshot drawn as current. Every request still answers, the
+///     list still looks right, and it is a week old.
+///   - an unreachable source drawn as an empty list, which says A-1 Chimney
+///     has no reviews. It has over thirteen thousand.
 ///
-/// The real `/me` is held to the real registry by `A1LeadsGbpModuleTest` on the
-/// server. A fixture here would otherwise only prove it agrees with itself.
+/// So each case below varies only the server's `source` block and asserts which
+/// sentence the screen chooses.
 void main() {
-  testWidgets('both children are drawn, in the order the server sent them', (
+  testWidgets('a healthy source shows the reviews and when they were captured', (
     tester,
   ) async {
     await _pump(tester, _handler());
 
-    expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsOneWidget);
+    expect(find.textContaining('Snapshot captured'), findsOneWidget);
+    expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
-  /*
-   * ONE GRANT, ONE CHIP — asserted in both directions on purpose.
-   *
-   * A test that only checked "without reviews.view there is no Reviews chip"
-   * would pass for a container that had stopped drawing Reviews entirely. So
-   * each case names the chip that must be ABSENT and the chip that must still
-   * be THERE.
-   *
-   * Varying `reachable` rather than `permissions`: the loop reads
-   * `me.reachableModules`, which is the flag the server computed from the
-   * grant. A version of this that varied the permission list moved nothing on
-   * screen and passed either way.
-   */
-  testWidgets('a role with only Reviews gets Reviews and nothing else', (
+  /// The case the whole design exists for.
+  testWidgets('a stale snapshot says so, in words, and is not drawn as current', (
     tester,
   ) async {
-    await _pump(tester, _handler(reachable: const ['reviews']));
+    await _pump(tester, _handler(stale: true));
 
-    expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsNothing);
-  });
-
-  testWidgets('a role with only Business Profile gets that one', (
-    tester,
-  ) async {
-    await _pump(tester, _handler(reachable: const ['business_profile']));
-
-    expect(find.widgetWithText(ChoiceChip, 'Business Profile'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsNothing);
-  });
-
-  /// The state an administrator can create with one tick.
-  ///
-  /// `a1leads_gbp.view` and neither child is a real grant, and the screen is
-  /// reachable in it. An empty frame there reads as the app being broken, which
-  /// is the one conclusion that sends somebody to the wrong person for help —
-  /// so it says so, and names the two things to ask for.
-  testWidgets('holding the container and neither child says so, and says what '
-      'to ask for', (tester) async {
-    await _pump(tester, _handler(reachable: const <String>[]));
-
+    expect(find.textContaining('has not refreshed since'), findsOneWidget);
     expect(
-      find.textContaining('Nothing inside A1Leads GBP is available'),
+      find.textContaining('historical rather than current'),
       findsOneWidget,
+      reason: 'a stale list that looks current is the expensive reading',
     );
-    expect(
-      find.textContaining('granted separately'),
-      findsOneWidget,
-      reason: 'an empty state that does not name what to ask for cannot be acted on',
-    );
-    expect(find.byType(ChoiceChip), findsNothing);
+
+    // And the rows are still there: stale is a warning about the data, not a
+    // reason to hide it.
+    expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
-  /// A module the server puts somewhere else is not drawn here.
-  ///
-  /// The negative control for the loop itself: with a Leads module present and
-  /// parented to `marketing`, a container that drew every reachable module —
-  /// or every module with a screen — would show a third chip. Leads is the
-  /// right specimen because it used to be drawn inside a container and is not
-  /// any more.
-  testWidgets('a module parented elsewhere is left where it belongs', (
+  /// The opposite failure, and the worse one.
+  testWidgets('an unreachable source is a sentence, never an empty list', (
     tester,
   ) async {
-    await _pump(tester, _handler(withLeads: true));
+    await _pump(tester, _handler(reachable: false));
 
-    expect(find.widgetWithText(ChoiceChip, 'Reviews'), findsOneWidget);
+    expect(find.textContaining('A1 Leads is not answering'), findsOneWidget);
+    expect(find.textContaining('nothing is broken'), findsOneWidget);
     expect(
-      find.widgetWithText(ChoiceChip, 'Leads'),
+      find.byType(ListView),
       findsNothing,
-      reason: 'the strip is the children of a1leads_gbp, not everything reachable',
+      reason: 'an empty list here would say the business has no reviews',
     );
   });
 
-  /// Selecting by NAME rather than index.
+  testWidgets('an unconfigured source names that as the reason', (tester) async {
+    await _pump(tester, _handler(configured: false));
+
+    expect(find.textContaining('not connected yet'), findsOneWidget);
+  });
+
+  /// It points at where OUR data lives.
   ///
-  /// Tapping the second chip must open the second chip's pane whatever the
-  /// first one is. With Reviews absent, "index 1" is not Business Profile any
-  /// more, and a screen remembering a position rather than a name lands on the
-  /// wrong pane — or past the end of the list.
-  testWidgets('the remembered chip survives the list changing under it', (
-    tester,
-  ) async {
+  /// Written down because the mistake this screen is a correction of was
+  /// exactly this confusion: nobody reading this tab should conclude that
+  /// EzBizi's own Reviews and Business Profile moved or went away.
+  testWidgets('it says our own modules are still in Marketing', (tester) async {
+    await _pump(tester, _handler(reachable: false));
+
+    expect(find.textContaining('are in Marketing'), findsOneWidget);
+  });
+
+  /// And it draws no chips of its own.
+  ///
+  /// The negative control for the shape: an earlier version of this file
+  /// asserted two ChoiceChips here, because the module wrongly contained
+  /// EzBizi's own two. Chips coming back would mean that mistake had returned.
+  testWidgets('it holds no chips, because it holds no modules', (tester) async {
     await _pump(tester, _handler());
 
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Business Profile'));
-    await tester.pumpAndSettle();
-
-    final chip = tester.widget<ChoiceChip>(
-      find.widgetWithText(ChoiceChip, 'Business Profile'),
-    );
-
-    expect(chip.selected, isTrue);
+    expect(find.byType(ChoiceChip), findsNothing);
   });
 }
 
@@ -145,18 +110,17 @@ Future<void> _pump(WidgetTester tester, MockClientHandler handler) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(
-        body: A1LeadsGbpScreen(api: api, session: session),
-      ),
+      home: Scaffold(body: A1LeadsGbpScreen(api: api, session: session)),
     ),
   );
   await tester.pumpAndSettle();
 }
 
-/// The server. `reachable` null means both children are reachable.
-MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
-  bool reaches(String key) => reachable == null || reachable.contains(key);
-
+MockClientHandler _handler({
+  bool configured = true,
+  bool reachable = true,
+  bool stale = false,
+}) {
   return (request) async {
     if (request.url.path.endsWith('/me')) {
       return _json({
@@ -174,32 +138,8 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
               'available': true,
               'reachable': true,
             },
-            {
-              'key': 'reviews',
-              'label': 'Reviews',
-              'parent': 'a1leads_gbp',
-              'available': true,
-              'reachable': reaches('reviews'),
-            },
-            {
-              'key': 'business_profile',
-              'label': 'Business Profile',
-              'parent': 'a1leads_gbp',
-              'available': true,
-              'reachable': reaches('business_profile'),
-            },
-            if (withLeads)
-              {
-                'key': 'leads',
-                'label': 'Leads',
-                'parent': 'marketing',
-                'available': true,
-                'reachable': true,
-              },
           ],
           'preferences': <String, dynamic>{},
-          // Required by Me.fromJson, and only the shape matters here: this
-          // screen reads `modules` and nothing else off /me.
           'organization': {
             'id': 'org-1',
             'name': 'Everdoors',
@@ -218,13 +158,39 @@ MockClientHandler _handler({List<String>? reachable, bool withLeads = false}) {
       });
     }
 
-    // Reviews and Business Profile fetch on open. They have their own suites;
-    // here they only have to render without throwing, so an empty page is the
-    // right answer rather than a fixture that would go stale beside theirs.
-    return _json({
-      'data': <dynamic>[],
-      'meta': {'total': 0, 'connections': <dynamic>[]},
-    });
+    if (request.url.path.endsWith('/a1leads-gbp')) {
+      return _json({
+        'data': {
+          'source': {
+            'configured': configured,
+            'reachable': configured && reachable,
+            'captured_at': '2026-09-23T15:01:07.302Z',
+            'installed_at': '2026-09-23T15:33:02.864Z',
+            'generation': '20260923T150107Z-23510eb0',
+            'hours_old': stale ? 41.5 : 2.1,
+            'stale': stale,
+            'because': configured
+                ? (reachable ? null : 'A1 Leads refused reviews with HTTP 403.')
+                : 'No A1 Leads key is configured for this environment.',
+          },
+          'summary': configured && reachable ? {'total': 13169} : null,
+          'reviews': configured && reachable
+              ? [
+                  {
+                    'google_review_name': 'accounts/a/locations/l/reviews/r-1',
+                    'reviewer_name': 'Dana Whitfield',
+                    'rating': 5,
+                    'comment': 'They were on time and tidy.',
+                    'review_created_at': '2026-09-23T00:43:20.682472Z',
+                  },
+                ]
+              : <dynamic>[],
+          'health': null,
+        },
+      });
+    }
+
+    return _json({'data': <dynamic>[]});
   };
 }
 

@@ -861,6 +861,32 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'jobs',
                 label: 'Jobs',
+                /*
+                 * The detail panel's panes, in the order it draws them (0051).
+                 *
+                 * `work` NAMES `jobs.view` rather than minting `jobs.work.view`,
+                 * because that pane has shipped under `jobs.view` since this
+                 * module existed. Minting would create two names for one
+                 * authority and let an administrator grant the tab without the
+                 * read — a pane that opens and refuses everything inside it —
+                 * and it would also take the pane away from everybody who holds
+                 * `jobs.view` today, which is a regression wearing a feature's
+                 * clothes. Training's case, same answer.
+                 *
+                 * `materials` is a real mint because the audience genuinely
+                 * differs: "the technician may see the job but not what the
+                 * parts were" is a sentence somebody says out loud, and the rows
+                 * come from Inventory rather than from this module.
+                 *
+                 * Photos and Inspection are NOT here yet, on purpose. Their
+                 * panes do not exist, and a checkbox for a pane an administrator
+                 * cannot then find is step 1 of the brief failing from the other
+                 * side. They arrive in the commit that builds them.
+                 */
+                tabs: [
+                    new TabDefinition('work', 'Work', action: 'view'),
+                    new TabDefinition('materials', 'Materials'),
+                ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
@@ -2075,6 +2101,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('website_form', 'Forms'),
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
+                    new TabDefinition('workiz', 'Workiz'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -2209,59 +2236,47 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
-             * == A1Leads GBP: a container, and a deliberately temporary one ==
+             * == A1Leads GBP: a bridge to Rodrigo's system, and only that ==
              *
-             * Jose, 2026-09-23, verbatim: *"this is a temporary thing as we will
-             * replace his system once we get our own GBP, but till then, we need
-             * to move it, which is why i want it separate for now, in fact, just
-             * make it as it's own main tab."*
+             * Jose, 2026-09-23: *"we are integrating Rodrigo's system as a
+             * different thing"*, and, after this module briefly swallowed
+             * EzBizi's own two: *"we still need our system in place for when we
+             * get OUR GBP Credentials and we'll need the google reviewers to see
+             * it. SO PUT IT BACK WHERE IT WAS, THE A1LEADS GBP TAB IS A NEW
+             * ENTIRE THING."*
              *
-             * So Reviews and Business Profile move OUT of Marketing and into a
-             * row of their own. The comment they each carried - "drawn as a tab
-             * inside Marketing rather than as a row of its own in a sidebar that
-             * already holds fifteen" - was a good reason and is now overruled by
-             * a better one: while A1 Leads is still the system of record for
-             * Google Business Profile, the two screens that read it should be
-             * findable together and removable together.
+             * So this is NOT a container for `reviews` and `business_profile`.
+             * Those are EzBizi's own modules, they read EzBizi's own tables, they
+             * stay inside Marketing, and they are what a Google reviewer is shown
+             * when our own Business Profile API access arrives. Nothing here
+             * touches them and nothing here should ever be their parent again.
              *
-             * == One action, because the registry refuses none ==
+             * What this module is: a read-only window onto A1 Leads, the system
+             * that still holds Google Business Profile for A-1 Chimney while
+             * EzBizi has no API access of its own. Its data arrives from that
+             * system's partner API; it writes nothing, to Google or to us.
              *
-             * It was written with `actions: []` first, on the argument that
-             * `a1leads_gbp.view` gates nothing: the destination is drawn for
-             * anybody who can reach EITHER child (main.dart `_hasDestination` -
-             * "a module this person CANNOT reach still does, when something
-             * drawn inside it is reachable"), and the screen draws only children.
-             * The registry threw - *"Module 'a1leads_gbp' declares no actions"* -
-             * so that decision is already made and made elsewhere.
+             * == Temporary, and named so you can tell ==
              *
-             * What `view` therefore means here, precisely: holding it and
-             * neither child gets you the row and a screen that says nothing
-             * inside is available. Holding a child and not this still gets you
-             * the row. So it is not a dead checkbox, but it is a small one, and
-             * an administrator granting access to this area should be ticking
-             * Reviews or Business Profile rather than this.
-             *
-             * Reviews and Business Profile keep their own grants untouched.
-             * Nesting is a layout fact, not a grant, so nobody gains or loses
-             * anything on the deploy that moves them.
-             *
-             * == When this is deleted ==
-             *
-             * When EzBizi holds its own Business Profile API access (refused
-             * 2026-09-22 on the 60-day rule, re-file on or after 26 October -
-             * docs/BUSINESS-PROFILE.md 9b), the two modules go back to being
-             * ordinary EzBizi modules and this container has no reason to exist.
-             * It is named after the system it is a bridge to, so that its name
-             * stops making sense at exactly the moment it should be removed.
+             * EzBizi's own Business Profile application was refused 2026-09-22
+             * on the 60-day rule; earliest re-file 26 October
+             * (docs/BUSINESS-PROFILE.md 9b). When that lands and the migration
+             * finishes, this module is deleted whole. It is named after somebody
+             * else's product on purpose: the name stops making sense at the
+             * moment it should go.
              */
             new ModuleDefinition(
                 key: 'a1leads_gbp',
                 label: 'A1Leads GBP',
                 actions: ['view'],
-                automationExemptBecause: 'A container for two other modules. It holds no '
-                    .'records and raises no events; Reviews and Business Profile declare '
-                    .'their own triggers and subjects, and a rule built here would have '
-                    .'nothing to be about.',
+                automationExemptBecause: 'A read-only window onto another system. It holds '
+                    .'no records of its own and raises no events; the A1 Leads data it shows '
+                    .'is a copy, and a rule built on a copy would fire on our import rather '
+                    .'than on anything a customer did.',
+                glanceExemptBecause: 'It holds no records. A box for this module could only '
+                    .'restate a number owned by another system, on a snapshot '
+                    .'whose freshness the dashboard could not show. Not a gap - there is '
+                    .'nothing here that is ours to count.',
             ),
 
             /*
@@ -2305,12 +2320,18 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'reviews',
                 label: 'Reviews',
-                // Drawn inside A1Leads GBP rather than as a row of its own in a
-                // sidebar that already holds fifteen - moved out of Marketing
-                // 2026-09-23, see that module's block above. Its permissions are
-                // untouched by either move: this says where it appears, not who
-                // reaches it.
-                parent: 'a1leads_gbp',
+                // Drawn as a tab inside Marketing rather than as a row of its own
+                // in a sidebar that already holds fifteen. Its permissions are
+                // untouched by that: this says where it appears, not who reaches it.
+                //
+                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
+                // put back the same day - Jose: *"i didn't ask u to modify our
+                // current system, i said we are integrating Rodrigo's system as a
+                // different thing, we still need our system in place for when we
+                // get OUR GBP Credentials and we'll need the google reviewers to
+                // see it."* A1Leads GBP is a bridge to somebody else's system and
+                // is temporary; this is EzBizi's own module and is not.
+                parent: 'marketing',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
@@ -2390,12 +2411,18 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'business_profile',
                 label: 'Business Profile',
                 auditActionPrefixes: ['business_location'],
-                // Drawn inside A1Leads GBP rather than as a row of its own in a
-                // sidebar that already holds fifteen - moved out of Marketing
-                // 2026-09-23, see that module's block above. Its permissions are
-                // untouched by either move: this says where it appears, not who
-                // reaches it.
-                parent: 'a1leads_gbp',
+                // Drawn as a tab inside Marketing rather than as a row of its own
+                // in a sidebar that already holds fifteen. Its permissions are
+                // untouched by that: this says where it appears, not who reaches it.
+                //
+                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
+                // put back the same day - Jose: *"i didn't ask u to modify our
+                // current system, i said we are integrating Rodrigo's system as a
+                // different thing, we still need our system in place for when we
+                // get OUR GBP Credentials and we'll need the google reviewers to
+                // see it."* A1Leads GBP is a bridge to somebody else's system and
+                // is temporary; this is EzBizi's own module and is not.
+                parent: 'marketing',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which

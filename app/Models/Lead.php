@@ -73,6 +73,20 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCE_INSTAGRAM = 'instagram';
 
     /**
+     * Workiz, since 2026-09-23 - A-1's own book, migrating off A1 Tools.
+     *
+     * The odd one out, and the difference drives everything below: a Workiz
+     * lead is a record somebody TYPED INTO A CRM, not a message a member of the
+     * public sent us. There is no thread, no recording and no channel to answer
+     * on - EzBizi holds read-only v1 tokens by Jose's ruling of 2026-09-14.
+     *
+     * Two consequences are implemented rather than described: it registers no
+     * LeadReplyChannel, and it is absent from INBOX_SOURCES below - it is a
+     * book of past work, not an inbox anybody owes an answer to.
+     */
+    public const SOURCE_WORKIZ = 'workiz';
+
+    /**
      * The sources that arrive THROUGH a connected account.
      *
      * Not a list of "external" sources: the website is external too. It is the
@@ -88,6 +102,49 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     public const SOURCES_VIA_CONNECTION = [
         self::SOURCE_LOCAL_SERVICES,
         self::SOURCE_THUMBTACK,
+        self::SOURCE_FACEBOOK,
+        self::SOURCE_INSTAGRAM,
+        // Workiz too: the connection is one branch's API token, and an account
+        // nobody is watching should not keep showing its book. Its connections
+        // are always franchise-scoped - WorkizConnectController refuses anything
+        // else, pinned by WorkizConnectTest::test_it_refuses_outside_a_branch_view.
+        self::SOURCE_WORKIZ,
+    ];
+
+    /**
+     * The sources that are an INBOX - a live channel a member of the public
+     * used, where somebody here still owes a first answer.
+     *
+     * == What this is for ==
+     *
+     * The Unreplied filter is `last_contact_from = CONSUMER OR IS NULL`, and
+     * the null half is deliberate: a Google enquiry whose conversation has not
+     * been fetched yet has nobody waiting on it in either reading.
+     *
+     * A Workiz lead is permanently null there, because it has no conversation
+     * rows at all and never will. Left in, A-1's thirty-one thousand Workiz
+     * rows land in the dispatcher's morning queue and stay - the one list whose
+     * entire value is that everything in it needs answering.
+     *
+     * == The discriminator is NOT "can we reply to it" ==
+     *
+     * That was the first rule written here and a test disproved it in a
+     * sentence: `website_form` has no reply channel either - you ring a form
+     * submission back, you do not answer it in EzBizi - and a website form is
+     * exactly the thing that SHOULD be in the queue. Had the wrong rule
+     * shipped, every website enquiry would have quietly left the dispatcher's
+     * morning list.
+     *
+     * The real difference is what the row IS. Four of these are enquiries
+     * somebody sent us and nobody has answered yet. Workiz is a book of records
+     * copied from another system, most of them jobs finished months ago. One is
+     * an inbox; the other is history.
+     */
+    public const INBOX_SOURCES = [
+        self::SOURCE_LOCAL_SERVICES,
+        self::SOURCE_THUMBTACK,
+        self::SOURCE_WEBSITE_CHAT,
+        self::SOURCE_WEBSITE_FORM,
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
     ];
@@ -189,6 +246,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
         self::SOURCE_WEBSITE_FORM,
         self::SOURCE_FACEBOOK,
         self::SOURCE_INSTAGRAM,
+        self::SOURCE_WORKIZ,
     ];
 
     /**

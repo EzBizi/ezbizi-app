@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.12.0
+Stable tag: 1.13.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,20 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.13.0 =
+* FIXED: a setting changed in EzBizi now reaches your visitors straight
+  away. Switching the live chat off left the bubble on the page until the
+  site's own page cache expired, because the cached HTML had been built
+  while the chat was still on. The plugin now clears that cache whenever
+  EzBizi's answer changes, so this applies to every setting and not just
+  the chat.
+* Three new shortcodes, and an Elementor widget for each:
+  [ezbizi_contact_info] for your phone, email and address as one block,
+  [ezbizi_cta] for a call-to-action button, a bar along the bottom of the
+  page or a panel that opens once a visit, and [ezbizi_phone_box] for your
+  number on its own, big enough to tap. All three are set up in EzBizi
+  under Web Management > Widgets.
 
 = 1.12.0 =
 * Five new shortcodes, and an Elementor widget for each:

@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.12.0
+ * Version:           1.13.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.12.0';
+const EZBIZI_VERSION = '1.13.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -255,8 +255,22 @@ function ezbizi_fetch() {
     // has had no successful read since March".
     $payload['fetched_at'] = time();
 
+    /*
+     * Has anything a page RENDERS actually changed?
+     *
+     * Compared before the write, and with `fetched_at` taken out of both —
+     * that stamp changes on every refresh and would make every refresh look
+     * like a change, which would purge the page cache every few minutes on
+     * 110 sites for nothing.
+     */
+    $changed = ezbizi_payload_differs(get_option(EZBIZI_LAST_GOOD, null), $payload);
+
     set_transient(EZBIZI_CACHE_KEY, $payload, EZBIZI_CACHE_TTL);
     update_option(EZBIZI_LAST_GOOD, $payload, false);
+
+    if ($changed) {
+        ezbizi_purge_page_cache();
+    }
 
     /*
      * The token has just been proved good by a 200, which is the earliest
@@ -268,6 +282,103 @@ function ezbizi_fetch() {
     ezbizi_service_reconcile($payload);
 
     return $payload;
+}
+
+/**
+ * Whether two payloads would draw a different page.
+ *
+ * `fetched_at` is removed from both: it moves on every refresh and is the one
+ * key that never changes what a visitor sees.
+ */
+function ezbizi_payload_differs($before, $after) {
+    if (! is_array($before)) {
+        return true;
+    }
+
+    unset($before['fetched_at'], $after['fetched_at']);
+
+    return $before !== $after;
+}
+
+/**
+ * Throw away the site's cached HTML, because EzBizi's answer changed.
+ *
+ * ── The defect this exists for ──
+ *
+ * Jose, 2026-09-23: he switched the live chat OFF in EzBizi and the bubble
+ * kept appearing on a-1chimney.com. Every link in the chain was already
+ * correct — the database said off, the server omitted the `chat` block from
+ * the reader payload, this plugin's own cache had no chat block, and a freshly
+ * generated page drew no bubble. What a visitor got was HTML generated before
+ * he flipped the switch and held by the site's page cache. Purging it by hand
+ * removed the bubble; 37 entries, measured.
+ *
+ * So a setting changed in EzBizi did not reach a visitor until the page cache
+ * expired on its own. That is wrong for every widget and WORST for this one,
+ * because the chat switch is the control somebody reaches for when they want
+ * to STOP taking conversations — a safety switch that takes effect later is
+ * not a safety switch.
+ *
+ * ── Why it is a list of plugins rather than one call ──
+ *
+ * There is no WordPress-wide "clear the page cache". Each caching plugin has
+ * its own, so this asks every one it knows for and does nothing where none is
+ * installed. A site running something not on this list keeps the old
+ * behaviour, which is what it has today — this can only improve.
+ *
+ * Nothing here is allowed to be fatal: it runs inside the payload refresh on
+ * somebody's live page load, and a cache plugin that changed its own API must
+ * not take the website down with it. Every call is guarded by an existence
+ * check for exactly that reason.
+ */
+function ezbizi_purge_page_cache() {
+    // Cache Enabler — what the a-1chimney estate runs, and the one this was
+    // written for.
+    if (class_exists('Cache_Enabler') && method_exists('Cache_Enabler', 'clear_complete_cache')) {
+        Cache_Enabler::clear_complete_cache();
+    }
+
+    if (function_exists('rocket_clean_domain')) {
+        rocket_clean_domain();
+    }
+
+    if (function_exists('w3tc_flush_all')) {
+        w3tc_flush_all();
+    }
+
+    if (function_exists('wp_cache_clear_cache')) {
+        wp_cache_clear_cache();
+    }
+
+    /*
+     * `function_exists` on WordPress's OWN functions, which looks paranoid and
+     * is not: this function is reached from `ezbizi_payload()`, and the
+     * plugin-check harness runs that with a WordPress surface that stubs some
+     * functions and not others. It called `has_action()` and died — a fatal,
+     * on the path every page load takes, caught because that harness executes
+     * the plugin rather than reading it.
+     *
+     * The docblock above already said nothing here may be fatal. The guard I
+     * wrote for OTHER people's plugins had to apply to the host as well.
+     */
+    if (function_exists('has_action') && function_exists('do_action')) {
+        if (has_action('litespeed_purge_all')) {
+            do_action('litespeed_purge_all');
+        }
+
+        // The nginx layer in front of WordPress, where one is wired up. The
+        // estate's own purge is a shell command this cannot reach, so this is
+        // the half a site can do for itself.
+        if (has_action('rt_nginx_helper_purge_all')) {
+            do_action('rt_nginx_helper_purge_all');
+        }
+
+        /*
+         * And a hook of our own, so a site with a cache nothing above knows
+         * can clear itself without waiting for this list to grow.
+         */
+        do_action('ezbizi_payload_changed');
+    }
 }
 
 /** One value, preferring this page's override over the site's answer. */

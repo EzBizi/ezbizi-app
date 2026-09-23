@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\A1LeadsGbpController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -660,6 +661,11 @@ Route::prefix('v1')
         // is scoped to the caller's reach. Both are enforced in policies, not
         // here — a route file is a bad place to keep an authorization rule,
         // because the next endpoint added beside it will not inherit the thought.
+        // BEFORE the resource, or `customers/{customer}` claims it: "duplicates"
+        // is a perfectly good uuid-shaped-nothing to a route that accepts any
+        // id, and the failure is a 404 about a customer rather than a route
+        // that was never reached.
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
@@ -720,6 +726,21 @@ Route::prefix('v1')
         // one here would say nothing to Google while hiding a shop front from
         // whoever answers for it. Disconnecting the profile is what removes them.
         Route::post('business-profile/sync', [BusinessProfileController::class, 'sync']);
+        /*
+         * A1Leads GBP - the read-only window onto Rodrigo's system.
+         *
+         * One route, one permission, and nothing else. It is NOT part of the
+         * Business Profile module below it: that one reads EzBizi's own tables
+         * and is what a Google reviewer is shown when our own API access
+         * arrives. This one is a bridge and is deleted with its module.
+         *
+         * Gated by middleware rather than in the controller because the route
+         * serves exactly one tab, which is the condition inbox 0051 sets for
+         * the middleware being the right place.
+         */
+        Route::middleware('permission:a1leads_gbp.view')
+            ->get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
+
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
@@ -2181,6 +2202,8 @@ Route::prefix('v1')
          */
         Route::middleware('permission:monitoring.general.view')->group(function () {
             Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
+            // The free desks the chart offers when a Desk cell is empty.
+            Route::get('monitoring/ownership/desks', [MonitoringOwnershipController::class, 'desks']);
         });
 
         /*
@@ -2195,6 +2218,11 @@ Route::prefix('v1')
         Route::put(
             'monitoring/floor-plans/{id}/nodes/{node}/label',
             [MonitoringFloorPlansController::class, 'renameNode']
+        );
+        // Seating somebody at a desk, or clearing it, from the same chart.
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/user',
+            [MonitoringFloorPlansController::class, 'assignNode']
         );
 
         Route::middleware('permission:monitoring.map.view')->group(function () {

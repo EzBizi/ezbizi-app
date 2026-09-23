@@ -799,10 +799,299 @@ function ezbizi_city_style($id, $columns) {
  * at file load would run before the payload exists on the request that fetches
  * it.
  */
+/**
+ * [ezbizi_contact_info] — the phone, the email and the address as one block.
+ *
+ * The thing every footer on a-1chimney.com, everdoors.com and crestln.com
+ * carries: an icon, a label, a value, once per detail. Three separate
+ * shortcodes already publish these as bare strings; what this adds is the
+ * arrangement, which is the part somebody currently rebuilds by hand in
+ * Elementor on every site.
+ *
+ * ── Why a row with nothing in it is not rendered ──
+ *
+ * A site with no email would otherwise publish a mail icon, the word "Email"
+ * and an empty space. An absent detail is absent rather than blank.
+ */
+function ezbizi_contact_info_shortcode($atts) {
+    $preset = ezbizi_preset('contact_info', $atts);
+    $layout = isset($preset['layout']) ? (string) $preset['layout'] : 'stack';
+    $icons = ! empty($preset['icons']);
+    $labels = ! empty($preset['labels']);
+
+    $wanted = array();
+
+    foreach (array('phone', 'email', 'address') as $what) {
+        // Absent means yes. An older payload has none of these keys, and a
+        // plugin that read that as "show nothing" would blank the block on
+        // every site that had not refreshed yet.
+        if (! isset($preset[$what]) || ! empty($preset[$what])) {
+            $wanted[] = $what;
+        }
+    }
+
+    $rows = array();
+
+    foreach ($wanted as $what) {
+        if ($what === 'phone') {
+            $value = ezbizi_value('phone');
+            $href = $value === '' ? '' : 'tel:' . ezbizi_dial($value);
+            $rows[] = array('phone', __('Phone', 'ezbizi'), $value, $href);
+        } elseif ($what === 'email') {
+            $value = ezbizi_value('email');
+            $rows[] = array('email', __('Email', 'ezbizi'), $value, $value === '' ? '' : 'mailto:' . $value);
+        } elseif ($what === 'address') {
+            $value = ezbizi_value('address');
+            $rows[] = array('address', __('Location', 'ezbizi'), $value, ezbizi_value('maps_url'));
+        }
+    }
+
+    $drawn = array();
+
+    foreach ($rows as $row) {
+        // An absent detail is absent. A mail icon over an empty space is the
+        // one thing worse than not publishing the row at all.
+        if ($row[2] !== '') {
+            $drawn[] = $row;
+        }
+    }
+
+    if ($drawn === array()) {
+        return '';
+    }
+
+    $id = ezbizi_widget_id('ezbizi-contact');
+    $out = ezbizi_contact_info_style($id, $layout);
+    $out .= '<div class="ezbizi-contact ezbizi-contact-' . esc_attr($layout) . '" id="' . esc_attr($id) . '">';
+
+    foreach ($drawn as $row) {
+        list($kind, $label, $value, $href) = $row;
+
+        $out .= '<div class="ezbizi-contact-item">';
+
+        if ($icons) {
+            $out .= '<span class="ezbizi-contact-icon" aria-hidden="true">'
+                . ezbizi_contact_icon($kind) . '</span>';
+        }
+
+        $out .= '<div class="ezbizi-contact-text">';
+
+        if ($labels) {
+            $out .= '<span class="ezbizi-contact-label">' . esc_html($label) . '</span>';
+        }
+
+        $out .= '<span class="ezbizi-contact-value">';
+        $out .= $href === ''
+            ? esc_html($value)
+            : '<a href="' . esc_url($href) . '">' . esc_html($value) . '</a>';
+        $out .= '</span></div></div>';
+    }
+
+    return $out . '</div>';
+}
+
+/** Digits a phone can dial, from a number written for a person to read. */
+function ezbizi_dial($value) {
+    return preg_replace('/[^0-9+]/', '', $value);
+}
+
+/** One inline SVG per detail. No icon font, so nothing else has to load. */
+function ezbizi_contact_icon($kind) {
+    $paths = array(
+        'phone' => 'M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.2 11.4 11.4 0 003.6.6 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.3.2 2.5.6 3.6a1 1 0 01-.3 1z',
+        'email' => 'M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5z',
+        'address' => 'M12 2a7 7 0 00-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z',
+    );
+
+    $d = isset($paths[$kind]) ? $paths[$kind] : $paths['address'];
+
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" focusable="false">'
+        . '<path d="' . esc_attr($d) . '"/></svg>';
+}
+
+function ezbizi_contact_info_style($id, $layout) {
+    $sel = '#' . $id;
+    $css = $sel . '{display:flex;gap:18px}'
+        . $sel . '.ezbizi-contact-stack{flex-direction:column}'
+        . $sel . '.ezbizi-contact-row{flex-direction:row;flex-wrap:wrap}'
+        . $sel . '.ezbizi-contact-compact{flex-direction:row;flex-wrap:wrap;gap:12px}'
+        . $sel . ' .ezbizi-contact-item{display:flex;align-items:center;gap:10px}'
+        . $sel . ' .ezbizi-contact-icon{display:inline-flex;align-items:center;justify-content:center;'
+            . 'width:40px;height:40px;border-radius:8px;border:1px solid currentColor;flex:none}'
+        . $sel . '.ezbizi-contact-compact .ezbizi-contact-icon{width:28px;height:28px;border:0}'
+        . $sel . ' .ezbizi-contact-text{display:flex;flex-direction:column;min-width:0}'
+        . $sel . ' .ezbizi-contact-label{font-weight:700;line-height:1.2}'
+        . $sel . ' .ezbizi-contact-value{line-height:1.3;word-break:break-word}'
+        . $sel . ' a{color:inherit}';
+
+    return '<style>' . $css . '</style>';
+}
+
+/**
+ * [ezbizi_cta] — the standing call to action.
+ *
+ * A1's yellow "CALL US TODAY" strip along the bottom of every page, and
+ * Everdoors' "Need Garage Door Help?" panel that opens over it.
+ *
+ * ── Why `inline` is the default and the other two are not ──
+ *
+ * A bar and a popup both take space a visitor did not offer. A widget that did
+ * that the moment somebody pasted it into a page would be a surprise on a live
+ * site, and on this estate it would be a surprise on 110 of them at once.
+ * Choosing `bar` is choosing to cover the bottom of the page.
+ *
+ * ── Why the popup remembers ──
+ *
+ * `sessionStorage`, so it opens once a visit rather than on every page. A panel
+ * that reopened on every click is the pattern people install blockers for, and
+ * it would be doing it in the customer's name.
+ */
+function ezbizi_cta_shortcode($atts) {
+    $preset = ezbizi_preset('cta', $atts);
+    $placement = isset($preset['placement']) ? (string) $preset['placement'] : 'inline';
+    $action = isset($preset['action']) ? (string) $preset['action'] : 'call';
+    $icon = ! empty($preset['icon']);
+    $wide = ! empty($preset['full_width']);
+
+    if ($action === 'call') {
+        $value = ezbizi_value('phone');
+        $href = $value === '' ? '' : 'tel:' . ezbizi_dial($value);
+        $text = __('Call us today', 'ezbizi');
+    } elseif ($action === 'book') {
+        $href = ezbizi_value('booking_url');
+        $text = __('Book online', 'ezbizi');
+    } else {
+        $href = '#ezbizi-form';
+        $text = __('Get a free estimate', 'ezbizi');
+    }
+
+    // The site's own words win. Empty falls back to the wording that matches
+    // the action, so a button is never blank.
+    $chosen = isset($preset['text']) ? trim((string) $preset['text']) : '';
+
+    if ($chosen !== '') {
+        $text = $chosen;
+    }
+
+    // Nothing to act on is nothing to draw. A "Call us today" button with no
+    // number behind it is a dead control on a live page.
+    if ($href === '') {
+        return '';
+    }
+
+    $id = ezbizi_widget_id('ezbizi-cta');
+    $out = ezbizi_cta_style($id, $wide);
+
+    $button = '<a class="ezbizi-cta-button" href="' . esc_url($href) . '">'
+        . ($icon ? '<span class="ezbizi-cta-icon" aria-hidden="true">'
+            . ezbizi_contact_icon($action === 'call' ? 'phone' : 'email') . '</span>' : '')
+        . '<span class="ezbizi-cta-text">' . esc_html($text) . '</span></a>';
+
+    if ($placement === 'popup') {
+        $out .= '<div class="ezbizi-cta ezbizi-cta-popup" id="' . esc_attr($id)
+            . '" hidden role="dialog" aria-label="' . esc_attr($text) . '">'
+            . '<button type="button" class="ezbizi-cta-close" aria-label="'
+            . esc_attr__('Close', 'ezbizi') . '">&times;</button>'
+            . $button . '</div>';
+
+        $out .= '<script>(function(){'
+            . 'var root=document.getElementById(' . wp_json_encode($id) . ');'
+            . 'if(!root)return;'
+            . 'var seen=false;'
+            . 'try{seen=window.sessionStorage.getItem("ezbizi_cta")==="1";}catch(e){}'
+            . 'if(seen)return;'
+            . 'root.hidden=false;'
+            . 'try{window.sessionStorage.setItem("ezbizi_cta","1");}catch(e){}'
+            . 'root.querySelector(".ezbizi-cta-close").addEventListener("click",function(){root.hidden=true;});'
+            . '})();</script>';
+
+        return $out;
+    }
+
+    return $out . '<div class="ezbizi-cta ezbizi-cta-' . esc_attr($placement) . '" id="'
+        . esc_attr($id) . '">' . $button . '</div>';
+}
+
+function ezbizi_cta_style($id, $wide) {
+    $sel = '#' . $id;
+    $css = $sel . '{display:flex;justify-content:center}'
+        . $sel . ' .ezbizi-cta-button{display:inline-flex;align-items:center;gap:8px;'
+            . 'padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;'
+            . 'background:var(--ezbizi-accent,#0b5cad);color:var(--ezbizi-on-accent,#fff)}'
+        . ($wide ? $sel . ' .ezbizi-cta-button{width:100%;justify-content:center}' : '')
+        /*
+         * Below the chat's z-index on purpose. The bubble already clears 88px
+         * from the bottom for exactly this kind of strip — Jose photographed it
+         * sitting inside a-1chimney.com's yellow bar — so a bar and a bubble on
+         * one page stack rather than fight.
+         */
+        . $sel . '.ezbizi-cta-bar{position:fixed;left:0;right:0;bottom:0;z-index:2147482000;'
+            . 'padding:10px;background:var(--ezbizi-accent,#0b5cad)}'
+        . $sel . '.ezbizi-cta-bar .ezbizi-cta-button{background:transparent}'
+        . $sel . '.ezbizi-cta-popup{position:fixed;right:20px;bottom:160px;z-index:2147482500;'
+            . 'padding:18px;border-radius:12px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.25)}'
+        . $sel . ' .ezbizi-cta-close{position:absolute;top:4px;right:8px;border:0;background:none;'
+            . 'font-size:20px;line-height:1;cursor:pointer}';
+
+    return '<style>' . $css . '</style>';
+}
+
+/**
+ * [ezbizi_phone_box] — the number on its own, tappable.
+ *
+ * `[ezbizi_phone]` already publishes the digits as text. This is the same
+ * number as a CONTROL: an icon, an optional line above it, and an anchor a
+ * thumb can hit. It is the single most-placed widget on the A1 estate —
+ * headers, hero sections, the top of every service card.
+ */
+function ezbizi_phone_box_shortcode($atts) {
+    $preset = ezbizi_preset('phone_box', $atts);
+    $value = ezbizi_value('phone');
+
+    if ($value === '') {
+        return '';
+    }
+
+    $size = isset($preset['size']) ? (string) $preset['size'] : 'medium';
+    $icon = ! empty($preset['icon']);
+    $link = ! empty($preset['link']);
+    $label = isset($preset['label']) ? (string) $preset['label'] : '';
+
+    $id = ezbizi_widget_id('ezbizi-phone');
+    $sizes = array('small' => '16px', 'medium' => '22px', 'large' => '30px');
+    $font = isset($sizes[$size]) ? $sizes[$size] : $sizes['medium'];
+
+    $out = '<style>#' . $id . '{display:inline-flex;align-items:center;gap:10px}'
+        . '#' . $id . ' .ezbizi-phone-number{font-size:' . $font . ';font-weight:700;line-height:1.2}'
+        . '#' . $id . ' a{color:inherit;text-decoration:none}'
+        . '#' . $id . ' .ezbizi-phone-label{display:block;font-size:.8em;font-weight:400;opacity:.8}'
+        . '</style>';
+
+    $inner = ($label === '' ? '' : '<span class="ezbizi-phone-label">' . esc_html($label) . '</span>')
+        . '<span class="ezbizi-phone-number">' . esc_html($value) . '</span>';
+
+    $out .= '<div class="ezbizi-phone-box" id="' . esc_attr($id) . '">';
+
+    if ($icon) {
+        $out .= '<span class="ezbizi-phone-icon" aria-hidden="true">'
+            . ezbizi_contact_icon('phone') . '</span>';
+    }
+
+    $out .= '<div>';
+    $out .= $link
+        ? '<a href="' . esc_url('tel:' . ezbizi_dial($value)) . '">' . $inner . '</a>'
+        : $inner;
+
+    return $out . '</div></div>';
+}
+
 add_action('init', function () {
     add_shortcode('ezbizi_social_links', 'ezbizi_social_links_shortcode');
     add_shortcode('ezbizi_google_map', 'ezbizi_google_map_shortcode');
     add_shortcode('ezbizi_post_title', 'ezbizi_post_title_shortcode');
     add_shortcode('ezbizi_hours_table', 'ezbizi_hours_table_shortcode');
     add_shortcode('ezbizi_city_list', 'ezbizi_city_list_shortcode');
+    add_shortcode('ezbizi_contact_info', 'ezbizi_contact_info_shortcode');
+    add_shortcode('ezbizi_cta', 'ezbizi_cta_shortcode');
+    add_shortcode('ezbizi_phone_box', 'ezbizi_phone_box_shortcode');
 });

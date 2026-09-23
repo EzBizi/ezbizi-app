@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\JobsGlance;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -94,14 +95,53 @@ class JobsGlanceTest extends TestCase
         ]));
     }
 
-    private function job(Franchise $franchise, array $attributes = []): Job
+    /**
+     * @param  bool  $earned  Stamp `earned_at`, i.e. this job is revenue.
+     *
+     * `earned_at` is deliberately NOT fillable — `JobsController::update`
+     * stamps it once, at the transition into an earned status, and that is the
+     * only thing allowed to. A test that needs a job to COUNT as revenue has to
+     * say so, because since 2026-09-23 a completed status alone does not: the
+     * status a job holds today is a read-time answer, and revenue is a question
+     * about the past (§8.1).
+     *
+     * It is stamped to `created_at` rather than to `now()` so the UTC-boundary
+     * test below keeps meaning what it meant — its two jobs are built four hours
+     * apart on purpose, and a `now()` here would collapse them onto whatever the
+     * clock said last.
+     */
+    private function job(Franchise $franchise, array $attributes = [], bool $earned = false): Job
     {
-        return $this->inTenant(fn () => Job::create($attributes + [
-            'franchise_id' => $franchise->id,
-            'customer_id'  => $this->customer($franchise)->id,
-            'number' => 'J-'.bin2hex(random_bytes(3)),
-            'title' => 'Work', 'status' => 'scheduled', 'currency' => 'USD',
-        ]));
+        return $this->inTenant(function () use ($franchise, $attributes, $earned) {
+            $job = Job::create($attributes + [
+                'franchise_id' => $franchise->id,
+                'customer_id'  => $this->customer($franchise)->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'Work', 'status' => 'scheduled', 'currency' => 'USD',
+            ]);
+
+            if ($earned) {
+                $job->earned_at = $job->created_at;
+                $job->save();
+            }
+
+            return $job;
+        });
+    }
+
+    /**
+     * What this organization counts as earned (§8.2).
+     *
+     * Was a per-user dashboard option until 2026-09-23. Passing
+     * `['earned_statuses' => [...]]` into resolve() no longer decides anything,
+     * so a test that wants revenue sets the organization's list here.
+     *
+     * @param  list<string>  $statuses
+     */
+    private function earnedStatuses(array $statuses): void
+    {
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('jobs.earned_statuses', $this->alpha['org'], $statuses));
     }
 
     public function test_a_branch_user_sees_only_their_jobs_on_the_pie(): void
@@ -123,12 +163,13 @@ class JobsGlanceTest extends TestCase
 
     public function test_revenue_is_not_added_across_currencies(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed']);
+        $this->earnedStatuses(['completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
         $payload = app(JobsGlance::class)->resolve(
             $this->alpha['admin'],
             DashboardPeriod::for($this->alpha['admin'], 'year'),
-            ['earned_statuses' => ['completed']],
+            [],
         )->toArray();
         $this->assertCount(2, $payload['data']['revenue']);
         $this->assertSame(['CAD', 'USD'], array_column($payload['data']['revenue'], 'currency'));
@@ -200,26 +241,28 @@ class JobsGlanceTest extends TestCase
         // View TZ is Etc/GMT+5 (UTC−5). Month starts 2026-08-01 00:00 there,
         // which is 05:00 UTC. A completed job at 02:00 UTC is still July and
         // must not count; one at 06:00 UTC is in the month.
+        $this->earnedStatuses(['completed']);
+
         Carbon::setTestNow(Carbon::parse('2026-08-01 02:00:00', 'UTC'));
         $this->job($this->alpha['franchise'], [
             'amount_minor' => 10000,
             'currency' => 'USD',
             'status' => 'completed',
-        ]);
+        ], earned: true);
 
         Carbon::setTestNow(Carbon::parse('2026-08-01 06:00:00', 'UTC'));
         $this->job($this->alpha['franchise'], [
             'amount_minor' => 2500,
             'currency' => 'USD',
             'status' => 'completed',
-        ]);
+        ], earned: true);
 
         Carbon::setTestNow(Carbon::parse('2026-08-24 16:00:00', 'Etc/GMT+5'));
 
         $payload = app(JobsGlance::class)->resolve(
             $this->alpha['admin'],
             DashboardPeriod::for($this->alpha['admin'], 'month'),
-            ['earned_statuses' => ['completed']],
+            [],
         )->toArray();
 
         $this->assertSame([2500], array_column($payload['data']['revenue'] ?? [], 'amount_minor'));
@@ -228,14 +271,15 @@ class JobsGlanceTest extends TestCase
 
     public function test_line_series_is_revenue_minor_units_per_currency(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'USD', 'status' => 'completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 5000, 'currency' => 'CAD', 'status' => 'completed']);
+        $this->earnedStatuses(['completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 5000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
 
         $payload = app(JobsGlance::class)->resolve(
             $this->alpha['admin'],
             DashboardPeriod::for($this->alpha['admin'], 'year'),
-            ['earned_statuses' => ['completed']],
+            [],
         )->toArray();
 
         $series = $payload['data']['series'] ?? [];

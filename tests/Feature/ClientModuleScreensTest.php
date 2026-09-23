@@ -149,9 +149,23 @@ class ClientModuleScreensTest extends TestCase
 
         $this->assertNotEmpty($withIcons, 'Found no panel icons — has the map moved?');
 
+        /*
+         * A module with NO GLANCE draws no dashboard panel, so it owes no panel
+         * icon - `glanceExemptBecause`, added 2026-09-23 for `a1leads_gbp`.
+         *
+         * This is not the same as a `PANELS_WITHOUT_AN_ICON` entry and must not
+         * be written as one. That list is a deferral: the panel exists, renders
+         * a generic chart, and somebody owes it a glyph. This is the absence of
+         * a panel. Putting a container in the deferral list would leave a name
+         * sitting there forever waiting for an icon nothing will ever draw.
+         *
+         * The exemption itself is kept honest in GlanceRegistryTest, which
+         * refuses it to any module that has records.
+         */
         $tabs = collect(app(ModuleRegistry::class)->all())
             ->filter(fn ($m) => $m->rolesGroup === ModuleDefinition::ROLES_TAB
                 && $m->sidebar
+                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->all();
 

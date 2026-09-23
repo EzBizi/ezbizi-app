@@ -1,39 +1,36 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
-import '../core/module_screens.dart';
 import '../core/session.dart';
-import '../widgets/tab_bar_like.dart';
 
-/// A1Leads GBP — Reviews and Business Profile, together and temporarily.
+/// A1Leads GBP — a read-only window onto Rodrigo's A1 Leads, and only that.
 ///
-/// ── Why this exists, and when it stops existing ──────────────────
+/// ── What this is NOT ─────────────────────────────────────────────
 ///
-/// Jose, 2026-09-23: *"this is a temporary thing as we will replace his system
-/// once we get our own GBP, but till then, we need to move it, which is why i
-/// want it separate for now, in fact, just make it as it's own main tab."*
+/// It is not a container for EzBizi's Reviews and Business Profile. Those are
+/// our own modules, they read our own tables, they live inside Marketing, and
+/// they are what a Google reviewer is shown when our own Business Profile API
+/// access arrives. This screen must never draw them.
 ///
-/// A1 Leads — Rodrigo's system — is still the system of record for Google
-/// Business Profile, because EzBizi's own application for Business Profile API
-/// access was refused on 2026-09-22 and cannot be re-filed before 26 October
-/// (docs/BUSINESS-PROFILE.md §9b). Until that lands, the two screens that read
-/// that world are findable together and removable together.
+/// Jose, 2026-09-23, after an earlier version of this file did exactly that:
+/// *"we still need our system in place for when we get OUR GBP Credentials and
+/// we'll need the google reviewers to see it. SO PUT IT BACK WHERE IT WAS, THE
+/// A1LEADS GBP TAB IS A NEW ENTIRE THING."*
 ///
-/// It is named after the system it bridges to on purpose: the name stops making
-/// sense at exactly the moment the container should be deleted.
+/// ── Why the date is the first thing on the screen ────────────────
 ///
-/// ── It holds nothing of its own ──────────────────────────────────
+/// The data is a snapshot of another system, installed once a day. A refresh
+/// that stops running leaves yesterday's file in place and every request still
+/// answers — so the tab would go on drawing a perfectly plausible list that is
+/// a week old, with nothing to distinguish it from a quiet week. The capture
+/// date is therefore part of the page rather than a detail behind a tooltip,
+/// and when it is past the window the banner says so in words.
 ///
-/// Every chip is a MODULE in full — its own permission, its own place in the
-/// server's registry, its own triggers and glance — which the server says is
-/// drawn here (`ModuleDefinition::$parent`). So neither is named in this file:
-/// their order, their labels and whether they appear at all come off `/me`.
-/// That is the same contract MarketingScreen has with the modules inside it,
-/// and it is why moving a module between the two containers is one word on the
-/// server and no change here.
-///
-/// The consequence worth stating: this screen can never be the reason somebody
-/// cannot see Reviews. If a chip is missing, the grant is missing.
+/// The other half of the same rule: an unreachable source is a SENTENCE, never
+/// an empty list. An empty list here would say A-1 Chimney has no reviews, and
+/// it has over thirteen thousand.
 class A1LeadsGbpScreen extends StatefulWidget {
   const A1LeadsGbpScreen({super.key, required this.api, required this.session});
 
@@ -45,81 +42,215 @@ class A1LeadsGbpScreen extends StatefulWidget {
 }
 
 class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
-  /// The chip by NAME, not by index — MarketingScreen's rule and its reasons.
-  ///
-  /// An index means a different chip depending on which chips are drawn, so a
-  /// role edited mid-session moves the page under somebody with no interaction.
-  /// Null is "whatever is first", which is also where an unknown name lands.
-  String? _tab;
+  Map<String, dynamic>? _data;
+  String? _error;
+  bool _loading = true;
 
-  /// The chips, in the server's registry order.
-  ///
-  /// Built per frame rather than once: EzBizi can switch a module off mid-
-  /// incident (§13) and an administrator can edit the role while this is open.
-  /// A `late final` list would go on offering a chip whose screen has started
-  /// answering 403.
-  List<(String, IconData, Widget Function())> _tabsFor(Me me) => [
-    for (final module in me.reachableModules)
-      if (module.parent == 'a1leads_gbp')
-        if (moduleScreens[module.key] case final screen?)
-          (
-            module.label,
-            screen.icon,
-            () => screen.build(widget.api, widget.session),
-          ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+
+    try {
+      final response = await widget.api.get('/a1leads-gbp');
+      if (!mounted) return;
+      if (!response.ok) {
+        setState(() {
+          _error = 'A1 Leads returned ${response.statusCode}.';
+          _loading = false;
+        });
+        return;
+      }
+      setState(() {
+        _data = (response.body['data'] as Map?)?.cast<String, dynamic>();
+        _error = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final me = widget.session.me!;
-    final tabs = _tabsFor(me);
+    final theme = Theme.of(context);
 
-    if (tabs.isEmpty) {
-      /*
-       * Reachable only by holding `a1leads_gbp.view` and neither child, which
-       * an administrator can create from the roles editor in one tick.
-       *
-       * Said out loud rather than drawn as an empty frame, for the reason
-       * MarketingScreen gives: an empty frame reads as the app being broken,
-       * which is the one conclusion that sends somebody to the wrong person
-       * for help. It also names the two things to ask for, because "ask an
-       * administrator for access" without saying to what is a message that
-       * cannot be acted on.
-       */
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Nothing inside A1Leads GBP is available to your role. '
-            'Reviews and Business Profile are granted separately.',
-            style: Theme.of(context).textTheme.bodyMedium,
-            textAlign: TextAlign.center,
-          ),
-        ),
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_error != null) {
+      return _sentence(
+        theme,
+        icon: Icons.error_outline,
+        title: 'A1 Leads could not be read',
+        body: _error!,
       );
     }
 
-    // Resolved by name every frame. A chip that is gone falls back to the first
-    // one actually drawn, which cannot index past the end the way a remembered
-    // position could.
-    final found = tabs.indexWhere((tab) => tab.$1 == _tab);
-    final selected = found == -1 ? 0 : found;
+    final source = (_data?['source'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final reviews = (_data?['reviews'] as List?) ?? const [];
+
+    // The source is unusable: say which kind of unusable, and never fall
+    // through to a list. `because` carries the server's own words.
+    if (source['configured'] != true || source['reachable'] != true) {
+      return _sentence(
+        theme,
+        icon: Icons.link_off,
+        title: source['configured'] == true
+            ? 'A1 Leads is not answering'
+            : 'A1 Leads is not connected yet',
+        body:
+            '${source['because'] ?? 'The connection to A1 Leads is not available.'}\n\n'
+            'Nothing is missing and nothing is broken here — there is simply '
+            'nothing to show until the connection is in place. EzBizi\'s own '
+            'Reviews and Business Profile are in Marketing, unchanged.',
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Material(
-          color: Theme.of(context).colorScheme.surface,
-          child: TabBarLike(
-            key: const ValueKey('a1leads-gbp-tabs'),
-            labels: [for (final tab in tabs) (tab.$1, tab.$2)],
-            selected: selected,
-            onSelected: (tab) => setState(() => _tab = tabs[tab].$1),
-          ),
-        ),
+        _sourceBand(theme, source),
         const Divider(height: 1),
-        Expanded(child: tabs[selected].$3()),
+        Expanded(
+          child: reviews.isEmpty
+              ? _sentence(
+                  theme,
+                  icon: Icons.inbox_outlined,
+                  title: 'No reviews in this snapshot',
+                  body:
+                      'The snapshot installed on ${_short(source['captured_at'])} '
+                      'carries no reviews for this page.',
+                )
+              : ListView.separated(
+                  itemCount: reviews.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, i) =>
+                      _review(theme, (reviews[i] as Map).cast<String, dynamic>()),
+                ),
+        ),
       ],
     );
+  }
+
+  /// The band that makes the age of the data impossible to miss.
+  Widget _sourceBand(ThemeData theme, Map<String, dynamic> source) {
+    final stale = source['stale'] == true;
+    final colour = stale ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest;
+    final onColour = stale ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant;
+
+    return Material(
+      color: colour,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            Icon(stale ? Icons.warning_amber : Icons.history, size: 18, color: onColour),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                stale
+                    ? 'This data is from ${_short(source['captured_at'])} and has not '
+                          'refreshed since — ${source['hours_old']} hours old. Treat it as '
+                          'historical rather than current.'
+                    : 'Read from A1 Leads. Snapshot captured ${_short(source['captured_at'])}, '
+                          'installed ${_short(source['installed_at'])}.',
+                style: theme.textTheme.bodySmall?.copyWith(color: onColour),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Check again',
+              icon: const Icon(Icons.refresh, size: 18),
+              color: onColour,
+              onPressed: _load,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _review(ThemeData theme, Map<String, dynamic> review) {
+    final rating = review['rating'];
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        child: Text('$rating', style: theme.textTheme.labelLarge),
+      ),
+      title: Text('${review['reviewer_name'] ?? 'Anonymous'}'),
+      subtitle: Text(
+        '${review['comment'] ?? ''}'.trim().isEmpty
+            ? 'No comment'
+            : '${review['comment']}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Text(
+        _short(review['review_created_at']),
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _sentence(
+    ThemeData theme, {
+    required IconData icon,
+    required String title,
+    required String body,
+  }) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 40, color: theme.colorScheme.outline),
+              const SizedBox(height: 12),
+              Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text(
+                body,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A date a person reads, from whatever the server sent.
+  ///
+  /// Null-tolerant on purpose: the receipt can be missing a field when a
+  /// refresh has never run, and a screen that throws on that is a screen that
+  /// breaks precisely when something is already wrong.
+  String _short(Object? iso) {
+    final parsed = DateTime.tryParse('$iso');
+    if (parsed == null) return 'an unknown date';
+
+    final local = parsed.toLocal();
+    final d = local.day.toString().padLeft(2, '0');
+    final m = local.month.toString().padLeft(2, '0');
+    final h = local.hour.toString().padLeft(2, '0');
+    final min = local.minute.toString().padLeft(2, '0');
+
+    return '$d/$m $h:$min';
   }
 }

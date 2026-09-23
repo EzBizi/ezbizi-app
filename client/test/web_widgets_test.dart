@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/web/widgets_tab.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -35,6 +36,7 @@ void main() {
     // once. A test that asserts on a field now says which widget it
     // belongs to — information the old flat column let it leave out.
     String? open,
+    double textScale = 1.0,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -208,7 +210,18 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: WidgetsTab(api: api, session: session)),
+      // copyWith rather than a fresh MediaQueryData: a bare one replaces the
+      // whole thing, including the view size, and the four drag tests measure
+      // panes against it. They went red for a reason that had nothing to do
+      // with text.
+      home: Builder(
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: Scaffold(body: WidgetsTab(api: api, session: session)),
+        ),
+      ),
     ));
     await tester.pumpAndSettle();
  
@@ -256,7 +269,11 @@ void main() {
     expect(find.text('On, at all hours'), findsOneWidget);
     expect(find.text('2 questions'), findsOneWidget);
     expect(find.textContaining('#aa0000'), findsOneWidget);
-    expect(find.text('Default look'), findsNWidgets(4));
+    // Not a fixed count: one per RENDERED widget, and that list grows every
+    // time Jose asks for another one — it went 4 → 7 the day he asked for all
+    // fourteen. A number here would fail on the addition rather than on a
+    // defect, which is a guard that costs more than it catches.
+    expect(find.text('Default look'), findsWidgets);
   });
 
   /// One pump per test on purpose.
@@ -302,6 +319,61 @@ void main() {
   /// seven compared to the first. A test that only checked the tallest and the
   /// shortest would pass for a grid that had gone uniform at the WRONG height
   /// and started clipping.
+  /// The height is a count of text lines, so it has to grow with the text.
+  ///
+  /// Marketing made the cards uniform at a fixed 132 and flagged this as the
+  /// thing they had not solved. They were right: measured at an OS text scale
+  /// of 1.8 the card overflowed its Column by 46 pixels, and the part that
+  /// went was the status line — the one thing the grid exists to show.
+  ///
+  /// A Flutter overflow is not a test failure by default; it paints stripes
+  /// and carries on. So this catches the exception explicitly rather than
+  /// asserting on a size, because a size assertion would pass on a card that
+  /// is the right height and clipping.
+  testWidgets('the cards hold their content at a large text scale', (
+    tester,
+  ) async {
+    final overflows = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if ('${details.exception}'.contains('overflowed')) {
+        overflows.add('${details.exception}');
+
+        return;
+      }
+
+      previous?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      textScale: 1.8,
+    );
+
+    expect(
+      overflows,
+      isEmpty,
+      reason: 'A card clipped its own content at 1.8x text.',
+    );
+
+    // The control: still uniform at that scale, so the fix is not "let every
+    // card size itself" wearing a passing test.
+    final heights = {
+      for (final name in const ['Live chat', 'Map'])
+        tester
+            .getSize(
+              find
+                  .ancestor(of: find.text(name), matching: find.byType(SizedBox))
+                  .first,
+            )
+            .height,
+    };
+
+    expect(heights, hasLength(1));
+  });
+
   testWidgets('every widget card is the same size', (tester) async {
     await pump(tester, permissions: const ['web_management.view']);
 
@@ -403,6 +475,134 @@ void main() {
     await pump(tester, permissions: const ['web_management.view'], open: 'Look');
 
     expect(find.text('A panel, in your colours'), findsOneWidget);
+  });
+
+  /// ── The first three of the fourteen ──────────────────────────────
+  ///
+  /// Jose, 2026-09-23, after we walked A1 Tools' three live sites: "DO ALL OF
+  /// THEM, END TO END". Contact details, the call to action and the phone
+  /// button are first because they are on every page of a-1chimney.com,
+  /// everdoors.com and crestln.com.
+  testWidgets('the three new widgets each have a card', (tester) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    for (final name in const [
+      'Contact details',
+      'Call to action',
+      'Phone button',
+    ]) {
+      expect(find.text(name), findsOneWidget, reason: '$name has no card.');
+    }
+  });
+
+  testWidgets('contact details previews the block it publishes', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Contact details',
+    );
+
+    expect(find.text('(888) 984-4344'), findsOneWidget);
+    expect(find.text('office@example.com'), findsOneWidget);
+
+    // The labels, because `labels` defaults on and they are half of what the
+    // arrangement decides.
+    expect(find.text('Phone'), findsWidgets);
+  });
+
+  /// Switching a detail off has to REMOVE it, not blank it.
+  ///
+  /// A mail icon over an empty space is the state the plugin refuses to
+  /// render, and the preview has to agree or the screen teaches the wrong
+  /// thing about what the page will do.
+  testWidgets('a detail switched off leaves the preview', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Contact details',
+    );
+
+    expect(find.text('office@example.com'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Include the email address'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('office@example.com'), findsNothing);
+    // The others stay, so this is about the one that was switched rather than
+    // about the block having stopped rendering.
+    expect(find.text('(888) 984-4344'), findsOneWidget);
+  });
+
+  /// THE PLACEMENT IS THE WHOLE DECISION, so the preview draws where it sits.
+  ///
+  /// A button previewed in place three times would say nothing about the
+  /// difference between inline, a bar along the bottom and a panel over the
+  /// page — which is the only thing somebody is choosing here.
+  testWidgets('the call to action previews where it sits', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Call to action',
+    );
+
+    // Inline by default: the button, and no mock page around it.
+    expect(find.text('Call us today'), findsOneWidget);
+    expect(find.text('your page'), findsNothing);
+  });
+
+  testWidgets('choosing the bar draws it against a page', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Call to action',
+    );
+
+    await tester.tap(find.byType(SearchPickerField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('bar').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('your page'), findsOneWidget);
+    // The exact sentence the PREVIEW writes, not a phrase. "along the bottom"
+    // also appears in the card's own blurb and in the picker option, so a
+    // containing-match finds three and none of them is the preview — the same
+    // trap as a guard matching its own docblock.
+    expect(
+      find.text('Fixed along the bottom of every page it is placed on.'),
+      findsOneWidget,
+    );
+  });
+
+  /// The wording is free text, and the preview has to follow it — a button
+  /// that previewed "Call us today" while the page said something else would
+  /// be worse than no preview.
+  testWidgets('the wording typed is the wording previewed', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Call to action',
+    );
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Wording'),
+      'Ring the sweeps',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ring the sweeps'), findsWidgets);
+    expect(find.text('Call us today'), findsNothing);
+  });
+
+  testWidgets('the phone button previews at the size set', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Phone button',
+    );
+
+    expect(find.text('(888) 984-4344'), findsOneWidget);
   });
 
   /// The preview follows the knobs, which is the only reason it is worth

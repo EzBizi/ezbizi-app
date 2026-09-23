@@ -49,6 +49,12 @@ Widget renderedPreview({
       return _hoursTable(options, accent, onAccent, text);
     case 'google_map':
       return _map(options, theme, accent, text, radius);
+    case 'contact_info':
+      return _contactInfo(options, accent, text);
+    case 'cta':
+      return _cta(options, theme, accent, onAccent, text, radius);
+    case 'phone_box':
+      return _phoneBox(options, accent, text);
     default:
       return const SizedBox.shrink();
   }
@@ -340,6 +346,278 @@ Widget _map(
                   'fits beside the settings.'
             : '${height.round()}px tall.',
         style: theme.textTheme.bodySmall,
+      ),
+    ],
+  );
+}
+
+/// The stand-in details.
+///
+/// Obvious stand-ins on purpose, like the towns above: the real ones come from
+/// the site's own values at render time, and a preview that fetched them would
+/// make this screen depend on a live site to show an arrangement.
+const List<(String, String, IconData)> _details = [
+  ('phone', 'Phone', Icons.phone_outlined),
+  ('email', 'Email', Icons.mail_outline),
+  ('address', 'Location', Icons.location_on_outlined),
+];
+
+const Map<String, String> _detailValues = {
+  'phone': '(888) 984-4344',
+  'email': 'office@example.com',
+  'address': '1 Elm Street, Springfield',
+};
+
+/// Phone, email and address as one block.
+///
+/// All three arrangements are drawn rather than described, for the same reason
+/// the towns are: "compact" means nothing until you see that the labels go.
+Widget _contactInfo(Map<String, dynamic> options, Color accent, Color text) {
+  final layout = _pick(options['layout'], 'stack');
+  final icons = _flag(options['icons'], true);
+  final labels = _flag(options['labels'], true);
+
+  final shown = [
+    for (final detail in _details)
+      if (_flag(options[detail.$1], true)) detail,
+  ];
+
+  if (shown.isEmpty) {
+    // The state somebody reaches by switching all three off, which is
+    // reachable and renders nothing on the real page either.
+    return Text(
+      'Nothing selected, so this publishes nothing.',
+      style: TextStyle(color: text.withValues(alpha: 0.7), fontSize: 12),
+    );
+  }
+
+  Widget one((String, String, IconData) detail) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (icons) ...[
+        Container(
+          width: layout == 'compact' ? 24 : 34,
+          height: layout == 'compact' ? 24 : 34,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: layout == 'compact'
+                ? null
+                : Border.all(color: accent, width: 1.2),
+          ),
+          child: Icon(detail.$3, size: 16, color: accent),
+        ),
+        const SizedBox(width: 8),
+      ],
+      /*
+       * Flexible, and the value is allowed TWO lines.
+       *
+       * An address is the longest thing this block ever holds and the preview
+       * pane is about 360 wide, so a Row of intrinsic-width children runs off
+       * the edge — 44 pixels, measured, the first time this was written. On a
+       * real footer it would wrap; here it had nothing to wrap into.
+       */
+      Flexible(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (labels)
+              Text(
+                detail.$2,
+                style: TextStyle(
+                  color: text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            Text(
+              _detailValues[detail.$1]!,
+              style: TextStyle(color: text, fontSize: 12),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  if (layout == 'stack') {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final detail in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: one(detail),
+          ),
+      ],
+    );
+  }
+
+  return Wrap(
+    spacing: layout == 'compact' ? 12 : 18,
+    runSpacing: 10,
+    children: [for (final detail in shown) one(detail)],
+  );
+}
+
+/// The call to action, in whichever of its three placements is set.
+///
+/// The bar and the popup are drawn as they SIT — one along the bottom of the
+/// mock page, one floating over it — because the placement is the whole
+/// decision and a button previewed in place three times would not show it.
+Widget _cta(
+  Map<String, dynamic> options,
+  ThemeData theme,
+  Color accent,
+  Color onAccent,
+  Color text,
+  double radius,
+) {
+  final placement = _pick(options['placement'], 'inline');
+  final action = _pick(options['action'], 'call');
+  final icon = _flag(options['icon'], true);
+  final wide = _flag(options['full_width'], false);
+  final typed = '${options['text'] ?? ''}'.trim();
+
+  final words = typed.isNotEmpty
+      ? typed
+      : switch (action) {
+          'book' => 'Book online',
+          'form' => 'Get a free estimate',
+          _ => 'Call us today',
+        };
+
+  final button = Container(
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+    decoration: BoxDecoration(
+      color: accent,
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: Row(
+      mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (icon) ...[
+          Icon(
+            action == 'call' ? Icons.phone_outlined : Icons.mail_outline,
+            size: 16,
+            color: onAccent,
+          ),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          words,
+          style: TextStyle(
+            color: onAccent,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  if (placement == 'inline') return button;
+
+  // A mock page with the thing on it, so the placement is visible rather than
+  // described. 150 tall is enough to read as a page and short enough to leave
+  // room for the settings beside it.
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(
+        height: 150,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                ),
+                alignment: Alignment.topLeft,
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  'your page',
+                  style: TextStyle(
+                    color: text.withValues(alpha: 0.5),
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+            if (placement == 'bar')
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  color: accent,
+                  padding: const EdgeInsets.all(6),
+                  alignment: Alignment.center,
+                  child: button,
+                ),
+              )
+            else
+              Positioned(right: 10, bottom: 14, child: button),
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        placement == 'bar'
+            ? 'Fixed along the bottom of every page it is placed on.'
+            : 'Opens once a visit, over the page.',
+        style: theme.textTheme.bodySmall,
+      ),
+    ],
+  );
+}
+
+/// The number on its own.
+Widget _phoneBox(Map<String, dynamic> options, Color accent, Color text) {
+  final size = _pick(options['size'], 'medium');
+  final icon = _flag(options['icon'], true);
+  final label = '${options['label'] ?? ''}'.trim();
+
+  final font = switch (size) {
+    'small' => 16.0,
+    'large' => 30.0,
+    _ => 22.0,
+  };
+
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (icon) ...[
+        Icon(Icons.phone_outlined, size: font * 0.9, color: accent),
+        const SizedBox(width: 10),
+      ],
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (label.isNotEmpty)
+            Text(
+              label,
+              style: TextStyle(
+                color: text.withValues(alpha: 0.8),
+                fontSize: font * 0.5,
+              ),
+            ),
+          Text(
+            '(888) 984-4344',
+            style: TextStyle(
+              color: text,
+              fontSize: font,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     ],
   );

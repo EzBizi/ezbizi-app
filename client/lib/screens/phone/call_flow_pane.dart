@@ -28,9 +28,17 @@ import '../../widgets/error_note.dart';
 /// a second rule that could drift — which is the precise mechanism that let
 /// those five lines look healthy while every call went to voicemail.
 class CallFlowPane extends StatefulWidget {
-  const CallFlowPane({super.key, required this.api});
+  const CallFlowPane({super.key, required this.api, this.onOpen});
 
   final ApiClient api;
+
+  /// Take the reader to the settings section that changes a step.
+  ///
+  /// The TAB decides how — it owns the section list and the selection, and a
+  /// pane that reached into that would be the second thing choosing which
+  /// section is open. Null where nothing can navigate, and the rows are then
+  /// plain text rather than buttons that do nothing.
+  final void Function(String pane)? onOpen;
 
   @override
   State<CallFlowPane> createState() => _CallFlowPaneState();
@@ -183,7 +191,35 @@ class _CallFlowPaneState extends State<CallFlowPane> {
     );
   }
 
+  /// A step, and a way to the screen that changes it.
+  ///
+  /// Jose, 2026-09-23: *"i'd like to be able to click the 4 items they each
+  /// have, and that should direct me to the screen where that can be
+  /// changed."*
+  ///
+  /// It takes you to the SECTION, not to the record inside it. Landing on Ring
+  /// groups with the right team already open would be better, and it is a
+  /// different job: none of the five panes accepts "open this one" yet, and
+  /// adding it to all of them to save one click is the kind of plumbing that
+  /// earns its place on the second request rather than the first.
+  ///
+  /// A step with nowhere to go stays a plain row rather than a button that
+  /// does nothing, which is the failure this whole screen is about.
   Widget _stepRow(_Step step, ThemeData theme) {
+    final row = _stepBody(step, theme);
+    final pane = step.editPane;
+
+    if (pane == null || widget.onOpen == null) return row;
+
+    return InkWell(
+      key: Key('call-flow-step:${step.step}'),
+      onTap: () => widget.onOpen!(pane),
+      borderRadius: BorderRadius.circular(6),
+      child: row,
+    );
+  }
+
+  Widget _stepBody(_Step step, ThemeData theme) {
     final bad = !step.usable;
     final colour = bad ? theme.colorScheme.error : null;
 
@@ -255,12 +291,22 @@ class _Step {
     required this.title,
     required this.detail,
     required this.usable,
+    this.editPane,
   });
 
   final String step;
   final String title;
   final String detail;
   final bool usable;
+
+  /// Which settings section changes this step, from the server.
+  ///
+  /// The server's, not derived here. `TwimlRenderer::describe()` stamps every
+  /// step with the same `{pane, id}` the call flow CHART puts on its nodes —
+  /// they are two drawings of one call flow, so a step that sent somebody
+  /// somewhere the chart does not would mean one of them is wrong. Working it
+  /// out on this screen would be a third opinion.
+  final String? editPane;
 }
 
 class _Line {
@@ -310,6 +356,9 @@ class _Line {
                 title: (step['title'] ?? '') as String,
                 detail: (step['detail'] ?? '') as String,
                 usable: step['usable'] == true,
+                editPane:
+                    ((step['edit'] as Map<String, dynamic>?) ?? const {})['pane']
+                        as String?,
               ),
           ],
         ),
