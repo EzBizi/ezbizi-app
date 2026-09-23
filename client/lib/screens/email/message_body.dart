@@ -275,7 +275,14 @@ class _MailPictureState extends State<_MailPicture> {
     if (!mounted) return;
     setState(() {
       _bytes = bytes == null ? null : Uint8List.fromList(bytes);
-      _failed = bytes == null;
+      // EMPTY is a failure, not a message still arriving.
+      //
+      // This read `_failed = bytes == null`, and `build` draws the spinner
+      // whenever there are no bytes and nothing has failed. A 200 carrying
+      // zero bytes satisfies both -- not null, so not failed; empty, so not
+      // drawn -- and the picture spins for ever in the middle of the message.
+      // Nothing times out and nothing is logged.
+      _failed = bytes == null || bytes.isEmpty;
     });
   }
 
@@ -307,6 +314,21 @@ class _MailPictureState extends State<_MailPicture> {
             alignment: Alignment.centerLeft,
             filterQuality: FilterQuality.medium,
             semanticLabel: widget.alt,
+            // Bytes that are not a picture must not throw out of the message.
+            //
+            // `Image.memory` had no errorBuilder, so anything that is not a
+            // decodable image -- a truncated response, an expired CDN object
+            // answering with an HTML error page, a tracking pixel that is not
+            // really a PNG -- threw `Exception: Invalid image data` out of the
+            // image resource service. A message with seventeen pictures threw
+            // it seventeen times.
+            //
+            // The bytes arrive from a STRANGER'S MAIL over a URL the sender
+            // chose, so "it decodes" is the assumption this widget has least
+            // right to make. Said in place instead, with the same notice used
+            // when a picture is refused outright.
+            errorBuilder: (context, error, stack) =>
+                _BlockedImage(alt: widget.alt, host: null),
           );
         },
       );
