@@ -401,6 +401,52 @@ real with 3.3.
   disagree on exactly those rows, so anything reading "service_area implies
   franchise" out of that table is wrong 0.5% of the time and silently.
 
+## 6b. Where the areas and the zip map actually landed, 2026-09-23
+
+**34 service areas, 2,706 zips.** A1 Tools' own map is 2,717 distinct zips, so
+this is complete rather than partial.
+
+### Booking history is NOT the current configuration, and I used it as if it were
+
+Twice I ranked names by jobs and called the busy ones live. Jose settled it:
+
+> *"yes i deleted those, and no they dont live in workiz anymore, right now the
+> service areas as they are in EzBizi are the exact reflection on Workiz Service
+> Areas, except perhaps for Nationwide."*
+
+Seattle had 26 bookings in the last thirty days and 104 in the history, and is
+not a Workiz service area any more. Portland and Long Island the same. A booking
+count measures what HAPPENED; the configured list is a decision, and only the
+person holding the account can read it — there is no endpoint (see 6). So the
+30-day proxy answers "was this used" and never "does this exist", and the second
+question is the one that was being asked.
+
+**The areas are now settled by Jose, not derived.** Anything that wants to know
+the list reads `service_areas`, and the way to change it is to change Workiz and
+tell him — not to infer it from jobs.
+
+### The consolidation had to reach the zips, not just the names
+
+Deleting `East Connecticut` did not move its territory anywhere: 343 zips existed
+only under names that no longer do. Three groups had an obvious survivor and were
+folded, by rewriting the name in the export before the aggregate, so the count
+that breaks a tie is the COMBINED count:
+
+    East Connecticut, West Connecticut  ->  Connecticut
+    Atlanta North, Atlanta South        ->  Atlanta
+    Dallas, Fort Worth                  ->  DFW
+
+Each fold stays inside one franchise, so nothing crosses a boundary. It took the
+map from 2,474 to 2,706 — Connecticut 120 → 210, DFW 78 → 166, Atlanta 80 → 134.
+
+The rest have no survivor and stay unmapped, which is correct: Seattle 66 zips,
+Kansas City 11, Portland 7, Nashville 9, and a tail of ones and twos. A zip with
+no area is a zip the search says nothing about, which is honest.
+
+**Nationwide is the one Jose flagged as unsure** — 11 areas: Boston North,
+Charlotte, Denver, Detroit, Greensboro, Los Angeles / Orange County, Miami,
+Minneapolis, Riverside, Sacramento, Saint Louis.
+
 ## 7. Jose's ruling, 2026-09-23
 
 > "the service areas are fine as they are, that's how they are in workiz right
