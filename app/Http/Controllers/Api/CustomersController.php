@@ -170,19 +170,22 @@ class CustomersController extends Controller
         }
 
         $groups = collect();
+        $total = 0;
 
         foreach ($this->duplicateKinds($mode) as $kind) {
-            $groups = $groups->concat($this->duplicateGroups($kind, self::DUPLICATE_GROUP_LIMIT));
+            $found = $this->duplicateGroups($kind, self::DUPLICATE_GROUP_LIMIT);
+            $groups = $groups->concat($found['groups']);
+            $total += $found['total'];
         }
 
         return response()->json([
             'data' => $groups->values(),
             'mode' => $mode,
-            // ponytail: capped rather than paged. A sweep after an import can
-            // find a great many, and the honest thing on screen is "here are
-            // the first N, there are more" rather than a page control nobody
-            // asked for. Page it when somebody works through a whole cap.
-            'limited' => $groups->count() >= self::DUPLICATE_GROUP_LIMIT,
+            // How many there ACTUALLY are, not how many came back. "Showing 200
+            // of 1,490" and "showing 200" are different facts, and only one of
+            // them lets somebody decide whether they have seen the problem.
+            'total' => $total,
+            'limited' => $groups->count() < $total,
         ]);
     }
 
@@ -493,12 +496,18 @@ class CustomersController extends Controller
     /**
      * How many GROUPS a sweep returns, per matching kind.
      *
-     * ponytail: a cap, not a page control. An import can manufacture a great
-     * many, and "here are fifty, there are more" is an honest screen; paging
-     * through duplicates nobody has merged yet is a feature to add the first
-     * time somebody actually works through a whole cap.
+     * A cap, not a page control. Paging through duplicates nobody has merged
+     * yet is a feature to add the first time somebody works through a whole
+     * cap — and the screen says how many there really are, so nobody has to
+     * guess whether they are seeing all of them.
+     *
+     * 200 rather than the 50 this shipped with, because 50 was a guess and the
+     * real number arrived: A-1's Workiz book holds 7,225 clients and 149 phone
+     * groups among them (measured on the box, 2026-09-23). A cap that truncates
+     * the very first real run is not a cap, it is a defect with a sentence
+     * under it.
      */
-    private const DUPLICATE_GROUP_LIMIT = 50;
+    private const DUPLICATE_GROUP_LIMIT = 200;
 
     /**
      * The key kinds a matching mode sweeps by.
@@ -535,9 +544,13 @@ class CustomersController extends Controller
      * -- and a PHP copy of the normalising rule is exactly the kind of second
      * implementation that agrees with itself and not with the database.
      *
-     * @return Collection<int, array<string, mixed>>
+     * Returns the groups AND how many there are in total, because the two are
+     * different numbers the moment the cap bites and only one of them is worth
+     * putting on a screen alone.
+     *
+     * @return array{total: int, groups: Collection<int, array<string, mixed>>}
      */
-    private function duplicateGroups(string $kind, int $limit): Collection
+    private function duplicateGroups(string $kind, int $limit): array
     {
         [$expression, $by] = match ($kind) {
             // Digits only, so (555) 123-4567 and 555-123-4567 are one key --
@@ -571,16 +584,23 @@ class CustomersController extends Controller
             ->when($kind === 'name_and_address', fn ($q) => $q->whereRaw("COALESCE(name, '') <> ''"))
             ->groupBy('dup_key')
             ->havingRaw('COUNT(*) > 1')
-            ->limit($limit)
+            // NOT limited here, on purpose. The limit bounds how many groups
+            // are BUILT, and a screen that says "showing 50" without knowing
+            // whether the truth is 51 or 1,490 is telling somebody a number
+            // they cannot act on. A key is a short string; counting them all
+            // is one cheap read and it is what makes the sentence honest.
             ->pluck('dup_key');
 
+        $total = $keys->count();
+        $keys = $keys->take($limit);
+
         if ($keys->isEmpty()) {
-            return collect();
+            return ['total' => 0, 'groups' => collect()];
         }
 
         $placeholders = implode(', ', array_fill(0, $keys->count(), '?'));
 
-        return Customer::query()
+        $groups = Customer::query()
             ->selectRaw("customers.*, {$expression} AS dup_key")
             ->whereRaw("{$expression} IN ({$placeholders})", $keys->all())
             ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
@@ -593,5 +613,7 @@ class CustomersController extends Controller
                 'customers' => $members->map(fn (Customer $c) => $this->present($c))->values(),
             ])
             ->values();
+
+        return ['total' => $total, 'groups' => $groups];
     }
 }

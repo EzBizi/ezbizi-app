@@ -110,6 +110,41 @@ class CustomerDuplicateSweepTest extends TestCase
         $this->assertSame(['Four', 'Three'], $names);
     }
 
+    public function test_it_says_how_many_there_really_are_when_it_truncates(): void
+    {
+        $this->matchOn('phone');
+
+        // 201 groups against a cap of 200. Built because the cap was wrong on
+        // the first real data anybody measured -- A-1's Workiz book holds 149
+        // phone groups and this shipped capped at 50 -- and a truncating screen
+        // that cannot say how much it is hiding is the defect, not the cap.
+        //
+        // This is also the only case that can tell `total` from "however many
+        // came back". Under the cap the two coincide, so a test that never
+        // exceeds it passes just as well against a `total` hardcoded to the
+        // size of the list it sits beside.
+        $this->inTenant($this->alpha['org'], function () {
+            for ($i = 0; $i < 201; $i++) {
+                $phone = '555-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT).'-0000';
+                Customer::create([
+                    'owning_franchise_id' => $this->alpha['franchise']->id,
+                    'number' => "C-A{$i}", 'name' => "A{$i}", 'phone' => $phone,
+                ]);
+                Customer::create([
+                    'owning_franchise_id' => $this->alpha['franchise']->id,
+                    'number' => "C-B{$i}", 'name' => "B{$i}", 'phone' => $phone,
+                ]);
+            }
+        });
+
+        $response = $this->signedInAs($this->alpha['admin'])
+            ->getJson('/api/v1/customers/duplicates')->assertOk();
+
+        $this->assertCount(200, $response->json('data'));
+        $this->assertSame(201, $response->json('total'));
+        $this->assertTrue($response->json('limited'));
+    }
+
     public function test_off_says_so_rather_than_reporting_none_found(): void
     {
         $this->matchOn('off');

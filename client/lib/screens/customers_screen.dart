@@ -662,6 +662,12 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
   List<Map<String, dynamic>> _groups = const [];
   bool _limited = false;
 
+  /// How many groups there ACTUALLY are, which stops being the number on screen
+  /// the moment the cap bites. A-1's book holds 149 of them, so this is not a
+  /// hypothetical: "showing 200" and "showing 200 of 1,490" are different
+  /// facts and only the second tells somebody whether they have seen it all.
+  int _total = 0;
+
   @override
   void initState() {
     super.initState();
@@ -689,6 +695,7 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
       _groups = List<Map<String, dynamic>>.from(response.data as List);
       _note = response.body['message'] as String?;
       _limited = response.body['limited'] as bool? ?? false;
+      _total = response.body['total'] as int? ?? _groups.length;
     });
   }
 
@@ -729,7 +736,7 @@ class _DuplicatesPanelState extends State<_DuplicatesPanel> {
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    'There are more than these.',
+                    'Showing ${_groups.length} of $_total.',
                     style: text.bodySmall,
                   ),
                 ),

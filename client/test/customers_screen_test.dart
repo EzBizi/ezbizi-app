@@ -157,7 +157,11 @@ void main() {
 
         return _json({
           'mode': 'phone',
-          'limited': false,
+          // Truncating, and saying so with a real number. The screen has to
+          // print "3" and not the 1 group it was handed, or a person who has
+          // seen one duplicate believes they have seen the problem.
+          'limited': true,
+          'total': 3,
           'data': [
             {
               'by': 'phone',
@@ -203,6 +207,8 @@ void main() {
 
     // Said out loud on the screen, every time: nothing here merges anything.
     expect(find.textContaining('Nothing has been merged'), findsOneWidget);
+
+    expect(find.text('Showing 1 of 3.'), findsOneWidget);
   });
 
   /// "We looked and found none" and "nobody is looking" are different answers,
