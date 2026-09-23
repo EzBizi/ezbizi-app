@@ -8,10 +8,12 @@ use App\Models\Job;
 use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\StateCode;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Turn the Workiz mirror into EzBizi customers and jobs.
@@ -64,7 +66,7 @@ class ProjectWorkizRecords extends Command
      * container before the test environment's database exists. See
      * SyncWorkizJobs for the full account.
      */
-    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers): int
+    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $limit = max(1, (int) $this->option('limit'));
@@ -85,9 +87,9 @@ class ProjectWorkizRecords extends Command
         $jobs = 0;
 
         foreach ($organizations as $organization) {
-            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $limit, $dryRun) {
+            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $limit, $dryRun) {
                 $clients = $this->deriveClients($dryRun);
-                $customers = $this->projectCustomers($numbers, $limit, $dryRun);
+                $customers = $this->projectCustomers($numbers, $audit, $limit, $dryRun);
                 $jobs = $this->projectJobs($numbers, $limit, $dryRun);
 
                 return [$clients, $customers, $jobs];
@@ -168,7 +170,7 @@ class ProjectWorkizRecords extends Command
         return $touched;
     }
 
-    private function projectCustomers(RecordNumberGenerator $numbers, int $limit, bool $dryRun): int
+    private function projectCustomers(RecordNumberGenerator $numbers, AuditLogger $audit, int $limit, bool $dryRun): int
     {
         $created = 0;
 
@@ -190,33 +192,66 @@ class ProjectWorkizRecords extends Command
                 continue;
             }
 
-            $customer = Customer::create([
-                // Set ONCE, on creation, and never re-derived. The owning
-                // franchise is reassignable and audited, so a sweep that
-                // re-derived it would silently undo somebody's reassignment —
-                // the Customers session's finding.
-                'owning_franchise_id' => $franchise->getKey(),
-                'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
-                'name' => $client->name ?: ($client->company ?: 'Workiz client '.$client->client_id),
-                'email' => $client->email,
-                'phone' => $client->phone,
-                'address_line1' => $client->address,
-                'address_line2' => $client->unit,
-                'city' => $client->city,
+            /*
+             * THE CREATE AND THE LINK ARE ONE ACT.
+             *
+             * Customers' finding, and it is the idempotency guarantee itself:
+             * if the customer is written and the link is not, the next run sees
+             * a client naming no customer and projects a second one. Over
+             * 7,225 rows a deadlock or a dropped connection is not exotic, and
+             * the failure is SILENT - the only symptom is a duplicate the
+             * duplicate sweep later reports as though two people had created it.
+             */
+            DB::transaction(function () use ($client, $franchise, $numbers) {
+                $customer = Customer::create([
+                    // Set ONCE, on creation, and never re-derived. The owning
+                    // franchise is reassignable and audited, so a sweep that
+                    // re-derived it would silently undo somebody's reassignment —
+                    // the Customers session's finding.
+                    'owning_franchise_id' => $franchise->getKey(),
+                    'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
+                    'name' => $client->name ?: ($client->company ?: 'Workiz client '.$client->client_id),
+                    'email' => $client->email,
+                    'phone' => $client->phone,
+                    'address_line1' => $client->address,
+                    'address_line2' => $client->unit,
+                    'city' => $client->city,
 
-                // `customers.state` is two characters and Workiz sends a NAME
-                // ("Ohio", "Massachusetts"). Unrecognised becomes null rather
-                // than a truncation: "Oh" is wrong in a way that looks right,
-                // and the rest of the address survives either way.
-                'state' => StateCode::from($client->state),
-                'postal_code' => $client->postal_code,
-                'is_active' => true,
-            ]);
+                    // `customers.state` is two characters and Workiz sends a NAME
+                    // ("Ohio", "Massachusetts"). Unrecognised becomes null rather
+                    // than a truncation: "Oh" is wrong in a way that looks right,
+                    // and the rest of the address survives either way.
+                    'state' => StateCode::from($client->state),
+                    'postal_code' => $client->postal_code,
+                    'is_active' => true,
+                ]);
 
-            $client->customer_id = $customer->getKey();
-            $client->save();
+                $client->customer_id = $customer->getKey();
+                $client->save();
+            });
 
             $created++;
+        }
+
+        /*
+         * ONE AUDIT ROW PER RUN, and that is Customers' ruling rather than a
+         * shortcut.
+         *
+         * An automation event and an audit row are two different things, and
+         * the docblock above only argued the first. Without this, thousands of
+         * customers arrive with no record of where they came from.
+         *
+         * But one row per customer would bury every human action in the log for
+         * the rest of the day and say less than this does. The question an
+         * audit log is actually asked here is "where did all these people come
+         * from", and one row answers it.
+         */
+        if ($created > 0 && ! $dryRun) {
+            $audit->log('customer.imported', metadata: [
+                'source' => 'workiz',
+                'created' => $created,
+                'limit' => $limit,
+            ]);
         }
 
         return $created;
@@ -225,6 +260,7 @@ class ProjectWorkizRecords extends Command
     private function projectJobs(RecordNumberGenerator $numbers, int $limit, bool $dryRun): int
     {
         $created = 0;
+        $skipped = 0;
 
         $pending = WorkizJob::query()
             ->whereNull('job_id')
@@ -253,6 +289,19 @@ class ProjectWorkizRecords extends Command
                 continue;
             }
 
+            /*
+             * NO INVENTED STATUS. Jobs' point, and it is right: every one of
+             * the 633 mirrored jobs carries a status, so a `?: 'new'` fallback
+             * could only ever fire on a payload shape nobody has seen — and it
+             * would mint a seventh status that is in no organization's list.
+             * A job with no status is skipped and counted, not guessed at.
+             */
+            if (($mirrored->status ?? '') === '') {
+                $skipped++;
+
+                continue;
+            }
+
             if ($dryRun) {
                 $created++;
 
@@ -269,7 +318,7 @@ class ProjectWorkizRecords extends Command
                 // Workiz's own word. Job statuses are tenant-configured rather
                 // than an enum, so A-1's vocabulary lands as A-1's list and
                 // needs no mapping table.
-                'status' => $mirrored->status ?: 'new',
+                'status' => $mirrored->status,
 
                 // The naive 'Y-m-d H:i:s' string, handed straight to
                 // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
@@ -285,6 +334,10 @@ class ProjectWorkizRecords extends Command
             $mirrored->save();
 
             $created++;
+        }
+
+        if ($skipped > 0) {
+            $this->warn($skipped.' mirrored jobs had no status and were not projected.');
         }
 
         return $created;

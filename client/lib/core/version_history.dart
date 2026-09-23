@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0248',
+      date: '23 Sep 2026',
+      items: [
+        'Workiz is a lead source in Leads. It is a book of records rather than a channel somebody wrote in, so a Workiz lead has no thread to reply to and does not appear under Unreplied.',
+        'A report on service areas can use three new columns: open days a week, jobs a week, and days until the next open day. The last one takes the window you want in the filter, so one column answers however far ahead you are looking.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0247',
       date: '23 Sep 2026',
       items: [
