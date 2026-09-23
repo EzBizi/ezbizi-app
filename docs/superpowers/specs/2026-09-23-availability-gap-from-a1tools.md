@@ -281,6 +281,22 @@ real with 3.3.
   exactly one franchise (checked: no name appears in two), so the name carries
   the franchise and the connection does not need to.
 
+  **Those 31 are what the model predicts, not a tolerance.** `Job`'s docblock,
+  read to confirm rather than taken on report: *"NEVER shared. A job happens at
+  one place, on one date, with one crew — it belongs to exactly one franchise…
+  Doing a job for another franchise's customer is normal and adds you to their
+  'served by' list; it does not make the job co-owned."* A job belongs to
+  whoever DID it.
+
+  Precisely: that sentence settles the CUSTOMER case, and this is the TERRITORY
+  case — the same shape, not literally stated. Close enough to stop treating the
+  31 as anomalies worth watching, not close enough to cite as if it named them.
+
+  The consequence runs the other way too, and the Workiz session is recording it
+  on their side: in their landing table `service_area` and `franchise_id`
+  disagree on exactly those rows, so anything reading "service_area implies
+  franchise" out of that table is wrong 0.5% of the time and silently.
+
 ## 7. Still open, for Jose
 
 - **The 31 Workiz service areas with no EzBizi area** (1,603 jobs, 21% of the
