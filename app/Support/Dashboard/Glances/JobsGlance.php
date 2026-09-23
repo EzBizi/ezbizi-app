@@ -187,6 +187,12 @@ final class JobsGlance extends DescribedGlance
      * unreachable — do not "simplify" it away for being unobservable, and do
      * not reach for the one-line version of the fix.
      *
+     * (Provenance, because `git log` on this file will not tell you: the
+     * paragraphs above landed inside `498dd905`, whose subject is about a
+     * customer duplicates panel. A peer's `git commit --amend` ran while my
+     * commit was HEAD and replaced it, keeping the tree. Nothing is wrong with
+     * the content; the SHA that carries it simply does not say so.)
+     *
      * @param  list<string>  $earned
      */
     private function wireOptions(array $earned): array
