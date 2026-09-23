@@ -213,10 +213,28 @@ class LeadsController extends Controller
              * somebody made an enquiry. Nobody has replied to them — that is
              * what this filter is asked, and it is true in both readings.
              */
-            $query->where(function ($q) {
-                $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
-                    ->orWhereNull('leads.last_contact_from');
-            });
+            /*
+             * AND ONLY AN INBOX SOURCE - added with Workiz, 2026-09-23.
+             *
+             * The null clause below is what makes this filter honest for a
+             * Google enquiry whose conversation has not been fetched yet. It is
+             * also what would have made it useless the day A-1's Workiz book
+             * arrived: a Workiz lead is a record copied from another system
+             * with no thread and no future thread, so its `last_contact_from`
+             * is null permanently rather than temporarily, and all thirty-one
+             * thousand would sit in this queue for ever.
+             *
+             * The first version of this scoped to sources a reply can be SENT
+             * on, which is a different question and the wrong one - see
+             * Lead::INBOX_SOURCES. It would have dropped every website form
+             * from the queue, and a form is precisely a person waiting for a
+             * call back.
+             */
+            $query->whereIn('leads.source', Lead::INBOX_SOURCES)
+                ->where(function ($q) {
+                    $q->where('leads.last_contact_from', LeadConversation::FROM_CONSUMER)
+                        ->orWhereNull('leads.last_contact_from');
+                });
         }
 
         if ($request->boolean('unread')) {

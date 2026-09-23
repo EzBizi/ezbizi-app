@@ -219,6 +219,7 @@ class ActionRunner
                 'thumbtack' => 'Thumbtack',
                 'website_chat' => 'Website live chat',
                 'website_form' => 'Website form',
+                'workiz' => 'Workiz',
             ],
             'status' => [
                 'new' => 'New',

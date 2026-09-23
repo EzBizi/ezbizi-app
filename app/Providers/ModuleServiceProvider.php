@@ -2101,6 +2101,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('website_form', 'Forms'),
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
+                    new TabDefinition('workiz', 'Workiz'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
