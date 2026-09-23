@@ -11,6 +11,7 @@ use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Workiz\PhoneE164;
 use App\Support\Workiz\StateCode;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -212,7 +213,11 @@ class ProjectWorkizRecords extends Command
                     'number' => $numbers->next(RecordNumberGenerator::CUSTOMERS, $franchise),
                     'name' => $client->name ?: ($client->company ?: 'Workiz client '.$client->client_id),
                     'email' => $client->email,
-                    'phone' => $client->phone,
+                    // Workiz sends bare digits and this column holds E.164 --
+                    // the API, the database and Twilio all key on it, so a bare
+                    // ten is the wrong value for calling somebody, not just an
+                    // unformatted one. See PhoneE164 for the production census.
+                    'phone' => PhoneE164::from($client->phone),
                     'address_line1' => $client->address,
                     'address_line2' => $client->unit,
                     'city' => $client->city,
