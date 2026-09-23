@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InventoryIssueLine;
 use App\Models\Job;
 use App\Models\JobLine;
 use App\Models\User;
@@ -173,7 +174,27 @@ class JobsController extends Controller
 
         $input = $request->validate($this->rules(forUpdate: true));
 
-        if (isset($input['status'])) {
+        // Validated when it CHANGES, not when it is merely present.
+        //
+        // The detail panel sends `status` on every save, so the strict version
+        // refused a job whose status the organization does not list even when
+        // the caller was changing the DATE — a refusal naming a field they had
+        // not touched. Measured on production 2026-09-23: 550 of 575 jobs were
+        // in that state, carrying the Workiz mirror's own words while A-1's
+        // list was still the platform default. Not one of the six matched;
+        // `In progress` misses `in_progress` by a space and a capital.
+        //
+        // An unchanged value is already in the database. Refusing it does not
+        // remove it, it only blocks the edit somebody actually asked for — so
+        // the strict form validated history rather than the request. It is not
+        // a Workiz problem either: renaming a status in Settings strands every
+        // job holding the old word in exactly the same way.
+        //
+        // The NEW value is still checked whenever it differs, so a job cannot
+        // be moved onto an unlisted status, nor traded from one unlisted word
+        // to another — and a job that arrived as `Done` can still be tidied
+        // onto `completed`, which is the way out of the state.
+        if (isset($input['status']) && $input['status'] !== $job->status) {
             $this->assertStatusAllowed($input['status'], $job->franchise);
         }
 
@@ -416,6 +437,51 @@ class JobsController extends Controller
                 : null,
             'earned_at'  => $job->earned_at?->toIso8601String(),
             'created_at' => $job->created_at->toIso8601String(),
+        ] + $this->materialsFor($job);
+    }
+
+    /**
+     * What Inventory issued against this job — or nothing at all (spec §9).
+     *
+     * ── Why the gate is HERE and not on the route ────────────────────
+     *
+     * `GET /jobs/{job}` feeds every pane of the detail panel, so middleware on
+     * it would refuse the whole job to somebody who may read it. Inbox 0051's
+     * corrected step 3 is explicit: route middleware belongs where a route
+     * serves exactly one tab, and where it serves several the split goes beside
+     * the one already inside the controller. This is that split.
+     *
+     * The key is ABSENT rather than an empty list when the grant is missing, so
+     * a client cannot read "no materials were used on this job" out of "you may
+     * not see them". Those are different sentences and only one of them is true.
+     *
+     * ── And there is no money here, for anybody ──────────────────────
+     *
+     * Not even for a caller holding `inventory.financials`. This is modelling
+     * rather than a permission strip: a job's money is what the CUSTOMER is
+     * charged, which is the service lines above; what the parts cost the
+     * business belongs to Inventory. A surface carrying both publishes a margin
+     * nobody agreed to publish. If a cost ever appears here the fix is to stop
+     * sending it, never to gate it.
+     *
+     * @return array{materials?: list<array{item: ?string, qty: float, issued_on: ?string}>}
+     */
+    private function materialsFor(Job $job): array
+    {
+        if (! request()->user()?->hasPermission('jobs.materials.view')) {
+            return [];
+        }
+
+        return [
+            'materials' => InventoryIssueLine::query()
+                ->whereHas('issue', fn ($q) => $q->where('job_id', $job->getKey()))
+                ->with(['item:id,name', 'issue:id,issued_on'])
+                ->get()
+                ->map(fn (InventoryIssueLine $line) => [
+                    'item'      => $line->item?->name,
+                    'qty'       => (float) $line->qty,
+                    'issued_on' => $line->issue?->issued_on?->toDateString(),
+                ])->all(),
         ];
     }
 }

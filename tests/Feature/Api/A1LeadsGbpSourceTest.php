@@ -1,0 +1,457 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Models\User;
+use App\Services\A1Leads\A1LeadsClient;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * The A1 Leads bridge: read-only, and honest about how old its data is.
+ *
+ * ── The failure these are aimed at ───────────────────────────────
+ *
+ * The data is a daily snapshot of somebody else's system. A refresh that stops
+ * running leaves yesterday's file in place and every request still answers 200,
+ * so the tab keeps drawing a perfectly plausible list of reviews that is a week
+ * old. Nothing errors. The only thing that can catch it is the snapshot's own
+ * capture time, travelling with the data and measured against the clock.
+ *
+ * The second failure is the opposite shape and worse: an unreachable source
+ * rendering as an empty list, which says A-1 Chimney has no reviews. It has
+ * thirteen thousand.
+ */
+class A1LeadsGbpSourceTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private const ENDPOINT = '/api/v1/a1leads-gbp';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('services.a1leads.base_url', 'http://127.0.0.1:3456');
+        config()->set('services.a1leads.api_key', 'test-partner-key');
+        config()->set('services.a1leads.stale_after_hours', 30);
+        config()->set('services.a1leads.receipt', $this->receiptFile('2026-09-23T15:01:07.302Z'));
+    }
+
+    /**
+     * A reader at the organization A1 Leads' data belongs to.
+     *
+     * Every test here grants the permission AND names the organization, because
+     * the permission alone is not the boundary: this module is available to
+     * every tenant by default and holds one business's reviews. The test below
+     * that varies only the organization is the one that proves it.
+     *
+     * @param  array<string, mixed>  $t
+     */
+    private function readerAt(array $t): User
+    {
+        config()->set('services.a1leads.organization_id', $t['org']->getKey());
+
+        return $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
+    }
+
+    /** A receipt on disk, because that is how the real one arrives. */
+    private function receiptFile(string $capturedAt, ?string $installedAt = null): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'a1receipt');
+
+        file_put_contents($path, json_encode([
+            'installed_generation' => '20260923T150107Z-23510eb0',
+            'source_release_sha' => 'eb72dbcd42b88dca8de2281a4847f09fb8d61472',
+            'snapshot_captured_at' => $capturedAt,
+            'installed_at' => $installedAt ?? $capturedAt,
+        ]));
+
+        return $path;
+    }
+
+    private function fakeA1Leads(): void
+    {
+        Http::fake([
+            '*/_info' => Http::response(['version' => '1.10.1'], 200),
+            '*/api/v1/reviews/summary' => Http::response(['data' => ['total' => 13169]], 200),
+            '*/api/v1/reviews*' => Http::response([
+                'data' => [['google_review_name' => 'accounts/a/locations/l/reviews/r-1', 'rating' => 5]],
+                'meta' => ['total' => 13169],
+            ], 200),
+            '*/api/v1/gbp/health' => Http::response(['data' => ['locations' => 3]], 200),
+            /*
+             * The REAL shape, captured from the live service on 2026-09-23.
+             *
+             * It carries no GBP resource name at all - that lives on
+             * `/api/v1/reviews/locations`, which this consumer is not granted -
+             * so the tab's location filter is built from these addresses. A
+             * fixture invented from the route's NAME would have had an `id` and
+             * proved only that the parser agreed with itself.
+             */
+            '*/api/v1/gbp/locations' => Http::response(['data' => [
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '101 Arch St #831, Boston, MA, 02110',
+                    'zip' => '02110',
+                    'rating' => 4.8,
+                    'reviews' => 221,
+                ],
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
+                    'zip' => '60053',
+                ],
+                // The same listing again: A-1 has several rows per address.
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
+                    'zip' => '60053',
+                ],
+                // A service area, which has no one city and no zip.
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => 'Serves Cobb County, GA, USA, Henry County, GA, USA +8 more',
+                    'zip' => null,
+                ],
+            ]], 200),
+        ]);
+
+        // Anything this file does not stub is a real request leaving the
+        // machine, and the first one only surfaced as a two-second cURL timeout
+        // inside an unrelated assertion.
+        Http::preventStrayRequests();
+    }
+
+    /** THE POSITIVE CONTROL, first: the tab reads and says when the data is from. */
+    public function test_it_returns_reviews_with_the_snapshot_date_beside_them(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Alpha');
+        $reader = $this->readerAt($t);
+
+        $data = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertTrue($data['source']['configured']);
+        $this->assertTrue($data['source']['reachable']);
+        $this->assertFalse($data['source']['stale']);
+        $this->assertSame('20260923T150107Z-23510eb0', $data['source']['generation']);
+        $this->assertCount(1, $data['reviews']);
+        $this->assertSame(13169, $data['summary']['total']);
+    }
+
+    /**
+     * A snapshot older than the window is STALE while still answering 200.
+     *
+     * This is the case the whole design exists for. Nothing about the response
+     * changes except the flag: the reviews are still there, still plausible,
+     * and a day and a half out of date.
+     */
+    public function test_a_snapshot_past_the_window_is_marked_stale(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-25T02:00:00Z'));
+        config()->set('services.a1leads.receipt', $this->receiptFile('2026-09-23T15:01:07.302Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Bravo');
+        $reader = $this->readerAt($t);
+
+        $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
+
+        $this->assertTrue($source['stale'], 'a snapshot older than the window must say so');
+        $this->assertGreaterThan(30, $source['hours_old']);
+        $this->assertTrue($source['reachable'], 'and it is stale rather than unreachable');
+    }
+
+    /**
+     * Age is measured from the CAPTURE, not the install.
+     *
+     * The discriminating case: a refresh that reinstalls the same old snapshot
+     * has a fresh install time and stale data. Measuring the wrong one makes
+     * exactly that look healthy.
+     */
+    public function test_a_fresh_install_of_old_data_is_still_stale(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-25T02:00:00Z'));
+        config()->set('services.a1leads.receipt', $this->receiptFile(
+            '2026-09-23T15:01:07.302Z',
+            '2026-09-25T01:59:00Z',
+        ));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Charlie');
+        $reader = $this->readerAt($t);
+
+        $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
+
+        $this->assertTrue($source['stale'], 'installed a minute ago, captured a day and a half ago');
+    }
+
+    /**
+     * An unreachable source is said out loud, never drawn as an empty business.
+     */
+    public function test_a_refusal_is_reported_as_a_source_problem(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        Http::fake([
+            '*/_info' => Http::response(['version' => '1.10.1'], 200),
+            // What the consumer policy answers for a route it does not list.
+            '*' => Http::response(['error' => 'forbidden'], 403),
+        ]);
+
+        $t = $this->provisionTenant('Delta');
+        $reader = $this->readerAt($t);
+
+        $data = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertFalse($data['source']['reachable']);
+        $this->assertStringContainsString('403', (string) $data['source']['because']);
+        $this->assertSame([], $data['reviews']);
+        $this->assertNull($data['summary']);
+    }
+
+    /** With no key at all it says so, rather than pretending to be empty. */
+    public function test_an_unconfigured_environment_says_so(): void
+    {
+        config()->set('services.a1leads.api_key', null);
+
+        $t = $this->provisionTenant('Echo');
+        $reader = $this->readerAt($t);
+
+        $source = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data.source');
+
+        $this->assertFalse($source['configured']);
+        $this->assertStringContainsString('key', (string) $source['because']);
+    }
+
+    /** The tab is its own grant, and our own modules do not open it. */
+    public function test_the_permission_is_its_own(): void
+    {
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Foxtrot');
+
+        config()->set('services.a1leads.organization_id', $t['org']->getKey());
+
+        $this->signedInAs($this->userWithRole($t, 'Reviews', ['reviews.view']))
+            ->getJson(self::ENDPOINT)
+            ->assertForbidden();
+    }
+
+    /**
+     * THE PERMISSION IS NOT THE BOUNDARY: the organization is.
+     *
+     * A module with no platform flag is available to every organization -
+     * `ModuleAvailability` fails open, deliberately - so an administrator at
+     * any other tenant can grant themselves `a1leads_gbp.view` from their own
+     * Roles screen. A1 Leads holds one business's thirteen thousand reviews,
+     * and no role at another company can say anything about whose they are.
+     *
+     * The two halves are asserted in one run against the same fake, so the
+     * refusal cannot be an unreachable service or a missing key.
+     */
+    public function test_only_the_organization_the_data_belongs_to_may_read_it(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $owner = $this->provisionTenant('Owner');
+        $stranger = $this->provisionTenant('Stranger');
+
+        // Named to the owner, and both users hold the identical grant.
+        config()->set('services.a1leads.organization_id', $owner['org']->getKey());
+
+        $mine = $this->signedInAs($this->userWithRole($owner, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $theirs = $this->signedInAs($this->userWithRole($stranger, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertTrue($mine['source']['configured'], 'the positive control');
+        $this->assertNotEmpty($mine['reviews']);
+
+        $this->assertFalse($theirs['source']['configured']);
+        $this->assertSame([], $theirs['reviews'], 'and not one row of somebody else\'s reviews');
+        $this->assertStringContainsString(
+            'not the one it belongs to',
+            (string) $theirs['source']['because'],
+            'and it says which kind of nothing this is',
+        );
+    }
+
+    /**
+     * Unset fails CLOSED, which is the opposite of the module flag.
+     *
+     * An absent platform flag means nobody has restricted the module. An absent
+     * organization here means nobody has said whose data this is, and the safe
+     * answer to that is nobody.
+     */
+    public function test_an_unnamed_organization_reads_nothing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Golf');
+        config()->set('services.a1leads.organization_id', null);
+
+        $data = $this->signedInAs($this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertFalse($data['source']['configured']);
+        $this->assertSame([], $data['reviews']);
+    }
+
+    /**
+     * THE LOCATION FILTER IS A LIST OF CITIES, derived rather than fetched.
+     *
+     * `/api/v1/reviews/locations` carries the GBP resource names and is not one
+     * of this consumer's five routes. `/api/v1/gbp/locations` is, and carries
+     * addresses and no resource name - so the filter is `city`, which was
+     * measured against the live service: Boston narrows 13,169 to 221, and a
+     * city that does not exist returns none rather than everything.
+     *
+     * Both halves are asserted. A service area ("Serves Cobb County, GA, USA
+     * +8 more") has no one city, so it is left out rather than guessed at - a
+     * name in the dropdown that narrows to nothing is worse than an absence.
+     * And the duplicate row for one address appears once.
+     */
+    public function test_the_location_filter_is_built_from_the_cities_it_can_see(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Juliett');
+
+        $cities = $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data.cities');
+
+        $this->assertSame(
+            [
+                ['city' => 'Boston', 'state' => 'MA'],
+                ['city' => 'Morton Grove', 'state' => 'IL'],
+            ],
+            $cities,
+            'one row per city, the service area left out, sorted',
+        );
+    }
+
+    /**
+     * THE FILTERS REACH THE OTHER SERVICE, which is the whole of the tab.
+     *
+     * A screen that drew "Negative (1-3 stars)" in its dropdown and sent no
+     * `rating` would look correct and answer the wrong question: thirteen
+     * thousand five-star reviews on top of the four somebody opened the tab
+     * for. The list route is asserted as well as the tab route, because paging
+     * that quietly dropped the filters would widen the list a page at a time.
+     */
+    public function test_the_filters_are_passed_through_to_a1_leads(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Hotel');
+        $reader = $this->readerAt($t);
+
+        $this->signedInAs($reader)
+            ->getJson(self::ENDPOINT.'/reviews?rating=negative&replied=false&matched=true'
+                .'&sort=oldest&from=2026-01-01T00:00:00Z&offset=40&limit=25')
+            ->assertOk();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v1/reviews')) {
+                return false;
+            }
+
+            return str_contains($request->url(), 'rating=negative')
+                && str_contains($request->url(), 'replied=false')
+                && str_contains($request->url(), 'matched=true')
+                && str_contains($request->url(), 'sort=oldest')
+                && str_contains($request->url(), 'offset=40')
+                && str_contains($request->url(), 'limit=25');
+        });
+    }
+
+    /**
+     * And a filter neither side understands does not travel.
+     *
+     * The discriminating half of the test above: a pass-through built by
+     * forwarding the query string wholesale would satisfy it. A1 Leads ignores
+     * what it does not know, so a filter that reached it and did nothing would
+     * come back as a list that looks narrowed and is not.
+     */
+    public function test_a_filter_neither_side_knows_is_dropped(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('India');
+
+        $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT.'/reviews?rating=5&franchise_id=abc&order_by=whatever')
+            ->assertOk();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v1/reviews')) {
+                return false;
+            }
+
+            return str_contains($request->url(), 'rating=5')
+                && ! str_contains($request->url(), 'franchise_id')
+                && ! str_contains($request->url(), 'order_by');
+        });
+    }
+
+    /**
+     * THE STRUCTURAL REFUSAL: this client cannot be made to write.
+     *
+     * The host refuses mutations two ways already, and neither is ours. This
+     * asserts the third, which is: there is no method here that can produce
+     * anything but a GET, and a route outside the allowed five fails before it
+     * reaches the network rather than as somebody else's 403.
+     */
+    public function test_the_client_cannot_reach_a_route_it_was_not_granted(): void
+    {
+        $this->fakeA1Leads();
+
+        $client = app(A1LeadsClient::class);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('has no route');
+
+        // Every public method is a named read; this is the only way to ask for
+        // something else, and it is refused here rather than over the wire.
+        (fn () => $this->get('leads'))->call($client);
+    }
+
+    /** And the key travels in a header, never in the URL. */
+    public function test_the_key_is_never_put_in_the_query_string(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        app(A1LeadsClient::class)->reviewsSummary();
+
+        Http::assertSent(function ($request) {
+            if (! str_contains($request->url(), '/api/v1/reviews/summary')) {
+                return true;
+            }
+
+            return ! str_contains($request->url(), 'test-partner-key')
+                && $request->header('X-API-Key')[0] === 'test-partner-key';
+        });
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
+}

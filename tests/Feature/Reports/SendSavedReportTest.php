@@ -3,6 +3,7 @@
 namespace Tests\Feature\Reports;
 
 use App\Mail\SavedReportMail;
+use App\Models\AuditEvent;
 use App\Models\Automation;
 use App\Models\Customer;
 use App\Models\Job;
@@ -436,6 +437,225 @@ class SendSavedReportTest extends TestCase
                 transportDelivers: true,
             ))->summary(),
         );
+    }
+
+    /**
+     * THE BODY NAMES THE BUSINESS, because ezbizi.com/privacy says it does.
+     *
+     * Published in 0.2.0240, of mail EzBizi sends on a tenant's behalf:
+     *
+     *   "Those leave from EzBizi's own address rather than the organization's,
+     *    and the body says which business the work is about."
+     *
+     * True of InspectionReportMail and of AutomationMessage's footer, and false
+     * here until 2026-09-22: this subcopy named the RULE and never the business.
+     * So a customer received a CSV about their own data from noreply@ezbizi.com
+     * and was told an automation rule had sent it — which reads as EzBizi
+     * writing to somebody it has no relationship with. Found by the SES session
+     * reading the live page against all three callers.
+     *
+     * ── Asserted on the RENDERED BODY, not on the mailable ──────
+     *
+     * `$mail->businessName` being set proves the value was passed and says
+     * nothing about whether the template prints it — and the template is where
+     * this was wrong. The claim is about what the recipient reads.
+     */
+    public function test_the_body_names_the_business_the_report_is_about(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant, ['company_id' => $tenant['company']->id]),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $body = Mail::sent(SavedReportMail::class)->first()->render();
+
+        // The scope the report renders at is the company, so that is the name a
+        // recipient must see — not the organization above it, which would name
+        // a business the report is not about.
+        $this->assertStringContainsString($tenant['company']->name, $body);
+        $this->assertStringContainsString('through EzBizi', $body);
+
+        // And the half that was already right survives: who can stop it.
+        $this->assertStringContainsString('change or stop it', $body);
+    }
+
+    /**
+     * A RUN THAT SENT NOTHING LEAVES NO `report.sent` BEHIND.
+     *
+     * This logged the audit entry and threw afterwards, so a send where every
+     * address was refused left an event NAMED as a send. The metadata was
+     * honest — `recipients` empty, `refused` carrying the reasons — but the
+     * verb was not, and anybody counting `report.sent` to answer "how often did
+     * this go out" counted runs that went nowhere.
+     *
+     * Audit is where people go to be certain rather than approximately right,
+     * so an entry that is only true if you open it is worse than no entry. The
+     * failure is not lost: the exception carries `summary()` and the automation
+     * run record keeps it.
+     *
+     * Asserted on the audit ROW rather than on the ordering of two calls — the
+     * ordering is the mechanism, the row is the claim, and a later refactor
+     * that reaches the same result differently should not fail.
+     */
+    public function test_a_send_that_reached_nobody_writes_no_sent_audit_entry(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $report = $this->report($tenant);
+
+        try {
+            $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+                $report,
+                ['not-an-address'],
+                $this->rule($tenant),
+                $tenant['admin'],
+            ));
+
+            $this->fail('an all-refused send must still fail the run');
+        } catch (RuntimeException) {
+            // The failure is the point; the audit trail is what is asserted.
+        }
+
+        $this->assertSame(
+            0,
+            $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+                ->where('action', 'report.sent')
+                ->count()),
+            'a run that reached nobody recorded itself as a send',
+        );
+    }
+
+    /**
+     * THE CONTROL: a run that DID send still writes one.
+     *
+     * Without this, deleting the audit call entirely passes the test above
+     * perfectly — and an audit trail that records nothing is the other way to
+     * get this wrong.
+     */
+    public function test_a_send_that_reached_somebody_writes_one(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        $this->assertSame(
+            1,
+            $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+                ->where('action', 'report.sent')
+                ->count()),
+        );
+    }
+
+    // ── a warning that found nothing ────────────────────
+
+    /**
+     * NOTHING SENT, AND THE RUN SUCCEEDED.
+     *
+     * The success half is the point, not the silence. `AutomationEngine:260`
+     * marks a run failed on any action returning `ok: false`, and
+     * `Automation::FAILURE_LIMIT` (5) disables the rule at five consecutive
+     * ones — so a daily "warn me if a service area is booked out" rule that
+     * correctly found nothing Monday to Friday would be DISABLED on Friday and
+     * switched off on the Saturday it mattered.
+     *
+     * Asserting only "no mail went" would pass against that bug perfectly.
+     */
+    public function test_a_report_that_found_nothing_sends_nothing_and_still_succeeds(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        // No job made, so the report matches nothing.
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+            skipWhenNoRows: true,
+        ));
+
+        Mail::assertNothingSent();
+
+        $this->assertTrue(
+            $outcome->ok(),
+            'a rule doing exactly what it was asked reported failure, which '
+            .'auto-disables it on the fifth quiet day',
+        );
+
+        // "Ran and sent nothing" and "did not run" are different facts, and a
+        // run record showing neither is how somebody concludes it is broken.
+        $this->assertSame('Ran, found nothing, sent nothing.', $outcome->summary());
+        $this->assertNotNull($outcome->suppressed);
+    }
+
+    /**
+     * A SUPPRESSED RUN IS NOT AN EVERY-ADDRESS-REFUSED RUN.
+     *
+     * Both end with an empty `sent`, and before `suppressed` existed they were
+     * indistinguishable to the caller — which is the whole reason `ok()` could
+     * not answer the question. This is the case that tells them apart: a real
+     * failure must still fail.
+     */
+    public function test_a_send_where_everything_was_refused_still_fails(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+        $this->makeJob($tenant, 'Sweep');
+
+        $this->expectException(RuntimeException::class);
+
+        $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['not-an-address'],
+            $this->rule($tenant),
+            $tenant['admin'],
+            skipWhenNoRows: true,
+        ));
+    }
+
+    /**
+     * THE DEFAULT IS UNCHANGED, which is what makes this safe to land alone.
+     *
+     * Every rule that exists today mails an empty report and should keep doing
+     * it — "nothing happened this week" is the answer a digest was asked for.
+     * Only a caller that says `skipWhenNoRows` gets the new behaviour.
+     */
+    public function test_by_default_an_empty_report_is_still_sent(): void
+    {
+        Mail::fake();
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $outcome = $this->inTenant($tenant['org'], fn () => app(SendSavedReport::class)->send(
+            $this->report($tenant),
+            ['owner@example.test'],
+            $this->rule($tenant),
+            $tenant['admin'],
+        ));
+
+        Mail::assertSent(SavedReportMail::class);
+        $this->assertNull($outcome->suppressed);
+        $this->assertTrue($outcome->ok());
     }
 
     // ── the CSV ──────────────────────────────────────────────────

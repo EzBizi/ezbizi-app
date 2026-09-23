@@ -488,11 +488,27 @@ class _NewsletterTabState extends State<NewsletterTab> {
     return DashboardCard(
       title: 'What they will get',
       icon: Icons.mark_email_read_outlined,
-      // No height of its own. The parent decides: the wide layout stretches
-      // it to the row, the narrow one gives it a fixed box. It used to insist
-      // on 640 and overflowed the 520 it is given on a phone by exactly the
-      // difference — a fixed height inside a parent that already has one is
-      // two answers to the same question.
+      /*
+       * `expand` is what makes the preview VISIBLE, and its absence is why
+       * this pane was blank on the web.
+       *
+       * The card sizes to its contents unless told otherwise. The contents
+       * here are a sandboxed iframe wrapped in `SizedBox.expand`, which
+       * collapses to nothing when its height is unbounded — so the card drew
+       * its header, stretched to the row, and showed an empty body. Nothing
+       * errored and nothing looked wrong except the part that mattered.
+       *
+       * The flag's own docblock names exactly this case: turn it on when the
+       * parent is a bounded slot and the body should use the leftover space.
+       * Both parents here are bounded — `Expanded` in the wide row, a fixed
+       * 520 box in the narrow list — so the condition was met the whole time
+       * and only the flag was missing.
+       *
+       * No height of its own, still. The parent decides; this says "use all
+       * of what the parent gave you" rather than naming a number, which is
+       * the mistake the 640 made before it.
+       */
+      expand: true,
       child: _previewHtml.isEmpty
           ? const Center(child: DashboardNote('Nothing to show yet.'))
           : MessageHtmlView(html: _previewHtml),

@@ -618,6 +618,36 @@ class _GeneralTabState extends State<GeneralTab> {
     });
   }
 
+  /// A wall's handle was dragged. The canvas has already snapped and clamped
+  /// the shift to whole cells, so this only has to apply it to both ends.
+  void _moveWall(int index, int dCol, int dRow) {
+    final walls = _draftWalls();
+    if (index < 0 || index >= walls.length) return;
+
+    final wall = walls[index];
+    if (wall is! Map) return;
+
+    double at(String key) {
+      final value = wall[key];
+      return value is num ? value.toDouble() : 0.0;
+    }
+
+    setState(() {
+      walls[index] = <String, dynamic>{
+        'x1': at('x1') + dCol,
+        'y1': at('y1') + dRow,
+        'x2': at('x2') + dCol,
+        'y2': at('y2') + dRow,
+      };
+      // A dragged wall is the one you meant, so it stays selected — otherwise
+      // repositioning a wall you were about to delete would silently disarm
+      // the Delete button.
+      _selectedWallIndex = index;
+      _pendingWall = null;
+      _dirty = true;
+    });
+  }
+
   void _deleteWall() {
     final index = _selectedWallIndex;
     if (index == null) return;
@@ -1220,11 +1250,65 @@ class _GeneralTabState extends State<GeneralTab> {
             ErrorNote(_saveError!),
             const SizedBox(height: 8),
           ],
-          _PlanCounts(layout: layout),
+          Row(
+            children: [
+              Expanded(child: _PlanCounts(layout: layout)),
+              _zoomControls(context),
+            ],
+          ),
           const SizedBox(height: 8),
           _mapAndSummary(context, name: name, layout: layout),
         ] else
           const SizedBox.shrink(),
+      ],
+    );
+  }
+
+  /// 1.0 is the whole plan on screen; the buttons step from there.
+  ///
+  /// Held by the tab rather than the canvas because the controls sit with the
+  /// other map buttons, and because a zoom that reset on every status poll —
+  /// this tab refreshes every 30 seconds — would snap the view back under
+  /// somebody mid-look.
+  double _zoom = 1.0;
+
+  static const double _zoomStep = 0.25;
+  static const double _zoomMin = 0.5;
+  static const double _zoomMax = 3.0;
+
+  void _setZoom(double value) {
+    setState(() => _zoom = value.clamp(_zoomMin, _zoomMax));
+  }
+
+  /// Minus, the percentage, plus, and a way back to the whole plan.
+  ///
+  /// The reading is written out rather than implied by the buttons: somebody
+  /// who has clicked plus four times and cannot see a tile needs to know
+  /// whether they are at 200% or at the ceiling, and "Fit" is the one control
+  /// that is always correct to press.
+  Widget _zoomControls(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const Key('floor-plan-zoom-out'),
+          icon: const Icon(Icons.remove),
+          tooltip: 'Zoom out',
+          onPressed: _zoom <= _zoomMin ? null : () => _setZoom(_zoom - _zoomStep),
+        ),
+        Text('${(_zoom * 100).round()}%',
+            style: Theme.of(context).textTheme.labelMedium),
+        IconButton(
+          key: const Key('floor-plan-zoom-in'),
+          icon: const Icon(Icons.add),
+          tooltip: 'Zoom in',
+          onPressed: _zoom >= _zoomMax ? null : () => _setZoom(_zoom + _zoomStep),
+        ),
+        TextButton(
+          key: const Key('floor-plan-zoom-fit'),
+          onPressed: _zoom == 1.0 ? null : () => _setZoom(1.0),
+          child: const Text('Fit'),
+        ),
       ],
     );
   }
@@ -1248,6 +1332,7 @@ class _GeneralTabState extends State<GeneralTab> {
     final canvas = FloorPlanCanvas(
       key: const Key('floor-plan-canvas'),
       layout: layout,
+      zoom: _zoom,
       status: _status ?? const {},
       selectedNodeId: _selectedNodeId,
       onSelectNode: _selectNode,
@@ -1258,6 +1343,7 @@ class _GeneralTabState extends State<GeneralTab> {
       pendingWall: _pendingWall,
       selectedWallIndex: _selectedWallIndex,
       onSelectWall: _editing && _wallMode ? _selectWall : null,
+      onWallMoved: _editing && _wallMode ? _moveWall : null,
     );
 
     final summary = FloorPlanSummary(

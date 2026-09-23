@@ -28,9 +28,15 @@ use Illuminate\Mail\Mailables\Envelope;
  */
 class SavedReportMail extends Mailable
 {
+    /**
+     * @param  string  $businessName  the business this report is about, named in
+     *                                the subcopy so a recipient can tell who
+     *                                actually sent it
+     */
     public function __construct(
         public readonly SavedReport $report,
         public readonly ReportResult $result,
+        public readonly string $businessName = '',
     ) {}
 
     public function envelope(): Envelope
@@ -45,10 +51,31 @@ class SavedReportMail extends Mailable
         return new Content(
             markdown: 'emails.saved-report',
             with: [
-                'name'    => $this->report->name,
+                'name' => $this->report->name,
                 'summary' => $this->report->description,
-                'count'   => $this->result->count,
-                'capped'  => $this->result->capped,
+                'count' => $this->result->count,
+                'capped' => $this->result->capped,
+
+                /*
+                 * WHO THIS IS FROM, and it is a published promise rather than a
+                 * nicety.
+                 *
+                 * ezbizi.com/privacy says of mail EzBizi sends for a business:
+                 * "Those leave from EzBizi's own address rather than the
+                 * organization's, and the body says which business the work is
+                 * about." That sentence was true of the inspection report and
+                 * of AutomationMessage, and false here — this subcopy named the
+                 * rule and never the business, so a customer received a CSV
+                 * about their own data from noreply@ezbizi.com and was told an
+                 * automation rule sent it. Raised by the SES session, 2026-09-22.
+                 *
+                 * Defaulted to empty rather than required: a mailable is
+                 * constructed in places a scope is not to hand, and an
+                 * unnamed business is a missing sentence rather than a crash
+                 * on somebody's report run. The template omits the clause
+                 * rather than printing "Sent by  through EzBizi."
+                 */
+                'business' => $this->businessName,
             ],
         );
     }

@@ -8,6 +8,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/shortcode_button.dart';
 import 'chat_hours.dart';
+import 'widget_previews.dart';
 
 /// Web Management → Widgets: how a site's chat bubble and contact form look,
 /// and what the form asks.
@@ -79,6 +80,27 @@ class _WidgetsTabState extends State<WidgetsTab> {
 
   bool get _canEdit => widget.session.me!.can('web_management.edit');
 
+  /// How many websites belong to the same company as the one open.
+  ///
+  /// Per COMPANY, not "everything in the rail": somebody who can reach two
+  /// companies would otherwise be told a company-wide switch covers sites it
+  /// cannot touch. The server scopes by company either way; this is the label
+  /// agreeing with what the button will do.
+  int get _companySiteCount {
+    final open = _sites.firstWhere(
+      (site) => site['id'] == _selected,
+      orElse: () => const <String, dynamic>{},
+    );
+
+    final company = (open['company'] as Map?)?['id'];
+
+    if (company == null) return _sites.length;
+
+    return _sites
+        .where((site) => (site['company'] as Map?)?['id'] == company)
+        .length;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
@@ -137,6 +159,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
             key: ValueKey(_selected),
             api: widget.api,
             siteId: _selected!,
+            siteCount: _companySiteCount,
             canEdit: _canEdit,
             previewWidth: _previewWidth,
             onPreviewSettled: () => widget.session.setPreference(
@@ -178,6 +201,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
                       key: ValueKey(_selected),
                       api: widget.api,
                       siteId: _selected!,
+                      siteCount: _companySiteCount,
                       canEdit: _canEdit,
                       previewWidth: _previewWidth,
                       onPreviewSettled: () => widget.session.setPreference(
@@ -301,6 +325,7 @@ class _WidgetEditor extends StatefulWidget {
     super.key,
     required this.api,
     required this.siteId,
+    required this.siteCount,
     required this.canEdit,
     required this.previewWidth,
     required this.onPreviewDelta,
@@ -309,6 +334,13 @@ class _WidgetEditor extends StatefulWidget {
 
   final ApiClient api;
   final String siteId;
+
+  /// How many websites this site's COMPANY has.
+  ///
+  /// Counted from the rail rather than asked for separately, and counted per
+  /// company rather than as "every site in the list" — the rail can hold two
+  /// companies, and "all 47 websites" is a promise about one of them.
+  final int siteCount;
   final bool canEdit;
 
   /// Owned by the parent, because this widget is rebuilt from scratch whenever
@@ -325,6 +357,15 @@ class _WidgetEditor extends StatefulWidget {
 }
 
 class _WidgetEditorState extends State<_WidgetEditor> {
+  /// True while a company-wide action is in flight.
+  ///
+  /// Its own flag rather than `_saving`: that one belongs to the Save button
+  /// and these buttons change sites this pane is not showing, so sharing it
+  /// would grey out Save for a reason the person cannot see.
+  bool _working = false;
+
+  int get _siteCount => widget.siteCount;
+
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -457,6 +498,27 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     final form = _section('form');
     final style = _section('style');
 
+    final following = !_own
+        ? Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Following the primary website. Change anything here and this '
+              'site starts answering for itself.',
+              style: theme.textTheme.bodySmall,
+            ),
+          )
+        : const SizedBox.shrink();
+
+    // Nothing chosen: the cards, full width. No preview pane, because a
+    // preview of six widgets at once is the thing being replaced.
+    if (_focus == null) {
+      return ListView(
+        key: const ValueKey('widgets-cards'),
+        padding: const EdgeInsets.all(20),
+        children: [following, ..._cards(theme, chat, style)],
+      );
+    }
+
     final formPane = ListView(
       // Named so a test can drive THIS scrollable. There are three on the
       // screen and the pane's own headings are ListView children, so a finder
@@ -465,125 +527,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       key: const ValueKey('widgets-editor'),
       padding: const EdgeInsets.all(20),
       children: [
-        if (!_own)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Following the primary website. Change anything here and this '
-              'site starts answering for itself.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ),
-
-        Text('Live chat', style: theme.textTheme.titleSmall),
-        _chatSwitch(theme, chat),
-        _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
-        _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
-        _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
-        _text(theme, 'Box placeholder', chat['placeholder'],
-            (v) => _set('chat', 'placeholder', v)),
-
-        // What the visitor is asked BEFORE the conversation starts. Without
-        // these three answers a chat arrives in Leads with nobody's name on
-        // it, and the only way to reply is to hope they come back.
-        _text(theme, 'Before they start', chat['lead_in'],
-            (v) => _set('chat', 'lead_in', v)),
-        _text(theme, 'Name question', chat['name_label'],
-            (v) => _set('chat', 'name_label', v)),
-        _text(theme, 'Contact question', chat['contact_label'],
-            (v) => _set('chat', 'contact_label', v)),
-        _text(theme, 'Message question', chat['message_label'],
-            (v) => _set('chat', 'message_label', v)),
-        _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
-
-        // Sent back the moment they press it. A real message on the thread, so
-        // whoever picks the conversation up in Leads can see what the person
-        // was already told. Leave it empty to send nothing.
-        _text(theme, 'Automatic first reply', chat['auto_reply'],
-            (v) => _set('chat', 'auto_reply', v)),
-        _dropdown(
-          theme,
-          'Where it sits',
-          '${chat['position'] ?? 'bottom-right'}',
-          const ['bottom-right', 'bottom-left', 'inline'],
-          (v) => _set('chat', 'position', v),
-        ),
-
-        const SizedBox(height: 16),
-        /*
-         * Both keys in one call, because the server drops a schedule with no
-         * zone and a zone with no schedule. Setting them one at a time would
-         * mean a save that silently discards the half that arrived first.
-         */
-        ChatHoursField(
-          hours: (chat['hours'] as List? ?? const [])
-              .whereType<Map>()
-              .map((day) => Map<String, dynamic>.from(day))
-              .toList(),
-          timezone: '${chat['timezone'] ?? ''}',
-          enabled: widget.canEdit,
-          onChanged: (hours, timezone) => setState(() {
-            final part = _section('chat');
-            part['hours'] = hours;
-            part['timezone'] = timezone;
-            _config['chat'] = part;
-            _saved = null;
-          }),
-        ),
-
-        const Divider(height: 32),
-        Text('Contact form', style: theme.textTheme.titleSmall),
-        _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
-        _text(theme, 'Thank you message', form['thanks'],
-            (v) => _set('form', 'thanks', v)),
-        const SizedBox(height: 12),
-        _FieldList(
-          fields: (form['fields'] as List? ?? const [])
-              .whereType<Map>()
-              .map((f) => Map<String, dynamic>.from(f))
-              .toList(),
-          types: _fieldTypes,
-          canEdit: widget.canEdit,
-          onChanged: (fields) => _set('form', 'fields', fields),
-        ),
-
-        const Divider(height: 32),
-        Text('Look', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          _brand == null
-              // Said plainly rather than hidden: a business that has told us no
-              // colour is getting OURS on THEIR website, and the person who
-              // would mind is the one least likely to be reading this screen.
-              ? 'These widgets appear on your own website, so they start from '
-                  'your brand colour — you have not set one, so they are using '
-                  'a neutral blue until you do.'
-              : 'Starting from your brand colour, $_brand. Change anything here '
-                  'and this site keeps its own instead.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Shared by both widgets — a site that sets its accent means it for '
-          'the chat and the form.',
-          style: theme.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 8),
-        _text(theme, 'Accent colour (#rrggbb)', style['accent'],
-            (v) => _set('style', 'accent', v)),
-        _presets(theme),
-        _text(theme, 'Text on the accent', style['on_accent'],
-            (v) => _set('style', 'on_accent', v)),
-        _pair(theme, style['on_accent'], style['accent'], 'the accent'),
-        _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
-        _text(theme, 'Background', style['background'],
-            (v) => _set('style', 'background', v)),
-        _pair(theme, style['text'], style['background'], 'the background'),
-        _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
-        _text(theme, 'Corner radius', '${style['radius'] ?? 12}',
-            (v) => _set('style', 'radius', int.tryParse(v) ?? 12)),
-
-        _renderedWidgets(theme),
+        following,
+        _focusHeader(theme),
+        ..._focusedFields(theme, chat, form, style),
 
         const SizedBox(height: 16),
         if (_error != null) ErrorNote(_error!),
@@ -601,6 +547,25 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                   onPressed: _saving ? null : _followPrimary,
                   child: const Text('Follow the primary again'),
                 ),
+              /*
+               * Jose, 2026-09-23: "can we add a button to clear the cache as
+               * well, or make it so when any change it done and saved it
+               * clears it".
+               *
+               * The second half is already true — since plugin 1.13.0 a site
+               * clears its own page cache whenever EzBizi's answer changes, so
+               * saving IS clearing. This button is for the case that does not
+               * cover: a page gone stale for a reason EzBizi never saw.
+               */
+              TextButton.icon(
+                onPressed: _working ? null : _refreshEverywhere,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(
+                  _siteCount > 1
+                      ? 'Rebuild all $_siteCount websites'
+                      : 'Rebuild this website',
+                ),
+              ),
               FilledButton(
                 onPressed: _saving ? null : _save,
                 child: Text(_saving ? 'Saving…' : 'Save'),
@@ -625,23 +590,307 @@ class _WidgetEditorState extends State<_WidgetEditor> {
      */
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < 920) return formPane;
+      if (constraints.maxWidth < 920) return formPane;
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: formPane),
-            _DragHandle(
-              tooltip: 'Drag to resize the preview',
-              onDelta: widget.onPreviewDelta,
-              onSettled: widget.onPreviewSettled,
-            ),
-            SizedBox(width: widget.previewWidth, child: _preview(theme)),
-          ],
-        );
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: formPane),
+          _DragHandle(
+            tooltip: 'Drag to resize the preview',
+            onDelta: widget.onPreviewDelta,
+            onSettled: widget.onPreviewSettled,
+          ),
+          SizedBox(width: widget.previewWidth, child: _preview(theme)),
+        ],
+      );
       },
     );
   }
+
+  /// ── One widget at a time ──────────────────────────────────────
+  ///
+  /// Jose, 2026-09-23: *"i'd like to see each widget as a card, so i can click
+  /// on them and focus on it, and so i dont see all the previews at once on
+  /// the right side"*.
+  ///
+  /// The screen used to be one column holding every widget's settings at once,
+  /// with a preview pane showing the chat and the form together. Six widgets
+  /// in, that is a page somebody scrolls past four things to reach the fifth,
+  /// beside a preview of two of them. So the fields below are grouped per
+  /// widget and only the chosen one is drawn.
+  ///
+  /// The SAVE is still one save. A site has one widget config and the API
+  /// takes it whole, so focusing is about what you look at rather than about
+  /// what you are editing — somebody who opens three cards and presses Save
+  /// once saves all three, which is the behaviour that cannot surprise.
+
+  /// Which widget is open, by key, or null for the cards.
+  ///
+  /// A KEY rather than an index: the catalogue below grows, and an index would
+  /// point at a different widget the day somebody adds one.
+  String? _focus;
+
+  /// Every widget this screen dresses, in the order the cards draw them.
+  ///
+  /// `chat`, `form` and `look` are hand-written because they are not rendered
+  /// from a shortcode the way the other four are — the chat and the form are
+  /// placed as widgets or drawn in the footer, and Look is shared by all of
+  /// them rather than being a widget at all.
+  List<_WidgetCardSpec> get _catalogue => [
+    const _WidgetCardSpec(
+      'chat',
+      'Live chat',
+      'The bubble a visitor opens to start a conversation.',
+      Icons.chat_bubble_outline,
+    ),
+    const _WidgetCardSpec(
+      'form',
+      'Contact form',
+      'The questions a visitor answers to send a message.',
+      Icons.assignment_outlined,
+    ),
+    for (final rendered in _renderedCatalogue)
+      _WidgetCardSpec(
+        rendered.key,
+        rendered.label,
+        rendered.blurb,
+        _renderedIcons[rendered.key] ?? Icons.widgets_outlined,
+      ),
+    const _WidgetCardSpec(
+      'look',
+      'Look',
+      'Colours, corners and typeface, shared by every widget above.',
+      Icons.palette_outlined,
+    ),
+  ];
+
+  /// One line under each card saying what it is set to NOW.
+  ///
+  /// The point of a card grid is to answer "what is switched on here" without
+  /// opening anything; six cards that all read the same would put that answer
+  /// one click further away than the old long column did.
+  String _cardStatus(String key, Map<String, dynamic> chat, Map<String, dynamic> style) {
+    switch (key) {
+      case 'chat':
+        if (chat['enabled'] == false) return 'Not on this website';
+
+        final hours = (chat['hours'] as List? ?? const []).length;
+
+        return hours == 7 ? 'On, during set hours' : 'On, at all hours';
+      case 'form':
+        final fields = (_section('form')['fields'] as List? ?? const []).length;
+
+        return fields == 1 ? '1 question' : '$fields questions';
+      case 'look':
+        return '${style['accent'] ?? ''} · ${style['radius'] ?? 12}px corners';
+      default:
+        // `default` is not one of these. Every widget always has it — the
+        // server guarantees it — so counting it would make all four cards read
+        // "1 named preset" for a site where nobody has named anything.
+        final named = Map<String, dynamic>.from(
+          (_config['presets'] as Map? ?? const {})[key] as Map? ?? const {},
+        ).keys.where((name) => name != 'default').length;
+
+        if (named == 0) return 'Default look';
+
+        return named == 1 ? '1 named preset' : '$named named presets';
+    }
+  }
+
+  List<Widget> _cards(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> style,
+  ) => [
+    // No 'Widgets' heading. The tab strip directly above already says it, and
+    // the same word twice reads as two things — the precedent is the HR
+    // dashboard's heading, removed for sitting under a chip of its own name.
+    Text(
+      'Open one to change it and see it previewed on its own. Everything here '
+      'saves together.',
+      style: theme.textTheme.bodySmall,
+    ),
+    const SizedBox(height: 16),
+    Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        for (final spec in _catalogue)
+          _WidgetCard(
+            spec: spec,
+            status: _cardStatus(spec.key, chat, style),
+            onOpen: () => setState(() => _focus = spec.key),
+          ),
+      ],
+    ),
+  ];
+
+  /// The way back, and the name of what is open.
+  Widget _focusHeader(ThemeData theme) {
+    final spec = _catalogue.firstWhere((s) => s.key == _focus);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back to the widgets',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _focus = null),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(spec.label, style: theme.textTheme.titleSmall),
+                Text(spec.blurb, style: theme.textTheme.bodySmall),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The fields of whichever widget is open.
+  List<Widget> _focusedFields(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> form,
+    Map<String, dynamic> style,
+  ) {
+    switch (_focus) {
+      case 'chat':
+        return _chatFields(theme, chat);
+      case 'form':
+        return _formFields(theme, form);
+      case 'look':
+        return _lookFields(theme, style);
+      default:
+        return _renderedFields(
+          theme,
+          _renderedCatalogue.firstWhere((r) => r.key == _focus),
+        );
+    }
+  }
+
+  List<Widget> _chatFields(ThemeData theme, Map<String, dynamic> chat) => [
+      _chatSwitch(theme, chat),
+      _text(theme, 'Title', chat['title'], (v) => _set('chat', 'title', v)),
+      _text(theme, 'Opening line', chat['intro'], (v) => _set('chat', 'intro', v)),
+      _text(theme, 'Bubble label', chat['button'], (v) => _set('chat', 'button', v)),
+      _text(theme, 'Box placeholder', chat['placeholder'],
+          (v) => _set('chat', 'placeholder', v)),
+
+      // What the visitor is asked BEFORE the conversation starts. Without
+      // these three answers a chat arrives in Leads with nobody's name on
+      // it, and the only way to reply is to hope they come back.
+      _text(theme, 'Before they start', chat['lead_in'],
+          (v) => _set('chat', 'lead_in', v)),
+      _text(theme, 'Name question', chat['name_label'],
+          (v) => _set('chat', 'name_label', v)),
+      _text(theme, 'Contact question', chat['contact_label'],
+          (v) => _set('chat', 'contact_label', v)),
+      _text(theme, 'Message question', chat['message_label'],
+          (v) => _set('chat', 'message_label', v)),
+      _text(theme, 'Start button', chat['start'], (v) => _set('chat', 'start', v)),
+
+      // Sent back the moment they press it. A real message on the thread, so
+      // whoever picks the conversation up in Leads can see what the person
+      // was already told. Leave it empty to send nothing.
+      _text(theme, 'Automatic first reply', chat['auto_reply'],
+          (v) => _set('chat', 'auto_reply', v)),
+      _dropdown(
+        theme,
+        'Where it sits',
+        '${chat['position'] ?? 'bottom-right'}',
+        const ['bottom-right', 'bottom-left', 'inline'],
+        (v) => _set('chat', 'position', v),
+      ),
+
+      const SizedBox(height: 16),
+      /*
+       * Both keys in one call, because the server drops a schedule with no
+       * zone and a zone with no schedule. Setting them one at a time would
+       * mean a save that silently discards the half that arrived first.
+       */
+      ChatHoursField(
+        hours: (chat['hours'] as List? ?? const [])
+            .whereType<Map>()
+            .map((day) => Map<String, dynamic>.from(day))
+            .toList(),
+        timezone: '${chat['timezone'] ?? ''}',
+        enabled: widget.canEdit,
+        onChanged: (hours, timezone) => setState(() {
+          final part = _section('chat');
+          part['hours'] = hours;
+          part['timezone'] = timezone;
+          _config['chat'] = part;
+          _saved = null;
+        }),
+      ),
+
+  ];
+
+  List<Widget> _formFields(ThemeData theme, Map<String, dynamic> form) => [
+      _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
+      _text(theme, 'Thank you message', form['thanks'],
+          (v) => _set('form', 'thanks', v)),
+      const SizedBox(height: 12),
+      _FieldList(
+        fields: (form['fields'] as List? ?? const [])
+            .whereType<Map>()
+            .map((f) => Map<String, dynamic>.from(f))
+            .toList(),
+        types: _fieldTypes,
+        canEdit: widget.canEdit,
+        onChanged: (fields) => _set('form', 'fields', fields),
+      ),
+
+  ];
+
+  /// Shared by every widget, which is why it is its own card rather than a
+  /// section inside one: a colour changed here moves the chat, the form and
+  /// the four rendered widgets together, and a person who found it under
+  /// "Live chat" would reasonably think it belonged to the chat.
+  List<Widget> _lookFields(ThemeData theme, Map<String, dynamic> style) => [
+      const SizedBox(height: 4),
+      Text(
+        _brand == null
+            // Said plainly rather than hidden: a business that has told us no
+            // colour is getting OURS on THEIR website, and the person who
+            // would mind is the one least likely to be reading this screen.
+            ? 'These widgets appear on your own website, so they start from '
+                'your brand colour — you have not set one, so they are using '
+                'a neutral blue until you do.'
+            : 'Starting from your brand colour, $_brand. Change anything here '
+                'and this site keeps its own instead.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 4),
+      Text(
+        'Shared by both widgets — a site that sets its accent means it for '
+        'the chat and the form.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      _text(theme, 'Accent colour (#rrggbb)', style['accent'],
+          (v) => _set('style', 'accent', v)),
+      _presets(theme),
+      _text(theme, 'Text on the accent', style['on_accent'],
+          (v) => _set('style', 'on_accent', v)),
+      _pair(theme, style['on_accent'], style['accent'], 'the accent'),
+      _text(theme, 'Text colour', style['text'], (v) => _set('style', 'text', v)),
+      _text(theme, 'Background', style['background'],
+          (v) => _set('style', 'background', v)),
+      _pair(theme, style['text'], style['background'], 'the background'),
+      _text(theme, 'Font family', style['font'], (v) => _set('style', 'font', v)),
+      _text(theme, 'Corner radius', '${style['radius'] ?? 12}',
+          (v) => _set('style', 'radius', int.tryParse(v) ?? 12)),
+
+  ];
 
   /// Whether this website has a live chat at all.
   ///
@@ -679,43 +928,171 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: on,
-          onChanged:
-              widget.canEdit ? (v) => _set('chat', 'enabled', v) : null,
-          title: const Text('Show the chat on this website'),
-          subtitle: Text(
-            'On, the bubble is on every page. Off, there is no chat on the '
-            'website at all — which is not what the chat hours below do: '
-            'those keep the bubble off the page outside your hours.',
-            style: theme.textTheme.bodySmall,
-          ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: on,
+        onChanged:
+            widget.canEdit ? (v) => _set('chat', 'enabled', v) : null,
+        title: const Text('Show the chat on this website'),
+        subtitle: Text(
+          'On, the bubble is on every page. Off, there is no chat on the '
+          'website at all — which is not what the chat hours below do: '
+          'those keep the bubble off the page outside your hours.',
+          style: theme.textTheme.bodySmall,
         ),
-        if (!on)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 12),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: theme.colorScheme.outlineVariant),
-              ),
-              child: Text(
-                'There is no chat on this website. No visitor sees a bubble on '
-                'any page, and nothing anybody types can reach Leads. The '
-                'wording below is still yours to change — it goes live the '
-                'moment the switch above does.',
-                style: theme.textTheme.bodySmall,
-              ),
+      ),
+      if (!on)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+            ),
+            child: Text(
+              'There is no chat on this website. No visitor sees a bubble on '
+              'any page, and nothing anybody types can reach Leads. The '
+              'wording below is still yours to change — it goes live the '
+              'moment the switch above does.',
+              style: theme.textTheme.bodySmall,
             ),
           ),
+        ),
+
+      /*
+       * ── The switch that covers the business ──
+       *
+       * Jose, 2026-09-23: he switched the chat off HERE, on one website, and
+       * kept receiving chats all day. A-1 Chimney has 47 sites; the other 46
+       * follow the primary, which was still on. Nothing was broken and the
+       * screen said nothing, because a screen that shows one site at a time
+       * cannot say "and the other forty-six are still on" unless somebody
+       * makes it.
+       *
+       * So the count is on the label. "every one of this company's 47
+       * websites" is the sentence that would have stopped the whole day.
+       */
+      if (widget.canEdit && _siteCount > 1) ...[
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _working ? null : () => _chatEverywhere(false),
+              icon: const Icon(Icons.public_off, size: 18),
+              label: Text('Turn the chat off on all $_siteCount websites'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _working ? null : () => _chatEverywhere(true),
+              icon: const Icon(Icons.public, size: 18),
+              label: Text('Turn it on on all $_siteCount'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Every website this company owns, including the ones that answer for '
+          'themselves rather than following the primary.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+      ],
       ],
     );
   }
 
-  /// The widgets that render where somebody puts them, dressed by name.
+  /// Switch the chat for every site of this company, and reload.
+  ///
+  /// Reloaded rather than patched locally: the answer covers sites this screen
+  /// is not showing, and a pane that said "off" while another site's row said
+  /// otherwise is the confusion this button exists to end.
+  Future<void> _chatEverywhere(bool enabled) async {
+    setState(() {
+      _working = true;
+      _saved = null;
+      _error = null;
+    });
+
+    final response = await widget.api.post(
+      '/web/sites/${widget.siteId}/widgets/chat',
+      {'enabled': enabled, 'scope': 'company'},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _working = false;
+        _error = response.message;
+      });
+
+      return;
+    }
+
+    final changed = response.body['changed'];
+
+    setState(() {
+      _working = false;
+      _config = Map<String, dynamic>.from(
+        response.body['config'] as Map? ?? const {},
+      );
+      _saved = enabled
+          ? 'The chat is on again on $changed websites.'
+          : 'The chat is off on $changed websites. Their pages update within '
+                'a few minutes.';
+    });
+  }
+
+  /// Ask every site of this company to throw away its cached pages.
+  ///
+  /// ── What this promises, and what it cannot ──
+  ///
+  /// EzBizi cannot reach into a customer's website. The plugin PULLS every
+  /// five minutes and, since 1.13.0, clears the site's page cache whenever
+  /// what it pulled differs from what it had — so a saved change already
+  /// reaches visitors on its own. This guarantees the next pull counts as a
+  /// change, which matters when the cached page is stale for a reason EzBizi
+  /// never saw.
+  ///
+  /// The wording says "in the next few minutes" rather than "cleared". This
+  /// side cannot observe a customer's cache and must not claim to.
+  Future<void> _refreshEverywhere() async {
+    setState(() {
+      _working = true;
+      _saved = null;
+      _error = null;
+    });
+
+    final response = await widget.api.post(
+      '/web/sites/${widget.siteId}/widgets/refresh',
+      {'scope': _siteCount > 1 ? 'company' : 'site'},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _working = false;
+
+      if (!response.ok) {
+        _error = response.message;
+
+        return;
+      }
+
+      final asked = response.body['asked'];
+
+      _saved = asked == 1
+          ? 'Asked this website to rebuild its pages. It updates within a few '
+                'minutes.'
+          : 'Asked all $asked websites to rebuild their pages. They update '
+                'within a few minutes.';
+    });
+  }
+
+  /// One rendered widget's presets, dressed by name.
   ///
   /// ── Why a name is the only shortcode argument ──
   ///
@@ -725,41 +1102,35 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   /// contact panel, on the same site — so the name is the argument and the
   /// values behind it still live here. `WidgetPresets` carries the whole of
   /// that argument and why it ends this way.
-  Widget _renderedWidgets(ThemeData theme) {
-    final stored =
-        Map<String, dynamic>.from(_config['presets'] as Map? ?? const {});
+  ///
+  /// One widget at a time now, rather than all four in a column: the card that
+  /// opened this is the choice the column used to ask for by scrolling.
+  List<Widget> _renderedFields(ThemeData theme, _Rendered rendered) {
+    final stored = Map<String, dynamic>.from(_config['presets'] as Map? ?? {});
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Divider(height: 32),
-        Text('Rendered widgets', style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          'Paste the shortcode where it belongs on the page; everything about '
-          'how it looks is set here. A page that needs a different look asks '
-          'for a preset by name, and a name nobody has made renders the '
-          'default rather than nothing.',
-          style: theme.textTheme.bodySmall,
+    return [
+      Text(
+        'Paste the shortcode where it belongs on the page; everything about '
+        'how it looks is set here. A page that needs a different look asks '
+        'for a preset by name, and a name nobody has made renders the '
+        'default rather than nothing.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 12),
+      _PresetCard(
+        rendered: rendered,
+        presets: Map<String, dynamic>.from(
+          stored[rendered.key] as Map? ?? const {},
         ),
-        const SizedBox(height: 12),
-        for (final rendered in _renderedCatalogue)
-          _PresetCard(
-            rendered: rendered,
-            presets: Map<String, dynamic>.from(
-              stored[rendered.key] as Map? ?? const {},
-            ),
-            canEdit: widget.canEdit,
-            onChanged: (named) => setState(() {
-              final all =
-                  Map<String, dynamic>.from(_config['presets'] as Map? ?? {});
-              all[rendered.key] = named;
-              _config['presets'] = all;
-              _saved = null;
-            }),
-          ),
-      ],
-    );
+        canEdit: widget.canEdit,
+        onChanged: (named) => setState(() {
+          final all = Map<String, dynamic>.from(_config['presets'] as Map? ?? {});
+          all[rendered.key] = named;
+          _config['presets'] = all;
+          _saved = null;
+        }),
+      ),
+    ];
   }
 
   /// The widgets as a visitor meets them, drawn from the values being edited.
@@ -804,8 +1175,39 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        _previewHeading(theme, 'Live chat'),
+        _previewHeading(theme, _catalogue.firstWhere((s) => s.key == _focus).label),
         const SizedBox(height: 8),
+        ..._previewFor(theme, chat, form, accent, onAccent, text, surface, radius),
+      ],
+    );
+  }
+
+  /// The preview of whichever widget is open, and only that one.
+  ///
+  /// Jose, 2026-09-23: *"so i dont see all the previews at once on the right
+  /// side"*. The pane used to draw the chat and the form together and nothing
+  /// at all for the other four, which made the right-hand side simultaneously
+  /// too much and too little.
+  ///
+  /// EVERY widget answers here, including the four rendered ones that had no
+  /// preview before. Those are markup the PLUGIN writes on a page we do not
+  /// serve, so what is drawn is an approximation of shape and dressing rather
+  /// than a screenshot — the same honesty the pane has always claimed, applied
+  /// to four more things. What it IS exact about is the values on this screen:
+  /// the colours, the corner radius, the icon size, the column count.
+  List<Widget> _previewFor(
+    ThemeData theme,
+    Map<String, dynamic> chat,
+    Map<String, dynamic> form,
+    Color accent,
+    Color onAccent,
+    Color text,
+    Color surface,
+    double radius,
+  ) {
+    switch (_focus) {
+      case 'chat':
+        return [
         if (chat['enabled'] == false)
           _mockPage(
             theme,
@@ -942,9 +1344,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        _previewHeading(theme, 'Contact form'),
-        const SizedBox(height: 8),
+        ];
+      case 'form':
+        return [
         _mockPage(
           theme,
           child: _mockPanel(
@@ -987,9 +1389,96 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ),
           ),
         ),
-      ],
-    );
+        ];
+      case 'look':
+        return _lookPreview(theme, accent, onAccent, text, surface, radius);
+      default:
+        return [
+          _mockPage(
+            theme,
+            child: renderedPreview(
+              key: _focus!,
+              theme: theme,
+              options: _previewOptions(_focus!),
+              accent: accent,
+              onAccent: onAccent,
+              text: text,
+              surface: surface,
+              radius: radius,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Drawn from the DEFAULT preset. A page that asks for one by name '
+            'gets that one instead.',
+            style: theme.textTheme.bodySmall,
+          ),
+        ];
+    }
   }
+
+  /// The default preset's values for one rendered widget, falling back to the
+  /// catalogue's own defaults for anything nobody has set.
+  Map<String, dynamic> _previewOptions(String key) {
+    final rendered = _renderedCatalogue.firstWhere((r) => r.key == key);
+    final named = Map<String, dynamic>.from(
+      (_config['presets'] as Map? ?? const {})[key] as Map? ?? const {},
+    );
+    final stored = Map<String, dynamic>.from(
+      named['default'] as Map? ?? const {},
+    );
+
+    return {
+      for (final knob in rendered.knobs) knob.key: stored[knob.key] ?? knob.fallbackValue,
+    };
+  }
+
+  /// Look has no widget of its own, so it previews what it CHANGES: the same
+  /// dressing every other widget wears, on one panel and one button.
+  List<Widget> _lookPreview(
+    ThemeData theme,
+    Color accent,
+    Color onAccent,
+    Color text,
+    Color surface,
+    double radius,
+  ) => [
+    _mockPage(
+      theme,
+      child: _mockPanel(
+        surface: surface,
+        radius: radius,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A panel, in your colours',
+              style: TextStyle(color: text, fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Body text sits on the background colour, and the corner radius '
+              'below is the one every widget uses.',
+              style: TextStyle(color: text.withValues(alpha: 0.85), fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            _mockInput('A box somebody types in', radius, text),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: _mockButton('A button', accent, onAccent, radius),
+            ),
+          ],
+        ),
+      ),
+    ),
+    const SizedBox(height: 8),
+    Text(
+      'Every widget wears this. Changing it here moves the chat, the form and '
+      'the four rendered widgets together.',
+      style: theme.textTheme.bodySmall,
+    ),
+  ];
 
   static String _line(Object? value) => '${value ?? ''}';
 
@@ -1516,6 +2005,21 @@ sealed class _Knob {
 
   final String key;
   final String label;
+
+  /// What this knob is worth when nobody has set it.
+  ///
+  /// Each subclass already carried its own default under a different name —
+  /// the first option, `fallback`, `fallback` again — and the preview needs
+  /// one question it can ask any knob. The values are unchanged; this only
+  /// gives them a single name to be asked for by.
+  Object get fallbackValue => switch (this) {
+    _Choice(:final options) => options.first,
+    _Number(:final fallback) => fallback,
+    _Flag(:final fallback) => fallback,
+    // Empty, and the plugin reads empty as "use the wording that matches the
+    // action" — so a site that says nothing still gets a sentence.
+    _Text() => '',
+  };
 }
 
 class _Choice extends _Knob {
@@ -1562,7 +2066,137 @@ class _Flag extends _Knob {
   final bool fallback;
 }
 
+/// An option somebody types.
+///
+/// The three above cover presentation — which arrangement, how big, on or off
+/// — and that was all the first four widgets needed. A call to action needs
+/// WORDS: A1's bar says "CALL US TODAY" and Everdoors' popup says something
+/// else entirely, and neither is a choice from a list.
+///
+/// `max` matches `WidgetPresets::TEXT` on the server, which truncates. Two
+/// numbers that must agree is worse than one, but the alternative is a box
+/// that accepts eighty characters and silently stores sixty.
+class _Text extends _Knob {
+  const _Text(super.key, super.label, {this.hint = '', this.max = 80});
+
+  final String hint;
+  final int max;
+}
+
 /// One widget that renders where somebody puts it.
+/// One tile on the widgets grid.
+class _WidgetCardSpec {
+  const _WidgetCardSpec(this.key, this.label, this.blurb, this.icon);
+
+  final String key;
+  final String label;
+  final String blurb;
+  final IconData icon;
+}
+
+/// An icon per rendered widget, kept here rather than in `_renderedCatalogue`
+/// because that list is a hand copy of the SERVER's preset catalogue and
+/// nothing on the server has an opinion about icons.
+const Map<String, IconData> _renderedIcons = {
+  'social_links': Icons.share_outlined,
+  'city_list': Icons.location_city_outlined,
+  'hours_table': Icons.schedule_outlined,
+  'google_map': Icons.map_outlined,
+  'contact_info': Icons.contact_page_outlined,
+  'cta': Icons.ads_click_outlined,
+  'phone_box': Icons.phone_outlined,
+};
+
+/// A widget as a card: what it is, what it is set to, and a way in.
+///
+/// Fixed width rather than a grid with a column count. The cards wrap, so a
+/// narrow pane gets one per row and a wide one gets four, without this screen
+/// having to know which — and 260 is the width at which the longest status
+/// line ("On, during set hours") fits on one line.
+class _WidgetCard extends StatelessWidget {
+  const _WidgetCard({
+    required this.spec,
+    required this.status,
+    required this.onOpen,
+  });
+
+  final _WidgetCardSpec spec;
+  final String status;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    /*
+     * Jose, 2026-09-23: *"The cards should be uniform, same sizes"*.
+     *
+     * The width was already fixed; the HEIGHT was whatever the content came
+     * to. `Wrap` does not stretch its children, and the blurbs run to one line
+     * or two — "Where the business is." against "The bubble a visitor opens to
+     * start a conversation." — so the row was ragged along the bottom.
+     * Measured before fixing it: 115 against 132.
+     *
+     * 132 is the tallest the content reaches, not a number chosen to look
+     * right: icon row, a two-line blurb (`maxLines: 2` below caps it) and one
+     * status line. The blurb takes the slack via `Expanded`, so a one-line
+     * blurb pads downward and every status line lands on the same baseline
+     * across the row — which is the part that reads as uniform rather than
+     * the outlines matching.
+     */
+    return SizedBox(
+      width: 260,
+      height: MediaQuery.textScalerOf(context).scale(132),
+      child: Card(
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              // No `mainAxisSize.min` any more: the height is the SizedBox's
+              // now, and a Column told to shrink around an `Expanded` child is
+              // two answers to the same question.
+              children: [
+                Row(
+                  children: [
+                    Icon(spec.icon, size: 20, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(spec.label, style: theme.textTheme.titleSmall),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    spec.blurb,
+                    style: theme.textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // What it is set to now, so the grid answers "what is on here"
+                // without opening anything.
+                Text(
+                  status,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Rendered {
   const _Rendered(this.key, this.label, this.blurb, this.knobs);
 
@@ -1611,6 +2245,48 @@ const List<_Rendered> _renderedCatalogue = [
     [
       _Flag('today', 'Mark today’s row', true),
       _Flag('compact', 'Collapse days that share hours', false),
+    ],
+  ),
+  /*
+   * Jose, 2026-09-23, after walking A1 Tools' three live sites: "DO ALL OF
+   * THEM, END TO END". These three come first because they are the ones every
+   * page of a-1chimney.com, everdoors.com and crestln.com carries.
+   */
+  _Rendered(
+    'contact_info',
+    'Contact details',
+    'Phone, email and address as one block, the way a footer shows them.',
+    [
+      _Choice('layout', 'Arrangement', ['stack', 'row', 'compact']),
+      _Flag('icons', 'Show an icon beside each one', true),
+      _Flag('labels', 'Label each one', true),
+      _Flag('phone', 'Include the phone number', true),
+      _Flag('email', 'Include the email address', true),
+      _Flag('address', 'Include the address', true),
+    ],
+  ),
+  _Rendered(
+    'cta',
+    'Call to action',
+    'A button that calls, books or jumps to the form — in place, along the '
+        'bottom, or as a panel.',
+    [
+      _Choice('placement', 'Where it sits', ['inline', 'bar', 'popup']),
+      _Choice('action', 'What it does', ['call', 'book', 'form']),
+      _Text('text', 'Wording', hint: 'Leave empty to match what it does.'),
+      _Flag('icon', 'Show an icon', true),
+      _Flag('full_width', 'Fill the width it is given', false),
+    ],
+  ),
+  _Rendered(
+    'phone_box',
+    'Phone button',
+    'The number on its own, big enough to tap.',
+    [
+      _Choice('size', 'Size', ['small', 'medium', 'large']),
+      _Text('label', 'Line above it', hint: 'Optional.', max: 60),
+      _Flag('icon', 'Show an icon', true),
+      _Flag('link', 'Tapping it dials', true),
     ],
   ),
   _Rendered(
@@ -1941,6 +2617,26 @@ class _PresetCardState extends State<_PresetCard> {
               : values[flag.key] == true,
           onChanged: widget.canEdit ? (on) => set(on) : null,
           title: Text(flag.label, style: theme.textTheme.bodyMedium),
+        ),
+      _Text text => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextFormField(
+            // Keyed by preset AND option, so switching preset rebuilds the
+            // box with that preset's words. Without the preset in the key the
+            // field keeps the previous one's text, which is the bug the
+            // question rows on this screen already had once.
+            key: ValueKey('$preset:${text.key}'),
+            initialValue: '${values[text.key] ?? ''}',
+            enabled: widget.canEdit,
+            maxLength: text.max,
+            decoration: InputDecoration(
+              labelText: text.label,
+              helperText: text.hint.isEmpty ? null : text.hint,
+              isDense: true,
+              counterText: '',
+            ),
+            onChanged: set,
+          ),
         ),
     };
   }

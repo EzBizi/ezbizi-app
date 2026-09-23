@@ -393,6 +393,168 @@ void main() {
   // half of the guarantee — that tapping a row is what reaches the builder,
   // never a direct construction of it.
 
+  // -- Deleting a guide or a test (Jose, 2026-09-23: "no way to delete
+  //    guides or tests or drafts") --
+
+  testWidgets('deleting asks first, and sends nothing until it is confirmed', (tester) async {
+    final sent = <String>[];
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      guides: [_guide(id: 'g-1', title: 'Ladder Safety')],
+      onRequest: (request) {
+        if (request.method == 'DELETE') sent.add(request.url.path);
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('training.settings-delete-g-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Delete this guide?'), findsOneWidget);
+    expect(sent, isEmpty, reason: 'Asking is not doing.');
+
+    // And backing out leaves the row alone.
+    await tester.tap(find.byKey(const Key('training.settings-cancel-delete-g-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ladder Safety'), findsOneWidget);
+    expect(sent, isEmpty);
+  });
+
+  testWidgets('confirming sends the delete for that guide', (tester) async {
+    final sent = <String>[];
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      guides: [_guide(id: 'g-1', title: 'Ladder Safety')],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          sent.add(request.url.path);
+          return http.Response('', 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('training.settings-delete-g-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('training.settings-confirm-delete-g-1')));
+    await tester.pumpAndSettle();
+
+    expect(sent, hasLength(1));
+    expect(sent.single, endsWith('/training/guides/g-1'));
+  });
+
+  /// THE CASE THE INLINE CONFIRMATION EXISTS FOR.
+  ///
+  /// "New guide" creates "Untitled guide" every time, so the screen that
+  /// prompted this had three rows with identical titles. A confirmation that
+  /// named the title could not say WHICH row it meant, and a reader picking
+  /// the second would have no way to tell they had deleted the first.
+  testWidgets('with three identically titled drafts, the second row deletes the second', (tester) async {
+    final sent = <String>[];
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      guides: [
+        _guide(id: 'g-1', title: 'Untitled guide'),
+        _guide(id: 'g-2', title: 'Untitled guide'),
+        _guide(id: 'g-3', title: 'Untitled guide'),
+      ],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          sent.add(request.url.path);
+          return http.Response('', 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    // All three are drawn, and the titles cannot tell them apart.
+    expect(find.text('Untitled guide'), findsNWidgets(3));
+
+    await tester.tap(find.byKey(const Key('training.settings-delete-g-2')));
+    await tester.pumpAndSettle();
+
+    // Only the row that was asked about is asking — the other two are intact.
+    expect(find.textContaining('Delete this guide?'), findsOneWidget);
+    expect(find.text('Untitled guide'), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('training.settings-confirm-delete-g-2')));
+    await tester.pumpAndSettle();
+
+    expect(sent.single, endsWith('/training/guides/g-2'));
+  });
+
+  testWidgets('a test row deletes the test, not the guide endpoint', (tester) async {
+    final sent = <String>[];
+
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      tests: [_test(id: 't-1', title: 'Ladder Safety Quiz')],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          sent.add(request.url.path);
+          return http.Response('', 204);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('training.settings-delete-t-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('training.settings-confirm-delete-t-1')));
+    await tester.pumpAndSettle();
+
+    expect(sent.single, endsWith('/training/tests/t-1'));
+  });
+
+  testWidgets('a refused delete shows the server sentence verbatim', (tester) async {
+    await _pumpScreen(
+      tester,
+      permissions: const ['training.view', 'training.manage'],
+      guides: [_guide(id: 'g-1', title: 'Ladder Safety')],
+      onRequest: (request) {
+        if (request.method == 'DELETE') {
+          return _json({'message': 'You may not delete this guide outside your own franchise.'}, 403);
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('training.settings-delete-g-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('training.settings-confirm-delete-g-1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('You may not delete this guide outside your own franchise.'),
+      findsOneWidget,
+      reason: 'A refusal names why; inventing a generic one here would lose it.',
+    );
+    expect(find.text('Ladder Safety'), findsOneWidget, reason: 'Refused means still there.');
+  });
+
   testWidgets('tapping a guide in Settings opens its real builder, through the real interaction', (
     tester,
   ) async {

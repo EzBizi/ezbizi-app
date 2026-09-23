@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glances\CustomersGlance;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -117,6 +118,45 @@ class CustomersGlanceTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-06-24 12:00:00', 'America/New_York'));
         $this->customer($this->alpha['franchise']);
         Carbon::setTestNow(Carbon::parse('2026-08-24 12:00:00', 'America/New_York'));
+
+        // The axis below is hand-derived from a SUNDAY week start, which this
+        // test until now inherited from the registry default rather than stated.
+        // On 2026-09-22 this assertion failed ONCE, alone, with ['2026-08-24'] --
+        // precisely the axis a MONDAY start draws -- and has not reproduced. It
+        // is not a peer's test leaking: the only two tests that write
+        // week_starts_on (DashboardPeriodTest, SettingsCascadeTest) both sort
+        // AFTER this one, in the filtered run and the full suite alike. Pinning
+        // the input costs a line and stops the expectation depending on a value
+        // this test does not choose.
+        //
+        // One half is settled. A resolver returning nothing cannot draw a
+        // Monday axis: DashboardPeriod::weekStartsAtFor ends in
+        // `$startsOn === 'monday' ? MONDAY : SUNDAY`, so null, absent and the
+        // registry default (SettingRegistry:212, 'sunday') all give Sunday.
+        // Only the literal string 'monday' gives Monday. Confirmed by running
+        // it: flipping this pin to 'monday' reds the assertion with exactly the
+        // observed one-day shift, which also shows the pin is load-bearing.
+        // So a real row said 'monday'.
+        //
+        // WHY THAT ROW EXISTED IS UNEXPLAINED. I previously wrote here that a
+        // local run had probably read another session's schema; that is FALSE
+        // and I am striking it rather than softening it. The failing run was
+        // `DB_DATABASE=ezbizi_testing_gapi`, its own schema, never the shared
+        // one, so no neighbour could reach it. Nothing else in the tree writes
+        // this key -- `TimeClockWeekTest` writes `time_clock.week_starts_on`,
+        // a different key -- `settings` holds no rows between runs, and
+        // `Carbon::setWeekStartsAt`, the one process-global that would move
+        // `startOfWeek()` with no row at all, appears nowhere in the repo.
+        // A real row, in that process, written by nothing that exists.
+        //
+        // If it recurs, dump it BEFORE forming a theory, and without scopes:
+        //   Setting::withoutGlobalScopes()
+        //       ->where('key', 'week_starts_on')
+        //       ->get(['scope_type', 'scope_id', 'value'])
+        // A tenant-scoped read hides a row written under another organization,
+        // which is the scope question actually worth answering here.
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('week_starts_on', $this->alpha['org'], 'sunday'));
 
         $payload = app(CustomersGlance::class)->resolve(
             $this->alpha['admin'], DashboardPeriod::for($this->alpha['admin'], 'week'), []

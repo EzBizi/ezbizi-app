@@ -118,8 +118,15 @@ Future<void> _open(WidgetTester tester, String provider) async {
   await tester.pumpAndSettle();
 }
 
+/// Back to the grid — a BUTTON IN THE BODY, not a route pop.
+///
+/// `tester.pageBack()` was right while the pane was a pushed route, and Jose
+/// named that as the defect on 2026-09-23: "every single Integration Card
+/// violates the containment rule by going full screen when clicked". There is
+/// no route to pop now, so a test still calling pageBack would fail for the
+/// right reason and for the wrong one at once.
 Future<void> _back(WidgetTester tester) async {
-  await tester.pageBack();
+  await tester.tap(find.byKey(const ValueKey('integration-back')));
   await tester.pumpAndSettle();
 }
 

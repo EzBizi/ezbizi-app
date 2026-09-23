@@ -67,10 +67,21 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// that is right on the day somebody writes it. Same endpoint Marketing's
   /// composer reads, and it needs `marketing.view`, which is already what puts
   /// this chip in the Settings shell.
-  Map<String, String> _catalogue = const {};
+  Map<String, Map<String, dynamic>> _catalogue = const {};
 
   bool _loading = true;
   String? _error;
+
+  /// Which provider's pane is open in place of the grid, by catalogue value.
+  ///
+  /// Jose, 2026-09-23: *"Every Single Integration Card violates the containment
+  /// rule by going full screen when clicked."* This used to be a
+  /// `Navigator.push`, which replaced the sidebar, the header and the top bar
+  /// with a page of its own. Swapping the body is the shape
+  /// `TrainingSettingsTab` and `LearnShelves` already use for the same
+  /// correction, and it is why `IntegrationProviderScreen` carries no
+  /// `Scaffold`.
+  String? _open;
 
   String get _viewName =>
       widget.session.me?.scope.label ??
@@ -123,11 +134,44 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           for (final entry
               in ((catalogue.body['data'] as List<dynamic>?) ?? const [])
                   .whereType<Map<String, dynamic>>())
-            (entry['value'] as String? ?? ''): (entry['label'] as String? ?? ''),
-        }..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+            (entry['value'] as String? ?? ''): entry,
+        }..removeWhere(
+          (key, value) => key.isEmpty || (value['label'] as String? ?? '').isEmpty,
+        );
       }
     });
   }
+
+  /// Whether this person may connect this provider.
+  ///
+  /// The permission comes from the CATALOGUE — `SocialProvider::connectPermission()`
+  /// on the wire since 2026-09-23 — rather than from a map in this file. That
+  /// map is Marketing's and carries four other modules' semantics; a second
+  /// copy here would drift into a Connect button that answers 403, which is
+  /// exactly what §4 forbids.
+  ///
+  /// An unknown provider answers NO. A catalogue that did not load leaves the
+  /// grid working and the connect control absent, which is the safe direction:
+  /// nothing is offered that cannot be checked.
+  bool _mayConnectProvider(String provider) {
+    final permission = _catalogue[provider]?['permission'] as String?;
+
+    return permission != null && _mayConnect(permission);
+  }
+
+  /// Where a provider is connected, when it is connected somewhere else.
+  ///
+  /// Per provider rather than per family only because the pane needs it that
+  /// way now; the ANSWER is still the family's, which is why this reads the
+  /// same switch rather than a second list that could disagree with the
+  /// headings.
+  String? _whereFor(String provider) => switch (_familyOf(provider)) {
+    'mailing' => 'Marketing › Newsletter',
+    'social' => 'Marketing › Social Media Management › Accounts',
+    'leads' => 'Leads',
+    // Reporting connects HERE — its pane carries the form instead.
+    _ => null,
+  };
 
   /// Which family a provider belongs to, for a provider with no connections.
   ///
@@ -158,6 +202,27 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     // no catalogue entry still gets a card: the connection is the stronger
     // evidence that it exists.
     final providers = {...byProvider.keys, ..._catalogue.keys};
+
+    // THE PANE IN PLACE OF THE GRID, never over the app. See [_open].
+    final open = _open;
+
+    if (open != null) {
+      return IntegrationProviderScreen(
+        api: widget.api,
+        session: widget.session,
+        provider: open,
+        providerLabel: _label(open),
+        connections: byProvider[open] ?? const [],
+        connectWhere: _whereFor(open),
+        connectForms: _formsFor(open),
+        connectsBy: _catalogue[open]?['connects_by'] as String?,
+        startPath: _catalogue[open]?['start_path'] as String?,
+        mayConnect: _mayConnectProvider(open),
+        canName: _familyOf(open) == 'reporting',
+        onChanged: _load,
+        onBack: () => setState(() => _open = null),
+      );
+    }
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -424,7 +489,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   String _label(String provider) =>
-      _catalogue[provider] ??
+      (_catalogue[provider]?['label'] as String?) ??
       // A provider with rows but no catalogue entry — the connection's own
       // label is better than the raw key, which is what this fell back to
       // before and read as `google_business_profile` on screen.
@@ -459,21 +524,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
       child: InkWell(
         key: ValueKey('provider:$provider'),
         borderRadius: BorderRadius.circular(12),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => IntegrationProviderScreen(
-              api: widget.api,
-              session: widget.session,
-              provider: provider,
-              providerLabel: _label(provider),
-              connections: rows,
-              connectWhere: where,
-              connectForms: _formsFor(provider),
-              canName: canName,
-              onChanged: _load,
-            ),
-          ),
-        ),
+        // Sets state; the body swaps. NOT a push — see [_open]. Everything
+        // the pane needs is read there from the same maps this card read,
+        // so the two cannot show different connections for one provider.
+        onTap: () => setState(() => _open = provider),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

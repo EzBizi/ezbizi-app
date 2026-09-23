@@ -166,16 +166,23 @@ class MarketingModuleTest extends TestCase
     // ── the three modules drawn inside it ────────────────────────
 
     /**
-     * Web Management, Reviews and Business Profile are tabs INSIDE Marketing.
+     * Newsletter and Web Management are the tabs INSIDE Marketing.
      *
      * The owner's call: the sidebar was fifteen rows deep and several of them
      * were the same subject — what the public is told about the business, and
      * what they say back.
      *
-     * The trio changed on 2026-09-03. Leads left for a row of its own once
-     * Thumbtack became a second source, and Web Management took its place: a
-     * customer's website says something about the business in the same way its
-     * listing and its social accounts do.
+     * THE LIST CHANGED ONCE AND NEARLY CHANGED TWICE. Leads left for a row of
+     * its own on 2026-09-03 once Thumbtack became a second source, and Web
+     * Management took its place.
+     *
+     * On 2026-09-23 Reviews and Business Profile were moved into a new A1Leads
+     * GBP tab and PUT BACK THE SAME DAY. That tab is a read-only window onto
+     * Rodrigo's A1 Leads and is temporary; these two are EzBizi's own modules,
+     * reading EzBizi's own tables, and they are what a Google reviewer is shown
+     * when our own Business Profile API access arrives. Moving them was the
+     * mistake and this assertion is what noticed - which is the argument for it
+     * naming all four rather than being loosened to match whatever is there.
      */
     public function test_the_public_facing_modules_are_drawn_inside_marketing(): void
     {
@@ -200,10 +207,27 @@ class MarketingModuleTest extends TestCase
     /**
      * Nested is not granted.
      *
-     * The failure worth guarding: somebody reads "Leads is inside Marketing" as
-     * a permission relationship and lets `marketing.view` carry the three with
-     * it. That is a silent grant of three modules' data, and §4 does not let a
-     * layout decision make one.
+     * The failure worth guarding: somebody reads "Newsletter is inside
+     * Marketing" as a permission relationship and lets `marketing.view` carry
+     * the children with it. That is a silent grant of another module's data,
+     * and §4 does not let a layout decision make one.
+     *
+     * ── NEWSLETTER IS IN THIS LOOP BECAUSE IT IS THE ONE THAT SHIPPED ──
+     *
+     * The list shrank from three to one as modules left for containers of
+     * their own, and `newsletter` was never added when it arrived — so the
+     * loop covered the children that had gone and not the one that stayed.
+     *
+     * That is not hypothetical here. The Newsletter CHIP was drawn on
+     * `reaches('marketing')` for weeks: a role with `marketing.view` alone was
+     * offered a tab whose every request the server then refused, and a role
+     * with `newsletter.view` alone got no tab at all (`2c46edab`). The server
+     * side was correct throughout, which is why this test stayed green — but
+     * a loop naming every child is the thing that would have made the gap
+     * visible rather than leaving it to a screenshot.
+     *
+     * Keep this list derived from the registry's children in spirit: when a
+     * module joins Marketing, it joins here.
      */
     public function test_being_inside_marketing_grants_nothing(): void
     {
@@ -216,12 +240,53 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['web_management', 'reviews', 'business_profile'] as $key) {
+        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
             );
             $this->assertSame(self::MODULE, $modules[$key]['parent']);
+        }
+
+        /*
+         * The positive control, and the hazard it covers is NARROWER than the
+         * one I first wrote here.
+         *
+         * I claimed a payload that stopped reporting these modules would
+         * satisfy the loop above. **It would not**, and EZ Leads measured it
+         * before I did: `keyBy` plus `$modules['key'][...]` turns a dropped
+         * module into "Undefined array key", which PHPUnit raises as an ERROR.
+         * I checked it myself with a key that does not exist — errors: 1, not
+         * a pass. The access shape already covers the missing-payload case.
+         *
+         * What it does NOT cover, and what this control is for: every
+         * assertion above is false, so it passes for a `/me` that reports
+         * these modules unreachable for EVERYBODY — a broken reach
+         * calculation, a role lookup that always answers no. Asking the same
+         * two keys as somebody who holds them is what separates "correctly
+         * withheld" from "withheld from everyone".
+         *
+         * Two hazards that look like one from a distance. The access shape
+         * catches the absent module; this catches the always-false answer.
+         */
+        $both = $this->userWithRole($alpha, 'Both', [
+            'marketing.view', 'newsletter.view', 'web_management.view',
+            // Reviews and Business Profile are back in this loop after being
+            // briefly moved out on 2026-09-23, so the control has to hold their
+            // grants too or it asserts true about a permission nobody gave.
+            'reviews.view', 'business_profile.view',
+        ], 'both@theta.test');
+
+        $granted = collect(
+            $this->signedInAs($both)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
+            $this->assertTrue(
+                $granted[$key]['reachable'],
+                "{$key} is not reachable even when its own view is granted, so "
+                .'the loop above proves nothing about the grant.',
+            );
         }
     }
 
@@ -277,6 +342,17 @@ class MarketingModuleTest extends TestCase
                 ->json('data.modules')
         )->keyBy('key');
 
+        /*
+         * Reviews still answers this, and its answer changed on 2026-09-23:
+         * it is drawn in A1Leads GBP now, not here. The question the test asks
+         * is whether the catalogue reports the nesting AT ALL, so the right
+         * repair is the new parent rather than a different module.
+         *
+         * Web Management would have been the tidier-looking substitute and is
+         * wrong: the catalogue only carries modules the caller can reach, and
+         * this caller holds `reviews.view`. It failed with "Undefined array key
+         * web_management", which is the catalogue working correctly.
+         */
         $this->assertSame(self::MODULE, $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }

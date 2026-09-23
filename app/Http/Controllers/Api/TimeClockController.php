@@ -6,6 +6,8 @@ use App\Models\TimeClockShift;
 use App\Support\TimeClock\TimeClock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Punch clock for the signed-in person (Clock in design §8) and the HR
@@ -104,6 +106,76 @@ class TimeClockController extends Controller
     {
         return response()->json([
             'data' => ['time_clock' => $this->timeClock->clockOut($request->user())],
+        ]);
+    }
+
+    /**
+     * PATCH /api/v1/hr/time-clock/shifts/{shift} — fix the times (2026-09-23).
+     *
+     * Both times are optional and absent means UNCHANGED, which is not the
+     * same as null: sending `clocked_out_at: null` for an open shift leaves it
+     * open, and for a finished one is refused rather than reopening it.
+     *
+     * The times arrive as instants, not wall clocks. The screen shows a
+     * person's day in the organization's zone and sends back UTC, so a
+     * correction made from a laptop in another timezone means the same minute.
+     */
+    public function update(Request $request, TimeClockShift $shift): JsonResponse
+    {
+        $this->authorize('correct', TimeClockShift::class);
+
+        $data = $request->validate([
+            'clocked_in_at' => ['sometimes', 'date'],
+            'clocked_out_at' => ['sometimes', 'nullable', 'date'],
+        ]);
+
+        /*
+         * Reopening is refused HERE and not in TimeClock::correct(), because
+         * this is the only layer that can tell the two cases apart: an absent
+         * `clocked_out_at` means "leave it alone" and an explicit null means
+         * "take the end off", and both arrive at the domain method as null.
+         * Putting the check below would have made it unreachable from the only
+         * caller there is.
+         */
+        if (array_key_exists('clocked_out_at', $data) && $data['clocked_out_at'] === null && $shift->clocked_out_at !== null) {
+            throw ValidationException::withMessages([
+                'clocked_out_at' => 'A finished shift cannot be reopened. Delete it instead.',
+            ]);
+        }
+
+        $this->timeClock->correct(
+            $shift,
+            isset($data['clocked_in_at']) ? Carbon::parse($data['clocked_in_at'])->utc() : null,
+            isset($data['clocked_out_at']) ? Carbon::parse($data['clocked_out_at'])->utc() : null,
+        );
+
+        return $this->weekAfterCorrection($request);
+    }
+
+    /** DELETE /api/v1/hr/time-clock/shifts/{shift} — the punch that should not exist. */
+    public function destroy(Request $request, TimeClockShift $shift): JsonResponse
+    {
+        $this->authorize('correct', TimeClockShift::class);
+
+        $this->timeClock->remove($shift);
+
+        return $this->weekAfterCorrection($request);
+    }
+
+    /**
+     * Both corrections answer with the week the screen is already showing.
+     *
+     * A correction changes a total, a days-worked count and an average, none
+     * of which the client can recompute from the row it sent — so returning
+     * the row would leave three numbers on screen that quietly disagree with
+     * the database until something else refetched.
+     */
+    private function weekAfterCorrection(Request $request): JsonResponse
+    {
+        $on = $request->query('on');
+
+        return response()->json([
+            'data' => $this->timeClock->weekList($request->user(), is_string($on) ? $on : null),
         ]);
     }
 }

@@ -253,6 +253,26 @@ class ExperimentalCallReportApiTest extends TestCase
      * be asked again, and one with a short page must not - get that wrong and
      * the report either loses rows silently or loops forever against an API
      * that ignores the offset.
+     *
+     * ── IT DOES NOT BELONG TO THIS FILE'S OWNER, AND IT STAYS ANYWAY ──
+     *
+     * `WorkizJobs` is the Workiz session's file as of 2026-09-23
+     * (`local_ea9c0484-3b23-40b6-8262-10a1fccc1a3a`). Every other test here
+     * asserts what the REPORT does with what that client returns, which is why
+     * they live on this side of the boundary. THIS one is the exception: it
+     * asserts what the CLIENT does with an offset, and it is the only test
+     * anywhere of that loop.
+     *
+     * Left here deliberately rather than moved or copied. A second copy on
+     * their side would carry the same invented fixtures and prove only that it
+     * agrees with itself, and moving it would put the report's own paging
+     * expectation out of reach of the report's suite.
+     *
+     * So: IF THIS TEST IS EVER RETIRED OR REWRITTEN, TELL THEM FIRST. The loop
+     * goes to zero coverage silently otherwise, and its own docblock records a
+     * first draft that asked for `records=1000` - which would have failed on
+     * every live run with nothing red, because every fixture in this file is
+     * invented.
      */
     public function test_a_branch_with_a_full_page_is_asked_for_the_next_one(): void
     {

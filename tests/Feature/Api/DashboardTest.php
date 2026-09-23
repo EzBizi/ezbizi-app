@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Organizations\ProvisionOrganization;
 use App\Support\Dashboard\GlanceRegistry;
+use App\Support\Settings\SettingsResolver;
 use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,14 +157,47 @@ class DashboardTest extends TestCase
         ]));
     }
 
-    private function job(Franchise $franchise, array $attributes = []): Job
+    /**
+     * @param  bool  $earned  Stamp `earned_at`, i.e. this job is revenue.
+     *
+     * Since 2026-09-23 a completed status alone is not revenue: the dashboard
+     * reports against `earned_at`, which `JobsController` stamps once at the
+     * transition, so a closed month cannot reopen (§8.1). `earned_at` is not
+     * fillable for that reason, which is why this is a second write.
+     */
+    private function job(Franchise $franchise, array $attributes = [], bool $earned = false): Job
     {
-        return $this->inTenant(fn () => Job::create($attributes + [
-            'franchise_id' => $franchise->id,
-            'customer_id' => $this->customer($franchise)->id,
-            'number' => 'J-'.bin2hex(random_bytes(3)),
-            'title' => 'Work', 'status' => 'scheduled', 'currency' => 'USD',
-        ]));
+        return $this->inTenant(function () use ($franchise, $attributes, $earned) {
+            $job = Job::create($attributes + [
+                'franchise_id' => $franchise->id,
+                'customer_id' => $this->customer($franchise)->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'Work', 'status' => 'scheduled', 'currency' => 'USD',
+            ]);
+
+            if ($earned) {
+                $job->earned_at = $job->created_at;
+                $job->save();
+            }
+
+            return $job;
+        });
+    }
+
+    /**
+     * What this organization counts as earned (§8.2).
+     *
+     * An organization setting since 2026-09-23, not a dashboard-layout option:
+     * one person's panel cannot decide a company figure, and `earned_at` is
+     * stamped from this same list, so a second source would disagree with the
+     * history it reports.
+     *
+     * @param  list<string>  $statuses
+     */
+    private function earnedStatuses(array $statuses): void
+    {
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('jobs.earned_statuses', $this->alpha['org'], $statuses));
     }
 
     private function glancesOf(User $user): array
@@ -255,12 +289,9 @@ class DashboardTest extends TestCase
 
     public function test_currencies_are_never_added_together(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed']);
-
-        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'jobs', 'options' => ['earned_statuses' => ['completed']]]],
-        ])->assertOk();
+        $this->earnedStatuses(['completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
 
         $rows = collect(
             $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances')
@@ -293,11 +324,8 @@ class DashboardTest extends TestCase
 
     public function test_amounts_stay_in_minor_units(): void
     {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 12345, 'status' => 'completed']);
-
-        $this->as($this->alpha['admin'])->putJson('/api/v1/dashboard/layout', [
-            'glances' => [['key' => 'jobs', 'options' => ['earned_statuses' => ['completed']]]],
-        ])->assertOk();
+        $this->earnedStatuses(['completed']);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 12345, 'status' => 'completed'], earned: true);
 
         $rows = collect(
             $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances')

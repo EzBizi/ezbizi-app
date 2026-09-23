@@ -397,6 +397,17 @@ final class TwimlRenderer
                 : 'Nothing below runs until the number is imported or bought here.',
             'usable' => $pointed,
             'skipped' => false,
+
+            // WHERE THIS STEP IS CHANGED. Jose, 2026-09-23: "i'd like to be
+            // able to click the 4 items they each have, and that should
+            // direct me to the screen where that can be changed."
+            //
+            // The same `{pane, id}` stamp `graph()` puts on its nodes, and the
+            // same panes for the same reasons — the two are descriptions of
+            // one call flow, so a step that sent somebody somewhere the chart
+            // does not would mean one of them is wrong. `PhoneCallFlowEditTest`
+            // asserts they agree rather than trusting that they do.
+            'edit' => ['pane' => 'numbers', 'id' => (string) $number->id],
         ];
 
         $schedule = $number->resolved('hours_schedule_id') === null
@@ -410,6 +421,10 @@ final class TwimlRenderer
                 'detail' => 'No schedule is set, so the call is never treated as after hours.',
                 'usable' => true,
                 'skipped' => false,
+
+                // The Hours pane with no schedule named: there is nothing to
+                // open, and the thing somebody wants next is to make one.
+                'edit' => ['pane' => 'hours', 'id' => null],
             ];
         } else {
             $closed = $this->closed($number, $context);
@@ -427,6 +442,7 @@ final class TwimlRenderer
                     : 'Open, so the call carries on to the steps below.',
                 'usable' => true,
                 'skipped' => false,
+                'edit' => ['pane' => 'hours', 'id' => (string) $schedule->id],
             ];
         }
 
@@ -443,6 +459,12 @@ final class TwimlRenderer
                     ? 'No menu is set on this line, so the call goes straight to whoever answers.'
                     : 'A menu is set but has no usable menu step, so it is skipped.')
                 : 'The caller hears it and presses a key: “'.$prompt.'”',
+            'edit' => $number->resolved('flow_id') === null
+
+                // No menu to open. The line is where one is attached, so that
+                // is where somebody who clicked this wants to be.
+                ? ['pane' => 'numbers', 'id' => (string) $number->id]
+                : ['pane' => 'flows', 'id' => (string) $number->resolved('flow_id')],
             'usable' => true,
 
             // CONFIGURED AND NEVER PLAYED is the case this exists for.
@@ -484,6 +506,14 @@ final class TwimlRenderer
             },
             'usable' => $reaches,
             'skipped' => false,
+
+            // THE LINE, not Ring groups, when no group is set. "Nobody answers
+            // this line" is fixed by pointing the LINE at a team; sending
+            // somebody to Ring groups would show them a list of teams that are
+            // all fine and no way to say which one answers here.
+            'edit' => $group === null
+                ? ['pane' => 'numbers', 'id' => (string) $number->id]
+                : ['pane' => 'ring-groups', 'id' => (string) $group->id],
         ];
 
         // Only worth a line when it changes the answer — a fallback on a line
@@ -502,6 +532,7 @@ final class TwimlRenderer
                         .'Tried once, then voicemail.',
                 'usable' => true,
                 'skipped' => false,
+                'edit' => ['pane' => 'numbers', 'id' => (string) $number->id],
             ];
         }
 
@@ -648,6 +679,46 @@ final class TwimlRenderer
         if ($row === null) {
             $response->say(
                 'There is no extension '.implode(' ', str_split($digits)).'.',
+                ['language' => $language],
+            );
+            $this->voicemail($response, $number, $language, $context);
+
+            return;
+        }
+
+        // ── A TEAM, rather than a person ────────────────────────────
+        //
+        // Jose, 2026-09-17: extensions for "users, ivr menus, ring groups".
+        // The group's own dial is reused rather than copied — `overflow_group`
+        // is the context key that already means "ring THIS group whatever the
+        // line would otherwise do", so an extension and a queue hand-back
+        // reach the same code and cannot drift apart.
+        if ($row->targetKind() === PhoneExtension::TARGET_RING_GROUP) {
+            // No null check on the group, and that is deliberate rather than
+            // missing. `ring_group_id` is a foreign key with `nullOnDelete`,
+            // so a deleted team NULLS the column — and a row with all three
+            // targets null has no kind at all, which the branch below catches.
+            // I wrote the null check first; sabotaging it left the suite green
+            // because the case cannot arise, and a branch nothing can reach is
+            // a branch the next person has to reason about for nothing.
+            $this->ringOrVoicemail($response, $number, [
+                ...$context,
+                'overflow_group' => $row->ringGroup,
+                'batch' => 0,
+            ]);
+
+            return;
+        }
+
+        // A menu extension is NOT handled here, deliberately — see the
+        // Extensions screen and `PhoneExtension::TARGET_MENU`. Playing the
+        // prompt is easy; carrying WHICH flow through the webhook round trip
+        // that follows a keypress is not, and a half-built version would read
+        // the right prompt and then route the keypress to the LINE's menu. The
+        // row cannot be created yet, so this is unreachable rather than broken.
+        if ($row->targetKind() !== PhoneExtension::TARGET_USER) {
+            $response->say(
+                'That extension is not set up right now.',
                 ['language' => $language],
             );
             $this->voicemail($response, $number, $language, $context);

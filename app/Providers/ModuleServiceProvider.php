@@ -438,7 +438,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // already keeps the people list — see UserPolicy::resetSecurity.
                 // Same reasoning that keeps `monitoring.control` off
                 // `monitoring.screenshots.view`.
-                actions: ['view', 'create', 'edit', 'security.reset'],
+                // `hours.correct` is split from `edit` on exactly the argument
+                // above it: rewriting the hours somebody is PAID for is a
+                // bigger authority than keeping their row, and folding it into
+                // `edit` would have handed it on deploy to everybody who
+                // already maintains the people list. Jose asked for the
+                // correction system on 2026-09-23; it is the grant that opens
+                // Edit and Delete on a Work Hours row.
+                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct'],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *
@@ -854,6 +861,32 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'jobs',
                 label: 'Jobs',
+                /*
+                 * The detail panel's panes, in the order it draws them (0051).
+                 *
+                 * `work` NAMES `jobs.view` rather than minting `jobs.work.view`,
+                 * because that pane has shipped under `jobs.view` since this
+                 * module existed. Minting would create two names for one
+                 * authority and let an administrator grant the tab without the
+                 * read — a pane that opens and refuses everything inside it —
+                 * and it would also take the pane away from everybody who holds
+                 * `jobs.view` today, which is a regression wearing a feature's
+                 * clothes. Training's case, same answer.
+                 *
+                 * `materials` is a real mint because the audience genuinely
+                 * differs: "the technician may see the job but not what the
+                 * parts were" is a sentence somebody says out loud, and the rows
+                 * come from Inventory rather than from this module.
+                 *
+                 * Photos and Inspection are NOT here yet, on purpose. Their
+                 * panes do not exist, and a checkbox for a pane an administrator
+                 * cannot then find is step 1 of the brief failing from the other
+                 * side. They arrive in the commit that builds them.
+                 */
+                tabs: [
+                    new TabDefinition('work', 'Work', action: 'view'),
+                    new TabDefinition('materials', 'Materials'),
+                ],
                 // The same fifth action, for the same reason — see Customers
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
@@ -2068,6 +2101,7 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('website_form', 'Forms'),
                     new TabDefinition('facebook', 'Messenger'),
                     new TabDefinition('instagram', 'Instagram'),
+                    new TabDefinition('workiz', 'Workiz'),
                 ],
                 subject: new AutomationSubject(Lead::class, 'Lead'),
                 /*
@@ -2202,6 +2236,50 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * == A1Leads GBP: a bridge to Rodrigo's system, and only that ==
+             *
+             * Jose, 2026-09-23: *"we are integrating Rodrigo's system as a
+             * different thing"*, and, after this module briefly swallowed
+             * EzBizi's own two: *"we still need our system in place for when we
+             * get OUR GBP Credentials and we'll need the google reviewers to see
+             * it. SO PUT IT BACK WHERE IT WAS, THE A1LEADS GBP TAB IS A NEW
+             * ENTIRE THING."*
+             *
+             * So this is NOT a container for `reviews` and `business_profile`.
+             * Those are EzBizi's own modules, they read EzBizi's own tables, they
+             * stay inside Marketing, and they are what a Google reviewer is shown
+             * when our own Business Profile API access arrives. Nothing here
+             * touches them and nothing here should ever be their parent again.
+             *
+             * What this module is: a read-only window onto A1 Leads, the system
+             * that still holds Google Business Profile for A-1 Chimney while
+             * EzBizi has no API access of its own. Its data arrives from that
+             * system's partner API; it writes nothing, to Google or to us.
+             *
+             * == Temporary, and named so you can tell ==
+             *
+             * EzBizi's own Business Profile application was refused 2026-09-22
+             * on the 60-day rule; earliest re-file 26 October
+             * (docs/BUSINESS-PROFILE.md 9b). When that lands and the migration
+             * finishes, this module is deleted whole. It is named after somebody
+             * else's product on purpose: the name stops making sense at the
+             * moment it should go.
+             */
+            new ModuleDefinition(
+                key: 'a1leads_gbp',
+                label: 'A1Leads GBP',
+                actions: ['view'],
+                automationExemptBecause: 'A read-only window onto another system. It holds '
+                    .'no records of its own and raises no events; the A1 Leads data it shows '
+                    .'is a copy, and a rule built on a copy would fire on our import rather '
+                    .'than on anything a customer did.',
+                glanceExemptBecause: 'It holds no records. A box for this module could only '
+                    .'restate a number owned by another system, on a snapshot '
+                    .'whose freshness the dashboard could not show. Not a gap - there is '
+                    .'nothing here that is ours to count.',
+            ),
+
+            /*
              * ── Reviews: what the public said, and the answer ────
              *
              * Sold separately from Leads on purpose. A business with three Maps
@@ -2245,6 +2323,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
+                //
+                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
+                // put back the same day - Jose: *"i didn't ask u to modify our
+                // current system, i said we are integrating Rodrigo's system as a
+                // different thing, we still need our system in place for when we
+                // get OUR GBP Credentials and we'll need the google reviewers to
+                // see it."* A1Leads GBP is a bridge to somebody else's system and
+                // is temporary; this is EzBizi's own module and is not.
                 parent: 'marketing',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
@@ -2328,6 +2414,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // Drawn as a tab inside Marketing rather than as a row of its own
                 // in a sidebar that already holds fifteen. Its permissions are
                 // untouched by that: this says where it appears, not who reaches it.
+                //
+                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
+                // put back the same day - Jose: *"i didn't ask u to modify our
+                // current system, i said we are integrating Rodrigo's system as a
+                // different thing, we still need our system in place for when we
+                // get OUR GBP Credentials and we'll need the google reviewers to
+                // see it."* A1Leads GBP is a bridge to somebody else's system and
+                // is temporary; this is EzBizi's own module and is not.
                 parent: 'marketing',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
@@ -3136,6 +3230,14 @@ class ModuleServiceProvider extends ServiceProvider
                  * `monitoring.view` — and the backfill could not have restored
                  * it, correctly, because a named action is skipped there.
                  *
+                 * GENERAL AND MAP ARE TWO TABS NOW (Jose, 2026-09-22). The
+                 * floor-plan map moved to `map` and General became the
+                 * ownership chart — the same people and machines as a table
+                 * rather than a picture. Both mint, and the migration beside
+                 * this hands `map.view` to everybody who held `general.view`,
+                 * because the thing they could open yesterday is the thing
+                 * that moved.
+                 *
                  * `general` is the one that MINTS, and it is the only one that
                  * should. The floor-plan map has ridden on the module's own
                  * `monitoring.view` since it shipped, so a tab key for it is
@@ -3145,6 +3247,7 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('general', 'General'),
+                    new TabDefinition('map', 'Map'),
                     new TabDefinition('specs', 'PC Specs', action: 'view'),
                     new TabDefinition('cameras', 'Camera Monitoring', action: 'cameras.view'),
                     new TabDefinition('desktop', 'Desktop Monitoring', action: 'screenshots.view'),

@@ -1822,6 +1822,11 @@ class AutomationsController extends Controller
             $type('report.send', 'Send a saved report', true, [
                 $parameter('report_id', 'Which report', 'report'),
                 $parameter('to', 'Send to', 'recipient_list'),
+                // OFF BY DEFAULT, because it changes what an existing rule does.
+                // A digest that mails "nothing found" every Monday is doing its
+                // job; a warning that does it is noise people learn to ignore,
+                // and the one day it matters looks identical to the ones before.
+                $parameter('skip_when_empty', 'Only send if it found something', 'boolean', false),
             ]),
 
             $type('lead.reply', 'Reply to the lead', true, [

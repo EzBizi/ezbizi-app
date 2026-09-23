@@ -213,10 +213,13 @@ class ActionRunner
     private const FIELD_VALUES = [
         Lead::class => [
             'source' => [
+                'facebook' => 'Facebook Messenger',
+                'instagram' => 'Instagram',
                 'local_services' => 'Google Local Services',
                 'thumbtack' => 'Thumbtack',
                 'website_chat' => 'Website live chat',
                 'website_form' => 'Website form',
+                'workiz' => 'Workiz',
             ],
             'status' => [
                 'new' => 'New',
@@ -784,7 +787,18 @@ class ActionRunner
         }
 
         try {
-            $result = $this->reports->send($report, $recipients, $automation, $author);
+            $result = $this->reports->send(
+                $report,
+                $recipients,
+                $automation,
+                $author,
+                // A WARNING THAT FOUND NOTHING SENDS NOTHING, when the rule says
+                // so. Default false, so every digest written before today keeps
+                // mailing its empty result — right for "here is the week", wrong
+                // for "tell me if anything is booked out", and the rule author
+                // is the only one who knows which they wrote.
+                skipWhenNoRows: (bool) ($action['skip_when_empty'] ?? false),
+            );
         } catch (AuthorizationException) {
             return [
                 'type' => $type, 'ok' => false,
@@ -798,7 +812,31 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
 
-        $this->audit->log('automation.report_sent', $report, metadata: ['to' => $recipients]);
+        /*
+         * WHAT WAS SENT, NOT WHAT WAS ASKED FOR.
+         *
+         * This logged `$recipients` — the addresses the rule NAMES — before
+         * reading the result, so a run where every address was refused wrote an
+         * audit entry saying the report went to people nobody wrote to. An
+         * audit trail is where somebody goes when they need to be certain
+         * rather than approximately right, so a false entry there costs more
+         * than a missing one: it cannot be told apart from a true one later.
+         *
+         * `$result->sent` is the addresses the transport accepted. Nothing
+         * accepted, nothing logged.
+         *
+         * Found by the Reports session's suppression work, which adds a state
+         * where a send deliberately does not happen — but the defect is older
+         * than that and live today, because an all-refused send already
+         * returns rather than throwing.
+         */
+        if ($result->sent !== []) {
+            $this->audit->log(
+                'automation.report_sent',
+                $report,
+                metadata: ['to' => $result->sent],
+            );
+        }
 
         return [
             'type' => $type,

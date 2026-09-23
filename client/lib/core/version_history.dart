@@ -8,12 +8,101 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0250',
+      date: '23 Sep 2026',
+      items: [
+        'Your Workiz customers and jobs appear in EzBizi. They arrive on their own every few minutes. One thing to know before you try to edit one: a job keeps the status Workiz gave it, and until your job statuses in Settings include those words a Workiz job can be read but not saved.',
+        'Turning the live chat off now covers the whole business. The switch was per website, and a company with more than one site kept answering on the others, so the chat you switched off went on collecting. There are buttons to turn it off or on across every site at once, and one to rebuild them all.',
+        'A lead from a website names the website it came from, rather than only the business. Where it used to say Website chat and the company name it now says the address a visitor was actually on.',
+        'A1Leads GBP has the Google Reviews tab brought over, read only, with the same filters in the same order and opening on the negative ones. The location filter lists the cities the service can actually see.',
+        'A job shows what Inventory issued against it, once anything has been. This arrived in version 0.0.0246 without a note, and nothing has been issued against a job yet, so today every job says so.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0249',
+      date: '23 Sep 2026',
+      items: [
+        'Drawing a wall on the Map works after you have zoomed or panned. Every tap was landing on the cell that had been in that spot before you moved, and the map was being stretched out of square. A wall can also be dragged by the handle at its middle, and keeps its length when you push it into a corner.',
+        'New Workiz jobs arrive in Leads from now on. Your Workiz history stays where it is - the first run for a branch records where now is rather than pulling years of old records into EzBizi.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0248',
+      date: '23 Sep 2026',
+      items: [
+        'Workiz is a lead source in Leads. It is a book of records rather than a channel somebody wrote in, so a Workiz lead has no thread to reply to and does not appear under Unreplied.',
+        'A report on service areas can use three new columns: open days a week, jobs a week, and days until the next open day. The last one takes the window you want in the filter, so one column answers however far ahead you are looking.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0247',
+      date: '23 Sep 2026',
+      items: [
+        'Reviews and Business Profile are back under Marketing, where they were. Version 0.0.0245 said they had moved to a tab of their own; that was a mistake and this undoes it. The new A1Leads GBP tab is a separate system and EzBizi own Reviews and Business Profile are unchanged.',
+        'A1Leads GBP shows A-1 Chimney real Google Business Profile, read from the A1 Leads system. It is a snapshot taken once a day rather than a live view, so every pane names the date of the snapshot it is drawing instead of leaving you to assume it is current.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0246',
+      date: '23 Sep 2026',
+      items: [
+        'Revenue counts a job in the period the money was earned rather than the period the job was booked, so a job booked in June and finished in September now counts in September. A closed month also stops changing every time somebody moves an old job along.',
+        'A Possible duplicates button on Customers finds people already in the book who look like the same person. The check that runs while you type can only see the one you are writing, so an import that writes thousands nobody typed was invisible to it. The panel says how many groups there are and not only how many it is showing.',
+        'Guides and tests can be deleted from the Training settings screen. It asks first, in the row itself, and says what goes with them. Deleting is refused with a reason if the guide or test belongs to a company or franchise you cannot write to.',
+        'A person with no desk can be given one straight from the ownership chart - tap the empty Desk cell and pick from the desks nobody is sitting at.',
+        'The Assignment column names somebody assigned at the organisation level instead of leaving the cell blank as though they had not been assigned at all.',
+        'The Map opens showing the whole floor plan instead of the top corner of it, and has zoom in, zoom out and Fit.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0245',
+      date: '23 Sep 2026',
+      items: [
+        'The widget cards under Web Management are the same height as well as the same width, so the status line on each one lands on the same level across a row. The height follows the system text size rather than being a fixed number, so it still holds when that is turned up.',
+        'Each step on a call flow is a link to the screen that changes it, so you can go from the chart straight to the setting it describes.',
+        'A shift always gets an end now, from the schedule or from a new limit in Settings that starts at 16 hours. Seven shifts had been left open across two businesses, the oldest since 9 September, and nothing that existed was ever going to close them. They close at that limit rather than at the running total they had reached.',
+        'Reviews and Business Profile have a tab of their own instead of sitting inside Marketing. Nothing about either one changes except where it is drawn.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0244',
+      date: '23 Sep 2026',
+      items: [
+        'Web Management, Widgets is a card for each widget, showing what it is set to right now - On during set hours, 2 questions, Default look - and opening one gives you that widget fields and preview on their own. Four of them had no preview at all before.',
+        'Integrations connects accounts as well as listing them. Three of the four families answered with a sentence naming the module that owns the account, so you had to leave the screen to act on what it had just told you.',
+        'Opening an integration keeps the sidebar and the header instead of filling the window with a page of its own. Every card did that, because every card went through the same tap.',
+        'The ownership chart shows work days and shift as two short columns, Mon - Fri and 8:00 AM - 5:00 PM, instead of printing the whole week. Where the working days do not share one set of hours it says Varies rather than picking one.',
+        'A desk can be renamed from the ownership chart, by anyone who may edit the map.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0243',
+      date: '23 Sep 2026',
+      items: [
+        'The Newsletter composer shows the email beside the editor again. The preview was coming back from the server correctly and the panel was not giving it any room to draw in.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0242',
+      date: '22 Sep 2026',
+      items: [
+        'Extensions now begin with a zero, and the nine that already existed were moved to match -- 101 became 0101, keeping each person their own number rather than renumbering anybody. A menu offers 1 to 9, so an extension starting with one of those digits cannot be told from a menu choice at the instant a caller presses it.',
+        'A saved report emailed out says which business it is from. It named the rule that sent it and never the business.',
+        'Integrations shows a card for what your business actually uses. Fifteen providers drew fifteen cards and thirteen of them offered to set up something nobody here had connected, so Mailing, Social and Advertising now carry only what is connected, each keeping the sentence that says where to connect more. Reporting keeps all of its cards, because there the card is the only way in.',
+        'Facebook Messenger and Instagram arrive in Leads as sources of their own, beside Google, Thumbtack, Chat and Forms, and you answer them from the same thread as everything else.',
+        'A window for an incoming call, naming the customer when the number is one of yours and showing the number when it is not, with Accept and Ignore. It is off until you switch it on, from the Dial pad: the strip stays the default, so a ringing phone does not take the app away from whatever you were in the middle of writing.',
+        'Monitoring: General is the ownership chart, and the floor plan map has a tab of its own.',
+        'Settings, Mail server for sending, no longer says your saved reports and automations go out through a server you connect there. They go out from EzBizi, and have since 16 September. The screen was still describing the week it was built, and it was asking for a password on the strength of it.',
+        'The version panel lists 0.0.0240 again. That release shipped with no note of its own, so the panel drew the 0.0.0239 notes under a 0.0.0240 heading.',
+        'Integrations reads properly on a narrow phone screen, and the green that means success is one green across the app rather than three.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0241',
       date: '22 Sep 2026',
       items: [
         'Integrations is a card for each provider, each with its own screen, and every card says which part of the business the accounts on it belong to.',
         'Automations are cards laid out across the width instead of one full-width row each, so you can see more rules at once, and the template picker draws each template as a card naming the trigger it runs on.',
-        'Settings, Mail server for sending, no longer says your saved reports and automations go out through a server you connect there. They go out from EzBizi, and have since 16 September. The screen was still describing the week it was built, and it was asking for a password on the strength of it.',
       ],
     ),
     VersionRelease(

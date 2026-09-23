@@ -3,6 +3,7 @@
 # Put the repo's WordPress plugin onto the hosted estate.
 #
 #   ./scripts/plugin-rollout.sh --survey          what is installed, where
+#   ./scripts/plugin-rollout.sh --shipped         is the REPO's plugin live?
 #   ./scripts/plugin-rollout.sh --canary <host>   one site, then stop
 #   ./scripts/plugin-rollout.sh --all             every install
 #   ./scripts/plugin-rollout.sh --rollback <dir>  put a backup set back
@@ -46,17 +47,28 @@ cd "$(dirname "$0")/.."
 VERSION=$(grep -m1 "const EZBIZI_VERSION" "$SRC/ezbizi.php" | sed "s/.*= '//;s/'.*//")
 [ -n "$VERSION" ] || { echo "cannot read EZBIZI_VERSION from $SRC/ezbizi.php" >&2; exit 1; }
 
+COMMIT=$(git rev-parse --short HEAD)
+
 # The plugin ships from a COMMIT, like every other artefact. A dirty plugin
 # directory means the estate would carry code that is in no commit, on 110
 # businesses' websites, and "which version is on the fleet" stops having an
 # answer. docs/ is excluded for the reason build-app.sh excludes it.
-DIRTY=$(git status --porcelain --untracked-files=no -- "$SRC")
-if [ -n "$DIRTY" ]; then
+#
+# CALLED BY THE WRITING COMMANDS ONLY. It used to run at file scope, which
+# refused `--survey` and `--shipped` too — and those are questions, asked most
+# often by somebody who is mid-edit and wants to know what is out there. A
+# read-only check that only answers from a clean tree is a check nobody runs at
+# the moment they need it.
+require_clean() {
+  local dirty
+  dirty=$(git status --porcelain --untracked-files=no -- "$SRC")
+
+  [ -z "$dirty" ] && return 0
+
   echo "x $SRC has uncommitted changes; commit before rolling out:" >&2
-  echo "$DIRTY" >&2
+  echo "$dirty" >&2
   exit 1
-fi
-COMMIT=$(git rev-parse --short HEAD)
+}
 
 survey() {
   ssh "$REMOTE" "sudo -n find /var/www/vhosts -maxdepth 6 -type f \
@@ -101,11 +113,68 @@ apply_one() {
     echo \"   \$now  \$own  \$dir\""
 }
 
+# Is what is in the repo what is on the estate?
+#
+# ── The question this exists to answer ──
+#
+# `wordpress-plugin/` has no ride in `release.sh` or `deploy.sh`, so an app
+# release NEVER carries a plugin change however many go out. Two commits look
+# identical in `git log` and are shipped by different routes entirely:
+#
+#     app/ or client/     an app release; the check is the BUILT sha on
+#                         windows.json
+#     wordpress-plugin/   a rollout; the check is this
+#
+# The deploy desk and I held different beliefs about the same SHA on
+# 2026-09-23 for exactly this reason — they had it as unshipped, I had rolled
+# it an hour earlier, and both of us were reading a true thing about a
+# different question. `--survey` already prints the versions; this says whether
+# they match the repo, which is the sentence somebody actually needs.
+#
+# It reports the estate, never the repo's opinion of itself: a plugin bumped to
+# 1.14.0 and not rolled out is NOT shipped, and the whole point is that the
+# version number in the file cannot tell you that.
+shipped() {
+  local want
+  want=$(grep -m1 "const EZBIZI_VERSION" "$SRC/ezbizi.php" | sed "s/.*= '//;s/'.*//")
+
+  echo "repo:   $want  ($COMMIT)"
+
+  local counts
+  counts=$(ssh "$REMOTE" "sudo -n find /var/www/vhosts -maxdepth 6 -type f \
+      -path '*/wp-content/plugins/ezbizi/ezbizi.php' 2>/dev/null | sort > $LIST
+    while read -r p; do
+      sudo -n grep -m1 'const EZBIZI_VERSION' \"\$p\" 2>/dev/null | sed \"s/.*= '//;s/'.*//\"
+    done < $LIST | sort | uniq -c | sort -rn")
+
+  echo "estate:"
+  echo "$counts" | sed 's/^/  /'
+
+  local total on_want
+  total=$(echo "$counts" | awk '{ n += $1 } END { print n + 0 }')
+  on_want=$(echo "$counts" | awk -v w="$want" '$2 == w { print $1 + 0 }')
+  on_want=${on_want:-0}
+
+  echo
+  if [ "$total" -gt 0 ] && [ "$on_want" -eq "$total" ]; then
+    echo "SHIPPED: all $total installs are on $want"
+    return 0
+  fi
+
+  echo "NOT SHIPPED: $on_want of $total installs are on $want"
+  echo "             run --all to roll it out"
+  return 1
+}
+
 case "${1:-}" in
   --survey)
     survey ;;
 
+  --shipped)
+    shipped ;;
+
   --canary)
+    require_clean
     TARGET_HOST="${2:?--canary needs a host, e.g. chimneystar.com}"
     survey > /dev/null
     T=$(ssh "$REMOTE" "grep -m1 '/$TARGET_HOST/' $LIST" || true)
@@ -116,6 +185,7 @@ case "${1:-}" in
     echo "   backups in $BACKUP_ROOT" ;;
 
   --all)
+    require_clean
     survey
     stage
     echo "-> applying to every install"

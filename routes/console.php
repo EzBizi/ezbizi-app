@@ -116,6 +116,72 @@ Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->with
  */
 Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(10);
 
+/*
+ * EVERY MINUTE, because Jose asked for constant sync — and affordable only
+ * because the window is small.
+ *
+ * Workiz refuses with 429 "Account reached Api Quotas". Measured on A-1's own
+ * live sync 2026-09-23: 26 refusals in one day at a TWO-minute cadence with a
+ * thirty-day window. The quota belongs to the Workiz ACCOUNT, so until A1
+ * Tools' sync is switched off both systems spend the same allowance on the
+ * same nine accounts.
+ *
+ * The command's default window is two days, which is usually one request per
+ * branch per run. That is what makes a per-minute tick cost less than A1's
+ * two-minute one, not more.
+ */
+Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
+
+/*
+ * HOURLY, and deliberately not beside the job sweep.
+ *
+ * A roster changes when somebody is hired; a job status changes all day.
+ * Reading nine accounts every minute for the roster would spend the same
+ * Workiz quota that refuses the job sweep with 429. A1 Tools reached the same
+ * split — their team sync is on a slower cron than their job sync.
+ */
+Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
+
+/*
+ * HOURLY, and for the same quota reason, plus one of its own.
+ *
+ * A Workiz lead is a CRM record somebody typed, not a message waiting for an
+ * answer - it is excluded from the dispatcher's Unreplied queue by
+ * `Lead::INBOX_SOURCES`. Nothing goes stale in the fifty-nine minutes between
+ * runs, and the same quota that refuses the job sweep with 429 is the one this
+ * would spend.
+ *
+ * The FIRST run against a branch imports nothing and only marks where now was
+ * (Jose, 2026-09-23: *"we don't need the past stuff, just start from now"*), so
+ * turning this on does not pull thirty-one thousand historical rows.
+ */
+Schedule::command('ezbizi:import-workiz-leads')->hourly()->withoutOverlapping(30);
+
+/*
+ * THE ONLY WORKIZ SCHEDULE THAT SPENDS NO QUOTA, which is why it may run often.
+ *
+ * Three entries above this one call Workiz: the job sweep every minute, the
+ * team roster hourly, the lead import hourly. They share ONE allowance, because
+ * the 429 is `"Account reached Api Quotas"` and the account is the Workiz
+ * account — and A1 Tools is still spending the same allowance on the same nine
+ * accounts until its own sync is switched off.
+ *
+ * This one touches no API at all. The mirror is already local, and a Workiz
+ * client is derived from the contact block on a job rather than fetched,
+ * because Workiz has no client endpoint. So the cost here is a walk of our own
+ * tables and nothing else.
+ *
+ * Five minutes rather than one anyway: it walks the whole mirror, and there is
+ * no reason to do that sixty times an hour when the sweep it follows cannot
+ * produce more than a hundred new jobs a run.
+ *
+ * It only ever INSERTS. Re-running is safe by construction - a client that
+ * already names a customer and a job that already names a job are skipped - so
+ * the link is the record of what has been projected, and nothing a person
+ * corrected in EzBizi is ever reverted.
+ */
+Schedule::command('ezbizi:project-workiz')->everyFiveMinutes()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

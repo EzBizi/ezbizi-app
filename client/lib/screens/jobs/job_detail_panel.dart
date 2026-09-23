@@ -306,6 +306,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                     onChanged: (fresh) => setState(() => _row = fresh),
                   ),
                 ],
+                if (row != null && row['materials'] is List) ...[
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  _Materials(rows: row['materials'] as List),
+                ],
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -325,6 +331,82 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                 ],
               ],
             ),
+    );
+  }
+}
+
+/// What Inventory issued against this job (spec §9), read-only.
+///
+/// ── Drawn on the KEY, not on a permission the client checks ──────
+///
+/// `materials` is absent from the payload when the reader does not hold
+/// `jobs.materials.view`, and an empty list when they do and nothing was
+/// issued. So the `is List` test above is the tab filter: the server already
+/// decided, and an absent `/me` cannot accidentally answer yes — which is what
+/// inbox 0051 asks a screen to guarantee, reached from the server side rather
+/// than by re-deriving the permission here.
+///
+/// The two states must stay distinguishable. "Nothing was used on this job" is
+/// a fact about the job; "you may not see what was used" is a fact about the
+/// reader. Drawing an empty section for the second would tell somebody the
+/// first, and they would have no reason to doubt it.
+///
+/// ── No money, for anybody ────────────────────────────────────────
+///
+/// There is no cost here because the payload carries none, for any caller,
+/// including one who may read costs everywhere else in the product. A job's
+/// money is what the customer is charged; what the parts cost the business is
+/// Inventory's. See JobsController::materialsFor().
+///
+// ponytail: a private widget in this file rather than job_materials_tab.dart,
+// which the plan named. It is a read-only list with no state, and a file per
+// section earns its keep when there is state to hold. Split it out if Photos
+// and Inspection make this file unwieldy.
+class _Materials extends StatelessWidget {
+  const _Materials({required this.rows});
+
+  final List rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Materials', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Issued from Inventory. Add or return them there, not here.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          Text(
+            'Nothing has been issued against this job.',
+            style: theme.textTheme.bodyMedium,
+          )
+        else
+          for (final row in rows.whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text('${row['item'] ?? 'Unnamed item'}'),
+                  ),
+                  const SizedBox(width: 12),
+                  Text('${row['qty'] ?? ''}', style: theme.textTheme.bodyMedium),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${row['issued_on'] ?? ''}',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+      ],
     );
   }
 }

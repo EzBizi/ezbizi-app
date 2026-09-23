@@ -68,6 +68,7 @@ class FloorPlanCanvas extends StatelessWidget {
   const FloorPlanCanvas({
     super.key,
     required this.layout,
+    this.zoom = 1.0,
     required this.status,
     required this.selectedNodeId,
     required this.onSelectNode,
@@ -78,6 +79,7 @@ class FloorPlanCanvas extends StatelessWidget {
     this.pendingWall,
     this.selectedWallIndex,
     this.onSelectWall,
+    this.onWallMoved,
   });
 
   /// `{grid:{cols,rows}, walls:[{x1,y1,x2,y2}], nodes:[{id,x,y,label,user_id}]}`
@@ -142,9 +144,34 @@ class FloorPlanCanvas extends StatelessWidget {
   /// removing it is the toolbar's job, not a tap's.
   final ValueChanged<int>? onSelectWall;
 
+  /// Called with `(index, dCol, dRow)` when a wall's handle is released after a
+  /// drag — a WHOLE-WALL SHIFT in cells, already snapped and already clamped so
+  /// both ends stay on the grid.
+  ///
+  /// A shift rather than two new endpoints: a wall is a thing with a length and
+  /// an angle, and the thing Jose asked for is "drag walls as well to
+  /// reposition them" (2026-09-23). Moving one end is a different edit — it
+  /// changes the shape — and it needs its own handles, so it is not smuggled in
+  /// behind this one.
+  final void Function(int index, int dCol, int dRow)? onWallMoved;
+
   /// Used when a layout omits its grid. The spec's own example is 40x28.
   static const int defaultCols = 40;
   static const int defaultRows = 28;
+
+  /// 1.0 is "the whole plan fits". Above that the board grows and scrolls
+  /// inside its own frame; below it, the plan is drawn smaller than it needs
+  /// to be, which is occasionally what somebody wants on a huge floor.
+  ///
+  /// Owned by the tab rather than here because the buttons live up there with
+  /// the other map controls, and a zoom that reset every time this rebuilt
+  /// would be worse than none.
+  final double zoom;
+
+  /// How much of the window height the map may take when nothing bounds it.
+  /// Two thirds leaves the plan picker, the toolbar and the counts above it
+  /// and the summary beside it, all on screen at once.
+  static const double viewportFraction = 0.66;
 
   /// A tile covers this many cells on a side. One cell is too small to read a
   /// label in at any realistic grid size (40 columns of a 1200px canvas is a
@@ -216,22 +243,49 @@ class FloorPlanCanvas extends StatelessWidget {
         }
 
         final width = constraints.maxWidth;
-        final cell = width / cols;
-        final height = cell * rows;
-        final tile = math.min(cell * tileSpan, math.min(width, height));
+
+        // FIT BOTH DIMENSIONS, not just the width.
+        //
+        // This was `cell = width / cols`, which fits the width and lets the
+        // height fall out of the grid's aspect ratio — so a plan wider than it
+        // is tall ran off the bottom of the pane and the only way to see the
+        // rest was to scroll the whole tab. Jose, 2026-09-23: "the default
+        // should show the entire map field already, not zoomed in like now."
+        //
+        // The height to fit INTO has to be invented here, because this widget
+        // is handed an unbounded one: it sits in a scrolling column, so there
+        // is no "pane height" to read. A fraction of the window is the honest
+        // approximation — big enough to be the map's pane, small enough that
+        // the summary and the toolbar above it stay on screen.
+        final viewport = constraints.hasBoundedHeight && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height * viewportFraction;
+
+        // A SQUARE FIELD. Jose, 2026-09-23: "the map canvas should be 1:1
+        // square." The grid is padded to its longer side rather than the
+        // stored dimensions being changed, so every tile keeps the cell it is
+        // on and the extra space is empty grid to draw into.
+        final side = math.max(cols, rows);
+
+        final fitted = math.min(width, viewport) / side;
+        final cell = fitted * zoom;
+
+        final boardWidth = cell * side;
+        final boardHeight = cell * side;
+        final tile = math.min(cell * tileSpan, math.min(boardWidth, boardHeight));
 
         final drawing = wallMode && onWallPoint != null;
 
         final board = SizedBox(
-          width: width,
-          height: height,
+          width: boardWidth,
+          height: boardHeight,
           child: Stack(
             children: [
               Positioned.fill(
                 child: CustomPaint(
                   painter: FloorPlanPainter(
-                    cols: cols,
-                    rows: rows,
+                    cols: side,
+                    rows: side,
                     walls: walls,
                     // The grid says "this is a plan" without asking to be read;
                     // `edge` is the token for exactly that weight of line.
@@ -249,10 +303,10 @@ class FloorPlanCanvas extends StatelessWidget {
                   node: node,
                   cell: cell,
                   tile: tile,
-                  cols: cols,
-                  rows: rows,
-                  width: width,
-                  height: height,
+                  cols: side,
+                  rows: side,
+                  width: boardWidth,
+                  height: boardHeight,
                 ),
               if (wallMode && onSelectWall != null)
                 for (var index = 0; index < walls.length; index++)
@@ -261,26 +315,67 @@ class FloorPlanCanvas extends StatelessWidget {
                     index: index,
                     wall: walls[index],
                     cell: cell,
-                    width: width,
-                    height: height,
+                    width: boardWidth,
+                    height: boardHeight,
                   ),
             ],
           ),
         );
 
-        if (!drawing) return board;
+        // THE GESTURE SURFACE WRAPS THE BOARD, NEVER THE FRAME.
+        //
+        // It used to wrap the frame, and zooming then put every wall tap in
+        // the wrong place: inside a scroll view, `details.localPosition` is
+        // measured from the VIEWPORT and carries no scroll offset, so a tap
+        // near the right edge of a board scrolled halfway across landed on a
+        // cell in the middle. Jose, 2026-09-23: "zooming in out messes up the
+        // drawing wall system."
+        //
+        // Wrapping the board makes the position board-relative by
+        // construction — the scroll offset is applied by the widget ABOVE
+        // this one, so it cannot be forgotten here.
+        Widget surface = board;
 
-        return GestureDetector(
-          key: const Key('floor-plan-wall-surface'),
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (details) => _wallPointAt(
-            details.localPosition,
-            cell: cell,
-            cols: cols,
-            rows: rows,
-          ),
-          child: board,
-        );
+        if (drawing) {
+          surface = GestureDetector(
+            key: const Key('floor-plan-wall-surface'),
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) => _wallPointAt(
+              details.localPosition,
+              cell: cell,
+              cols: side,
+              rows: side,
+            ),
+            child: board,
+          );
+        }
+
+        // Zoomed past the fit, the board is bigger than the space it was
+        // given, so it scrolls INSIDE its own area rather than pushing the
+        // summary and the rest of the tab down the page.
+        if (boardWidth > width + 0.5 || boardHeight > viewport + 0.5) {
+          return SizedBox(
+            width: width,
+            height: math.min(boardHeight, viewport),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SingleChildScrollView(child: surface),
+            ),
+          );
+        }
+
+        // ALIGNED, NOT RETURNED BARE. The tab hands this widget TIGHT
+        // constraints, and a SizedBox under a tight constraint is ignored — the
+        // board was drawn 932x594 in a 932x594 pane however square its own
+        // arithmetic said it was. This was the whole of "the map canvas should
+        // be 1:1 square": the sizing was right and something above it was
+        // overriding the result.
+        //
+        // An Align takes all the space it is offered and lets its child be its
+        // own size inside it, which is the one thing SizedBox cannot do for
+        // itself. Top-centred so the plan does not float in the middle of a
+        // tall pane.
+        return Align(alignment: Alignment.topCenter, child: surface);
       },
     );
   }
@@ -361,8 +456,6 @@ class FloorPlanCanvas extends StatelessWidget {
     required double width,
     required double height,
   }) {
-    final theme = Theme.of(context);
-    final selected = index == selectedWallIndex;
     final size = math.max(16.0, cell * 1.2);
 
     final midX = (wall.x1 + wall.x2) / 2 * cell;
@@ -374,28 +467,64 @@ class FloorPlanCanvas extends StatelessWidget {
       top: (midY - size / 2).clamp(0.0, math.max(0.0, height - size)),
       width: size,
       height: size,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: _WallHandle(
+        label: 'Wall ${index + 1}',
+        selected: index == selectedWallIndex,
         onTap: () => onSelectWall!(index),
-        child: Semantics(
-          button: true,
-          selected: selected,
-          label: 'Wall ${index + 1}',
-          child: Container(
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: theme.colorScheme.surface,
-              border: Border.all(
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.outline,
-                width: selected ? 3 : 1,
+        // Draggable only when there is somewhere to report it. Without the
+        // callback the handle is exactly what it was: a tap target.
+        onDragged: onWallMoved == null
+            ? null
+            : (delta) => _shiftWall(
+                index: index,
+                wall: wall,
+                delta: delta,
+                cell: cell,
+                cols: _sideOf(cell: cell, extent: width),
+                rows: _sideOf(cell: cell, extent: height),
               ),
-            ),
-          ),
-        ),
       ),
     );
+  }
+
+  /// How many cells fit in [extent]. The handle is handed pixels, and the
+  /// clamp needs the grid's size in cells; deriving it from the board it was
+  /// drawn on keeps one definition of the field rather than passing the side
+  /// down two paths that could disagree.
+  static int _sideOf({required double cell, required double extent}) =>
+      cell <= 0 ? 0 : (extent / cell).round();
+
+  /// Turn a released handle drag into a whole-wall shift, and report it.
+  ///
+  /// Rounds to the nearest cell, then clamps the SHIFT rather than each end:
+  /// clamping the ends independently would shorten or rotate a wall dragged
+  /// into a corner, which is not what dragging a wall means. Held back at the
+  /// edge, the wall slides as far as it can and keeps its shape.
+  void _shiftWall({
+    required int index,
+    required FloorPlanWall wall,
+    required Offset delta,
+    required double cell,
+    required int cols,
+    required int rows,
+  }) {
+    if (cell <= 0) return;
+
+    final minX = math.min(wall.x1, wall.x2);
+    final maxX = math.max(wall.x1, wall.x2);
+    final minY = math.min(wall.y1, wall.y2);
+    final maxY = math.max(wall.y1, wall.y2);
+
+    final dCol = (delta.dx / cell)
+        .round()
+        .clamp((-minX).round(), (cols - maxX).round());
+    final dRow = (delta.dy / cell)
+        .round()
+        .clamp((-minY).round(), (rows - maxY).round());
+
+    if (dCol == 0 && dRow == 0) return;
+
+    onWallMoved!(index, dCol, dRow);
   }
 
   /// Turn a tap on the canvas into the nearest grid INTERSECTION, and report it.
@@ -579,6 +708,79 @@ class _NodeTileState extends State<_NodeTile> {
                     style: theme.textTheme.labelSmall?.copyWith(color: onFill),
                   ),
                 ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A wall's midpoint handle: tap to select it, drag to move the whole wall.
+///
+/// Stateful for the same reason [_NodeTile] is — while a pointer is down the
+/// handle has to follow it, and where it has been dragged to is not a fact
+/// about the layout until it is let go.
+class _WallHandle extends StatefulWidget {
+  const _WallHandle({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.onDragged,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final void Function(Offset delta)? onDragged;
+
+  @override
+  State<_WallHandle> createState() => _WallHandleState();
+}
+
+class _WallHandleState extends State<_WallHandle> {
+  Offset _drag = Offset.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final draggable = widget.onDragged != null;
+
+    return Transform.translate(
+      offset: _drag,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // `down` rather than `start`, as on a tile: the handle must end up
+        // where the pointer left it, and `start` measures from where the
+        // recognizer won the arena — a slop's worth short of the finger.
+        dragStartBehavior: DragStartBehavior.down,
+        onTap: widget.onTap,
+        onPanUpdate:
+            draggable ? (d) => setState(() => _drag += d.delta) : null,
+        onPanEnd: draggable
+            ? (_) {
+                final moved = _drag;
+                // Cleared BEFORE reporting: the canvas answers by rebuilding
+                // this handle at the wall's new midpoint, and an offset still
+                // sitting here would be added to it and double the drag.
+                setState(() => _drag = Offset.zero);
+                widget.onDragged!(moved);
+              }
+            : null,
+        child: Semantics(
+          button: true,
+          selected: widget.selected,
+          label: widget.label,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: theme.colorScheme.surface,
+              border: Border.all(
+                color: widget.selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.outline,
+                width: widget.selected ? 3 : 1,
               ),
             ),
           ),

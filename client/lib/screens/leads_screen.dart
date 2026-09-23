@@ -116,6 +116,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ('website_form', 'Forms'),
     ('facebook', 'Messenger'),
     ('instagram', 'Instagram'),
+    ('workiz', 'Workiz'),
   ];
 
   /// The strip, in `_sourceChips` order with All in front. Icons only exist
@@ -133,6 +134,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
     // and "a photo account" rather than pretending to be the logos.
     Icons.forum_outlined,
     Icons.camera_alt_outlined,
+    // Workiz is a book of records rather than a channel somebody wrote in,
+    // which is the difference this whole source turns on - no thread, no
+    // reply, and absent from the Unreplied filter. A ledger, not a message.
+    Icons.assignment_outlined,
   ];
 
   /// The sources this person was granted, with their icons - Jose,
@@ -1408,6 +1413,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
 /// Google / Thumbtack / Chat / Form: the short word for the row.
 String sourceBadgeWord(String? source) => switch (source) {
   'thumbtack' => 'Thumbtack',
+  'facebook' => 'Messenger',
+  'instagram' => 'Instagram',
   'website_chat' => 'Chat',
   'website_form' => 'Form',
   _ => 'Google',

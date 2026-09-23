@@ -3,6 +3,7 @@
 namespace App\Support\Time;
 
 use App\Models\Franchise;
+use App\Models\Organization;
 use App\Models\User;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
@@ -45,13 +46,30 @@ final class ViewTimezone
         if ($scope->type === ViewScope::FRANCHISE) {
             $franchise = Franchise::find($scope->id);
 
-            if (is_string($franchise?->timezone) && $franchise->timezone !== '') {
-                return $franchise->timezone;
-            }
-
-            return (string) $settings->get('timezone', $user->organization);
+            return self::forFranchise($franchise, $user->organization);
         }
 
         return (string) $settings->get('timezone', $scope->settingsScope());
+    }
+
+    /**
+     * The same rule, for callers that have a branch rather than a person.
+     *
+     * Added 2026-09-23 for the Workiz lead import, which runs on a schedule and
+     * so has no user to read a view from. It has a FRANCHISE, because a Workiz
+     * connection is always one branch's token.
+     *
+     * Extracted rather than reimplemented next to the importer, which is what
+     * this class exists to prevent: a second copy of "franchise first, then the
+     * organization's setting" is how the two come to disagree, and a timezone
+     * that disagrees puts a lead on the wrong day rather than erroring.
+     */
+    public static function forFranchise(?Franchise $franchise, Organization $organization): string
+    {
+        if (is_string($franchise?->timezone) && $franchise->timezone !== '') {
+            return $franchise->timezone;
+        }
+
+        return (string) app(SettingsResolver::class)->get('timezone', $organization);
     }
 }

@@ -204,10 +204,12 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
-    // Fit-to-canvas: the full width, and the grid's own aspect ratio.
+    // Fit-to-canvas on a SQUARE field: the full width, and a height to match.
+    // This used to assert `375 * 28 / 40` — the grid's own aspect ratio, which
+    // is what the canvas drew before the field was squared.
     final size = tester.getSize(find.byType(FloorPlanCanvas));
     expect(size.width, 375);
-    expect(size.height, closeTo(375 * 28 / 40, 0.01));
+    expect(size.height, closeTo(375, 0.01));
 
     final canvas = tester.getRect(find.byType(FloorPlanCanvas));
     final edge = tester.getRect(
@@ -216,7 +218,335 @@ void main() {
     expect(edge.right, lessThanOrEqualTo(canvas.right + 0.01));
     expect(edge.bottom, lessThanOrEqualTo(canvas.bottom + 0.01));
   });
+
+  testWidgets('the whole plan fits the space it is given, at default zoom',
+      (tester) async {
+    // The shape that broke: a grid TALLER than it is wide, in a pane wider
+    // than it is tall. `cell = width / cols` fitted the width and let the
+    // height fall out of the aspect ratio, so 30x40 in a 1000x800 pane drew a
+    // board over 1300px tall and the lower rows were simply off screen — with
+    // nothing on the map saying so. Every other test in this file passed
+    // against that, because none of them asked how big the board came out.
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+    );
+
+    final board = tester.getSize(_boardFinder());
+    final allowed = 800 * FloorPlanCanvas.viewportFraction;
+
+    expect(board.height, lessThanOrEqualTo(allowed + 1),
+        reason: 'The plan is taller than the room it was given, so its lower '
+            'rows are off screen. Fitting the width alone is what did this.');
+    expect(board.width, lessThanOrEqualTo(1001));
+
+    // Control: it did not collapse to nothing either — a zero-height board
+    // satisfies the assertion above and shows no map at all.
+    expect(board.height, greaterThan(50));
+  });
+
+  testWidgets('zooming in draws a bigger board than the fit', (tester) async {
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+    );
+    final fitted = tester.getSize(_boardFinder());
+
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+      zoom: 2.0,
+    );
+    final zoomed = tester.getSize(_boardFinder());
+
+    expect(zoomed.height, greaterThan(fitted.height),
+        reason: 'Zoom must change the DRAWN size, or the buttons move a '
+            'percentage and nothing else.');
+    expect(zoomed.width, greaterThan(fitted.width));
+  });
+
+  testWidgets('the field is square whatever shape the grid is', (tester) async {
+    // Jose, 2026-09-23: "the map canvas should be 1:1 square." Both shapes,
+    // because squaring by padding the SHORT side is right and squaring by
+    // cropping the long one would pass a test that only ever saw one of them.
+    for (final grid in const [(30, 40), (40, 28)]) {
+      await _pumpCanvas(
+        tester,
+        layout: _layout(cols: grid.$1, rows: grid.$2, nodes: const []),
+        status: const {},
+        size: const Size(1000, 800),
+      );
+
+      final board = tester.getSize(_boardFinder());
+
+      expect(board.width, closeTo(board.height, 0.5),
+          reason: 'A ${grid.$1}x${grid.$2} grid still draws on a square field.');
+      expect(board.height, greaterThan(50), reason: 'Control: not collapsed.');
+    }
+  });
+
+  testWidgets('walls and tiles agree on the cell size at every zoom',
+      (tester) async {
+    // Jose, 2026-09-23: "if u zoom in or out things get displaced or
+    // deformed." Two layers draw this map — the painter draws the walls, the
+    // Stack positions the tiles — and they compute the cell size separately.
+    // The painter divides the size it is GIVEN; the tiles multiply the size
+    // the canvas COMPUTED. While a tight parent stretched the board those two
+    // were different numbers, so the walls squashed to the pane's aspect and
+    // every tile landed somewhere the walls no longer were.
+    //
+    // THE TIGHT BOX IS THE WHOLE TEST. The first version of this pumped the
+    // canvas the way the rest of this file does — inside a scroll view, which
+    // hands down LOOSE constraints — and passed with the fix reverted. It was
+    // measuring a stretch that cannot happen in its own harness. The tab gives
+    // this widget a tight box, so the test has to as well.
+    for (final zoom in const [0.5, 1.0, 2.0]) {
+      await _pumpTightCanvas(tester, zoom: zoom);
+
+      final boardFinder = _boardFinder();
+      final board = tester.getSize(boardFinder);
+      final painter =
+          tester.widget<CustomPaint>(boardFinder).painter as FloorPlanPainter;
+
+      // The painter's own two cell sizes. A board that kept its computed size
+      // keeps these equal; unequal ones ARE the deformation.
+      final painterCellX = board.width / painter.cols;
+      final painterCellY = board.height / painter.rows;
+
+      expect(painterCellX, closeTo(painterCellY, 0.01),
+          reason: 'At zoom $zoom the painter is drawing non-square cells, so '
+              'the plan is squashed to the pane instead of to its own shape.');
+
+      // And the tile layer, measured against the board rather than assumed.
+      final origin = tester.getTopLeft(boardFinder);
+      final tile = tester.getTopLeft(
+        find.byKey(const ValueKey('floor-plan-node-n-far')),
+      );
+
+      expect(tile.dx - origin.dx, closeTo(15 * painterCellX, 0.5),
+          reason: 'At zoom $zoom the tile is not on the cell the walls are '
+              'drawn against — the two layers are using different cell sizes.');
+      expect(tile.dy - origin.dy, closeTo(19 * painterCellY, 0.5));
+    }
+  });
+
+  testWidgets('a wall point lands on the cell under the finger once scrolled',
+      (tester) async {
+    // THE BUG Jose reported: "zooming in out messes up the drawing wall
+    // system." The gesture surface wrapped the SCROLL FRAME, and
+    // `localPosition` inside a scroll view is measured from the viewport and
+    // carries no scroll offset — so once the board was zoomed and scrolled,
+    // every tap reported the cell that happened to be at that spot on screen
+    // BEFORE scrolling.
+    //
+    // Asserted as "the same screen point reports a different cell after
+    // scrolling" rather than as an arithmetic expectation, because the second
+    // form would just be the implementation typed twice.
+    final points = <(int, int)>[];
+
+    Future<void> pump() => _pumpCanvas(
+          tester,
+          layout: _layout(cols: 40, rows: 28, nodes: const []),
+          status: const {},
+          size: const Size(1000, 800),
+          zoom: 3.0,
+          wallMode: true,
+          onWallPoint: (col, row) => points.add((col, row)),
+        );
+
+    await pump();
+
+    final surface = find.byKey(const Key('floor-plan-wall-surface'));
+    expect(surface, findsOneWidget,
+        reason: 'Control: wall mode is actually on, so a tap has somewhere to '
+            'land and the assertions below are about the coordinate.');
+
+    // A point a little in from the frame's left edge, held FIXED on screen.
+    final frame = tester.getTopLeft(find.byType(FloorPlanCanvas));
+    final spot = frame + const Offset(40, 40);
+
+    await tester.tapAt(spot);
+    await tester.pump();
+
+    final horizontal = find.byWidgetPredicate(
+      (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
+    );
+    expect(horizontal, findsOneWidget,
+        reason: 'Control: zoomed past the fit, the board really does scroll — '
+            'without that there is no offset for this test to be about.');
+
+    // Dragged in steps like a real pointer. One giant move with the slop
+    // turned off never reached the scrollable, and the test then proved only
+    // that a board which had not moved reported the cell it had not moved to.
+    final pan = await tester.startGesture(tester.getCenter(horizontal));
+    await pan.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    await pan.moveBy(const Offset(-360, 0));
+    await tester.pump();
+    await pan.up();
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(spot);
+    await tester.pump();
+
+    expect(points, hasLength(2));
+    expect(points[1].$1, greaterThan(points[0].$1),
+        reason: 'The board was scrolled left, so the same point on screen is '
+            'now over a LATER column. Reporting the same column means the tap '
+            'was measured against the viewport instead of the board.');
+  });
+
+  testWidgets('dragging a wall handle reports a whole-wall shift in cells',
+      (tester) async {
+    // Jose, 2026-09-23: "i want to be able to drag walls as well to
+    // reposition them."
+    final moves = <(int, int, int)>[];
+
+    await _pumpWallCanvas(
+      tester,
+      walls: const [
+        {'x1': 2, 'y1': 2, 'x2': 6, 'y2': 2},
+      ],
+      onWallMoved: (i, dCol, dRow) => moves.add((i, dCol, dRow)),
+    );
+
+    // 20 cells across a 400px board: one cell is 20px, so 60px is three.
+    await tester.drag(
+      find.byKey(const ValueKey('floor-plan-wall-0')),
+      const Offset(60, 40),
+      touchSlopX: 0,
+      touchSlopY: 0,
+      // The finder is the Positioned; the pointer lands on the Transform
+      // inside it, which is the handle. Same widget, different render object.
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(moves, [(0, 3, 2)],
+        reason: 'The shift is in CELLS, snapped — the tab applies it to both '
+            'ends, so pixels must not reach it.');
+  });
+
+  testWidgets('a wall dragged past the edge keeps its length', (tester) async {
+    // The reason the SHIFT is clamped rather than each end: clamping the ends
+    // independently lets a wall dragged into a corner shorten or rotate, which
+    // is not what dragging a wall means.
+    final moves = <(int, int, int)>[];
+
+    await _pumpWallCanvas(
+      tester,
+      walls: const [
+        {'x1': 2, 'y1': 2, 'x2': 6, 'y2': 2},
+      ],
+      onWallMoved: (i, dCol, dRow) => moves.add((i, dCol, dRow)),
+    );
+
+    // Hard left: the wall's near end is on column 2, so it can move -2 and no
+    // further, whatever the pointer did.
+    await tester.drag(
+      find.byKey(const ValueKey('floor-plan-wall-0')),
+      const Offset(-400, 0),
+      touchSlopX: 0,
+      touchSlopY: 0,
+      // The finder is the Positioned; the pointer lands on the Transform
+      // inside it, which is the handle. Same widget, different render object.
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(moves, [(0, -2, 0)]);
+  });
 }
+
+/// The canvas inside a TIGHTLY constrained box, which is what the tab gives it
+/// and what the rest of this file's helper does not. 932x594 is the pane the
+/// real tab measured at.
+Future<void> _pumpTightCanvas(WidgetTester tester, {required double zoom}) async {
+  tester.view.physicalSize = const Size(1000, 800);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: SizedBox(
+          width: 932,
+          height: 594,
+          child: FloorPlanCanvas(
+            key: ValueKey('tight-$zoom'),
+            layout: _layout(
+              cols: 40,
+              rows: 28,
+              nodes: const [
+                {'id': 'n-far', 'x': 15, 'y': 19, 'label': 'Desk 3'},
+              ],
+              walls: const [
+                {'x1': 2, 'y1': 26, 'x2': 38, 'y2': 26},
+              ],
+            ),
+            status: const {},
+            zoom: zoom,
+            selectedNodeId: null,
+            onSelectNode: (_) {},
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+/// The canvas in wall mode on a board of a known size, so a drag in pixels has
+/// an unambiguous answer in cells. A 20x20 grid in a bounded 400px box is a
+/// 20px cell.
+Future<void> _pumpWallCanvas(
+  WidgetTester tester, {
+  required List<Map<String, dynamic>> walls,
+  required void Function(int index, int dCol, int dRow) onWallMoved,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 400,
+            height: 400,
+            child: FloorPlanCanvas(
+              layout: _layout(cols: 20, rows: 20, walls: walls, nodes: const []),
+              status: const {},
+              selectedNodeId: null,
+              onSelectNode: (_) {},
+              wallMode: true,
+              onWallPoint: (_, _) {},
+              onSelectWall: (_) {},
+              onWallMoved: onWallMoved,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+/// The board itself, found by its OWN painter.
+///
+/// `find.byType(CustomPaint).first` measured 800 — the whole window — because
+/// Flutter's own widgets paint with CustomPaint too and one of them came
+/// first in the tree. A size assertion against an ancestor is a healthy
+/// instrument aimed one level beside its subject: it answers confidently and
+/// about something else.
+Finder _boardFinder() => find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is FloorPlanPainter,
+    );
 
 Map<String, dynamic> _layout({
   required List<Map<String, dynamic>> nodes,
@@ -238,6 +568,9 @@ Future<BuildContext> _pumpCanvas(
   String? selectedNodeId,
   void Function(String nodeId)? onSelectNode,
   Size size = const Size(1000, 800),
+  double zoom = 1.0,
+  bool wallMode = false,
+  void Function(int col, int row)? onWallPoint,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -251,8 +584,11 @@ Future<BuildContext> _pumpCanvas(
           child: FloorPlanCanvas(
             layout: layout,
             status: status,
+            zoom: zoom,
             selectedNodeId: selectedNodeId,
             onSelectNode: onSelectNode ?? (_) {},
+            wallMode: wallMode,
+            onWallPoint: onWallPoint,
           ),
         ),
       ),

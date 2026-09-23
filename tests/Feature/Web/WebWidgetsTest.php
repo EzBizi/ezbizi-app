@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Models\User;
 use App\Models\WebSite;
+use App\Models\WebWidget;
 use App\Support\Web\WidgetDefaults;
 use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -916,6 +917,193 @@ class WebWidgetsTest extends TestCase
             ->assertStatus(409);
     }
 
+    /**
+     * ── Off EVERYWHERE means off everywhere ──────────────────────────
+     *
+     * Jose switched the live chat off on `a-1chimney.com` on 2026-09-23 and
+     * went on receiving chats all day. Nothing was broken: the switch is per
+     * SITE, A-1 Chimney has 47, and the other 46 followed a primary that was
+     * still on. Measured after the fact, the chats were arriving from
+     * a-1chimneysweep.com, ny.a-1chimney.com and chi.a-1chimney.com.
+     *
+     * THE ASSERTION THAT MATTERS is the site with its OWN config. Switching
+     * the primary off would carry everything that follows it and silently miss
+     * exactly those — which is the same bug one level up, and the reason this
+     * writes a row per site rather than one row at the top.
+     */
+    public function test_switching_the_chat_off_for_a_company_reaches_every_site(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+        $ownConfig = $this->registerSite($editor, $tenant, 'chi.a-1chimney.com');
+
+        // The one that makes this test worth writing: a site that answers for
+        // itself, so nothing the primary says can reach it.
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$ownConfig['data']['id']}/widgets", [
+                'config' => ['chat' => ['title' => 'Chicago desk']],
+            ])->assertOk();
+
+        $body = $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                'enabled' => false,
+                'scope' => 'company',
+            ])->assertOk()->json();
+
+        $this->assertSame(3, $body['changed']);
+
+        foreach ([$primary, $follower, $ownConfig] as $site) {
+            $chat = $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+                ->assertOk()
+                ->json('config.chat');
+
+            $this->assertFalse(
+                $chat['enabled'],
+                "{$site['data']['host']} still has the chat on.",
+            );
+        }
+
+        // And the wording it already had is still there. A switch that wiped
+        // the copy would make turning it back on a rewrite.
+        $kept = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$ownConfig['data']['id']}/widgets")
+            ->assertOk()
+            ->json('config.chat.title');
+
+        $this->assertSame('Chicago desk', $kept);
+    }
+
+    /** The narrow scope still exists, and still touches exactly one site. */
+    public function test_switching_one_site_leaves_its_siblings_alone(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $sibling = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                'enabled' => false,
+                'scope' => 'site',
+            ])->assertOk()->assertJsonPath('changed', 1);
+
+        $this->assertTrue(
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$sibling['data']['id']}/widgets")
+                ->assertOk()
+                ->json('config.chat.enabled'),
+        );
+    }
+
+    /** It goes back on the same way, or "off everywhere" is a one-way door. */
+    public function test_the_company_switch_turns_it_back_on(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        foreach ([false, true] as $wanted) {
+            $this->signedInAs($editor)
+                ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                    'enabled' => $wanted,
+                    'scope' => 'company',
+                ])->assertOk();
+
+            $this->assertSame(
+                $wanted,
+                $this->signedInAs($editor)
+                    ->getJson("/api/v1/web/sites/{$follower['data']['id']}/widgets")
+                    ->assertOk()
+                    ->json('config.chat.enabled'),
+            );
+        }
+    }
+
+    /**
+     * A company-wide action is still a per-record permission.
+     *
+     * The scope decides how many sites are TOUCHED, never who may touch them —
+     * a viewer reaching one endpoint and changing 47 websites would be the
+     * worst version of this feature.
+     */
+    public function test_a_viewer_cannot_switch_the_chat_for_anything(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->site();
+
+        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+
+        foreach (['site', 'company'] as $scope) {
+            $this->signedInAs($viewer)
+                ->postJson("/api/v1/web/sites/{$site['data']['id']}/widgets/chat", [
+                    'enabled' => false,
+                    'scope' => $scope,
+                ])->assertForbidden();
+        }
+    }
+
+    /**
+     * The refresh stamp has to survive the next save.
+     *
+     * `WidgetDefaults::resolve()` keeps only the keys it knows, so a stamp
+     * written inside the resolved shape would be dropped the next time
+     * somebody edited anything — and the button would stop working with no
+     * error, which is the failure nobody reports.
+     */
+    public function test_asking_the_sites_to_refresh_marks_every_one(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/refresh", [
+                'scope' => 'company',
+            ])->assertOk()->assertJsonPath('asked', 2);
+
+        foreach ([$primary, $follower] as $site) {
+            // withoutGlobalScopes: the stamp lives OUTSIDE the resolved
+            // shape, so no API response carries it and the row is the only
+            // place it can be read. The tenant guard is right to stop an
+            // unscoped read that has not said so.
+            $row = WebWidget::withoutGlobalScopes()
+                ->where('site_id', $site['data']['id'])
+                ->first();
+
+            $this->assertNotNull($row);
+            $this->assertArrayHasKey(
+                'refreshed_at',
+                $row->config,
+                "{$site['data']['host']} was not stamped, so its plugin sees no change.",
+            );
+        }
+    }
+
+    public function test_the_refresh_stamp_survives_an_ordinary_save(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$site['data']['id']}/widgets/refresh", ['scope' => 'site'])
+            ->assertOk();
+
+        $before = WebWidget::withoutGlobalScopes()->where('site_id', $site['data']['id'])->first()->config['refreshed_at'];
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => ['title' => 'Anything']],
+            ])->assertOk();
+
+        $after = WebWidget::withoutGlobalScopes()->where('site_id', $site['data']['id'])->first()->config;
+
+        $this->assertArrayHasKey(
+            'refreshed_at',
+            $after,
+            'An ordinary save dropped the stamp, so the refresh button stops working silently.',
+        );
+        $this->assertSame($before, $after['refreshed_at']);
+    }
+
     /** Presets always carry a default, whatever is stored, so a typo renders. */
     public function test_every_preset_family_has_a_default_even_when_nothing_is_stored(): void
     {
@@ -934,5 +1122,122 @@ class WebWidgetsTest extends TestCase
         // rather than refused: this renders on a customer's page, and a saved
         // config that fails to load would take the widget with it.
         $this->assertSame(64, $body['config']['presets']['social_links']['footer']['size']);
+    }
+
+    /**
+     * A widget in WIDGETS with no DEFAULTS is a blank box on 110 live sites.
+     *
+     * The guard above derives from `WIDGETS`, so it grows on its own — but it
+     * only asks whether a `default` KEY exists, and `resolve()` manufactures
+     * one for any name it is given. A widget added to the list and forgotten
+     * in `defaults()` therefore passes it with `default => []`, renders
+     * nothing anybody can see, and reports nothing anywhere.
+     *
+     * Jose asked for fourteen more widgets on 2026-09-23. That is fourteen
+     * chances to add a name and forget its values, so the completeness has to
+     * be asserted rather than remembered.
+     */
+    public function test_every_declared_widget_has_values_and_not_just_a_name(): void
+    {
+        $defaults = WidgetPresets::defaults();
+
+        foreach (WidgetPresets::WIDGETS as $widget) {
+            $this->assertArrayHasKey(
+                $widget,
+                $defaults,
+                "{$widget} is declared and has no defaults, so it renders blank.",
+            );
+
+            $this->assertNotSame(
+                [],
+                $defaults[$widget],
+                "{$widget} has an empty default, which is the same blank box.",
+            );
+        }
+
+        // And the inverse, because the pair is what makes it a boundary:
+        // values for a widget nobody declared are values nothing can reach.
+        foreach (array_keys($defaults) as $widget) {
+            $this->assertContains(
+                $widget,
+                WidgetPresets::WIDGETS,
+                "{$widget} has defaults and is not declared, so nothing renders it.",
+            );
+        }
+    }
+
+    /**
+     * ── The three that every A1 Tools page carries ──
+     *
+     * Jose walked me through a-1chimney.com, everdoors.com and crestln.com on
+     * 2026-09-23. Contact Info, the CTA and the standalone phone are on every
+     * page of all three, which is why they are the first of the fourteen.
+     */
+    public function test_the_contact_block_travels_with_its_arrangement(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['contact_info' => [
+                    'default' => ['layout' => 'row', 'icons' => false],
+                    'header' => ['layout' => 'compact'],
+                ]]],
+            ])->assertOk()->json('config.presets.contact_info');
+
+        $this->assertSame('row', $body['default']['layout']);
+        $this->assertFalse($body['default']['icons']);
+        $this->assertSame('compact', $body['header']['layout']);
+
+        // The keys nobody set still arrive, because the plugin reads the
+        // bundle whole and a missing key there is a missing feature. `phone`
+        // rather than the `show` CSV this asserted first: three flags replaced
+        // it before either shipped, because a comma-separated list needs a
+        // text box on the screen and a parser in the plugin to say what three
+        // switches say for nothing.
+        $this->assertArrayHasKey('phone', $body['header']);
+        $this->assertTrue($body['header']['phone']);
+    }
+
+    /**
+     * A bar and a popup cover part of somebody's page, so neither is default.
+     *
+     * The value of this assertion is the DEFAULT rather than the clamping: a
+     * widget that started covering the page the moment it was pasted in would
+     * be a surprise on a live site, and the surprise would arrive on all 110
+     * at once.
+     */
+    public function test_the_call_to_action_sits_inline_until_somebody_says_otherwise(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $chosen = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['cta' => ['sticky' => ['placement' => 'bar']]]],
+            ])->assertOk()->json('config.presets.cta');
+
+        $this->assertSame('inline', $chosen['default']['placement']);
+        $this->assertSame('bar', $chosen['sticky']['placement']);
+    }
+
+    public function test_an_arrangement_nobody_offers_becomes_the_default(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $body = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => [
+                    'contact_info' => ['default' => ['layout' => 'carousel']],
+                    'cta' => ['default' => ['placement' => 'takeover']],
+                    'phone_box' => ['default' => ['size' => 'enormous']],
+                ]],
+            ])->assertOk()->json('config.presets');
+
+        // Clamped to the default rather than refused. This renders on a
+        // customer's page and a config that fails to load takes the widget
+        // with it — the same rule the sizes follow.
+        $this->assertSame('stack', $body['contact_info']['default']['layout']);
+        $this->assertSame('inline', $body['cta']['default']['placement']);
+        $this->assertSame('medium', $body['phone_box']['default']['size']);
     }
 }

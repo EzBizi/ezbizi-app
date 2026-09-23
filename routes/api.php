@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
+use App\Http\Controllers\Api\A1LeadsGbpController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -54,6 +55,7 @@ use App\Http\Controllers\Api\MicrosoftMailAuthController;
 use App\Http\Controllers\Api\Monitoring\CamerasController as MonitoringCamerasController;
 use App\Http\Controllers\Api\Monitoring\DevicesController as MonitoringDevicesController;
 use App\Http\Controllers\Api\Monitoring\FloorPlansController as MonitoringFloorPlansController;
+use App\Http\Controllers\Api\Monitoring\OwnershipController as MonitoringOwnershipController;
 use App\Http\Controllers\Api\Monitoring\HeartbeatController as MonitoringHeartbeatController;
 use App\Http\Controllers\Api\Monitoring\LiveViewController as MonitoringLiveViewController;
 use App\Http\Controllers\Api\Monitoring\RemoteControlController as MonitoringRemoteControlController;
@@ -659,6 +661,11 @@ Route::prefix('v1')
         // is scoped to the caller's reach. Both are enforced in policies, not
         // here — a route file is a bad place to keep an authorization rule,
         // because the next endpoint added beside it will not inherit the thought.
+        // BEFORE the resource, or `customers/{customer}` claims it: "duplicates"
+        // is a perfectly good uuid-shaped-nothing to a route that accepts any
+        // id, and the failure is a 404 about a customer rather than a route
+        // that was never reached.
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 
@@ -719,6 +726,27 @@ Route::prefix('v1')
         // one here would say nothing to Google while hiding a shop front from
         // whoever answers for it. Disconnecting the profile is what removes them.
         Route::post('business-profile/sync', [BusinessProfileController::class, 'sync']);
+        /*
+         * A1Leads GBP - the read-only window onto Rodrigo's system.
+         *
+         * One route, one permission, and nothing else. It is NOT part of the
+         * Business Profile module below it: that one reads EzBizi's own tables
+         * and is what a Google reviewer is shown when our own API access
+         * arrives. This one is a bridge and is deleted with its module.
+         *
+         * Gated by middleware rather than in the controller because the route
+         * serves exactly one tab, which is the condition inbox 0051 sets for
+         * the middleware being the right place.
+         */
+        Route::middleware('permission:a1leads_gbp.view')->group(function () {
+            Route::get('a1leads-gbp', [A1LeadsGbpController::class, 'index']);
+
+            // The list on its own, for filter changes and paging. Same grant,
+            // same tab; a separate route so changing a dropdown costs one
+            // upstream read rather than four.
+            Route::get('a1leads-gbp/reviews', [A1LeadsGbpController::class, 'reviews']);
+        });
+
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);
@@ -821,6 +849,15 @@ Route::prefix('v1')
             Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
             Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
             Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+            /*
+             * Both take a `scope` of `site` or `company`, because a company
+             * with 47 websites had no way to say "all of them" and Jose spent
+             * a day switching one of them off — see WidgetsController::chat.
+             * Registered before nothing and after the resource: neither name
+             * collides with a site id, since `{site}` is already bound.
+             */
+            Route::post('web/sites/{site}/widgets/chat', [WebWidgetsController::class, 'chat']);
+            Route::post('web/sites/{site}/widgets/refresh', [WebWidgetsController::class, 'refresh']);
         });
         /*
          * The Orders tab owns buying, selling and issuing outright: nothing
@@ -1255,6 +1292,24 @@ Route::prefix('v1')
 
             // Work Hours: one week, grouped by person, with totals (2026-09-17).
             Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
+        });
+
+        /*
+         * ── Corrections (2026-09-23) ──
+         *
+         * A SECOND grant on top of the tab, not a wider use of it. Seeing
+         * everybody's hours and rewriting what they are paid for are different
+         * authorities; `hr.hours.correct` is the one that rewrites, and a
+         * dispatcher granted Work Hours to check their own week does not get
+         * it by holding the tab.
+         *
+         * One consumer each — the Work Hours pane — so the middleware is the
+         * right place for the gate, and the policy behind it says the same
+         * thing for anything that reaches these another way.
+         */
+        Route::middleware('permission:hr.hours.correct')->group(function () {
+            Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
+            Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
         });
 
         // The tab the owner asked for. It computes nothing itself — the figures
@@ -2136,7 +2191,11 @@ Route::prefix('v1')
         // ScopeReach::assertCovers and every node assignee against
         // constrainToVisiblePeople — see FloorPlansController.
         /*
-         * GATED ON THE TAB, because these six serve exactly one — measured, not
+         * GATED ON THE MAP TAB. The floor plan moved out of General on
+         * 2026-09-22 when General became the ownership chart, so these follow
+         * the pane rather than the old key.
+         *
+         * Gated on the tab because these six serve exactly one — measured, not
          * assumed: `grep -rn "floor-plans" client/lib` answers general_tab.dart
          * and floor_plan_canvas.dart, and nothing else in the app reads a floor
          * plan. Where a Monitoring route feeds several panes (`monitoring/devices`
@@ -2147,7 +2206,41 @@ Route::prefix('v1')
          * permission: the URL is one paste away from anybody who has ever had the
          * pane open.
          */
+        /*
+         * The ownership chart — Monitoring's General tab. Gated on that tab
+         * because it serves exactly one pane (`grep -rn "monitoring/ownership"
+         * client/lib` answers ownership_tab.dart alone), and the two columns
+         * that are not Monitoring's own are withheld per COLUMN inside the
+         * controller rather than by this gate: PC name needs
+         * monitoring.specs.view, and the work schedule needs HR's own
+         * hr.hours.view, because it is HR's disclosure to make.
+         */
         Route::middleware('permission:monitoring.general.view')->group(function () {
+            Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
+            // The free desks the chart offers when a Desk cell is empty.
+            Route::get('monitoring/ownership/desks', [MonitoringOwnershipController::class, 'desks']);
+        });
+
+        /*
+         * Renaming ONE desk, from the ownership chart.
+         *
+         * Outside the Map TAB group on purpose: the person doing this is
+         * looking at General, and an administrator may reasonably grant "may
+         * edit the map" without granting the map's own tab. The edit grant
+         * itself (monitoring.map.manage) is enforced by the policy inside,
+         * along with the §3 scope check every other plan route makes.
+         */
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/label',
+            [MonitoringFloorPlansController::class, 'renameNode']
+        );
+        // Seating somebody at a desk, or clearing it, from the same chart.
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/user',
+            [MonitoringFloorPlansController::class, 'assignNode']
+        );
+
+        Route::middleware('permission:monitoring.map.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
         // BEFORE the {id} GET, deliberately: registered after it, "scope-options"
