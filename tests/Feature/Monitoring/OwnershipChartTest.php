@@ -166,4 +166,44 @@ class OwnershipChartTest extends TestCase
         $withTab = $this->userWithRole($alpha, 'Chart', self::BASE);
         $this->signedInAs($withTab)->getJson(self::PATH)->assertOk();
     }
+
+    public function test_an_organization_level_assignment_is_named_not_dashed(): void
+    {
+        // Jose, 2026-09-23: "a lot of users are not showing as empty on
+        // assignment for some reason." They were assigned, at ORG level, and
+        // this column read the franchise then the company and gave up — so
+        // "placed at the top of the business" and "never placed" rendered as
+        // the same em dash. The chart exists partly to show who is unplaced,
+        // so that collapse sends somebody to fix a row that is already right.
+        $alpha = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Chart Viewer', self::BASE);
+
+        $rows = $this->signedInAs($viewer)->getJson(self::PATH)->assertOk()->json('data');
+        $row = collect($rows)->firstWhere('user.id', $viewer->getKey());
+
+        $this->assertSame(
+            $alpha['org']->name,
+            $row['assignment'] ?? null,
+            'An org-level assignment must name the organization.'
+        );
+    }
+
+    public function test_somebody_with_no_assignment_row_still_reports_none(): void
+    {
+        // The CONTROL for the test above, and the half that keeps the fix
+        // honest: making org-level assignments visible must not turn every
+        // row into a name. A person carrying no assignment at all is the case
+        // the em dash is actually for.
+        $alpha = $this->provisionTenant('Alpha');
+        $viewer = $this->userWithRole($alpha, 'Chart Viewer', self::BASE);
+
+        $unplaced = $this->userWithRole($alpha, 'Unplaced', self::BASE);
+        $this->inTenant($alpha['org'], fn () => $unplaced->assignments()->delete());
+
+        $rows = $this->signedInAs($viewer)->getJson(self::PATH)->assertOk()->json('data');
+        $row = collect($rows)->firstWhere('user.id', $unplaced->getKey());
+
+        $this->assertNotNull($row, 'The unplaced person is still ON the chart.');
+        $this->assertNull($row['assignment']);
+    }
 }

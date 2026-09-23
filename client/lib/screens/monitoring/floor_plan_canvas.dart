@@ -68,6 +68,7 @@ class FloorPlanCanvas extends StatelessWidget {
   const FloorPlanCanvas({
     super.key,
     required this.layout,
+    this.zoom = 1.0,
     required this.status,
     required this.selectedNodeId,
     required this.onSelectNode,
@@ -146,6 +147,20 @@ class FloorPlanCanvas extends StatelessWidget {
   static const int defaultCols = 40;
   static const int defaultRows = 28;
 
+  /// 1.0 is "the whole plan fits". Above that the board grows and scrolls
+  /// inside its own frame; below it, the plan is drawn smaller than it needs
+  /// to be, which is occasionally what somebody wants on a huge floor.
+  ///
+  /// Owned by the tab rather than here because the buttons live up there with
+  /// the other map controls, and a zoom that reset every time this rebuilt
+  /// would be worse than none.
+  final double zoom;
+
+  /// How much of the window height the map may take when nothing bounds it.
+  /// Two thirds leaves the plan picker, the toolbar and the counts above it
+  /// and the summary beside it, all on screen at once.
+  static const double viewportFraction = 0.66;
+
   /// A tile covers this many cells on a side. One cell is too small to read a
   /// label in at any realistic grid size (40 columns of a 1200px canvas is a
   /// 30px cell); two is a desk-sized marker that still lands on the grid, which
@@ -216,15 +231,36 @@ class FloorPlanCanvas extends StatelessWidget {
         }
 
         final width = constraints.maxWidth;
-        final cell = width / cols;
-        final height = cell * rows;
-        final tile = math.min(cell * tileSpan, math.min(width, height));
+
+        // FIT BOTH DIMENSIONS, not just the width.
+        //
+        // This was `cell = width / cols`, which fits the width and lets the
+        // height fall out of the grid's aspect ratio — so a plan wider than it
+        // is tall ran off the bottom of the pane and the only way to see the
+        // rest was to scroll the whole tab. Jose, 2026-09-23: "the default
+        // should show the entire map field already, not zoomed in like now."
+        //
+        // The height to fit INTO has to be invented here, because this widget
+        // is handed an unbounded one: it sits in a scrolling column, so there
+        // is no "pane height" to read. A fraction of the window is the honest
+        // approximation — big enough to be the map's pane, small enough that
+        // the summary and the toolbar above it stay on screen.
+        final viewport = constraints.hasBoundedHeight && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : MediaQuery.sizeOf(context).height * viewportFraction;
+
+        final fitted = math.min(width / cols, viewport / rows);
+        final cell = fitted * zoom;
+
+        final boardWidth = cell * cols;
+        final boardHeight = cell * rows;
+        final tile = math.min(cell * tileSpan, math.min(boardWidth, boardHeight));
 
         final drawing = wallMode && onWallPoint != null;
 
         final board = SizedBox(
-          width: width,
-          height: height,
+          width: boardWidth,
+          height: boardHeight,
           child: Stack(
             children: [
               Positioned.fill(
@@ -251,8 +287,8 @@ class FloorPlanCanvas extends StatelessWidget {
                   tile: tile,
                   cols: cols,
                   rows: rows,
-                  width: width,
-                  height: height,
+                  width: boardWidth,
+                  height: boardHeight,
                 ),
               if (wallMode && onSelectWall != null)
                 for (var index = 0; index < walls.length; index++)
@@ -261,14 +297,30 @@ class FloorPlanCanvas extends StatelessWidget {
                     index: index,
                     wall: walls[index],
                     cell: cell,
-                    width: width,
-                    height: height,
+                    width: boardWidth,
+                    height: boardHeight,
                   ),
             ],
           ),
         );
 
-        if (!drawing) return board;
+        // Zoomed past the fit, the board is bigger than the space it was
+        // given, so it scrolls INSIDE its own area rather than pushing the
+        // summary and the rest of the tab down the page.
+        Widget framed = board;
+
+        if (boardWidth > width + 0.5 || boardHeight > viewport + 0.5) {
+          framed = SizedBox(
+            width: width,
+            height: math.min(boardHeight, viewport),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SingleChildScrollView(child: board),
+            ),
+          );
+        }
+
+        if (!drawing) return framed;
 
         return GestureDetector(
           key: const Key('floor-plan-wall-surface'),
@@ -279,7 +331,7 @@ class FloorPlanCanvas extends StatelessWidget {
             cols: cols,
             rows: rows,
           ),
-          child: board,
+          child: framed,
         );
       },
     );
