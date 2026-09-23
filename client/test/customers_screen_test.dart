@@ -146,6 +146,11 @@ void main() {
   ) async {
     await _pump(
       tester,
+      // 375 wide, because that is the floor the house holds every screen to and
+      // a panel is where it breaks first: SidePanel is 440 by default and goes
+      // full-width below that, so this is the case where the group header and
+      // the owner tag have the least room they will ever have.
+      size: const Size(375, 812),
       customers: const [_alice],
       onRequest: (request) {
         if (!request.url.path.endsWith('/customers/duplicates')) return null;
