@@ -44,6 +44,26 @@ use Illuminate\Support\Facades\DB;
  * It never overwrites a row a person typed. Derived rows carry
  * `source = 'workiz_jobs'` and only those are rewritten; a NULL source means
  * somebody entered it by hand and it wins over the evidence.
+ *
+ * ── DO NOT RUN THIS BEFORE THE SYNC HAS BACKFILLED ──────────────
+ *
+ * The sweep that fills `workiz_jobs` runs every minute over a TWO-DAY window;
+ * loading the history is a separate act (`--since=` / a wide `--window`), kept
+ * separate because Workiz answers `429 "Account reached Api Quotas"` and a
+ * five-year window across nine accounts is how you earn one. Measured
+ * 2026-09-23: A1 Tools holds 7,793 jobs going back to 2025-04-09, and its
+ * derived map is 2,935 rows over 2,717 distinct zips.
+ *
+ * So a run against two days of jobs produces a THIN map, and thin is not the
+ * same as wrong in an obvious way: a contested zip decided on two days of
+ * evidence can hand the zip to the area that happened to work there this week.
+ * The next rebuild corrects it — the rows are derived and rewritten — but
+ * between the two, availability answers for that zip name the wrong area, and
+ * nothing about the output says the evidence was thin.
+ *
+ * Ask the Workiz session whether the backfill has run before comparing what
+ * this produces against 2,717. Their word for it: "expect your first real map
+ * to be thin and do not read that as a defect".
  */
 class SchedulingBuildZipMap extends Command
 {
