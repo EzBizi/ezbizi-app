@@ -1089,6 +1089,52 @@ void main() {
       );
     });
 
+    /*
+     * The preview is given ROOM, which the test above cannot see.
+     *
+     * That one asserts the server's HTML reaches `MessageHtmlView`, and it
+     * passed throughout a period when the pane was blank on the web for every
+     * user. It could not have caught it: on the test platform
+     * `message_html_stub.dart` is a `SizedBox.shrink()`, so the widget paints
+     * nothing here whether the real one works or not. A test that stops at
+     * "the string arrived" is testing the wiring and calling it the feature.
+     *
+     * What was wrong was the CARD. `DashboardCard` sizes to its contents
+     * unless `expand` is set, and the web implementation is an iframe inside
+     * `SizedBox.expand`, which collapses when its height is unbounded. Header
+     * drawn, body zero-high, nothing thrown.
+     *
+     * So this asserts the one thing that is true on every platform and would
+     * have gone red: the constraints handed to the viewer are bounded and
+     * tall. The stub still paints nothing — that is not what is being
+     * measured.
+     */
+    testWidgets('the preview is given the height its viewer needs', (
+      tester,
+    ) async {
+      await _pumpComposer(
+        tester,
+        _handler(
+          canEdit: true,
+          newsletters: const [_draft],
+          previewHtml: '<h1>Autumn sweeps</h1>',
+        ),
+      );
+
+      final box = tester.renderObject<RenderBox>(find.byType(MessageHtmlView));
+
+      expect(
+        box.constraints.hasBoundedHeight,
+        isTrue,
+        reason: 'An unbounded height is what let the iframe collapse to zero.',
+      );
+      expect(
+        box.constraints.maxHeight,
+        greaterThan(200),
+        reason: 'Bounded but tiny would draw a sliver and read as blank too.',
+      );
+    });
+
     testWidgets('Send says which of its reasons is stopping it', (
       tester,
     ) async {
