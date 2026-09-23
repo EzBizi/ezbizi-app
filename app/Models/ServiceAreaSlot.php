@@ -35,6 +35,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * So: a change to this table's grain is a change to somebody else's report.
  * Tell the Reports session before it lands — they asked to be told, and they
  * are the ones who cannot see it happen.
+ *
+ * THERE IS A TRIPWIRE, AND GOING GREEN IS THE WRONG FIX.
+ * `test_a_slot_is_still_a_weekly_pattern` (Reports, 69758c62) reds when this
+ * table gains a date dimension or loses `weekday`. It is not protecting this
+ * table — it is protecting two columns and a live alert that would otherwise
+ * change meaning without a symptom. When it fires, their columns get rewritten
+ * against the new grain; nobody edits the test to make it pass.
+ *
+ * Do not let it make you cautious about 3.4. That is what a tripwire is for.
  */
 #[Fillable([
     'organization_id', 'service_area_id', 'weekday', 'start_time', 'end_time',
