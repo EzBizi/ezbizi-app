@@ -979,6 +979,35 @@ class SettingRegistry
                 allowedScopes: $orgOnly,
                 help: 'How much each Extend adds to the scheduled end. There is no limit on how many times.',
             ),
+            /*
+             * The backstop, and it exists because the schedule was not one.
+             *
+             * Found on 2026-09-23 from Jose's screenshot: Adeline was closed by
+             * the sweep at her 5pm end and clocked back in eight seconds later.
+             * A shift that STARTS at or after the scheduled end has no end to
+             * count down to, so `scheduled_end_at` was null — and the sweep
+             * reads `whereNotNull`, so that row was invisible to it for ever.
+             * Five people across four days were still clocked in, one of them
+             * for 40 hours. Nothing was broken; nothing was ever going to close
+             * them.
+             *
+             * So every shift gets an end now, and this is the one used when the
+             * schedule does not supply one: a day off, a late start, a person
+             * with no schedule at all. It is a CAP rather than a shift length —
+             * nobody should hit it, and hitting it means the punch was never
+             * closed by a person.
+             */
+            new SettingDefinition(
+                key: 'time_clock.max_hours',
+                label: 'Longest a shift may run, hours',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 16,
+                options: [8, 10, 12, 14, 16, 18, 20, 24],
+                allowedScopes: $orgOnly,
+                help: 'A shift that nobody clocks out of is closed automatically after this long. '
+                    .'It applies when the schedule gives no end — a day off, or clocking in after '
+                    .'the day is over. Correct the times on Human Resources > Work Hours.',
+            ),
             new SettingDefinition(
                 key: 'time_clock.week_starts_on',
                 label: 'Week starts on',

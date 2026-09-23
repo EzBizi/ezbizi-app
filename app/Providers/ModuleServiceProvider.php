@@ -438,7 +438,14 @@ class ModuleServiceProvider extends ServiceProvider
                 // already keeps the people list — see UserPolicy::resetSecurity.
                 // Same reasoning that keeps `monitoring.control` off
                 // `monitoring.screenshots.view`.
-                actions: ['view', 'create', 'edit', 'security.reset'],
+                // `hours.correct` is split from `edit` on exactly the argument
+                // above it: rewriting the hours somebody is PAID for is a
+                // bigger authority than keeping their row, and folding it into
+                // `edit` would have handed it on deploy to everybody who
+                // already maintains the people list. Jose asked for the
+                // correction system on 2026-09-23; it is the grant that opens
+                // Edit and Delete on a Work Hours row.
+                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct'],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *

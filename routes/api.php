@@ -1258,6 +1258,24 @@ Route::prefix('v1')
             Route::get('hr/time-clock/week', [TimeClockController::class, 'week']);
         });
 
+        /*
+         * ── Corrections (2026-09-23) ──
+         *
+         * A SECOND grant on top of the tab, not a wider use of it. Seeing
+         * everybody's hours and rewriting what they are paid for are different
+         * authorities; `hr.hours.correct` is the one that rewrites, and a
+         * dispatcher granted Work Hours to check their own week does not get
+         * it by holding the tab.
+         *
+         * One consumer each — the Work Hours pane — so the middleware is the
+         * right place for the gate, and the policy behind it says the same
+         * thing for anything that reaches these another way.
+         */
+        Route::middleware('permission:hr.hours.correct')->group(function () {
+            Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
+            Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
+        });
+
         // The tab the owner asked for. It computes nothing itself — the figures
         // are widgets in the shared registry, so headcount on this tab and
         // headcount on somebody's main dashboard are the same code.
