@@ -457,6 +457,61 @@ void _wordTests() {
     expect(sourceWord('website_chat'), 'Website chat');
     expect(sourceWord('website_form'), 'Website form');
   });
+
+  /// WHICH OF THE 47 WEBSITES SENT IT.
+  ///
+  /// Jose, 2026-09-23: he switched the live chat off on one of A-1 Chimney's
+  /// websites and kept receiving chats. Every one of them read "Website chat ·
+  /// A-1 Chimney" — true, and no help at all in working out that the other 46
+  /// sites were still sending. The chats were coming from a-1chimneysweep.com,
+  /// ny.a-1chimney.com and chi.a-1chimney.com.
+  test('a website enquiry names the website, not the company', () {
+    final line = leadHeaderLine({
+      'source': 'website_chat',
+      'summary': 'ny.a-1chimney.com',
+      'company': {'id': 'c1', 'name': 'A-1 Chimney'},
+    });
+
+    expect(line, 'Website chat · ny.a-1chimney.com');
+  });
+
+  /// The host beats the FRANCHISE too, which is the case that would otherwise
+  /// look right: a franchise name is a place, so a reader would not notice it
+  /// standing in for the one fact they are after.
+  test('the host wins over a franchise name as well', () {
+    final line = leadHeaderLine({
+      'source': 'website_chat',
+      'summary': 'chi.a-1chimney.com',
+      'franchise': {'id': 'f1', 'name': 'Chicago'},
+      'company': {'id': 'c1', 'name': 'A-1 Chimney'},
+    });
+
+    expect(line, 'Website chat · chi.a-1chimney.com');
+  });
+
+  /// And nothing else changes. `summary` carries something other than a host
+  /// for Google and Thumbtack, so swapping it in everywhere would put the
+  /// wrong word where the company name belongs.
+  test('a lead from anywhere else still names the company', () {
+    final line = leadHeaderLine({
+      'source': 'local_services',
+      'summary': 'whatever Google put here',
+      'company': {'id': 'c1', 'name': 'A-1 Chimney'},
+    });
+
+    expect(line, 'Google Ads · A-1 Chimney');
+  });
+
+  /// A website lead with no host recorded falls back rather than losing the
+  /// place entirely — older rows predate `summary` carrying the host.
+  test('a website lead with no host still names the company', () {
+    final line = leadHeaderLine({
+      'source': 'website_chat',
+      'company': {'id': 'c1', 'name': 'A-1 Chimney'},
+    });
+
+    expect(line, 'Website chat · A-1 Chimney');
+  });
 }
 
 

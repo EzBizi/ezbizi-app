@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Models\User;
 use App\Models\WebSite;
+use App\Models\WebWidget;
 use App\Support\Web\WidgetDefaults;
 use App\Support\Web\WidgetPresets;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -914,6 +915,193 @@ class WebWidgetsTest extends TestCase
 
         $this->postJson('/api/v1/web/chat', ['key' => $key, 'message' => 'Hello?'])
             ->assertStatus(409);
+    }
+
+    /**
+     * ── Off EVERYWHERE means off everywhere ──────────────────────────
+     *
+     * Jose switched the live chat off on `a-1chimney.com` on 2026-09-23 and
+     * went on receiving chats all day. Nothing was broken: the switch is per
+     * SITE, A-1 Chimney has 47, and the other 46 followed a primary that was
+     * still on. Measured after the fact, the chats were arriving from
+     * a-1chimneysweep.com, ny.a-1chimney.com and chi.a-1chimney.com.
+     *
+     * THE ASSERTION THAT MATTERS is the site with its OWN config. Switching
+     * the primary off would carry everything that follows it and silently miss
+     * exactly those — which is the same bug one level up, and the reason this
+     * writes a row per site rather than one row at the top.
+     */
+    public function test_switching_the_chat_off_for_a_company_reaches_every_site(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+        $ownConfig = $this->registerSite($editor, $tenant, 'chi.a-1chimney.com');
+
+        // The one that makes this test worth writing: a site that answers for
+        // itself, so nothing the primary says can reach it.
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$ownConfig['data']['id']}/widgets", [
+                'config' => ['chat' => ['title' => 'Chicago desk']],
+            ])->assertOk();
+
+        $body = $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                'enabled' => false,
+                'scope' => 'company',
+            ])->assertOk()->json();
+
+        $this->assertSame(3, $body['changed']);
+
+        foreach ([$primary, $follower, $ownConfig] as $site) {
+            $chat = $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$site['data']['id']}/widgets")
+                ->assertOk()
+                ->json('config.chat');
+
+            $this->assertFalse(
+                $chat['enabled'],
+                "{$site['data']['host']} still has the chat on.",
+            );
+        }
+
+        // And the wording it already had is still there. A switch that wiped
+        // the copy would make turning it back on a rewrite.
+        $kept = $this->signedInAs($editor)
+            ->getJson("/api/v1/web/sites/{$ownConfig['data']['id']}/widgets")
+            ->assertOk()
+            ->json('config.chat.title');
+
+        $this->assertSame('Chicago desk', $kept);
+    }
+
+    /** The narrow scope still exists, and still touches exactly one site. */
+    public function test_switching_one_site_leaves_its_siblings_alone(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $sibling = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                'enabled' => false,
+                'scope' => 'site',
+            ])->assertOk()->assertJsonPath('changed', 1);
+
+        $this->assertTrue(
+            $this->signedInAs($editor)
+                ->getJson("/api/v1/web/sites/{$sibling['data']['id']}/widgets")
+                ->assertOk()
+                ->json('config.chat.enabled'),
+        );
+    }
+
+    /** It goes back on the same way, or "off everywhere" is a one-way door. */
+    public function test_the_company_switch_turns_it_back_on(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        foreach ([false, true] as $wanted) {
+            $this->signedInAs($editor)
+                ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/chat", [
+                    'enabled' => $wanted,
+                    'scope' => 'company',
+                ])->assertOk();
+
+            $this->assertSame(
+                $wanted,
+                $this->signedInAs($editor)
+                    ->getJson("/api/v1/web/sites/{$follower['data']['id']}/widgets")
+                    ->assertOk()
+                    ->json('config.chat.enabled'),
+            );
+        }
+    }
+
+    /**
+     * A company-wide action is still a per-record permission.
+     *
+     * The scope decides how many sites are TOUCHED, never who may touch them —
+     * a viewer reaching one endpoint and changing 47 websites would be the
+     * worst version of this feature.
+     */
+    public function test_a_viewer_cannot_switch_the_chat_for_anything(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->site();
+
+        $viewer = $this->userWithRole($tenant, 'Web Viewer', ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+
+        foreach (['site', 'company'] as $scope) {
+            $this->signedInAs($viewer)
+                ->postJson("/api/v1/web/sites/{$site['data']['id']}/widgets/chat", [
+                    'enabled' => false,
+                    'scope' => $scope,
+                ])->assertForbidden();
+        }
+    }
+
+    /**
+     * The refresh stamp has to survive the next save.
+     *
+     * `WidgetDefaults::resolve()` keeps only the keys it knows, so a stamp
+     * written inside the resolved shape would be dropped the next time
+     * somebody edited anything — and the button would stop working with no
+     * error, which is the failure nobody reports.
+     */
+    public function test_asking_the_sites_to_refresh_marks_every_one(): void
+    {
+        ['site' => $primary, 'editor' => $editor, 'tenant' => $tenant] = $this->site();
+
+        $follower = $this->registerSite($editor, $tenant, 'ny.a-1chimney.com');
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$primary['data']['id']}/widgets/refresh", [
+                'scope' => 'company',
+            ])->assertOk()->assertJsonPath('asked', 2);
+
+        foreach ([$primary, $follower] as $site) {
+            // withoutGlobalScopes: the stamp lives OUTSIDE the resolved
+            // shape, so no API response carries it and the row is the only
+            // place it can be read. The tenant guard is right to stop an
+            // unscoped read that has not said so.
+            $row = WebWidget::withoutGlobalScopes()
+                ->where('site_id', $site['data']['id'])
+                ->first();
+
+            $this->assertNotNull($row);
+            $this->assertArrayHasKey(
+                'refreshed_at',
+                $row->config,
+                "{$site['data']['host']} was not stamped, so its plugin sees no change.",
+            );
+        }
+    }
+
+    public function test_the_refresh_stamp_survives_an_ordinary_save(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $this->signedInAs($editor)
+            ->postJson("/api/v1/web/sites/{$site['data']['id']}/widgets/refresh", ['scope' => 'site'])
+            ->assertOk();
+
+        $before = WebWidget::withoutGlobalScopes()->where('site_id', $site['data']['id'])->first()->config['refreshed_at'];
+
+        $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['chat' => ['title' => 'Anything']],
+            ])->assertOk();
+
+        $after = WebWidget::withoutGlobalScopes()->where('site_id', $site['data']['id'])->first()->config;
+
+        $this->assertArrayHasKey(
+            'refreshed_at',
+            $after,
+            'An ordinary save dropped the stamp, so the refresh button stops working silently.',
+        );
+        $this->assertSame($before, $after['refreshed_at']);
     }
 
     /** Presets always carry a default, whatever is stored, so a typo renders. */

@@ -80,6 +80,27 @@ class _WidgetsTabState extends State<WidgetsTab> {
 
   bool get _canEdit => widget.session.me!.can('web_management.edit');
 
+  /// How many websites belong to the same company as the one open.
+  ///
+  /// Per COMPANY, not "everything in the rail": somebody who can reach two
+  /// companies would otherwise be told a company-wide switch covers sites it
+  /// cannot touch. The server scopes by company either way; this is the label
+  /// agreeing with what the button will do.
+  int get _companySiteCount {
+    final open = _sites.firstWhere(
+      (site) => site['id'] == _selected,
+      orElse: () => const <String, dynamic>{},
+    );
+
+    final company = (open['company'] as Map?)?['id'];
+
+    if (company == null) return _sites.length;
+
+    return _sites
+        .where((site) => (site['company'] as Map?)?['id'] == company)
+        .length;
+  }
+
   @override
   Widget build(BuildContext context) {
     return AsyncBody(
@@ -138,6 +159,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
             key: ValueKey(_selected),
             api: widget.api,
             siteId: _selected!,
+            siteCount: _companySiteCount,
             canEdit: _canEdit,
             previewWidth: _previewWidth,
             onPreviewSettled: () => widget.session.setPreference(
@@ -179,6 +201,7 @@ class _WidgetsTabState extends State<WidgetsTab> {
                       key: ValueKey(_selected),
                       api: widget.api,
                       siteId: _selected!,
+                      siteCount: _companySiteCount,
                       canEdit: _canEdit,
                       previewWidth: _previewWidth,
                       onPreviewSettled: () => widget.session.setPreference(
@@ -302,6 +325,7 @@ class _WidgetEditor extends StatefulWidget {
     super.key,
     required this.api,
     required this.siteId,
+    required this.siteCount,
     required this.canEdit,
     required this.previewWidth,
     required this.onPreviewDelta,
@@ -310,6 +334,13 @@ class _WidgetEditor extends StatefulWidget {
 
   final ApiClient api;
   final String siteId;
+
+  /// How many websites this site's COMPANY has.
+  ///
+  /// Counted from the rail rather than asked for separately, and counted per
+  /// company rather than as "every site in the list" — the rail can hold two
+  /// companies, and "all 47 websites" is a promise about one of them.
+  final int siteCount;
   final bool canEdit;
 
   /// Owned by the parent, because this widget is rebuilt from scratch whenever
@@ -326,6 +357,15 @@ class _WidgetEditor extends StatefulWidget {
 }
 
 class _WidgetEditorState extends State<_WidgetEditor> {
+  /// True while a company-wide action is in flight.
+  ///
+  /// Its own flag rather than `_saving`: that one belongs to the Save button
+  /// and these buttons change sites this pane is not showing, so sharing it
+  /// would grey out Save for a reason the person cannot see.
+  bool _working = false;
+
+  int get _siteCount => widget.siteCount;
+
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -507,6 +547,25 @@ class _WidgetEditorState extends State<_WidgetEditor> {
                   onPressed: _saving ? null : _followPrimary,
                   child: const Text('Follow the primary again'),
                 ),
+              /*
+               * Jose, 2026-09-23: "can we add a button to clear the cache as
+               * well, or make it so when any change it done and saved it
+               * clears it".
+               *
+               * The second half is already true — since plugin 1.13.0 a site
+               * clears its own page cache whenever EzBizi's answer changes, so
+               * saving IS clearing. This button is for the case that does not
+               * cover: a page gone stale for a reason EzBizi never saw.
+               */
+              TextButton.icon(
+                onPressed: _working ? null : _refreshEverywhere,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: Text(
+                  _siteCount > 1
+                      ? 'Rebuild all $_siteCount websites'
+                      : 'Rebuild this website',
+                ),
+              ),
               FilledButton(
                 onPressed: _saving ? null : _save,
                 child: Text(_saving ? 'Saving…' : 'Save'),
@@ -901,8 +960,136 @@ class _WidgetEditorState extends State<_WidgetEditor> {
             ),
           ),
         ),
+
+      /*
+       * ── The switch that covers the business ──
+       *
+       * Jose, 2026-09-23: he switched the chat off HERE, on one website, and
+       * kept receiving chats all day. A-1 Chimney has 47 sites; the other 46
+       * follow the primary, which was still on. Nothing was broken and the
+       * screen said nothing, because a screen that shows one site at a time
+       * cannot say "and the other forty-six are still on" unless somebody
+       * makes it.
+       *
+       * So the count is on the label. "every one of this company's 47
+       * websites" is the sentence that would have stopped the whole day.
+       */
+      if (widget.canEdit && _siteCount > 1) ...[
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _working ? null : () => _chatEverywhere(false),
+              icon: const Icon(Icons.public_off, size: 18),
+              label: Text('Turn the chat off on all $_siteCount websites'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _working ? null : () => _chatEverywhere(true),
+              icon: const Icon(Icons.public, size: 18),
+              label: Text('Turn it on on all $_siteCount'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Every website this company owns, including the ones that answer for '
+          'themselves rather than following the primary.',
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+      ],
       ],
     );
+  }
+
+  /// Switch the chat for every site of this company, and reload.
+  ///
+  /// Reloaded rather than patched locally: the answer covers sites this screen
+  /// is not showing, and a pane that said "off" while another site's row said
+  /// otherwise is the confusion this button exists to end.
+  Future<void> _chatEverywhere(bool enabled) async {
+    setState(() {
+      _working = true;
+      _saved = null;
+      _error = null;
+    });
+
+    final response = await widget.api.post(
+      '/web/sites/${widget.siteId}/widgets/chat',
+      {'enabled': enabled, 'scope': 'company'},
+    );
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() {
+        _working = false;
+        _error = response.message;
+      });
+
+      return;
+    }
+
+    final changed = response.body['changed'];
+
+    setState(() {
+      _working = false;
+      _config = Map<String, dynamic>.from(
+        response.body['config'] as Map? ?? const {},
+      );
+      _saved = enabled
+          ? 'The chat is on again on $changed websites.'
+          : 'The chat is off on $changed websites. Their pages update within '
+                'a few minutes.';
+    });
+  }
+
+  /// Ask every site of this company to throw away its cached pages.
+  ///
+  /// ── What this promises, and what it cannot ──
+  ///
+  /// EzBizi cannot reach into a customer's website. The plugin PULLS every
+  /// five minutes and, since 1.13.0, clears the site's page cache whenever
+  /// what it pulled differs from what it had — so a saved change already
+  /// reaches visitors on its own. This guarantees the next pull counts as a
+  /// change, which matters when the cached page is stale for a reason EzBizi
+  /// never saw.
+  ///
+  /// The wording says "in the next few minutes" rather than "cleared". This
+  /// side cannot observe a customer's cache and must not claim to.
+  Future<void> _refreshEverywhere() async {
+    setState(() {
+      _working = true;
+      _saved = null;
+      _error = null;
+    });
+
+    final response = await widget.api.post(
+      '/web/sites/${widget.siteId}/widgets/refresh',
+      {'scope': _siteCount > 1 ? 'company' : 'site'},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _working = false;
+
+      if (!response.ok) {
+        _error = response.message;
+
+        return;
+      }
+
+      final asked = response.body['asked'];
+
+      _saved = asked == 1
+          ? 'Asked this website to rebuild its pages. It updates within a few '
+                'minutes.'
+          : 'Asked all $asked websites to rebuild their pages. They update '
+                'within a few minutes.';
+    });
   }
 
   /// One rendered widget's presets, dressed by name.

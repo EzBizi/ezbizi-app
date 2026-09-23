@@ -849,6 +849,15 @@ Route::prefix('v1')
             Route::get('web/sites/{site}/widgets', [WebWidgetsController::class, 'show']);
             Route::put('web/sites/{site}/widgets', [WebWidgetsController::class, 'update']);
             Route::delete('web/sites/{site}/widgets', [WebWidgetsController::class, 'destroy']);
+            /*
+             * Both take a `scope` of `site` or `company`, because a company
+             * with 47 websites had no way to say "all of them" and Jose spent
+             * a day switching one of them off — see WidgetsController::chat.
+             * Registered before nothing and after the resource: neither name
+             * collides with a site id, since `{site}` is already bound.
+             */
+            Route::post('web/sites/{site}/widgets/chat', [WebWidgetsController::class, 'chat']);
+            Route::post('web/sites/{site}/widgets/refresh', [WebWidgetsController::class, 'refresh']);
         });
         /*
          * The Orders tab owns buying, selling and issuing outright: nothing

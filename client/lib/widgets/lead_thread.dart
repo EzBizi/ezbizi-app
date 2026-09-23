@@ -1025,13 +1025,36 @@ String leadTitle(Map<String, dynamic> lead) {
 /// shown to the business.
 String leadHeaderLine(Map<String, dynamic> lead) {
   final service = humaniseService(lead['service'] as String?);
+  final source = lead['source'] as String?;
+
+  /*
+   * For a website enquiry the useful place is the HOST, not the company.
+   *
+   * Jose, 2026-09-23: *"make the fix so it shows the full website name
+   * instead ... so i know from which of the main or subdomains its coming
+   * from"*. A-1 Chimney has 47 websites and every chat from all of them read
+   * "Website chat · A-1 Chimney", which is true and answers nothing — he had
+   * switched the chat off on one of the 47 and could not tell from the leads
+   * that the other 46 were still sending.
+   *
+   * `summary` is where Web Management already puts the host when it creates
+   * the lead, so this needs no new field and no new query. Scoped to the two
+   * website sources deliberately: `summary` means something else for Google
+   * and Thumbtack, and a host is the only thing worth swapping the company
+   * name for.
+   */
+  final host = (source == 'website_chat' || source == 'website_form')
+      ? (lead['summary'] as String?)
+      : null;
+
   final place =
+      (host != null && host.isNotEmpty ? host : null) ??
       (lead['franchise'] as Map?)?['name'] as String? ??
       (lead['company'] as Map?)?['name'] as String?;
 
   return [
     ?service,
-    sourceWord(lead['source'] as String?),
+    sourceWord(source),
     if (place != null && place.isNotEmpty) place,
   ].join(' · ');
 }

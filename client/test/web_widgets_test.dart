@@ -181,6 +181,26 @@ void main() {
           'brand': brand,
           'field_types': const ['text', 'textarea', 'email', 'tel', 'select'],
         };
+      } else if (path.endsWith('/widgets/chat') ||
+          path.endsWith('/widgets/refresh')) {
+        sent?.add({
+          'path': path,
+          ...jsonDecode(request.body) as Map<String, dynamic>,
+        });
+
+        // Two sites in the fixture, so the server's own count is 2 — the
+        // number the screen then quotes back.
+        body = path.endsWith('/widgets/refresh')
+            ? {'asked': 2}
+            : {
+                'changed': 2,
+                'enabled': (jsonDecode(request.body) as Map)['enabled'],
+                'own': true,
+                'config': const <String, Object?>{},
+                'inherited': const <String, Object?>{},
+                'brand': null,
+                'field_types': const <String>[],
+              };
       } else if (path == '/api/v1/me/preferences') {
         writes.addAll(
           (jsonDecode(request.body) as Map<String, dynamic>)['preferences']
@@ -475,6 +495,152 @@ void main() {
     await pump(tester, permissions: const ['web_management.view'], open: 'Look');
 
     expect(find.text('A panel, in your colours'), findsOneWidget);
+  });
+
+  /// ── The switch that covers the business ─────────────────────────
+  ///
+  /// Jose, 2026-09-23: he switched the chat off on `a-1chimney.com` and went
+  /// on receiving chats all day. A-1 Chimney has 47 websites; the other 46
+  /// followed a primary that was still on. Nothing was broken — the screen
+  /// simply never said that switching one site leaves forty-six alone.
+  testWidgets('a company with more than one website is offered both at once', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+      open: 'Live chat',
+    );
+
+    // The COUNT is the part that would have stopped that day, so it is the
+    // part asserted: a button reading "all websites" says nothing a person
+    // can check against what they believe.
+    expect(find.text('Turn the chat off on all 2 websites'), findsOneWidget);
+    expect(find.text('Turn it on on all 2'), findsOneWidget);
+  });
+
+  /// One website, no company-wide button. Offering "all 1 websites" would be
+  /// a control that cannot do anything the switch above it does not.
+  testWidgets('a company with one website is offered only its own switch', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Live chat',
+    );
+
+    expect(find.textContaining('websites'), findsNothing);
+    expect(find.text('Show the chat on this website'), findsOneWidget);
+  });
+
+  testWidgets('switching it off everywhere asks for the company scope', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+      sent: sent,
+      open: 'Live chat',
+    );
+
+    await tester.tap(find.text('Turn the chat off on all 2 websites'));
+    await tester.pumpAndSettle();
+
+    final call = sent.single;
+
+    expect(call['path'], endsWith('/widgets/chat'));
+    expect(call['enabled'], isFalse);
+    expect(call['scope'], 'company');
+
+    // And it says what happened, in sites rather than in a tick.
+    expect(find.textContaining('off on 2 websites'), findsOneWidget);
+  });
+
+  testWidgets('and back on the same way', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+      sent: sent,
+      open: 'Live chat',
+    );
+
+    await tester.tap(find.text('Turn it on on all 2'));
+    await tester.pumpAndSettle();
+
+    expect(sent.single['enabled'], isTrue);
+    expect(sent.single['scope'], 'company');
+  });
+
+  /// A viewer is shown the state and offered neither button.
+  testWidgets('a viewer cannot switch the company', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      twoSites: true,
+      open: 'Live chat',
+    );
+
+    expect(find.textContaining('Turn the chat off'), findsNothing);
+    expect(find.textContaining('Rebuild'), findsNothing);
+  });
+
+  /// ── Rebuilding the pages ────────────────────────────────────────
+  ///
+  /// Jose asked for a cache button "or make it so when any change it done and
+  /// saved it clears it". The second half has been true since plugin 1.13.0.
+  /// This is for the case that does not cover — a page stale for a reason
+  /// EzBizi never saw.
+  testWidgets('the rebuild button asks every site of the company', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+      sent: sent,
+      open: 'Live chat',
+    );
+
+    await tester.ensureVisible(find.text('Rebuild all 2 websites'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rebuild all 2 websites'));
+    await tester.pumpAndSettle();
+
+    expect(sent.single['path'], endsWith('/widgets/refresh'));
+    expect(sent.single['scope'], 'company');
+  });
+
+  /// IT MUST NOT CLAIM THE CACHE IS CLEARED.
+  ///
+  /// EzBizi cannot reach into a customer's website — the plugin pulls, every
+  /// five minutes. "Cleared" would be a claim about something this side cannot
+  /// observe, and the person reading it would refresh the page and see the old
+  /// one.
+  testWidgets('the rebuild message promises minutes, not done', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      twoSites: true,
+      open: 'Live chat',
+    );
+
+    await tester.ensureVisible(find.text('Rebuild all 2 websites'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rebuild all 2 websites'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('within a few minutes'), findsOneWidget);
+    expect(find.textContaining('Cleared'), findsNothing);
   });
 
   /// ── The first three of the fourteen ──────────────────────────────
