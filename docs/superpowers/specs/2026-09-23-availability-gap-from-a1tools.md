@@ -162,6 +162,14 @@ Two decisions EzBizi's schema forces that A1's does not:
   import rule. Four names also carry a trailing space in Workiz; no two values
   collapse when trimmed, so it is cosmetic.
 
+**BUILT 2026-09-23** — `scheduling:build-zip-map`, over the Workiz session's
+`workiz_jobs` landing table. `GROUP BY service_area, postal_code`, `COUNT(*)`
+as the tie-break, winner per (franchise, zip) because the unique index permits
+a zip in two franchises and that is a real thing, not a tie. Derived rows carry
+`source = 'workiz_jobs'`; a row with a NULL source was typed by a person and
+wins over the evidence. `--report-unmatched` lists the names with no area here.
+Not yet run against production: the landing table fills as the sync sweeps.
+
 ### 3.2 A Workiz job sync (blocks every "booked" number)
 
 EzBizi reads Workiz today for ONE report and throws the rest away:
