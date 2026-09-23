@@ -551,6 +551,17 @@ class CustomersController extends Controller
             'name_and_address' => ["CONCAT(name, '|', COALESCE(postal_code, ''))", 'name and address'],
         };
 
+        // WHEN THIS GETS SLOW, and it will not be gradual. There is no index
+        // behind these expressions, so the grouping is a full scan: 15 rows in
+        // 0.5 ms today, and an import is the event that changes that number in
+        // one step rather than by drifting. The fix is a stored generated
+        // column of the normalised digits with an index on it, and the same for
+        // LOWER(TRIM(email)) -- one migration, in place, whenever it is needed.
+        //
+        // Deliberately not done yet: adding it now buys nothing measurable and
+        // commits the schema to a shape chosen against a number nobody has seen.
+        // Revisit when this endpoint is measurably slow AFTER an import, not
+        // when the table merely gets big.
         $keys = Customer::query()
             ->selectRaw("{$expression} AS dup_key")
             ->whereRaw("{$expression} IS NOT NULL")
