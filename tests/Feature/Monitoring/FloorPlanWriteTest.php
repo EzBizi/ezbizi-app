@@ -515,4 +515,47 @@ class FloorPlanWriteTest extends TestCase
         // And nothing was renamed by any of the refusals.
         $this->assertSame('Reception', $plan->fresh()->layout['nodes'][0]['label']);
     }
+
+    public function test_seating_somebody_scope_checks_the_person_not_just_the_plan(): void
+    {
+        // The rule that makes this endpoint safe: `constrainToVisiblePeople`,
+        // the same predicate validatedLayout puts on every node assignee. A
+        // caller who can reach a PLAN can still be unable to see a person, and
+        // seating one they cannot see would put a name on a map they are not
+        // entitled to read.
+        $alpha = $this->provisionTenant('Alpha');
+        $companyA = $alpha['company'];
+        $companyB = $this->inTenant($alpha['org'], fn () => Company::create([
+            'organization_id' => $alpha['org']->id, 'name' => 'Company B', 'is_active' => true,
+        ]));
+
+        $plan = $this->makePlan($alpha, 'A Office', [
+            'assigned_organization_id' => $alpha['org']->id,
+            'assigned_company_id' => $companyA->getKey(),
+        ], $this->layout([
+            ['id' => 'n1', 'x' => 2, 'y' => 3, 'label' => 'Computer 1', 'user_id' => null],
+        ]));
+
+        $manager = $this->companyManager($alpha, $companyA, 'Company A Mgr');
+        $outsider = $this->companyManager($alpha, $companyB, 'Company B Person');
+        $path = "/api/v1/monitoring/floor-plans/{$plan->getKey()}/nodes/n1/user";
+
+        // 422, not 404: the plan and the node are both real and reachable, so
+        // the refusal is about the PERSON — and the chart can say which.
+        $this->signedInAs($manager)
+            ->putJson($path, ['user_id' => $outsider->getKey()])
+            ->assertStatus(422);
+
+        // CONTROL: somebody they CAN see is seated, so the refusal above is
+        // the people-scope rather than this endpoint being shut.
+        $this->signedInAs($manager)
+            ->putJson($path, ['user_id' => $manager->getKey()])
+            ->assertOk();
+
+        $this->assertSame($manager->getKey(), $plan->fresh()->layout['nodes'][0]['user_id']);
+
+        // And clearing works, which is the other half of "set this desk".
+        $this->signedInAs($manager)->putJson($path, ['user_id' => null])->assertOk();
+        $this->assertNull($plan->fresh()->layout['nodes'][0]['user_id']);
+    }
 }

@@ -50,7 +50,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
   List<Map<String, dynamic>> _tests = const [];
 
   bool _creating = false;
-  String? _createError;
+  String? _actionError;
 
   /// (type, id) of the builder open in place of the list — 'guide' or
   /// 'test'. Null when neither is open, which is when the list draws. The
@@ -114,7 +114,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
   Future<void> _newGuide() async {
     setState(() {
       _creating = true;
-      _createError = null;
+      _actionError = null;
     });
 
     final response = await widget.api.post('/training/guides', {
@@ -129,17 +129,42 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     setState(() => _creating = false);
 
     if (!response.ok) {
-      setState(() => _createError = response.reason);
+      setState(() => _actionError = response.reason);
       return;
     }
 
     _openGuide((response.body['data'] as Map)['id'] as String);
   }
 
+  /// Delete a guide or a test, then reload the lists.
+  ///
+  /// The endpoints have existed since the module shipped — `destroy` on both
+  /// controllers, policy-gated on `training.manage` and audited before the
+  /// row goes — and until now nothing in the app could reach them. Jose,
+  /// 2026-09-23: "no way to delete guides or tests or drafts", with three
+  /// "Untitled guide" drafts stranded on this screen.
+  ///
+  /// A refusal is shown verbatim: the server answers a guide outside your
+  /// place with a sentence naming why, and inventing a generic one here would
+  /// lose it.
+  Future<void> _delete(String path, String id) async {
+    setState(() => _actionError = null);
+
+    final response = await widget.api.delete('$path/$id');
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _actionError = response.reason);
+      return;
+    }
+
+    _load();
+  }
+
   Future<void> _newTest() async {
     setState(() {
       _creating = true;
-      _createError = null;
+      _actionError = null;
     });
 
     final response = await widget.api.post('/training/tests', {
@@ -152,7 +177,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
     setState(() => _creating = false);
 
     if (!response.ok) {
-      setState(() => _createError = response.reason);
+      setState(() => _actionError = response.reason);
       return;
     }
 
@@ -185,7 +210,7 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
               key: const Key('training.settings-list'),
               padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
               children: [
-                if (_createError != null) ...[ErrorNote(_createError!), const SizedBox(height: 12)],
+                if (_actionError != null) ...[ErrorNote(_actionError!), const SizedBox(height: 12)],
                 _SettingsSectionHeader(
                   label: 'Guides',
                   buttonLabel: 'New guide',
@@ -204,6 +229,9 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                       published: guide['status'] == 'published',
                       trailing: '${guide['screen_count'] ?? 0} screens',
                       onTap: () => _openGuide(guide['id'] as String),
+                      id: guide['id'] as String,
+                      noun: 'guide',
+                      onDelete: () => _delete('/training/guides', guide['id'] as String),
                     ),
                 const SizedBox(height: 24),
                 _SettingsSectionHeader(
@@ -222,6 +250,9 @@ class _TrainingSettingsTabState extends State<TrainingSettingsTab> {
                       published: test['status'] == 'published',
                       trailing: '${test['question_count'] ?? 0} questions',
                       onTap: () => _openTest(test['id'] as String),
+                      id: test['id'] as String,
+                      noun: 'test',
+                      onDelete: () => _delete('/training/tests', test['id'] as String),
                     ),
               ],
             ),
@@ -254,13 +285,34 @@ class _SettingsSectionHeader extends StatelessWidget {
   }
 }
 
-class _SettingsRow extends StatelessWidget {
+/// One guide or test in the Settings lists, with its own delete.
+///
+/// ── The confirmation is INSIDE THE ROW, and that is load-bearing ──
+///
+/// A dialog naming the title cannot identify WHICH row it is about when the
+/// titles are identical, and they routinely are: "New guide" creates
+/// "Untitled guide" every time, so the screen that prompted this had three
+/// rows with one name (Jose, 2026-09-23). Confirming in place is what makes
+/// the answer unambiguous — the question is attached to the thing, not to its
+/// name. It is also the house shape for a destructive confirm, the same one
+/// scheduling uses for deleting a service area.
+///
+/// The sentence does not promise the row is empty. A guide can be published,
+/// collect progress, and be set back to draft, so "Draft" on the subtitle is
+/// not a guarantee that nothing is behind it — and `training_progress`,
+/// `training_assignments` and `training_attempts` all cascade with the row
+/// (migration `create_training_tables`). So it names what goes without
+/// claiming a count it has not been given.
+class _SettingsRow extends StatefulWidget {
   const _SettingsRow({
     super.key,
     required this.title,
     required this.published,
     required this.trailing,
     required this.onTap,
+    required this.id,
+    required this.noun,
+    required this.onDelete,
   });
 
   final String title;
@@ -268,19 +320,79 @@ class _SettingsRow extends StatelessWidget {
   final String trailing;
   final VoidCallback onTap;
 
+  /// Identifies this row's controls. NOT the title: "New guide" creates
+  /// "Untitled guide" every time, so titles collide and keying on one would
+  /// give three rows the same widget key.
+  final String id;
+
+  /// "guide" or "test" — the word the confirmation uses for this row.
+  final String noun;
+  final VoidCallback onDelete;
+
+  @override
+  State<_SettingsRow> createState() => _SettingsRowState();
+}
+
+class _SettingsRowState extends State<_SettingsRow> {
+  bool _confirming = false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final name = widget.title.isEmpty ? 'Untitled' : widget.title;
+
+    if (_confirming) {
+      return Card(
+        child: ListTile(
+          title: Text('Delete this ${widget.noun}?'),
+          subtitle: Text(
+            'Anything recorded against it — who it was assigned to, how far '
+            'they got, what they scored — goes with it, and it cannot be undone.',
+            style: theme.textTheme.bodySmall,
+          ),
+          trailing: Wrap(
+            spacing: 4,
+            children: [
+              TextButton(
+                key: Key('training.settings-cancel-delete-${widget.id}'),
+                onPressed: () => setState(() => _confirming = false),
+                child: const Text('Keep it'),
+              ),
+              TextButton(
+                key: Key('training.settings-confirm-delete-${widget.id}'),
+                onPressed: () {
+                  setState(() => _confirming = false);
+                  widget.onDelete();
+                },
+                style: TextButton.styleFrom(foregroundColor: theme.colorScheme.error),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Card(
       child: ListTile(
-        onTap: onTap,
-        title: Text(title.isEmpty ? 'Untitled' : title),
+        onTap: widget.onTap,
+        title: Text(name),
         subtitle: Text(
-          '${published ? 'Published' : 'Draft'} · $trailing',
+          '${widget.published ? 'Published' : 'Draft'} · ${widget.trailing}',
           style: theme.textTheme.bodySmall,
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            IconButton(
+              key: Key('training.settings-delete-${widget.id}'),
+              onPressed: () => setState(() => _confirming = true),
+              icon: const Icon(Icons.delete_outline, size: 18),
+              tooltip: 'Delete this ${widget.noun}',
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
       ),
     );
   }

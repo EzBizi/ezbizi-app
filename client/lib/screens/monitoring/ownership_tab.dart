@@ -44,6 +44,11 @@ class OwnershipTab extends StatefulWidget {
 
   static const String deskHint = 'Tap to rename';
 
+  static const String seatHint = 'Tap to give this person a desk';
+
+  static const String noFreeDesks =
+      'Every desk is taken. Add one on the Map tab.';
+
   static const String emptyNote =
       'Nobody to show yet. People appear here once they can be seen from your '
       'level of the business.';
@@ -56,6 +61,12 @@ class _OwnershipTabState extends State<OwnershipTab> {
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _rows = const [];
+
+  /// The desks nobody sits at, for the picker an empty cell opens. Loaded
+  /// beside the rows rather than on tap: a picker that spins before it can
+  /// offer anything is a worse answer than one that is simply ready.
+  List<Map<String, dynamic>> _freeDesks = const [];
+
   Timer? _refresh;
 
   @override
@@ -91,6 +102,23 @@ class _OwnershipTabState extends State<OwnershipTab> {
       }
 
       _rows = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
+    });
+
+    await _loadFreeDesks();
+  }
+
+  Future<void> _loadFreeDesks() async {
+    // Only fetched for somebody who could act on it. A viewer without the
+    // edit grant never opens a picker, so asking would be a request whose
+    // answer is discarded.
+    if (!(widget.session.me?.can('monitoring.map.manage') ?? false)) return;
+
+    final response = await widget.api.get('/monitoring/ownership/desks');
+
+    if (!mounted || !response.ok) return;
+
+    setState(() {
+      _freeDesks = (response.data as List<dynamic>).cast<Map<String, dynamic>>();
     });
   }
 
@@ -155,7 +183,10 @@ class _OwnershipTabState extends State<OwnershipTab> {
                       nodeId: row['node_id'] as String?,
                       canRename: canRename,
                       api: widget.api,
+                      userId: row['user']?['id'] as String?,
+                      freeDesks: _freeDesks,
                       onRenamed: (name) => setState(() => row['desk'] = name),
+                      onSeated: _load,
                     )),
                     if (showPc) DataCell(_orDash(context, row['computer_name'])),
                     DataCell(_StatusCell(online: row['online'] == true)),
@@ -254,7 +285,10 @@ class _DeskCell extends StatefulWidget {
     required this.nodeId,
     required this.canRename,
     required this.api,
+    required this.userId,
+    required this.freeDesks,
     required this.onRenamed,
+    required this.onSeated,
   });
 
   final String? label;
@@ -262,7 +296,18 @@ class _DeskCell extends StatefulWidget {
   final String? nodeId;
   final bool canRename;
   final ApiClient api;
+
+  /// Who this row is about — the person a chosen desk gets assigned to.
+  final String? userId;
+
+  /// The desks nobody sits at, offered when this person has none.
+  final List<Map<String, dynamic>> freeDesks;
+
   final ValueChanged<String> onRenamed;
+
+  /// Called after a seat is taken: the whole chart reloads, because seating
+  /// one person also removes that desk from everybody else's picker.
+  final VoidCallback onSeated;
 
   @override
   State<_DeskCell> createState() => _DeskCellState();
@@ -274,8 +319,17 @@ class _DeskCellState extends State<_DeskCell> {
   String? _error;
   late TextEditingController _controller;
 
+  /// Has a desk AND may edit it — the rename path.
   bool get _editable =>
       widget.canRename && widget.planId != null && widget.nodeId != null;
+
+  /// Has NO desk but may be given one — the picker path.
+  ///
+  /// This is the case Jose caught: renaming shipped first and reached only
+  /// people who already had a desk, so the column that exists to show who is
+  /// unplaced offered nothing on exactly those rows.
+  bool get _seatable =>
+      widget.canRename && widget.planId == null && widget.userId != null;
 
   @override
   void initState() {
@@ -334,6 +388,8 @@ class _DeskCellState extends State<_DeskCell> {
           ? Text(widget.label!)
           : Text('—', style: TextStyle(color: theme.colorScheme.outlineVariant));
 
+      if (_seatable) return _seatPicker(context, text);
+
       if (!_editable) return text;
 
       return Tooltip(
@@ -383,5 +439,82 @@ class _DeskCellState extends State<_DeskCell> {
         onTapOutside: (_) => _saving ? null : _save(),
       ),
     );
+  }
+
+  /// The picker an empty cell opens.
+  ///
+  /// A menu rather than a text field, because typing a desk name here would
+  /// have to CREATE one, and a desk is a tile at a position — see
+  /// FloorPlansController::assignNode. So this offers the desks that exist and
+  /// nobody sits at, and says plainly when there are none rather than opening
+  /// an empty menu.
+  Widget _seatPicker(BuildContext context, Widget text) {
+    final theme = Theme.of(context);
+
+    if (widget.freeDesks.isEmpty) {
+      return Tooltip(
+        message: OwnershipTab.noFreeDesks,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            text,
+            const SizedBox(width: 6),
+            Icon(Icons.info_outline, size: 13, color: theme.colorScheme.outlineVariant),
+          ],
+        ),
+      );
+    }
+
+    return Tooltip(
+      message: OwnershipTab.seatHint,
+      child: PopupMenuButton<Map<String, dynamic>>(
+        key: const Key('desk-seat-picker'),
+        tooltip: '',
+        enabled: !_saving,
+        itemBuilder: (context) => [
+          for (final desk in widget.freeDesks)
+            PopupMenuItem<Map<String, dynamic>>(
+              value: desk,
+              // The office too: two plans may each have a "Computer 1", and a
+              // menu of identical names is a choice nobody can make.
+              child: Text('${desk['label']} · ${desk['office']}'),
+            ),
+        ],
+        onSelected: _seat,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            text,
+            const SizedBox(width: 6),
+            Icon(
+              Icons.add_circle_outline,
+              size: 13,
+              color: theme.colorScheme.outlineVariant,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _seat(Map<String, dynamic> desk) async {
+    setState(() => _saving = true);
+
+    final response = await widget.api.put(
+      '/monitoring/floor-plans/${desk['plan_id']}/nodes/${desk['node_id']}/user',
+      {'user_id': widget.userId},
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _saving = false;
+      if (!response.ok) _error = response.message;
+    });
+
+    // Reload the whole chart rather than patching this row: seating somebody
+    // takes that desk out of every other row's picker, and a chart where one
+    // cell is right and eleven pickers are stale is worse than a refresh.
+    if (response.ok) widget.onSeated();
   }
 }

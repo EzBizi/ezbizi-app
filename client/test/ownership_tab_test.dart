@@ -42,6 +42,10 @@ void main() {
   /// than only what the cell drew afterwards.
   final renames = <String>[];
 
+  /// Seatings sent to the server, and the desks the picker is offered.
+  final seatings = <String>[];
+  var freeDesks = <Map<String, dynamic>>[];
+
   ApiClient apiReturning(
     List<Map<String, dynamic>> rows, {
     List<String> permissions = const ['monitoring.view', 'monitoring.general.view'],
@@ -79,6 +83,23 @@ void main() {
             renames.add('${request.method} $path ${request.body}');
             return http.Response(
               jsonEncode({'data': {'label': 'Reception'}}),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+
+          if (path.endsWith('/monitoring/ownership/desks')) {
+            return http.Response(
+              jsonEncode({'data': freeDesks}),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+
+          if (path.contains('/nodes/') && path.endsWith('/user')) {
+            seatings.add('$path ${request.body}');
+            return http.Response(
+              jsonEncode({'data': {'user_id': 'u-1'}}),
               200,
               headers: {'content-type': 'application/json'},
             );
@@ -296,5 +317,84 @@ void main() {
 
     expect(find.text('Reception'), findsOneWidget);
     expect(find.text('Front desk'), findsNothing);
+  });
+
+  testWidgets('a person with NO desk can be given one, which was the gap',
+      (tester) async {
+    // Jose, 2026-09-23: "you forgot that there are empty fields, and thus no
+    // edit button for them." Renaming shipped first and reached only people
+    // who already had a desk — so the column that exists to show who is
+    // unplaced offered nothing on exactly those rows.
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    seatings.clear();
+    freeDesks = [
+      {'plan_id': 'p-1', 'node_id': 'n9', 'label': 'Computer 9', 'office': 'Beacon 511'},
+    ];
+
+    final api = apiReturning(
+      [{
+        'user': {'id': 'u-1', 'name': 'Unplaced Person'},
+        'role': 'Dispatcher',
+        'desk': null,
+        'office': null,
+        'online': false,
+        'assignment': 'A-1 Chimney',
+      }],
+      permissions: const [
+        'monitoring.view', 'monitoring.general.view', 'monitoring.map.manage',
+      ],
+    );
+    await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
+    await tester.pumpAndSettle();
+
+    // The affordance exists on an EMPTY cell — the thing that was missing.
+    expect(find.byKey(const Key('desk-seat-picker')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('desk-seat-picker')));
+    await tester.pumpAndSettle();
+
+    // The office is named beside the desk: two plans may each have a
+    // "Computer 1", and a menu of identical names cannot be chosen from.
+    expect(find.text('Computer 9 · Beacon 511'), findsOneWidget);
+
+    await tester.tap(find.text('Computer 9 · Beacon 511'));
+    await tester.pumpAndSettle();
+
+    // The CALL, not just the menu closing.
+    expect(seatings, hasLength(1));
+    expect(seatings.single, contains('/monitoring/floor-plans/p-1/nodes/n9/user'));
+    expect(seatings.single, contains('u-1'));
+  });
+
+  testWidgets('with every desk taken, the empty cell says so rather than '
+      'opening an empty menu', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    freeDesks = [];
+
+    final api = apiReturning(
+      [{
+        'user': {'id': 'u-1', 'name': 'Unplaced Person'},
+        'role': 'Dispatcher',
+        'desk': null,
+        'office': null,
+        'online': false,
+        'assignment': 'A-1 Chimney',
+      }],
+      permissions: const [
+        'monitoring.view', 'monitoring.general.view', 'monitoring.map.manage',
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(api, await sessionWith(api, const []), tag: 'no-free'));
+    await tester.pumpAndSettle();
+
+    // No picker, because there is nothing to pick. An empty menu is a control
+    // that looks like it works and cannot.
+    expect(find.byKey(const Key('desk-seat-picker')), findsNothing);
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
   });
 }
