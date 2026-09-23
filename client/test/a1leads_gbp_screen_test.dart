@@ -216,6 +216,25 @@ void main() {
     expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
+  /// The location filter names cities, with the state that tells two apart.
+  ///
+  /// Every one of A-1's listings is titled with the bare brand, so a dropdown
+  /// of titles would be "A1 Chimney" twenty-nine times. The state is there for
+  /// the same reason: there is a Rochester in more than one of them.
+  testWidgets('the location filter offers the cities the source could name', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+
+    expect(find.text('All locations'), findsOneWidget);
+
+    await tester.tap(find.text('All locations'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Boston, MA'), findsOneWidget);
+    expect(find.text('Morton Grove, IL'), findsOneWidget);
+  });
+
   /// Nothing matching the filters is a different sentence from nothing at all.
   testWidgets('an empty page blames the filters, not the business', (tester) async {
     await _pump(tester, _handler(total: 0));
@@ -383,13 +402,10 @@ MockClientHandler _handler({
           'reviews': usable ? _reviews(total, 0, pageSize) : <dynamic>[],
           'meta': {'total': total},
           'health': null,
-          'locations': usable
+          'cities': usable
               ? [
-                  {
-                    'name': 'accounts/a/locations/l',
-                    'title': 'A1 Chimney',
-                    'address': '204 Ark Rd, Mt Laurel Township, NJ, 08054',
-                  },
+                  {'city': 'Boston', 'state': 'MA'},
+                  {'city': 'Morton Grove', 'state': 'IL'},
                 ]
               : <dynamic>[],
         },

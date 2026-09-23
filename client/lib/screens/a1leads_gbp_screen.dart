@@ -66,7 +66,7 @@ class A1LeadsGbpScreen extends StatefulWidget {
 class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   Map<String, dynamic> _source = const {};
   List<Map<String, dynamic>> _reviews = const [];
-  List<Map<String, dynamic>> _locations = const [];
+  List<Map<String, dynamic>> _cities = const [];
   int _total = 0;
 
   bool _loading = true;
@@ -87,7 +87,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   String _match = '';
   String _range = '';
   String _sort = 'newest';
-  String? _location;
+  String? _city;
 
   @override
   void initState() {
@@ -108,7 +108,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       if (_match == 'matched') 'matched': 'true',
       if (_match == 'unverified') 'matched': 'false',
       'from': ?from,
-      'location': ?_location,
+      'city': ?_city,
       'sort': _sort,
       'limit': '20',
     };
@@ -130,7 +130,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     return cut?.toUtc().toIso8601String();
   }
 
-  /// The whole tab: source, locations and the first page.
+  /// The whole tab: source, cities and the first page.
   Future<void> _load() async {
     final request = ++_request;
 
@@ -154,7 +154,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       _source = (data['source'] as Map?)?.cast<String, dynamic>() ?? const {};
       _reviews = _rows(data['reviews']);
-      _locations = _rows(data['locations']);
+      _cities = _rows(data['cities']);
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -163,7 +163,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   ///
   /// Deliberately not `_load`. Re-asking the whole tab would spend four
   /// upstream reads on a service we were asked to keep under 120 a minute, to
-  /// re-fetch a location list that cannot have changed since the dropdown was
+  /// re-fetch a city list that cannot have changed since the dropdown was
   /// drawn from it.
   Future<void> _reload() async {
     final request = ++_request;
@@ -367,21 +367,32 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           // Drawn only when the source could name the listings. A dropdown
           // holding nothing but "All locations" is a control that cannot do
           // anything, and this list comes from another service.
-          if (_locations.isNotEmpty)
+          //
+          // CITIES rather than GBP listings, and that is forced rather than
+          // chosen: the route carrying a listing's resource name is not one of
+          // the five this consumer was granted, and the one that is carries no
+          // resource name. `city` is the filter that works with what we can
+          // see - measured against the live service, Boston narrows 13,169 to
+          // 221 and a city that does not exist returns none.
+          if (_cities.isNotEmpty)
             _picker<String>(
               width: 240,
-              value: _location ?? '',
+              value: _city ?? '',
               hint: 'All locations',
               options: [
                 const SearchOption(value: '', label: 'All locations'),
-                for (final l in _locations)
+                for (final c in _cities)
                   SearchOption(
-                    value: '${l['name']}',
-                    label: _locationLabel(l),
-                    detail: l['address'] as String?,
+                    value: '${c['city']}',
+                    // Every one of these listings is titled with the bare brand
+                    // ("A1 Chimney") nine times over, so the state is what tells
+                    // two cities of the same name apart.
+                    label: [c['city'], c['state']]
+                        .where((p) => '${p ?? ''}'.trim().isNotEmpty)
+                        .join(', '),
                   ),
               ],
-              onChanged: (v) => setState(() => _location = (v ?? '').isEmpty ? null : v),
+              onChanged: (v) => setState(() => _city = (v ?? '').isEmpty ? null : v),
             ),
           _picker<String>(
             width: 190,
@@ -419,20 +430,6 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         },
       ),
     );
-  }
-
-  /// "Mt Laurel Township, NJ" rather than "A1 Chimney", nine times over.
-  ///
-  /// Every one of these listings is titled with the bare brand, so the title
-  /// alone cannot tell two of them apart. The address can.
-  String _locationLabel(Map<String, dynamic> location) {
-    final address = '${location['address'] ?? ''}'.trim();
-    final title = '${location['title'] ?? ''}'.trim();
-
-    if (address.isNotEmpty) return address;
-    if (title.isNotEmpty) return title;
-
-    return '${location['name']}';
   }
 
   Widget _list(ThemeData theme) {

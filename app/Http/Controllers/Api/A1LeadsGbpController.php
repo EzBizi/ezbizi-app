@@ -66,7 +66,7 @@ class A1LeadsGbpController extends Controller
                 filters: $this->filters($request),
             );
             $health = $this->a1leads->gbpHealth()['data'] ?? null;
-            $locations = $this->a1leads->locations();
+            $cities = $this->a1leads->cities();
         } catch (RuntimeException $e) {
             /*
              * A refusal from the other side is reported as a source problem,
@@ -81,7 +81,7 @@ class A1LeadsGbpController extends Controller
                 'summary' => null,
                 'reviews' => [],
                 'health' => null,
-                'locations' => [],
+                'cities' => [],
             ]]);
         }
 
@@ -91,7 +91,7 @@ class A1LeadsGbpController extends Controller
             'reviews' => $reviews['data'] ?? [],
             'meta' => $reviews['meta'] ?? null,
             'health' => $health,
-            'locations' => $locations,
+            'cities' => $cities,
         ]]);
     }
 

@@ -85,11 +85,39 @@ class A1LeadsGbpSourceTest extends TestCase
                 'meta' => ['total' => 13169],
             ], 200),
             '*/api/v1/gbp/health' => Http::response(['data' => ['locations' => 3]], 200),
+            /*
+             * The REAL shape, captured from the live service on 2026-09-23.
+             *
+             * It carries no GBP resource name at all - that lives on
+             * `/api/v1/reviews/locations`, which this consumer is not granted -
+             * so the tab's location filter is built from these addresses. A
+             * fixture invented from the route's NAME would have had an `id` and
+             * proved only that the parser agreed with itself.
+             */
             '*/api/v1/gbp/locations' => Http::response(['data' => [
                 [
-                    'gbp_location_name' => 'accounts/a/locations/l',
                     'title' => 'A1 Chimney',
-                    'address' => '204 Ark Rd, Mt Laurel Township, NJ, 08054',
+                    'address' => '101 Arch St #831, Boston, MA, 02110',
+                    'zip' => '02110',
+                    'rating' => 4.8,
+                    'reviews' => 221,
+                ],
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
+                    'zip' => '60053',
+                ],
+                // The same listing again: A-1 has several rows per address.
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
+                    'zip' => '60053',
+                ],
+                // A service area, which has no one city and no zip.
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => 'Serves Cobb County, GA, USA, Henry County, GA, USA +8 more',
+                    'zip' => null,
                 ],
             ]], 200),
         ]);
@@ -278,6 +306,40 @@ class A1LeadsGbpSourceTest extends TestCase
 
         $this->assertFalse($data['source']['configured']);
         $this->assertSame([], $data['reviews']);
+    }
+
+    /**
+     * THE LOCATION FILTER IS A LIST OF CITIES, derived rather than fetched.
+     *
+     * `/api/v1/reviews/locations` carries the GBP resource names and is not one
+     * of this consumer's five routes. `/api/v1/gbp/locations` is, and carries
+     * addresses and no resource name - so the filter is `city`, which was
+     * measured against the live service: Boston narrows 13,169 to 221, and a
+     * city that does not exist returns none rather than everything.
+     *
+     * Both halves are asserted. A service area ("Serves Cobb County, GA, USA
+     * +8 more") has no one city, so it is left out rather than guessed at - a
+     * name in the dropdown that narrows to nothing is worse than an absence.
+     * And the duplicate row for one address appears once.
+     */
+    public function test_the_location_filter_is_built_from_the_cities_it_can_see(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Juliett');
+
+        $cities = $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data.cities');
+
+        $this->assertSame(
+            [
+                ['city' => 'Boston', 'state' => 'MA'],
+                ['city' => 'Morton Grove', 'state' => 'IL'],
+            ],
+            $cities,
+            'one row per city, the service area left out, sorted',
+        );
     }
 
     /**

@@ -152,18 +152,35 @@ class A1LeadsClient
     }
 
     /**
-     * The GBP locations, for the tab's location filter.
+     * The cities A-1 has a listing in, for the tab's location filter.
      *
-     * A1 Tools reads its own location list from `/api/v1/reviews/locations`,
-     * which is NOT one of the five routes this consumer was granted and would
-     * answer 403. `/api/v1/gbp/locations` is granted and describes the same
-     * listings, so the tab asks that one and the shapes are read tolerantly -
-     * every field is optional and a location missing its name is dropped rather
-     * than drawn as a blank row.
+     * ── Why this is a CITY filter and not a location filter ──────────
      *
-     * @return list<array{name: string, title: ?string, address: ?string}>
+     * A1 Tools filters by `location`, whose value is a GBP resource name
+     * (`locations/14144755587586148209`), and reads that list from
+     * `/api/v1/reviews/locations`. That route is NOT one of the five this
+     * consumer was granted and answers 403. `/api/v1/gbp/locations` IS granted
+     * and returns 46 listings — measured, 2026-09-23 — but carries
+     * `{title, address, zip, rating, reviews, phone, maps}` and no resource
+     * name at all, so it cannot produce a value the `location` filter accepts.
+     *
+     * `city` is the filter that works with what we can see: measured against
+     * the live service, `city=Boston` narrows 13,169 to 221 and every row comes
+     * back with a Boston address, while a city that does not exist returns 0
+     * rather than everything.
+     *
+     * ── What is deliberately left out ────────────────────────────────
+     *
+     * Rows with no `zip` are service-area listings whose address reads
+     * "Serves Cobb County, GA, USA, Henry County, GA, USA +8 more". There is no
+     * one city in that, and inventing one would put a name in the dropdown that
+     * narrows to nothing. Those listings' reviews are reachable through every
+     * other filter and through All locations; they simply have no city of their
+     * own to be picked by.
+     *
+     * @return list<array{city: string, state: ?string}>
      */
-    public function locations(): array
+    public function cities(): array
     {
         $rows = $this->get('gbp_locations')['data'] ?? [];
 
@@ -171,27 +188,40 @@ class A1LeadsClient
             return [];
         }
 
-        $out = [];
+        $found = [];
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
             }
 
-            $name = $row['gbp_location_name'] ?? $row['name'] ?? null;
-
-            if (! is_string($name) || trim($name) === '') {
+            // The zip is what distinguishes a street address from a service
+            // area, and it is the listing's own field rather than something
+            // parsed out of the string.
+            if (self::text($row['zip'] ?? null) === null) {
                 continue;
             }
 
-            $out[] = [
-                'name' => $name,
-                'title' => self::text($row['title'] ?? $row['location_title'] ?? null),
-                'address' => self::text($row['address'] ?? $row['location_address'] ?? null),
-            ];
+            $parts = array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) ($row['address'] ?? '')),
+            ), fn ($p) => $p !== ''));
+
+            // "…, City, ST, ZIP" — the city is third from the end, because the
+            // street half varies in length and the tail does not.
+            if (count($parts) < 3) {
+                continue;
+            }
+
+            $city = $parts[count($parts) - 3];
+            $state = $parts[count($parts) - 2];
+
+            $found[mb_strtolower($city)] = ['city' => $city, 'state' => $state];
         }
 
-        return $out;
+        ksort($found);
+
+        return array_values($found);
     }
 
     private static function text(mixed $value): ?string
