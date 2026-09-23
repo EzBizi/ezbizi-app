@@ -118,6 +118,26 @@ sessions either. The SHA is the only handle that survives a rename.
 | **Phone** | `Api/Phone/` · `Support/Phone/` (incl. `PhoneLineHealth`, `TwimlRenderer`) · `Models/PhoneNumber.php` · `screens/phone/` · `test/phone_*.dart` · `tests/Feature/Phone/` | `ezbizi-0b` |
 | **Web Management** | `Api/Web/` · `Models/WebSite.php` · `Models/WebValue.php` · `Support/Web/` · `Policies/WebSitePolicy.php` · `Dashboard/Glances/WebManagementGlance.php` · `screens/web/` · `wordpress-plugin/ezbizi/` · `tests/Feature/Web/` | `358b3db` `e1f4d9a` `4b1a087` `5ce9285` |
 | **Third-party integrations** — OAuth drivers, Meta, `config/services.php` provider blocks, the 2026-10-26 Meta cutoff | — | **deliberately blank, see below** |
+| **Workiz** — the Workiz v1 integration for A-1's move off A1Tools: the connection, the credential, the readers and the mirrors | `Api/WorkizConnectController.php` · `Support/Workiz/` · `Support/Reports/Experimental/WorkizJobs.php` · `Models/WorkizJob.php` · `Models/WorkizTeamMember.php` · `Console/Commands/SyncWorkiz{Jobs,Team}.php` · the `workiz_jobs` and `workiz_team_members` migrations · `tests/Feature/Workiz/` · `tests/Fixtures/workiz/` · `tests/Feature/Reports/WorkizConnectTest.php` · in-region only: the `Workiz` arms of `SocialProvider` and the two `workiz` routes | `local_ea9c0484-3b23-40b6-8262-10a1fccc1a3a` (EzBizi - Workiz API) |
+
+> **NOT the Workiz session's, and each was somebody else's ruling rather than a
+> boundary they drew for themselves.** The Experimental call report and its
+> tests are Reports', including the three `workiz`-named tests inside
+> `ExperimentalCallReportApiTest` — those assert what the REPORT does, and one
+> of them is the only coverage anywhere of `WorkizJobs`' paging loop
+> (annotated in place at `ec8ebe37`). `config/experimental_reports.php` is
+> Reports'. Workiz LEADS live in the `leads` table as a source and everything
+> inside that module — `Lead::SOURCE_WORKIZ`, `leads.workiz.view`, the reply
+> channel, the Unreplied rule — is the Google API session's; only
+> `Support/Workiz/WorkizLead*.php`, the reader, is here. The projection into
+> `customers` and `jobs` belongs to those modules, not to this one.
+>
+> **Regression command is two whole files, not `--filter=Workiz`:**
+> `tests/Feature/Reports/WorkizConnectTest.php` and
+> `ExperimentalCallReportApiTest.php`. The name filter misses
+> `test_a_branch_with_a_full_page_is_asked_for_the_next_one`, which is the only
+> test of the paging loop.
+
 | **Android · Play** | `client/android/` · the android path of `scripts/build-app.sh` · `build-web.sh` · `release.sh` · `windows-installer.iss` · `assets/logo` · `assets/installer` · `client/integration_test/store_screenshots_test.dart` · `client/test_driver/screenshots.dart` · the **Play** Console | `ezbizi-16` |
 | **iOS · Apple** | `client/ios/` · the ios path of `scripts/build-app.sh` · the Mac relay · App Store Connect, TestFlight, the Apple Developer consoles | `local_ac2289f8-a1a6-4454-962e-21adf9706bca` (EzBizi - Apple Module) |
 | **Website** | `www/` — **every page under it**, plus `robots.txt`, `sitemap.xml`, `check-site.py`, and the `www/favicon.ico` size list in `scripts/make-brand-assets.py`. Public copy, page structure, meta and structured data. *Not* `scripts/deploy-www.sh` or `/var/www/www` — publishing is the deploy session's. | `3b5b79f` `57b4502` `436fd6f` |
