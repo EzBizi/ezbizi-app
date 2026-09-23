@@ -2262,6 +2262,10 @@ class ModuleServiceProvider extends ServiceProvider
                     .'records and raises no events; Reviews and Business Profile declare '
                     .'their own triggers and subjects, and a rule built here would have '
                     .'nothing to be about.',
+                glanceExemptBecause: 'The same reason: it holds no records. A box for this '
+                    .'module could only restate the Reviews and Business Profile boxes that '
+                    .'already exist, or show a number nothing produces. Not a gap - there is '
+                    .'nothing here to count.',
             ),
 
             /*
