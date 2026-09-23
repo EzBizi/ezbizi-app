@@ -618,6 +618,36 @@ class _GeneralTabState extends State<GeneralTab> {
     });
   }
 
+  /// A wall's handle was dragged. The canvas has already snapped and clamped
+  /// the shift to whole cells, so this only has to apply it to both ends.
+  void _moveWall(int index, int dCol, int dRow) {
+    final walls = _draftWalls();
+    if (index < 0 || index >= walls.length) return;
+
+    final wall = walls[index];
+    if (wall is! Map) return;
+
+    double at(String key) {
+      final value = wall[key];
+      return value is num ? value.toDouble() : 0.0;
+    }
+
+    setState(() {
+      walls[index] = <String, dynamic>{
+        'x1': at('x1') + dCol,
+        'y1': at('y1') + dRow,
+        'x2': at('x2') + dCol,
+        'y2': at('y2') + dRow,
+      };
+      // A dragged wall is the one you meant, so it stays selected — otherwise
+      // repositioning a wall you were about to delete would silently disarm
+      // the Delete button.
+      _selectedWallIndex = index;
+      _pendingWall = null;
+      _dirty = true;
+    });
+  }
+
   void _deleteWall() {
     final index = _selectedWallIndex;
     if (index == null) return;
@@ -1313,6 +1343,7 @@ class _GeneralTabState extends State<GeneralTab> {
       pendingWall: _pendingWall,
       selectedWallIndex: _selectedWallIndex,
       onSelectWall: _editing && _wallMode ? _selectWall : null,
+      onWallMoved: _editing && _wallMode ? _moveWall : null,
     );
 
     final summary = FloorPlanSummary(

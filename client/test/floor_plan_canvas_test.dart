@@ -204,10 +204,12 @@ void main() {
 
     expect(tester.takeException(), isNull);
 
-    // Fit-to-canvas: the full width, and the grid's own aspect ratio.
+    // Fit-to-canvas on a SQUARE field: the full width, and a height to match.
+    // This used to assert `375 * 28 / 40` — the grid's own aspect ratio, which
+    // is what the canvas drew before the field was squared.
     final size = tester.getSize(find.byType(FloorPlanCanvas));
     expect(size.width, 375);
-    expect(size.height, closeTo(375 * 28 / 40, 0.01));
+    expect(size.height, closeTo(375, 0.01));
 
     final canvas = tester.getRect(find.byType(FloorPlanCanvas));
     final edge = tester.getRect(
@@ -268,6 +270,187 @@ void main() {
             'percentage and nothing else.');
     expect(zoomed.width, greaterThan(fitted.width));
   });
+
+  testWidgets('the field is square whatever shape the grid is', (tester) async {
+    // Jose, 2026-09-23: "the map canvas should be 1:1 square." Both shapes,
+    // because squaring by padding the SHORT side is right and squaring by
+    // cropping the long one would pass a test that only ever saw one of them.
+    for (final grid in const [(30, 40), (40, 28)]) {
+      await _pumpCanvas(
+        tester,
+        layout: _layout(cols: grid.$1, rows: grid.$2, nodes: const []),
+        status: const {},
+        size: const Size(1000, 800),
+      );
+
+      final board = tester.getSize(_boardFinder());
+
+      expect(board.width, closeTo(board.height, 0.5),
+          reason: 'A ${grid.$1}x${grid.$2} grid still draws on a square field.');
+      expect(board.height, greaterThan(50), reason: 'Control: not collapsed.');
+    }
+  });
+
+  testWidgets('a wall point lands on the cell under the finger once scrolled',
+      (tester) async {
+    // THE BUG Jose reported: "zooming in out messes up the drawing wall
+    // system." The gesture surface wrapped the SCROLL FRAME, and
+    // `localPosition` inside a scroll view is measured from the viewport and
+    // carries no scroll offset — so once the board was zoomed and scrolled,
+    // every tap reported the cell that happened to be at that spot on screen
+    // BEFORE scrolling.
+    //
+    // Asserted as "the same screen point reports a different cell after
+    // scrolling" rather than as an arithmetic expectation, because the second
+    // form would just be the implementation typed twice.
+    final points = <(int, int)>[];
+
+    Future<void> pump() => _pumpCanvas(
+          tester,
+          layout: _layout(cols: 40, rows: 28, nodes: const []),
+          status: const {},
+          size: const Size(1000, 800),
+          zoom: 3.0,
+          wallMode: true,
+          onWallPoint: (col, row) => points.add((col, row)),
+        );
+
+    await pump();
+
+    final surface = find.byKey(const Key('floor-plan-wall-surface'));
+    expect(surface, findsOneWidget,
+        reason: 'Control: wall mode is actually on, so a tap has somewhere to '
+            'land and the assertions below are about the coordinate.');
+
+    // A point a little in from the frame's left edge, held FIXED on screen.
+    final frame = tester.getTopLeft(find.byType(FloorPlanCanvas));
+    final spot = frame + const Offset(40, 40);
+
+    await tester.tapAt(spot);
+    await tester.pump();
+
+    final horizontal = find.byWidgetPredicate(
+      (w) => w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
+    );
+    expect(horizontal, findsOneWidget,
+        reason: 'Control: zoomed past the fit, the board really does scroll — '
+            'without that there is no offset for this test to be about.');
+
+    // Dragged in steps like a real pointer. One giant move with the slop
+    // turned off never reached the scrollable, and the test then proved only
+    // that a board which had not moved reported the cell it had not moved to.
+    final pan = await tester.startGesture(tester.getCenter(horizontal));
+    await pan.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    await pan.moveBy(const Offset(-360, 0));
+    await tester.pump();
+    await pan.up();
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(spot);
+    await tester.pump();
+
+    expect(points, hasLength(2));
+    expect(points[1].$1, greaterThan(points[0].$1),
+        reason: 'The board was scrolled left, so the same point on screen is '
+            'now over a LATER column. Reporting the same column means the tap '
+            'was measured against the viewport instead of the board.');
+  });
+
+  testWidgets('dragging a wall handle reports a whole-wall shift in cells',
+      (tester) async {
+    // Jose, 2026-09-23: "i want to be able to drag walls as well to
+    // reposition them."
+    final moves = <(int, int, int)>[];
+
+    await _pumpWallCanvas(
+      tester,
+      walls: const [
+        {'x1': 2, 'y1': 2, 'x2': 6, 'y2': 2},
+      ],
+      onWallMoved: (i, dCol, dRow) => moves.add((i, dCol, dRow)),
+    );
+
+    // 20 cells across a 400px board: one cell is 20px, so 60px is three.
+    await tester.drag(
+      find.byKey(const ValueKey('floor-plan-wall-0')),
+      const Offset(60, 40),
+      touchSlopX: 0,
+      touchSlopY: 0,
+      // The finder is the Positioned; the pointer lands on the Transform
+      // inside it, which is the handle. Same widget, different render object.
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(moves, [(0, 3, 2)],
+        reason: 'The shift is in CELLS, snapped — the tab applies it to both '
+            'ends, so pixels must not reach it.');
+  });
+
+  testWidgets('a wall dragged past the edge keeps its length', (tester) async {
+    // The reason the SHIFT is clamped rather than each end: clamping the ends
+    // independently lets a wall dragged into a corner shorten or rotate, which
+    // is not what dragging a wall means.
+    final moves = <(int, int, int)>[];
+
+    await _pumpWallCanvas(
+      tester,
+      walls: const [
+        {'x1': 2, 'y1': 2, 'x2': 6, 'y2': 2},
+      ],
+      onWallMoved: (i, dCol, dRow) => moves.add((i, dCol, dRow)),
+    );
+
+    // Hard left: the wall's near end is on column 2, so it can move -2 and no
+    // further, whatever the pointer did.
+    await tester.drag(
+      find.byKey(const ValueKey('floor-plan-wall-0')),
+      const Offset(-400, 0),
+      touchSlopX: 0,
+      touchSlopY: 0,
+      // The finder is the Positioned; the pointer lands on the Transform
+      // inside it, which is the handle. Same widget, different render object.
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(moves, [(0, -2, 0)]);
+  });
+}
+
+/// The canvas in wall mode on a board of a known size, so a drag in pixels has
+/// an unambiguous answer in cells. A 20x20 grid in a bounded 400px box is a
+/// 20px cell.
+Future<void> _pumpWallCanvas(
+  WidgetTester tester, {
+  required List<Map<String, dynamic>> walls,
+  required void Function(int index, int dCol, int dRow) onWallMoved,
+}) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: EzBiziTheme.light(),
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            width: 400,
+            height: 400,
+            child: FloorPlanCanvas(
+              layout: _layout(cols: 20, rows: 20, walls: walls, nodes: const []),
+              status: const {},
+              selectedNodeId: null,
+              onSelectNode: (_) {},
+              wallMode: true,
+              onWallPoint: (_, _) {},
+              onSelectWall: (_) {},
+              onWallMoved: onWallMoved,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
 }
 
 /// The board itself, found by its OWN painter.
@@ -302,6 +485,8 @@ Future<BuildContext> _pumpCanvas(
   void Function(String nodeId)? onSelectNode,
   Size size = const Size(1000, 800),
   double zoom = 1.0,
+  bool wallMode = false,
+  void Function(int col, int row)? onWallPoint,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -318,6 +503,8 @@ Future<BuildContext> _pumpCanvas(
             zoom: zoom,
             selectedNodeId: selectedNodeId,
             onSelectNode: onSelectNode ?? (_) {},
+            wallMode: wallMode,
+            onWallPoint: onWallPoint,
           ),
         ),
       ),

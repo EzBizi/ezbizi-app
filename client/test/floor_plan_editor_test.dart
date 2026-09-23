@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/monitoring/floor_plan_canvas.dart';
 import 'package:ezbizi_client/screens/monitoring/general_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,12 +100,27 @@ void main() {
     await _selectPlan(tester);
     await _enterEdit(tester);
 
-    // The cell size is the canvas's own arithmetic (width / cols), so the test
-    // reads it off the laid-out canvas rather than restating it — a drag of
-    // five cells is five cells at any width.
-    final cell =
-        tester.getSize(find.byKey(const Key('floor-plan-canvas'))).width /
-            _gridCols;
+    // The cell size is the canvas's own arithmetic, so the test reads it off
+    // the laid-out canvas rather than restating it — a drag of five cells is
+    // five cells at any width.
+    //
+    // The COLUMN COUNT comes off the painter for the same reason: this used to
+    // divide by `_gridCols`, the plan's own 40, which stopped being the field's
+    // width the moment the field was squared to 40x40 — so every drag here
+    // measured a cell that was too wide and landed three columns out. The
+    // painter's fields are public precisely so a test can ask what the canvas
+    // was actually handed instead of assuming.
+    // And the BOARD is measured, not the pane it sits in: `floor-plan-canvas`
+    // is the wrapper, which takes the full width, while the squared board takes
+    // only as much as fits BOTH dimensions. Measuring the wrapper produced a
+    // cell nearly twice too wide.
+    final boardFinder = find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is FloorPlanPainter,
+    );
+    final painter =
+        tester.widget<CustomPaint>(boardFinder).painter as FloorPlanPainter;
+
+    final cell = tester.getSize(boardFinder).width / painter.cols;
 
     await _dragTile(
       tester,
