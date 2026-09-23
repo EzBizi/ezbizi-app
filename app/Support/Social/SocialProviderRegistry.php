@@ -6,7 +6,7 @@ final class SocialProviderRegistry
 {
     public function __construct(private readonly SocialOAuthDrivers $drivers) {}
 
-    /** @return list<array{value: string, label: string, usable: bool, unusable_because: ?string, connects_by: string, start_path: string}> */
+    /** @return list<array{value: string, label: string, usable: bool, unusable_because: ?string, connects_by: string, start_path: string, permission: string}> */
     public function catalogue(): array
     {
         return array_map(function (SocialProvider $provider) {
@@ -19,6 +19,24 @@ final class SocialProviderRegistry
                 'unusable_because' => $why,
                 'connects_by'      => $provider->connectsBy(),
                 'start_path'       => $provider->startPath(),
+
+                /*
+                 * What a person must hold to connect this one (2026-09-23).
+                 *
+                 * Added for Settings > Integrations, on Jose's instruction that
+                 * "the point of the Integration tab by itself is to be able to
+                 * connect stuff from here, not just list it". That screen draws
+                 * a Connect control per provider and cannot offer one that
+                 * answers 403 - §4's rule that a control which is offered must
+                 * work - so it needs the answer `connectPermission()` already
+                 * holds.
+                 *
+                 * On the wire rather than copied into the client, for the
+                 * reason SocialProvider's own docblock gives for keeping the
+                 * map in one place: a second map elsewhere drifts into a wrong
+                 * control on a customer's screen with nothing failing.
+                 */
+                'permission'       => $provider->connectPermission(),
             ];
         }, SocialProvider::all());
     }

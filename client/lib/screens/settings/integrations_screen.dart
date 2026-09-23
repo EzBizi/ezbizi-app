@@ -67,7 +67,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   /// that is right on the day somebody writes it. Same endpoint Marketing's
   /// composer reads, and it needs `marketing.view`, which is already what puts
   /// this chip in the Settings shell.
-  Map<String, String> _catalogue = const {};
+  Map<String, Map<String, dynamic>> _catalogue = const {};
 
   bool _loading = true;
   String? _error;
@@ -134,10 +134,29 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
           for (final entry
               in ((catalogue.body['data'] as List<dynamic>?) ?? const [])
                   .whereType<Map<String, dynamic>>())
-            (entry['value'] as String? ?? ''): (entry['label'] as String? ?? ''),
-        }..removeWhere((key, value) => key.isEmpty || value.isEmpty);
+            (entry['value'] as String? ?? ''): entry,
+        }..removeWhere(
+          (key, value) => key.isEmpty || (value['label'] as String? ?? '').isEmpty,
+        );
       }
     });
+  }
+
+  /// Whether this person may connect this provider.
+  ///
+  /// The permission comes from the CATALOGUE — `SocialProvider::connectPermission()`
+  /// on the wire since 2026-09-23 — rather than from a map in this file. That
+  /// map is Marketing's and carries four other modules' semantics; a second
+  /// copy here would drift into a Connect button that answers 403, which is
+  /// exactly what §4 forbids.
+  ///
+  /// An unknown provider answers NO. A catalogue that did not load leaves the
+  /// grid working and the connect control absent, which is the safe direction:
+  /// nothing is offered that cannot be checked.
+  bool _mayConnectProvider(String provider) {
+    final permission = _catalogue[provider]?['permission'] as String?;
+
+    return permission != null && _mayConnect(permission);
   }
 
   /// Where a provider is connected, when it is connected somewhere else.
@@ -196,6 +215,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
         connections: byProvider[open] ?? const [],
         connectWhere: _whereFor(open),
         connectForms: _formsFor(open),
+        connectsBy: _catalogue[open]?['connects_by'] as String?,
+        startPath: _catalogue[open]?['start_path'] as String?,
+        mayConnect: _mayConnectProvider(open),
         canName: _familyOf(open) == 'reporting',
         onChanged: _load,
         onBack: () => setState(() => _open = null),
@@ -467,7 +489,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   String _label(String provider) =>
-      _catalogue[provider] ??
+      (_catalogue[provider]?['label'] as String?) ??
       // A provider with rows but no catalogue entry — the connection's own
       // label is better than the raw key, which is what this fell back to
       // before and read as `google_business_profile` on screen.
