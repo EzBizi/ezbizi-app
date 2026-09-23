@@ -234,9 +234,26 @@ many are scheduled in the FUTURE, which is the only part capacity cares about:
     Pending                   511      16
 
 So the shape is the Thumbtack map's, one level over: the tenant says which
-Workiz statuses consume a seat, empty means none, and nothing is guessed.
-Proposed default to put to Jose — **Submitted, Pending and In progress consume a
-seat; Canceled and both Done forms do not.**
+Workiz statuses consume a seat. Proposed default — **Submitted, Pending and In
+progress consume a seat; Canceled and both Done forms do not.**
+
+**IT SHIPS POPULATED, AND THE THUMBTACK PRECEDENT MUST NOT BE COPIED HERE.**
+Reports caught this and it is the kind of consistency that would be applied
+later by somebody with a good argument. `jobs.thumbtack_status_map` defaults to
+`[]` because silence is honest: an empty map means EzBizi tells Thumbtack
+nothing, and nothing is safe.
+
+An empty map HERE is not silence. Unmapped counts as a seat — deliberately,
+since that constrains booking rather than freeing it — so `[]` means *every*
+status consumes capacity, Canceled included. A tenant who never opens the
+setting keeps the 1.3% error permanently and every future Workiz status
+inherits it. The precedent's default is honest for a setting that speaks
+outward and actively wrong for one that counts.
+
+So the registry entry carries that reason beside it, not just the value. A
+custom status nobody has mapped — "done pending approval" is one of A-1's own —
+still falls through to counting, which is the conservative direction and is the
+rule working rather than a gap in it.
 
 **And the scale of the harm is smaller than it looks**, which is worth stating
 because "cancelled jobs count as booked" reads as catastrophic: 9 future jobs
