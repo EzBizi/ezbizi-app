@@ -124,6 +124,23 @@ return new class extends Migration
              * under the new id — the table doubling with nothing to show for
              * it. That is the failure leads took at 5,430 rows.
              *
+             * WHAT THE KEY ASSUMES, since `franchise_id` is now identity and
+             * not merely placement: one branch holds one Workiz account.
+             *
+             * That is ENFORCED rather than hoped for — `WorkizConnectController`
+             * looks up by `remote_id = <franchise id>` and reuses the row, so
+             * connecting a second account to a branch replaces the first
+             * instead of adding one. Pinned by
+             * `WorkizConnectTest::test_reconnecting_a_branch_does_not_make_a_second_row`.
+             *
+             * The case that is NOT handled, stated because nothing in the
+             * schema says it: connecting a branch's Workiz account to a
+             * DIFFERENT franchise re-imports the whole book under the new one
+             * and leaves the old franchise's rows behind. They are not
+             * duplicates by this key — different franchise — so nothing
+             * refuses them and nothing cleans them up. A book that moves
+             * branch needs the old rows removed by hand today.
+             *
              * And it must NOT be `remote_id` alone: Workiz's `UUID` is six
              * characters and unique only WITHIN an account, so two branches
              * legitimately hold the same one. A key without the franchise
