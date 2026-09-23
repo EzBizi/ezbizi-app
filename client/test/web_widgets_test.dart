@@ -28,6 +28,13 @@ void main() {
     Map<String, Object?> chat = const {},
     List<Map<String, dynamic>>? sent,
     Size size = const Size(1280, 2400),
+    // Which widget card to open before the test looks at anything.
+    //
+    // The screen is a grid of cards now (Jose, 2026-09-23), so one
+    // widget's fields are a tap away rather than all six being present at
+    // once. A test that asserts on a field now says which widget it
+    // belongs to — information the old flat column let it leave out.
+    String? open,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -204,20 +211,216 @@ void main() {
       home: Scaffold(body: WidgetsTab(api: api, session: session)),
     ));
     await tester.pumpAndSettle();
+ 
+    if (open != null) {
+      await tester.tap(find.text(open));
+      await tester.pumpAndSettle();
+    }
   }
+
+  /// ── The cards ────────────────────────────────────────────────────
+  ///
+  /// Jose, 2026-09-23: *"i'd like to see each widget as a card, so i can click
+  /// on them and focus on it, and so i dont see all the previews at once on
+  /// the right side ... each widget should have a preview, right now only live
+  /// chat and contact form do"*.
+  testWidgets('every widget is a card, and nothing is open yet', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    for (final name in const [
+      'Live chat',
+      'Contact form',
+      'Social links',
+      'Towns served',
+      'Opening hours',
+      'Map',
+      'Look',
+    ]) {
+      expect(find.text(name), findsOneWidget, reason: '$name has no card.');
+    }
+
+    // Nothing is opened for you. The fields and the preview are both absent,
+    // which is the half of the ask about not seeing everything at once.
+    expect(find.widgetWithText(TextField, 'Talk to A-1'), findsNothing);
+    expect(find.text('Preview'), findsNothing);
+  });
+
+  /// A grid that answered "which widgets are there" and not "what are they set
+  /// to" would put that second answer one click further away than the long
+  /// column it replaces.
+  testWidgets('each card says what its widget is set to', (tester) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    expect(find.text('On, at all hours'), findsOneWidget);
+    expect(find.text('2 questions'), findsOneWidget);
+    expect(find.textContaining('#aa0000'), findsOneWidget);
+    expect(find.text('Default look'), findsNWidgets(4));
+  });
+
+  /// One pump per test on purpose.
+  ///
+  /// Pumping a second MaterialApp into the same test reuses the element tree,
+  /// so `WidgetsTab`'s State survives and never re-loads — the second
+  /// fixture is fetched and the first one is what you assert against. It reads
+  /// as the screen ignoring the config.
+  testWidgets('a chat that is off says so on its card', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      chat: const {'enabled': false},
+    );
+
+    expect(find.text('Not on this website'), findsOneWidget);
+  });
+
+  testWidgets('a chat on a schedule says so on its card', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      chat: {
+        'hours': [
+          for (var i = 0; i < 7; i++)
+            {'closed': false, 'open': '08:00', 'close': '17:00'},
+        ],
+        'timezone': 'America/New_York',
+      },
+    );
+
+    expect(find.text('On, during set hours'), findsOneWidget);
+  });
+
+  testWidgets('opening a card shows that widget and the way back', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view']);
+
+    await tester.tap(find.text('Towns served'));
+    await tester.pumpAndSettle();
+
+    // Its own settings, and nobody else's.
+    expect(find.text('Arrangement'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Talk to A-1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to the widgets'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Live chat'), findsOneWidget);
+    expect(find.text('Arrangement'), findsNothing);
+  });
+
+  /// THE ONE THAT WOULD HAVE CAUGHT THE OLD SCREEN: four of the six widgets
+  /// had no preview at all, and the pane drew the other two together.
+  /// THE ONE THAT WOULD HAVE CAUGHT THE OLD SCREEN: four of the six widgets
+  /// had no preview at all, and the pane drew the other two together.
+  ///
+  /// One test per widget, because two pumps in one test reuse the State and
+  /// the second fixture never reaches the screen. Each asserts on something
+  /// only ITS preview draws, so a pane that fell back to an empty box fails
+  /// rather than passing on the heading alone.
+  testWidgets('the chat previews, and the form is not beside it', (
+    tester,
+  ) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Live chat');
+
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.text('Talk to A-1'), findsWidgets);
+    expect(find.text('Send it'), findsNothing);
+  });
+
+  testWidgets('social links previews its icons', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Social links');
+
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.byIcon(Icons.facebook), findsOneWidget);
+  });
+
+  testWidgets('towns served previews its towns', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Towns served');
+
+    expect(find.text('Springfield'), findsOneWidget);
+  });
+
+  testWidgets('opening hours previews the week', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Opening hours');
+
+    expect(find.text('8:00 AM – 5:00 PM'), findsWidgets);
+  });
+
+  testWidgets('the map previews at the zoom set', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Map');
+
+    expect(find.text('Zoom 14'), findsOneWidget);
+  });
+
+  testWidgets('look previews what every widget wears', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Look');
+
+    expect(find.text('A panel, in your colours'), findsOneWidget);
+  });
+
+  /// The preview follows the knobs, which is the only reason it is worth
+  /// drawing. Asserted on values the DEFAULT preset decides, so a preview that
+  /// ignored the stored preset would fail rather than pass on shape alone.
+  testWidgets('a rendered preview obeys its preset', (tester) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Social links',
+    );
+
+    // `labels: false` by default, so the network names are not drawn.
+    expect(find.text('Facebook'), findsNothing);
+  });
+
+  testWidgets('the towns preview groups them when the preset says to', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Towns served',
+    );
+
+    // `group: true` by default, so the counties head their towns.
+    expect(find.text('Hampden County'), findsOneWidget);
+  });
 
   testWidgets('the widget settings come from the server, not the shortcode', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
+  });
 
-    expect(find.widgetWithText(TextField, '#aa0000'), findsOneWidget);
+  /// Split from the chat's own test when the screen became cards: the three
+  /// values it used to assert together live under three different widgets now,
+  /// and one test that opened one card could only ever see one of them.
+  testWidgets('the form questions are editable rows, not a string', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Contact form',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
 
-    // The form's questions are editable rows, not a comma-separated string.
     expect(find.widgetWithText(TextField, 'What needs doing?'), findsOneWidget);
     expect(find.text('Add a question'), findsOneWidget);
+  });
+
+  testWidgets('the look settings come from the server too', (tester) async {
+    await pump(
+      tester,
+      open: 'Look',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
+
+    expect(find.widgetWithText(TextField, '#aa0000'), findsOneWidget);
   });
 
   /// A branch site showing the primary's colours as if somebody had typed them
@@ -242,6 +445,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -267,6 +471,7 @@ void main() {
   testWidgets('a low-contrast pair still saves', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -298,6 +503,7 @@ void main() {
   testWidgets('three-digit hex is checked, not skipped', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ff0',
@@ -316,6 +522,7 @@ void main() {
   testWidgets('a half-typed colour is not a finding', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#0b5c',
@@ -335,6 +542,7 @@ void main() {
   testWidgets('a site dressing itself can go back to following', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       own: true,
     );
@@ -358,6 +566,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: null,
     );
@@ -369,6 +578,7 @@ void main() {
   testWidgets('and names the brand colour when there is one', (tester) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       brand: '#7b2d8e',
     );
@@ -388,6 +598,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Look',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       style: const {
         'accent': '#ffff00',
@@ -423,7 +634,9 @@ void main() {
   });
 
   testWidgets('a viewer is offered no presets to pick', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Look', permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.byTooltip('#00838f'), findsNothing);
   });
@@ -433,28 +646,43 @@ void main() {
   testWidgets('the preview shows the wording and questions being edited', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // TWO of each is the assertion: the box somebody types in, and the preview
     // drawing the same value. One would mean the preview never rendered it.
     expect(find.text('Talk to A-1'), findsNWidgets(2));
     expect(find.text('We answer fast.'), findsNWidgets(2));
     expect(find.text('Chat'), findsNWidgets(2));
-    expect(find.text('Send it'), findsNWidgets(2));
 
-    // The form section sits below the preview's own fold, and a ListView does
-    // not build what it has not scrolled to — so reach it rather than assert
-    // from where it cannot be seen.
-    // Dragged rather than scrollUntilVisible: every heading in the preview also
-    // appears in the editor beside it, so there is no unique target to scroll
-    // TO — and a finder that matches both panes cannot say which one moved.
-    await tester.drag(find.byType(Scrollable).last, const Offset(0, -420));
-    await tester.pumpAndSettle();
+    // 'Send it' is the FORM's button and is no longer here, which is the whole
+    // point of the change: the pane previews the widget that is open and not
+    // the one beside it.
+    expect(find.text('Send it'), findsNothing);
+  });
+
+  /// The other half of the old combined test, under its own card.
+  testWidgets('the form preview draws the questions being edited', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      open: 'Contact form',
+      permissions: const ['web_management.view', 'web_management.edit'],
+    );
+
+    // TWO of each: the box somebody types in, and the preview drawing the same
+    // value. One would mean the preview never rendered it.
+    expect(find.text('Send it'), findsNWidgets(2));
 
     // 'Name *' rather than 'Name': the preview marks a required question the
     // way the visitor's form does, which is part of what is being previewed.
     expect(find.text('Name *'), findsOneWidget);
     expect(find.textContaining('What needs doing?'), findsWidgets);
+
+    // And the chat is not here.
+    expect(find.text('Talk to A-1'), findsNothing);
   });
 
   /// The preview shows what a visitor meets FIRST, which is the three
@@ -466,7 +694,9 @@ void main() {
   /// The preview is where he checks that wording, so it has to be the step
   /// the wording belongs to.
   testWidgets('the preview asks before it chats', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // The editable copy, drawn as the visitor will meet it.
     expect(find.textContaining('Quick details first'), findsWidgets);
@@ -497,7 +727,9 @@ void main() {
   testWidgets('a site with no chat hours says the chat is always on', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit']);
 
     expect(find.textContaining('on every page, at every hour'), findsOneWidget);
     expect(find.text('Set chat hours'), findsOneWidget);
@@ -517,6 +749,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       sent: sent,
     );
@@ -553,6 +786,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       chat: {
         'hours': [
@@ -587,6 +821,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       sent: sent,
       chat: {
@@ -619,6 +854,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view'],
       chat: {
         'hours': [
@@ -652,7 +888,9 @@ void main() {
   testWidgets('only the chat can be switched off, and the form cannot', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('Preview'), findsOneWidget);
 
@@ -680,6 +918,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       own: false,
     );
@@ -703,6 +942,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       sent: sent,
     );
@@ -736,6 +976,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit'],
       chat: const {'enabled': false},
     );
@@ -766,7 +1007,9 @@ void main() {
   testWidgets('a named preset is added and wears its own shortcode', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
 
     await _reachPresets(tester, 'social_links');
 
@@ -795,7 +1038,9 @@ void main() {
   testWidgets('the default preset offers no way to delete or rename it', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
 
     await _reachPresets(tester, 'social_links');
 
@@ -834,7 +1079,9 @@ void main() {
   /// preset by a name the server never stored and get the default.
   testWidgets('a name typed with capitals and spaces is normalised in the box',
       (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view', 'web_management.edit']);
 
     await _reachPresets(tester, 'social_links');
 
@@ -867,6 +1114,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Social links',
       permissions: ['web_management.view', 'web_management.edit'],
       own: false,
       sent: sent,
@@ -900,7 +1148,11 @@ void main() {
   /// would walk through `s`, `si`, `sid` as three differently named presets,
   /// each advertising its own shortcode on the way past.
   testWidgets('a named preset can be renamed and then deleted', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit']);
+    await pump(
+      tester,
+      // Opening hours, because that is the widget this test works on. Only
+      // the open widget's presets are on screen now.
+      open: 'Opening hours', permissions: ['web_management.view', 'web_management.edit']);
 
     await _reachPresets(tester, 'hours_table');
 
@@ -948,7 +1200,9 @@ void main() {
   testWidgets('a viewer is offered no way to add or delete a preset', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view']);
+    await pump(
+      tester,
+      open: 'Social links', permissions: ['web_management.view']);
 
     await _reachPresets(tester, 'social_links');
 
@@ -965,6 +1219,7 @@ void main() {
   testWidgets('the presets lay out at 375 without overflowing', (tester) async {
     await pump(
       tester,
+      open: 'Social links',
       permissions: ['web_management.view', 'web_management.edit'],
       size: const Size(375, 2400),
     );
@@ -997,7 +1252,9 @@ void main() {
   testWidgets('the preview follows a preset before anything is saved', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Look', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final swatch = find.byTooltip('#6a1b9a');
     await tester.scrollUntilVisible(swatch, 200,
@@ -1017,7 +1274,9 @@ void main() {
 
   /// The 260 and the 360 were my guesses about somebody else's monitor.
   testWidgets('both panes can be dragged wider and narrower', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     double widthOf(Finder f) => tester.getSize(f).width;
 
@@ -1056,7 +1315,9 @@ void main() {
   /// A pane dragged to nothing is not a smaller pane, it is a lost one, and the
   /// way back is a hairline somebody has to find.
   testWidgets('a pane cannot be dragged away entirely', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     // Shove both handles far past any sane width.
     await tester.drag(
@@ -1083,6 +1344,7 @@ void main() {
   testWidgets('a resized preview survives switching website', (tester) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       twoSites: true,
     );
@@ -1101,6 +1363,22 @@ void main() {
     await tester.tap(find.text('nj.a-1chimney.com'));
     await tester.pumpAndSettle();
 
+    /*
+     * A different website opens on its own CARDS, not on whatever card was
+     * open for the last one — the editor is keyed by site id, so its state
+     * goes with the site. That is deliberate: "Live chat" on a-1chimney.com
+     * and on nj.a-1chimney.com are two different configurations, and landing
+     * straight in one of them after clicking a different host in the rail
+     * would make it easy to edit the site you were not looking at.
+     *
+     * The preference under test is the PREVIEW WIDTH, which lives on the tab
+     * rather than on the editor, so it has to survive that reset.
+     */
+    expect(find.text('Preview'), findsNothing);
+
+    await tester.tap(find.text('Live chat'));
+    await tester.pumpAndSettle();
+
     expect(tester.getSize(preview.first).width, resized);
   });
 
@@ -1111,6 +1389,7 @@ void main() {
 
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       saved: saved,
     );
@@ -1136,6 +1415,7 @@ void main() {
   testWidgets('a saved width is what the screen opens with', (tester) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {
         'web.widgets.list_width': 300,
@@ -1158,6 +1438,7 @@ void main() {
   ) async {
     await pump(
       tester,
+      open: 'Live chat',
       permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
       preferences: const {'web.widgets.preview_width': 9999},
     );
@@ -1171,7 +1452,9 @@ void main() {
   });
 
   testWidgets('view alone can look and cannot change', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Live chat', permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.widgetWithText(TextField, 'Talk to A-1'), findsOneWidget);
     expect(find.text('Save'), findsNothing);
@@ -1215,7 +1498,9 @@ void main() {
   /// Verified by putting the original shape back and watching it fail with
   /// "Focus left the question after one character."
   testWidgets('a question is driven by its own controller', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final questions = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',
@@ -1262,7 +1547,9 @@ void main() {
   testWidgets('removing a question does not move its text into another', (
     tester,
   ) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final before = find
         .byWidgetPredicate((w) => w is TextField && w.decoration?.labelText == 'Question')
@@ -1297,7 +1584,9 @@ void main() {
   /// the box? The helper shape is the one `structure_canvas_test` already uses
   /// for tab order.
   testWidgets('focus stays in the question being typed into', (tester) async {
-    await pump(tester, permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+    await pump(
+      tester,
+      open: 'Contact form', permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
 
     final box = find.byWidgetPredicate(
       (w) => w is TextField && w.decoration?.labelText == 'Question',
