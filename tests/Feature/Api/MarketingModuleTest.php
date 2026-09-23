@@ -251,15 +251,25 @@ class MarketingModuleTest extends TestCase
         }
 
         /*
-         * The positive control, and without it the loop above is unfalsifiable.
+         * The positive control, and the hazard it covers is NARROWER than the
+         * one I first wrote here.
          *
-         * Every assertion there is that something is NOT reachable. A payload
-         * that had stopped reporting these modules at all, or reported them
-         * with a missing flag, would satisfy all of it — and a test that cannot
-         * distinguish "correctly withheld" from "not there" is measuring the
-         * fixture rather than the rule.
+         * I claimed a payload that stopped reporting these modules would
+         * satisfy the loop above. **It would not**, and EZ Leads measured it
+         * before I did: `keyBy` plus `$modules['key'][...]` turns a dropped
+         * module into "Undefined array key", which PHPUnit raises as an ERROR.
+         * I checked it myself with a key that does not exist — errors: 1, not
+         * a pass. The access shape already covers the missing-payload case.
          *
-         * So the same two keys are asked again as somebody who DOES hold them.
+         * What it does NOT cover, and what this control is for: every
+         * assertion above is false, so it passes for a `/me` that reports
+         * these modules unreachable for EVERYBODY — a broken reach
+         * calculation, a role lookup that always answers no. Asking the same
+         * two keys as somebody who holds them is what separates "correctly
+         * withheld" from "withheld from everyone".
+         *
+         * Two hazards that look like one from a distance. The access shape
+         * catches the absent module; this catches the always-false answer.
          */
         $both = $this->userWithRole($alpha, 'Both', [
             'marketing.view', 'newsletter.view', 'web_management.view',
