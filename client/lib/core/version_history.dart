@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0244',
+      date: '23 Sep 2026',
+      items: [
+        'Integrations connects accounts as well as listing them. Three of the four families answered with a sentence naming the module that owns the account, so you had to leave the screen to act on what it had just told you.',
+        'Opening an integration keeps the sidebar and the header instead of filling the window with a page of its own. Every card did that, because every card went through the same tap.',
+        'The ownership chart shows work days and shift as two short columns, Mon - Fri and 8:00 AM - 5:00 PM, instead of printing the whole week. Where the working days do not share one set of hours it says Varies rather than picking one.',
+        'A desk can be renamed from the ownership chart, by anyone who may edit the map.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0243',
       date: '23 Sep 2026',
       items: [
