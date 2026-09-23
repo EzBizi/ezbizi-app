@@ -660,6 +660,11 @@ Route::prefix('v1')
         // is scoped to the caller's reach. Both are enforced in policies, not
         // here — a route file is a bad place to keep an authorization rule,
         // because the next endpoint added beside it will not inherit the thought.
+        // BEFORE the resource, or `customers/{customer}` claims it: "duplicates"
+        // is a perfectly good uuid-shaped-nothing to a route that accepts any
+        // id, and the failure is a 404 about a customer rather than a route
+        // that was never reached.
+        Route::get('customers/duplicates', [CustomersController::class, 'duplicates']);
         Route::apiResource('customers', CustomersController::class);
         Route::post('customers/{customer}/owner', [CustomersController::class, 'reassignOwner']);
 

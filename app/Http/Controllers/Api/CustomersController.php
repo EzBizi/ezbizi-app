@@ -131,6 +131,62 @@ class CustomersController extends Controller
     }
 
     /**
+     * GET /api/v1/customers/duplicates
+     *
+     * The sweep the create-time check cannot do. `possible_duplicates` looks at
+     * ONE customer as somebody writes it; an import writes thousands at once,
+     * and every pair it manufactures is invisible to that check because nobody
+     * typed them. Same rule the organization already chose, applied to the book
+     * that is already there.
+     *
+     * ORGANIZATION-WIDE ON PURPOSE, exactly as a search is (see `index`): a
+     * duplicate that crosses a franchise boundary is the kind most worth
+     * finding -- the same person booked by two branches is one relationship
+     * with two half-histories -- and a view-scoped sweep would hide precisely
+     * those. Customers are readable org-wide anyway (§5.2), so this discloses
+     * nothing a list or a search would not.
+     *
+     * It never merges and never blocks. Automatic merging is unrecoverable when
+     * it is wrong -- two people on one household line are two people -- so this
+     * reports and a person decides, which is the same contract as the
+     * create-time list.
+     */
+    public function duplicates(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', Customer::class);
+
+        $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
+        $mode = (string) $this->settings->get('customers.duplicate_match_on', $scope->settingsScope());
+
+        if ($mode === 'off') {
+            return response()->json([
+                'data' => [],
+                'mode' => $mode,
+                // A sentence rather than an empty list, because "none found"
+                // and "not looking" are different answers and the screen has to
+                // be able to say which.
+                'message' => 'Duplicate detection is switched off for this organization.',
+            ]);
+        }
+
+        $groups = collect();
+
+        foreach ($this->duplicateKinds($mode) as $kind) {
+            $groups = $groups->concat($this->duplicateGroups($kind, self::DUPLICATE_GROUP_LIMIT));
+        }
+
+        return response()->json([
+            'data' => $groups->values(),
+            'mode' => $mode,
+            // ponytail: capped rather than paged. A sweep after an import can
+            // find a great many, and the honest thing on screen is "here are
+            // the first N, there are more" rather than a page control nobody
+            // asked for. Page it when somebody works through a whole cap.
+            'limited' => $groups->count() >= self::DUPLICATE_GROUP_LIMIT,
+        ]);
+    }
+
+    /**
      * POST /api/v1/customers
      *
      * Possible duplicates come back in the response rather than blocking it
@@ -432,5 +488,99 @@ class CustomersController extends Controller
     private function duplicatePhoneExpression(): string
     {
         return "REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '') = ?";
+    }
+
+    /**
+     * How many GROUPS a sweep returns, per matching kind.
+     *
+     * ponytail: a cap, not a page control. An import can manufacture a great
+     * many, and "here are fifty, there are more" is an honest screen; paging
+     * through duplicates nobody has merged yet is a feature to add the first
+     * time somebody actually works through a whole cap.
+     */
+    private const DUPLICATE_GROUP_LIMIT = 50;
+
+    /**
+     * The key kinds a matching mode sweeps by.
+     *
+     * `phone_or_email` is two SEPARATE groupings rather than one. Grouping on
+     * "either" would chain: A matches B by phone, B matches C by email, and C
+     * arrives in a group it shares nothing with. The create-time check does not
+     * chain either -- it answers about one record -- so a sweep that did would
+     * be a different rule wearing the same setting's name.
+     *
+     * @return list<string>
+     */
+    private function duplicateKinds(string $mode): array
+    {
+        return match ($mode) {
+            'phone' => ['phone'],
+            'email' => ['email'],
+            'phone_or_email' => ['phone', 'email'],
+            'name_and_address' => ['name_and_address'],
+            default => [],
+        };
+    }
+
+    /**
+     * Customers sharing a key, as groups.
+     *
+     * Two queries rather than one per customer: the first asks the database
+     * which keys occur more than once, the second fetches only their members.
+     * A per-customer sweep would be one query per row and a book of ten
+     * thousand would be ten thousand queries.
+     *
+     * The key is SELECTed rather than recomputed in PHP on the way back. The
+     * same expression decides membership and grouping, so the two cannot drift
+     * -- and a PHP copy of the normalising rule is exactly the kind of second
+     * implementation that agrees with itself and not with the database.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function duplicateGroups(string $kind, int $limit): Collection
+    {
+        [$expression, $by] = match ($kind) {
+            // Digits only, so (555) 123-4567 and 555-123-4567 are one key --
+            // the same normalisation `duplicatePhone()` does for one record.
+            'phone' => ["NULLIF(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), '')", 'phone'],
+            'email' => ["NULLIF(LOWER(TRIM(COALESCE(email, ''))), '')", 'email'],
+            // A name carrying a literal pipe could collide with another name
+            // that happens to end where a postal code begins. Vanishingly rare,
+            // and the cost of it is one extra row for a human to glance at and
+            // dismiss -- not a merge, because nothing here merges.
+            'name_and_address' => ["CONCAT(name, '|', COALESCE(postal_code, ''))", 'name and address'],
+        };
+
+        $keys = Customer::query()
+            ->selectRaw("{$expression} AS dup_key")
+            ->whereRaw("{$expression} IS NOT NULL")
+            // Fewer than seven digits is an extension or a typo, and matching
+            // on it would group half the book. Same floor as one-record.
+            ->when($kind === 'phone', fn ($q) => $q->whereRaw("CHAR_LENGTH({$expression}) >= 7"))
+            ->when($kind === 'name_and_address', fn ($q) => $q->whereRaw("COALESCE(name, '') <> ''"))
+            ->groupBy('dup_key')
+            ->havingRaw('COUNT(*) > 1')
+            ->limit($limit)
+            ->pluck('dup_key');
+
+        if ($keys->isEmpty()) {
+            return collect();
+        }
+
+        $placeholders = implode(', ', array_fill(0, $keys->count(), '?'));
+
+        return Customer::query()
+            ->selectRaw("customers.*, {$expression} AS dup_key")
+            ->whereRaw("{$expression} IN ({$placeholders})", $keys->all())
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('dup_key')
+            ->map(fn (Collection $members, string $key) => [
+                'by' => $by,
+                'value' => $kind === 'name_and_address' ? str_replace('|', ', ', $key) : $key,
+                'customers' => $members->map(fn (Customer $c) => $this->present($c))->values(),
+            ])
+            ->values();
     }
 }
