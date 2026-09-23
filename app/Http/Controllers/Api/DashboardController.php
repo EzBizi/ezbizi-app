@@ -66,6 +66,33 @@ class DashboardController extends Controller
 
             $payload = $glance->resolve($user, $period, $options)->toArray();
             $payload['presentation'] = $presentation;
+
+            /*
+             * ONE KEY, TWO MEANINGS — and this line silently picks one.
+             *
+             * A glance's `resolve()` may put its own options in the payload:
+             * what the box is CONFIGURED with. This overwrites them with the
+             * saved layout's copy: what this PERSON chose. Both are called
+             * `options`, so the second always wins and the first can never
+             * ship. `JobsGlance::wireOptions()` returns the organization's
+             * real earned-status list today and no client will ever see it.
+             * Raised by Jobs (2026-09-23) after their own change made it
+             * visible; nothing is wrong right now, because with the chip
+             * strip gone nothing writes a per-user value and the loop is
+             * inert rather than lossy.
+             *
+             * DO NOT 'FIX' THIS BY DROPPING THE LINE. The client echoes
+             * `options` straight back on the next layout PUT (`_entryFor` in
+             * dashboard_screen.dart), and `saveLayout` stores what it is
+             * sent. So shipping the glance's own options here makes the
+             * ORGANIZATION's value round-trip into every user's stored
+             * preference — a setting nobody chose, written per person, and
+             * the authority mistake spec §8.2 exists to prevent.
+             *
+             * The real fix is two keys, because these are two facts: what
+             * the box is set to, and what this reader asked for. That is a
+             * wire change and wants deciding rather than patching.
+             */
             $payload['options'] = $options;
 
             $glances[] = $payload;
