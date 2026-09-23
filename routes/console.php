@@ -116,6 +116,22 @@ Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->with
  */
 Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(10);
 
+/*
+ * EVERY MINUTE, because Jose asked for constant sync — and affordable only
+ * because the window is small.
+ *
+ * Workiz refuses with 429 "Account reached Api Quotas". Measured on A-1's own
+ * live sync 2026-09-23: 26 refusals in one day at a TWO-minute cadence with a
+ * thirty-day window. The quota belongs to the Workiz ACCOUNT, so until A1
+ * Tools' sync is switched off both systems spend the same allowance on the
+ * same nine accounts.
+ *
+ * The command's default window is two days, which is usually one request per
+ * branch per run. That is what makes a per-minute tick cost less than A1's
+ * two-minute one, not more.
+ */
+Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

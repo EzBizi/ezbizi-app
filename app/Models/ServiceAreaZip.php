@@ -16,8 +16,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * A zip is not personal data here. It says where a franchise works, not where
  * anybody lives — the customer's own zip lives on Customer.
+ *
+ * `source` says who decided this mapping. NULL is a person, and a person wins:
+ * `scheduling:build-zip-map` rewrites only rows it derived
+ * (`source = 'workiz_jobs'`) so a rebuild cannot eat a typed one.
  */
-#[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip', 'city'])]
+#[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip', 'city', 'source'])]
 class ServiceAreaZip extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
