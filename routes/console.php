@@ -142,6 +142,21 @@ Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
  */
 Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 
+/*
+ * HOURLY, and for the same quota reason, plus one of its own.
+ *
+ * A Workiz lead is a CRM record somebody typed, not a message waiting for an
+ * answer - it is excluded from the dispatcher's Unreplied queue by
+ * `Lead::INBOX_SOURCES`. Nothing goes stale in the fifty-nine minutes between
+ * runs, and the same quota that refuses the job sweep with 429 is the one this
+ * would spend.
+ *
+ * The FIRST run against a branch imports nothing and only marks where now was
+ * (Jose, 2026-09-23: *"we don't need the past stuff, just start from now"*), so
+ * turning this on does not pull thirty-one thousand historical rows.
+ */
+Schedule::command('ezbizi:import-workiz-leads')->hourly()->withoutOverlapping(30);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
