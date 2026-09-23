@@ -45,7 +45,7 @@ use Illuminate\Support\Facades\DB;
  * `source = 'workiz_jobs'` and only those are rewritten; a NULL source means
  * somebody entered it by hand and it wins over the evidence.
  *
- * ── DO NOT RUN THIS BEFORE THE SYNC HAS BACKFILLED ──────────────
+ * ── WHAT THIS CAN SEE, AND WHAT IT CANNOT ──────────────────────
  *
  * THE HISTORY DOES NOT COME FROM WORKIZ AT ALL, and this paragraph said the
  * opposite for several hours. It said to ask for a backfill with `--since=` or
