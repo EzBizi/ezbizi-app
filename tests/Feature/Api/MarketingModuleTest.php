@@ -209,10 +209,27 @@ class MarketingModuleTest extends TestCase
     /**
      * Nested is not granted.
      *
-     * The failure worth guarding: somebody reads "Leads is inside Marketing" as
-     * a permission relationship and lets `marketing.view` carry the three with
-     * it. That is a silent grant of three modules' data, and §4 does not let a
-     * layout decision make one.
+     * The failure worth guarding: somebody reads "Newsletter is inside
+     * Marketing" as a permission relationship and lets `marketing.view` carry
+     * the children with it. That is a silent grant of another module's data,
+     * and §4 does not let a layout decision make one.
+     *
+     * ── NEWSLETTER IS IN THIS LOOP BECAUSE IT IS THE ONE THAT SHIPPED ──
+     *
+     * The list shrank from three to one as modules left for containers of
+     * their own, and `newsletter` was never added when it arrived — so the
+     * loop covered the children that had gone and not the one that stayed.
+     *
+     * That is not hypothetical here. The Newsletter CHIP was drawn on
+     * `reaches('marketing')` for weeks: a role with `marketing.view` alone was
+     * offered a tab whose every request the server then refused, and a role
+     * with `newsletter.view` alone got no tab at all (`2c46edab`). The server
+     * side was correct throughout, which is why this test stayed green — but
+     * a loop naming every child is the thing that would have made the gap
+     * visible rather than leaving it to a screenshot.
+     *
+     * Keep this list derived from the registry's children in spirit: when a
+     * module joins Marketing, it joins here.
      */
     public function test_being_inside_marketing_grants_nothing(): void
     {
@@ -225,12 +242,39 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['web_management'] as $key) {
+        foreach (['newsletter', 'web_management'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
             );
             $this->assertSame(self::MODULE, $modules[$key]['parent']);
+        }
+
+        /*
+         * The positive control, and without it the loop above is unfalsifiable.
+         *
+         * Every assertion there is that something is NOT reachable. A payload
+         * that had stopped reporting these modules at all, or reported them
+         * with a missing flag, would satisfy all of it — and a test that cannot
+         * distinguish "correctly withheld" from "not there" is measuring the
+         * fixture rather than the rule.
+         *
+         * So the same two keys are asked again as somebody who DOES hold them.
+         */
+        $both = $this->userWithRole($alpha, 'Both', [
+            'marketing.view', 'newsletter.view', 'web_management.view',
+        ], 'both@theta.test');
+
+        $granted = collect(
+            $this->signedInAs($both)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        foreach (['newsletter', 'web_management'] as $key) {
+            $this->assertTrue(
+                $granted[$key]['reachable'],
+                "{$key} is not reachable even when its own view is granted, so "
+                .'the loop above proves nothing about the grant.',
+            );
         }
     }
 
