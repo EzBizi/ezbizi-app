@@ -136,10 +136,22 @@ Two decisions EzBizi's schema forces that A1's does not:
        0         EzBizi areas with no Workiz name
       31         Workiz names with no EzBizi area, covering 1,603 jobs (21%)
 
-  So the import matches on a trimmed, lowercased name with nothing clever, and
-  the open question is only what to do with the 31. The largest are Detroit
-  (346 jobs), Connecticut (222), Boston North (186), Dallas (163), Fort Worth
-  (156), Atlanta (125), Seattle (104).
+  **SETTLED AND EXECUTED THE SAME DAY — see 7.** Jose ruled that nothing folds,
+  and `scheduling:import-a1-areas` created 19 of the 31 on production. A1-Group
+  holds 45 areas. The paragraph above is kept as the measurement that prompted
+  the ruling; the number that matters now is what is LEFT:
+
+      12   Workiz names still with no area, all on zero bookings in 30 days
+     212   jobs behind them -- 2.8% of the history, not 21%
+           Dallas 163, Kansas City 13, East/South New Jersey 12, Nashville 10,
+           Tampa 4, Baltimore MD 4, Seattle Washington 2, Salt Lake City 2,
+           San Fransisco 1, San Diego 1
+
+  The importer SKIPS a job whose ServiceArea has no area rather than guessing
+  one — under-constraining is safe, mis-attributing is not, the same rule A1
+  applies to an ambiguous zip. Dallas is the only one large enough to notice
+  and it costs almost nothing: 26 of its 75 zips are already evidenced by DFW's
+  own jobs, which is what "consolidated into DFW" means in the data.
 
   **Several of the 31 are Workiz-side naming drift, not missing territory** —
   `Connecticut` beside `East Connecticut`/`West Connecticut`, `Atlanta` beside
