@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0243',
+      date: '23 Sep 2026',
+      items: [
+        'The Newsletter composer shows the email beside the editor again. The preview was coming back from the server correctly and the panel was not giving it any room to draw in.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0242',
       date: '22 Sep 2026',
       items: [
