@@ -95,6 +95,44 @@ class SyncWorkizJobsTest extends TestCase
     }
 
     /**
+     * A RECONNECT MUST NOT LAND EVERY JOB A SECOND TIME.
+     *
+     * Disconnecting DELETES the `social_connections` row
+     * (`SocialConnectionsController::letGo`), so reconnecting the same branch
+     * mints a new uuid. Keyed on the connection, this sweep would treat every
+     * job as new and the table would silently double.
+     *
+     * Not hypothetical: Jobs measured it on leads, where Jose reconnected 37
+     * accounts on 2026-09-14 and 5,430 adopted rows fell to 2,547 in eight
+     * minutes — with the connection COUNT unchanged, so nothing announced it.
+     * Same cause, opposite symptom, because the key is used differently.
+     */
+    public function test_reconnecting_a_branch_refreshes_rather_than_duplicating(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $branch = $tenant['franchise'];
+
+        $first = $this->connect($tenant, $branch, 'NewJersey');
+
+        Http::fake(['api.workiz.com/*' => Http::response(['flag' => true, 'data' => [$this->payload()]])]);
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        // Disconnect and reconnect: a brand new connection row for the same
+        // branch, exactly as the real flow produces.
+        $this->inTenant($tenant['org'], fn () => $first->delete());
+        $second = $this->connect($tenant, $branch, 'NewJersey');
+
+        $this->assertNotSame($first->getKey(), $second->getKey(), 'the reconnect must mint a new id or this test proves nothing');
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $rows = $this->inTenant($tenant['org'], fn () => WorkizJob::query()->get());
+
+        $this->assertCount(1, $rows);
+        $this->assertSame($second->getKey(), $rows->first()->connection_id, 'the row should follow the live connection');
+    }
+
+    /**
      * ONE BRANCH FAILING MUST NOT LOSE THE OTHERS.
      *
      * The accounts are disjoint, so a branch dropped from a run is a branch

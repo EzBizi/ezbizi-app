@@ -50,7 +50,26 @@ return new class extends Migration
             // credential must not delete the history it already delivered,
             // which is the whole reason it was copied here. Same reasoning as
             // `leads.connection_id`.
+            //
+            // IT IS NOT PART OF THE IDENTITY, and that is the lesson from
+            // leads rather than a preference. Disconnecting DELETES the
+            // `social_connections` row (`SocialConnectionsController::letGo`),
+            // so a reconnect mints a new uuid. Jose reconnected 37 accounts on
+            // 2026-09-14 and the rows pointing at the old ids detached — 5,430
+            // adopted leads fell to 2,547 in eight minutes with the connection
+            // COUNT unchanged, so nothing announced it. Keyed on
+            // `connection_id`, this table would instead have landed every job
+            // a SECOND time and quietly doubled. See the unique index below.
             $table->uuid('connection_id')->nullable();
+
+            // Set by the projection when this job becomes an EzBizi `jobs` row.
+            // The link lives HERE rather than as a `jobs.workiz_id` column —
+            // Jobs' ruling, and the same shape as `leads.job_id`: one more
+            // importer must not make `jobs` grow a column per integration.
+            $table->foreignUuid('job_id')
+                ->nullable()
+                ->constrained('jobs')
+                ->nullOnDelete();
 
             // Workiz's `UUID` is a six-character string like DG0KYN, despite
             // the name. Never a uuid column.
@@ -95,7 +114,23 @@ return new class extends Migration
 
             $table->timestamps();
 
-            $table->unique(['connection_id', 'remote_id']);
+            /*
+             * KEYED ON THE FRANCHISE, NOT THE CONNECTION.
+             *
+             * One branch holds one Workiz account, so the franchise is the
+             * stable name for "which book this job came from". The connection
+             * is not stable: disconnect deletes the row and reconnect mints a
+             * new id, and a key containing it would let every job land again
+             * under the new id — the table doubling with nothing to show for
+             * it. That is the failure leads took at 5,430 rows.
+             *
+             * And it must NOT be `remote_id` alone: Workiz's `UUID` is six
+             * characters and unique only WITHIN an account, so two branches
+             * legitimately hold the same one. A key without the franchise
+             * would refuse the second branch's real job as a duplicate of the
+             * first's. Both halves are pinned by tests.
+             */
+            $table->unique(['franchise_id', 'remote_id']);
             $table->index(['organization_id', 'franchise_id']);
             $table->index(['organization_id', 'service_area', 'postal_code']);
             $table->index(['organization_id', 'booked_at']);

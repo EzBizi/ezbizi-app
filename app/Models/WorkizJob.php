@@ -29,7 +29,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'service_area', 'postal_code', 'city', 'state', 'country', 'address', 'unit',
     'latitude', 'longitude', 'status', 'sub_status', 'job_type', 'job_source',
     'booked_at', 'scheduled_for', 'scheduled_end', 'last_status_update',
-    'created_by', 'payload', 'synced_at',
+    'created_by', 'payload', 'synced_at', 'job_id',
 ])]
 class WorkizJob extends Model implements StatesRetention
 {

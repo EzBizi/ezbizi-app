@@ -154,16 +154,23 @@ class SyncWorkizJobs extends Command
 
                     WorkizJob::query()->updateOrCreate(
                         [
-                            'connection_id' => $connection->getKey(),
+                            // The FRANCHISE, not the connection. Disconnect
+                            // deletes the connection row and reconnect mints a
+                            // new id, so a connection-keyed upsert would land
+                            // every job a second time. One branch holds one
+                            // Workiz account, so the franchise is the stable
+                            // name for the book a job came from.
+                            'franchise_id' => $connection->scope_id,
                             'remote_id' => $attributes['remote_id'],
                         ],
                         $attributes + [
-                            // From the CONNECTION, never from the payload —
-                            // the placement rule in one line. Workiz cannot
-                            // know which EzBizi franchise a job belongs to,
-                            // and a payload that claimed to would be a
+                            // Recorded, but never part of the identity — see
+                            // the migration. Placement comes from the
+                            // CONNECTION and never from the payload: Workiz
+                            // cannot know which EzBizi franchise a job belongs
+                            // to, and a payload that claimed to would be a
                             // caller-supplied tenant id.
-                            'franchise_id' => $connection->scope_id,
+                            'connection_id' => $connection->getKey(),
                             'synced_at' => now(),
                         ],
                     );
