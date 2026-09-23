@@ -89,6 +89,14 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   String _sort = 'newest';
   String? _city;
 
+  /// Board or table, the way the A1 Tools bad-review board offers both.
+  ///
+  /// The table is the one somebody scans: nine columns of one line each, to
+  /// find the four that need doing among the day's reviews. The board is the
+  /// one somebody READS, because a review is prose and a column cuts it off
+  /// mid-sentence. Neither replaces the other, which is why A1 Tools has both.
+  bool _asTable = false;
+
   @override
   void initState() {
     super.initState();
@@ -255,10 +263,41 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _reviews.isEmpty ? _empty(theme) : _list(theme),
+            child: _reviews.isEmpty
+                ? _empty(theme)
+                : (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom
+                    ? _table(theme)
+                    : _list(theme)),
           ),
         ),
+        if (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom)
+          _notGranted(theme),
       ],
+    );
+  }
+
+  /// The three columns that are not here, and why — said once, at the bottom.
+  Widget _notGranted(ThemeData theme) {
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline, size: 16, color: theme.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Contact, Status and Notes are not here yet: they live on an A1 Leads '
+                'route this connection is not admitted to. Replying also happens in '
+                'A1 Tools for now — this tab can read A1 Leads and cannot write to it.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -405,10 +444,27 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             ],
             onChanged: (v) => setState(() => _match = v ?? ''),
           ),
+          // Only offered where a table can actually be read. Below this width
+          // the columns collapse into something narrower than the board it
+          // replaced, so the control is absent rather than present and bad.
+          if (MediaQuery.sizeOf(context).width >= _tableFrom)
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: const [
+                ButtonSegment(value: false, icon: Icon(Icons.view_agenda_outlined), label: Text('Board')),
+                ButtonSegment(value: true, icon: Icon(Icons.table_rows_outlined), label: Text('Table')),
+              ],
+              selected: {_asTable},
+              onSelectionChanged: (v) => setState(() => _asTable = v.first),
+            ),
         ],
       ),
     );
   }
+
+  /// Below this the table is narrower than the board it replaces.
+  static const double _tableFrom = 900;
 
   Widget _picker<T>({
     required double width,
@@ -432,6 +488,159 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     );
   }
 
+  /// The table, and the three columns that are NOT in it.
+  ///
+  /// Contact, Status and Notes are the columns A1 Tools' bad-review board
+  /// carries, and every one of them lives on `GET /api/v1/reviews/workflow/
+  /// cards` — a route this consumer is not granted, which answers 403. It is a
+  /// GET and involves no writing, so it is one line of Rodrigo's consumer
+  /// policy away; until then those columns would be three empty headers, and an
+  /// empty column reads as "this customer has no phone number" rather than "we
+  /// were not given this".
+  ///
+  /// So they are absent and SAID, once, under the table. A missing thing nobody
+  /// explains is indistinguishable from a broken one.
+  Widget _table(ThemeData theme) {
+    final more = _reviews.length < _total;
+    final heading = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.4,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: theme.colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(flex: 22, child: Text('CUSTOMER', style: heading)),
+                Expanded(flex: 46, child: Text('REVIEW', style: heading)),
+                Expanded(flex: 12, child: Text('DATE', style: heading)),
+                Expanded(flex: 10, child: Text('RATING', style: heading)),
+                Expanded(flex: 10, child: Text('REPLY', style: heading)),
+              ],
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.only(bottom: 24),
+            itemCount: _reviews.length + 1,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              if (index == _reviews.length) {
+                return Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Center(child: _footer(theme, more)),
+                );
+              }
+
+              return _tableRow(theme, _reviews[index]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _tableRow(ThemeData theme, Map<String, dynamic> review) {
+    final name = '${review['reviewer_name'] ?? ''}'.trim();
+    final comment = '${review['comment'] ?? ''}'.trim();
+    final reply = '${review['reply'] ?? ''}'.trim();
+    final matched = review['match_tier'] == 'high' || review['match_tier'] == 'medium';
+    final customer = '${review['match_customer_name'] ?? ''}'.trim();
+    final quiet = theme.textTheme.bodySmall
+        ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 22,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isEmpty ? 'A Google user' : name,
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (matched && customer.isNotEmpty)
+                  Text(
+                    'Matched: $customer',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.tertiary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                if (_placeOf(review).isNotEmpty)
+                  Text(_placeOf(review), style: quiet, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 46,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Text(
+                comment.isEmpty ? 'No comment' : comment,
+                // Three lines, like A1 Tools' board. A column that shows one
+                // line of a five-line complaint is a column nobody can triage
+                // from; one that shows all five is not a table any more.
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 12,
+            child: Text(_short(review['review_created_at']), style: quiet),
+          ),
+          Expanded(flex: 10, child: _stars(theme, (review['rating'] as num?)?.toInt())),
+          Expanded(
+            flex: 10,
+            child: reply.isEmpty
+                ? Text('No reply',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.error))
+                : Text('Replied', style: quiet),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _footer(ThemeData theme, bool more) {
+    if (!more) {
+      return Text(
+        'All $_total shown',
+        style: theme.textTheme.bodySmall
+            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      );
+    }
+
+    return OutlinedButton.icon(
+      icon: _loadingMore
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.expand_more, size: 18),
+      label: Text(
+        _loadingMore ? 'Loading…' : 'Load more (${_reviews.length} of $_total)',
+      ),
+      onPressed: _loadingMore ? null : _loadMore,
+    );
+  }
+
   Widget _list(ThemeData theme) {
     final more = _reviews.length < _total;
 
@@ -443,29 +652,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         if (index == _reviews.length) {
           return Padding(
             padding: const EdgeInsets.all(16),
-            child: Center(
-              child: more
-                  ? OutlinedButton.icon(
-                      icon: _loadingMore
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.expand_more, size: 18),
-                      label: Text(
-                        _loadingMore
-                            ? 'Loading…'
-                            : 'Load more (${_reviews.length} of $_total)',
-                      ),
-                      onPressed: _loadingMore ? null : _loadMore,
-                    )
-                  : Text(
-                      'All $_total shown',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-            ),
+            child: Center(child: _footer(theme, more)),
           );
         }
 

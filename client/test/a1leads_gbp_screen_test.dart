@@ -211,6 +211,18 @@ void main() {
       reason: 'the filter bar and the review rows have to fit a phone',
     );
 
+    // And the table at the narrowest width it is ever offered at, which is the
+    // one where its columns are tightest.
+    await _pump(tester, _handler(total: 3), size: const Size(900, 900));
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+
+    expect(
+      complaints.where((c) => c.contains('overflowed')),
+      isEmpty,
+      reason: 'nine columns at 900px is the tightest the table is ever drawn',
+    );
+
     // And the control: the rows really were drawn, so the absence above is
     // about the layout rather than about an empty screen.
     expect(find.text('Dana Whitfield'), findsOneWidget);
@@ -233,6 +245,54 @@ void main() {
 
     expect(find.text('Boston, MA'), findsOneWidget);
     expect(find.text('Morton Grove, IL'), findsOneWidget);
+  });
+
+  /// THE TABLE, and the columns that are honestly not in it.
+  ///
+  /// Jose asked for A1 Tools' bad-review board columns. Contact, Status and
+  /// Notes all live on `GET /api/v1/reviews/workflow/cards`, which answers 403
+  /// for this consumer — measured, not assumed. Three empty headers would read
+  /// as "this customer has no phone number" rather than "we were not granted
+  /// this", so they are absent AND said, and the sentence is asserted here
+  /// because an unexplained absence is the thing this tab must never produce.
+  testWidgets('the table shows the columns it can fill and names the ones it cannot', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(total: 3));
+
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+
+    for (final column in ['CUSTOMER', 'REVIEW', 'DATE', 'RATING', 'REPLY']) {
+      expect(find.text(column), findsOneWidget, reason: '$column is a column we can fill');
+    }
+
+    // The rows really are there, in the table rather than the board.
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+    expect(find.textContaining('Matched: Dana M. Whitfield'), findsOneWidget);
+
+    // And the absent three are explained rather than left blank.
+    expect(find.textContaining('Contact, Status and Notes are not here yet'), findsOneWidget);
+    expect(find.textContaining('cannot write to it'), findsOneWidget);
+  });
+
+  /// The board is the default, because a review is prose.
+  testWidgets('it opens on the board, not the table', (tester) async {
+    await _pump(tester, _handler(total: 3));
+
+    expect(find.text('CUSTOMER'), findsNothing);
+    expect(find.text('Board'), findsOneWidget, reason: 'the toggle is offered');
+  });
+
+  /// A table narrower than the board it replaces is not offered at all.
+  testWidgets('the table toggle is absent at phone width', (tester) async {
+    await _pump(tester, _handler(total: 3), size: const Size(375, 812));
+
+    expect(find.text('Table'), findsNothing);
+    expect(find.text('Board'), findsNothing);
+
+    // The control: the screen rendered, so the absence is about the width.
+    expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
   /// Nothing matching the filters is a different sentence from nothing at all.
