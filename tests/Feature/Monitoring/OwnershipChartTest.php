@@ -109,10 +109,18 @@ class OwnershipChartTest extends TestCase
         $withHr = $this->userWithRole($alpha, 'HR', [...self::BASE, 'hr.hours.view']);
         $rows = $this->signedInAs($withHr)->getJson(self::PATH)->assertOk()->json('data');
 
-        $schedules = array_filter(array_column($rows, 'schedule'));
-        $this->assertNotEmpty($schedules,
-            'With hr.hours.view the column must be present, or the assertions '
+        $days = array_filter(array_column($rows, 'work_days'));
+        $shifts = array_filter(array_column($rows, 'shift'));
+
+        $this->assertNotEmpty($days,
+            'With hr.hours.view the columns must be present, or the assertions '
             .'above pass for a column that never exists.');
+        $this->assertNotEmpty($shifts);
+
+        // And they are the SUMMARY, not the raw week — the whole point of the
+        // change. A row still carrying the structure would satisfy notEmpty.
+        $this->assertStringContainsString('Mon', $days[array_key_first($days)]);
+        $this->assertStringContainsString('AM', $shifts[array_key_first($shifts)]);
     }
 
     public function test_desk_and_office_come_from_a_plan_the_actor_can_reach(): void

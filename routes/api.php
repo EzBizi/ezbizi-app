@@ -2165,6 +2165,20 @@ Route::prefix('v1')
             Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
         });
 
+        /*
+         * Renaming ONE desk, from the ownership chart.
+         *
+         * Outside the Map TAB group on purpose: the person doing this is
+         * looking at General, and an administrator may reasonably grant "may
+         * edit the map" without granting the map's own tab. The edit grant
+         * itself (monitoring.map.manage) is enforced by the policy inside,
+         * along with the §3 scope check every other plan route makes.
+         */
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/label',
+            [MonitoringFloorPlansController::class, 'renameNode']
+        );
+
         Route::middleware('permission:monitoring.map.view')->group(function () {
         Route::get('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'index']);
         Route::post('monitoring/floor-plans', [MonitoringFloorPlansController::class, 'store']);
