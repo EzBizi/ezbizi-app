@@ -216,7 +216,70 @@ void main() {
     expect(edge.right, lessThanOrEqualTo(canvas.right + 0.01));
     expect(edge.bottom, lessThanOrEqualTo(canvas.bottom + 0.01));
   });
+
+  testWidgets('the whole plan fits the space it is given, at default zoom',
+      (tester) async {
+    // The shape that broke: a grid TALLER than it is wide, in a pane wider
+    // than it is tall. `cell = width / cols` fitted the width and let the
+    // height fall out of the aspect ratio, so 30x40 in a 1000x800 pane drew a
+    // board over 1300px tall and the lower rows were simply off screen — with
+    // nothing on the map saying so. Every other test in this file passed
+    // against that, because none of them asked how big the board came out.
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+    );
+
+    final board = tester.getSize(_boardFinder());
+    final allowed = 800 * FloorPlanCanvas.viewportFraction;
+
+    expect(board.height, lessThanOrEqualTo(allowed + 1),
+        reason: 'The plan is taller than the room it was given, so its lower '
+            'rows are off screen. Fitting the width alone is what did this.');
+    expect(board.width, lessThanOrEqualTo(1001));
+
+    // Control: it did not collapse to nothing either — a zero-height board
+    // satisfies the assertion above and shows no map at all.
+    expect(board.height, greaterThan(50));
+  });
+
+  testWidgets('zooming in draws a bigger board than the fit', (tester) async {
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+    );
+    final fitted = tester.getSize(_boardFinder());
+
+    await _pumpCanvas(
+      tester,
+      layout: _layout(cols: 30, rows: 40, nodes: const []),
+      status: const {},
+      size: const Size(1000, 800),
+      zoom: 2.0,
+    );
+    final zoomed = tester.getSize(_boardFinder());
+
+    expect(zoomed.height, greaterThan(fitted.height),
+        reason: 'Zoom must change the DRAWN size, or the buttons move a '
+            'percentage and nothing else.');
+    expect(zoomed.width, greaterThan(fitted.width));
+  });
 }
+
+/// The board itself, found by its OWN painter.
+///
+/// `find.byType(CustomPaint).first` measured 800 — the whole window — because
+/// Flutter's own widgets paint with CustomPaint too and one of them came
+/// first in the tree. A size assertion against an ancestor is a healthy
+/// instrument aimed one level beside its subject: it answers confidently and
+/// about something else.
+Finder _boardFinder() => find.byWidgetPredicate(
+      (w) => w is CustomPaint && w.painter is FloorPlanPainter,
+    );
 
 Map<String, dynamic> _layout({
   required List<Map<String, dynamic>> nodes,
@@ -238,6 +301,7 @@ Future<BuildContext> _pumpCanvas(
   String? selectedNodeId,
   void Function(String nodeId)? onSelectNode,
   Size size = const Size(1000, 800),
+  double zoom = 1.0,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -251,6 +315,7 @@ Future<BuildContext> _pumpCanvas(
           child: FloorPlanCanvas(
             layout: layout,
             status: status,
+            zoom: zoom,
             selectedNodeId: selectedNodeId,
             onSelectNode: onSelectNode ?? (_) {},
           ),

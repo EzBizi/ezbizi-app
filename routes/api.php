@@ -2186,6 +2186,8 @@ Route::prefix('v1')
          */
         Route::middleware('permission:monitoring.general.view')->group(function () {
             Route::get('monitoring/ownership', [MonitoringOwnershipController::class, 'index']);
+            // The free desks the chart offers when a Desk cell is empty.
+            Route::get('monitoring/ownership/desks', [MonitoringOwnershipController::class, 'desks']);
         });
 
         /*
@@ -2200,6 +2202,11 @@ Route::prefix('v1')
         Route::put(
             'monitoring/floor-plans/{id}/nodes/{node}/label',
             [MonitoringFloorPlansController::class, 'renameNode']
+        );
+        // Seating somebody at a desk, or clearing it, from the same chart.
+        Route::put(
+            'monitoring/floor-plans/{id}/nodes/{node}/user',
+            [MonitoringFloorPlansController::class, 'assignNode']
         );
 
         Route::middleware('permission:monitoring.map.view')->group(function () {

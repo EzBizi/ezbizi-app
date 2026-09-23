@@ -327,6 +327,94 @@ class FloorPlansController extends Controller
      * person doing this is looking at the chart, and an administrator may
      * reasonably grant "may edit the map" without granting the map's own tab.
      */
+    /**
+     * PUT /monitoring/floor-plans/{id}/nodes/{node}/user
+     *
+     * Seat somebody at a desk, or clear it — from the ownership chart.
+     *
+     * Jose, 2026-09-23: "you forgot that there are empty fields, and thus no
+     * edit button for them". Renaming shipped first and only reached people
+     * who ALREADY had a desk, which left the chart able to show that twelve
+     * people are unplaced and unable to do anything about any of them. The
+     * column that exists to surface a gap has to be the column that closes it.
+     *
+     * ── Why this assigns rather than creating ────────────────────────
+     *
+     * A desk is a tile at a position on a plan. Creating one from a table
+     * means inventing an x and a y, and a desk that appears in a corner
+     * because that cell happened to be free is a lie about where somebody
+     * sits — visible to everyone who opens the Map, and attributed to
+     * whoever last touched the plan. So desks are drawn on the Map, where
+     * position is a thing you can see, and the chart matches PEOPLE to the
+     * desks that exist.
+     *
+     * ── The assignee is scope-checked, not merely validated ──────────
+     *
+     * `constrainToVisiblePeople` is the same predicate `validatedLayout` puts
+     * on every node assignee, so a person who can be seated here could have
+     * been seated by a full layout save, and one who cannot would have been
+     * refused by both. One rule, two endpoints.
+     */
+    public function assignNode(Request $request, string $id, string $nodeId): JsonResponse
+    {
+        $this->authorize('update', MonitoringFloorPlan::class);
+
+        $actor = $request->user();
+        $plan = $this->reachable($actor, $id);
+
+        $data = $request->validate([
+            'user_id' => ['present', 'nullable', 'string'],
+        ]);
+
+        $userId = $data['user_id'];
+
+        if ($userId !== null && ! $this->canSee($actor, $userId)) {
+            // 422 rather than 404: the plan and the node are both real and
+            // reachable, so this is a refusal about the PERSON named, and
+            // saying so is what lets the chart explain itself.
+            abort(422, 'That person is not one you can assign.');
+        }
+
+        $layout = $plan->layout;
+        $nodes = $layout['nodes'] ?? [];
+        $found = false;
+
+        foreach ($nodes as $i => $node) {
+            if (($node['id'] ?? null) !== $nodeId) {
+                continue;
+            }
+
+            $nodes[$i]['user_id'] = $userId;
+            $found = true;
+            break;
+        }
+
+        if (! $found) {
+            abort(404);
+        }
+
+        $layout['nodes'] = $nodes;
+        $plan->layout = $layout;
+        $plan->save();
+
+        $this->audit->log('monitoring.map.updated', $plan, [
+            'fields' => ['layout'],
+            'node' => $nodeId,
+            'assigned' => $userId,
+        ]);
+
+        return response()->json(['data' => ['user_id' => $userId]]);
+    }
+
+    /** Whether this actor may put that person on a plan at all. */
+    private function canSee(User $actor, string $userId): bool
+    {
+        return User::query()
+            ->whereKey($userId)
+            ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
+            ->exists();
+    }
+
     public function renameNode(Request $request, string $id, string $nodeId): JsonResponse
     {
         $this->authorize('update', MonitoringFloorPlan::class);
