@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\Phone;
 use App\Http\Controllers\Api\Controller;
 use App\Models\PhoneBlockedNumber;
 use App\Models\PhoneCall;
-use App\Support\Phone\Attestation;
 use App\Models\PhoneConnection;
+use App\Models\PhoneExtension;
 use App\Models\PhoneNumber;
 use App\Support\Automations\EventEmitter;
+use App\Support\Phone\Attestation;
+use App\Support\Phone\ClientIdentity;
 use App\Support\Phone\TwilioGateway;
 use App\Support\Phone\TwilioWebhook;
 use App\Support\Phone\TwimlRenderer;
@@ -19,8 +21,6 @@ use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response as Status;
 use Throwable;
 use Twilio\TwiML\VoiceResponse;
-use App\Models\PhoneExtension;
-use App\Support\Phone\ClientIdentity;
 
 /**
  * Public Twilio Voice URL. Signature is auth; path names the tenant.
@@ -285,6 +285,18 @@ class VoiceWebhookController extends Controller
             // reads its prompt, accepts a digit, and then does exactly what it
             // would have done for every other digit — which is not a menu.
             'digits' => (string) $request->input('Digits', ''),
+
+            // AND WHAT THOSE DIGITS ARE. A menu key and an extension arrive
+            // through the same `Digits` field and cannot be told apart by
+            // looking at them — `0101` is a valid key press followed by three
+            // more. Only the URL that collected them knows, which is why the
+            // extension prompt below carries the flag in its action.
+            'extension_entry' => $request->boolean('extension'),
+
+            // Where those digits should be posted, for the prompt that asks
+            // for them. Built here rather than in the renderer because the
+            // webhook owns its own address — see voiceAction().
+            'extension_action' => $this->voiceAction($connection, $batch, $outbound, $this->hasQueued($request)).'&extension=1',
 
             // THIS CALLER HAS ALREADY BEEN IN THE QUEUE, and the fact has to
             // outlive the request that learned it.

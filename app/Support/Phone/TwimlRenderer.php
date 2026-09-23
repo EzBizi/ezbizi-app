@@ -97,7 +97,13 @@ final class TwimlRenderer
         // `menu` and NULL both leave the menu alone. Null is "as before", and
         // as before a flow plays if there is one.
         $chosen = (string) ($number->answer_with ?? '');
-        $skipMenu = $skipMenu || ($chosen !== '' && $chosen !== PhoneNumber::ANSWER_MENU);
+
+        // Kept apart from `$skipMenu`, which also goes true for any keypress.
+        // A line that has CHOSEN not to play its menu plays nothing, keypress
+        // or no keypress — including the extension prompt, which is part of
+        // the menu rather than a thing of its own.
+        $skipMenuForcedByChoice = $chosen !== '' && $chosen !== PhoneNumber::ANSWER_MENU;
+        $skipMenu = $skipMenu || $skipMenuForcedByChoice;
 
         $prompt = ($skipMenu || $closed) ? null : $this->menuPrompt($number);
 
@@ -107,6 +113,50 @@ final class TwimlRenderer
 
         if ($closed) {
             $this->afterHours($response, $number, $language, $context);
+
+            return (string) $response;
+        }
+
+        // ── THE CALLER IS TYPING AN EXTENSION ───────────────────────
+        //
+        // Second hop of the two-step gather below: these digits are an
+        // extension rather than a menu key, and only the action URL that
+        // collected them knows that. Without the flag `0101` would be read as
+        // menu key 0 followed by nothing.
+        if (($context['extension_entry'] ?? false) === true) {
+            $this->dialExtension($response, $number, $digits, $language, $context);
+
+            return (string) $response;
+        }
+
+        // ── AND THE KEYPRESS THAT SAYS THEY ARE ABOUT TO ────────────
+        //
+        // Jose's own IVR prompt has told callers for weeks that "if you know
+        // your parties extension you may dial it at any time", and until now
+        // nothing listened: `dialExtension` was reachable only from a menu key
+        // BOUND to one fixed extension, so there was no way to type one.
+        //
+        // Zero is the key because every extension begins with one (his rule,
+        // 2026-09-22) — which is exactly what makes this possible. A menu
+        // offers 1 to 9; if extensions could start with those, pressing 1
+        // would be ambiguous between option one and the first digit of an
+        // extension, and nothing in the keypress would say which.
+        //
+        // Only when this account HAS extensions, and only when the menu has
+        // not claimed 0 for itself. Otherwise pressing 0 falls through exactly
+        // as it does today — a business with no extensions must not be told to
+        // enter one.
+        // `$prompt` is NOT the test here, and my first version used it and
+        // could never fire: `$skipMenu` is true the moment any digit arrives,
+        // so `$prompt` is already null by the time a keypress is being read.
+        // The question is whether this LINE has a menu, which is a property of
+        // the line rather than of this hop.
+        if ($digits === '0'
+            && ! $skipMenuForcedByChoice
+            && $this->menuPrompt($number) !== null
+            && $this->menuOption($number, '0') === null
+            && $this->hasExtensions($number)) {
+            $this->askForExtension($response, $number, $language, $context);
 
             return (string) $response;
         }
@@ -638,6 +688,87 @@ final class TwimlRenderer
         }
 
         $this->voicemail($response, $number, $language, $context);
+    }
+
+    /**
+     * Whether anybody on this account has an extension to dial.
+     *
+     * Asked before offering to collect one. A business that has assigned none
+     * would otherwise hear "enter the extension" after pressing zero and have
+     * nothing that works to type, which is worse than zero doing what it does
+     * on every other line.
+     */
+    private function hasExtensions(PhoneNumber $number): bool
+    {
+        $connection = $number->connection;
+
+        if ($connection === null) {
+            return false;
+        }
+
+        return PhoneExtension::query()
+            ->where('connection_id', $connection->id)
+            ->whereNotNull('extension')
+            ->where('extension', '!=', '')
+            ->exists();
+    }
+
+    /**
+     * Collect the extension the caller is about to type.
+     *
+     * ── Why a second Gather and not a longer first one ──────────────
+     *
+     * The menu's own Gather takes ONE digit and acts on it immediately, which
+     * is what makes a menu feel like a menu. Widening it to four would make
+     * every caller who presses 1 wait out a timeout before anything happened,
+     * to serve the minority who are typing an extension.
+     *
+     * So the first keypress decides, and this is the second hop. `finishOnKey`
+     * lets somebody who knows the extension end it themselves rather than
+     * waiting; the timeout covers everybody who does not.
+     *
+     * ── Why the action URL carries a flag ───────────────────────────
+     *
+     * Twilio posts the collected digits back to a URL we choose, and the
+     * digits alone cannot say what they are — `0101` is a valid menu key
+     * followed by three more presses. The flag is the only thing that
+     * distinguishes "the caller answered the menu" from "the caller typed an
+     * extension", and it lives in the URL because that is the one piece of
+     * state that survives the round trip.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    private function askForExtension(
+        VoiceResponse $response,
+        PhoneNumber $number,
+        string $language,
+        array $context,
+    ): void {
+        $action = is_string($context['extension_action'] ?? null)
+            ? $context['extension_action']
+            : '';
+
+        $attributes = [
+            'language' => $language,
+            'numDigits' => 8,
+            'finishOnKey' => '#',
+            'timeout' => 5,
+        ];
+
+        if ($action !== '') {
+            $attributes['action'] = $action;
+        }
+
+        $gather = $response->gather($attributes);
+        $gather->say(
+            'Enter the extension, starting with zero, then press pound.',
+            ['language' => $language],
+        );
+
+        // Nothing typed. The caller is not abandoned at a dead prompt — they
+        // get whatever the line does for somebody who pressed nothing at all.
+        $this->recordingNotice($response, $number, $language, false);
+        $this->ringOrVoicemail($response, $number, $context);
     }
 
     /**
