@@ -7,6 +7,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Inventory\InventoryVisibility;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +86,9 @@ final class ReportRunner
 
     /** @var list<string>|null memoised per run; see visiblePeopleIds() */
     private ?array $visiblePeople = null;
+
+    /** Memoised per run; see todayWeekday(). */
+    private ?int $todayWeekday = null;
 
     public function __construct(private readonly TenantContext $tenant) {}
 
@@ -221,7 +225,7 @@ final class ReportRunner
              */
             $query->addSelect(
                 DB::raw(isset($declared['sql'])
-                    ? '('.$declared['sql'].') as '.$this->quote($key)
+                    ? '('.$this->resolve($declared['sql']).') as '.$this->quote($key)
                     : $this->quote($resource['table']).'.'.$this->quote($column['column'])
                         .' as '.$this->quote($key))
             );
@@ -251,7 +255,7 @@ final class ReportRunner
                 // are the rows whose printed value satisfies it. Two spellings
                 // of one derived value is how a report comes to exclude a row
                 // it then displays.
-                $query->whereRaw('('.$declaredFilter['sql'].') '.$operator.' ?', [$bound]);
+                $query->whereRaw('('.$this->resolve($declaredFilter['sql']).') '.$operator.' ?', [$bound]);
 
                 continue;
             }
@@ -426,6 +430,35 @@ final class ReportRunner
 
         return ReportMap::get($key)
             ?? throw new InvalidArgumentException("There is no reportable resource called '{$key}'.");
+    }
+
+    /**
+     * Today's weekday, fixed for the whole run.
+     *
+     * Resolved ONCE and memoised, not read per column. A report selecting a
+     * derived column and filtering on the same one must use the same day in
+     * both, and a run that straddles midnight would otherwise filter on
+     * Tuesday and print Wednesday — a row excluded by a value it then displays,
+     * on one run a year, at an hour nobody is reading it.
+     *
+     * `CarbonImmutable::today()` rather than a per-branch clock, deliberately
+     * and with a cost: it is the application timezone, and it is the SAME call
+     * `SchedulingAvailabilityController` makes to decide which day its grid
+     * starts on. So this report and that screen agree about what "today" is,
+     * which matters more than either being right for a branch in another
+     * timezone — a report disagreeing with the screen it describes is the
+     * failure somebody cannot diagnose. A report spanning branches has no
+     * single "today" to be correct about anyway.
+     */
+    private function todayWeekday(): int
+    {
+        return $this->todayWeekday ??= CarbonImmutable::today()->dayOfWeek;
+    }
+
+    /** Fill a derived column's placeholders — ReportMap owns the substitution. */
+    private function resolve(string $sql): string
+    {
+        return ReportMap::resolve($sql, $this->todayWeekday());
     }
 
     private function columnFor(array $resource, array $item): array

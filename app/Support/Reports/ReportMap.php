@@ -110,6 +110,23 @@ final class ReportMap
      *     relations: array<string, array{to: string, local: string, foreign: string}>,
      * }>
      */
+    /**
+     * Fill a derived column's placeholders.
+     *
+     * Lives beside the SQL rather than in the runner, so the runner and the
+     * test that proves the SQL runs use the SAME substitution. Two spellings of
+     * one expression is the failure this module keeps meeting — a guard that
+     * resolves placeholders differently from the code it guards proves that a
+     * DIFFERENT string is valid.
+     *
+     * Integers only, and every placeholder is computed by the application. No
+     * caller-supplied value reaches this.
+     */
+    public static function resolve(string $sql, int $todayWeekday): string
+    {
+        return str_replace(':today_weekday', (string) $todayWeekday, $sql);
+    }
+
     public static function all(): array
     {
         return [
@@ -430,6 +447,78 @@ final class ReportMap
                         'label' => 'Jobs a week (configured)',
                         'type' => 'integer',
                         'sql' => 'select coalesce(sum(s.max_jobs), 0) from service_area_slots s '
+                            .'where s.service_area_id = service_areas.id',
+                    ],
+
+                    /*
+                     * ── THE ROLLING WINDOW, as a distance rather than a horizon ──
+                     *
+                     * Jose asked for "no open day in the next X days" and I
+                     * first shipped only the weekly shape, saying a horizon was
+                     * not expressible. He said make it do a rolling window, and
+                     * he was right that it should - what was wrong was the
+                     * FORM. A horizon has to be baked into the column, so
+                     * `open_days_next_7` and `open_days_next_14` would be two
+                     * columns that answer two of the infinite questions.
+                     *
+                     * A DISTANCE takes the parameter out of the column and puts
+                     * it in the filter, where the person asking already is:
+                     *
+                     *     0     open today
+                     *     3     nothing bookable until three days from now
+                     *     >= 14 filter this for "booked solid a fortnight out"
+                     *     NULL  no open day at ALL - never configured, or shut
+                     *
+                     * So every window is one column and the report author picks
+                     * the number. That is the thing a fixed horizon cannot do,
+                     * and it is why this is a better answer than the one I said
+                     * was impossible.
+                     *
+                     * ── WHY IT TOPS OUT AT 6, AND WHY THAT IS NOT A LIMIT ──
+                     *
+                     * Slots are per WEEKDAY, so an area open at all is open
+                     * within seven days by construction - the modulo below can
+                     * only return 0..6. A filter of `>= 14` therefore matches
+                     * exactly the areas that are NEVER open, which is the true
+                     * answer to "nothing in the next fortnight" rather than an
+                     * approximation of it. The distance is honest at every
+                     * value; it simply has nothing above 6 to report because
+                     * the data has no way to express one.
+                     *
+                     * That stops being true the day Scheduling stores a
+                     * date-specific closure, and then this column needs
+                     * rewriting rather than extending - they know to tell me.
+                     *
+                     * ── NULL IS THE THIRD STATE AND IS NOT A ZERO ──────
+                     *
+                     * `min()` over no rows is NULL, which SQL keeps out of every
+                     * comparison - so an unconfigured area does NOT match
+                     * `>= 3`, and is not quietly reported as "booked out for
+                     * three days". It is caught by `open_days_a_week = 0`,
+                     * which names it as what it is. Scheduling's whole warning
+                     * was that these three must never collapse, and NULL
+                     * refusing to answer is the database enforcing it.
+                     *
+                     * `:today_weekday` is substituted by the runner with one
+                     * integer for the whole run - see ReportRunner::resolve().
+                     *
+                     * ── + 7 BEFORE THE SUBTRACTION, NOT AFTER ──────────
+                     *
+                     * `weekday` is an unsignedTinyInteger, so MySQL evaluates
+                     * `s.weekday - :today_weekday` in UNSIGNED arithmetic and a
+                     * Monday slot read on a Wednesday underflows:
+                     * "BIGINT UNSIGNED value is out of range". Not a wrong
+                     * number - the query dies. Adding 7 first keeps every
+                     * intermediate positive and the modulo does the wrap.
+                     *
+                     * Caught by the tests rather than by reading: the algebra
+                     * is identical and the type is not.
+                     */
+                    'days_until_next_open_day' => [
+                        'label' => 'Days until next open day',
+                        'type' => 'integer',
+                        'sql' => 'select min((s.weekday + 7 - :today_weekday) % 7) '
+                            .'from service_area_slots s '
                             .'where s.service_area_id = service_areas.id',
                     ],
                 ],

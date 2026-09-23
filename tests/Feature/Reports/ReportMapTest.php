@@ -236,8 +236,11 @@ class ReportMapTest extends TestCase
 
                 $derived++;
 
+                // Resolved through ReportMap's own substitution, not a copy
+                // of it: a guard that fills placeholders differently from the
+                // runner proves a different string is valid.
                 $value = DB::table($resource['table'])
-                    ->selectRaw('('.$declared['sql'].') as v')
+                    ->selectRaw('('.ReportMap::resolve($declared['sql'], 3).') as v')
                     ->limit(1)
                     ->value('v');
 
