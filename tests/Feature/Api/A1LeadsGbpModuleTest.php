@@ -8,25 +8,28 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * A1Leads GBP — where Reviews and Business Profile are drawn, and nothing else.
+ * A1Leads GBP is a new module beside ours, not a home for ours.
  *
- * ── What moved, and what deliberately did not ────────────────────
+ * ── The mistake this file exists to prevent from recurring ───────
  *
- * Jose, 2026-09-23: *"this is a temporary thing as we will replace his system
- * once we get our own GBP, but till then, we need to move it, which is why i
- * want it separate for now, in fact, just make it as it's own main tab."*
+ * The first version of this module made `reviews` and `business_profile` its
+ * children. That was wrong, and Jose said so in the clearest terms available:
  *
- * So the two modules moved out of Marketing and into a container of their own.
- * A move like this is one word per module in the registry and it is exactly the
- * kind of change that looks harmless and takes somebody's screen away: the
- * client decides what to draw from `parent` on `/me`, and a role that reaches a
- * child but not the container is the common case rather than the odd one.
+ * > *"i didn't ask u to modify our current system, i said we are integrating
+ * > Rodrigo's system as a different thing, we still need our system in place
+ * > for when we get OUR GBP Credentials and we'll need the google reviewers to
+ * > see it. SO PUT IT BACK WHERE IT WAS, THE A1LEADS GBP TAB IS A NEW ENTIRE
+ * > THING."*
  *
- * So this file asserts both halves — the layout the client reads, and that
- * nobody's access moved with it.
+ * The two are not interchangeable and the difference is not cosmetic. EzBizi's
+ * Reviews and Business Profile read EzBizi's own tables and are what a Google
+ * reviewer is shown when our own API access arrives. A1Leads GBP is a
+ * read-only window onto somebody else's system and is deleted when that access
+ * lands. Nesting ours inside it made the thing we are judged on look like a
+ * feature of a temporary bridge.
  *
- * The client's own container is tested in `a1leads_gbp_screen_test.dart`
- * against a hand fixture. This is what holds that fixture to the real registry.
+ * So the assertions below are mostly about what this module does NOT contain,
+ * paired with the presences that make those absences readable.
  */
 class A1LeadsGbpModuleTest extends TestCase
 {
@@ -34,13 +37,61 @@ class A1LeadsGbpModuleTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * The layout `/me` reports, which is the only thing the client reads.
+     * It stands on its own and holds nothing.
      *
-     * Asserted through the ENDPOINT rather than off the registry object,
-     * because the registry being right and the payload dropping the field are
-     * different failures and only one of them is visible on screen.
+     * Derived from the registry rather than naming the two modules, so a THIRD
+     * module parented here later fails this as well — which is the shape the
+     * mistake took the first time.
      */
-    public function test_me_draws_both_modules_inside_the_container(): void
+    public function test_the_module_is_top_level_and_has_no_children(): void
+    {
+        $registry = app(ModuleRegistry::class);
+
+        $this->assertNotNull(
+            $registry->get('a1leads_gbp'),
+            'the module is missing entirely',
+        );
+
+        $this->assertNull(
+            $registry->get('a1leads_gbp')?->parent,
+            'it is a main tab, not a chip inside another module',
+        );
+
+        $inside = collect($registry->all())
+            ->filter(fn ($module) => $module->parent === 'a1leads_gbp')
+            ->map(fn ($module) => $module->key)
+            ->values()
+            ->all();
+
+        $this->assertSame(
+            [],
+            $inside,
+            'nothing is drawn inside A1Leads GBP - it is a window onto another system, '
+            .'not a container for ours',
+        );
+    }
+
+    /**
+     * And ours are where they have always been.
+     *
+     * The other half, and the half that actually matters to the business: this
+     * is the placement a Google reviewer is walked through.
+     */
+    public function test_our_own_modules_are_still_inside_marketing(): void
+    {
+        $registry = app(ModuleRegistry::class);
+
+        $this->assertSame('marketing', $registry->get('reviews')?->parent);
+        $this->assertSame('marketing', $registry->get('business_profile')?->parent);
+    }
+
+    /**
+     * Through the endpoint, because that is what the client reads.
+     *
+     * The registry being right and the payload dropping the field are different
+     * failures and only one of them is visible on screen.
+     */
+    public function test_me_reports_the_same_placement(): void
     {
         $t = $this->provisionTenant('Alpha');
 
@@ -48,77 +99,51 @@ class A1LeadsGbpModuleTest extends TestCase
             $this->signedInAs($t['admin'])->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        $this->assertSame('a1leads_gbp', $modules['reviews']['parent']);
-        $this->assertSame('a1leads_gbp', $modules['business_profile']['parent']);
-
-        // And the container is a destination rather than a tab inside one.
-        // Nesting is one level, so a container with a parent would put its two
-        // children two deep and the registry refuses that — this says the
-        // intended shape out loud rather than relying on that refusal.
         $this->assertNull($modules['a1leads_gbp']['parent']);
+        $this->assertSame('marketing', $modules['reviews']['parent']);
+        $this->assertSame('marketing', $modules['business_profile']['parent']);
     }
 
     /**
-     * NESTING IS A LAYOUT FACT, NOT A GRANT.
+     * Its grant opens it and nothing else, in both directions.
      *
-     * The failure this guards is silent and one-directional: if reaching
-     * Reviews came to depend on the container's own permission, every existing
-     * role would keep `reviews.view` and lose the screen, with nothing logged
-     * and nothing to quote. The reverse — the container granting its children —
-     * would be a widening, and is asserted in the same breath.
+     * The failure worth guarding is a bridge module quietly carrying access to
+     * the real ones, or the reverse — somebody granted Reviews finding they
+     * have also been given a window onto another company's system.
      */
-    public function test_a_role_holding_one_child_reaches_it_and_not_the_container(): void
+    public function test_its_grant_is_independent_of_ours(): void
     {
         $t = $this->provisionTenant('Bravo');
 
-        $reader = $this->userWithRole($t, 'Reviews reader', ['reviews.view']);
+        $bridge = $this->userWithRole($t, 'Bridge only', ['a1leads_gbp.view']);
 
         $modules = collect(
-            $this->signedInAs($reader)->getJson('/api/v1/me')->assertOk()->json('data.modules')
-        )->keyBy('key');
-
-        $this->assertTrue($modules['reviews']['reachable'], 'the grant they hold');
-        $this->assertFalse(
-            $modules['a1leads_gbp']['reachable'],
-            'the container is not granted by its child - the client draws the row anyway'
-        );
-        $this->assertFalse(
-            $modules['business_profile']['reachable'],
-            'and a sibling is not granted by being drawn in the same strip'
-        );
-    }
-
-    /**
-     * The container's own grant opens nothing behind it.
-     *
-     * The other direction of the same rule, and the one an administrator is
-     * most likely to try: ticking the row that carries the name.
-     */
-    public function test_the_container_grant_alone_reaches_neither_child(): void
-    {
-        $t = $this->provisionTenant('Charlie');
-
-        $holder = $this->userWithRole($t, 'Container only', ['a1leads_gbp.view']);
-
-        $modules = collect(
-            $this->signedInAs($holder)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+            $this->signedInAs($bridge)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
         $this->assertTrue($modules['a1leads_gbp']['reachable']);
         $this->assertFalse($modules['reviews']['reachable']);
         $this->assertFalse($modules['business_profile']['reachable']);
+
+        $reader = $this->userWithRole($t, 'Reviews only', ['reviews.view']);
+
+        $theirs = collect(
+            $this->signedInAs($reader)->getJson('/api/v1/me')->assertOk()->json('data.modules')
+        )->keyBy('key');
+
+        $this->assertTrue($theirs['reviews']['reachable']);
+        $this->assertFalse($theirs['a1leads_gbp']['reachable']);
     }
 
     /**
-     * THE POSITIVE CONTROL, and the suite is worth little without it.
+     * THE POSITIVE CONTROL: our endpoints still answer our permissions.
      *
-     * Every assertion above is about a flag on a payload. This is the one that
-     * says the permission still opens the door it always opened — a move that
-     * quietly broke the endpoints would satisfy all of them.
+     * Every assertion above is about a flag or an absence, and a module move
+     * that quietly broke the real screens would satisfy all of them.
      */
-    public function test_neither_endpoint_changed_hands(): void
+    public function test_our_endpoints_are_untouched(): void
     {
-        $t = $this->provisionTenant('Delta');
+        $t = $this->provisionTenant('Charlie');
 
         $this->signedInAs($this->userWithRole($t, 'Reviews', ['reviews.view']))
             ->getJson('/api/v1/reviews')
@@ -127,24 +152,5 @@ class A1LeadsGbpModuleTest extends TestCase
         $this->signedInAs($this->userWithRole($t, 'Profile', ['business_profile.view']))
             ->getJson('/api/v1/business-profile/locations')
             ->assertOk();
-    }
-
-    /**
-     * The container holds exactly these two, derived rather than listed.
-     *
-     * Written against the registry because that is where a third module would
-     * be added, and the point is to notice: this container is temporary and
-     * everything put inside it has to come out again when EzBizi holds its own
-     * Business Profile API access (docs/BUSINESS-PROFILE.md §9b).
-     */
-    public function test_nothing_else_is_drawn_in_the_container(): void
-    {
-        $inside = collect(app(ModuleRegistry::class)->all())
-            ->filter(fn ($module) => $module->parent === 'a1leads_gbp')
-            ->map(fn ($module) => $module->key)
-            ->values()
-            ->all();
-
-        $this->assertSame(['reviews', 'business_profile'], $inside);
     }
 }
