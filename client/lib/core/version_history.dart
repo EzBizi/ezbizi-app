@@ -11,6 +11,7 @@ class VersionHistory {
       version: '0.0.0245',
       date: '23 Sep 2026',
       items: [
+        'The widget cards under Web Management are the same height as well as the same width, so the status line on each one lands on the same level across a row. They were 115 against 132 depending on whether the description ran to one line or two.',
         'A shift always gets an end now, from the schedule or from a new limit in Settings that starts at 16 hours. Seven shifts had been left open across two businesses, the oldest since 9 September, and nothing that existed was ever going to close them. They close at that limit rather than at the running total they had reached.',
         'Reviews and Business Profile have a tab of their own instead of sitting inside Marketing. Nothing about either one changes except where it is drawn.',
       ],
