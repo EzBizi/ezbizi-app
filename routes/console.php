@@ -132,6 +132,16 @@ Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(1
  */
 Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
 
+/*
+ * HOURLY, and deliberately not beside the job sweep.
+ *
+ * A roster changes when somebody is hired; a job status changes all day.
+ * Reading nine accounts every minute for the roster would spend the same
+ * Workiz quota that refuses the job sweep with 429. A1 Tools reached the same
+ * split — their team sync is on a slower cron than their job sync.
+ */
+Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).
