@@ -2202,6 +2202,62 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * == A1Leads GBP: a container, and a deliberately temporary one ==
+             *
+             * Jose, 2026-09-23, verbatim: *"this is a temporary thing as we will
+             * replace his system once we get our own GBP, but till then, we need
+             * to move it, which is why i want it separate for now, in fact, just
+             * make it as it's own main tab."*
+             *
+             * So Reviews and Business Profile move OUT of Marketing and into a
+             * row of their own. The comment they each carried - "drawn as a tab
+             * inside Marketing rather than as a row of its own in a sidebar that
+             * already holds fifteen" - was a good reason and is now overruled by
+             * a better one: while A1 Leads is still the system of record for
+             * Google Business Profile, the two screens that read it should be
+             * findable together and removable together.
+             *
+             * == One action, because the registry refuses none ==
+             *
+             * It was written with `actions: []` first, on the argument that
+             * `a1leads_gbp.view` gates nothing: the destination is drawn for
+             * anybody who can reach EITHER child (main.dart `_hasDestination` -
+             * "a module this person CANNOT reach still does, when something
+             * drawn inside it is reachable"), and the screen draws only children.
+             * The registry threw - *"Module 'a1leads_gbp' declares no actions"* -
+             * so that decision is already made and made elsewhere.
+             *
+             * What `view` therefore means here, precisely: holding it and
+             * neither child gets you the row and a screen that says nothing
+             * inside is available. Holding a child and not this still gets you
+             * the row. So it is not a dead checkbox, but it is a small one, and
+             * an administrator granting access to this area should be ticking
+             * Reviews or Business Profile rather than this.
+             *
+             * Reviews and Business Profile keep their own grants untouched.
+             * Nesting is a layout fact, not a grant, so nobody gains or loses
+             * anything on the deploy that moves them.
+             *
+             * == When this is deleted ==
+             *
+             * When EzBizi holds its own Business Profile API access (refused
+             * 2026-09-22 on the 60-day rule, re-file on or after 26 October -
+             * docs/BUSINESS-PROFILE.md 9b), the two modules go back to being
+             * ordinary EzBizi modules and this container has no reason to exist.
+             * It is named after the system it is a bridge to, so that its name
+             * stops making sense at exactly the moment it should be removed.
+             */
+            new ModuleDefinition(
+                key: 'a1leads_gbp',
+                label: 'A1Leads GBP',
+                actions: ['view'],
+                automationExemptBecause: 'A container for two other modules. It holds no '
+                    .'records and raises no events; Reviews and Business Profile declare '
+                    .'their own triggers and subjects, and a rule built here would have '
+                    .'nothing to be about.',
+            ),
+
+            /*
              * ── Reviews: what the public said, and the answer ────
              *
              * Sold separately from Leads on purpose. A business with three Maps
@@ -2242,10 +2298,12 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'reviews',
                 label: 'Reviews',
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                // Drawn inside A1Leads GBP rather than as a row of its own in a
+                // sidebar that already holds fifteen - moved out of Marketing
+                // 2026-09-23, see that module's block above. Its permissions are
+                // untouched by either move: this says where it appears, not who
+                // reaches it.
+                parent: 'a1leads_gbp',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
@@ -2325,10 +2383,12 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'business_profile',
                 label: 'Business Profile',
                 auditActionPrefixes: ['business_location'],
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
-                parent: 'marketing',
+                // Drawn inside A1Leads GBP rather than as a row of its own in a
+                // sidebar that already holds fifteen - moved out of Marketing
+                // 2026-09-23, see that module's block above. Its permissions are
+                // untouched by either move: this says where it appears, not who
+                // reaches it.
+                parent: 'a1leads_gbp',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which

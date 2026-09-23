@@ -166,16 +166,25 @@ class MarketingModuleTest extends TestCase
     // ── the three modules drawn inside it ────────────────────────
 
     /**
-     * Web Management, Reviews and Business Profile are tabs INSIDE Marketing.
+     * Newsletter and Web Management are the tabs INSIDE Marketing.
      *
      * The owner's call: the sidebar was fifteen rows deep and several of them
      * were the same subject — what the public is told about the business, and
      * what they say back.
      *
-     * The trio changed on 2026-09-03. Leads left for a row of its own once
-     * Thumbtack became a second source, and Web Management took its place: a
-     * customer's website says something about the business in the same way its
-     * listing and its social accounts do.
+     * THE LIST HAS CHANGED TWICE AND BOTH ARE WORTH KEEPING. Leads left for a
+     * row of its own on 2026-09-03 once Thumbtack became a second source, and
+     * Web Management took its place. Then on 2026-09-23 Reviews and Business
+     * Profile left together for a container of their own, A1Leads GBP — Jose's
+     * call, and a deliberately temporary one: while Rodrigo's A1 Leads is still
+     * the system of record for Google Business Profile, the two screens that
+     * read it are findable together and removable together. See
+     * A1LeadsGbpModuleTest, which holds the other side of that move.
+     *
+     * So this assertion is now about two modules rather than four, and the
+     * reason it is not simply deleted is that it is the thing which noticed:
+     * a move like this is one word in the registry, and the strip it empties
+     * is somebody else's screen.
      */
     public function test_the_public_facing_modules_are_drawn_inside_marketing(): void
     {
@@ -186,7 +195,7 @@ class MarketingModuleTest extends TestCase
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['newsletter', 'web_management', 'reviews', 'business_profile'],
+            ['newsletter', 'web_management'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
@@ -216,7 +225,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['web_management', 'reviews', 'business_profile'] as $key) {
+        foreach (['web_management'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -277,7 +286,18 @@ class MarketingModuleTest extends TestCase
                 ->json('data.modules')
         )->keyBy('key');
 
-        $this->assertSame(self::MODULE, $modules['reviews']['parent']);
+        /*
+         * Reviews still answers this, and its answer changed on 2026-09-23:
+         * it is drawn in A1Leads GBP now, not here. The question the test asks
+         * is whether the catalogue reports the nesting AT ALL, so the right
+         * repair is the new parent rather than a different module.
+         *
+         * Web Management would have been the tidier-looking substitute and is
+         * wrong: the catalogue only carries modules the caller can reach, and
+         * this caller holds `reviews.view`. It failed with "Undefined array key
+         * web_management", which is the catalogue working correctly.
+         */
+        $this->assertSame('a1leads_gbp', $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }
 
