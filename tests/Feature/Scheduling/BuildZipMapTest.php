@@ -226,4 +226,72 @@ class BuildZipMapTest extends TestCase
         app(TenantContext::class)->set($tenant['org']);
         $this->assertSame(0, ServiceAreaZip::query()->count());
     }
+
+    /**
+     * THE A1 TOOLS SEED. Workiz's API cannot return history — `/job/all/`
+     * ignores `start_date` and hands back roughly the next hundred upcoming
+     * appointments — so A-1's eighteen months of evidence exists only in A1
+     * Tools' own store. It comes in as a file, the same way
+     * `fleet:import-a1-tools` and `scheduling:import-a1-areas` do, and lands
+     * under its own source word so the two derivations stay distinguishable.
+     */
+    public function test_it_builds_the_map_from_an_a1_tools_export(): void
+    {
+        [$tenant, $area] = $this->tenantWithArea('Chicago');
+
+        $path = tempnam(sys_get_temp_dir(), 'zips').'.json';
+        file_put_contents($path, json_encode([
+            ['service_area' => 'Chicago', 'zip' => '60601', 'city' => 'Chicago', 'jobs' => 412],
+            ['service_area' => 'Nowhere', 'zip' => '99999', 'city' => null, 'jobs' => 5],
+        ]));
+
+        $this->artisan('scheduling:build-zip-map', [
+            '--organization' => 'Alpha',
+            '--file' => $path,
+        ])->assertSuccessful();
+
+        app(TenantContext::class)->set($tenant['org']);
+        $zips = ServiceAreaZip::query()->get();
+
+        $this->assertCount(1, $zips, 'The unknown area must contribute nothing.');
+        $this->assertSame('60601', $zips->first()->zip);
+        $this->assertSame($area->id, $zips->first()->service_area_id);
+        $this->assertSame('a1tools_jobs', $zips->first()->source);
+    }
+
+    /**
+     * A hand-typed row survives the A1 seed too — the protection is on NULL,
+     * not on one particular derivation.
+     */
+    public function test_the_a1_seed_also_leaves_a_hand_entered_row_alone(): void
+    {
+        [$tenant] = $this->tenantWithArea('Chicago');
+
+        app(TenantContext::class)->set($tenant['org']);
+        $milwaukee = ServiceArea::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'name' => 'Milwaukee',
+        ]);
+        ServiceAreaZip::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'service_area_id' => $milwaukee->id,
+            'zip' => '60601',
+        ]);
+
+        $path = tempnam(sys_get_temp_dir(), 'zips').'.json';
+        file_put_contents($path, json_encode([
+            ['service_area' => 'Chicago', 'zip' => '60601', 'city' => 'Chicago', 'jobs' => 900],
+        ]));
+
+        $this->artisan('scheduling:build-zip-map', [
+            '--organization' => 'Alpha',
+            '--file' => $path,
+        ])->assertSuccessful();
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame(
+            $milwaukee->id,
+            ServiceAreaZip::query()->where('zip', '60601')->first()->service_area_id,
+        );
+    }
 }

@@ -77,11 +77,22 @@ use Illuminate\Support\Facades\DB;
  */
 class SchedulingBuildZipMap extends Command
 {
-    /** Derived rows carry this; a hand-typed row carries NULL and is never touched. */
+    /** Derived rows carry one of these; a hand-typed row carries NULL and is never touched. */
     private const SOURCE = 'workiz_jobs';
+
+    /**
+     * The one-off seed from A1 Tools' own stored history.
+     *
+     * A separate word from SOURCE so the two are distinguishable in the table
+     * afterwards — one is "our sync saw this", the other is "A-1's old system
+     * saw this over eighteen months". Both are derived and both are
+     * replaceable; only NULL is a person.
+     */
+    private const SOURCE_A1 = 'a1tools_jobs';
 
     protected $signature = 'scheduling:build-zip-map
         {--organization= : Organization name, e.g. A1-Group}
+        {--file= : JSON array of {service_area, zip, city, jobs} exported from A1 Tools, instead of the live table}
         {--dry-run : Report what would be written and write nothing}
         {--report-unmatched : List the service-area names no area here matches}';
 
@@ -111,16 +122,42 @@ class SchedulingBuildZipMap extends Command
         $areas = ServiceArea::query()->get();
         $byName = $areas->keyBy(fn (ServiceArea $a) => mb_strtolower(trim($a->name)));
 
-        $rows = DB::table('workiz_jobs')
-            ->where('organization_id', $organization->getKey())
-            ->whereNotNull('service_area')
-            ->whereNotNull('postal_code')
-            ->selectRaw('service_area, postal_code, COUNT(*) as jobs, MAX(city) as city')
-            ->groupBy('service_area', 'postal_code')
-            ->get();
+        $file = $this->option('file');
+        $source = $file === null ? self::SOURCE : self::SOURCE_A1;
+
+        if ($file !== null) {
+            if (! is_file($file)) {
+                $this->error("No such file: {$file}");
+
+                return self::FAILURE;
+            }
+
+            $decoded = json_decode((string) file_get_contents($file), true);
+
+            if (! is_array($decoded)) {
+                $this->error('That file is not a JSON array of {service_area, zip, city, jobs}.');
+
+                return self::FAILURE;
+            }
+
+            $rows = collect($decoded)->map(fn (array $r) => (object) [
+                'service_area' => $r['service_area'] ?? null,
+                'postal_code' => $r['zip'] ?? null,
+                'city' => $r['city'] ?? null,
+                'jobs' => (int) ($r['jobs'] ?? 0),
+            ])->filter(fn ($r) => $r->service_area !== null && $r->postal_code !== null);
+        } else {
+            $rows = DB::table('workiz_jobs')
+                ->where('organization_id', $organization->getKey())
+                ->whereNotNull('service_area')
+                ->whereNotNull('postal_code')
+                ->selectRaw('service_area, postal_code, COUNT(*) as jobs, MAX(city) as city')
+                ->groupBy('service_area', 'postal_code')
+                ->get();
+        }
 
         if ($rows->isEmpty()) {
-            $this->warn('No synced Workiz jobs carry both a service area and a postal code. '
+            $this->warn('Nothing carries both a service area and a postal code. '
                 .'Nothing to derive — has the sync run?');
 
             return self::SUCCESS;
@@ -185,7 +222,8 @@ class SchedulingBuildZipMap extends Command
                 ->first();
 
             // A person typed this one. Evidence does not outrank a decision.
-            if ($existing !== null && $existing->source !== self::SOURCE) {
+            // Both derived sources replace each other; only NULL is protected.
+            if ($existing !== null && $existing->source === null) {
                 $kept++;
 
                 continue;
@@ -200,7 +238,7 @@ class SchedulingBuildZipMap extends Command
             $attributes = [
                 'service_area_id' => $claim['area']->getKey(),
                 'city' => $claim['city'],
-                'source' => self::SOURCE,
+                'source' => $source,
             ];
 
             if ($existing !== null) {
