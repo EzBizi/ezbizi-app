@@ -11,18 +11,13 @@ class VersionHistory {
       version: '0.0.0267',
       date: '24 Sep 2026',
       items: [
-        'Two Workiz imports running at once can no longer create the same job or customer twice.',
-        'Jobs is a table under day headings - Today, Tomorrow, Yesterday and the weekdays - each with the day\'s count. It opens on Upcoming, with Past and All beside it, and the status chips count within that window; Canceled is red. Click a job and the table becomes a list with the job open beside it. Amounts read like \$289.00, and a job with no lines shows a dash instead of USD 0.00.',
-        'Customers is the same kind of table under letter headings, with a City column and chips for repeat customers and for customers with no jobs yet. A customer\'s record lists their jobs.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0266',
-      date: '24 Sep 2026',
-      items: [
         'Automations that run when a job changes status, or is completed, now also run when Workiz moves an imported job - for moves Workiz made in the last two hours, so older history sets nothing off.',
         'Replying from the A1Leads GBP table opens the reply under the review instead of switching to the board.',
         'AI Assistance is a new item in the sidebar. AI shows the WhatsApp staff bot\'s menu and its location search; Library holds the answers the bot gives, which you can add to and edit, each for everyone or for staff only; Settings holds the bot\'s name and welcome. Administrators have it, and other roles can be given it in Roles.',
+        'Two Workiz imports running at once can no longer create the same job or customer twice.',
+        'Jobs is a table under day headings - Today, Tomorrow, Yesterday and the weekdays - each with the day\'s count. It opens on Upcoming, with Past and All beside it, and the status chips count within that window; Canceled is red. Click a job and the table becomes a list with the job open beside it. Amounts read like \$289.00, and a job with no lines shows a dash instead of USD 0.00.',
+        'Customers is the same kind of table under letter headings, with a City column and chips for repeat customers and for customers with no jobs yet. A customer\'s record lists their jobs.',
+        'A customer\'s record names the company beside the franchise, as the list row that opened it does.',
       ],
     ),
     VersionRelease(
