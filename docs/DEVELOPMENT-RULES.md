@@ -12,7 +12,7 @@ These are current operating rules. Detailed incident evidence remains in the [ar
 - Handing a peer a SHA, say MERGED or NOT MERGED. A commit id names work; it does not say whether the other session can call it. Four sessions exchanged branch SHAs in one evening and every recipient had to run `git merge-base --is-ancestor` to find out — one of them concluded a shipped fix did not exist, correctly for the tree they measured and wrongly about the work. State it in the same sentence as the id, and scope any grep-based claim to the tree it was taken on ("on main", not "nowhere").
 - Write the callee before the caller. A saved file that does not COMPILE reds every client suite that reaches the app shell, not only the one for the module you are editing — a peer could not gate `screens/phone/settings_tab.dart` because `automation_builder.dart` was calling a method not yet written. A green module suite is not evidence about the shared tree: which suites a broken file takes down depends on which surface each test file builds, not on how careful the edit was, so no gate the author could have run would have said anything.
 - **A shared control that speaks POSITIONS owes its callers a stated range.**
-  `TabBarLike` takes `selected` as an `int`. Measured 2026-09-24: of its 20 call
+  `TabBarLike` takes `selected` as an `int`. Measured 2026-09-24: of its 21 call
   sites, **16 build `labels` with a collection-`if` on a permission or a layout
   constraint**, so the list is a different length for different people and at
   different window widths — and an index held in State means a different tab.
@@ -31,6 +31,29 @@ These are current operating rules. Detailed incident evidence remains in the [ar
   caught nothing on the day it landed, which is what a guard against recurrence
   looks like. The general rule: **when a shared widget takes a number that
   indexes something the CALLER owns, say what the legal numbers are.**
+
+  **COPY `work_hours_screen.dart:75` (`_active`) — it is the seventh defence and
+  the only complete one.** Added the same afternoon, by a session nobody had
+  told about any of this, on a brand-new screen:
+
+      /// Both the bar and the stack read this, so they cannot disagree.
+      String get _active {
+        final tabs = _tabs;
+        if (tabs.isEmpty || tabs.any((t) => t.$1 == _tab)) return _tab;
+
+        return tabs.first.$1;
+      }
+
+  The state is a **string key**, never an index. The index is derived from it
+  against the list being drawn *this build*, so it cannot be stale and cannot go
+  out of range; a key whose tab has gone falls back to the first tab that is
+  actually there, rather than to a blank pane; and one getter feeds both the
+  strip and the body, so the two cannot disagree — which is the failure the
+  other six defences all leave open. `reports_screen`'s resolve-by-name is the
+  same idea reached independently. **Nothing here needed a new API.** The
+  outstanding `TabBarLike` work is not designing a key-based contract, it is
+  making the other call sites look like this one, which any session can do to
+  its own screen without waiting for anybody.
 
 - **Run the WHOLE client suite before you hand a client commit over, not your module's.** Scheduling's sentence, after their new Time slots card reintroduced a `DropdownButton` that `no_popup_dropdown_test` would have failed on: *"a guard named after a rule instead of a module is invisible to a module-scoped test run."* They had run only the scheduling tests and nothing was wrong with that habit — the guard simply has no module in its name, so no module-shaped command reaches it. Measured, these are the ones nobody's module filter will run: `no_popup_dropdown_test` and `theme_conventions_test` (both scan `lib/` itself), `field_prompt_vs_value_test` and `search_picker_test` (theme and shared control), `tab_stays_in_its_section_test` (the shell), `version_history_test` (the release), `tab_bar_like_test` (the shared tab strip). A module suite is evidence about a module; the guards are about the app.
 - Run `flutter analyze lib` on the MERGED tree, and the duty is whoever performs the merge. Two commits that are each self-consistent and each gated can produce a tree that does not compile, and the break exists only in the merge — which neither author ever built. On 2026-09-17 a branch commit added `if (_tabs.isEmpty)` and a main commit renamed that getter 23 seconds later; git merged them cleanly because a rename and a new call site touch different lines, and `client/lib` was red on main for twenty minutes. **Neither branch owner could have caught it** — by the time both sides exist, only the merger has a tree containing them. A conflict-marker grep is necessary and NOT sufficient: this kind has no markers, and `git show` on a merge commit never shows a name that no longer resolves. Four seconds.
