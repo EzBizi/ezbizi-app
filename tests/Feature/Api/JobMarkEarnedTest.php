@@ -56,6 +56,37 @@ class JobMarkEarnedTest extends TestCase
         $this->assertSame('2026-08-14 16:30:00', $job->earned_at?->utc()->toDateTimeString());
     }
 
+    /**
+     * A moment given in the franchise's zone is stored as the SAME INSTANT.
+     *
+     * The test above passes a UTC Carbon, which is the one zone where "stored as
+     * the zone it holds" and "stored as UTC" coincide -- so it could not see the
+     * defect Workiz hit on 2026-09-24. Laravel formats a Carbon in the zone it
+     * is HOLDING, and the column is UTC, so 12:30 in New York went in as 12:30
+     * UTC: four hours early, and at the end of a month, in the wrong month. And
+     * this method's own docblock told callers to pass exactly that --
+     * `Carbon::parse($wall, $this->franchise->timezone)`.
+     *
+     * 12:30 EDT on 14 August is 16:30 UTC. That is the only value this asserts.
+     */
+    public function test_a_moment_in_the_franchise_zone_is_stored_as_the_same_instant(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $inNewYork = Carbon::parse('2026-08-14 12:30:00', 'America/New_York');
+
+        $this->inTenant($alpha['org'], function () use ($job, $inNewYork) {
+            $job->markEarnedIfDue($inNewYork);
+            $job->save();
+        });
+
+        $this->assertSame('2026-08-14 16:30:00',
+            $job->fresh()->earned_at?->utc()->toDateTimeString(),
+            'The stored instant must be 16:30 UTC, not the New York wall clock read as UTC.');
+    }
+
     public function test_without_a_moment_it_is_stamped_now(): void
     {
         $alpha = $this->provisionTenant('Alpha');

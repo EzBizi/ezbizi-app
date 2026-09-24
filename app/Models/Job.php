@@ -167,11 +167,19 @@ class Job extends Model implements StatesRetention
      * into the current month. A backfill, by contrast, wants exactly the
      * already-earned jobs, and calls it on them directly.
      *
-     * `$at` is an INSTANT. A wall-clock time with no zone — Workiz's
-     * `last_status_update` — must be read in the franchise's timezone first:
-     * `Carbon::parse($wall, $this->franchise->timezone)`. Passing a naive string
-     * through as UTC would move every stamp by four or five hours, and near
-     * midnight at the end of a month, into the wrong month.
+     * `$at` is any instant, in ANY zone, and it is stored as that instant.
+     * Normalised to UTC here, by construction, because Laravel formats a
+     * Carbon in the zone it is HOLDING and this column is UTC: a caller passing
+     * 12:30 in New York used to get 12:30 UTC stored -- four hours early, and at
+     * the end of a month, in the wrong month. Workiz hit it on 2026-09-24 and
+     * their test caught it. Worse, this docblock recommended that exact call.
+     * It is safe now whatever zone the caller holds.
+     *
+     * What the caller still has to get right is which zone a NAKED wall-clock
+     * time belongs to, because only the caller knows. Workiz's
+     * `last_status_update` has no zone and is the franchise's local time, so
+     * parse it there -- `Carbon::parse($wall, $this->franchise->timezone)` --
+     * and pass the result; this method takes it from there.
      *
      * Sets the attribute and does not save; the caller saves, inside whatever
      * transaction already holds the record and its audit row.
@@ -186,7 +194,9 @@ class Job extends Model implements StatesRetention
             return;
         }
 
-        $this->earned_at = $at ?? now();
+        $this->earned_at = $at !== null
+            ? \Illuminate\Support\Carbon::instance($at)->utc()
+            : now()->utc();
     }
 
     // ── status (§2.1 category 5) ─────────────────────────────────
