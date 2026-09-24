@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\A1LeadsReplyReceipt;
 use App\Models\Franchise;
 use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
@@ -12,7 +13,6 @@ use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -233,14 +233,12 @@ class A1LeadsGbpController extends Controller
             $data = $result['body']['data'];
 
             try {
-                DB::table('a1leads_review_reply_receipts')->updateOrInsert(
+                A1LeadsReplyReceipt::query()->updateOrCreate(
                     ['organization_id' => $this->tenant->idOrFail(), 'google_review_name' => $name],
                     [
                         'reply_text' => (string) ($data['text'] ?? $text),
-                        'sent_at' => isset($data['sentAt']) ? Carbon::parse($data['sentAt'])->utc()->toDateTimeString() : null,
+                        'sent_at' => isset($data['sentAt']) ? Carbon::parse($data['sentAt'])->utc() : null,
                         'actor_id' => (string) $request->user()->getKey(),
-                        'updated_at' => now(),
-                        'created_at' => now(),
                     ],
                 );
                 $result['body']['data']['receiptPersisted'] = true;
@@ -343,7 +341,7 @@ class A1LeadsGbpController extends Controller
             return $reviews;
         }
 
-        $receipts = DB::table('a1leads_review_reply_receipts')
+        $receipts = A1LeadsReplyReceipt::query()
             ->where('organization_id', $this->tenant->idOrFail())
             ->whereIn('google_review_name', $names)
             ->get()->keyBy('google_review_name');
@@ -358,16 +356,17 @@ class A1LeadsGbpController extends Controller
             }
             $snapshotSentAt = $review['reply_at'] ?? null;
             if ($snapshotSentAt !== null && $receipt->sent_at !== null
-                && Carbon::parse($snapshotSentAt)->greaterThan(Carbon::parse($receipt->sent_at, 'UTC'))) {
+                && Carbon::parse($snapshotSentAt)->greaterThan($receipt->sent_at)) {
                 continue;
             }
 
+            $sentAt = $receipt->sent_at?->toIso8601String();
             $review['reply'] = $receipt->reply_text;
-            $review['reply_at'] = $receipt->sent_at;
+            $review['reply_at'] = $sentAt;
             $review['review_status'] = [
                 ...(is_array($review['review_status'] ?? null) ? $review['review_status'] : []),
                 'reply' => 'sent',
-                'replied_at' => $receipt->sent_at,
+                'replied_at' => $sentAt,
             ];
         }
         unset($review);
