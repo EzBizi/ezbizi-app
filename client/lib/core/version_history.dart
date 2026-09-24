@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0266',
+      date: '24 Sep 2026',
+      items: [
+        'Automations that run when a job changes status, or is completed, now also run when Workiz moves an imported job - for moves Workiz made in the last two hours, so older history sets nothing off.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0265',
       date: '24 Sep 2026',
       items: [
