@@ -92,13 +92,26 @@ final class MetaMessageReplies implements LeadReplyChannel
         $mid = $this->messages->send($connection, (string) $lead->remote_id, $text);
 
         /*
-         * The row is written AFTER the send here, not before, and that is the
-         * opposite of the WhatsApp outbox on purpose. This method throws on
-         * failure and the composer shows the sentence, so a person knows
-         * immediately that nothing went; a queued row would put an unsent
-         * message in the thread that looks sent. The outbox shape earns its
-         * keep where nobody is watching, which is a rule firing, and this is
-         * somebody pressing Send.
+         * The row is written AFTER the send, not before - the opposite of the
+         * WhatsApp outbox, and still right now that a rule can send here too.
+         *
+         * This comment used to justify it with "this is somebody pressing
+         * Send", which stopped being the only case on 2026-09-24 and, by its
+         * own reasoning, would have argued FOR the outbox on the rule path.
+         * The real reason holds for both callers:
+         *
+         * The thread is the record of what the customer was TOLD. A row
+         * written before the attempt puts a message in it that may never have
+         * left - so somebody reading the thread later believes the customer
+         * was answered, and says the wrong thing when they call. Only a
+         * delivered message belongs there.
+         *
+         * The record of an ATTEMPT lives elsewhere for each caller: a person
+         * sees the thrown sentence in the composer at once, and a rule's
+         * failure is written into its run log by ActionRunner's catch. That is
+         * the difference from WhatsApp outbound, where the message row was the
+         * only record an attempt was made. And a failed automatic reply leaves
+         * the lead on Unreplied, which is true: nobody answered.
          *
          * The id is Meta's, so the echo that comes straight back matches this
          * row and refreshes it rather than adding the business's own reply to
