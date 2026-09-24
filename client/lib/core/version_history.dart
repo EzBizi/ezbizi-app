@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0263',
+      date: '24 Sep 2026',
+      items: [
+        'HR, Records: pick a person from the list and their record opens beside it, in sections - Personal, Employment, Work, Onboarding, Time off, Training and Access. HR can now edit the name, phone, home address, gender, date of birth and start date. Email, onboarding answers and time off stay read only.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0262',
       date: '24 Sep 2026',
       items: [
