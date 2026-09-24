@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
@@ -71,10 +72,13 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   /// The fields as loaded, to tell an edit from the job as it stands.
   String _loaded = '';
 
+  /// The job's time exactly as loaded, seconds included -- see [_minuteOf].
+  String _loadedScheduled = '';
+
   String get _typed => [
     _title.text,
     _description.text,
-    _scheduled.text,
+    _minuteOf(_scheduled.text),
     _duration.text,
     _status,
   ].join('\u0000');
@@ -145,6 +149,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _title.text = row['title'] as String? ?? '';
     _description.text = row['description'] as String? ?? '';
     _scheduled.text = _wallClock(row['scheduled_for'] as String?);
+    _loadedScheduled = _scheduled.text;
     final duration = row['duration_minutes'];
     _duration.text = duration == null ? '' : '$duration';
 
@@ -193,7 +198,15 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       _error = null;
     });
 
-    final scheduled = _scheduled.text.trim();
+    // Unchanged to the minute -> send back exactly what was loaded. The date
+    // field rewrites its text as `YYYY-MM-DD HH:MM` on blur, so a click in and
+    // out turns 09:43:33 into 09:43; sending that would move the job by up to
+    // 59 seconds, and the Workiz follow pass reads a changed time as a
+    // person's edit and stops following the appointment.
+    final typed = _scheduled.text.trim();
+    final scheduled = _minuteOf(typed) == _minuteOf(_loadedScheduled)
+        ? _loadedScheduled
+        : typed;
 
     final response = await widget.api.patch('/jobs/${widget.id}', {
       'title': _title.text.trim(),
@@ -546,6 +559,21 @@ String _datePart(String? stamp) =>
 /// hyphens are not a zone, and only a pattern anchored to the end can tell.
 /// job_panel_wall_clock_test.dart pins it with a dated fixture, which no panel
 /// test had.
+/// A wall-clock time reduced to what a person can see and change: the minute.
+///
+/// CalendarDayField shows and writes `YYYY-MM-DD HH:MM`, while a stored job can
+/// carry seconds (161 on production do, from Workiz). Comparing the two as text
+/// made a click into the date and out again read as an edit -- on every dated
+/// job, because even `08:00:00` and `08:00` differ as strings. Anything that
+/// does not parse is returned as typed, so a half-typed date still counts as a
+/// change.
+String _minuteOf(String text) {
+  final parsed = parseWallDateTime(text);
+  return parsed == null
+      ? text.trim()
+      : formatWallDateTime(parsed.day, parsed.hour, parsed.minute);
+}
+
 String _wallClock(String? stamp) {
   if (stamp == null || stamp.isEmpty) return '';
 
