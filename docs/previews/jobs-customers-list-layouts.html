@@ -156,6 +156,26 @@ tr.hv td{background:var(--hover)}
  align-items:center;justify-content:center}
 .letter{font-weight:800;font-size:15px}
 
+
+/* 7 · the combination */
+tr.gr td{background:#f1f6f8;border-bottom:1px solid var(--line);padding:7px 12px;font-size:12px;color:var(--muted)}
+tr.gr td b{font-size:12.5px;color:var(--ink);margin-right:8px}
+tr.gr td .c{float:right}
+.lh{background:#f1f6f8;padding:6px 14px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+ color:#33404a;border-bottom:1px solid var(--line2);display:flex;justify-content:space-between}
+.lh .c{font-weight:600;color:var(--muted);letter-spacing:0}
+.dock{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper)}
+.dock .top{display:flex;align-items:flex-start;gap:12px;padding:16px 22px 12px;border-bottom:1px solid var(--line)}
+.dock .top .t{font-size:18px;font-weight:700}
+.dock .top .s{color:var(--muted);font-size:12px;margin-top:3px}
+.dock .top .x{margin-left:auto;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;
+ justify-content:center;font-size:18px;color:#26323a;background:#eef3f6;flex:0 0 auto}
+.dock .mid{padding:16px 22px;flex:1;display:flex;flex-direction:column;gap:12px}
+.dock .bot{display:flex;justify-content:flex-end;gap:10px;padding:12px 22px;border-top:1px solid var(--line)}
+.dock .in .v{font-size:13px}
+.dock .row3{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dock .sec{font-weight:700;font-size:12.5px;margin-top:6px}
+
 /* phones */
 .pair{display:flex;gap:30px;flex-wrap:wrap}
 .pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
@@ -589,5 +609,161 @@ Each option is drawn for both screens. Pick one desktop (<b>1–3</b>) and one p
  </div></div>
 </div>
 
-<div class="pick"><b>Reply with two numbers</b> — one desktop (1–3) and one phone (4–6). Mine: <b>1 and 4</b> — about twice the rows on screen, and every date, status and amount lines up so you can read down a column.</div>
+
+<!-- ═══════════ 7 · THE COMBINATION ═══════════ -->
+<h2 style="margin-top:60px"><span class="n">7</span>What you picked <span class="rec">building</span></h2>
+<p class="cap">The table, divided by day. Click a row and the table becomes the list on the left with that job open beside it; × brings the table back. On a phone, the same day headings over two-line rows, and a tap opens the job full screen.</p>
+
+<div class="lbl">Jobs — the table</div>
+<div class="win">
+  <div class="hd"><div><div class="t">Jobs</div><div class="s">The work itself — booked, in progress, and finished.</div></div>
+    <div class="acts"><span class="btn">⤓ Export</span><span class="btn f">+ Add job</span></div></div>
+  <div class="tabs">
+    <span class="tab on">All <b>630</b></span>
+    <span class="tab"><i class="dot d-pend"></i>Pending <b>96</b></span>
+    <span class="tab"><i class="dot d-sub"></i>Submitted <b>431</b></span>
+    <span class="tab"><i class="dot d-prog"></i>In progress <b>58</b></span>
+    <span class="tab"><i class="dot d-appr"></i>Done pending approval <b>12</b></span>
+    <span class="tab"><i class="dot d-done"></i>Done <b>9</b></span>
+    <span class="tab"><i class="dot d-canc"></i>Canceled <b>24</b></span>
+  </div>
+  <div class="bar">
+    <div class="srch">⌕&nbsp; Job number, title or customer</div>
+    <div class="pk"><div class="k">Franchise</div><div class="v">All franchises</div></div>
+    <span class="sp"></span>
+    <div class="seg"><span class="on">Upcoming<b>630</b></span><span>Past<b>7,522</b></span><span>All<b>8,152</b></span></div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>Job</th><th>Title</th><th>Customer</th><th>Franchise</th><th>Time</th><th>Status</th><th class="num">Amount</th></tr>
+    <tr class="gr"><td colspan="7"><b>Today</b>Thursday 24 September<span class="c">38 jobs</span></td></tr>
+    <tr><td class="id">JOB-08112</td><td class="ttl">Chimney Sweep</td><td>Maria Delgado</td><td>Illinois</td><td>8:00 AM</td><td><span class="st prog">In progress</span></td><td class="num">$289.00</td></tr>
+    <tr class="hv"><td class="id">JOB-08113</td><td class="ttl">Chimney Inspection</td><td>Tom Whitaker</td><td>Texas</td><td>9:30 AM</td><td><span class="st prog">In progress</span></td><td class="num">$149.00</td></tr>
+    <tr><td class="id">JOB-08120</td><td class="ttl">Free Estimate</td><td>Priya Raman</td><td>New Jersey</td><td>11:00 AM</td><td><span class="st subm">Submitted</span></td><td class="num nil">—</td></tr>
+    <tr><td class="id">JOB-08121</td><td class="ttl">Chimney Sweep</td><td>Greg Novak</td><td>Connecticut</td><td>2:00 PM</td><td><span class="st subm">Submitted</span></td><td class="num">$249.00</td></tr>
+    <tr><td class="id">JOB-08124</td><td class="ttl">Dryer Vent Cleaning</td><td>Nadia Petrova</td><td>DMV</td><td>3:30 PM</td><td><span class="st pend">Pending</span></td><td class="num">$179.00</td></tr>
+    <tr class="gr"><td colspan="7"><b>Tomorrow</b>Friday 25 September<span class="c">41 jobs</span></td></tr>
+    <tr><td class="id">JOB-08131</td><td class="ttl">Crown Repair</td><td>Hannah Cole</td><td>Ohio</td><td>8:00 AM</td><td><span class="st pend">Pending</span></td><td class="num">$1,280.00</td></tr>
+    <tr><td class="id">JOB-08133</td><td class="ttl">Chimney Inspection</td><td>Luis Ortega&nbsp; <span class="tg warn">Shared customer</span></td><td>Texas</td><td>10:00 AM</td><td><span class="st subm">Submitted</span></td><td class="num nil">—</td></tr>
+    <tr><td class="id">JOB-08136</td><td class="ttl">Chimney Sweep</td><td>Evan Brooks</td><td>Nationwide</td><td>1:00 PM</td><td><span class="st subm">Submitted</span></td><td class="num">$249.00</td></tr>
+    <tr class="gr"><td colspan="7"><b>Saturday</b>26 September<span class="c">12 jobs</span></td></tr>
+    <tr><td class="id">JOB-08140</td><td class="ttl">Liner Install</td><td>Beth Morales</td><td>New Jersey</td><td>9:00 AM</td><td><span class="st pend">Pending</span></td><td class="num">$3,950.00</td></tr>
+    <tr><td class="id">JOB-08141</td><td class="ttl">Dryer Vent Cleaning</td><td>Owen Fraser</td><td>DMV</td><td>10:30 AM</td><td><span class="st subm">Submitted</span></td><td class="num">$179.00</td></tr>
+  </table>
+  <div class="foot"><span>50 of 630 upcoming</span><span class="btn">Load 50 more</span></div></div>
+</div>
+
+<div class="lbl">Jobs — after clicking the first row</div>
+<div class="win">
+  <div class="hd"><div><div class="t">Jobs</div><div class="s">The work itself — booked, in progress, and finished.</div></div>
+    <div class="acts"><span class="btn">⤓ Export</span><span class="btn f">+ Add job</span></div></div>
+  <div class="tabs">
+    <span class="tab on">All <b>630</b></span>
+    <span class="tab"><i class="dot d-pend"></i>Pending <b>96</b></span>
+    <span class="tab"><i class="dot d-sub"></i>Submitted <b>431</b></span>
+    <span class="tab"><i class="dot d-prog"></i>In progress <b>58</b></span>
+    <span class="tab"><i class="dot d-appr"></i>Done pending approval <b>12</b></span>
+    <span class="tab"><i class="dot d-done"></i>Done <b>9</b></span>
+    <span class="tab"><i class="dot d-canc"></i>Canceled <b>24</b></span>
+  </div>
+  <div class="bar">
+    <div class="srch">⌕&nbsp; Job number, title or customer</div>
+    <div class="pk"><div class="k">Franchise</div><div class="v">All franchises</div></div>
+    <span class="sp"></span>
+    <div class="seg"><span class="on">Upcoming<b>630</b></span><span>Past<b>7,522</b></span><span>All<b>8,152</b></span></div>
+  </div>
+  <div class="split">
+    <div class="lst">
+    <div class="lh">Today · Thu 24 Sep<span class="c">38</span></div>
+    <div class="li on"><div class="g"><div class="a"><span class="x">Chimney Sweep</span><span class="r">8:00 AM</span></div><div class="b"><span class="x">Maria Delgado · Illinois</span><span class="st prog">In progress</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Chimney Inspection</span><span class="r">9:30 AM</span></div><div class="b"><span class="x">Tom Whitaker · Texas</span><span class="st prog">In progress</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Free Estimate</span><span class="r">11:00 AM</span></div><div class="b"><span class="x">Priya Raman · New Jersey</span><span class="st subm">Submitted</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Chimney Sweep</span><span class="r">2:00 PM</span></div><div class="b"><span class="x">Greg Novak · Connecticut</span><span class="st subm">Submitted</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Dryer Vent Cleaning</span><span class="r">3:30 PM</span></div><div class="b"><span class="x">Nadia Petrova · DMV</span><span class="st pend">Pending</span></div></div></div>
+    <div class="lh">Tomorrow · Fri 25 Sep<span class="c">41</span></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Crown Repair</span><span class="r">8:00 AM</span></div><div class="b"><span class="x">Hannah Cole · Ohio</span><span class="st pend">Pending</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Chimney Inspection</span><span class="r">10:00 AM</span></div><div class="b"><span class="x">Luis Ortega · Texas</span><span class="st subm">Submitted</span></div></div></div>
+    <div class="li"><div class="g"><div class="a"><span class="x">Chimney Sweep</span><span class="r">1:00 PM</span></div><div class="b"><span class="x">Evan Brooks · Nationwide</span><span class="st subm">Submitted</span></div></div></div>
+    </div>
+    <div class="dock">
+      <div class="top"><div><div class="t">Chimney Sweep &nbsp;<span class="st prog">In progress</span></div>
+        <div class="s">JOB-08112 · Maria Delgado · Illinois</div></div><span class="x">×</span></div>
+      <div class="mid">
+        <div class="in"><div class="k">What is the job</div><div class="v">Chimney Sweep</div></div>
+        <div class="row3">
+          <div class="in"><div class="k">Status</div><div class="v">In progress</div></div>
+          <div class="in"><div class="k">Scheduled for</div><div class="v">09 / 24 / 2026 &nbsp; 8:00 AM</div></div>
+        </div>
+        <div class="in"><div class="k">Duration</div><div class="v">90</div></div>
+        <div class="in"><div class="k">Notes</div><div class="v">Gate code 4471. Dog in the back yard.</div></div>
+        <div class="sec">Work</div>
+        <div class="card" style="margin:0">
+          <div class="ln"><span class="g">Chimney sweep</span><span class="q">1 × $249.00</span><span class="m">$249.00</span></div>
+          <div class="ln"><span class="g">Service fee</span><span class="q">1 × $40.00</span><span class="m">$40.00</span></div>
+          <div class="ln tot"><span class="g">Total</span><span class="q"></span><span class="m">$289.00</span></div>
+        </div>
+      </div>
+      <div class="bot"><span class="btn">Cancel</span><span class="btn f">Save</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="lbl">Customers — the table, divided by letter</div>
+<div class="win">
+  <div class="hd"><div><div class="t">Customers</div><div class="s">Everyone you work for, and the history behind each one.</div></div>
+    <div class="acts"><span class="btn">Possible duplicates</span><span class="btn">⤒ Import</span><span class="btn">⤓ Export</span><span class="btn f">+ Add customer</span></div></div>
+  <div class="tabs">
+    <span class="tab on">All <b>7,675</b></span>
+    <span class="tab">Repeat customers <b>885</b></span>
+    <span class="tab">No jobs yet <b>502</b></span>
+  </div>
+  <div class="bar">
+    <div class="srch">⌕&nbsp; Name, email, phone or number</div>
+    <div class="pk"><div class="k">Franchise</div><div class="v">All franchises</div></div>
+  </div>
+  <div class="tbl"><table>
+    <tr><th>Customer</th><th>Name</th><th>Phone</th><th>Email</th><th>City</th><th>Franchise</th><th class="num">Jobs</th></tr>
+    <tr class="gr"><td colspan="7"><b>A</b><span class="c">612 customers</span></td></tr>
+    <tr><td class="id">C-02417</td><td class="ttl">Aaron Whitfield</td><td>(312) 555-0142</td><td>aaron.w@example.com</td><td>Chicago, IL</td><td><span class="co">A-1 Chimney ·</span> Illinois</td><td class="num">1</td></tr>
+    <tr><td class="id">C-03390</td><td class="ttl">Abby Lindqvist</td><td>(214) 555-0187</td><td>abby.l@example.com</td><td>Dallas, TX</td><td><span class="co">A-1 Chimney ·</span> Texas</td><td class="num">3</td></tr>
+    <tr><td class="id">C-01865</td><td class="ttl">Adrian Mercer</td><td>(201) 555-0119</td><td>adrian.m@example.com</td><td>Hoboken, NJ</td><td><span class="co">A-1 Chimney ·</span> New Jersey</td><td class="num">1</td></tr>
+    <tr><td class="id">C-04402</td><td class="ttl">Aisha Bello</td><td>(703) 555-0164</td><td>aisha.b@example.com</td><td>Arlington, VA</td><td><span class="co">A-1 Chimney ·</span> DMV</td><td class="num">2</td></tr>
+    <tr><td class="id">C-02981</td><td class="ttl">Alan Brooks</td><td>(614) 555-0131</td><td>alan.b@example.com</td><td>Columbus, OH</td><td><span class="co">A-1 Chimney ·</span> Ohio</td><td class="num">1</td></tr>
+    <tr class="gr"><td colspan="7"><b>B</b><span class="c">748 customers</span></td></tr>
+    <tr><td class="id">C-03991</td><td class="ttl">Bailey Dunn</td><td>(972) 555-0135</td><td>bailey.d@example.com</td><td>Frisco, TX</td><td><span class="co">A-1 Chimney ·</span> Texas</td><td class="num">1</td></tr>
+    <tr><td class="id">C-01207</td><td class="ttl">Beatriz Souza</td><td>(201) 555-0171</td><td>bia.s@example.com</td><td>Jersey City, NJ</td><td><span class="co">A-1 Chimney ·</span> New Jersey</td><td class="num">2</td></tr>
+    <tr><td class="id">C-04718</td><td class="ttl">Ben Okafor</td><td>(312) 555-0126</td><td>ben.o@example.com</td><td>Oak Park, IL</td><td><span class="co">A-1 Chimney ·</span> Illinois</td><td class="num">1</td></tr>
+  </table>
+  <div class="foot"><span>50 of 7,675</span><span class="btn">Load 50 more</span></div></div>
+</div>
+<p class="cap" style="margin-top:8px">Clicking a customer does the same as a job: the list on the left, their record on the right — contact details, and their jobs underneath.</p>
+
+<div class="lbl">On a phone</div>
+<div class="pair">
+ <div><div class="pl">Jobs</div>
+ <div class="ph"><div class="sb"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span class="i">☰</span><span class="t">Jobs</span><span class="plus">+</span><span class="i" style="margin-left:-4px">⋮</span></div>
+  <div class="pbar"><div class="srch">⌕&nbsp; Job number, title or customer</div>
+   <span class="chipk">Upcoming <span class="c">630</span> ▾</span><span class="chipk">Any status ▾</span><span class="chipk">All franchises ▾</span></div>
+  <div class="scr">
+   <div class="sh">Today · Thu 24 Sep<span class="c">38</span></div>
+   <div class="pr"><div class="a"><span class="x">Chimney Sweep</span><span class="r">8:00</span></div><div class="b"><span class="x">Maria Delgado · Illinois</span><span class="st prog">In progress</span></div></div><div class="pr"><div class="a"><span class="x">Chimney Inspection</span><span class="r">9:30</span></div><div class="b"><span class="x">Tom Whitaker · Texas</span><span class="st prog">In progress</span></div></div><div class="pr"><div class="a"><span class="x">Free Estimate</span><span class="r">11:00</span></div><div class="b"><span class="x">Priya Raman · New Jersey</span><span class="st subm">Submitted</span></div></div><div class="pr"><div class="a"><span class="x">Chimney Sweep</span><span class="r">2:00</span></div><div class="b"><span class="x">Greg Novak · Connecticut</span><span class="st subm">Submitted</span></div></div>
+   <div class="sh">Tomorrow · Fri 25 Sep<span class="c">41</span></div>
+   <div class="pr"><div class="a"><span class="x">Crown Repair</span><span class="r">8:00</span></div><div class="b"><span class="x">Hannah Cole · Ohio</span><span class="st pend">Pending</span></div></div><div class="pr"><div class="a"><span class="x">Chimney Inspection</span><span class="r">10:00</span></div><div class="b"><span class="x">Luis Ortega · Texas</span><span class="st subm">Submitted</span></div></div><div class="pr"><div class="a"><span class="x">Chimney Sweep</span><span class="r">1:00</span></div><div class="b"><span class="x">Evan Brooks · Nationwide</span><span class="st subm">Submitted</span></div></div>
+  </div>
+ </div></div>
+ <div><div class="pl">Customers</div>
+ <div class="ph"><div class="sb"><span>9:41</span><span>▮▮▮ ◔</span></div>
+  <div class="ab"><span class="i">☰</span><span class="t">Customers</span><span class="plus">+</span><span class="i" style="margin-left:-4px">⋮</span></div>
+  <div class="pbar"><div class="srch">⌕&nbsp; Name, email, phone or number</div>
+   <span class="chipk">Everyone <span class="c">7,675</span> ▾</span><span class="chipk">All franchises ▾</span></div>
+  <div class="scr">
+   <div class="sh">A<span class="c">612</span></div>
+   <div class="pc"><div class="g"><div class="top"><span class="n">Aaron Whitfield</span><span class="j">1 job</span></div><div class="l">(312) 555-0142 · Chicago, IL</div><div class="l"><span class="co">A-1 Chimney ·</span> Illinois</div></div></div><div class="pc"><div class="g"><div class="top"><span class="n">Abby Lindqvist</span><span class="j">3 jobs</span></div><div class="l">(214) 555-0187 · Dallas, TX</div><div class="l"><span class="co">A-1 Chimney ·</span> Texas</div></div></div><div class="pc"><div class="g"><div class="top"><span class="n">Adrian Mercer</span><span class="j">1 job</span></div><div class="l">(201) 555-0119 · Hoboken, NJ</div><div class="l"><span class="co">A-1 Chimney ·</span> New Jersey</div></div></div><div class="pc"><div class="g"><div class="top"><span class="n">Aisha Bello</span><span class="j">2 jobs</span></div><div class="l">(703) 555-0164 · Arlington, VA</div><div class="l"><span class="co">A-1 Chimney ·</span> DMV</div></div></div>
+   <div class="sh">B<span class="c">748</span></div>
+   <div class="pc"><div class="g"><div class="top"><span class="n">Bailey Dunn</span><span class="j">1 job</span></div><div class="l">(972) 555-0135 · Frisco, TX</div><div class="l"><span class="co">A-1 Chimney ·</span> Texas</div></div></div><div class="pc"><div class="g"><div class="top"><span class="n">Beatriz Souza</span><span class="j">2 jobs</span></div><div class="l">(201) 555-0171 · Jersey City, NJ</div><div class="l"><span class="co">A-1 Chimney ·</span> New Jersey</div></div></div>
+  </div>
+ </div></div>
+</div>
+
+<div class="pick"><b>Picked, 2026-09-24:</b> the table (1), with the record beside the list when a row is clicked (2) and the day headings (3) — drawn as 7. The phone follows as 4's rows under 5's headings.</div>
 </div>
