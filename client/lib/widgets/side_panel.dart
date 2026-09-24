@@ -58,11 +58,25 @@ class SidePanel extends StatefulWidget {
     this.actions = const [],
     this.width = 440,
     this.scrollable = true,
+    this.docked = false,
+    this.onClose,
   });
 
   final String title;
   final String? subtitle;
   final Widget child;
+
+  /// Drawn IN the page rather than over it: beside a list, as the record of
+  /// the row that is open (Jobs and Customers, queue 24). No slide, no scrim,
+  /// no rounded edge, and it does not take focus when it appears — the list
+  /// it sits beside is where the keyboard was, and arrowing down that list is
+  /// the whole point of keeping the list on screen.
+  final bool docked;
+
+  /// What the close button does. Null pops the route, which is right for the
+  /// panel [showSidePanel] opens and wrong for a docked one, which has no
+  /// route of its own to pop — popping it would close the SCREEN.
+  final VoidCallback? onClose;
 
   /// The panel's footer. Kept out of the body so the primary action stays
   /// visible no matter how far the form scrolls.
@@ -101,6 +115,9 @@ class _SidePanelState extends State<SidePanel> {
   void initState() {
     super.initState();
 
+    // Docked, focus stays in the list the panel sits beside.
+    if (widget.docked) return;
+
     // ── Why this is scheduled twice ──────────────────────────────
     //
     // Most panels are forms, and a form with `autofocus: true` on its first box
@@ -133,6 +150,12 @@ class _SidePanelState extends State<SidePanel> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+
+    // Part of the page, so none of the three route flags: nothing opened, and
+    // the list beside it is still part of what is being read.
+    if (widget.docked) {
+      return Material(color: scheme.surface, child: _content(context));
+    }
 
     return Semantics(
       // "A surface opened, it is called this, and the page behind is not part of
@@ -180,76 +203,92 @@ class _SidePanelState extends State<SidePanel> {
           // look this panel exists to avoid. Padding the content instead keeps
           // the surface bleeding to every edge and moves only the parts you
           // touch.
-          child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.title,
-                              style: Theme.of(context).textTheme.titleLarge,
-                            ),
-                            if (widget.subtitle != null) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                widget.subtitle!,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        // Named, because "Close" alone does not say close what when a
-                        // panel sits over a page that also has controls.
-                        tooltip: 'Close ${widget.title}',
-                        onPressed: () => Navigator.of(context).maybePop(),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: widget.scrollable
-                      ? SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                          child: widget.child,
-                        )
-                      : Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-                          child: widget.child,
-                        ),
-                ),
-                if (widget.actions.isNotEmpty) ...[
-                  const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
-                    // Wraps rather than overflows. Three buttons is about 344px,
-                    // which fits the panel until the window is narrow enough that
-                    // the panel becomes the window — and that is exactly where a
-                    // Row would have thrown.
-                    child: Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: widget.actions,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          child: SafeArea(child: _content(context)),
         ),
       ),
+    );
+  }
+
+  /// A docked panel can be a thousand pixels wide, and a form stretched that
+  /// far reads as one long field per line. Floating, the panel's own [width]
+  /// already bounds it.
+  Widget _readable(Widget child) => widget.docked
+      ? Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: child,
+          ),
+        )
+      : child;
+
+  Widget _content(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 20, 12, 16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.subtitle!,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close),
+                // Named, because "Close" alone does not say close what when a
+                // panel sits over a page that also has controls.
+                tooltip: 'Close ${widget.title}',
+                onPressed:
+                    widget.onClose ?? () => Navigator.of(context).maybePop(),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: widget.scrollable
+              ? SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  child: _readable(widget.child),
+                )
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                  child: _readable(widget.child),
+                ),
+        ),
+        if (widget.actions.isNotEmpty) ...[
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+            // Wraps rather than overflows. Three buttons is about 344px,
+            // which fits the panel until the window is narrow enough that
+            // the panel becomes the window — and that is exactly where a
+            // Row would have thrown.
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 10,
+              runSpacing: 8,
+              children: widget.actions,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

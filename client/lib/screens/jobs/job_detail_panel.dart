@@ -8,6 +8,7 @@ import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';
 
@@ -25,11 +26,24 @@ class JobDetailPanel extends StatefulWidget {
     required this.api,
     required this.session,
     required this.id,
+    this.onDone,
+    this.dirty,
   });
 
   final ApiClient api;
   final Session session;
   final String id;
+
+  /// Set when the panel is DOCKED beside the jobs list rather than opened over
+  /// it: called where the panel would otherwise pop its route — true after a
+  /// save or a delete, false when it is closed. Its presence is what docks it.
+  final ValueChanged<bool>? onDone;
+
+  /// Kept true while something typed here is unsaved, so the list beside a
+  /// docked panel can refuse to switch jobs underneath it. Clicking the next
+  /// row is the natural move in that layout, and it would otherwise discard
+  /// the edit without a word.
+  final ValueNotifier<bool>? dirty;
 
   @override
   State<JobDetailPanel> createState() => _JobDetailPanelState();
@@ -54,10 +68,38 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   String? get _editRefusal => _me.refusal('jobs.edit', 'change a job');
   String? get _deleteRefusal => _me.refusal('jobs.delete', 'delete a job');
 
+  /// The fields as loaded, to tell an edit from the job as it stands.
+  String _loaded = '';
+
+  String get _typed => [
+    _title.text,
+    _description.text,
+    _scheduled.text,
+    _duration.text,
+    _status,
+  ].join('\u0000');
+
+  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+
   @override
   void initState() {
     super.initState();
+    for (final c in [_title, _description, _scheduled, _duration]) {
+      c.addListener(_markDirty);
+    }
     _load();
+  }
+
+  /// Where the panel goes when it is finished: its route, or the list it is
+  /// docked beside.
+  void _done(bool? changed) {
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone(changed ?? false);
+      return;
+    }
+
+    Navigator.of(context).pop(changed);
   }
 
   @override
@@ -94,6 +136,9 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       _row = row;
       _loading = false;
     });
+
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   void _fill(Map<String, dynamic> row) {
@@ -170,7 +215,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   Future<void> _delete() async {
@@ -191,7 +236,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   @override
@@ -211,9 +256,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               franchise?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
+      docked: widget.onDone != null,
+      onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : () => _done(null),
           child: const Text('Cancel'),
         ),
         Refused(
@@ -239,9 +286,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        Tag(
+                        // The pill the list shows, so a job reads the same
+                        // colour open as it did in its row.
+                        StatusPill(
                           row['status_label'] as String? ??
                               row['status'] as String,
+                          tone: toneForJobStatus(row['status'] as String),
                         ),
                         if (customer?['owned_by_this_franchise'] == false)
                           const Tag('Shared customer', warn: true),
@@ -263,7 +313,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       .map((s) => SearchOption(value: s.value, label: s.label))
                       .toList(),
                   onChanged: editable
-                      ? (v) => setState(() => _status = v ?? _status)
+                      ? (v) {
+                          setState(() => _status = v ?? _status);
+                          _markDirty();
+                        }
                       : null,
                 ),
                 const SizedBox(height: 12),

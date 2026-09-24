@@ -101,6 +101,25 @@ class JobListWindowTest extends TestCase
         $this->assertSame(['upcoming' => 3, 'past' => 1], $meta['when_counts']);
     }
 
+    public function test_a_day_heading_counts_the_whole_day_when_the_page_cuts_it(): void
+    {
+        $this->fourJobs();
+        $this->job('Today, later', self::TODAY.' 15:00');
+
+        $response = $this->getJson('/api/v1/jobs?when=upcoming&per_page=1&today='.self::TODAY)
+            ->assertOk();
+
+        // One row on the page, and its day holds two.
+        $this->assertSame(['Today, early'], $response->json('data.*.title'));
+        $this->assertSame([self::TODAY => 2], $response->json('meta.day_counts'));
+
+        // The undated heading is counted too, on the page that reaches it.
+        $last = $this->getJson('/api/v1/jobs?when=upcoming&per_page=1&page=4&today='.self::TODAY)
+            ->assertOk();
+        $this->assertSame(['Not dated yet'], $last->json('data.*.title'));
+        $this->assertSame(['none' => 1], $last->json('meta.day_counts'));
+    }
+
     public function test_status_counts_are_an_object_when_nothing_matches(): void
     {
         $this->fourJobs();

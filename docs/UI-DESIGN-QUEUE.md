@@ -2958,7 +2958,39 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 24 · Jobs and Customers · how the lists look — **DRAWN, awaiting Jose**
+### 24 · Jobs and Customers · how the lists look — **BUILT: Jose's combination, drawn as 7**
+
+**Picked 2026-09-24**, in his words: *"i like the table view, but it would be nice to also click
+and have it change to sidebar and detailed view, and also have the time divisions"* — then
+*"the canceled tab should be red, not gray"*. So: option 1's table, option 2's docked record,
+option 3's headings; the phone follows as 4's rows under 5's headings. Drawn as option 7 in the
+same file before building, so the record of what was built is a picture and not a paragraph.
+
+**Built:**
+
+- **Jobs** — a table under day headings (Today / Tomorrow / Yesterday / the weekday; each with
+  the server's count for the WHOLE day, `meta.day_counts`, so a page that stops mid-Thursday
+  still says "38 jobs"). **Upcoming · Past · All**, opening on Upcoming, which is soonest first
+  from midnight in the reader's date. Status chips count within the window and double as the
+  legend. Times are the franchise's wall clock, the same the job's panel shows.
+- **Click a row** and the table becomes a 380px list with the job docked beside it
+  (`SidePanel.docked`); × puts the table back. **Switching rows with an unsaved edit is refused**
+  with a snackbar — in this layout the next row is one click away, and that click would
+  otherwise discard the edit without a word.
+- **Customers** — the same, under letter headings; City and the Repeat / No jobs yet chips; the
+  docked record now lists the customer's jobs, and says how many sit in franchises the reader
+  cannot open rather than letting the count look wrong.
+- **Phone** — two-line rows under the same headings; a tap opens the record over the list.
+- **Colour** — `Tone` + `ToneColours` in `theme.dart`, mapped from the status VALUE with a
+  neutral fallback (`toneForJobStatus`). Canceled is red in both themes; `tone_colours_test`
+  measures all twelve pairs at ≥4.5:1 and caught dark-mode red at 0.31 saturation — a pink.
+
+**Deliberately not built:** sorting by column — the headings ARE the order, and a table sorted
+by amount cannot also be divided by day; per-letter counts on customer headings — the database
+collation files "Ángela" under A and a count would have to agree with it exactly; call and text
+buttons on phone rows — nobody asked. Each is a small addition if wanted.
+
+**The first drawing, for the record — options 1–6 as he saw them:**
 
 `docs/previews/jobs-customers-list-layouts.html`. Jose, 2026-09-24, with a screenshot of each:
 

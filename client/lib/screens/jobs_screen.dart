@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/job_status.dart';
+import '../core/numbers.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../core/timestamps.dart';
 import '../widgets/async_body.dart';
 import '../widgets/calendar_day_field.dart';
 import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
+import '../widgets/grouped_rows.dart';
 import '../widgets/refused.dart';
 import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
+import '../widgets/status_pill.dart';
 import '../widgets/tag.dart';
+import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
 
 /// Jobs (plan §5.2).
@@ -38,13 +43,16 @@ class JobsScreen extends StatefulWidget {
 }
 
 class _JobsScreenState extends State<JobsScreen> {
+  /// Below this width the table has no room for its columns, and the list is
+  /// the whole screen — a tap opens the job over it, full width on a phone.
+  static const _tableFrom = 900.0;
+
   final _search = TextEditingController();
 
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _jobs = [];
   List<JobStatus> _statusChoices = const [];
-  List<String> _statuses = const [];
   String? _status;
   // Discovered from the rows themselves rather than fetched, because every
   // job already carries its role (Task 5) and a catalogue call would only
@@ -53,6 +61,7 @@ class _JobsScreenState extends State<JobsScreen> {
   // offered them.
   final Map<String, String> _roles = {};
   String? _roleId;
+  String? _franchiseId;
   int _total = 0;
   // Page one only, until asked. The header used to claim a total the list did
   // not render, with no next-page control and nothing saying records were
@@ -82,6 +91,26 @@ class _JobsScreenState extends State<JobsScreen> {
   /// slower of two answers lands last and wins.
   int _request = 0;
 
+  /// From today on, before today, or every job.
+  ///
+  /// Upcoming first, because the list used to open on whatever was booked
+  /// furthest ahead: April 2027 above the ~560 jobs due that week (queue 24).
+  String _when = 'upcoming';
+
+  /// How many jobs each chip would show, from the server's first page. Empty
+  /// from a server that does not count, and the chips then carry no numbers
+  /// rather than zeros — an absent count is not a count of none.
+  Map<String, int> _statusCounts = const {};
+  Map<String, int> _whenCounts = const {};
+
+  /// Each day heading's total, keyed `YYYY-MM-DD` / `none`. Merged page by
+  /// page, because every page brings days of its own.
+  final Map<String, int> _dayCounts = {};
+
+  /// The job open beside the list on a wide screen. Null shows the table.
+  String? _openId;
+  final _openDirty = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +121,7 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _openDirty.dispose();
     super.dispose();
   }
 
@@ -115,10 +145,7 @@ class _JobsScreenState extends State<JobsScreen> {
     final parsed = parseJobStatuses(resolved);
 
     if (parsed.isNotEmpty) {
-      setState(() {
-        _statusChoices = parsed;
-        _statuses = parsed.map((s) => s.value).toList();
-      });
+      setState(() => _statusChoices = parsed);
     }
   }
 
@@ -142,9 +169,14 @@ class _JobsScreenState extends State<JobsScreen> {
 
     final response = await widget.api.get('/jobs', {
       'page': '$page',
+      'when': _when,
+      // The reader's date, because "today" is theirs; the server compares it
+      // with the franchise's wall clock (JobsController::index).
+      'today': formatCalendarDay(DateTime.now()),
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'status': ?_status,
       'assigned_role_id': ?_roleId,
+      'franchise_id': ?_franchiseId,
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -179,6 +211,13 @@ class _JobsScreenState extends State<JobsScreen> {
       _total = meta?['total'] as int? ?? _jobs.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
+
+      if (page == 1) {
+        _statusCounts = _counts(meta?['status_counts']);
+        _whenCounts = _counts(meta?['when_counts']);
+        _dayCounts.clear();
+      }
+      _dayCounts.addAll(_counts(meta?['day_counts']));
     });
   }
 
@@ -199,240 +238,535 @@ class _JobsScreenState extends State<JobsScreen> {
         me.refusal('jobs.create', 'add a job') ??
         (me.franchises.isEmpty ? me.nowhereToAct('add a job') : null);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= _tableFrom;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PanelHeader(
+              note: _note(me),
+              // A Wrap rather than a Row, for the reason customers_screen
+              // gives: two controls side by side overflow a narrow window.
+              action: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // No `onImported`: jobs are export-only, so nothing this
+                  // widget does can change the list behind it.
+                  DataTransfer(
+                    api: widget.api,
+                    session: widget.session,
+                    resource: 'jobs',
+                  ),
+                  Refused(
+                    // §4 refuses in two places and they have different
+                    // remedies. The screen used to test only the second, so
+                    // somebody whose role lacks `jobs.create` was offered the
+                    // button and got a 403; and the sentence it did have named
+                    // "franchise" rather than whatever this organization calls
+                    // one (§8).
+                    reason: refused,
+                    child: FilledButton.icon(
+                      onPressed: refused == null ? _create : null,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add job'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Chips on a wide screen, where they fit on a line and double as
+            // the legend for the pills below. On a phone seven of them wrap to
+            // three lines of chrome, so the same choice is a picker there.
+            if (wide && _statusChoices.isNotEmpty) _statusChips(context),
+            _filters(context, me, wide: wide),
+            Expanded(
+              child: AsyncBody(
+                loading: _loading,
+                error: _error,
+                onRetry: _load,
+                child: _body(context, wide: wide),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _note(Me me) {
+    if (_loading || _error != null) return 'Everything you can reach.';
+
+    final reach =
+        'across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach';
+    final which = switch (_when) {
+      'upcoming' => ' upcoming',
+      'past' => ' past',
+      _ => '',
+    };
+
+    return _jobs.length < _total
+        ? 'Showing ${_jobs.length} of ${formatCount(_total)}$which $reach.'
+        : '${formatCount(_total)}$which $reach.';
+  }
+
+  /// Every status the organization uses, then any the jobs carry that it no
+  /// longer lists — so the chips add up to the window's total.
+  List<JobStatus> _chipStatuses() => [
+    ..._statusChoices,
+    for (final value in _statusCounts.keys)
+      if (!_statusChoices.any((s) => s.value == value))
+        JobStatus(value: value, label: jobStatusLabel(null, value)),
+  ];
+
+  Widget _statusChips(BuildContext context) {
+    final counted = _statusCounts.isNotEmpty;
+    final all = _statusCounts.values.fold(0, (a, b) => a + b);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          _chip(
+            context,
+            value: null,
+            label: 'All',
+            count: counted ? all : null,
+          ),
+          for (final s in _chipStatuses())
+            _chip(
+              context,
+              value: s.value,
+              label: s.label,
+              count: counted ? (_statusCounts[s.value] ?? 0) : null,
+              tone: toneForJobStatus(s.value),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    required String? value,
+    required String label,
+    int? count,
+    Tone? tone,
+  }) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return ChoiceChip(
+      key: ValueKey('status-chip-${value ?? 'all'}'),
+      avatar: tone == null ? null : ToneDot(tone),
+      // Not drawn beside the dot but ON it — see TabBarLike.
+      showCheckmark: false,
+      selected: _status == value,
+      label: Text.rich(
+        TextSpan(
+          text: label,
+          children: [
+            if (count != null)
+              TextSpan(
+                text: '  ${formatCount(count)}',
+                style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+              ),
+          ],
+        ),
+      ),
+      onSelected: (_) {
+        setState(() => _status = value);
+        _load();
+      },
+    );
+  }
+
+  Widget _filters(BuildContext context, Me me, {required bool wide}) {
+    final franchises = me.franchisesInView;
+    final franchiseLabel = me.organization.franchiseLabel;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 320,
+            child: TextField(
+              controller: _search,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: 'Job number, title or customer',
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: 'Clear the search',
+                        onPressed: () {
+                          _search.clear();
+                          _load();
+                        },
+                      ),
+              ),
+              onSubmitted: (_) => _load(),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          if (!wide && _statusChoices.isNotEmpty)
+            SizedBox(
+              // Two to a line at 375, not one each under the search box.
+              width: wide ? 220 : 160,
+              child: SearchPickerField<String?>(
+                value: _status,
+                label: 'Status',
+                options: [
+                  const SearchOption<String?>(value: null, label: 'Any status'),
+                  for (final s in _chipStatuses())
+                    SearchOption<String?>(value: s.value, label: s.label),
+                ],
+                onChanged: (value) {
+                  setState(() => _status = value);
+                  _load();
+                },
+              ),
+            ),
+          // One franchise is no choice, and a picker offering it is chrome.
+          if (franchises.length > 1)
+            SizedBox(
+              // Two to a line at 375, not one each under the search box.
+              width: wide ? 220 : 160,
+              child: SearchPickerField<String?>(
+                value: _franchiseId,
+                label: franchiseLabel,
+                options: [
+                  SearchOption<String?>(
+                    value: null,
+                    label: 'All ${franchiseLabel.toLowerCase()}s',
+                  ),
+                  for (final f in franchises)
+                    SearchOption<String?>(value: f.id, label: f.name),
+                ],
+                onChanged: (value) {
+                  setState(() => _franchiseId = value);
+                  _load();
+                },
+              ),
+            ),
+          // The same control as status, for the same reason: it sits in
+          // this Wrap rather than opening over the form, and its choices
+          // are discovered from the rows already on screen rather than
+          // fetched, since every job already carries its role (Task 5).
+          if (_roles.isNotEmpty)
+            SizedBox(
+              // Two to a line at 375, not one each under the search box.
+              width: wide ? 220 : 160,
+              child: SearchPickerField<String?>(
+                value: _roleId,
+                label: 'Role',
+                options: [
+                  const SearchOption<String?>(value: null, label: 'Any role'),
+                  ..._roles.entries.map(
+                    (role) => SearchOption<String?>(
+                      value: role.key,
+                      label: role.value,
+                    ),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() => _roleId = value);
+                  _load();
+                },
+              ),
+            ),
+          _window(wide: wide),
+        ],
+      ),
+    );
+  }
+
+  Widget _window({required bool wide}) {
+    // Counts only where there is room for them; on a phone three segments
+    // with four-digit numbers do not fit 375 and the picker above says enough.
+    String label(String word, int? n) =>
+        wide && n != null ? '$word  ${formatCount(n)}' : word;
+
+    final upcoming = _whenCounts['upcoming'];
+    final past = _whenCounts['past'];
+
+    return SegmentedButton<String>(
+      key: const Key('jobs-window'),
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(
+          value: 'upcoming',
+          label: Text(label('Upcoming', upcoming)),
+        ),
+        ButtonSegment(value: 'past', label: Text(label('Past', past))),
+        ButtonSegment(
+          value: 'all',
+          label: Text(
+            label(
+              'All',
+              upcoming == null || past == null ? null : upcoming + past,
+            ),
+          ),
+        ),
+      ],
+      selected: {_when},
+      onSelectionChanged: (chosen) {
+        setState(() => _when = chosen.first);
+        _load();
+      },
+    );
+  }
+
+  Widget _body(BuildContext context, {required bool wide}) {
+    if (_jobs.isEmpty) return Center(child: Text(_emptyCopy()));
+
+    final groups = groupJobsByDay(
+      _jobs,
+      today: DateTime.now(),
+      counts: _dayCounts,
+    );
+    final footer = _page < _lastPage ? _loadMore() : null;
+
+    if (!wide) {
+      return GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: _openOver,
+        footer: footer,
+      );
+    }
+
+    if (_openId == null) {
+      return GroupedTable<Map<String, dynamic>>(
+        columns: _columns(context),
+        groups: groups,
+        idOf: _id,
+        onOpen: _dock,
+        footer: footer,
+      );
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 380,
+            child: GroupedList<Map<String, dynamic>>(
+              groups: groups,
+              idOf: _id,
+              tile: _tile,
+              onOpen: _dock,
+              selectedId: _openId,
+              footer: footer,
+            ),
+          ),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+          Expanded(
+            child: JobDetailPanel(
+              // A new job is a new panel: its fields, its load, its dirt.
+              key: ValueKey('open-$_openId'),
+              api: widget.api,
+              session: widget.session,
+              id: _openId!,
+              onDone: _undock,
+              dirty: _openDirty,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _loadMore() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_pageError != null) ...[
+            ErrorNote(_pageError!),
+            const SizedBox(height: 8),
+          ],
+          TextButton(
+            onPressed: _fetching ? null : () => _load(page: _page + 1),
+            child: Text(
+              _fetching
+                  ? 'Loading…'
+                  : _pageError != null
+                  ? 'Try again'
+                  : 'Load more (${formatCount(_total - _jobs.length)} left)',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  List<TableColumn<Map<String, dynamic>>> _columns(BuildContext context) {
+    final me = widget.session.me!;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return [
+      TableColumn(
+        'Job',
+        width: 104,
+        cell: (_, job) =>
+            Text('${job['number']}', style: TextStyle(color: muted)),
+      ),
+      TableColumn('Title', flex: 3, cell: (_, job) => _titleCell(job)),
+      TableColumn(
+        'Customer',
+        flex: 3,
+        cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
+      ),
+      TableColumn(
+        me.organization.franchiseLabel,
+        flex: 2,
+        cell: (_, job) => Text('${_franchise(job)['name'] ?? ''}'),
+      ),
+      // The time alone: the heading above already says which day.
+      TableColumn('Time', width: 88, cell: (_, job) => Text(_time(job) ?? '—')),
+      TableColumn(
+        'Status',
+        width: 180,
+        cell: (_, job) => StatusPill(
+          _statusLabel(job),
+          tone: toneForJobStatus('${job['status'] ?? ''}'),
+        ),
+      ),
+      TableColumn(
+        'Amount',
+        width: 110,
+        numeric: true,
+        cell: (_, job) => Text(listAmount(job['amount']) ?? '—'),
+      ),
+    ];
+  }
+
+  Widget _titleCell(Map<String, dynamic> job) {
+    final role = (job['assigned_role'] as Map?)?['name'] as String?;
+
+    return Row(
       children: [
-        PanelHeader(
-          note: (_loading || _error != null)
-              ? 'Everything you can reach.'
-              : _jobs.length < _total
-              ? 'Showing ${_jobs.length} of $_total across the '
-                    '${me.organization.franchiseLabel.toLowerCase()}s you can reach.'
-              : '$_total across the ${me.organization.franchiseLabel.toLowerCase()}s you can reach.',
-          // A Wrap rather than a Row, for the reason customers_screen gives:
-          // two controls side by side overflow a narrow window.
-          action: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              // No `onImported`: jobs are export-only, so nothing this widget
-              // does can change the list behind it.
-              DataTransfer(
-                api: widget.api,
-                session: widget.session,
-                resource: 'jobs',
-              ),
-              Refused(
-                // §4 refuses in two places and they have different remedies. The
-                // screen used to test only the second, so somebody whose role
-                // lacks `jobs.create` was offered the button and got a 403; and
-                // the sentence it did have named "franchise" rather than
-                // whatever this organization calls one (§8).
-                reason: refused,
-                child: FilledButton.icon(
-                  onPressed: refused == null ? _create : null,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add job'),
-                ),
-              ),
-            ],
+        Flexible(
+          child: Text(
+            '${job['title'] ?? ''}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              SizedBox(
-                width: 320,
-                child: TextField(
-                  controller: _search,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
-                    hintText: 'Job number, title or customer',
-                    suffixIcon: _search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.clear),
-                            tooltip: 'Clear the search',
-                            onPressed: () {
-                              _search.clear();
-                              _load();
-                            },
-                          ),
-                  ),
-                  onSubmitted: (_) => _load(),
-                  onChanged: (_) => setState(() {}),
-                ),
-              ),
-              if (_statuses.isNotEmpty)
-                SizedBox(
-                  width: 220,
-                  child: SearchPickerField<String?>(
-                    value: _status,
-                    label: 'Status',
-                    options: [
-                      const SearchOption<String?>(
-                        value: null,
-                        label: 'Any status',
-                      ),
-                      ..._statusChoices.map(
-                        (s) => SearchOption<String?>(
-                          value: s.value,
-                          label: s.label,
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _status = value);
-                      _load();
-                    },
-                  ),
-                ),
-              // The same control as status, for the same reason: it sits in
-              // this Wrap rather than opening over the form, and its choices
-              // are discovered from the rows already on screen rather than
-              // fetched, since every job already carries its role (Task 5).
-              if (_roles.isNotEmpty)
-                SizedBox(
-                  width: 220,
-                  child: SearchPickerField<String?>(
-                    value: _roleId,
-                    label: 'Role',
-                    options: [
-                      const SearchOption<String?>(
-                        value: null,
-                        label: 'Any role',
-                      ),
-                      ..._roles.entries.map(
-                        (role) => SearchOption<String?>(
-                          value: role.key,
-                          label: role.value,
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _roleId = value);
-                      _load();
-                    },
-                  ),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: _jobs.isEmpty
-                ? Center(child: Text(_emptyCopy()))
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _jobs.length + (_page < _lastPage ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => i == _jobs.length
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_pageError != null) ...[
-                                  ErrorNote(_pageError!),
-                                  const SizedBox(height: 8),
-                                ],
-                                TextButton(
-                                  onPressed: _fetching
-                                      ? null
-                                      : () => _load(page: _page + 1),
-                                  child: Text(
-                                    _fetching
-                                        ? 'Loading…'
-                                        : _pageError != null
-                                        ? 'Try again'
-                                        : 'Load more (${_total - _jobs.length} left)',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : _row(context, _jobs[i]),
-                  ),
-          ),
-        ),
+        // Null for the common case at booking time — a job has no performer
+        // yet and often no role either — so this must not draw an empty tag
+        // for the row that names nobody (§12.1). Flexible because a role name
+        // is organization-chosen text with no length limit worth trusting.
+        if (role != null && role.isNotEmpty)
+          Flexible(child: Tag(role, key: const Key('job-role-tag'))),
+        // So it is obvious before anyone edits anything that this work is
+        // for a customer another franchise is accountable for (§5.2).
+        if (!_ownedHere(job)) const Tag('Shared customer', warn: true),
       ],
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> job) {
-    final customer = job['customer'] as Map<String, dynamic>;
-    final franchise = job['franchise'] as Map<String, dynamic>;
-    final amount = job['amount'] as Map<String, dynamic>;
-    final ownedHere = customer['owned_by_this_franchise'] as bool? ?? true;
+  Widget _tile(BuildContext context, Map<String, dynamic> job) {
+    final role = (job['assigned_role'] as Map?)?['name'] as String?;
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        onTap: () => _open(job),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                job['title'] as String,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            // Flexible for the same reason the role tag below is: the label is
-            // organization-chosen text of no trusted length, and a Row hands a
-            // non-flex child unbounded width.
-            Flexible(
-              child: Tag(
-                job['status_label'] as String? ?? job['status'] as String,
-              ),
-            ),
-            // Null for the common case at booking time — a job has no
-            // performer yet and often no role either — so this must not draw
-            // an empty tag for the row that names nobody (§12.1).
-            //
-            // Flexible for the reason customers_screen's owner tag is: a Row
-            // hands a non-flex child unbounded width, and a role name is
-            // organization-chosen text with no length limit worth trusting.
-            if ((job['assigned_role']?['name'] as String?)?.isNotEmpty ?? false)
-              Flexible(
-                child: Tag(
-                  job['assigned_role']['name'] as String,
-                  key: const Key('job-role-tag'),
-                ),
-              ),
-            // So it is obvious before anyone edits anything that this work is
-            // for a customer another franchise is accountable for (§5.2).
-            if (!ownedHere) const Tag('Shared customer', warn: true),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            [
-              job['number'],
-              customer['name'] ?? '',
-              franchise['name'] ?? '',
-              if (job['scheduled_for'] != null)
-                formatStamp(
-                  job['scheduled_for'] as String,
-                  '',
-                  formats: widget.session.me!.display,
-                ),
-              if (amount['display'] != null)
-                '${amount['currency']} ${amount['display']}',
-            ].join(' · '),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
+    return TwoLineTile(
+      title: '${job['title'] ?? ''}',
+      badge: _ownedHere(job) ? null : const Tag('Shared customer', warn: true),
+      topRight: _time(job),
+      subtitle: [
+        _customer(job)['name'],
+        _franchise(job)['name'],
+        role,
+      ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+      bottomRight: StatusPill(
+        _statusLabel(job),
+        tone: toneForJobStatus('${job['status'] ?? ''}'),
       ),
     );
+  }
+
+  static String _id(Map<String, dynamic> job) => job['id'] as String;
+
+  static Map<String, dynamic> _customer(Map<String, dynamic> job) =>
+      job['customer'] as Map<String, dynamic>? ?? const {};
+
+  static Map<String, dynamic> _franchise(Map<String, dynamic> job) =>
+      job['franchise'] as Map<String, dynamic>? ?? const {};
+
+  static bool _ownedHere(Map<String, dynamic> job) =>
+      _customer(job)['owned_by_this_franchise'] as bool? ?? true;
+
+  static String _statusLabel(Map<String, dynamic> job) =>
+      job['status_label'] as String? ?? '${job['status'] ?? ''}';
+
+  /// The booked time as the franchise booked it — the wall clock, never the
+  /// reader's, which is what the job's own panel shows too.
+  String? _time(Map<String, dynamic> job) {
+    final wall = parseWallDateTime(job['scheduled_for'] as String?);
+
+    return wall == null
+        ? null
+        : widget.session.me!.display.formatTime(wall.hour, wall.minute);
+  }
+
+  /// Open beside the list. Refused while the open job has unsaved changes:
+  /// the next row is one click away in this layout, and that click would
+  /// otherwise discard somebody's edit without a word.
+  void _dock(Map<String, dynamic> job) {
+    final id = _id(job);
+    if (id == _openId) return;
+
+    if (_openId != null && _openDirty.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Save or cancel the changes to this job first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _openId = id);
+  }
+
+  void _undock(bool changed) {
+    _openDirty.value = false;
+    setState(() => _openId = null);
+    if (changed) _load();
+  }
+
+  /// Open over the list — on a phone, where there is no room beside it.
+  Future<void> _openOver(Map<String, dynamic> job) async {
+    final changed = await showSidePanel<bool>(
+      context,
+      builder: (_) => JobDetailPanel(
+        api: widget.api,
+        session: widget.session,
+        id: _id(job),
+      ),
+    );
+
+    if (changed == true && mounted) _load();
   }
 
   Future<void> _create() async {
@@ -444,24 +778,20 @@ class _JobsScreenState extends State<JobsScreen> {
     if (created == true && mounted) _load();
   }
 
-  Future<void> _open(Map<String, dynamic> job) async {
-    final changed = await showSidePanel<bool>(
-      context,
-      builder: (_) => JobDetailPanel(
-        api: widget.api,
-        session: widget.session,
-        id: job['id'] as String,
-      ),
-    );
-
-    if (changed == true && mounted) _load();
-  }
-
   String _emptyCopy() {
     final term = _search.text.trim();
 
-    if (term.isEmpty && _status == null && _roleId == null) {
-      return 'No jobs yet.';
+    if (term.isEmpty &&
+        _status == null &&
+        _roleId == null &&
+        _franchiseId == null) {
+      return switch (_when) {
+        // Not "No jobs yet" — there may be thousands, all of them behind Past.
+        'upcoming' when (_whenCounts['past'] ?? 0) > 0 =>
+          'Nothing coming up. Earlier jobs are under Past.',
+        'past' => 'Nothing before today.',
+        _ => 'No jobs yet.',
+      };
     }
 
     if (RegExp(r'^[A-Za-z][A-Za-z0-9]*-\d+(?:-\d+)?$').hasMatch(term)) {
@@ -471,6 +801,15 @@ class _JobsScreenState extends State<JobsScreen> {
     return 'Nothing matches "$term".';
   }
 }
+
+/// A count map from the server, or nothing. Tolerates the `[]` an empty PHP
+/// array encodes as — a map read as a list would throw.
+Map<String, int> _counts(Object? raw) => raw is Map
+    ? {
+        for (final entry in raw.entries)
+          if (entry.value is int) '${entry.key}': entry.value as int,
+      }
+    : const {};
 
 class _NewJobPanel extends StatefulWidget {
   const _NewJobPanel({required this.api, required this.session});

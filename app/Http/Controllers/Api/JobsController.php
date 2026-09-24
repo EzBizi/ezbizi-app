@@ -174,6 +174,34 @@ class JobsController extends Controller
             ];
         }
 
+        /*
+         * Each day heading's total, for the days on THIS page — every page, since
+         * each brings days of its own. A page that stops halfway through a
+         * Thursday must still head it "38 jobs", not the 12 it happened to hold.
+         * DATE() of a naive wall clock IS the wall date, the day the heading
+         * names (FranchiseWallTime). Keyed `Y-m-d`, and `none` for undated.
+         */
+        $days = collect($jobs->items())
+            ->map(fn (Job $j) => $j->getRawOriginal('scheduled_for'))
+            ->map(fn ($raw) => $raw === null ? null : substr((string) $raw, 0, 10))
+            ->unique();
+        $dated = $days->filter()->values()->all();
+
+        $dayCounts = $dated === [] ? [] : $filtered($status, $when)
+            ->toBase()
+            ->selectRaw('DATE(scheduled_for) as d, count(*) as n')
+            ->whereIn(DB::raw('DATE(scheduled_for)'), $dated)
+            ->groupBy('d')
+            ->pluck('n', 'd')
+            ->map(fn ($n) => (int) $n)
+            ->all();
+
+        if ($days->contains(null)) {
+            $dayCounts['none'] = $filtered($status, $when)->whereNull('scheduled_for')->count();
+        }
+
+        $meta['day_counts'] = (object) $dayCounts;
+
         return response()->json([
             'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j)),
             'meta' => $meta,
