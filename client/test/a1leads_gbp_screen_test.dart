@@ -433,18 +433,28 @@ void main() {
     expect(find.text('Reply on Google'), findsNothing);
   });
 
-  /// The table's Reply opens the editor on the board, where the review can be read.
-  testWidgets('reply from the table opens the editor on the board', (tester) async {
-    await _pump(tester, _handler(total: 3, replyAvailable: true, replyGranted: true));
+  /// The table's Reply opens the editor UNDER THAT ROW and stays in the
+  /// table. It used to jump to the board; Jose, 2026-09-24: "that is not good
+  /// UI".
+  testWidgets('reply from the table opens the editor in the table', (tester) async {
+    final complaints = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) => complaints.add(details.exceptionAsString());
+    addTearDown(() => FlutterError.onError = previous);
 
-    await tester.tap(find.text('Table'));
-    await tester.pumpAndSettle();
+    // The narrowest width the table is offered at.
+    await _pump(tester, _handler(total: 3, replyAvailable: true, replyGranted: true),
+        size: const Size(900, 1400));
+    expect(find.text('CUSTOMER'), findsOneWidget, reason: 'the table is open');
+
     await tester.tap(find.widgetWithText(TextButton, 'Reply').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('CUSTOMER'), findsNothing, reason: 'back on the board');
     expect(find.byKey(const ValueKey('gbp-reply-editor')), findsOneWidget);
     expect(find.text('Live Google review'), findsOneWidget);
+    expect(find.text('CUSTOMER'), findsOneWidget, reason: 'still the table, not the board');
+    expect(find.text('Reply on Google'), findsNothing, reason: "the board's button is not drawn");
+    expect(complaints, isEmpty, reason: 'the editor fits under the row');
   });
 
   /// Nothing matching the filters is a different sentence from nothing at all.
