@@ -3015,6 +3015,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               SearchOption(value: 'typed', label: wantsPhone
                     ? 'A number I type'
                     : 'An address I type'),
+            // THE CUSTOMER IT IS ABOUT: the job's, the report's, or the
+            // customer itself. Read when the rule runs, so it is their number
+            // as it is then (Jose, 2026-09-24: text the customer when a job
+            // is Done).
+            if (typedAllowed)
+              const SearchOption(
+                value: 'customer',
+                label: 'The customer it is about',
+              ),
             SearchOption(value: 'field', label: kindOf == 'person_or_field'
                   ? 'Whoever the event names'
                   : wantsPhone
@@ -3025,11 +3034,22 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               ? null
               : (chosen) => setState(() {
                   row.recipientKind = chosen;
-                  controller.text = '';
+                  controller.text = chosen == 'customer' ? 'customer:' : '';
                 }),
         ),
         const SizedBox(height: 10),
-        if (kind == 'person')
+        if (kind == 'customer')
+          Text(
+            wantsPhone
+                ? 'Their number is read when the rule runs. A rule about something '
+                    'with no customer, or a customer with no number, sends nothing '
+                    'and says so in the run log.'
+                : 'Their address is read when the rule runs. A rule about something '
+                    'with no customer, or a customer with no address, sends nothing '
+                    'and says so in the run log.',
+            style: Theme.of(context).textTheme.bodySmall,
+          )
+        else if (kind == 'person')
           DropdownMenu<String>(
             initialSelection: value.isEmpty ? null : value,
             enabled: !_busy,
@@ -3323,6 +3343,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     // A value decides its own kind. Only the empty one has to be remembered,
     // because it is the one value that could be any of the three.
     if (value.startsWith('user:')) return 'person';
+    if (value == 'customer:') return 'customer';
     // An assignment names a person or a field and never a typed value, so a
     // non-empty value there can only be a field.
     if (kindOf != 'person_or_field') {
