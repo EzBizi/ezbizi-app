@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0257',
+      date: '24 Sep 2026',
+      items: [
+        'Google Ads opens on today\'s figures. The other ranges still end yesterday. Custom opens with today already picked.',
+        'The Reply permission that 0.0.0255 added under A1Leads GBP is no longer offered on Roles. Answering A-1 Chimney reviews will need only what seeing A1Leads GBP needs, with A-1 Chimney as the company in view. Replying is still not switched on.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0256',
       date: '24 Sep 2026',
       items: [
