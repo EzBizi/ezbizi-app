@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0259',
+      date: '24 Sep 2026',
+      items: [
+        'Profit and Loss opens on the first Airtable base that has weekly figures, instead of one that is blank. A table without weeks says so instead of showing nothing.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0258',
       date: '24 Sep 2026',
       items: [
