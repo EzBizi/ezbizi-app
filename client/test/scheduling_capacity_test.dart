@@ -527,12 +527,18 @@ void main() {
 
     expect(find.text('10 AM – 1 PM'), findsOneWidget);
 
+    // A search picker, not a dropdown: type to narrow, then pick.
     await tester.tap(find.byKey(const ValueKey('slot-draft-start')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '1 PM');
     await tester.pumpAndSettle();
     await tester.tap(find.text('1 PM').last);
     await tester.pumpAndSettle();
 
+    // A search picker, not a dropdown: type to narrow, then pick.
     await tester.tap(find.byKey(const ValueKey('slot-draft-end')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '3 PM');
     await tester.pumpAndSettle();
     await tester.tap(find.text('3 PM').last);
     await tester.pumpAndSettle();
