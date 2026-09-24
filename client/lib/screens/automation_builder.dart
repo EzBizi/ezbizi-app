@@ -784,32 +784,66 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
 
   // ── what can be offered ──────────────────────────────────────────
 
-  List<PickerGroup> get _triggerGroups => [
-    for (final module in widget.catalogue.modules)
-      if (module.triggers.isNotEmpty)
-        PickerGroup(
-          key: module.key,
-          // "Marketing › Leads" where the app draws Leads inside Marketing, so
-          // the picker is grouped the way the person writing the rule just
-          // navigated. See AutomationCatalogue.pathLabelOf.
-          label: widget.catalogue.pathLabelOf(module),
-          items: [
-            for (final trigger in module.triggers)
-              PickerItem(
-                key: trigger.key,
-                label: trigger.label,
-                description: trigger.description,
-                // ENABLED stays true on purpose. A trigger declared ahead of
-                // its emitter is a reasonable thing to offer — hiding it or
-                // refusing the tap answers nobody's question about why an
-                // obvious event is missing, and the description explains the
-                // consequence. What was wrong was that the ONLY marker was the
-                // tail of a paragraph, so the row looked like every other one.
-                badge: trigger.isRaised ? null : 'Not raised yet',
-              ),
-          ],
+  /// Triggers, filed by TOP-LEVEL module rather than one category per module.
+  ///
+  /// Jose, 2026-09-24: *"The Marketing Tab is divided into tabs, when all of it
+  /// should be together."* Newsletter, Web Management, Reviews and Business
+  /// Profile are drawn inside Marketing in the app, and here they were five
+  /// separate categories — so the picker was grouped by how the SERVER splits
+  /// permissions rather than by where a person had just been looking.
+  ///
+  /// A child's rows carry its name, because once the category no longer says
+  /// "Reviews", "Reply published" beside "Newsletter sent" would not say which
+  /// part of Marketing it belongs to. It also keeps the child's name searchable.
+  List<PickerGroup> get _triggerGroups => _filedByTopLevel(
+    (module) => [
+      for (final trigger in module.triggers)
+        PickerItem(
+          key: trigger.key,
+          label: _underChild(module, trigger.label),
+          description: trigger.description,
+          // ENABLED stays true on purpose. A trigger declared ahead of its
+          // emitter is a reasonable thing to offer — hiding it or refusing the
+          // tap answers nobody's question about why an obvious event is
+          // missing, and the description explains the consequence. What was
+          // wrong was that the ONLY marker was the tail of a paragraph, so the
+          // row looked like every other one.
+          badge: trigger.isRaised ? null : 'Not raised yet',
         ),
-  ];
+    ],
+  );
+
+  /// One category per top-level module, children folded in, order kept.
+  ///
+  /// Order is first appearance, so Marketing stays where Marketing was rather
+  /// than moving to wherever its last child happened to sit. A module with
+  /// nothing to offer contributes no rows, and a category that ends up empty is
+  /// dropped — an empty heading reads as a module that is broken.
+  List<PickerGroup> _filedByTopLevel(
+    List<PickerItem> Function(CatalogueModule module) itemsOf,
+  ) {
+    final filed = <String, (CatalogueModule, List<PickerItem>)>{};
+
+    for (final module in widget.catalogue.modules) {
+      final items = itemsOf(module);
+      if (items.isEmpty) continue;
+
+      final top = widget.catalogue.topLevelOf(module);
+      filed.putIfAbsent(top.key, () => (top, <PickerItem>[])).$2.addAll(items);
+    }
+
+    return [
+      for (final (top, items) in filed.values)
+        PickerGroup(key: top.key, label: top.label, items: items),
+    ];
+  }
+
+  /// A row's label, prefixed with its module when that module was folded into
+  /// its parent's category and the heading no longer names it.
+  String _underChild(CatalogueModule module, String label) =>
+      widget.catalogue.topLevelOf(module).key == module.key
+      ? label
+      : '${module.label} · $label';
 
   /// The record this rule is about, decided by the trigger and nothing else.
   CatalogueSubject? get _subject => widget.catalogue.subjectOf(_trigger);
@@ -849,16 +883,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             if (!type.moduleOnly) _genericItem(type, subject, nothingWritable),
         ],
       ),
-      for (final module in widget.catalogue.modules)
-        if (module.actions.isNotEmpty)
-          PickerGroup(
-            key: module.key,
-            label: widget.catalogue.pathLabelOf(module),
-            items: [
-              for (final action in module.actions)
-                _moduleItem(module, action, subject),
-            ],
-          ),
+      // Filed the same way as the triggers, for the same reason: Marketing's
+      // actions were spread across as many categories as it has tabs.
+      ..._filedByTopLevel(
+        (module) => [
+          for (final action in module.actions)
+            _moduleItem(module, action, subject),
+        ],
+      ),
     ];
   }
 
@@ -906,7 +938,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (!widget.catalogue.canUse(action)) {
       return PickerItem(
         key: action.key,
-        label: action.label,
+        label: _underChild(module, action.label),
         description: action.description,
         enabled: false,
         badge: 'Not built yet',
@@ -916,14 +948,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     if (widget.catalogue.moduleActionApplies(module, action.key, _trigger)) {
       return PickerItem(
         key: action.key,
-        label: action.label,
+        label: _underChild(module, action.label),
         description: action.description,
       );
     }
 
     return PickerItem(
       key: action.key,
-      label: action.label,
+      label: _underChild(module, action.label),
       enabled: false,
       badge: 'Not for this trigger',
       // The catalogue's own sentence, then why it cannot happen here. The

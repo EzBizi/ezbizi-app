@@ -94,21 +94,34 @@ void main() {
     expect(find.textContaining('At an unknown time'), findsNothing);
   });
 
-  testWidgets('a module drawn inside another is grouped under it', (
+  /// A MODULE DRAWN INSIDE ANOTHER IS FILED UNDER IT — ONE CATEGORY, NOT TWO.
+  ///
+  /// This test used to pin the opposite: "Marketing › Leads" as a category of
+  /// its own. Jose overruled it on 2026-09-24 — *"The Marketing Tab is divided
+  /// into tabs, when all of it should be together"* — because Marketing arrived
+  /// as five categories and a marketing event meant opening each in turn.
+  ///
+  /// THE ROW HAS TO NAME THE CHILD once the heading stops doing it, or a folded
+  /// trigger is indistinguishable from the parent's own. That half is the one
+  /// that would quietly regress: merging the categories and dropping the prefix
+  /// passes every assertion about headings.
+  testWidgets('a module drawn inside another is filed under its parent', (
     tester,
   ) async {
     await _pump(tester, _handler(catalogue: _catalogueWithNesting));
     await _tap(tester, find.text('Build'));
 
-    expect(find.text('Marketing › Leads'), findsOneWidget);
-    expect(
-      find.text('Leads'),
-      findsNothing,
-      reason: 'A bare heading says it is a tab of its own, and it is not.',
-    );
+    // One heading for the whole of Marketing, and no separate one for Leads.
+    expect(find.text('Marketing'), findsOneWidget);
+    expect(find.text('Marketing › Leads'), findsNothing);
 
-    // A top-level module is untouched — the path is where it is drawn, not
-    // decoration applied to every row.
+    await _tap(tester, find.text('Marketing'));
+
+    // The parent's own trigger, unprefixed, beside the child's, named.
+    expect(find.text('Newsletter sent'), findsOneWidget);
+    expect(find.text('Leads · Lead received'), findsOneWidget);
+
+    // A top-level module with no parent is untouched.
     expect(find.text('Customers'), findsOneWidget);
   });
 

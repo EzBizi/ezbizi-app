@@ -483,6 +483,29 @@ class AutomationCatalogue {
     return module.label;
   }
 
+  /// The module a picker should FILE this one under: its parent, when the
+  /// parent is on this list, and itself otherwise.
+  ///
+  /// Jose, 2026-09-24: *"The Marketing Tab is divided into tabs, when all of it
+  /// should be together."* The trigger and action pickers had one category per
+  /// module, so Marketing arrived as five — Marketing, Marketing › Newsletter,
+  /// › Web Management, › Reviews, › Business Profile — and somebody looking
+  /// for a marketing event had to open each in turn.
+  ///
+  /// Same fallback as [pathLabelOf], and for the same reason: the catalogue
+  /// carries only modules this person can reach, so a child whose parent is
+  /// absent stands on its own rather than being filed under a heading for a
+  /// tab they cannot open.
+  CatalogueModule topLevelOf(CatalogueModule module) {
+    if (module.parent case final key?) {
+      for (final candidate in modules) {
+        if (candidate.key == key) return candidate;
+      }
+    }
+
+    return module;
+  }
+
   /// Which module a trigger belongs to, and what it is called there.
   (CatalogueModule, CatalogueTrigger)? locate(String triggerKey) {
     for (final module in modules) {
