@@ -145,6 +145,50 @@ class Job extends Model implements StatesRetention
         ])->save();
     }
 
+    /**
+     * Stamp `earned_at` if this job's status means the money is earned — once.
+     *
+     * The ONE place that decides when money was earned (spec §8.1, §8.2). It
+     * used to live inline in JobsController::update, which made the API its
+     * only writer: a job whose status changed any other way — the Workiz
+     * projection following a job to Done — could never reach revenue, because
+     * Revenue reads `whereNotNull('earned_at')` with no status clause. A second,
+     * inlined copy would let the API and the projection disagree about the
+     * month, so both call this.
+     *
+     * It decides three things and deliberately NOT a fourth:
+     *   - at most once: an already-earned job keeps its first moment, so a
+     *     closed month stays closed;
+     *   - only for a status the organization counts as earned;
+     *   - at the moment given, or now.
+     * WHETHER the status just changed is the CALLER's to decide, because only
+     * the caller knows. JobsController calls this only when `status` is dirty —
+     * otherwise correcting the title of an old completed job would stamp it
+     * into the current month. A backfill, by contrast, wants exactly the
+     * already-earned jobs, and calls it on them directly.
+     *
+     * `$at` is an INSTANT. A wall-clock time with no zone — Workiz's
+     * `last_status_update` — must be read in the franchise's timezone first:
+     * `Carbon::parse($wall, $this->franchise->timezone)`. Passing a naive string
+     * through as UTC would move every stamp by four or five hours, and near
+     * midnight at the end of a month, into the wrong month.
+     *
+     * Sets the attribute and does not save; the caller saves, inside whatever
+     * transaction already holds the record and its audit row.
+     */
+    public function markEarnedIfDue(?\DateTimeInterface $at = null): void
+    {
+        if ($this->earned_at !== null) {
+            return;
+        }
+
+        if (! \App\Support\Jobs\EarnedStatuses::isEarned((string) $this->status, $this->franchise)) {
+            return;
+        }
+
+        $this->earned_at = $at ?? now();
+    }
+
     // ── status (§2.1 category 5) ─────────────────────────────────
 
     /**

@@ -207,12 +207,13 @@ class JobsController extends Controller
             $job->fill($input);
 
             // The money is earned once, at the first transition into an earned
-            // status. Not re-stamped on a later correction: a closed month has
-            // to stay closed (§8.1).
-            if (array_key_exists('status', $job->getDirty())
-                && $job->earned_at === null
-                && EarnedStatuses::isEarned($job->status, $job->franchise)) {
-                $job->earned_at = now();
+            // status (§8.1). WHETHER to stamp is decided here — only when the
+            // status is actually changing, so correcting the title of an old
+            // completed job cannot stamp it into this month. WHAT to stamp is
+            // Job::markEarnedIfDue()'s, the one rule the Workiz projection
+            // calls too.
+            if (array_key_exists('status', $job->getDirty())) {
+                $job->markEarnedIfDue();
             }
 
             $changed = $job->getDirty();

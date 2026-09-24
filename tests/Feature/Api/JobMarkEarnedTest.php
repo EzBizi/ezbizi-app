@@ -1,0 +1,161 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Models\Customer;
+use App\Models\Job;
+use App\Support\Settings\SettingsResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Job::markEarnedIfDue() — the one place `earned_at` is decided.
+ *
+ * ── Why it moved out of JobsController ───────────────────────────
+ *
+ * `earned_at` had exactly one writer, inline in JobsController::update, so it
+ * was stamped only when a person changed a status through the API. Revenue
+ * reads `whereNotNull('earned_at')` with no status clause (b885d666), so any
+ * job whose status changed by another route — the Workiz projection following
+ * a job to Done — could never reach revenue at all, and a second inlined copy
+ * of the rule would let the API and the projection disagree about when money
+ * was earned. One method, called by both.
+ *
+ * ── What the method decides, and what its CALLER decides ─────────
+ *
+ * The method owns three things: stamp at most once, only for an earned status,
+ * and at the moment given. It does NOT decide whether the status just changed —
+ * the caller does, because only the caller knows. JobsController calls it only
+ * when `status` is dirty, which is what stops a title correction in October
+ * from stamping an old completed job into October (§8.1).
+ *
+ * That call-site check is pinned by
+ * test_editing_the_title_of_an_earned_but_unstamped_job_does_not_stamp_it
+ * below, and ONLY by it. This docblock first said JobRevenuePeriodTest pinned
+ * it; measured, it does not — with the check removed that test stays green,
+ * because its job is already stamped and this method's own once-guard keeps
+ * it. Only an earned-but-UNSTAMPED job can tell the two guards apart.
+ */
+class JobMarkEarnedTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    public function test_an_earned_status_is_stamped_at_the_moment_given(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $at = Carbon::parse('2026-08-14 16:30:00', 'UTC');
+
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue($at));
+
+        $this->assertSame('2026-08-14 16:30:00', $job->earned_at?->utc()->toDateTimeString());
+    }
+
+    public function test_without_a_moment_it_is_stamped_now(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        Carbon::setTestNow('2026-09-24 10:00:00');
+        $job = $this->aJob($alpha, 'completed');
+
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue());
+
+        $this->assertSame('2026-09-24 10:00:00', $job->earned_at?->utc()->toDateTimeString());
+        Carbon::setTestNow();
+    }
+
+    /** §8.1: earned once, never re-stamped — a closed month stays closed. */
+    public function test_a_job_already_earned_keeps_its_first_moment(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-06-01 09:00:00', 'UTC')));
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-10-01 09:00:00', 'UTC')));
+
+        $this->assertSame('2026-06-01 09:00:00', $job->earned_at?->utc()->toDateTimeString());
+    }
+
+    /**
+     * A status the organization does not count as earned is never stamped.
+     *
+     * The subject is a status that EXISTS in the vocabulary and is simply not
+     * earned — not an unknown word — so this cannot pass merely because the
+     * status failed to resolve.
+     */
+    public function test_a_status_that_is_not_earned_is_not_stamped(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'scheduled');
+
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-08-14 16:30:00', 'UTC')));
+
+        $this->assertNull($job->earned_at);
+    }
+
+    /**
+     * Editing anything BUT the status never stamps — the caller's half.
+     *
+     * This is the case the rest of the suite cannot see, and it is live: 2,256
+     * Workiz jobs arrived already `Done` with `earned_at` NULL. If the API
+     * stamped on every save rather than only when `status` changes, correcting
+     * the title of one would stamp it NOW, and that job's money would jump into
+     * the current month. The "a later correction does not move the month" test
+     * in JobRevenuePeriodTest does not guard this: its job is already stamped,
+     * so markEarnedIfDue()'s own once-guard keeps it with or without the
+     * caller's check. Only a job that is earned-but-unstamped can tell them
+     * apart.
+     */
+    public function test_editing_the_title_of_an_earned_but_unstamped_job_does_not_stamp_it(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        // Already in an earned status, never stamped — an imported Done job.
+        $job = $this->aJob($alpha, 'completed');
+        $this->assertNull($job->earned_at, 'The fixture: earned status, no stamp yet.');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$job->id}", ['title' => 'Corrected title'])
+            ->assertOk();
+
+        $this->assertNull($job->fresh()->earned_at,
+            'A title edit must not decide when the money was earned.');
+    }
+
+    /** @param  list<string>  $statuses */
+    private function earnedStatuses(array $tenant, array $statuses): void
+    {
+        $this->inTenant($tenant['org'], fn () => app(SettingsResolver::class)
+            ->set('jobs.earned_statuses', $tenant['org'], $statuses));
+    }
+
+    private function aJob(array $tenant, string $status): Job
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $status) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $tenant['franchise']->id,
+                'number' => 'C-'.bin2hex(random_bytes(3)),
+                'name'   => 'Earned Customer',
+            ]);
+
+            return Job::create([
+                'franchise_id' => $tenant['franchise']->id,
+                'customer_id'  => $customer->id,
+                'number'   => 'J-'.bin2hex(random_bytes(3)),
+                'title'    => 'Sweep',
+                'status'   => $status,
+                'currency' => 'USD',
+            ]);
+        });
+    }
+}
