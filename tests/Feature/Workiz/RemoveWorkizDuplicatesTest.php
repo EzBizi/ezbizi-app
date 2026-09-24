@@ -200,6 +200,32 @@ class RemoveWorkizDuplicatesTest extends TestCase
         $this->assertTrue($this->alive($tenant, Job::class, $duplicate->id));
     }
 
+    /**
+     * Not only attachments: any table naming it, found in the schema — here a
+     * morph pair the command has no list entry for. The next table to point at
+     * a job (a Photos pane, say) protects it the same way.
+     */
+    public function test_a_duplicate_any_other_table_names_is_kept(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [, $twin] = $this->projected($tenant, 'CT0010');
+        $duplicate = $this->duplicateOf($tenant, $twin);
+
+        $this->inTenant($tenant['org'], fn () => DB::table('automation_events')->insert([
+            'id' => (string) Str::uuid(),
+            'organization_id' => $tenant['org']->id,
+            'event_key' => 'job.status_changed',
+            'subject_type' => 'jobs',
+            'subject_id' => $duplicate->id,
+            'occurred_at' => now(),
+            'available_at' => now(),
+        ]));
+
+        $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
+
+        $this->assertTrue($this->alive($tenant, Job::class, $duplicate->id));
+    }
+
     public function test_a_duplicate_customer_with_no_jobs_is_removed(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -219,6 +245,20 @@ class RemoveWorkizDuplicatesTest extends TestCase
         [$twin, $job] = $this->projected($tenant, 'CT0007');
         $duplicate = $this->duplicateCustomerOf($tenant, $twin);
         $this->duplicateOf($tenant, $job, ['customer_id' => $duplicate->id, 'scheduled_for' => '2026-07-01 09:00:00']);
+
+        $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
+
+        $this->assertTrue($this->alive($tenant, Customer::class, $duplicate->id));
+    }
+
+    /** A deleted job still names its customer; restoring the job must find it. */
+    public function test_a_duplicate_customer_whose_only_job_was_deleted_is_kept(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$twin, $job] = $this->projected($tenant, 'CT0011');
+        $duplicate = $this->duplicateCustomerOf($tenant, $twin);
+        $deleted = $this->duplicateOf($tenant, $job, ['customer_id' => $duplicate->id, 'scheduled_for' => '2026-07-01 09:00:00']);
+        $this->inTenant($tenant['org'], fn () => $deleted->delete());
 
         $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
 
