@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0258',
+      date: '24 Sep 2026',
+      items: [
+        'Settings: Statuses that mean the money is earned opens a list of your own job statuses to tick, instead of a box to type code into.',
+        'A job has an Inspections section listing the inspection reports submitted on it, with what was inspected and when. It shows only to people who can see Inspection, and leaves out archived reports.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0257',
       date: '24 Sep 2026',
       items: [
