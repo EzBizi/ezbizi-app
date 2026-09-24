@@ -24,6 +24,38 @@ class TabBarLike extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // SIX CALLERS INVENTED SIX ANSWERS TO THE SAME QUESTION.
+    //
+    // This widget speaks positions, and most of its callers build `labels`
+    // with a collection-`if` on a permission — so the list is a different
+    // length for different people, and a stored index means a different tab.
+    // Measured 2026-09-24: of 20 call sites, 16 filter their list, and every
+    // one of them defends itself differently.
+    //
+    //     inspection_screen   _tab.clamp(0, tabs.length - 1), plus isEmpty
+    //     reports_screen      resolves by NAME, three length guards
+    //     leads_screen        indexWhere(...) + 1, so -1 lands on "All"
+    //     hr_screen           converts index<->key at the call site
+    //     records_tab         bare indexWhere, which answers -1
+    //     phone_screen        an Offstage loop, so a stale index draws nothing
+    //
+    // What they have in common is the failure: nothing throws. An index past
+    // the end lights no chip and paints a blank pane, and a screen that draws
+    // its body from the same number disagrees with its own strip. That is a
+    // bug report saying "the tab went blank" with no stack to read.
+    //
+    // So the contract gets stated once, here, and breaks loudly in debug and
+    // in tests instead of quietly in front of somebody. Release builds strip
+    // this entirely — it changes no behaviour, it only stops the silence.
+    assert(
+      labels.isEmpty || (selected >= 0 && selected < labels.length),
+      'TabBarLike was given selected=$selected for the ${labels.length} label(s) ${labels.map((l) => l.$1).toList()}. '
+      'No chip will be lit and the caller drawing its body from the same '
+      'index will paint nothing. This is what a filtered tab list does to '
+      'a stored index: clamp it, resolve it by name, or keep the key '
+      'rather than the position.',
+    );
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
