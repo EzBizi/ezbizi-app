@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Automations that run when a job changes status, or is completed, now also run when Workiz moves an imported job - for moves Workiz made in the last two hours, so older history sets nothing off.',
+        'Replying from the A1Leads GBP table opens the reply under the review instead of switching to the board.',
       ],
     ),
     VersionRelease(
