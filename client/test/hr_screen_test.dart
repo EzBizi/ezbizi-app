@@ -48,7 +48,9 @@ import 'package:http/testing.dart';
 /// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. The
 /// Dashboard chip is one glance; certifications is a sentence on that card.
 void main() {
-  testWidgets('the six tabs are drawn, in the owner’s order, and switch', (
+  // Five since 2026-09-24: Paid time off (and Work Hours) left for the
+  // Work Hours module — see work hours' own screen test.
+  testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
   ) async {
     await _pump(tester, _handler());
@@ -58,7 +60,6 @@ void main() {
       'Onboarding',
       'Records',
       'Invitations',
-      'Paid time off',
       'Contracts',
     ]);
 

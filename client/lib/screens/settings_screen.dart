@@ -49,10 +49,21 @@ import '../widgets/sending_server_panel.dart';
 /// organization scope: they answer for the whole business and there is no
 /// franchise-sized version of either.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.api, required this.session});
+  const SettingsScreen({
+    super.key,
+    required this.api,
+    required this.session,
+    this.onlyGroup,
+  });
 
   final ApiClient api;
   final Session session;
+
+  /// Show one server group and nothing else. Work Hours' Settings tab reads
+  /// its Clock in and paid-time-off rows this way (2026-09-24), so the rows,
+  /// their controls and their permission checks are this screen's rather
+  /// than a second copy that could drift from it. Null is the whole page.
+  final String? onlyGroup;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -580,6 +591,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     for (final setting in _rows) {
       if (!_matches(setting)) continue;
+      if (widget.onlyGroup != null && setting['group'] != widget.onlyGroup) {
+        continue;
+      }
 
       groups
           .putIfAbsent(
@@ -593,7 +607,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .add(setting);
     }
 
-    final organizationData = _organizationData(context);
+    // The organization's own details belong to the whole page, not to a tab
+    // showing one group of it.
+    final organizationData = widget.onlyGroup == null
+        ? _organizationData(context)
+        : null;
 
     if (groups.isEmpty && organizationData == null) {
       return _nothingMatches(context);

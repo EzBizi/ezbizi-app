@@ -51,7 +51,8 @@ class TimeClockModuleTest extends TestCase
             $this->assertSame($type, $definition->type, $key);
             $this->assertSame($default, $definition->default, $key);
             $this->assertSame([SettingDefinition::SCOPE_ORGANIZATION], $definition->allowedScopes, $key);
-            $this->assertSame('hr', $registry->groupOf($key)['key'], $key);
+            // Their own group since Work Hours left HR (2026-09-24).
+            $this->assertSame('work_hours', $registry->groupOf($key)['key'], $key);
         }
 
         $this->assertContains(1, $registry->getOrFail('time_clock.warning_minutes')->options);
@@ -77,7 +78,7 @@ class TimeClockModuleTest extends TestCase
         $this->assertFalse($definition->default);
         $this->assertSame([SettingDefinition::SCOPE_ORGANIZATION], $definition->allowedScopes);
         $this->assertSame('Clock in', $definition->label);
-        $this->assertSame('hr', app(SettingRegistry::class)->groupOf('time_clock.enabled')['key']);
+        $this->assertSame('work_hours', app(SettingRegistry::class)->groupOf('time_clock.enabled')['key']);
     }
 
     public function test_the_roles_catalogue_lists_clock_in_after_human_resources(): void

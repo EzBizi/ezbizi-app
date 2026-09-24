@@ -438,20 +438,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // already keeps the people list — see UserPolicy::resetSecurity.
                 // Same reasoning that keeps `monitoring.control` off
                 // `monitoring.screenshots.view`.
-                // `hours.correct` is split from `edit` on exactly the argument
-                // above it: rewriting the hours somebody is PAID for is a
-                // bigger authority than keeping their row, and folding it into
-                // `edit` would have handed it on deploy to everybody who
-                // already maintains the people list. Jose asked for the
-                // correction system on 2026-09-23; it is the grant that opens
-                // Edit and Delete on a Work Hours row.
-                // `hours.all` (2026-09-24, Jose): "let people see only their
-                // own time". Work Hours without it shows the holder's own row
-                // only; TimeClock::visibleTo is the one place that reads it.
-                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct', 'hours.all'],
-                // Correct without All would be editing only your own paid hours.
-                actionRequires: ['hours.all' => ['hr.hours.view'], 'hours.correct' => ['hr.hours.all']],
-                actionLabels: ['hours.all' => "See everyone's hours"],
+                // `hours.correct` and `hours.all` lived here until 2026-09-24,
+                // when Work Hours left HR for a module of its own — they are
+                // `work_hours.manage` and `work_hours.all` now, and the
+                // migration of that date copied every grant across.
+                actions: ['view', 'create', 'edit', 'security.reset'],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *
@@ -483,11 +474,12 @@ class ModuleServiceProvider extends ServiceProvider
                  */
                 tabs: [
                     new TabDefinition('dashboard', 'Dashboard'),
-                    new TabDefinition('hours', 'Work Hours'),
+                    // Work Hours and Paid time off moved to the `work_hours`
+                    // module on 2026-09-24 (Jose: "separate it from human
+                    // resources and make a new main tab called Work Hours").
                     new TabDefinition('onboarding', 'Onboarding'),
                     new TabDefinition('records', 'Records'),
                     new TabDefinition('invitations', 'Invitations'),
-                    new TabDefinition('pto', 'Paid time off'),
                     new TabDefinition('contracts', 'Contracts'),
                 ],
                 triggers: [
@@ -677,6 +669,52 @@ class ModuleServiceProvider extends ServiceProvider
                         executionType: 'onboarding.start',
                     ),
                 ],
+            ),
+
+            /*
+             * ── Work Hours, out of HR (Jose, 2026-09-24) ──
+             *
+             * "i think it may be a good idea to separate it from human
+             * resources and make a new main tab called Work Hours which will
+             * have the General - Paid Time Off - Settings on it" — General
+             * being the Work Hours pane as it was.
+             *
+             * A module of its own rather than `time_clock` given a sidebar
+             * entry: `time_clock.view` means "may PUNCH", which every
+             * technician holds, and promoting it would hand all of them a
+             * sidebar item. The clock stays `time_clock`; this is the screen
+             * where hours are read and managed.
+             *
+             * `all`: see everybody's hours rather than only your own (was
+             * `hr.hours.all`). `manage`: edit, delete, clock out, day records
+             * and people's schedules (was `hr.hours.correct`, plus schedules,
+             * which only HR › Records could set). Manage without All would be
+             * rewriting only your own paid hours, so the catalogue cannot say it.
+             *
+             * Every grant was copied from the HR keys by the migration of
+             * 2026-09-24, so no role narrows on deploy.
+             */
+            new ModuleDefinition(
+                key: 'work_hours',
+                label: 'Work Hours',
+                actions: ['view', 'all', 'manage'],
+                actionRequires: ['all' => ['work_hours.general.view'], 'manage' => ['work_hours.all']],
+                actionLabels: [
+                    'all' => "See everyone's hours",
+                    'manage' => 'Edit hours and schedules',
+                ],
+                tabs: [
+                    new TabDefinition('general', 'General'),
+                    new TabDefinition('pto', 'Paid Time Off'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['time_clock'],
+                automationExemptBecause: 'Its automations are the clock\'s, and they stay on the '
+                    .'`time_clock` module: clocked in, clocked out and extended as triggers, clock in '
+                    .'and clock out as actions. This module is the screen where hours are read and '
+                    .'corrected, and a correction is an administrator amending the record afterwards '
+                    .'rather than something that happened to the business — a rule firing on it would '
+                    .'act on a shift that ended yesterday.',
             ),
 
             new ModuleDefinition(

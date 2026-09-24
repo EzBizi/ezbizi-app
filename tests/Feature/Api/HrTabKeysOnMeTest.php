@@ -47,12 +47,15 @@ class HrTabKeysOnMeTest extends TestCase
      * empty one. */
     private const TABS = [
         'hr.dashboard.view',
-        'hr.hours.view',
         'hr.onboarding.view',
         'hr.records.view',
         'hr.invitations.view',
-        'hr.pto.view',
         'hr.contracts.view',
+        // Work Hours and Paid time off left HR for their own module on
+        // 2026-09-24. The owner must still see them, now under these keys.
+        'work_hours.general.view',
+        'work_hours.pto.view',
+        'work_hours.settings.view',
     ];
 
     private function permissionsOnMe(\App\Models\User $user): array

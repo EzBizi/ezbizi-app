@@ -244,7 +244,10 @@ class ModuleTabsTest extends TestCase
         // this, a migration that had stopped granting anything at all would
         // satisfy every assertLacks above.
         $this->assertContains('training.view', $after);
-        $this->assertContains('hr.hours.view', $this->inTenant(
+        // hr.records.view rather than hr.hours.view since 2026-09-24: this
+        // migration derives from the registry when it RUNS, and Work Hours has
+        // left HR's tabs, so only a tab HR still declares can be the control.
+        $this->assertContains('hr.records.view', $this->inTenant(
             $tenant['org'],
             function () use ($tenant) {
                 $other = Role::create([

@@ -52,13 +52,26 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../core/ui_strings.dart';
+import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/user_avatar.dart';
+import '../../widgets/work_schedule_card.dart';
+import '../../widgets/work_schedule_panel.dart';
 
 class WorkHoursTab extends StatefulWidget {
-  const WorkHoursTab({super.key, required this.api, this.canCorrect = false});
+  const WorkHoursTab({
+    super.key,
+    required this.api,
+    this.session,
+    this.canCorrect = false,
+  });
 
   final ApiClient api;
+
+  /// For the schedule editor's time format. Optional so a test can build the
+  /// pane alone; the panel falls back to ISO without it.
+  final Session? session;
 
   /// `hr.hours.correct`. Off means the ⋯ menus are not drawn at all.
   final bool canCorrect;
@@ -137,6 +150,31 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                 if (!await _confirmDelete(context) || !context.mounted) return;
                 await _apply(context, widget.api.delete(path, _onQuery));
             }
+          },
+          schedule: (context, person) async {
+            final saved = await showWorkSchedulePanel(
+              context,
+              title:
+                  '${UiStrings.t('time_clock.work_schedule')} · ${person.name}',
+              days: person.schedulePersonal ? person.schedule : null,
+              formats: widget.session?.me?.display ?? DisplayFormats.fallback,
+            );
+            if (saved == null || !context.mounted) return;
+
+            final messenger = ScaffoldMessenger.maybeOf(context);
+            final response = await widget.api.patch(
+              '/hr/people/${person.id}/schedule',
+              {'days': saved},
+            );
+            if (!mounted) return;
+            if (!response.ok) {
+              messenger?.showSnackBar(SnackBar(content: Text(response.reason)));
+
+              return;
+            }
+            // The schedule answer is the person, not the week, so fetch the
+            // week again: the card and the totals both come from it.
+            await _load(on: _on);
           },
           day: (context, personId, date, record, action) async {
             final body = await switch (action) {
@@ -558,6 +596,21 @@ class _PersonWeek extends StatelessWidget {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+        // Who works when (Jose, 2026-09-24): "right now only users can set
+        // their schedule on their own, i need a panel to be able to set it
+        // for them as well". The same card as Your account, with Edit for
+        // work_hours.manage.
+        WorkScheduleCard(
+          // Empty is 'no schedule anywhere', which the card words itself;
+          // seven Day off rows would claim a person who works no days.
+          schedule: person.schedule.isEmpty ? null : {'days': person.schedule},
+          canEdit: actions != null,
+          onEdit: () => actions!.schedule(context, person),
+          caption: person.schedulePersonal
+              ? null
+              : UiStrings.t('time_clock.using_business_hours'),
         ),
         const SizedBox(height: 16),
         Row(
@@ -1078,7 +1131,14 @@ class _Person {
     required this.open,
     required this.shifts,
     this.records = const {},
+    this.schedule = const {},
+    this.schedulePersonal = false,
   });
+
+  /// The schedule the clock runs on for them, weekday → {start, end}. Their
+  /// own, or the place's business hours when [schedulePersonal] is false.
+  final Map<String, dynamic> schedule;
+  final bool schedulePersonal;
 
   final String id;
   final String name;
@@ -1118,6 +1178,10 @@ class _Person {
       for (final row in (json['shifts'] as List?) ?? const [])
         if (row is Map<String, dynamic>) _Shift.from(row),
     ],
+    schedule: json['schedule'] is Map
+        ? Map<String, dynamic>.from(json['schedule'] as Map)
+        : const {},
+    schedulePersonal: json['schedule_is_personal'] == true,
     records: {
       for (final row in (json['days'] as List?) ?? const [])
         if (row is Map<String, dynamic>) '${row['date']}': _DayRecord.from(row),
@@ -1263,7 +1327,13 @@ class _Day {
 // ── the correction menus and their dialogs ─────────────────────────
 
 class _Actions {
-  const _Actions({required this.shift, required this.day});
+  const _Actions({
+    required this.shift,
+    required this.day,
+    required this.schedule,
+  });
+
+  final Future<void> Function(BuildContext context, _Person person) schedule;
 
   final Future<void> Function(BuildContext context, _Shift shift, String action)
   shift;

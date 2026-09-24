@@ -56,7 +56,7 @@ class HrTabPermissionsTest extends TestCase
     {
         $tenant = $this->withClockIn($this->provisionTenant('Alpha'));
 
-        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['hr.hours.view']);
+        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['work_hours.general.view']);
 
         // The POSITIVE control, and the whole suite is worthless without it.
         // Every other assertion here is a 403, and a 403 is also what a broken
@@ -71,14 +71,14 @@ class HrTabPermissionsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Bravo');
 
-        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['hr.hours.view']);
+        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['work_hours.general.view']);
 
         /*
          * The point of the whole change, stated as the four things they must
-         * NOT reach. `hr.hours.view` implies `hr.view` — §4, and
-         * PermissionCatalogue::withImpliedView does it on save — so this person
-         * genuinely holds the module. Yesterday that was the end of the
-         * question and all four of these answered 200.
+         * NOT reach. Since 2026-09-24 Work Hours is its own module, so this
+         * dispatcher holds `work_hours.view` and nothing of HR's at all — the
+         * refusals below are stronger than when the tab lived inside HR, not
+         * weaker, and they must stay refusals.
          */
         foreach ([
             '/api/v1/hr/dashboard',
@@ -115,7 +115,7 @@ class HrTabPermissionsTest extends TestCase
     {
         $tenant = $this->provisionTenant('Charlie');
 
-        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['hr.hours.view']);
+        $dispatcher = $this->userWithRole($tenant, 'Dispatcher', ['work_hours.general.view']);
 
         // R8. A person refused a pane reads the same shape of sentence they read
         // everywhere else, and the permission KEY tells them nothing — the
@@ -147,11 +147,12 @@ class HrTabPermissionsTest extends TestCase
         $manager = $this->userWithRole($tenant, 'Manager', [
             'hr.view',
             'hr.dashboard.view',
-            'hr.hours.view',
             'hr.onboarding.view',
             'hr.records.view',
             'hr.invitations.view',
             'hr.contracts.view',
+            // Work Hours left HR on 2026-09-24; its tab is its own key now.
+            'work_hours.general.view',
         ]);
 
         foreach ([

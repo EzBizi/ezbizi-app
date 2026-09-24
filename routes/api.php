@@ -1305,7 +1305,7 @@ Route::prefix('v1')
          *
          * These two are the pane that shows everybody's week.
          */
-        Route::middleware('permission:hr.hours.view')->group(function () {
+        Route::middleware('permission:work_hours.general.view')->group(function () {
             // Clock in–out chip on Human Resources. `?on=` is a calendar date in
             // the current view timezone (design §9).
             Route::get('hr/time-clock', [TimeClockController::class, 'index']);
@@ -1327,7 +1327,7 @@ Route::prefix('v1')
          * right place for the gate, and the policy behind it says the same
          * thing for anything that reaches these another way.
          */
-        Route::middleware('permission:hr.hours.correct')->group(function () {
+        Route::middleware('permission:work_hours.manage')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
             Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
             // Force clock out, and the day's tag / extra hours / note (2026-09-24).
