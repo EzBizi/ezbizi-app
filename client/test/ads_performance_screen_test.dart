@@ -427,7 +427,10 @@ void main() {
     );
   });
 
-  testWidgets('the default range is yesterday, not thirty days', (
+  /// TODAY is the default - Jose, 2026-09-24, replacing his 15 September
+  /// call for yesterday. Asserted as the REQUEST, not the chip: a screen that
+  /// highlighted "Today" and asked Google for yesterday would look right.
+  testWidgets('the default range is today, one day only', (
     tester,
   ) async {
     await pump(tester, accounts: twoAccounts(), report: report());
@@ -439,20 +442,34 @@ void main() {
     expect(
       asked.queryParameters['from'],
       asked.queryParameters['to'],
-      reason: 'Jose asked for a one-day default; a 30-day one costs thirty times '
-          'the rows to answer a question about yesterday',
+      reason: 'a one-day default; a 30-day one costs thirty times the rows',
     );
 
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    final today = DateTime.now();
     expect(
       asked.queryParameters['to'],
-      '${yesterday.year.toString().padLeft(4, '0')}-'
-      '${yesterday.month.toString().padLeft(2, '0')}-'
-      '${yesterday.day.toString().padLeft(2, '0')}',
-      reason: 'never today: Google restates the current day as late conversions '
-          'are attributed, so it is the one figure guaranteed to change after '
-          'somebody has read it',
+      '${today.year.toString().padLeft(4, '0')}-'
+      '${today.month.toString().padLeft(2, '0')}-'
+      '${today.day.toString().padLeft(2, '0')}',
+      reason: 'Jose, 2026-09-24: "Date of today ... as default instead of yesterday"',
     );
+  });
+
+  /// Custom opens on today rather than empty - Jose, 2026-09-24.
+  testWidgets('custom opens with today already chosen', (tester) async {
+    await pump(tester, accounts: twoAccounts(), report: report());
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Custom'));
+    await tester.pumpAndSettle();
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dialog = tester.widget<DateRangePickerDialog>(find.byType(DateRangePickerDialog));
+
+    expect(dialog.initialDateRange, DateTimeRange(start: today, end: today));
+    expect(dialog.lastDate, today, reason: 'today must be selectable, or it could not be pre-filled');
   });
 
   testWidgets('searching the sidebar narrows it and keeps the rest reachable', (
@@ -594,7 +611,10 @@ void main() {
         .controller!;
 
     final body = find.byKey(const ValueKey('ads-campaign-rows'));
-    await tester.drag(body, const Offset(-250, 0));
+    // Grab the rows just under their top edge, not at their centre: the
+    // table is wider AND taller than the window, so its centre can sit below
+    // the visible part and the drag would land on nothing.
+    await tester.dragFrom(tester.getTopLeft(body) + const Offset(100, 20), const Offset(-250, 0));
     await tester.pumpAndSettle();
 
     final moved = controllerIn(find.ancestor(of: body, matching: find.byType(Material)).first).offset;

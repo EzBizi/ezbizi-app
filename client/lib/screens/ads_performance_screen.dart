@@ -53,7 +53,7 @@ import '../widgets/dashboard_chart.dart';
 class _AdsMemory {
   List<Map<String, dynamic>>? accounts;
   String? selected;
-  int range = 0;
+  int range = 0; // Today: the default - see _range below.
   DateTimeRange? custom;
   Set<String> extra = <String>{};
 
@@ -131,6 +131,8 @@ class _Range {
 }
 
 const _ranges = <_Range>[
+  // Zero days means TODAY alone - see _window.
+  _Range('Today', 0),
   _Range('Yesterday', 1),
   _Range('7 days', 7),
   _Range('30 days', 30),
@@ -180,11 +182,13 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   final ScrollController _tableHead = ScrollController();
 
   /*
-   * Yesterday, not 30 days. Jose's call, 2026-09-15.
+   * TODAY. Jose, 2026-09-24: "Date of today on google ads reporting as default
+   * instead of yesterday" - replacing his 15 September call for yesterday.
    *
-   * It is also the cheapest default: a one-day window is one day of rows from
-   * Google rather than thirty, and this screen is opened far more often than a
-   * month's history is actually wanted.
+   * Still a one-day window, so still the cheapest default: one day of rows
+   * from Google rather than thirty. Today's figures are restated by Google as
+   * late conversions are attributed, so they can move after being read; the
+   * other presets still end yesterday, where the numbers have settled.
    */
   int _range = 0;
   DateTimeRange? _custom;
@@ -283,14 +287,19 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     super.dispose();
   }
 
-  /// Ends YESTERDAY, never today.
+  /// Today alone, or N days ending YESTERDAY.
   ///
-  /// Google restates the current day as conversions are attributed late, so
-  /// today's figure is the only one on the screen guaranteed to change after
-  /// somebody has read it.
+  /// Today is its own preset and the default (Jose, 2026-09-24). The multi-day
+  /// presets still end yesterday: Google restates the current day as
+  /// conversions are attributed late, and "the last 30 days" is a question
+  /// about settled figures, not about a day still in progress.
   (DateTime, DateTime) _window() {
     if (_ranges[_range].days == null && _custom != null) {
       return (_custom!.start, _custom!.end);
+    }
+    if (_ranges[_range].days == 0) {
+      final today = DateTime.now();
+      return (today, today);
     }
     final to = DateTime.now().subtract(const Duration(days: 1));
     final days = _ranges[_range].days ?? 30;
@@ -817,11 +826,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             onSelected: (on) async {
               if (!on) return;
               if (_ranges[i].days == null) {
+                // Opens on TODAY rather than empty (Jose, 2026-09-24:
+                // "Custom date select automatically today's date"), and today
+                // is selectable - it could not be while ranges ended yesterday.
+                final now = DateTime.now();
+                final today = DateTime(now.year, now.month, now.day);
                 final picked = await showDateRangePicker(
                   context: context,
-                  firstDate: DateTime.now().subtract(const Duration(days: 400)),
-                  lastDate: DateTime.now().subtract(const Duration(days: 1)),
-                  initialDateRange: _custom,
+                  firstDate: today.subtract(const Duration(days: 400)),
+                  lastDate: today,
+                  initialDateRange: _custom ?? DateTimeRange(start: today, end: today),
                 );
                 if (picked == null || !mounted) return;
                 setState(() {
