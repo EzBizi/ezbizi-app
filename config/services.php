@@ -286,7 +286,10 @@ return [
         // Separate, reply-only live tunnel. Never reuse the snapshot reader key.
         'live_reply_url' => env('A1LEADS_LIVE_REPLY_URL'),
         'live_reply_key' => env('A1LEADS_LIVE_REPLY_KEY'),
-        'reply_company_id' => env('A1LEADS_REPLY_COMPANY_ID'),
+        // The COMPANY the Business Profile belongs to (A-1 Chimney). It gates
+        // reading the tab as well as replying: Jose, 2026-09-24, "this belongs
+        // to a-1chimney" - not to every company in its organization.
+        'company_id' => env('A1LEADS_COMPANY_ID'),
 
         // The snapshot is refreshed daily at 05:00 New York. Rodrigo's number:
         // warn after thirty hours without a successful installation, which is

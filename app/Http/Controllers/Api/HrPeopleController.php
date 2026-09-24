@@ -16,6 +16,7 @@ use App\Support\Privacy\ConsentLedger;
 use App\Support\Privacy\SensitiveValues;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use App\Support\TimeClock\TimeClock;
 use App\Support\TimeClock\WorkSchedule;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -616,7 +617,10 @@ class HrPeopleController extends Controller
         $actor = $request->user();
         $policy = app(PtoPolicy::class);
 
-        $people = $actor->can('viewAny', User::class)
+        // `work_hours.all` since PTO moved into Work Hours (2026-09-24): whoever
+        // may see everybody's hours sees everybody's allowance beside them.
+        // `hr.view` still answers too, so nobody who read it yesterday cannot.
+        $people = $actor->can('viewAny', User::class) || $actor->hasPermission('work_hours.all')
             ? User::query()
                 ->with('role:id,name')
                 ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
@@ -697,7 +701,17 @@ class HrPeopleController extends Controller
      */
     public function updateSchedule(Request $request, User $user): JsonResponse
     {
-        $this->authorize('update', $user);
+        /*
+         * Two doors, one rule each (2026-09-24). Work Hours' `manage` sets
+         * schedules from the person's week, bounded by the same reach the week
+         * is drawn with; HR's `edit` on Records keeps working as it did.
+         */
+        $actor = $request->user();
+        if ($actor->hasPermission('work_hours.manage')) {
+            app(TimeClock::class)->assertReaches($actor, $user);
+        } else {
+            $this->authorize('update', $user);
+        }
 
         $days = WorkSchedule::validate($request->input('days'));
         $zone = (string) $this->settings->get('timezone', ViewScope::forUser($request->user())->settingsScope());

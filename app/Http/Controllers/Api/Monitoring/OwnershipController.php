@@ -73,7 +73,7 @@ class OwnershipController extends Controller
         $actor = $request->user();
 
         $canSeeSpecs = $actor->hasPermission('monitoring.specs.view');
-        $canSeeHours = $actor->hasPermission('hr.hours.view');
+        $canSeeHours = $actor->hasPermission('work_hours.general.view');
 
         $people = User::query()
             ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))

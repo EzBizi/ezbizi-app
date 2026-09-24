@@ -11,7 +11,11 @@ class VersionHistory {
       version: '0.0.0263',
       date: '24 Sep 2026',
       items: [
-        'HR, Records: pick a person from the list and their record opens beside it, in sections - Personal, Employment, Access, Onboarding and Time off. HR can now edit the name, phone, home address, gender, date of birth and start date. Email, onboarding answers and time off stay read only.',
+        'HR, Records: pick a person from the list and their record opens beside it, in sections - Personal, Employment, Work, Onboarding, Time off, Training and Access. HR can now edit the name, phone, home address, gender, date of birth and start date. Email, onboarding answers and time off stay read only.',
+        'Work Hours is its own item in the sidebar, beside Human Resources, with three tabs: General (what was Work Hours in HR), Paid Time Off (moved from HR) and Settings. Roles that could see those in HR keep the same access in Work Hours.',
+        'From a person\'s week in Work Hours, whoever may manage Work Hours can set their work schedule.',
+        'The dashboard can show a Work Hours box: who is clocked in now, and the hours clocked in the period.',
+        'A1Leads GBP shows A-1 Chimney\'s reviews only while A-1 Chimney is in view - the whole organization, A-1 Chimney or one of its franchises. With another company in view it says whose reviews these are. It opens on the table; a phone still opens on the board.',
       ],
     ),
     VersionRelease(

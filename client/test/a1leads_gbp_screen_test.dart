@@ -154,6 +154,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _handler(total: 3));
+    await _board(tester);
 
     expect(find.textContaining('Matched: Dana M. Whitfield'), findsOneWidget);
     expect(find.textContaining('Unverified'), findsOneWidget);
@@ -173,6 +174,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _handler(total: 2));
+    await _board(tester);
 
     expect(find.text('Replied on Google'), findsOneWidget);
     expect(find.textContaining('Glad we could help'), findsOneWidget);
@@ -326,12 +328,16 @@ void main() {
     expect(find.textContaining('HTTP 403'), findsOneWidget);
   });
 
-  /// The board is the default, because a review is prose.
-  testWidgets('it opens on the board, not the table', (tester) async {
-    await _pump(tester, _handler(total: 3));
+  /// The TABLE is the default - Jose, 2026-09-24: "table view should be the
+  /// default". Asserted with the board's own marker absent, so a screen that
+  /// drew both would not pass.
+  testWidgets('it opens on the table, not the board', (tester) async {
+    await _pump(tester, _handler(total: 2));
 
-    expect(find.text('CUSTOMER'), findsNothing);
-    expect(find.text('Board'), findsOneWidget, reason: 'the toggle is offered');
+    expect(find.text('CUSTOMER'), findsOneWidget);
+    expect(find.text('Replied'), findsOneWidget, reason: "the table's reply state");
+    expect(find.text('Replied on Google'), findsNothing, reason: "the board's is not drawn");
+    expect(find.text('Board'), findsOneWidget, reason: 'the toggle is still offered');
   });
 
   /// A table narrower than the board it replaces is not offered at all.
@@ -357,6 +363,7 @@ void main() {
   ) async {
     final requests = <http.Request>[];
     await _pump(tester, _handler(replyAvailable: true, replyGranted: true, requests: requests));
+    await _board(tester);
 
     await tester.tap(find.text('Reply on Google'));
     await tester.pumpAndSettle();
@@ -447,6 +454,12 @@ void main() {
     expect(find.textContaining('Nothing matches these filters'), findsOneWidget);
     expect(find.textContaining('has no reviews'), findsNothing);
   });
+}
+
+/// Switch to the board, where a review is read whole. The table opens first.
+Future<void> _board(WidgetTester tester) async {
+  await tester.tap(find.text('Board'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _pump(

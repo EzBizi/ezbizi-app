@@ -4,8 +4,7 @@ import 'dart:io';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/screens/hr_screen.dart';
-import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/screens/work_hours_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -20,23 +19,6 @@ import 'package:http/testing.dart';
 /// list, and neither was mine to remove — a screen quietly telling somebody
 /// less than it used to is a loss whether or not anybody asked.
 void main() {
-  testWidgets(
-    'organizationEnabled false and hr.view keep the other six chips',
-    (tester) async {
-      await _pump(tester, timeClock: _clock(organizationEnabled: false));
-
-      expect(_chips(tester), [
-        'Dashboard',
-        'Onboarding',
-        'Records',
-        'Invitations',
-        'Paid time off',
-        'Contracts',
-      ]);
-      expect(_tab('Work Hours'), findsNothing);
-    },
-  );
-
   testWidgets(
     'the first fetch has no on, and the names, clocks and zone come from the '
     'payload',
@@ -53,17 +35,7 @@ void main() {
         },
       );
 
-      expect(_chips(tester), [
-        'Dashboard',
-        'Work Hours',
-        'Onboarding',
-        'Records',
-        'Invitations',
-        'Paid time off',
-        'Contracts',
-      ]);
-
-      await _tap(tester, _tab('Work Hours'));
+      // General is the landing tab of Work Hours; nothing to tap.
 
       expect(requests, hasLength(1));
       expect(requests.single.path, '/api/v1/hr/time-clock/week');
@@ -105,7 +77,7 @@ void main() {
       ),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     expect(
       find.text('Jon Park'),
@@ -131,7 +103,7 @@ void main() {
           _week(people: [_person(total: 29100, days: 4, average: 7275)]),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     // The total appears twice on purpose -- on the person's row in the list
     // AND in their Total tile -- so the ones that distinguish this assertion
@@ -165,7 +137,7 @@ void main() {
       ),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     expect(find.text('Auto'), findsOneWidget);
     expect(find.text('Outside schedule'), findsOneWidget);
@@ -193,7 +165,7 @@ void main() {
       ),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     expect(find.text('still clocked in'), findsOneWidget);
     expect(
@@ -217,7 +189,7 @@ void main() {
       onClock: (_, _) => _week(people: const []),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     // The real string, not one I invented: UiStrings falls back to its own
     // English map, and asserting my own wording would have passed only
@@ -243,7 +215,7 @@ void main() {
       },
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
     expect(ons, [null]);
 
     await _tap(tester, find.byIcon(Icons.chevron_right));
@@ -272,7 +244,7 @@ void main() {
       onClock: (_, _) => _week(people: [_person()]),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     expect(find.text('Tuesday, Aug 25'), findsOneWidget);
     expect(
@@ -295,7 +267,7 @@ void main() {
       onClock: (_, _) => _week(people: [_person()]),
     );
 
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     // Tuesday is today in this fixture, so the week ends there.
     expect(find.text('Wednesday, Aug 26'), findsNothing);
@@ -398,7 +370,7 @@ void main() {
   // Jose picked layout 1 for both sizes: a menu on a desk, a bottom sheet on
   // a phone, the same items either way. Absent without hr.hours.correct.
 
-  testWidgets('without hr.hours.correct there is no ⋯ anywhere', (
+  testWidgets('without work_hours.manage there is no ⋯ anywhere', (
     tester,
   ) async {
     await _pump(
@@ -406,7 +378,7 @@ void main() {
       timeClock: _clock(organizationEnabled: true),
       onClock: (_, _) => _week(people: [_person()]),
     );
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     expect(find.text('8:00 AM'), findsOneWidget, reason: 'the pane rendered');
     expect(find.byTooltip('Shift actions'), findsNothing);
@@ -422,7 +394,7 @@ void main() {
       await _pump(
         tester,
         timeClock: _clock(organizationEnabled: true),
-        grants: const ['hr.hours.correct'],
+        grants: const ['work_hours.manage'],
         onClock: (_, _) => _week(people: [_person()]),
         onWrite: (request) {
           writes.add(request);
@@ -436,7 +408,7 @@ void main() {
           });
         },
       );
-      await _tap(tester, _tab('Work Hours'));
+      // General is the landing tab of Work Hours; nothing to tap.
 
       await _tap(tester, find.byTooltip('Shift actions'));
       expect(
@@ -474,7 +446,7 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      grants: const ['hr.hours.correct'],
+      grants: const ['work_hours.manage'],
       onClock: (_, _) => _week(
         people: [
           _person(open: true, shifts: [open]),
@@ -488,7 +460,7 @@ void main() {
         });
       },
     );
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     await _tap(tester, find.byTooltip('Shift actions'));
     await _tap(tester, find.text('Clock out now'));
@@ -517,7 +489,7 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      grants: const ['hr.hours.correct'],
+      grants: const ['work_hours.manage'],
       onClock: (_, _) => _week(people: [_person()]),
       onWrite: (request) {
         writes.add(request);
@@ -527,7 +499,7 @@ void main() {
         });
       },
     );
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     await _tap(tester, find.byTooltip('Shift actions'));
     await _tap(tester, find.text('Edit times'));
@@ -546,7 +518,7 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      grants: const ['hr.hours.correct'],
+      grants: const ['work_hours.manage'],
       onClock: (_, _) => _week(people: [_person()]),
       onWrite: (request) {
         writes.add(request);
@@ -556,7 +528,7 @@ void main() {
         });
       },
     );
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
 
     // Tuesday is the newest past day, so its ⋯ is the first one drawn.
     await _tap(tester, find.byTooltip('Day actions'));
@@ -593,7 +565,7 @@ void main() {
           ],
         ),
       );
-      await _tap(tester, _tab('Work Hours'));
+      // General is the landing tab of Work Hours; nothing to tap.
 
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Extra time'), findsOneWidget);
@@ -610,11 +582,11 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      grants: const ['hr.hours.correct'],
+      grants: const ['work_hours.manage'],
       size: const Size(390, 844),
       onClock: (_, _) => _week(people: [_person()]),
     );
-    await _tap(tester, _tab('Work Hours'));
+    // General is the landing tab of Work Hours; nothing to tap.
     await _tap(tester, find.text('Bea Okafor'));
 
     await _tap(tester, find.byTooltip('Shift actions'));
@@ -634,6 +606,77 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  // ── Work Hours, its own module (Jose, 2026-09-24) ─────────────────
+
+  testWidgets('the module draws only the tabs the role holds', (tester) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+
+    expect(find.widgetWithText(ChoiceChip, 'General'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Paid Time Off'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, 'Settings'), findsNothing);
+  });
+
+  testWidgets('General, Paid Time Off and Settings, in that order', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.pto.view', 'work_hours.settings.view'],
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+
+    final labels = tester
+        .widgetList<ChoiceChip>(find.byType(ChoiceChip))
+        .map((chip) => (chip.label as Text).data)
+        .toList();
+
+    expect(labels, ['General', 'Paid Time Off', 'Settings']);
+  });
+
+  /// Jose: "right now only users can set their schedule on their own, i need
+  /// a panel to be able to set it for them as well". The card is on every
+  /// person's week; Edit is there for work_hours.manage and nobody else.
+  testWidgets('the schedule card shows the hours, and Edit only with manage', (
+    tester,
+  ) async {
+    final person = {
+      ..._person(),
+      'schedule': {
+        'monday': {'start': '08:00', 'end': '17:00'},
+      },
+      'schedule_is_personal': false,
+    };
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [person]),
+    );
+
+    expect(find.text('Work schedule'), findsOneWidget);
+    expect(find.text('08:00'), findsOneWidget);
+    expect(
+      find.text('No schedule of their own — these are the business hours.'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(TextButton, 'Edit'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.manage'],
+      onClock: (_, _) => _week(people: [person]),
+    );
+
+    expect(find.widgetWithText(TextButton, 'Edit'), findsOneWidget);
   });
 }
 
@@ -685,24 +728,12 @@ Future<void> _pump(
     MaterialApp(
       theme: EzBiziTheme.light(),
       home: Scaffold(
-        body: HrScreen(api: api, session: session),
+        body: WorkHoursScreen(api: api, session: session),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
-
-Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
-
-List<String> _chips(WidgetTester tester) => tester
-    .widgetList<ChoiceChip>(
-      find.descendant(
-        of: find.byType(TabBarLike),
-        matching: find.byType(ChoiceChip),
-      ),
-    )
-    .map((chip) => (chip.label as Text).data!)
-    .toList();
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   final scrollable = find.ancestor(
@@ -861,6 +892,10 @@ Map<String, Object?> _me({
     'hr.invitations.view',
     'hr.pto.view',
     'hr.contracts.view',
+    // Work Hours' own tabs since it left HR (2026-09-24).
+    'work_hours.view',
+    'work_hours.general.view',
+    'work_hours.all',
     ...grants,
   ],
   'modules': [

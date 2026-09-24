@@ -106,14 +106,15 @@ class OwnershipChartTest extends TestCase
         }
 
         // Control: HR's own grant opens it, so the absence above is this gate.
-        $withHr = $this->userWithRole($alpha, 'HR', [...self::BASE, 'hr.hours.view']);
+        // Work Hours' own tab since it left HR (2026-09-24).
+        $withHr = $this->userWithRole($alpha, 'HR', [...self::BASE, 'work_hours.general.view']);
         $rows = $this->signedInAs($withHr)->getJson(self::PATH)->assertOk()->json('data');
 
         $days = array_filter(array_column($rows, 'work_days'));
         $shifts = array_filter(array_column($rows, 'shift'));
 
         $this->assertNotEmpty($days,
-            'With hr.hours.view the columns must be present, or the assertions '
+            'With work_hours.general.view the columns must be present, or the assertions '
             .'above pass for a column that never exists.');
         $this->assertNotEmpty($shifts);
 

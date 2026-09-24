@@ -21,6 +21,7 @@ use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
 use App\Support\Dashboard\Glances\TrainingGlance;
 use App\Support\Dashboard\Glances\WebManagementGlance;
+use App\Support\Dashboard\Glances\WorkHoursGlance;
 use App\Support\Modules\ModuleAvailability;
 use App\Support\Tenancy\TenantContext;
 
@@ -39,7 +40,8 @@ class GlanceRegistry
      * @var string[]
      */
     public const ORDER = [
-        'hr', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
+        // work_hours beside hr, where its sidebar entry sits (2026-09-24).
+        'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
@@ -170,6 +172,7 @@ class GlanceRegistry
      */
     private const GLANCES = [
         HrGlance::class,
+        WorkHoursGlance::class,
         CustomersGlance::class,
         JobsGlance::class,
         InspectionGlance::class,

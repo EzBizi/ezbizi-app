@@ -18,7 +18,9 @@ class TimeClockShiftPolicy
 {
     public function viewAny(User $user): Response
     {
-        return $user->hasPermission('hr.view')
+        // The Work Hours module since 2026-09-24; it was `hr.view` while the
+        // pane was a tab inside Human Resources.
+        return $user->hasPermission('work_hours.view')
             ? Response::allow()
             : Refusal::permission('view clock in and out times');
     }
@@ -26,13 +28,13 @@ class TimeClockShiftPolicy
     /**
      * Edit or delete somebody's shift (2026-09-23).
      *
-     * `hr.hours.correct`, not `hr.edit`: these are the hours a person is paid
+     * `work_hours.manage` (was `hr.hours.correct`), not `hr.edit`: these are the hours a person is paid
      * for, and rewriting them is a bigger authority than keeping their row —
      * the same split the module already makes for `security.reset`.
      */
     public function correct(User $user): Response
     {
-        return $user->hasPermission('hr.hours.correct')
+        return $user->hasPermission('work_hours.manage')
             ? Response::allow()
             : Refusal::permission('correct clock in and out times');
     }

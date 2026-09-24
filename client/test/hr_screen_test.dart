@@ -48,7 +48,9 @@ import 'package:http/testing.dart';
 /// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. The
 /// Dashboard chip is one glance; certifications is a sentence on that card.
 void main() {
-  testWidgets('the six tabs are drawn, in the owner’s order, and switch', (
+  // Five since 2026-09-24: Paid time off (and Work Hours) left for the
+  // Work Hours module — see work hours' own screen test.
+  testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
   ) async {
     await _pump(tester, _handler());
@@ -58,7 +60,6 @@ void main() {
       'Onboarding',
       'Records',
       'Invitations',
-      'Paid time off',
       'Contracts',
     ]);
 
@@ -983,10 +984,11 @@ Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 Future<void> _openPerson(WidgetTester tester, String name) =>
     _tap(tester, find.text(name).first);
 
-/// A section of the open record. Its own tab strip is the LAST one on screen,
-/// so "Onboarding" here can never be the module's Onboarding chip.
+/// A section of the open record, found in the record's OWN strip by key —
+/// "Onboarding" is also a module chip, and a positional finder would re-aim
+/// silently if another strip were ever drawn below this one.
 Finder _section(String label) => find.descendant(
-  of: find.byType(TabBarLike).last,
+  of: find.byKey(RecordsTab.sectionsKey),
   matching: find.widgetWithText(ChoiceChip, label),
 );
 

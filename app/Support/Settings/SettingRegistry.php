@@ -69,7 +69,9 @@ class SettingRegistry
             'email' => ['Shared inboxes',       $this->email()],
             'customers' => ['Customers',            $this->customers()],
             'jobs' => ['Jobs',                 $this->jobs()],
-            'hr' => ['Human Resources',      $this->hr()],
+            // Clock in and paid time off: every setting this group ever held.
+            // Renamed from Human Resources when the pane left HR (2026-09-24).
+            'work_hours' => ['Work Hours',       $this->hr()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);

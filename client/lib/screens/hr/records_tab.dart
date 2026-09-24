@@ -61,6 +61,11 @@ class RecordsTab extends StatefulWidget {
   final ApiClient api;
   final Session session;
 
+  /// The open record's own section strip, for a test to find by NAME. Found
+  /// by position (`.last`) it would silently re-aim the day any other strip
+  /// is drawn below it, and keep passing against the wrong one.
+  static const sectionsKey = _RecordsTabState.sectionsKey;
+
   @override
   State<RecordsTab> createState() => _RecordsTabState();
 }
@@ -68,6 +73,9 @@ class RecordsTab extends StatefulWidget {
 enum _Showing { everyone, active, deactivated }
 
 class _RecordsTabState extends State<RecordsTab> {
+  /// The open record's section strip. Public through [RecordsTab.sectionsKey].
+  static const sectionsKey = Key('hr.record.sections');
+
   bool _loading = true;
   String? _error;
 
@@ -673,6 +681,9 @@ class _PersonRecordState extends State<_PersonRecord> {
           Material(
             color: Theme.of(context).colorScheme.surface,
             child: TabBarLike(
+              // Keyed so a test can name THIS strip. The HR screen draws its
+              // own module chips above it, and "Onboarding" is on both.
+              key: _RecordsTabState.sectionsKey,
               labels: [for (final s in _sections) (s.$2, s.$3)],
               selected: _sections.indexWhere((s) => s.$1 == _section),
               onSelected: (i) => setState(() => _section = _sections[i].$1),

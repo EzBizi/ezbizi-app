@@ -11,7 +11,7 @@ import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
-import 'package:ezbizi_client/widgets/tab_bar_like.dart';
+import 'package:ezbizi_client/screens/hr/records_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -619,13 +619,13 @@ void main() {
 
     await _tap(tester, find.widgetWithText(ChoiceChip, 'Records'));
     // The list on the left, then her record, then its Onboarding section —
-    // the record's own tab strip is the last one on screen, so this is never
-    // the module's Onboarding chip.
+    // in the record's own strip, by key, so this is never the module's
+    // Onboarding chip.
     await _tap(tester, find.text('Bea Okafor').first);
     await _tap(
       tester,
       find.descendant(
-        of: find.byType(TabBarLike).last,
+        of: find.byKey(RecordsTab.sectionsKey),
         matching: find.widgetWithText(ChoiceChip, 'Onboarding'),
       ),
     );

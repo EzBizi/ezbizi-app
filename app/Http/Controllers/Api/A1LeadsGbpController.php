@@ -46,7 +46,7 @@ class A1LeadsGbpController extends Controller
     /** GET /api/v1/a1leads-gbp */
     public function index(Request $request): JsonResponse
     {
-        $source = $this->source();
+        $source = $this->source($request);
 
         /*
          * The source is answered even when it is unusable, and that is the
@@ -130,7 +130,7 @@ class A1LeadsGbpController extends Controller
      */
     public function reviews(Request $request): JsonResponse
     {
-        $source = $this->source();
+        $source = $this->source($request);
 
         if (! $source['configured'] || ! $source['reachable']) {
             return response()->json(['data' => [
@@ -321,12 +321,12 @@ class A1LeadsGbpController extends Controller
 
     private function replyScopeRefusal(Request $request): ?JsonResponse
     {
-        $source = $this->source();
+        $source = $this->source($request);
         if (! $source['configured']) {
-            return $this->replyError(403, 'wrong_organization', 'This Business Profile does not belong to your organization.');
+            return $this->replyError(403, 'wrong_organization', (string) $source['because']);
         }
 
-        $companyId = config('services.a1leads.reply_company_id');
+        $companyId = config('services.a1leads.company_id');
         if (! is_string($companyId) || $companyId === '') {
             return $this->replyError(503, 'reply_company_not_configured', 'Review replies are not enabled for this company yet.');
         }
@@ -353,7 +353,7 @@ class A1LeadsGbpController extends Controller
      */
     private function replyUnavailableBecause(Request $request): ?string
     {
-        $companyId = config('services.a1leads.reply_company_id');
+        $companyId = config('services.a1leads.company_id');
         $user = $request->user();
 
         if (! $this->replies->configured() || ! is_string($companyId) || $companyId === '') {
@@ -520,25 +520,45 @@ class A1LeadsGbpController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function source(): array
+    private function source(Request $request): array
     {
         $allowed = config('services.a1leads.organization_id');
 
         if (! is_string($allowed) || $allowed === '' || $this->tenant->id() !== $allowed) {
-            return [
-                'configured' => false,
-                'reachable' => false,
-                'captured_at' => null,
-                'installed_at' => null,
-                'generation' => null,
-                'hours_old' => null,
-                'stale' => false,
-                'because' => 'A1 Leads holds one business\'s Business Profile, and this '
-                    .'organization is not the one it belongs to.',
-            ];
+            return $this->notHere('A1 Leads holds one business\'s Business Profile, and this '
+                .'organization is not the one it belongs to.');
+        }
+
+        /*
+         * THE COMPANY, not only the organization. Jose, 2026-09-24: "this
+         * belongs to a-1chimney" - with Everdoors or Crestline Home in view the
+         * tab showed A-1 Chimney's reviews as if they were theirs. The rule is
+         * the one replying already used: the organization view (which contains
+         * A-1 Chimney), A-1 Chimney itself, or one of its franchises. Unnamed
+         * fails CLOSED, for the same reason the organization does.
+         */
+        $company = config('services.a1leads.company_id');
+        $user = $request->user();
+        if (! is_string($company) || $company === '' || $user === null || ! $this->companyInView($user, $company)) {
+            return $this->notHere('These are A-1 Chimney\'s Google reviews. Switch to A-1 Chimney to see them.');
         }
 
         return $this->a1leads->source();
+    }
+
+    /** @return array<string, mixed> */
+    private function notHere(string $because): array
+    {
+        return [
+            'configured' => false,
+            'reachable' => false,
+            'captured_at' => null,
+            'installed_at' => null,
+            'generation' => null,
+            'hours_old' => null,
+            'stale' => false,
+            'because' => $because,
+        ];
     }
 
     /**

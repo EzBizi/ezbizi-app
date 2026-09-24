@@ -23,7 +23,7 @@ class A1LeadsGbpReplyTest extends TestCase
     private function setupBridge(array $tenant): void
     {
         config()->set('services.a1leads.organization_id', $tenant['org']->id);
-        config()->set('services.a1leads.reply_company_id', $tenant['company']->id);
+        config()->set('services.a1leads.company_id', $tenant['company']->id);
         config()->set('services.a1leads.live_reply_url', 'http://127.0.0.1:3457');
         config()->set('services.a1leads.live_reply_key', 'dedicated-reply-key');
         config()->set('services.a1leads.base_url', 'http://127.0.0.1:3456');
@@ -123,13 +123,13 @@ class A1LeadsGbpReplyTest extends TestCase
         Http::fake(['http://127.0.0.1:3456/_info' => Http::response([])]);
         Http::preventStrayRequests();
         $actor = $this->operator($tenant);
-        config()->set('services.a1leads.reply_company_id', '00000000-0000-4000-8000-000000000001');
+        config()->set('services.a1leads.company_id', '00000000-0000-4000-8000-000000000001');
 
         $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp/reply/preflight?googleReviewName='.rawurlencode(self::REVIEW))
             ->assertForbidden();
         Http::assertNotSent(fn ($request) => str_starts_with($request->url(), self::LIVE));
 
-        config()->set('services.a1leads.reply_company_id', $tenant['company']->id);
+        config()->set('services.a1leads.company_id', $tenant['company']->id);
         config()->set('services.a1leads.live_reply_key', null);
         $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp/reply/preflight?googleReviewName='.rawurlencode(self::REVIEW))
             ->assertStatus(503);
@@ -214,13 +214,16 @@ class A1LeadsGbpReplyTest extends TestCase
             ->assertJsonPath('data.reply_available', true)
             ->assertJsonPath('data.reply_unavailable_because', null);
 
-        config()->set('services.a1leads.reply_company_id', '00000000-0000-4000-8000-000000000001');
+        // Another company in view no longer reaches the reply question at
+        // all: the reviews are A-1 Chimney's and are not read (Jose, 24 Sep).
+        config()->set('services.a1leads.company_id', '00000000-0000-4000-8000-000000000001');
         $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp')->assertOk()
+            ->assertJsonPath('data.source.configured', false)
             ->assertJsonPath('data.reply_available', false)
-            ->assertJsonPath('data.reply_unavailable_because', 'company_not_in_view');
+            ->assertJsonPath('data.reviews', []);
 
         // Production today: A-1 Chimney in view, but no live key.
-        config()->set('services.a1leads.reply_company_id', $tenant['company']->id);
+        config()->set('services.a1leads.company_id', $tenant['company']->id);
         config()->set('services.a1leads.live_reply_key', null);
         $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp')->assertOk()
             ->assertJsonPath('data.reply_available', false)
