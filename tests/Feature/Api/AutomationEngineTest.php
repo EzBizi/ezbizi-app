@@ -1807,6 +1807,108 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * HANDING A CUSTOMER ON IS THE AUDITED ACT, DONE AS THE RULE'S AUTHOR.
+     *
+     * "Update a field" refuses `owning_franchise_id` because reassigning
+     * accountability is a separate audited act, and a rule must not do
+     * silently what an endpoint refuses loudly. This step is that act: it goes
+     * through the path the endpoint uses, so the audit entry carries a reason —
+     * the rule's name — and a second firing is a success rather than a failure
+     * that counts toward switching the rule off.
+     */
+    public function test_a_rule_hands_a_customer_on_through_the_audited_path(): void
+    {
+        [$customerId] = $this->makeJob();
+
+        $other = $this->inTenant(fn () => \App\Models\Franchise::create([
+            'organization_id' => $this->org['organization']->id,
+            'company_id'      => $this->org['franchise']->company_id,
+            'name' => 'Second Franchise', 'is_active' => true,
+        ]));
+
+        $rule = $this->automation('customer.created', null, [], $this->org['admin']->id);
+        $customer = $this->inTenant(fn () => Customer::findOrFail($customerId));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'customer.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $run = fn () => $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'reassign_owner', 'franchise' => 'franchise:'.$other->id,
+        ], $event, $customer->fresh(), false, $rule));
+
+        $moved = $run();
+
+        $this->assertTrue($moved['ok'], $moved['detail']);
+        $this->assertSame($other->id, $this->inTenant(fn () => Customer::find($customerId)->owning_franchise_id));
+
+        // The audit entry the endpoint writes, with the RULE as the reason.
+        $audit = $this->inTenant(fn () => AuditEvent::where('action', 'customer.owner_reassigned')->latest('id')->first());
+        $this->assertNotNull($audit, 'the move was not audited');
+        $this->assertStringContainsString($rule->name, (string) ($audit->metadata['reason'] ?? ''));
+
+        // And again: already there is a success, not a failure.
+        $again = $run();
+        $this->assertTrue($again['ok'], $again['detail']);
+        $this->assertStringContainsString('already owns', $again['detail']);
+    }
+
+    /**
+     * NOBODY CAN MOVE A CUSTOMER BY RULE THAT THEY COULD NOT MOVE BY HAND.
+     *
+     * The step asks the endpoint's own policy about the rule's author. An
+     * author without `customers.edit` is refused in the policy's words, and
+     * the customer stays where it was — asserted on the COLUMN, since a
+     * refusal sentence above an unrefused write is the failure that matters.
+     */
+    public function test_an_author_who_could_not_move_it_cannot_move_it_by_rule(): void
+    {
+        [$customerId] = $this->makeJob();
+
+        $other = $this->inTenant(fn () => \App\Models\Franchise::create([
+            'organization_id' => $this->org['organization']->id,
+            'company_id'      => $this->org['franchise']->company_id,
+            'name' => 'Second Franchise', 'is_active' => true,
+        ]));
+
+        $viewer = $this->inTenant(fn () => User::create([
+            'organization_id' => $this->org['organization']->id,
+            'role_id'         => Role::create([
+                'organization_id'  => $this->org['organization']->id,
+                'name'             => 'Looks only',
+                'is_administrator' => false,
+            ])->id,
+            'name' => 'Viewer', 'email' => 'viewer@alpha.test',
+            'password' => 'a-real-password', 'is_active' => true,
+        ]));
+
+        $rule = $this->automation('customer.created', null, [], $viewer->id);
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'customer.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $refused = $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'reassign_owner', 'franchise' => 'franchise:'.$other->id,
+        ], $event, Customer::findOrFail($customerId), false, $rule));
+
+        $this->assertFalse($refused['ok']);
+        $this->assertSame(
+            $this->org['franchise']->id,
+            $this->inTenant(fn () => Customer::find($customerId)->owning_franchise_id),
+            'a refused move still moved the customer',
+        );
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

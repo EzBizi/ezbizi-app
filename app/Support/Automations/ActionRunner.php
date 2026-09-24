@@ -34,6 +34,8 @@ use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
 use App\Models\Role;
+use App\Support\Customers\ReassignCustomerOwner;
+use Illuminate\Support\Facades\Gate;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Audit\AuditLogger;
@@ -372,6 +374,7 @@ class ActionRunner
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
             'notify' => $this->notify($action, $event, $subject),
             'notify_administrators' => $this->notifyAdministrators($action, $event, $subject),
+            'reassign_owner' => $this->reassignOwner($action, $subject, $automation),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2243,6 +2246,75 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Hand the customer to another franchise — the audited act, not a field.
+     *
+     * "Update a field" refuses `owning_franchise_id` and says why: reassigning
+     * accountability is a separate audited act (§5.2), and a rule must not do
+     * silently what an endpoint refuses loudly. This IS that act — it goes
+     * through ReassignCustomerOwner, the one path the endpoint uses too, so the
+     * audit entry, the `customer.owner_reassigned` event and any check added to
+     * it later all apply to a rule exactly as they do to a person.
+     *
+     * AS THE RULE'S AUTHOR. A rule fires with nobody at a screen, so the same
+     * policy the endpoint asks about the requester is asked about whoever wrote
+     * the rule. Somebody cannot hand a customer to a franchise they could not
+     * have handed it to themselves by writing a rule to do it.
+     *
+     * ALREADY THERE IS A SUCCESS. A rule firing twice on one customer finds it
+     * already moved the second time; failing that would count toward the five
+     * that switch a rule off, for a rule doing exactly what it was asked.
+     */
+    private function reassignOwner(array $action, ?Model $subject, ?Automation $automation): array
+    {
+        $type = 'reassign_owner';
+
+        if (! $subject instanceof Customer) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This step only works on a customer, and this rule is about something else.'];
+        }
+
+        $target = preg_replace('/^franchise:/', '', (string) ($action['franchise'] ?? ''));
+        $franchise = $target === '' ? null : Franchise::query()->find($target);
+
+        if ($franchise === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'The franchise this step hands customers to no longer exists.'];
+        }
+
+        $author = $automation?->activeVersion?->created_by !== null
+            ? User::query()->find($automation->activeVersion->created_by)
+            : null;
+
+        if ($author === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule no longer works here, so the customer was '
+                    .'not moved. Open the rule and save it again to take it over.'];
+        }
+
+        $decision = Gate::forUser($author)->inspect('reassignOwner', [$subject, $franchise]);
+
+        if ($decision->denied()) {
+            return ['type' => $type, 'ok' => false, 'detail' => (string) $decision->message()];
+        }
+
+        try {
+            app(ReassignCustomerOwner::class)(
+                $subject,
+                $franchise,
+                // THE RULE IS THE REASON. "Who was accountable in March" has to
+                // stay answerable, and so does "why" — a person gives one, and
+                // a rule's is its name.
+                'Moved by the automation "'.($automation?->name ?? 'unnamed').'".',
+            );
+        } catch (InvalidArgumentException) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => "{$franchise->name} already owns this customer."];
+        }
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Handed the customer to {$franchise->name}."];
+    }
+
     /**
      * A notification that only the organization's administrators receive.
      *

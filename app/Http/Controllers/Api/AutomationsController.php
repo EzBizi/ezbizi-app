@@ -81,6 +81,7 @@ class AutomationsController extends Controller
         'webhook',
         'notify',
         'notify_administrators',
+        'reassign_owner',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -1867,6 +1868,9 @@ class AutomationsController extends Controller
             // who receives it is the point of the step, so it is not a choice.
             $type('notify_administrators', 'Notify the administrators', true, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
+            ]),
+            $type('reassign_owner', 'Hand the customer to another franchise', true, [
+                $parameter('franchise', 'Which franchise', 'franchise'),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

@@ -293,6 +293,7 @@ class _ActionRow {
     'boolean',
     'date',
     'field',
+    'franchise',
     'people',
     'person',
     'person_or_field',
@@ -2606,6 +2607,28 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // shipped with.
           // A GUIDE OR A TEST, one choice. Published only — the server
           // offers nothing else, because assigning a draft saves and refuses.
+          // ONE FRANCHISE, from the places this person can reach — the same
+          // list "Where it applies" uses, narrowed to franchises, because a
+          // customer is owned by a franchise and never by a company.
+          else if (definition.parameters[i].kind == 'franchise')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              options: [
+                for (final place in widget.catalogue.places)
+                  if (place.key.startsWith('franchise:'))
+                    SearchOption<String>(value: place.key, label: place.label),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'training')
             SearchPickerField<String>(
               value: row.parameter(definition.parameters[i].key).text.isEmpty

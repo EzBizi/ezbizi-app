@@ -11,6 +11,8 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Customers\ReassignCustomerOwner;
+use InvalidArgumentException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -279,31 +281,15 @@ class CustomersController extends Controller
 
         $this->authorize('reassignOwner', [$customer, $newOwner]);
 
-        if ($newOwner->is($customer->owningFranchise)) {
+        // THE SAME ACT a rule performs — one path, so the two cannot drift.
+        // See ReassignCustomerOwner for why that matters here in particular.
+        try {
+            app(ReassignCustomerOwner::class)($customer, $newOwner, $input['reason'] ?? null);
+        } catch (InvalidArgumentException $refused) {
             return response()->json([
-                'message' => 'That franchise already owns this customer.',
+                'message' => $refused->getMessage(),
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
-
-        $previous = $customer->owningFranchise;
-
-        DB::transaction(function () use ($customer, $newOwner, $previous, $input) {
-            $customer->owning_franchise_id = $newOwner->getKey();
-            $customer->save();
-
-            // Names as well as ids: the franchise may be renamed or deactivated
-            // later, and "who was accountable in March" has to stay answerable.
-            $this->audit->log('customer.owner_reassigned', $customer, metadata: [
-                'from'   => ['id' => $previous?->getKey(), 'name' => $previous?->name],
-                'to'     => ['id' => $newOwner->getKey(), 'name' => $newOwner->name],
-                'reason' => $input['reason'] ?? null,
-            ]);
-
-            $this->events->emit('customer.owner_reassigned', $customer, [
-                'before' => ['owning_franchise_id' => $previous?->getKey()],
-                'after'  => ['owning_franchise_id' => $newOwner->getKey()],
-            ]);
-        });
 
         return response()->json(['data' => $this->present($customer->fresh(), detailed: true)]);
     }
