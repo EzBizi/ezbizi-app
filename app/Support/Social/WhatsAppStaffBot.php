@@ -130,13 +130,25 @@ final class WhatsAppStaffBot
      */
     private function menu(WhatsAppNumber $number, string $to, ?string $lead = null): void
     {
-        $body = trim(($lead !== null ? $lead."\n\n" : '').'What do you need?');
+        /*
+         * Jose, 2026-09-24, on the first real handset: "something more
+         * professional, not just 'What do you need'."
+         *
+         * With a lead line - "No location matched" - the welcome is dropped:
+         * greeting somebody whose search just failed reads as the bot not
+         * having noticed. The short prompt carries on from the explanation.
+         */
+        $body = $lead !== null
+            ? $lead."\n\nPlease choose an option below."
+            : "Welcome to the A1 Chimney staff assistant.\n\n"
+                .'Choose an option below for codes and standards, training resources, '
+                .'or branch contact details.';
 
         $this->cloud->replyFreeForm($number, $to, [
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'list',
-                'header' => ['type' => 'text', 'text' => 'A1 Chimney'],
+                'header' => ['type' => 'text', 'text' => 'A1 Chimney Bot'],
                 'body' => ['text' => $body],
                 'footer' => ['text' => 'Text MENU any time'],
                 'action' => [

@@ -130,6 +130,13 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertSame('interactive', $this->sent[0]['type']);
         $this->assertSame('list', $this->sent[0]['interactive']['type']);
 
+        // Jose's wording from the first real handset: the header names the
+        // bot, and the greeting is not the bare "What do you need?".
+        $this->assertSame('A1 Chimney Bot', $this->sent[0]['interactive']['header']['text']);
+        $this->assertStringContainsString('Welcome to the A1 Chimney staff assistant',
+            $this->sent[0]['interactive']['body']['text']);
+        $this->assertStringNotContainsString('What do you need', $this->sent[0]['interactive']['body']['text']);
+
         $ids = collect($this->sent[0]['interactive']['action']['sections'])
             ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
         $this->assertSame(
@@ -349,7 +356,10 @@ class WhatsAppStaffBotTest extends TestCase
 
         // One message, not two: the explanation rides in the menu's body.
         $this->assertCount(1, $this->sent);
-        $this->assertStringContainsString('No location matched "Atlantis"', $this->sent[0]['interactive']['body']['text']);
+        $body = $this->sent[0]['interactive']['body']['text'];
+        $this->assertStringContainsString('No location matched "Atlantis"', $body);
+        // No cheerful welcome straight after a failed search.
+        $this->assertStringNotContainsString('Welcome', $body);
     }
 
     public function test_the_replies_are_recorded_as_a_conversation(): void
