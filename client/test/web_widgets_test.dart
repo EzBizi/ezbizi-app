@@ -162,6 +162,14 @@ void main() {
               'google_map': {
                 'default': {'height': 320, 'zoom': 14},
               },
+              'review_faces': {
+                'default': {
+                  'title': 'How was your experience?',
+                  'text': 'Tap a face to let us know.',
+                  'happy_label': 'Great!',
+                  'sad_label': 'Not so great',
+                },
+              },
             },
             'style': style ??
                 const {
@@ -759,6 +767,21 @@ void main() {
 
     expect(find.text('Ring the sweeps'), findsWidgets);
     expect(find.text('Call us today'), findsNothing);
+  });
+
+  /// Jose, 2026-09-24: the smiley widget on a-1chimney.com/reviews.
+  testWidgets('review faces has a card and previews both faces', (
+    tester,
+  ) async {
+    await pump(
+      tester,
+      permissions: const ['web_management.view'],
+      open: 'Review faces',
+    );
+
+    expect(find.text('How was your experience?'), findsWidgets);
+    expect(find.text('Great!'), findsWidgets);
+    expect(find.text('Not so great'), findsWidgets);
   });
 
   testWidgets('the phone button previews at the size set', (tester) async {

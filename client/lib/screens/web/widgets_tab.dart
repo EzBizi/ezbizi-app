@@ -2105,6 +2105,7 @@ const Map<String, IconData> _renderedIcons = {
   'contact_info': Icons.contact_page_outlined,
   'cta': Icons.ads_click_outlined,
   'phone_box': Icons.phone_outlined,
+  'review_faces': Icons.sentiment_satisfied_outlined,
 };
 
 /// A widget as a card: what it is, what it is set to, and a way in.
@@ -2287,6 +2288,28 @@ const List<_Rendered> _renderedCatalogue = [
       _Text('label', 'Line above it', hint: 'Optional.', max: 60),
       _Flag('icon', 'Show an icon', true),
       _Flag('link', 'Tapping it dials', true),
+    ],
+  ),
+  _Rendered(
+    'review_faces',
+    'Review faces',
+    'A happy and a sad face. Happy goes to your review link; sad opens a '
+        'private form that arrives in Leads.',
+    [
+      _Text('title', 'Heading'),
+      _Text('text', 'Line under it', max: 160),
+      _Text('happy_label', 'Happy face label', max: 30),
+      _Text('sad_label', 'Sad face label', max: 30),
+      _Text('happy_title', 'After happy: heading'),
+      _Text('happy_text', 'After happy: line', max: 160),
+      _Text('button', 'Review button', max: 60),
+      _Text('sad_title', 'After sad: heading'),
+      _Text('sad_text', 'After sad: line', max: 160),
+      _Text('submit', 'Send button', max: 40),
+      _Text('thanks', 'Once sent', max: 200),
+      _Flag('ask_public', 'After a complaint, still offer the review link',
+          true),
+      _Text('public_prompt', 'Wording of that offer', max: 200),
     ],
   ),
   _Rendered(

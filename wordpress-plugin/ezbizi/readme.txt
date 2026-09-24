@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.14.0
+Stable tag: 1.15.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,14 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.15.0 =
+* NEW: [ezbizi_review_faces], and an Elementor widget for it. A happy and
+  a sad face: the happy one sends the visitor to your review link, the sad
+  one opens a short form that arrives in EzBizi as a lead instead of on
+  Google. Set up in EzBizi under Web Management > Widgets.
+* FIXED: the Elementor widgets for [ezbizi_contact_info], [ezbizi_cta] and
+  [ezbizi_phone_box] that 1.13.0 described were missing. They are there now.
 
 = 1.14.0 =
 * NEW: the contact form and the chat carry a box, unticked, asking

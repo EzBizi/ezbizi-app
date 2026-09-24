@@ -130,6 +130,23 @@ function ezbizi_preset_fallback($widget) {
         ),
     );
 
+    // ponytail: copied from WidgetPresets::defaults(), like the four above.
+    $fallbacks['review_faces'] = array(
+        'title' => 'How was your experience?',
+        'text' => 'Tap a face to let us know.',
+        'happy_label' => 'Great!',
+        'sad_label' => 'Not so great',
+        'happy_title' => 'So glad we hit the mark!',
+        'happy_text' => 'Tell us what we did well.',
+        'button' => 'Leave a review on Google',
+        'sad_title' => 'We are sorry we missed the mark',
+        'sad_text' => 'Tell us what went wrong and how we can make it right.',
+        'submit' => 'Send feedback',
+        'thanks' => 'Thank you! We have received your feedback and will be in touch shortly.',
+        'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
+        'ask_public' => true,
+    );
+
     return isset($fallbacks[$widget]) ? $fallbacks[$widget] : array();
 }
 
@@ -1085,6 +1102,112 @@ function ezbizi_phone_box_shortcode($atts) {
     return $out . '</div></div>';
 }
 
+// ── Review faces ────────────────────────────────────────────────────
+
+/**
+ * [ezbizi_review_faces] — A1 Tools' smiley widget, answered from EzBizi.
+ *
+ * Happy sends the visitor to the site's `review_link`. Sad opens a short form
+ * that posts to the same public endpoint as [ezbizi_form], so the complaint
+ * lands in Leads with this site's host on it instead of on Google.
+ *
+ * With no `review_link` the happy face still works: it says thank you instead
+ * of offering a button to nowhere.
+ */
+function ezbizi_review_faces_shortcode($atts) {
+    $p = ezbizi_preset('review_faces', $atts);
+    $key = ezbizi_public_key();
+
+    if ($key === '') {
+        return ezbizi_widget_silent(
+            __('EzBizi: this site has no browser key yet. Click EzBizi in the sidebar.', 'ezbizi')
+        );
+    }
+
+    $t = function ($k) use ($p) {
+        return esc_html(isset($p[$k]) ? (string) $p[$k] : '');
+    };
+    $link = ezbizi_value('review_link');
+    $review = $link === '' ? '' : '<a class="ezbizi-rf-btn" href="' . esc_url($link)
+        . '" target="_blank" rel="noopener noreferrer">' . $t('button') . '</a>';
+
+    $id = ezbizi_widget_id('ezbizi-rf');
+    $s = '#' . $id;
+    $out = '<style>' . $s . '{text-align:center;max-width:560px;margin:0 auto}'
+        . $s . ' .ezbizi-rf-faces{display:flex;justify-content:center;gap:32px;margin:16px 0}'
+        . $s . ' .ezbizi-rf-face{background:none;border:0;cursor:pointer;padding:8px;color:inherit;font:inherit}'
+        . $s . ' .ezbizi-rf-face svg{display:block;margin:0 auto 6px;transition:transform .15s}'
+        . $s . ' .ezbizi-rf-face:hover svg,' . $s . ' .ezbizi-rf-face:focus svg{transform:scale(1.1)}'
+        . $s . ' .ezbizi-rf-btn{display:inline-block;padding:12px 22px;border:0;border-radius:6px;background:#22B24C;color:#fff;text-decoration:none;font-weight:700;cursor:pointer}'
+        . $s . ' form{text-align:left}'
+        . $s . ' label{display:block;margin:10px 0 4px;font-weight:600}'
+        . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font:inherit}'
+        . $s . ' .ezbizi-rf-hp{position:absolute;left:-9999px}'
+        . '</style>';
+
+    // A face drawn rather than an emoji, so it looks the same on every phone.
+    $face = function ($happy) {
+        $colour = $happy ? '#22B24C' : '#E23D4B';
+        $mouth = $happy ? 'M20 38 Q32 50 44 38' : 'M20 46 Q32 34 44 46';
+
+        return '<svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true" focusable="false">'
+            . '<circle cx="32" cy="32" r="29" fill="none" stroke="' . $colour . '" stroke-width="4"/>'
+            . '<circle cx="23" cy="26" r="3.5" fill="' . $colour . '"/><circle cx="41" cy="26" r="3.5" fill="' . $colour . '"/>'
+            . '<path d="' . $mouth . '" fill="none" stroke="' . $colour . '" stroke-width="4" stroke-linecap="round"/></svg>';
+    };
+
+    $field = function ($name, $label, $type) use ($id) {
+        $fid = $id . '-' . $name;
+        $input = $type === 'textarea'
+            ? '<textarea id="' . $fid . '" name="' . $name . '" rows="4" required></textarea>'
+            : '<input id="' . $fid . '" name="' . $name . '" type="' . $type . '" required />';
+
+        return '<label for="' . $fid . '">' . esc_html($label) . '</label>' . $input;
+    };
+
+    $out .= '<div class="ezbizi-review-faces" id="' . esc_attr($id) . '">'
+        . '<div data-step="pick"><h3>' . $t('title') . '</h3><p>' . $t('text') . '</p>'
+        . '<div class="ezbizi-rf-faces">'
+        . '<button type="button" class="ezbizi-rf-face" data-go="sad">' . $face(false) . $t('sad_label') . '</button>'
+        . '<button type="button" class="ezbizi-rf-face" data-go="happy">' . $face(true) . $t('happy_label') . '</button>'
+        . '</div></div>'
+        . '<div data-step="happy" hidden><h3>' . $t('happy_title') . '</h3><p>' . $t('happy_text') . '</p>'
+        . ($review === '' ? '<p>' . $t('thanks') . '</p>' : $review) . '</div>'
+        . '<div data-step="sad" hidden><h3>' . $t('sad_title') . '</h3><p>' . $t('sad_text') . '</p>'
+        . '<form novalidate>'
+        . $field('name', 'Your name', 'text')
+        . $field('phone', 'Phone', 'tel')
+        . $field('email', 'Email', 'email')
+        . $field('feedback', 'What happened?', 'textarea')
+        . '<input class="ezbizi-rf-hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />'
+        . '<p><button type="submit" class="ezbizi-rf-btn">' . $t('submit') . '</button></p>'
+        . '<p class="ezbizi-rf-note" role="status" aria-live="polite"></p></form></div>'
+        . '<div data-step="sent" hidden><p>' . $t('thanks') . '</p>'
+        . ($review !== '' && ! empty($p['ask_public']) ? '<p>' . $t('public_prompt') . '</p>' . $review : '')
+        . '</div></div>';
+
+    $out .= "<script>(function(){
+var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
+function show(n){Array.prototype.forEach.call(w.querySelectorAll('[data-step]'),function(d){d.hidden=d.getAttribute('data-step')!==n;});}
+Array.prototype.forEach.call(w.querySelectorAll('[data-go]'),function(b){b.addEventListener('click',function(){show(b.getAttribute('data-go'));});});
+var f=w.querySelector('form'),note=w.querySelector('.ezbizi-rf-note');
+f.addEventListener('submit',function(e){
+  e.preventDefault();
+  if(f.elements.website.value!==''){show('sent');return;}
+  if(!f.checkValidity()){f.reportValidity();return;}
+  var b=f.querySelector('button');b.disabled=true;
+  var g=function(n){return f.elements[n].value;};
+  var v={key:" . wp_json_encode($key) . ",name:g('name'),email:g('email'),phone:g('phone'),page_url:location.href,
+    fields:{'Rating':'Not happy','Name':g('name'),'Phone':g('phone'),'Email':g('email'),'What happened?':g('feedback')}};
+  fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(v)})
+  .then(function(r){if(!r.ok)throw new Error(r.status);show('sent');})
+  .catch(function(){note.textContent='Sorry, that did not send. Please try again or call us.';b.disabled=false;});
+});
+})();</script>";
+
+    return $out;
+}
+
 add_action('init', function () {
     add_shortcode('ezbizi_social_links', 'ezbizi_social_links_shortcode');
     add_shortcode('ezbizi_google_map', 'ezbizi_google_map_shortcode');
@@ -1094,4 +1217,5 @@ add_action('init', function () {
     add_shortcode('ezbizi_contact_info', 'ezbizi_contact_info_shortcode');
     add_shortcode('ezbizi_cta', 'ezbizi_cta_shortcode');
     add_shortcode('ezbizi_phone_box', 'ezbizi_phone_box_shortcode');
+    add_shortcode('ezbizi_review_faces', 'ezbizi_review_faces_shortcode');
 });

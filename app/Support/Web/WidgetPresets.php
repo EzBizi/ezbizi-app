@@ -60,6 +60,9 @@ final class WidgetPresets
         'contact_info',
         'cta',
         'phone_box',
+        // Jose, 2026-09-24: "we have a widget on a1tools that needs a ezbizi
+        // counterpart asap" — the two faces on a-1chimney.com/reviews.
+        'review_faces',
     ];
 
     public const DEFAULT = 'default';
@@ -87,6 +90,10 @@ final class WidgetPresets
         'hours_table',
         'google_map',
         'post_title',
+        'contact_info',
+        'cta',
+        'phone_box',
+        'review_faces',
     ];
 
     /**
@@ -200,6 +207,33 @@ final class WidgetPresets
                 'link' => true,
                 'label' => '',
             ],
+            /*
+             * A1 Tools' smiley widget: a happy face sends somebody to the
+             * site's `review_link`, a sad one opens a form whose answer lands
+             * in Leads rather than on Google. The wording defaults are the
+             * ones a-1chimney.com/reviews shows today.
+             *
+             * No link setting here: the link is a business fact, and it lives
+             * in `review_link` with the others.
+             */
+            'review_faces' => [
+                'title' => 'How was your experience?',
+                'text' => 'Tap a face to let us know.',
+                'happy_label' => 'Great!',
+                'sad_label' => 'Not so great',
+                'happy_title' => 'So glad we hit the mark!',
+                'happy_text' => 'Tell us what we did well.',
+                'button' => 'Leave a review on Google',
+                'sad_title' => 'We are sorry we missed the mark',
+                'sad_text' => 'Tell us what went wrong and how we can make it right.',
+                'submit' => 'Send feedback',
+                'thanks' => 'Thank you! We have received your feedback and will be in touch shortly.',
+                // After the private feedback is sent. A switch rather than
+                // "leave it empty": an emptied box arrives as null and comes
+                // back as this default, so empty cannot mean anything.
+                'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
+                'ask_public' => true,
+            ],
         ];
     }
 
@@ -243,6 +277,12 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80],
         'phone_box' => ['label' => 60],
+        'review_faces' => [
+            'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
+            'happy_title' => 80, 'happy_text' => 160, 'button' => 60,
+            'sad_title' => 80, 'sad_text' => 160, 'submit' => 40,
+            'thanks' => 200, 'public_prompt' => 200,
+        ],
     ];
 
     /** Numbers, with the range a website can survive. */
