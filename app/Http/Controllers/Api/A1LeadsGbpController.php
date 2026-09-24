@@ -97,10 +97,15 @@ class A1LeadsGbpController extends Controller
         }
 
         $board = $this->board();
+        $replyBecause = $this->replyUnavailableBecause($request);
 
         return response()->json(['data' => [
             'source' => $source,
-            'reply_available' => $this->replyAvailable($request),
+            'reply_available' => $replyBecause === null,
+            // WHY there is no Reply button, so the screen names the real cause:
+            // "not switched on" is a deployment waiting on its key, "company
+            // not in view" is something the reader can change themselves.
+            'reply_unavailable_because' => $replyBecause,
             'summary' => $summary,
             'reviews' => $this->withBoard($this->withReplyReceipts($reviews['data'] ?? []), $board),
             'meta' => $reviews['meta'] ?? null,
@@ -336,23 +341,32 @@ class A1LeadsGbpController extends Controller
     }
 
     /**
-     * Whether this person, here, now, may be OFFERED a Reply button.
+     * Why this person, here, now, may NOT be offered a Reply button - or null
+     * when they may.
      *
      * Every condition the endpoints enforce, so the screen never draws a button
      * whose only outcome is a refusal: the live connection configured, the
      * company named, the A1Leads GBP permission held, and A-1 Chimney the
-     * company in view.
+     * company in view. Returned as a reason rather than a bool because the
+     * screen used to blame the company in view for all of them - including
+     * for somebody who had A-1 Chimney in view while replying was simply off.
      */
-    private function replyAvailable(Request $request): bool
+    private function replyUnavailableBecause(Request $request): ?string
     {
         $companyId = config('services.a1leads.reply_company_id');
         $user = $request->user();
 
-        return $this->replies->configured()
-            && is_string($companyId) && $companyId !== ''
-            && $user !== null
-            && $user->hasPermission('a1leads_gbp.view')
-            && $this->companyInView($user, $companyId);
+        if (! $this->replies->configured() || ! is_string($companyId) || $companyId === '') {
+            return 'not_switched_on';
+        }
+        if ($user === null || ! $user->hasPermission('a1leads_gbp.view')) {
+            return 'no_permission';
+        }
+        if (! $this->companyInView($user, $companyId)) {
+            return 'company_not_in_view';
+        }
+
+        return null;
     }
 
     private function companyInView(User $user, string $companyId): bool

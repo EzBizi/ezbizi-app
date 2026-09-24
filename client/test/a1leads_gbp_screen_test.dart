@@ -288,6 +288,17 @@ void main() {
     expect(find.textContaining('needs A-1 Chimney as the company in view'), findsOneWidget);
   });
 
+  /// Replying switched off is NOT blamed on the company in view - the
+  /// sentence production showed everyone, A-1 Chimney in view or not.
+  testWidgets('replying switched off says so, not "change company"', (tester) async {
+    await _pump(tester, _handler(replyBecause: 'not_switched_on'));
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('not switched on yet'), findsOneWidget);
+    expect(find.textContaining('company in view'), findsNothing);
+  });
+
   /// A card that DOES carry a phone brings the Contact column back.
   ///
   /// The discriminating half of the test above: without it, a table that had
@@ -546,6 +557,7 @@ MockClientHandler _handler({
   bool withPhone = false,
   bool boardDown = false,
   bool replyAvailable = false,
+  String? replyBecause = 'company_not_in_view',
   bool replyGranted = false,
   List<Uri>? seen,
   List<http.Request>? requests,
@@ -658,6 +670,7 @@ MockClientHandler _handler({
         'data': {
           'source': source,
           'reply_available': replyAvailable,
+          'reply_unavailable_because': replyAvailable ? null : replyBecause,
           'summary': usable ? {'total': 13169} : null,
           'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
           'meta': {'total': total},

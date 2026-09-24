@@ -105,6 +105,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
 
   /// The server's answer to "may this person reply, here, now".
   bool _replyAvailable = false;
+  String? _replyBecause;
 
   /// The review whose reply editor is open, by its Google name.
   String? _activeReplyName;
@@ -206,6 +207,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? const {};
       _replyAvailable = data['reply_available'] == true &&
           widget.session.me?.can('a1leads_gbp.view') == true;
+      _replyBecause = data['reply_unavailable_because'] as String?;
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -428,15 +430,19 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// board being unreadable is a fault somebody can fix. Contact being empty is
   /// a decision on A1 Leads' side: its feed for EzBizi carries only a saved
   /// customer match, never the name-guessing A1 Tools does, and on 24 September
-  /// that left the phone and email empty on all 387 cards. And replying lives
-  /// in A1 Tools, because this connection reads and does not write.
+  /// that left the phone and email empty on all 387 cards. And when there is
+  /// no Reply button, the server's own reason: replying not switched on is a
+  /// deployment waiting on its key, A-1 Chimney not in view is something the
+  /// reader can change. No reason, no sentence - never a guessed one.
   Widget _tableNote(ThemeData theme) {
     final lines = [
       if (_board['available'] == false)
         'Status and Notes could not be read from A1 Leads: ${_board['because'] ?? 'no reason given'}.',
       if (_board['available'] == true && !_anyContact)
         'Contact is empty because A1 Leads does not send customer phone or email to EzBizi yet.',
-      if (!_replyAvailable)
+      if (!_replyAvailable && _replyBecause == 'not_switched_on')
+        'Replying from EzBizi is not switched on yet.',
+      if (!_replyAvailable && _replyBecause == 'company_not_in_view')
         'Replying here needs A-1 Chimney as the company in view.',
     ];
 

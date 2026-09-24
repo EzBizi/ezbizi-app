@@ -193,6 +193,41 @@ class A1LeadsGbpReplyTest extends TestCase
     }
 
     /**
+     * The tab says WHY there is no Reply button. Replying switched off and
+     * A-1 Chimney not in view are different causes with different remedies,
+     * and the screen once named the second for both.
+     */
+    public function test_the_tab_names_why_replying_is_unavailable(): void
+    {
+        $tenant = $this->provisionTenant('Juliet');
+        $this->setupBridge($tenant);
+        Http::fake([
+            'http://127.0.0.1:3456/_info' => Http::response(['version' => '1.10.1']),
+            'http://127.0.0.1:3456/api/v1/reviews/summary' => Http::response(['data' => ['total' => 0]]),
+            'http://127.0.0.1:3456/api/v1/reviews*' => Http::response(['data' => [], 'meta' => ['total' => 0]]),
+            'http://127.0.0.1:3456/api/v1/gbp/health' => Http::response(['data' => []]),
+            'http://127.0.0.1:3456/api/v1/gbp/locations' => Http::response(['data' => []]),
+        ]);
+        $actor = $this->operator($tenant);
+
+        $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp')->assertOk()
+            ->assertJsonPath('data.reply_available', true)
+            ->assertJsonPath('data.reply_unavailable_because', null);
+
+        config()->set('services.a1leads.reply_company_id', '00000000-0000-4000-8000-000000000001');
+        $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp')->assertOk()
+            ->assertJsonPath('data.reply_available', false)
+            ->assertJsonPath('data.reply_unavailable_because', 'company_not_in_view');
+
+        // Production today: A-1 Chimney in view, but no live key.
+        config()->set('services.a1leads.reply_company_id', $tenant['company']->id);
+        config()->set('services.a1leads.live_reply_key', null);
+        $this->signedInAs($actor)->getJson('/api/v1/a1leads-gbp')->assertOk()
+            ->assertJsonPath('data.reply_available', false)
+            ->assertJsonPath('data.reply_unavailable_because', 'not_switched_on');
+    }
+
+    /**
      * An attempt WITHOUT the permission is refused before anything is sent -
      * and is audited, which a route-middleware refusal could not be.
      */
