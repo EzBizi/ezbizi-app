@@ -101,7 +101,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// find the four that need doing among the day's reviews. The board is the
   /// one somebody READS, because a review is prose and a column cuts it off
   /// mid-sentence. Neither replaces the other, which is why A1 Tools has both.
-  bool _asTable = false;
+  ///
+  /// The TABLE opens first - Jose, 2026-09-24: "table view should be the
+  /// default". Under [_tableFrom] wide there is no table, so a phone still
+  /// opens on the board.
+  bool _asTable = true;
 
   /// The server's answer to "may this person reply, here, now".
   bool _replyAvailable = false;
