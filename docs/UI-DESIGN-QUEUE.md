@@ -2958,6 +2958,44 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 24 · Jobs and Customers · how the lists look — **DRAWN, awaiting Jose**
+
+`docs/previews/jobs-customers-list-layouts.html`. Jose, 2026-09-24, with a screenshot of each:
+
+> *"i'd like to change the view of how jobs and customers are displayed, see what you can come up
+> with"*
+
+Desktop **1** a table · **2** the list beside the record (HR Records' shape) · **3** grouped by day
+and by letter. Phone **4** two-line rows · **5** pinned headings · **6** start from a count.
+
+**Measured on the box before drawing, because the screenshots mislead about the data:**
+
+- **Status is the most informative field, not a constant.** Every row he photographed said
+  *Submitted*, but that is the top of a date-descending sort. This organization's 8,152 jobs are
+  Pending 520 · Submitted 1,085 · In progress 801 · Done pending approval 1,997 · Done 2,256 ·
+  Canceled 1,493 — the six sum exactly to the header's total. So every option gives status its own
+  colour and counts it.
+- **The default order puts the least relevant jobs first.** `JobsController::index` sorts
+  `COALESCE(scheduled_for, created_at) DESC`, so jobs booked months ahead (April 2027, in his screenshot) head the list
+  while ~560 in the next seven days sit below them. Options 1, 2, 4 and 6 add an *Upcoming · Past*
+  control that opens on today; 3 and 5 group by day. **Any of these REORDERS the list** — say so in
+  the build, per the grouping rule above.
+- **No technician column, deliberately:** `performed_by_user_id` and `assigned_role_id` are null on
+  every one of the 8,177 jobs. A column that is empty for everybody is chrome.
+- **Two-thirds of jobs have no amount** (2,679 of 8,177 are non-zero). Drawn as a muted `—`, not
+  `USD 0.00` — a missing measurement is not a zero one.
+- **Customers:** city is filled on 7,584 of 7,688 but is NOT in the list payload (`present()` only
+  sends the address when `detailed`), so the City column is a two-field server change. 82% have
+  exactly one job; 885 are repeat customers and 502 have none, which is what the *Repeat* and *No
+  jobs yet* chips count.
+- **The owning franchise stays on every customer row, company included** — `customers_screen.dart`'s
+  docblock gives the reason (a search escapes the view scope, and two companies may each have a
+  *Florida*). Drawn with the company muted so the franchise is what reads.
+
+**Not in any option, and why:** call/text buttons on phone rows (not asked for), and per-status
+colours for statuses an organization adds later — the build must map by the status VALUE and fall
+back to neutral, never guess a colour for a label it does not know.
+
 ### 23 · Settings · Integrations, as cards — **DRAWN, awaiting Jose**
 
 `docs/previews/integrations-layouts.html`. Jose, 2026-09-22:

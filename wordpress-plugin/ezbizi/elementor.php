@@ -56,6 +56,10 @@ function ezbizi_register_elementor_widgets($widgets_manager) {
     $widgets_manager->register(new EzBizi_Elementor_Post_Title());
     $widgets_manager->register(new EzBizi_Elementor_Hours_Table());
     $widgets_manager->register(new EzBizi_Elementor_City_List());
+    $widgets_manager->register(new EzBizi_Elementor_Contact_Info());
+    $widgets_manager->register(new EzBizi_Elementor_Cta());
+    $widgets_manager->register(new EzBizi_Elementor_Phone_Box());
+    $widgets_manager->register(new EzBizi_Elementor_Review_Faces());
 }
 
 /**

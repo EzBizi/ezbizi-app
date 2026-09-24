@@ -1220,6 +1220,36 @@ class WebWidgetsTest extends TestCase
         $this->assertSame('bar', $chosen['sticky']['placement']);
     }
 
+    /**
+     * The review faces' wording is free text: it must survive a save, lose
+     * any markup, and stop at its cap. A text key with no TEXT entry comes
+     * back as the default every time, silently.
+     */
+    public function test_review_faces_wording_is_kept_cleaned_and_capped(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->site();
+
+        $faces = $this->signedInAs($editor)
+            ->putJson("/api/v1/web/sites/{$site['data']['id']}/widgets", [
+                'config' => ['presets' => ['review_faces' => ['default' => [
+                    'title' => 'Rate <b>us</b>',
+                    'happy_label' => str_repeat('y', 50),
+                    'ask_public' => false,
+                    'tone' => 'neon',
+                    'face_size' => 500,
+                ]]]],
+            ])->assertOk()->json('config.presets.review_faces.default');
+
+        $this->assertSame('Rate us', $faces['title']);
+        $this->assertSame(30, mb_strlen($faces['happy_label']));
+        $this->assertFalse($faces['ask_public']);
+        $this->assertSame('light', $faces['tone']);
+        $this->assertSame(120, $faces['face_size']);
+        // Untouched wording keeps its default, so a site that sets one line
+        // does not blank the rest.
+        $this->assertSame('Not so great', $faces['sad_label']);
+    }
+
     public function test_an_arrangement_nobody_offers_becomes_the_default(): void
     {
         ['site' => $site, 'editor' => $editor] = $this->site();

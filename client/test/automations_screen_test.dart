@@ -853,6 +853,36 @@ void main() {
             'showing both is the overflow this replaced');
   });
 
+  /// "The customer it is about" saves the one value the server resolves.
+  ///
+  /// Jose, 2026-09-24: text the customer when a job is Done. The server reads
+  /// `customer:` through the job's customer at run time; any other string is a
+  /// field name or a literal, so the saved value is the whole contract.
+  testWidgets('an email step can go to the customer it is about', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(tester, _handler(onCreate: (body) => sent = body));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'Tell the customer');
+    await _tap(tester, find.text('Created'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, find.text('Send an email'));
+
+    await _tap(tester, find.byType(SearchPickerField<String>).last);
+    await tester.pumpAndSettle();
+    await _tap(tester, find.text('The customer it is about').last);
+    expect(find.text('Search people'), findsNothing);
+
+    await _type(tester, 'Subject', 'Done');
+    await _type(tester, 'Message', 'All done.');
+    await _tap(tester, find.text('Create automation'));
+
+    expect((sent!['actions'] as List).single, containsPair('to_field', 'customer:'));
+  });
+
   /// A box that takes {{ }} NAMES THE FIELDS, and one that does not says nothing.
   ///
   /// "Use {{ title }} to include a field from the record" sat under two boxes

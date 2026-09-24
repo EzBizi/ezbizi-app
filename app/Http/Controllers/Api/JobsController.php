@@ -61,7 +61,16 @@ class JobsController extends Controller
         $reachable = collect(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds());
 
         $jobs = Job::query()
-            ->with(['franchise:id,name', 'customer:id,name,number,owning_franchise_id'])
+            // Everything present() reads for a LIST row, loaded once for the
+            // page. `timezone` because FranchiseWallTime reads it to give
+            // scheduled_for its offset — loaded without it, the list shipped
+            // every time with a UTC offset. `assignedRole` because the base
+            // payload carries the role column.
+            ->with([
+                'franchise:id,name,timezone',
+                'customer:id,name,number,owning_franchise_id',
+                'assignedRole:id,name',
+            ])
             // The roll-up, and the boundary. whereIn on an empty list matches
             // nothing, which is the correct answer for a user with no
             // assignments — not "everything".
@@ -377,9 +386,13 @@ class JobsController extends Controller
 
     private function present(Job $job, bool $detailed = false): array
     {
+        // Only what the BASE payload reads. `lines` and `performedBy` are
+        // detail-only and are loaded in that branch below: loading them here
+        // ran on every list row, for a panel nobody had opened (UI/UX measured
+        // it, 2026-09-24; JobListQueryCountTest pins it).
         $job->loadMissing([
-            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id', 'lines',
-            'assignedRole:id,name', 'performedBy:id,name',
+            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id',
+            'assignedRole:id,name',
         ]);
 
         $base = [
@@ -419,6 +432,8 @@ class JobsController extends Controller
         if (! $detailed) {
             return $base;
         }
+
+        $job->loadMissing(['lines', 'performedBy:id,name']);
 
         return $base + [
             'description'      => $job->description,

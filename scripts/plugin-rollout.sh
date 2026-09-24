@@ -177,7 +177,10 @@ case "${1:-}" in
     require_clean
     TARGET_HOST="${2:?--canary needs a host, e.g. chimneystar.com}"
     survey > /dev/null
-    T=$(ssh "$REMOTE" "grep -m1 '/$TARGET_HOST/' $LIST" || true)
+    # httpdocs first: Plesk puts subdomains beside it under the same domain
+    # folder, and `atl/` sorts before `httpdocs/`, so a plain first match sent
+    # the a-1chimney.com canary to atl.a-1chimney.com (2026-09-24).
+    T=$(ssh "$REMOTE" "grep -m1 '/$TARGET_HOST/httpdocs/' $LIST || grep -m1 '/$TARGET_HOST/' $LIST" || true)
     [ -n "$T" ] || { echo "no install under $TARGET_HOST" >&2; exit 1; }
     stage
     echo "-> canary: $TARGET_HOST"

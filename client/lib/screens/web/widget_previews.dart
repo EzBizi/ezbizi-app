@@ -55,6 +55,8 @@ Widget renderedPreview({
       return _cta(options, theme, accent, onAccent, text, radius);
     case 'phone_box':
       return _phoneBox(options, accent, text);
+    case 'review_faces':
+      return _reviewFaces(options, theme, text);
     default:
       return const SizedBox.shrink();
   }
@@ -573,6 +575,52 @@ Widget _cta(
             ? 'Fixed along the bottom of every page it is placed on.'
             : 'Opens once a visit, over the page.',
         style: theme.textTheme.bodySmall,
+      ),
+    ],
+  );
+}
+
+/// The two faces, as a visitor first sees them.
+Widget _reviewFaces(
+    Map<String, dynamic> options, ThemeData theme, Color text) {
+  String s(String k) => '${options[k] ?? ''}';
+  final size = _int(options['face_size'], 56).toDouble();
+
+  Widget face(IconData icon, Color colour, String label) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: size, color: colour),
+          const SizedBox(height: 6),
+          Text(label, style: TextStyle(color: text)),
+        ],
+      );
+
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        s('title'),
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleMedium?.copyWith(color: text),
+      ),
+      const SizedBox(height: 4),
+      Text(
+        s('text'),
+        textAlign: TextAlign.center,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: text),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          face(Icons.sentiment_dissatisfied_outlined, const Color(0xFFE23D4B),
+              s('sad_label')),
+          const SizedBox(width: 32),
+          face(Icons.sentiment_satisfied_outlined, const Color(0xFF22B24C),
+              s('happy_label')),
+        ],
       ),
     ],
   );
