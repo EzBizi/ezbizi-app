@@ -158,6 +158,57 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
+  testWidgets('a subset is ticked from the words, and saved as the values', (
+    tester,
+  ) async {
+    _wide(tester);
+
+    Object? sent;
+
+    Map<String, dynamic> row(List<String> value) => _row(
+      'jobs.earned_statuses',
+      label: 'Statuses that mean the money is earned',
+      type: 'subset',
+      value: value,
+      options: const [
+        {'value': 'done', 'label': 'Done and paid'},
+        {'value': 'cancelled', 'label': 'Cancelled'},
+        {'value': 'quoted', 'label': 'Quoted'},
+      ],
+      source: null,
+    );
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      if (request.method == 'PATCH') {
+        sent = (jsonDecode(request.body) as Map)['value'];
+        return _json({'data': row(List<String>.from(sent as List))});
+      }
+
+      // `gone` was a status once. It is not offered, so it is not counted.
+      return _json({
+        'data': [
+          row(['cancelled', 'gone']),
+        ],
+      });
+    });
+
+    expect(find.text('1 of 3 chosen'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('subset-button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Done and paid'));
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    // The list's order, the stored values, and no `gone`.
+    expect(sent, ['done', 'cancelled']);
+    expect(find.text('2 of 3 chosen'), findsOneWidget);
+  });
+
   testWidgets(
     'a refused change leaves the control on the value the server has',
     (tester) async {

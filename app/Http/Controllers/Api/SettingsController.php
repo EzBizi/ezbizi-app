@@ -273,7 +273,7 @@ class SettingsController extends Controller
             'group_label'    => $group['label'],
             'value'          => $definition->isSensitive ? null : $this->resolver->get($key, $scope),
             'is_sensitive'   => $definition->isSensitive,
-            'options'        => $this->optionsOf($definition),
+            'options'        => $this->optionsOf($definition, $scope),
             'help'           => $definition->help,
 
             // Does this setting do anything yet, and if not, what is it waiting
@@ -365,8 +365,21 @@ class SettingsController extends Controller
      *
      * @return list<array{value: mixed, label: string}>|null
      */
-    private function optionsOf(SettingDefinition $definition): ?array
+    private function optionsOf(SettingDefinition $definition, Model $scope): ?array
     {
+        // A subset offers whatever its source list says HERE, so a status the
+        // organization added is a choice without anybody editing the registry.
+        if ($definition->choicesFrom !== null) {
+            $source = $this->resolver->get($definition->choicesFrom, $scope);
+
+            return array_values(array_map(
+                fn (mixed $entry) => is_array($entry)
+                    ? ['value' => $entry['value'], 'label' => $entry['label'] ?? $entry['value']]
+                    : ['value' => $entry, 'label' => $entry],
+                is_array($source) ? $source : [],
+            ));
+        }
+
         if ($definition->options === []) {
             return null;
         }

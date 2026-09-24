@@ -148,6 +148,45 @@ class SettingsApiTest extends TestCase
             ->assertJsonValidationErrors('value');
     }
 
+    public function test_a_subset_offers_the_organizations_own_list_as_its_choices(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        // A label unlike its value, and no default status at all: a client
+        // reading the registry's default, or printing values, cannot pass.
+        $this->patchJson("/api/v1/settings/jobs.statuses?scope_type=organization&scope_id={$org->id}", ['value' => [
+            ['value' => 'done', 'label' => 'Done and paid'],
+            ['value' => 'quoted', 'label' => 'Quoted'],
+        ]])->assertOk();
+
+        $earned = collect($this->getJson("/api/v1/settings?scope_type=organization&scope_id={$org->id}")->json('data'))
+            ->firstWhere('key', 'jobs.earned_statuses');
+
+        $this->assertSame('subset', $earned['type']);
+        $this->assertSame([
+            ['value' => 'done', 'label' => 'Done and paid'],
+            ['value' => 'quoted', 'label' => 'Quoted'],
+        ], $earned['options']);
+    }
+
+    public function test_a_subset_stores_each_choice_once_and_refuses_anything_but_text(): void
+    {
+        ['organization' => $org, 'administrator' => $admin] = $this->org('Alpha', 'a@a.test');
+        Sanctum::actingAs($admin);
+
+        $url = "/api/v1/settings/jobs.earned_statuses?scope_type=organization&scope_id={$org->id}";
+
+        $this->patchJson($url, ['value' => ['completed', 'completed']])
+            ->assertOk()
+            ->assertJsonPath('data.value', ['completed']);
+
+        // Empty is an answer — "nothing is earned yet" — not an error.
+        $this->patchJson($url, ['value' => []])->assertOk()->assertJsonPath('data.value', []);
+
+        $this->patchJson($url, ['value' => [['nested']]])->assertStatus(422);
+    }
+
     public function test_rejects_setting_a_security_policy_below_organization_level(): void
     {
         ['administrator' => $admin, 'franchise' => $f] = $this->org('Alpha', 'a@a.test');

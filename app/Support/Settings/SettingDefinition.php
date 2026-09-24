@@ -51,6 +51,16 @@ final class SettingDefinition
     public const TYPE_TIME_RANGE = 'time_range';
     public const TYPE_LIST       = 'list';
 
+    /**
+     * Some of another setting's list, e.g. which job statuses mean "earned".
+     *
+     * The choices are not declared here: they are whatever {@see $choicesFrom}
+     * resolves to at the scope being edited, so a status the organization adds
+     * tomorrow is offered with no edit. Stored as a list of the chosen values
+     * and may be empty — "none chosen" is a real answer, unlike TYPE_LIST.
+     */
+    public const TYPE_SUBSET     = 'subset';
+
     /** In week order, which is the order they are shown in. */
     public const WEEKDAYS = [
         'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
@@ -152,6 +162,9 @@ final class SettingDefinition
          * question unanswered, and the next question is always "then where?".
          */
         public readonly ?string $editedOn = null,
+
+        /** TYPE_SUBSET only: the TYPE_LIST setting whose values are the choices. */
+        public readonly ?string $choicesFrom = null,
     ) {
         if (! preg_match('/^[a-z][a-z0-9_.]*$/', $key)) {
             throw new InvalidArgumentException("Setting key '{$key}' must be lower_snake_case.");
@@ -167,6 +180,10 @@ final class SettingDefinition
             if (! in_array($scope, [self::SCOPE_ORGANIZATION, self::SCOPE_COMPANY, self::SCOPE_FRANCHISE], true)) {
                 throw new InvalidArgumentException("Setting '{$key}' names unknown scope '{$scope}'.");
             }
+        }
+
+        if ($type === self::TYPE_SUBSET && ($choicesFrom === null || trim($choicesFrom) === '')) {
+            throw new InvalidArgumentException("Subset setting '{$key}' names no setting to choose from.");
         }
 
         if ($type === self::TYPE_ENUM && $options === []) {
@@ -246,6 +263,7 @@ final class SettingDefinition
             self::TYPE_HOURS   => $this->castHours($value),
             self::TYPE_TIME_RANGE => $this->castTimeRange($value),
             self::TYPE_LIST    => $this->castList($value),
+            self::TYPE_SUBSET  => $this->castSubset($value),
             default            => $value,
         };
     }
@@ -436,6 +454,30 @@ final class SettingDefinition
         }
 
         return (float) $value;
+    }
+
+    /**
+     * A list of chosen values, each once.
+     *
+     * Not checked against the choices: those belong to another setting and can
+     * change after this is saved, so the READER intersects (EarnedStatuses
+     * does). Refusing here would only make a renamed status un-saveable.
+     *
+     * @return list<string>
+     */
+    private function castSubset(mixed $value): array
+    {
+        $out = [];
+
+        foreach ($this->castJson($value) as $item) {
+            if (! is_string($item) || trim($item) === '') {
+                throw new InvalidArgumentException("Setting '{$this->key}' expects a list of text.");
+            }
+
+            $out[] = $item;
+        }
+
+        return array_values(array_unique($out));
     }
 
     private function castJson(mixed $value): array

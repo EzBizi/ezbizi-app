@@ -1458,9 +1458,19 @@ class _SettingRow extends StatelessWidget {
       );
     }
 
+    if (type == 'subset') {
+      return _SubsetButton(
+        label: setting['label'] as String,
+        value: value,
+        choices: _settingChoices(setting['options']),
+        editable: editable,
+        onChanged: (v) => onChanged(key, v),
+      );
+    }
+
     // Anything still declared as plain `json` has no shape to draw, so it keeps
-    // the text editor. Nothing in the registry uses it today; it is the escape
-    // hatch for a structure that has not earned an editor yet.
+    // the text editor: the escape hatch for a structure that has not earned an
+    // editor yet. `jobs.thumbtack_status_map` is the one that reaches it today.
     if (type == 'json') {
       // Structured values used to render in the same 140px box as a tax rate,
       // showing `{monday: {open: 08:00...` — a Dart Map's toString, which is not
@@ -1696,6 +1706,93 @@ class _JsonButton extends StatelessWidget {
     );
 
     controller.dispose();
+
+    if (saved != null) onChanged(saved);
+  }
+}
+
+/// Some of another setting's list — which job statuses mean "earned".
+///
+/// Ticks rather than JSON: the choices are the organization's own words, so
+/// nobody has to know that "Done and paid" is stored as `done`. A stored value
+/// no longer in the list is dropped on save; the server's reader ignores it
+/// already, so keeping it would only be a tick nobody can see.
+class _SubsetButton extends StatelessWidget {
+  const _SubsetButton({
+    required this.label,
+    required this.value,
+    required this.choices,
+    required this.editable,
+    required this.onChanged,
+  });
+
+  final String label;
+  final dynamic value;
+  final List<_SettingChoice> choices;
+  final bool editable;
+  final ValueChanged<List<String>> onChanged;
+
+  Set<String> get _chosen => {
+    if (value is List)
+      for (final v in value as List)
+        if (choices.any((c) => '${c.value}' == '$v')) '$v',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _chosen.length;
+
+    return OutlinedButton.icon(
+      key: const ValueKey('subset-button'),
+      onPressed: editable && choices.isNotEmpty ? () => _open(context) : null,
+      icon: const Icon(Icons.checklist, size: 16),
+      label: Text(n == 0 ? 'None chosen' : '$n of ${choices.length} chosen'),
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final picked = _chosen;
+
+    final saved = await showSidePanel<List<String>>(
+      context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, repaint) => SidePanel(
+          title: label,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              // In the list's own order, so the stored value reads the way
+              // the statuses do.
+              onPressed: () => Navigator.of(context).pop([
+                for (final c in choices)
+                  if (picked.contains('${c.value}')) '${c.value}',
+              ]),
+              child: const Text('Save'),
+            ),
+          ],
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final c in choices)
+                CheckboxListTile(
+                  key: ValueKey('subset:${c.value}'),
+                  title: Text(c.label),
+                  value: picked.contains('${c.value}'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (on) => repaint(
+                    () => on == true
+                        ? picked.add('${c.value}')
+                        : picked.remove('${c.value}'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
 
     if (saved != null) onChanged(saved);
   }

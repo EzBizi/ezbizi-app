@@ -899,7 +899,8 @@ class SettingRegistry
              */
             new SettingDefinition(
                 key: 'jobs.earned_statuses', label: 'Statuses that mean the money is earned',
-                type: SettingDefinition::TYPE_JSON,
+                type: SettingDefinition::TYPE_SUBSET,
+                choicesFrom: 'jobs.statuses',
                 default: [],
                 allowedScopes: [SettingDefinition::SCOPE_ORGANIZATION, SettingDefinition::SCOPE_COMPANY],
                 help: 'Which of your job statuses mean the work is done and the money counts. '
