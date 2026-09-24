@@ -72,27 +72,60 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
 
     if (!mounted) return;
 
+    if (!response.ok) {
+      setState(() {
+        _loadingSources = false;
+        _error = response.message;
+      });
+      return;
+    }
+
+    final sources = (response.body['sources'] as List<dynamic>?) ?? [];
+
+    /*
+     * OPEN ON THE FIRST BASE THAT HAS WEEKS IN IT, not the first with tables.
+     *
+     * Measured on A-1 2026-09-24: of three connected bases only one holds a
+     * weekly P&L (appWhbwht0xgB5Yut, 7-12 weeks per table). The other two are
+     * job and refund sheets - 0 weeks in every one of their 12 tables - and
+     * the tab opened on the first of them, blank. Jose: "only the third one
+     * shows stuff, so make that one the default".
+     *
+     * Found by asking rather than by naming the base: an id in the code would
+     * be A-1's default for every tenant. It costs one request per base that
+     * has no weeks, and stops at the first that does.
+     */
+    String? sourceId;
+    String? table;
+
+    for (final source in sources) {
+      final tables = (source['tables'] as List<dynamic>?) ?? [];
+      if (tables.isEmpty) continue;
+
+      // The first base with tables stays the fallback, so a tenant whose
+      // bases have no weeks at all still lands somewhere it can choose from.
+      sourceId ??= source['id'] as String;
+      table ??= tables.first as String;
+
+      final probe = await widget.api.get('/reports/profit-loss', {
+        'connection': source['id'] as String,
+        'table': tables.first as String,
+      });
+
+      if (!mounted) return;
+
+      if (probe.ok && ((probe.body['weeks'] as List?) ?? const []).isNotEmpty) {
+        sourceId = source['id'] as String;
+        table = tables.first as String;
+        break;
+      }
+    }
+
     setState(() {
       _loadingSources = false;
-
-      if (!response.ok) {
-        _error = response.message;
-        return;
-      }
-
-      _sources = (response.body['sources'] as List<dynamic>?) ?? [];
-
-      // Open on the first base that actually has tables. A base whose token
-      // has stopped working is still listed - see the picker - but landing on
-      // it would show an error before the person has chosen anything.
-      for (final source in _sources!) {
-        final tables = (source['tables'] as List<dynamic>?) ?? [];
-        if (tables.isNotEmpty) {
-          _sourceId = source['id'] as String;
-          _table = tables.first as String;
-          break;
-        }
-      }
+      _sources = sources;
+      _sourceId = sourceId;
+      _table = table;
     });
 
     if (_sourceId != null && _table != null) _loadWeek();
@@ -176,6 +209,18 @@ class _ProfitLossScreenState extends State<ProfitLossScreen> {
           ),
         if (_error == null && !_loadingWeek && _figures != null)
           ..._week_(context),
+        // A table with no weeks said so rather than drawing nothing - a
+        // blank page reads as "still loading" or "broken", and it is neither.
+        if (_error == null &&
+            !_loadingWeek &&
+            _figures == null &&
+            _table != null)
+          _empty(
+            context,
+            'No weekly profit and loss in this table.',
+            'EzBizi reads the weeks from a column named Week, and this table '
+                'has none filled in. Try another base or table.',
+          ),
       ],
     );
   }
