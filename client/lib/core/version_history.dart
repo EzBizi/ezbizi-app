@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Replying to A-1 Chimney\'s Google reviews is on: anyone who can see A1Leads GBP, with A-1 Chimney in view, can post a public reply, and every attempt is recorded in the audit log.',
+        'Jobs imported from Workiz follow Workiz: a job that is done, canceled or in progress there reads the same here, and so do its date and price - unless somebody changed that field in EzBizi, which stays theirs. Past jobs catch up over the next few hours.',
       ],
     ),
     VersionRelease(
