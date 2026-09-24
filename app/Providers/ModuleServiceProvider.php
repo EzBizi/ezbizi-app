@@ -3435,9 +3435,14 @@ class ModuleServiceProvider extends ServiceProvider
              * mandatory fields, and oblige two weeks' notice to Google before
              * the change takes effect.
              *
-             * `view` alone. The figures are Google's and are read live rather
-             * than stored, so the usual four actions would offer three that
-             * cannot exist.
+             * `view` and `manage`, and not the usual four. The figures are
+             * Google's and are read live rather than stored, so create, edit
+             * and delete would offer three things that cannot exist. `manage`
+             * is pausing and enabling campaigns (Jose, 2026-09-24) - Google's
+             * M.110 - and is its own grant because switching a branch's
+             * advertising off is a different act from reading what it cost.
+             * Every change is audited as `ads_performance.campaign_status_changed`,
+             * with the status it moved to.
              *
              * Its own permission rather than borrowing `reports.view`: what the
              * business spends on advertising is a different grant from what it
@@ -3449,16 +3454,16 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'ads_performance',
                 label: 'Google Ads',
                 parent: 'reports',
-                actions: ['view'],
+                actions: ['view', 'manage'],
                 automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
                     .'trigger to fire on: the figures are read from Google when somebody opens '
                     .'the screen and are never stored, so no row is created, changed or removed. '
-                    .'And an action would have to WRITE to the Google Ads API - change a budget, '
-                    .'pause a campaign - which is exactly what we have told Google this product '
-                    .'cannot do, in the Standard Access answer and in the OAuth justification. '
-                    .'This stops being true the day spend is stored or watched: an alert on a '
-                    .'campaign passing a threshold is a real trigger, and it needs this line '
-                    .'removed rather than reworded.',
+                    .'Pausing a campaign IS possible, but only as a person pressing a button '
+                    .'under their own grant: a rule that paused advertising unattended would '
+                    .'switch a branch\'s phone off with nobody deciding it, and that is not '
+                    .'offered. This stops being true the day spend is stored or watched: an '
+                    .'alert on a campaign passing a threshold is a real trigger, and it needs '
+                    .'this line removed rather than reworded.',
             ),
 
             /*

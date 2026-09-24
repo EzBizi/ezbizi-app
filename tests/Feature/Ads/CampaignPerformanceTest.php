@@ -143,6 +143,110 @@ class CampaignPerformanceTest extends TestCase
         $this->assertSame('USD', $account['currency']);
     }
 
+    /**
+     * THE OPTIONAL METRICS: "All other Metric columns must be made available,
+     * as an option" - the reporting-only rule, read in full on 2026-09-24.
+     *
+     * Two things are asserted, and the second is the one that fails silently.
+     *
+     * First, they are asked for at BOTH levels, in the same query as the
+     * required five, so offering them costs no extra operation.
+     *
+     * Second, the RATIOS are derived from summed totals, never summed
+     * themselves. The account total is built from day-segmented rows, and a
+     * click-through rate added up across two days is a number that looks like
+     * a rate and is not one. Two days of 1% CTR summed is "2%"; the truth is
+     * still 1%. The fixture below is built so the summed and derived answers
+     * differ.
+     */
+    public function test_optional_metrics_are_offered_and_ratios_are_derived_not_summed(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+
+        $day = fn (string $date, int $clicks, int $impressions, int $micros, float $conv, int $interactions) => [
+            'segments' => ['date' => $date],
+            'customer' => ['id' => '4051729356', 'descriptiveName' => 'A1 Chimney - Cleveland', 'currencyCode' => 'USD'],
+            'metrics' => [
+                'clicks' => (string) $clicks, 'impressions' => (string) $impressions,
+                'conversions' => $conv, 'allConversions' => $conv,
+                'costMicros' => (string) $micros, 'interactions' => (string) $interactions,
+                'conversionsValue' => 500.0, 'allConversionsValue' => 600.0,
+                'viewThroughConversions' => '1', 'engagements' => '0', 'invalidClicks' => '2',
+            ],
+        ];
+
+        config([
+            'services.google_ads.client_id' => 'client.apps.googleusercontent.com',
+            'services.google_ads.client_secret' => 'secret',
+            'services.google_ads.developer_token' => 'dev-token',
+            'services.google_ads.version' => 'v24',
+        ]);
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'at', 'expires_in' => 3600], 200),
+            'googleads.googleapis.com/*' => Http::sequence()
+                // Day one: 10 clicks of 1,000 (1%). Day two: 10 of 1,000 (1%).
+                ->push(['results' => [
+                    $day('2026-09-01', 10, 1000, 20_000_000, 2.0, 10),
+                    $day('2026-09-02', 10, 1000, 20_000_000, 0.0, 10),
+                ]], 200)
+                ->push(['results' => []], 200),
+        ]);
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        // Additive ones are summed.
+        $this->assertSame(20, $account['interactions']);
+        // JSON has no 1000.0 - a whole float crosses as an int - so compare as money.
+        $this->assertSame(1000.0, (float) $account['conversions_value']);
+        $this->assertSame(4, $account['invalid_clicks']);
+
+        // Ratios are derived from the totals: 20 / 2000 = 1%, NOT 1% + 1%.
+        $this->assertSame(0.01, $account['ctr'], 'a summed rate would say 0.02');
+        $this->assertSame(2.0, (float) $account['average_cpc'], '$40 over 20 clicks');
+        $this->assertSame(20.0, (float) $account['cost_per_conversion'], '$40 over 2 conversions');
+
+        // Both levels were asked for them, in the SAME query as the required five.
+        $queries = Http::recorded()
+            ->map(fn ($pair) => (string) ($pair[0]['query'] ?? ''))
+            ->filter(fn ($q) => $q !== '')
+            ->values();
+
+        $this->assertCount(2, $queries, 'one account query and one campaign query, nothing extra');
+
+        foreach ($queries as $q) {
+            $this->assertStringContainsString('metrics.interactions', $q);
+            $this->assertStringContainsString('metrics.clicks', $q, 'the required five travel with them');
+        }
+    }
+
+    /**
+     * A ratio with nothing under it is NULL, not zero.
+     *
+     * A paused campaign with no impressions has no click-through rate. Zero
+     * would say "shown and never clicked", which is false.
+     */
+    public function test_a_ratio_with_no_denominator_is_null(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), [[
+            'campaign' => ['id' => '9', 'name' => 'Idle', 'status' => 'PAUSED', 'advertisingChannelType' => 'SEARCH'],
+        ]]);
+
+        $campaign = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.campaigns.0');
+
+        $this->assertSame(0, $campaign['impressions']);
+        $this->assertNull($campaign['ctr']);
+        $this->assertNull($campaign['cost_per_conversion']);
+    }
+
     public function test_the_campaign_level_carries_every_field_r20_requires(): void
     {
         $t = $this->provisionTenant('A1-Group');

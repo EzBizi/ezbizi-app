@@ -23,6 +23,9 @@ import 'package:http/testing.dart';
 /// connected accounts at once: 106 operations of a 15,000/day ceiling and 47
 /// seconds of spinner, spent before anybody asked for a figure.
 void main() {
+  // The screen remembers across visits; every test here starts cold.
+  setUp(forgetAdsMemory);
+
   /// Every request the screen makes, in order, so a test can assert on what
   /// was NOT asked for as well as what was.
   late List<String> calls;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -28,6 +29,84 @@ import '../widgets/dashboard_chart.dart';
 /// when the table feels wide, and the status filter must never hide the status
 /// COLUMN — filtering which rows are listed is a user's choice, dropping a
 /// required field is a policy breach.
+/// What this screen last showed, kept for as long as the app is open.
+///
+/// Jose, 2026-09-24: *"every time i leave one of the ads pages and come back it
+/// loads everything all over again ... it should load the cache and in the
+/// meantime fetch the new stuff and then refresh itself (seamlessly)"*.
+///
+/// So the screen's state outlives the widget. Coming back draws the last
+/// figures for the same account and range immediately, asks Google again
+/// behind them, and swaps the new ones in when they arrive - no spinner, and
+/// never a blank page where numbers just were.
+///
+/// ── Keyed by WHO is looking and at WHAT ─────────────────────────────
+///
+/// The key carries the user, the organization and the company in view.
+/// Switching the company picker, or somebody else signing in on the same
+/// machine, is a different key and therefore a cold load - one company's
+/// advertising spend must never appear, even for a frame, under another's
+/// name.
+///
+/// ponytail: memory only, gone when the app closes. Figures here are restated
+/// by Google as conversions arrive, so a copy on disk from yesterday would be
+/// shown as if current; persist it only if a cold start proves too slow.
+class _AdsMemory {
+  List<Map<String, dynamic>>? accounts;
+  String? selected;
+  int range = 0;
+  DateTimeRange? custom;
+  Set<String> extra = <String>{};
+
+  /// Report bodies by account + window.
+  final Map<String, Map<String, dynamic>> reports = {};
+
+  /// When each report body was read, so the screen can say how old it is.
+  final Map<String, DateTime> readAt = {};
+}
+
+final Map<String, _AdsMemory> _memories = {};
+
+/// Forget everything remembered. Tests only: each one must start cold, or the
+/// previous test's account and figures would be on screen before it began.
+@visibleForTesting
+void forgetAdsMemory() => _memories.clear();
+
+/// One optional metric column: "All other Metric columns must be made
+/// available, as an option" (Reporting RMF, reporting-only clients).
+class _Extra {
+  const _Extra(this.key, this.label, this.kind);
+
+  final String key;
+  final String label;
+
+  /// 'number', 'money', 'percent' or 'ratio'.
+  final String kind;
+}
+
+/// The optional metrics, in the order the chooser lists them.
+///
+/// Every one is valid at BOTH the account and the campaign level - measured
+/// against Google on 2026-09-24; `phone_calls` is valid on campaign and refused
+/// on customer, which would have broken the account figures - and the ratios
+/// are derived on the server from summed totals, never summed themselves.
+const _extras = <_Extra>[
+  _Extra('ctr', 'CTR', 'percent'),
+  _Extra('average_cpc', 'Avg. CPC', 'money'),
+  _Extra('average_cpm', 'Avg. CPM', 'money'),
+  _Extra('cost_per_conversion', 'Cost / conv.', 'money'),
+  _Extra('conversion_rate', 'Conv. rate', 'percent'),
+  _Extra('conversions_value', 'Conv. value', 'money'),
+  _Extra('all_conversions_value', 'All conv. value', 'money'),
+  _Extra('value_per_conversion', 'Value / conv.', 'money'),
+  _Extra('conversion_value_per_cost', 'Conv. value / cost', 'ratio'),
+  _Extra('interactions', 'Interactions', 'number'),
+  _Extra('interaction_rate', 'Interaction rate', 'percent'),
+  _Extra('view_through_conversions', 'View-through conv.', 'number'),
+  _Extra('engagements', 'Engagements', 'number'),
+  _Extra('invalid_clicks', 'Invalid clicks', 'number'),
+];
+
 class AdsPerformanceScreen extends StatefulWidget {
   const AdsPerformanceScreen({
     super.key,
@@ -71,6 +150,28 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   String? _error;
   bool _loadingAccounts = true;
   bool _loadingReport = false;
+
+  /// Figures are on screen from memory and fresher ones are being fetched.
+  bool _refreshing = false;
+
+  /// The refresh behind remembered figures failed. The figures stay - they
+  /// are the last true ones - and this says how old they are.
+  String? _staleBecause;
+
+  /// Campaigns ticked for Pause / Enable, by campaign id.
+  final Set<String> _picked = <String>{};
+
+  /// Which change is waiting for its confirmation: 'PAUSED' or 'ENABLED'.
+  String? _confirming;
+  bool _changing = false;
+
+  /// What the last Pause / Enable did, in Google's own words where it refused.
+  String? _changeResult;
+
+  /// Optional metric columns somebody chose.
+  Set<String> get _extra => _memory.extra;
+
+  late final _AdsMemory _memory;
 
   /*
    * Yesterday, not 30 days. Jose's call, 2026-09-15.
@@ -133,9 +234,30 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   /// time is the only honest way to draw them on one axis.
   String _metric = 'cost';
 
+  /// Who is looking at what - see [_AdsMemory].
+  String get _who {
+    final me = widget.session.me;
+    return '${me?.id}|${me?.organization.id}|${me?.scope.type}:${me?.scope.id}';
+  }
+
+  String _reportKey(String id, DateTime from, DateTime to) =>
+      '$id|${_d(from)}|${_d(to)}|${_selectedIsManager ? 'rollup' : 'account'}';
+
   @override
   void initState() {
     super.initState();
+    _memory = _memories.putIfAbsent(_who, _AdsMemory.new);
+
+    // Everything the last visit showed, before a single request is made.
+    if (_memory.accounts != null) {
+      _accounts = _memory.accounts!;
+      _loadingAccounts = false;
+    }
+    _selected = _memory.selected;
+    _range = _memory.range;
+    _custom = _memory.custom;
+    if (_selected != null) _loadReport();
+
     _loadAccounts();
     _accountSearch.addListener(() => setState(() {}));
     _campaignSearch.addListener(() => setState(() {}));
@@ -168,10 +290,16 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       '${x.day.toString().padLeft(2, '0')}';
 
   Future<void> _loadAccounts() async {
-    setState(() {
-      _loadingAccounts = true;
-      _error = null;
-    });
+    // Remembered accounts stay on screen while the list is asked again; only a
+    // first visit shows the spinner.
+    final quiet = _memory.accounts != null;
+
+    if (!quiet) {
+      setState(() {
+        _loadingAccounts = true;
+        _error = null;
+      });
+    }
 
     final response = await widget.api.get('/ads/accounts');
     if (!mounted) return;
@@ -179,12 +307,15 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     setState(() {
       _loadingAccounts = false;
       if (!response.ok) {
-        _error = response.message;
+        // A failed refresh of a list we already hold is not worth replacing
+        // the list with an error.
+        if (!quiet) _error = response.message;
         return;
       }
       _accounts = List<Map<String, dynamic>>.from(
         (response.body['data'] as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+      _memory.accounts = _accounts;
       // Deliberately does NOT auto-select. Picking one is what spends quota,
       // and a screen that spends it on open is the thing this replaced.
     });
@@ -195,50 +326,148 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     return a.isNotEmpty && a.first['is_manager'] == true;
   }
 
+  /// The report: remembered figures first, then Google's current ones.
+  ///
+  /// With something remembered for this account and window, it is drawn at
+  /// once and the request runs behind it - `_refreshing` shows a thin bar, not
+  /// a spinner in place of the numbers. Without, it is the ordinary cold load.
   Future<void> _loadReport() async {
     final id = _selected;
     if (id == null) return;
 
-    setState(() {
-      _loadingReport = true;
-      _error = null;
-      _report = null;
-      _rollup = null;
-    });
+    _memory
+      ..selected = id
+      ..range = _range
+      ..custom = _custom;
 
     final (from, to) = _window();
+    final key = _reportKey(id, from, to);
+    final manager = _selectedIsManager;
+    final remembered = _memory.reports[key];
+
+    setState(() {
+      _error = null;
+      _staleBecause = null;
+      if (remembered != null) {
+        _apply(remembered, manager);
+        _loadingReport = false;
+        _refreshing = true;
+      } else {
+        _loadingReport = true;
+        _refreshing = false;
+        _report = null;
+        _rollup = null;
+      }
+    });
+
     final query = {'connection_id': id, 'from': _d(from), 'to': _d(to)};
 
     // A manager holds no spend of its own — every figure on it would be zero —
     // so asking it for a campaign report answers a question nobody meant. The
     // roll-up is what "A1 Chimney - Ads Manager" actually means.
-    final manager = _selectedIsManager;
     final response = await widget.api.get(
       manager ? '/ads/rollup' : '/ads/performance',
       query,
     );
 
-    if (!mounted) return;
+    // Somebody picked another account or range while this was in flight: its
+    // answer belongs to a page that is no longer on screen.
+    if (!mounted || _selected != id || _reportKey(id, from, to) != key) return;
 
     setState(() {
       _loadingReport = false;
+      _refreshing = false;
+
       if (!response.ok) {
-        _error = response.message;
+        if (remembered != null) {
+          // Keep the figures - they are the last true ones - and say so.
+          _staleBecause = response.message;
+        } else {
+          _error = response.message;
+        }
         return;
       }
 
-      _refused = (response.body['refused'] as List? ?? const []);
-
-      if (manager) {
-        _rollup = (response.body['data'] as List? ?? const []);
-        _rollupChildren = (response.body['children_total'] as num?)?.toInt() ?? 0;
-        _rollupNotConnected = (response.body['not_connected'] as num?)?.toInt() ?? 0;
-        return;
-      }
-
-      final data = (response.body['data'] as List? ?? const []);
-      _report = data.isEmpty ? null : data.first as Map<String, dynamic>;
+      _memory.reports[key] = response.body;
+      _memory.readAt[key] = DateTime.now();
+      _apply(response.body, manager);
     });
+  }
+
+  void _apply(Map<String, dynamic> body, bool manager) {
+    _refused = (body['refused'] as List? ?? const []);
+
+    if (manager) {
+      _report = null;
+      _rollup = (body['data'] as List? ?? const []);
+      _rollupChildren = (body['children_total'] as num?)?.toInt() ?? 0;
+      _rollupNotConnected = (body['not_connected'] as num?)?.toInt() ?? 0;
+      return;
+    }
+
+    _rollup = null;
+    final data = (body['data'] as List? ?? const []);
+    _report = data.isEmpty ? null : data.first as Map<String, dynamic>;
+
+    // A remembered selection may name campaigns this page no longer lists.
+    final present = {
+      for (final c in (_report?['campaigns'] as List? ?? const [])) '${(c as Map)['id']}',
+    };
+    _picked.removeWhere((id) => !present.contains(id));
+  }
+
+  /// Pause or enable the ticked campaigns, then read the account again.
+  ///
+  /// The page is re-read rather than patched: Google is the authority on what
+  /// state a campaign is in, and a row flipped locally after a refused change
+  /// would show a pause that never happened.
+  Future<void> _change(String status) async {
+    final id = _selected;
+    if (id == null || _picked.isEmpty) return;
+
+    setState(() {
+      _changing = true;
+      _confirming = null;
+      _changeResult = null;
+    });
+
+    final asked = _picked.toList();
+    final response = await widget.api.post('/ads/campaigns/status', {
+      'connection_id': id,
+      'campaign_ids': asked,
+      'status': status,
+    });
+
+    if (!mounted) return;
+
+    final results = (response.body['data'] as List? ?? const []).cast<Map>();
+    final done = results.where((r) => r['ok'] == true).length;
+    final refused = results.where((r) => r['ok'] != true).toList();
+    final names = {
+      for (final c in (_report?['campaigns'] as List? ?? const [])) '${(c as Map)['id']}': '${c['name']}',
+    };
+
+    setState(() {
+      _changing = false;
+      _picked.clear();
+
+      if (!response.ok) {
+        _changeResult = response.message;
+        return;
+      }
+
+      final verb = status == 'PAUSED' ? 'Paused' : 'Enabled';
+      _changeResult = [
+        '$verb $done of ${asked.length}.',
+        for (final r in refused)
+          '${names[r['campaign_id']] ?? r['campaign_id']}: ${r['because']}',
+      ].join('\n');
+
+      // Whatever was remembered for this account is now wrong.
+      _memory.reports.removeWhere((k, _) => k.startsWith('$id|'));
+    });
+
+    await _loadReport();
   }
 
   /// Money, with its unit.
@@ -419,7 +648,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                         : '${a['customer_id']}',
                   ),
                   onTap: () {
-                    setState(() => _selected = id);
+                    setState(() {
+                      _selected = id;
+                      _picked.clear();
+                      _confirming = null;
+                      _changeResult = null;
+                    });
                     _loadReport();
                   },
                 );
@@ -459,6 +693,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     if (_rollup != null) {
       return ListView(
         children: [
+          _freshness(theme),
           _rangeChips(theme),
           const SizedBox(height: 12),
           _rollupCard(theme),
@@ -482,6 +717,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
     return ListView(
       children: [
+        _freshness(theme),
         _rangeChips(theme),
         const SizedBox(height: 12),
         _accountCard(theme, account, currency),
@@ -494,6 +730,35 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
           _refusals(theme),
         ],
       ],
+    );
+  }
+
+  /// How fresh the figures are: a thin bar while they are being re-read, a
+  /// sentence if re-reading failed. Nothing at all when they are current.
+  Widget _freshness(ThemeData theme) {
+    if (_refreshing) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 8),
+        child: LinearProgressIndicator(key: ValueKey('ads-refreshing'), minHeight: 2),
+      );
+    }
+
+    if (_staleBecause == null) return const SizedBox.shrink();
+
+    final id = _selected;
+    final (from, to) = _window();
+    final at = id == null ? null : _memory.readAt[_reportKey(id, from, to)];
+    final when = at == null
+        ? 'earlier'
+        : '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        'Showing the figures read at $when - Google did not answer just now: $_staleBecause',
+        key: const ValueKey('ads-stale'),
+        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.error),
+      ),
     );
   }
 
@@ -578,6 +843,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   hint: 'Every conversion action, including the ones not '
                       'counted above - so it is always the same or larger.',
                 ),
+                for (final e in _extras.where((e) => _extra.contains(e.key)))
+                  _figure(theme, e.label, _format(e, account[e.key], currency)),
               ],
             ),
           ],
@@ -736,16 +1003,28 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // The title may wrap and the Columns button may not: at phone width
+            // the three did not fit on one line and overflowed by 41px.
             Row(
               children: [
-                Text('Campaigns', style: theme.textTheme.titleSmall),
-                const SizedBox(width: 12),
-                Text(
-                  '${rows.length} of ${all.length}',
-                  style: theme.textTheme.bodySmall,
+                Expanded(
+                  child: Wrap(
+                    spacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Campaigns', style: theme.textTheme.titleSmall),
+                      Text(
+                        '${rows.length} of ${all.length}',
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
+                _columnsButton(theme),
               ],
             ),
+            if (_canManage && (_picked.isNotEmpty || _changing || _changeResult != null))
+              _actionBar(theme),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -805,6 +1084,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 columnSpacing: 26,
                 sortColumnIndex: _sortIndex(),
                 sortAscending: !_sortDescending,
+                // Ticking a row selects it for Pause / Enable. Offered only to
+                // somebody holding the grant: a checkbox whose only outcome is
+                // a refusal is a control that lies about what it does.
+                showCheckboxColumn: _canManage,
                 columns: [
                   _sortable('Campaign', 'name'),
                   _sortable('Status', 'status'),
@@ -813,10 +1096,22 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   _sortable('Impressions', 'impressions'),
                   _sortable('Conversions', 'conversions'),
                   _sortable('All conversions', 'all_conversions'),
+                  for (final e in _extras.where((e) => _extra.contains(e.key)))
+                    _sortable(e.label, e.key),
                 ],
                 rows: [
                   for (final c in rows)
                     DataRow(
+                      key: ValueKey('ads-campaign-${c['id']}'),
+                      selected: _picked.contains('${c['id']}'),
+                      onSelectChanged: !_canManage || _changing
+                          ? null
+                          : (on) => setState(() {
+                              _confirming = null;
+                              on == true
+                                  ? _picked.add('${c['id']}')
+                                  : _picked.remove('${c['id']}');
+                            }),
                       cells: [
                         DataCell(Text((c['name'] as String?) ?? '—')),
                         DataCell(Text(_statusWord(c['status'] as String?))),
@@ -825,6 +1120,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                         DataCell(Text(_number(c['impressions']))),
                         DataCell(Text(_number(c['conversions']))),
                         DataCell(Text(_number(c['all_conversions']))),
+                        for (final e in _extras.where((e) => _extra.contains(e.key)))
+                          DataCell(Text(_format(e, c[e.key], currency))),
                       ],
                     ),
                 ],
@@ -836,7 +1133,9 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 
-  static const _sortColumns = [
+  /// The columns in the order the table draws them, so the sort arrow sits on
+  /// the column actually sorted - including an optional one.
+  List<String> get _sortColumns => [
     'name',
     'status',
     'cost',
@@ -844,11 +1143,157 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     'impressions',
     'conversions',
     'all_conversions',
+    for (final e in _extras.where((e) => _extra.contains(e.key))) e.key,
   ];
 
   int _sortIndex() {
     final i = _sortColumns.indexOf(_sortBy);
     return i < 0 ? 2 : i;
+  }
+
+  bool get _canManage => widget.session.me?.can('ads_performance.manage') ?? false;
+
+  /// An optional figure in its own unit. Null is a dash: a rate with nothing
+  /// under it (no impressions, no clicks) has no value, and zero would claim
+  /// one.
+  String _format(_Extra e, dynamic value, dynamic currency) {
+    if (value == null) return '—';
+    final n = (value as num).toDouble();
+    return switch (e.kind) {
+      'money' => _money(n, currency),
+      'percent' => '${(n * 100).toStringAsFixed(2)}%',
+      'ratio' => n.toStringAsFixed(2),
+      _ => _number(n),
+    };
+  }
+
+  /// "All other Metric columns must be made available, as an option".
+  ///
+  /// The required five are not in this menu and cannot be switched off - the
+  /// policy says they are shown "as default", and a chooser that could hide
+  /// Clicks would be one click from breaching it.
+  Widget _columnsButton(ThemeData theme) {
+    return PopupMenuButton<String>(
+      key: const ValueKey('ads-columns'),
+      tooltip: 'Add or remove optional columns',
+      onSelected: (key) => setState(() {
+        _extra.contains(key) ? _extra.remove(key) : _extra.add(key);
+        if (!_extra.contains(_sortBy) && _extras.any((e) => e.key == _sortBy)) {
+          _sortBy = 'cost';
+          _sortDescending = true;
+        }
+      }),
+      itemBuilder: (context) => [
+        for (final e in _extras)
+          CheckedPopupMenuItem<String>(
+            key: ValueKey('ads-column-${e.key}'),
+            value: e.key,
+            checked: _extra.contains(e.key),
+            child: Text(e.label),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.view_column_outlined, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              _extra.isEmpty ? 'Columns' : 'Columns (${_extra.length})',
+              style: theme.textTheme.labelLarge,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Pause / Enable for the ticked campaigns, with its confirmation inline.
+  ///
+  /// Inline rather than a dialog, the house rule: a confirmation needs nowhere
+  /// to type, only somewhere to state the consequence and two answers - and
+  /// the consequence here is real money and a phone that stops ringing.
+  Widget _actionBar(ThemeData theme) {
+    final account = '${(_report?['account'] as Map?)?['name'] ?? 'this account'}';
+    final n = _picked.length;
+    final plural = n == 1 ? 'campaign' : 'campaigns';
+
+    return Container(
+      key: const ValueKey('ads-actions'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_changing)
+            Row(
+              children: [
+                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 10),
+                Text('Telling Google…', style: theme.textTheme.bodySmall),
+              ],
+            )
+          else if (_confirming != null)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  _confirming == 'PAUSED'
+                      ? 'Pause $n $plural in $account? Their ads stop showing within minutes.'
+                      : 'Enable $n $plural in $account? They start spending again straight away.',
+                  style: theme.textTheme.bodySmall,
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _confirming = null),
+                  child: const Text('Not yet'),
+                ),
+                FilledButton(
+                  key: const ValueKey('ads-confirm'),
+                  onPressed: () => _change(_confirming!),
+                  // Names the act, so the last button pressed says what it does.
+                  child: Text(_confirming == 'PAUSED' ? 'Pause them' : 'Enable them'),
+                ),
+              ],
+            )
+          else if (_picked.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('$n selected', style: theme.textTheme.bodySmall),
+                OutlinedButton.icon(
+                  key: const ValueKey('ads-pause'),
+                  icon: const Icon(Icons.pause, size: 16),
+                  label: const Text('Pause'),
+                  onPressed: () => setState(() => _confirming = 'PAUSED'),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('ads-enable'),
+                  icon: const Icon(Icons.play_arrow, size: 16),
+                  label: const Text('Enable'),
+                  onPressed: () => setState(() => _confirming = 'ENABLED'),
+                ),
+                TextButton(
+                  onPressed: () => setState(_picked.clear),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+          if (_changeResult != null && !_changing) ...[
+            if (_picked.isNotEmpty || _confirming != null) const SizedBox(height: 8),
+            Text(_changeResult!, key: const ValueKey('ads-change-result'), style: theme.textTheme.bodySmall),
+          ],
+        ],
+      ),
+    );
   }
 
   /// A column header that sorts.

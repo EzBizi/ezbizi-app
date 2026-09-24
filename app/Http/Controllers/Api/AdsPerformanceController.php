@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\SocialConnection;
 use App\Services\Ads\CampaignPerformance;
+use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialProvider;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +42,7 @@ class AdsPerformanceController extends Controller
     public function __construct(
         private readonly CampaignPerformance $performance,
         private readonly SocialConnectionAccess $access,
+        private readonly AuditLogger $audit,
     ) {}
 
     /**
@@ -236,6 +238,87 @@ class AdsPerformanceController extends Controller
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
         ]);
+    }
+
+    /**
+     * POST /api/v1/ads/campaigns/status  {connection_id, campaign_ids[], status}
+     *
+     * Pause or enable the campaigns somebody selected. Jose, 2026-09-24.
+     *
+     * ── Its own grant, never implied by reading ─────────────────────
+     *
+     * `ads_performance.manage`, separate from `.view`. Reading what an account
+     * spent and switching its advertising off are different acts with
+     * different consequences - one press here stops the phone ringing for a
+     * whole branch - and an organization must be able to give the first
+     * without the second.
+     *
+     * ── One answer per campaign ──────────────────────────────────────
+     *
+     * Each campaign is its own request and its own result. Google refuses some
+     * campaign types and some account states, and a batch that failed as a
+     * whole because one of eight could not be paused would leave the person
+     * guessing which seven did. The response names every one.
+     *
+     * Every change that Google accepts is audited, with who, which account,
+     * which campaign and which way - this changes what a business spends, and
+     * "who paused Atlanta on Tuesday" has to have an answer.
+     */
+    public function setStatus(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user !== null && $user->hasPermission('ads_performance.manage'),
+            Status::HTTP_FORBIDDEN,
+            'Pausing or enabling campaigns needs the Manage Google Ads permission.',
+        );
+
+        $input = $request->validate([
+            'connection_id' => ['required', 'uuid'],
+            'campaign_ids' => ['required', 'array', 'min:1', 'max:50'],
+            'campaign_ids.*' => ['required', 'string', 'regex:/^\d+$/'],
+            'status' => ['required', 'in:ENABLED,PAUSED'],
+        ]);
+
+        $connection = SocialConnection::query()
+            ->where('provider', SocialProvider::GoogleAds->value)
+            ->where('status', SocialConnection::STATUS_CONNECTED)
+            ->whereKey($input['connection_id'])
+            ->get()
+            ->first(fn (SocialConnection $c) => $this->access->inView($user, $c));
+
+        if ($connection === null) {
+            return response()->json([
+                'message' => 'That Google Ads account is not connected here.',
+            ], Status::HTTP_CONFLICT);
+        }
+
+        $results = [];
+
+        foreach (array_unique($input['campaign_ids']) as $campaignId) {
+            try {
+                $this->performance->setStatus($connection, $campaignId, $input['status']);
+            } catch (RuntimeException $e) {
+                $results[] = ['campaign_id' => $campaignId, 'ok' => false, 'because' => $e->getMessage()];
+
+                continue;
+            }
+
+            // One action name, written out: the status it moved to is in the
+            // change, so "every pause last week" is a filter on one event
+            // type rather than a join across two.
+            $this->audit->log(
+                'ads_performance.campaign_status_changed',
+                $connection,
+                ['status' => $input['status']],
+                ['campaign_id' => $campaignId, 'customer_id' => $connection->remote_id],
+            );
+
+            $results[] = ['campaign_id' => $campaignId, 'ok' => true, 'because' => null];
+        }
+
+        return response()->json(['data' => $results]);
     }
 
     /**

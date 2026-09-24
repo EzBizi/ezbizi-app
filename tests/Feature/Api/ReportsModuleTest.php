@@ -61,17 +61,21 @@ class ReportsModuleTest extends TestCase
     {
         $registry = app(ModuleRegistry::class);
 
+        // `view` and `manage` since 2026-09-24, when Jose asked for campaigns
+        // to be paused and enabled from EzBizi. Still no create, edit or
+        // delete: the figures are Google's and are not stored, and `manage` is
+        // campaign STATUS only - its own grant, so that reading spend never
+        // carries the power to switch it off.
         $this->assertSame(
-            ['view'],
+            ['view', 'manage'],
             $registry->get('ads_performance')?->actions,
-            'Read only - the figures are Google\'s and are not stored, so there is nothing '
-            .'to create, edit or delete.',
+            'Google Ads reads spend and pauses or enables campaigns, and nothing else.',
         );
 
         $this->assertNotContains(
             'reports.view',
             $registry->get('ads_performance')?->permissionKeys() ?? [],
-            'it declares ads_performance.view and nothing else',
+            'it declares its own grants and borrows none from Reports',
         );
     }
 }

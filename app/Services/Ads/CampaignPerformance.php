@@ -68,6 +68,34 @@ class CampaignPerformance
         .'metrics.conversions, metrics.all_conversions';
 
     /**
+     * The OPTIONAL metrics, which the policy says must be "made available, as
+     * an option for users" beside the required ones.
+     *
+     * ── Why these six and not "all" ──────────────────────────────────
+     *
+     * Two constraints, both measured on 2026-09-24 against A1 Chimney -
+     * Atlanta rather than read off the field reference:
+     *
+     *  - every one of them must be valid on BOTH `customer` and `campaign`.
+     *    One incompatible field fails the whole query with a 400, which would
+     *    take the five REQUIRED metrics down with it - an optional column
+     *    breaking R.10 is the worst trade available here. `phone_calls` and
+     *    `phone_impressions` are the proof: valid on campaign, refused on
+     *    customer ("could not support requested resources: 'CUSTOMER'").
+     *  - every one of them must be ADDITIVE, because account totals are summed
+     *    from day-segmented rows (see forConnection). A click-through rate or
+     *    an impression share summed across thirty days is a wrong number that
+     *    looks right, so ratios are DERIVED from these sums in `totals()` and
+     *    impression-share metrics, which cannot be derived at all, are left out.
+     *
+     * Selected in the same two queries as the required fields, so offering
+     * them costs no extra API operations.
+     */
+    private const OPTIONAL_METRICS = 'metrics.interactions, metrics.conversions_value, '
+        .'metrics.all_conversions_value, metrics.view_through_conversions, '
+        .'metrics.engagements, metrics.invalid_clicks';
+
+    /**
      * @return array{
      *     account: array<string, mixed>,
      *     campaigns: list<array<string, mixed>>,
@@ -105,8 +133,9 @@ class CampaignPerformance
          */
         $account = $this->search($connection, $token, sprintf(
             'SELECT segments.date, customer.id, customer.descriptive_name, '
-            .'customer.currency_code, customer.time_zone, customer.manager, %s FROM customer WHERE %s',
+            .'customer.currency_code, customer.time_zone, customer.manager, %s, %s FROM customer WHERE %s',
             self::REQUIRED_METRICS,
+            self::OPTIONAL_METRICS,
             $window,
         ));
 
@@ -118,8 +147,9 @@ class CampaignPerformance
          */
         $campaigns = ! $withCampaigns ? [] : $this->search($connection, $token, sprintf(
             'SELECT campaign.id, campaign.name, campaign.status, '
-            .'campaign.advertising_channel_type, %s FROM campaign WHERE %s',
+            .'campaign.advertising_channel_type, %s, %s FROM campaign WHERE %s',
             self::REQUIRED_METRICS,
+            self::OPTIONAL_METRICS,
             $window,
         ));
 
@@ -172,15 +202,113 @@ class CampaignPerformance
             $rows,
         ));
 
+        $clicks = $sum('clicks');
+        $impressions = $sum('impressions');
+        $conversions = $sum('conversions');
+        $cost = $sum('costMicros') / 1_000_000;
+        $interactions = $sum('interactions');
+        $value = $sum('conversionsValue');
+
         return [
             ...$identity,
-            'clicks' => (int) $sum('clicks'),
-            'impressions' => (int) $sum('impressions'),
-            'conversions' => round($sum('conversions'), 2),
+            'clicks' => (int) $clicks,
+            'impressions' => (int) $impressions,
+            'conversions' => round($conversions, 2),
             'all_conversions' => round($sum('allConversions'), 2),
-            'cost' => round($sum('costMicros') / 1_000_000, 2),
+            'cost' => round($cost, 2),
             'currency' => $currency,
+
+            // Optional, additive: summed like the required five.
+            'interactions' => (int) $interactions,
+            'conversions_value' => round($value, 2),
+            'all_conversions_value' => round($sum('allConversionsValue'), 2),
+            'view_through_conversions' => (int) $sum('viewThroughConversions'),
+            'engagements' => (int) $sum('engagements'),
+            'invalid_clicks' => (int) $sum('invalidClicks'),
+
+            // Optional, DERIVED from the sums above and never summed
+            // themselves. Null rather than 0 when the denominator is zero: a
+            // click-through rate of 0% on an account with no impressions says
+            // something false, and "no rate" says what is true.
+            'ctr' => self::ratio($clicks, $impressions, 4),
+            'average_cpc' => self::ratio($cost, $clicks, 2),
+            'average_cpm' => self::ratio($cost * 1000, $impressions, 2),
+            'cost_per_conversion' => self::ratio($cost, $conversions, 2),
+            'conversion_rate' => self::ratio($conversions, $interactions, 4),
+            'interaction_rate' => self::ratio($interactions, $impressions, 4),
+            'value_per_conversion' => self::ratio($value, $conversions, 2),
+            'conversion_value_per_cost' => self::ratio($value, $cost, 2),
         ];
+    }
+
+    private static function ratio(float $top, float $bottom, int $places): ?float
+    {
+        return $bottom > 0 ? round($top / $bottom, $places) : null;
+    }
+
+    /**
+     * Pause or enable ONE campaign. Google's M.110, and the only write this
+     * class can make.
+     *
+     * ── Why status and nothing else ──────────────────────────────────
+     *
+     * Jose asked, 2026-09-24, for campaigns to be paused and enabled from
+     * EzBizi. That is the whole of it: `updateMask` is the single field
+     * `status`, so this cannot touch a budget, a bid, a name or a setting even
+     * if a caller wanted it to. REMOVED is refused before the request is built
+     * - it is permanent in Google Ads, there is no un-remove, and it was not
+     * asked for.
+     *
+     * ── Google's words, not ours ─────────────────────────────────────
+     *
+     * A Local Services campaign, a suspended account or a campaign already in
+     * the state asked for can each be refused. The message returned is
+     * Google's own sentence, because "the campaign type does not allow this"
+     * and "the account is not enabled" are different problems for the person
+     * who pressed the button, and both arrive as a 400 or 403.
+     *
+     * @throws RuntimeException
+     */
+    public function setStatus(SocialConnection $connection, string $campaignId, string $status): void
+    {
+        if (! in_array($status, ['ENABLED', 'PAUSED'], true)) {
+            throw new RuntimeException('A campaign can only be paused or enabled here.');
+        }
+
+        if (! ctype_digit($campaignId)) {
+            throw new RuntimeException('That is not a Google Ads campaign id.');
+        }
+
+        $token = GoogleToken::forConnection($connection, 'google_ads');
+        $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
+
+        // ponytail: third copy of the request headers beside search() and
+        // LocalServicesLeads; extract when a fourth caller appears.
+        try {
+            $response = Http::withToken($token)
+                ->withHeaders([
+                    'developer-token' => (string) config('services.google_ads.developer_token'),
+                    'login-customer-id' => $connection->login_customer_id ?: $customerId,
+                ])
+                ->timeout(self::TIMEOUT)
+                ->post(GoogleAdsOAuth::endpoint().'/customers/'.$customerId.'/campaigns:mutate', [
+                    'operations' => [[
+                        'update' => [
+                            'resourceName' => 'customers/'.$customerId.'/campaigns/'.$campaignId,
+                            'status' => $status,
+                        ],
+                        'updateMask' => 'status',
+                    ]],
+                ]);
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer while changing this campaign.');
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException((string) ($response->json('error.details.0.errors.0.message')
+                ?? $response->json('error.message')
+                ?? 'Google refused the change (HTTP '.$response->status().').'));
+        }
     }
 
     /**
