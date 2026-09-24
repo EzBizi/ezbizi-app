@@ -166,6 +166,27 @@ class JobListWindowTest extends TestCase
     }
 
     /**
+     * No date, no window — rather than the server's, which is UTC.
+     *
+     * Jobs' review of 11f50399: at 21:00 Eastern on the 24th it is already the
+     * 25th in UTC, so a server-side "today" filed a 22:00 job as Past an hour
+     * before it happened, every evening. Only the reader knows their day, so a
+     * window without one is refused, and nothing counts either side of a
+     * boundary nobody named.
+     */
+    public function test_a_window_needs_the_readers_date_and_never_guesses_one(): void
+    {
+        $this->fourJobs();
+
+        $this->getJson('/api/v1/jobs?when=upcoming')->assertUnprocessable();
+        $this->getJson('/api/v1/jobs?when=past')->assertUnprocessable();
+
+        $meta = $this->getJson('/api/v1/jobs')->assertOk()->json('meta');
+        $this->assertArrayHasKey('status_counts', $meta);
+        $this->assertArrayNotHasKey('when_counts', $meta);
+    }
+
+    /**
      * Yesterday, today at 8am, tomorrow, and one with no date — one of them
      * completed, the rest scheduled. Returns the tenant, signed in as its admin.
      */

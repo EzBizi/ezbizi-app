@@ -59,7 +59,10 @@ class JobsController extends Controller
 
         $request->validate([
             'when'  => ['nullable', Rule::in(['upcoming', 'past', 'all'])],
-            'today' => ['nullable', 'date_format:Y-m-d'],
+            // REQUIRED with a window, never defaulted. The server's own date is
+            // UTC, and from about 8pm Eastern that is already tomorrow — a job
+            // at 10pm tonight would file as Past while it is still ahead.
+            'today' => ['nullable', 'required_if:when,upcoming,past', 'date_format:Y-m-d'],
         ]);
 
         // The current view, already narrowed to what §4 allows.
@@ -74,10 +77,19 @@ class JobsController extends Controller
          * (FranchiseWallTime), so the boundary has to be wall time too — an
          * instant would move it by each franchise's offset. And it is the
          * READER's date, sent by the client, because "today" belongs to the
-         * person looking; the server has no clock of theirs. Without one, the
-         * server's date stands in.
+         * person looking and the server has no clock of theirs. There is no
+         * fallback on purpose: the one available, the server's date, is UTC and
+         * wrong every US evening (Jobs' review of 11f50399). Null when the
+         * caller sent no date — then there is no window, and no window counts.
+         *
+         * One reader's date is applied to every franchise's wall clock. Right
+         * while an organization sits in one zone (A-1's branches are all
+         * Eastern); an organization spanning zones would see a branch's late
+         * evening filed a day early or late. The fix then is per-franchise
+         * midnights, not a different default here.
          */
-        $midnight = ($request->query('today') ?? now()->toDateString()).' 00:00:00';
+        $today = $request->query('today');
+        $midnight = $today === null ? null : $today.' 00:00:00';
 
         /*
          * Every filter, with the status and the window each OPTIONAL.
@@ -168,10 +180,14 @@ class JobsController extends Controller
                 ->map(fn ($n) => (int) $n)
                 ->all();
 
-            $meta['when_counts'] = [
-                'upcoming' => $filtered($status, 'upcoming')->count(),
-                'past'     => $filtered($status, 'past')->count(),
-            ];
+            // Only with the reader's date: without it there is no boundary to
+            // count either side of.
+            if ($midnight !== null) {
+                $meta['when_counts'] = [
+                    'upcoming' => $filtered($status, 'upcoming')->count(),
+                    'past'     => $filtered($status, 'past')->count(),
+                ];
+            }
         }
 
         /*
