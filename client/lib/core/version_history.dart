@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0267',
+      date: '24 Sep 2026',
+      items: [
+        'Two Workiz imports running at once can no longer create the same job or customer twice.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0266',
       date: '24 Sep 2026',
       items: [
