@@ -99,6 +99,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('C-1001'), findsWidgets);
+
+    // The WHOLE subtitle, number first. The list row already reads
+    // "Everdoors · Connecticut" and so does the org name in the fixture, so
+    // asserting only the owner tag would pass against the row behind the panel
+    // and prove nothing about the panel. Only the panel prefixes the number.
+    expect(find.text('C-1001 · Everdoors · Connecticut'), findsOneWidget);
     expect(find.text('Street address'), findsOneWidget);
     expect(find.text('Deactivate'), findsOneWidget);
     expect(find.text('Reassign owner'), findsOneWidget);

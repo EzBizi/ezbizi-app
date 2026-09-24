@@ -148,6 +148,33 @@ void main() {
     expect(controller.text, '2026-03-08 09:00');
   });
 
+  /// A job keeps the seconds it was booked with until somebody changes it.
+  ///
+  /// The blur is wired to the DATE boxes (Jobs' note: a test that blurred the
+  /// minute box triggered nothing and passed against the bug), so this clicks
+  /// into the day and out again.
+  testWidgets('a click in and out of the day leaves a stored time as it was', (
+    tester,
+  ) async {
+    final controller = TextEditingController(text: '2026-09-24 09:43:33');
+    await _pump(tester, controller, formats: european, withTime: true);
+
+    await tester.tap(find.byKey(const Key('calendar-day-day')));
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    expect(controller.text, '2026-09-24 09:43:33');
+
+    // A real change still writes, at the field's own minute precision.
+    await tester.enterText(find.byKey(const Key('calendar-day-day')), '25');
+    await tester.pump();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump();
+
+    expect(controller.text, '2026-09-25 09:43');
+  });
+
   testWidgets('three boxes and the calendar fit a 375-wide phone', (
     tester,
   ) async {

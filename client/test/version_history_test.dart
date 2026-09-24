@@ -76,6 +76,9 @@ void main() {
       261, // pinned at f33e8a9b and stopped in its gate: a8cd0c9f turned
       // no_popup_dropdown_test red. No artefact exists, and its one note -
       // Time slots - shipped in 0.0.0262 instead.
+      266, // pinned at cc0baa54 and stopped in its backend gate:
+      // ai_assistance declared an action requirement RolesApiTest did not
+      // know. No artefact exists; its notes shipped in 0.0.0267.
     };
     final holes = [
       for (var n = numbers.first; n <= numbers.last; n++)
