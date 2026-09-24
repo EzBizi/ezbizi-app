@@ -9,6 +9,8 @@ use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\EarnedStatuses;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\PhoneE164;
@@ -59,7 +61,8 @@ class ProjectWorkizRecords extends Command
 {
     protected $signature = 'ezbizi:project-workiz
         {--limit=500 : Most records of each kind to project in one run}
-        {--dry-run : Report what would be created and write nothing}';
+        {--dry-run : Report what would be created and write nothing}
+        {--announce-limit=200 : More recent status moves than this in one run is a backfill, and none is announced}';
 
     protected $description = 'Project mirrored Workiz clients and jobs into EzBizi customers and jobs';
 
@@ -69,7 +72,7 @@ class ProjectWorkizRecords extends Command
      * container before the test environment's database exists. See
      * SyncWorkizJobs for the full account.
      */
-    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit): int
+    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $limit = max(1, (int) $this->option('limit'));
@@ -90,11 +93,11 @@ class ProjectWorkizRecords extends Command
         $jobs = 0;
 
         foreach ($organizations as $organization) {
-            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $limit, $dryRun) {
+            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $events, $limit, $dryRun) {
                 $clients = $this->deriveClients($dryRun);
                 $customers = $this->projectCustomers($numbers, $audit, $limit, $dryRun);
                 $jobs = $this->projectJobs($numbers, $limit, $dryRun);
-                $this->followWorkiz($dryRun);
+                $this->followWorkiz($events, $dryRun);
 
                 return [$clients, $customers, $jobs];
             });
@@ -410,9 +413,10 @@ class ProjectWorkizRecords extends Command
      * Workiz job needs a backfill guard carried with it, and belongs to the
      * Jobs and Automations sessions.
      */
-    private function followWorkiz(bool $dryRun): int
+    private function followWorkiz(EventEmitter $events, bool $dryRun): int
     {
         $followed = 0;
+        $announce = [];
 
         WorkizJob::query()
             ->select('workiz_jobs.*')
@@ -422,7 +426,7 @@ class ProjectWorkizRecords extends Command
                     ->orWhereRaw('NOT (workiz_jobs.scheduled_for <=> jobs.scheduled_for)')
                     ->orWhereRaw("NOT (ROUND(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice') * 100) <=> jobs.amount_minor)");
             })
-            ->chunkById(500, function ($mirrored) use (&$followed, $dryRun) {
+            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
 
                 foreach ($mirrored as $row) {
@@ -463,7 +467,7 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    DB::transaction(function () use ($row, $job, $changes, $last) {
+                    DB::transaction(function () use ($row, $job, $changes, $last, $now, &$announce) {
                         if ($changes !== []) {
                             $job->forceFill($changes);
 
@@ -486,6 +490,11 @@ class ProjectWorkizRecords extends Command
                             }
 
                             $job->save();
+
+                            if (array_key_exists('status', $changes)
+                                && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                                $announce[] = [$job, $now['status'], $changes['status']];
+                            }
                         }
 
                         // What we have written, field by field. A field a
@@ -504,7 +513,108 @@ class ProjectWorkizRecords extends Command
             $this->info($followed.' projected jobs followed a change in Workiz.');
         }
 
+        $this->announce($events, $announce);
+
         return $followed;
+    }
+
+    /**
+     * How recently Workiz must have changed a status for it to be announced.
+     *
+     * The catch-up after 0.0.0264 follows about 1,300 past jobs whose status
+     * changed weeks or months ago. Announcing those would text customers about
+     * work finished in August. So what decides is WHEN WORKIZ SAYS it happened,
+     * not when this pass noticed — a property of the row, not a flag somebody
+     * can forget to set.
+     *
+     * Two hours must comfortably exceed the time a real change takes to arrive:
+     * an upcoming job is swept every minute and followed within five, and a
+     * past one waits in the re-read queue, which rotates in well under an hour
+     * once the backlog is cleared. A change older than that is history.
+     */
+    private const ANNOUNCE_WITHIN_HOURS = 2;
+
+    /**
+     * Raise `job.status_changed` for the moves this pass made — or none at all.
+     *
+     * ── WHY IT IS RAISED HERE ───────────────────────────────────
+     *
+     * A-1 works in Workiz, so almost every real "went to Done" reaches EzBizi
+     * through this pass, and a write through the model emits nothing: every
+     * other `job.*` emit lives in JobsController. Without this, Jose's rule —
+     * "when a job changes status to Done, send a text" — would never fire for
+     * the work A-1 actually does.
+     *
+     * ── WHO IT IS FOR IS NOT IN THE EVENT ───────────────────────
+     *
+     * The payload is exactly JobsController's, `{before, after}`, and the Job
+     * is the subject. A rule reaches the customer through the Automations
+     * session's "The customer it is about" recipient, resolved at run time via
+     * the job's customer — NOT through a phone number carried in the event,
+     * because `automation_events` is declared as holding no personal data and
+     * erasure never visits it. Their ruling, 2026-09-24; an earlier draft of
+     * this pass did carry the number and was taken back out.
+     *
+     * ── ALL OR NOTHING ──────────────────────────────────────────
+     *
+     * The Automations session's ruling: a pass that finds more recent moves
+     * than any real hour produces is a backfill, and announces NONE rather than
+     * a subset. A partial flood is worse than none, because nobody can tell
+     * which customers were texted. Decided after the pass, before a single
+     * event exists, because an event cannot be taken back.
+     *
+     * @param  list<array{0: Job, 1: ?string, 2: string}>  $moves
+     */
+    private function announce(EventEmitter $events, array $moves): void
+    {
+        if ($moves === []) {
+            return;
+        }
+
+        $limit = max(0, (int) $this->option('announce-limit'));
+
+        if (count($moves) > $limit) {
+            $this->warn(count($moves).' jobs changed status in Workiz in one pass — more than '.$limit
+                .', so this is treated as a backfill and no automation is told.');
+
+            return;
+        }
+
+        foreach ($moves as [$job, $before, $after]) {
+            // Plain emit, not emitAfterCommit: this runs after the follow pass,
+            // when every row's transaction has already committed, so there is
+            // no rolled-back write for a rule to fire on.
+            $events->emit('job.status_changed', $job, [
+                'before' => ['status' => $before],
+                'after' => ['status' => $after],
+            ]);
+
+            // JobsController's companion, under its exact condition: entering an
+            // earned status from one that was not. Templates such as "Book next
+            // year's visit" listen on job.completed, so leaving it out would make
+            // Workiz jobs silently skip them. Silent today by construction —
+            // A1-Group names no earned status yet.
+            if (EarnedStatuses::isEarned($after, $job->franchise)
+                && ! EarnedStatuses::isEarned((string) ($before ?? ''), $job->franchise)) {
+                $events->emit('job.completed', $job, [
+                    'before' => ['status' => $before],
+                    'after' => ['status' => $after],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Whether Workiz stamped this row's last change recently enough to announce.
+     * No stamp, no announcement: a text that should have gone and did not is
+     * recoverable; one about a months-old job is not.
+     */
+    private function happenedRecently(WorkizJob $row, ?string $timezone): bool
+    {
+        $moment = $this->workizMoment($row, $timezone);
+
+        return $moment !== null
+            && $moment->greaterThanOrEqualTo(now()->subHours(self::ANNOUNCE_WITHIN_HOURS));
     }
 
     /**

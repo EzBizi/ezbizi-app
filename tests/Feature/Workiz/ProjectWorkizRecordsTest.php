@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workiz;
 
+use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\WorkizClient;
@@ -9,6 +10,7 @@ use App\Models\WorkizJob;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -479,5 +481,256 @@ class ProjectWorkizRecordsTest extends TestCase
 
         $this->assertSame(42500, $job->amount_minor, 'the price still follows Workiz');
         $this->assertNull($job->earned_at, 'but a price is not a move into Done');
+    }
+
+    /**
+     * @return Collection<int, AutomationEvent>
+     */
+    private function statusEvents(array $tenant)
+    {
+        return $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'job.status_changed')
+            ->get());
+    }
+
+    /**
+     * JOSE'S RULE NEEDS THIS: "when a job changes status to Done, then it would
+     * send a message via txt". A-1 works in Workiz, so almost every real move to
+     * Done arrives through this pass — and a write through the model emits
+     * nothing, so without this the rule would never fire for A-1's actual work.
+     *
+     * And the event carries the customer's contact, because the send actions
+     * take a recipient ONLY from the event (ActionRunner::valueFromEvent, on
+     * purpose) — without it a rule has nobody to text.
+     */
+    public function test_a_recent_move_in_workiz_announces_the_status_change_with_the_customer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $events = $this->statusEvents($tenant);
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertCount(1, $events);
+
+        // JobsController's exact shape — nothing more. assertEquals, not
+        // assertSame: MySQL JSON does not keep key order, so the semantic
+        // comparison is the true one (docs/DEVELOPMENT-RULES.md).
+        $this->assertEquals(
+            ['before' => ['status' => 'Submitted'], 'after' => ['status' => 'Done']],
+            $events->first()->payload,
+        );
+
+        // The JOB is the subject: that is how the Automations session's "The
+        // customer it is about" recipient reaches the customer at run time.
+        $this->assertSame(Job::class, $events->first()->subject_type);
+        $this->assertSame($job->getKey(), $events->first()->subject_id);
+    }
+
+    /**
+     * NO PERSONAL DATA IN THE EVENT. The Automations session's ruling:
+     * `automation_events` is declared as holding none and erasure never visits
+     * it, so a customer's number carried there would outlive the customer.
+     * Pinned because an earlier draft of this very pass carried it.
+     */
+    public function test_the_announcement_carries_no_customer_contact(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $payload = json_encode($this->statusEvents($tenant)->first()->payload);
+
+        $this->assertStringNotContainsString('5555550100', $payload);
+        $this->assertStringNotContainsString('someone@example.test', $payload);
+        $this->assertStringNotContainsString('Pat Rivera', $payload);
+    }
+
+    /**
+     * JobsController's companion: `job.completed` on the way INTO an earned
+     * status. Templates such as "Book next year's visit" listen on it, so a
+     * Workiz job that skipped it would silently skip them too.
+     */
+    public function test_entering_an_earned_status_also_announces_the_completion(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, ['Done']);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $completed = $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'job.completed')->get());
+
+        $this->assertCount(1, $completed);
+        $this->assertSame('Done', $completed->first()->payload['after']['status']);
+    }
+
+    /**
+     * And not while nothing is earned — which is A1-Group today. Jose's rule
+     * therefore hangs off `job.status_changed` with `after.status = Done`.
+     */
+    public function test_no_completion_is_announced_while_no_status_is_earned(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, []);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertCount(1, $this->statusEvents($tenant), 'the status change is still announced');
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'job.completed')->count()));
+    }
+
+    /**
+     * THE FLOOD THIS MUST NEVER CAUSE. 0.0.0264's catch-up re-reads about 1,300
+     * past jobs whose status changed weeks or months ago. Announcing those would
+     * text customers about work finished in August. Workiz's own clock says when
+     * the change happened, and that — not when we noticed — decides.
+     */
+    public function test_a_move_workiz_made_long_ago_is_followed_but_not_announced(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = '2026-08-28 11:00:13';
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame('Done', $this->inTenant($tenant['org'], fn () => Job::query()->first())->status, 'still followed');
+        $this->assertCount(0, $this->statusEvents($tenant), 'but nobody is told');
+    }
+
+    /**
+     * No Workiz moment, no announcement. When it cannot say WHEN the change
+     * happened, the safe answer is silence: a text that should have gone and
+     * did not is recoverable, one about a months-old job is not.
+     */
+    public function test_a_move_with_no_workiz_moment_is_not_announced(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = null;
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertCount(0, $this->statusEvents($tenant));
+    }
+
+    /**
+     * A price or a date moving is not a status change, and says nothing.
+     */
+    public function test_a_price_change_is_not_announced_as_a_status_change(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->last_status_update = now()->format('Y-m-d H:i:s');
+            $mirrored->payload = array_merge($mirrored->payload, ['JobTotalPrice' => 99]);
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertCount(0, $this->statusEvents($tenant));
+    }
+
+    /**
+     * THE SECOND NET, the Automations session's ruling: a pass that finds more
+     * recent moves than any real hour produces is a backfill, and announces
+     * NONE rather than a subset — a partial flood is worse than none, because
+     * nobody can tell which customers were texted.
+     */
+    public function test_a_burst_of_recent_moves_beyond_the_limit_announces_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+
+        $rows = [];
+        foreach (['JOB001', 'JOB002', 'JOB003'] as $uuid) {
+            $rows[] = $this->mirror($tenant, [], ['UUID' => $uuid]);
+        }
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($rows) {
+            foreach ($rows as $mirrored) {
+                $mirrored->refresh();
+                $mirrored->status = 'Done';
+                $mirrored->last_status_update = now('America/New_York')->subMinutes(5)->format('Y-m-d H:i:s');
+                $mirrored->save();
+            }
+        });
+
+        $this->artisan('ezbizi:project-workiz', ['--announce-limit' => 2])
+            ->expectsOutputToContain('backfill')
+            ->assertSuccessful();
+
+        $this->assertCount(0, $this->statusEvents($tenant));
+        $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Job::query()->where('status', 'Done')->count()), 'the jobs still follow');
     }
 }
