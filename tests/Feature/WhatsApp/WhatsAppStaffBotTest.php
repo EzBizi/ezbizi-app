@@ -109,11 +109,11 @@ class WhatsAppStaffBotTest extends TestCase
     }
 
     /** @param array<string, mixed> $message */
-    private function inbound(string $phoneNumberId, array $message, string $wamid = 'wamid.IN1')
+    private function inbound(string $phoneNumberId, array $message, string $wamid = 'wamid.IN1', string $from = '17867762666')
     {
         $json = (string) json_encode(['entry' => [['changes' => [['value' => [
             'metadata' => ['phone_number_id' => $phoneNumberId],
-            'messages' => [['id' => $wamid, 'from' => '17867762666', ...$message]],
+            'messages' => [['id' => $wamid, 'from' => $from, ...$message]],
         ]]]]]]);
 
         return $this->call('POST', '/api/v1/social/whatsapp/webhook', [], [], [], [
@@ -382,6 +382,44 @@ class WhatsAppStaffBotTest extends TestCase
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'))->assertOk();
 
         $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body']);
+    }
+
+    public function test_a_foreign_number_is_not_mistaken_for_a_us_staff_member(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        // A real staff member, on a Dallas 469 line, typed into their profile.
+        $this->staff($t, '(469) 555-1234');
+
+        /*
+         * FOUND BY THE DEPLOY DESK. A WhatsApp wa_id always carries its country
+         * code, so ten digits is a FOREIGN number - e.g. +46 and eight digits.
+         * The normaliser adds a 1 to any ten digits (right for a typed profile),
+         * which turned "4695551234" into +14695551234: the Dallas staff member.
+         * Whoever owned that foreign number read what A1 pays each lender.
+         */
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'),
+            'wamid.FOREIGN', from: '4695551234')->assertOk();
+
+        $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body'],
+            'a foreign 10-digit number was treated as a US staff member');
+    }
+
+    public function test_the_same_staff_member_writing_from_their_real_number_is_let_in(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        $this->staff($t, '(469) 555-1234');
+
+        // The positive control: the guard must not lock out the US number the
+        // profile actually means. Without this, refusing everybody would pass.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'),
+            'wamid.US', from: '14695551234')->assertOk();
+
+        $this->assertStringContainsString('3.9%', $this->sent[0]['text']['body']);
     }
 
     public function test_staff_of_another_organization_are_not_staff_here(): void

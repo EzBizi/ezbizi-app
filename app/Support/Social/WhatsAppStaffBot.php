@@ -376,7 +376,26 @@ final class WhatsAppStaffBot
      */
     private function isStaff(WhatsAppNumber $number, string $sender): bool
     {
-        $wanted = ThumbtackAssociatePhoneNumbers::e164($sender);
+        /*
+         * THE SENDER IS NOT A NUMBER SOMEBODY TYPED - it is a WhatsApp wa_id,
+         * which ALWAYS carries its country code. Found by the deploy desk and
+         * measured: e164() adds a 1 to any ten digits, which is right for a
+         * profile ("469-555-1234") and wrong here, where ten digits means a
+         * FOREIGN number. A 10-digit wa_id such as "4695551234" came out as
+         * +14695551234 - identical to a staff member on a Dallas 469 line - so
+         * whoever owned that foreign number read what A1 pays each lender.
+         *
+         * So the sender is accepted only as what a US or Canadian wa_id is:
+         * eleven digits beginning with 1. The profile side keeps e164()'s rule,
+         * because a profile IS typed by a person.
+         */
+        $digits = preg_replace('/\D+/', '', $sender) ?? '';
+
+        if (strlen($digits) !== 11 || ! str_starts_with($digits, '1')) {
+            return false;
+        }
+
+        $wanted = ThumbtackAssociatePhoneNumbers::e164($digits);
 
         if ($wanted === null) {
             return false;
