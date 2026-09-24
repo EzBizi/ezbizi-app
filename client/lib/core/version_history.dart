@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0260',
+      date: '24 Sep 2026',
+      items: [
+        'A1Leads GBP says why there is no Reply button: replying from EzBizi is not switched on yet, or A-1 Chimney is not the company in view.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0259',
       date: '24 Sep 2026',
       items: [
