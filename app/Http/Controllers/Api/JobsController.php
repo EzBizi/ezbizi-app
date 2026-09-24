@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\InspectionReport;
 use App\Models\InventoryIssueLine;
 use App\Models\Job;
 use App\Models\JobLine;
@@ -437,7 +438,51 @@ class JobsController extends Controller
                 : null,
             'earned_at'  => $job->earned_at?->toIso8601String(),
             'created_at' => $job->created_at->toIso8601String(),
-        ] + $this->materialsFor($job);
+        ] + $this->materialsFor($job) + $this->inspectionsFor($job);
+    }
+
+    /**
+     * The inspection reports submitted on this job (spec §10) — or nothing.
+     *
+     * Gated by INSPECTION's own grant, `inspection.view`, and deliberately NOT
+     * by a Jobs tab key. A report is a document Inspection owns behind
+     * InspectionReportPolicy; a Jobs tab that listed reports to anybody holding
+     * the tab would be a way past that policy. Settings' rule from inbox 0051:
+     * a tab is an AND on top of the capability, never an alternative. And with
+     * the capability required anyway, a tab key would only let an administrator
+     * hide inspections-on-a-job from somebody who may read every inspection
+     * elsewhere, which is not a split anybody makes — so no key was minted.
+     *
+     * The org check the policy also makes is satisfied by construction here:
+     * InspectionReport uses BelongsToTenant, and the job is already this
+     * tenant's.
+     *
+     * Archived reports are left out because Inspection's own list leaves them
+     * out (InspectionReportsController::index); this is not a second,
+     * differently-filtered view of their data. `definition_name` is the
+     * report's own SNAPSHOT of what the inspection was called when it was
+     * submitted, so renaming the template later does not rename past reports.
+     *
+     * @return array{inspections?: list<array{id: string, name: ?string, submitted_at: ?string}>}
+     */
+    private function inspectionsFor(Job $job): array
+    {
+        if (! request()->user()?->hasPermission('inspection.view')) {
+            return [];
+        }
+
+        return [
+            'inspections' => InspectionReport::query()
+                ->where('job_id', $job->getKey())
+                ->whereNull('archived_at')
+                ->orderBy('submitted_at')
+                ->get(['id', 'definition_name', 'submitted_at'])
+                ->map(fn (InspectionReport $report) => [
+                    'id'           => $report->id,
+                    'name'         => $report->definition_name,
+                    'submitted_at' => $report->submitted_at?->toIso8601String(),
+                ])->all(),
+        ];
     }
 
     /**

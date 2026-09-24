@@ -312,6 +312,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                   const SizedBox(height: 16),
                   _Materials(rows: row['materials'] as List),
                 ],
+                if (row != null && row['inspections'] is List) ...[
+                  const SizedBox(height: 20),
+                  const Divider(),
+                  const SizedBox(height: 16),
+                  _Inspections(rows: row['inspections'] as List),
+                ],
                 const SizedBox(height: 20),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -410,6 +416,70 @@ class _Materials extends StatelessWidget {
     );
   }
 }
+
+/// The inspection reports submitted on this job (spec §10), read-only.
+///
+/// Drawn on the KEY, like [_Materials], and the key is present only for
+/// somebody holding Inspection's own `inspection.view`. There is no Jobs tab
+/// key behind this section on purpose: a job must not become a way past
+/// InspectionReportPolicy. See JobsController::inspectionsFor().
+///
+/// The name is the report's own snapshot of what the inspection was called
+/// when it was submitted, so renaming the template later leaves this alone.
+///
+// ponytail: listed, not linked. Opening a report means navigating into the
+// Inspection module, which is its own screen and its own session's; a list
+// that says what was inspected and when is useful on its own. Add a tap
+// through to the report when somebody asks to open one from here.
+class _Inspections extends StatelessWidget {
+  const _Inspections({required this.rows});
+
+  final List rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Inspections', style: theme.textTheme.titleMedium),
+        const SizedBox(height: 12),
+        if (rows.isEmpty)
+          Text(
+            'No inspection has been submitted on this job.',
+            style: theme.textTheme.bodyMedium,
+          )
+        else
+          for (final row in rows.whereType<Map>())
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text('${row['name'] ?? 'Unnamed inspection'}'),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _datePart(row['submitted_at'] as String?),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+}
+
+/// The calendar date of an ISO timestamp, as the API wrote it.
+///
+/// Taken from the string rather than parsed, so the date is the one in the
+/// offset the server sent — parsing into a DateTime and formatting it would
+/// move a late-evening submission onto the next day for anybody east of it.
+String _datePart(String? stamp) =>
+    (stamp == null || stamp.length < 10) ? '' : stamp.substring(0, 10);
 
 /// ISO from the API (`2026-03-08T09:00:00-05:00`) as the wall clock a person
 /// typed. The franchise timezone is already baked into the stored value.

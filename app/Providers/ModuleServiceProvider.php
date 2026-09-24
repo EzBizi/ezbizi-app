@@ -888,10 +888,21 @@ class ModuleServiceProvider extends ServiceProvider
                  * parts were" is a sentence somebody says out loud, and the rows
                  * come from Inventory rather than from this module.
                  *
-                 * Photos and Inspection are NOT here yet, on purpose. Their
-                 * panes do not exist, and a checkbox for a pane an administrator
-                 * cannot then find is step 1 of the brief failing from the other
-                 * side. They arrive in the commit that builds them.
+                 * Photos is NOT here yet, on purpose: its pane does not exist,
+                 * and a checkbox for a pane an administrator cannot then find is
+                 * step 1 of the brief failing from the other side. It arrives in
+                 * the commit that builds it.
+                 *
+                 * Inspection is not here AND WILL NOT BE, which is a decision,
+                 * not a gap. Its section on the job panel is gated by
+                 * Inspection's own `inspection.view` (JobsController::
+                 * inspectionsFor). A Jobs tab key would either be an alternative
+                 * to that grant — a way past InspectionReportPolicy — or an AND
+                 * on top of it, which only lets an administrator hide
+                 * inspections-on-a-job from somebody who may read every
+                 * inspection elsewhere. Nobody makes that split. This comment
+                 * used to promise an Inspection tab here; it was wrong about
+                 * what the pane needed, not about when it would arrive.
                  */
                 tabs: [
                     new TabDefinition('work', 'Work', action: 'view'),
