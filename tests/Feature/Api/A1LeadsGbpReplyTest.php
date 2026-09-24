@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\A1LeadsReplyReceipt;
 use App\Models\AuditEvent;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -185,6 +187,57 @@ class A1LeadsGbpReplyTest extends TestCase
     }
 
     /**
+     * An attempt WITHOUT the reply grant is refused before anything is sent -
+     * and is audited, which a route-middleware refusal could not be.
+     */
+    public function test_an_attempt_without_the_grant_is_refused_and_audited(): void
+    {
+        $tenant = $this->provisionTenant('Hotel');
+        $this->setupBridge($tenant);
+        Http::fake();
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view']);
+
+        $this->signedInAs($viewer)->postJson('/api/v1/a1leads-gbp/reply', [
+            'googleReviewName' => self::REVIEW,
+            'text' => 'A reply',
+            'expectedReviewUpdatedAt' => '2026-09-24T12:00:00Z',
+        ])->assertForbidden()->assertJsonPath('error.code', 'no_reply_grant');
+
+        Http::assertNothingSent();
+
+        $event = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+            ->where('action', 'a1leads_gbp.review_reply_failed')->sole());
+        $this->assertSame($viewer->getKey(), $event->actor_id);
+        $this->assertSame('no_reply_grant', $event->metadata['code']);
+    }
+
+    /**
+     * A connection that drops DURING the POST is an unknown outcome, not a
+     * failure: Google may have accepted the reply. It is reported as such,
+     * no receipt is written (there is no confirmed send to show), and the
+     * attempt is audited so nobody reads the silence as "nothing happened".
+     */
+    public function test_a_dropped_post_is_an_unknown_outcome_and_is_audited(): void
+    {
+        $tenant = $this->provisionTenant('India');
+        $this->setupBridge($tenant);
+        Http::fake([
+            'http://127.0.0.1:3456/_info' => Http::response(['version' => '1.10.1']),
+            self::LIVE => fn () => throw new ConnectionException('reset'),
+        ]);
+
+        $this->signedInAs($this->operator($tenant))->postJson('/api/v1/a1leads-gbp/reply', [
+            'googleReviewName' => self::REVIEW,
+            'text' => 'A reply',
+            'expectedReviewUpdatedAt' => '2026-09-24T12:00:00Z',
+        ])->assertStatus(503)->assertJsonPath('error.code', 'reply_outcome_unknown');
+
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => A1LeadsReplyReceipt::query()->count()));
+        $this->assertSame('reply_outcome_unknown', $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+            ->where('action', 'a1leads_gbp.review_reply_failed')->sole()->metadata['code']));
+    }
+
+    /**
      * A public reply accepted by Google is on OUR audit trail; a refused one is
      * not. Added by EzBizi when the handoff was merged: the reply is public,
      * permanent and under the business's name, so who sent it has to be
@@ -219,6 +272,17 @@ class A1LeadsGbpReplyTest extends TestCase
             ->where('action', 'a1leads_gbp.review_replied')->get());
 
         $this->assertCount(1, $events, 'the accepted one, not the refused one');
+
+        // And the refused one IS on the trail - as a failed attempt, with its
+        // code, and without the words: an unpublished draft is not the
+        // business's public statement.
+        $failed = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
+            ->where('action', 'a1leads_gbp.review_reply_failed')->get());
+        $this->assertCount(1, $failed);
+        $this->assertSame('review_changed', $failed[0]->metadata['code']);
+        $this->assertSame(409, $failed[0]->metadata['status']);
+        $this->assertSame(self::REVIEW, $failed[0]->metadata['google_review_name']);
+        $this->assertStringNotContainsString('Thank you for telling us', json_encode([$failed[0]->changes, $failed[0]->metadata]));
         $this->assertSame($actor->getKey(), $events[0]->actor_id);
         $this->assertSame(self::REVIEW, $events[0]->metadata['google_review_name']);
         $this->assertSame(['reply' => 'Thank you for telling us.'], $events[0]->changes);

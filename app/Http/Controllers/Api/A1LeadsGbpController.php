@@ -205,21 +205,33 @@ class A1LeadsGbpController extends Controller
      */
     public function publishReply(Request $request): JsonResponse
     {
-        if ($refusal = $this->replyScopeRefusal($request)) {
-            return $refusal;
+        $name = trim((string) $request->input('googleReviewName', ''));
+
+        /*
+         * The reply grant is checked HERE rather than by route middleware, so
+         * that a refusal can be audited. Rodrigo's contract audits reply
+         * ATTEMPTS, and a middleware refusal happens before any code of ours
+         * runs - an unauthorised attempt would have left no trace at all.
+         */
+        if (! $request->user()?->hasPermission('a1leads_gbp.reply')) {
+            return $this->refusedAttempt($name, $this->replyError(403, 'no_reply_grant',
+                'Replying to A-1 Chimney\'s reviews needs the A1Leads GBP Reply permission.'));
         }
 
-        $name = trim((string) $request->input('googleReviewName', ''));
+        if ($refusal = $this->replyScopeRefusal($request)) {
+            return $this->refusedAttempt($name, $refusal);
+        }
+
         $text = trim((string) $request->input('text', ''));
         $expected = trim((string) $request->input('expectedReviewUpdatedAt', ''));
         if (! $this->validReviewName($name)) {
-            return $this->replyError(422, 'invalid_review_name', 'Choose a review from this page.');
+            return $this->refusedAttempt($name, $this->replyError(422, 'invalid_review_name', 'Choose a review from this page.'));
         }
         if ($text === '' || mb_strlen($text) > 4000) {
-            return $this->replyError(422, 'invalid_reply_text', 'Write a reply of up to 4,000 characters.');
+            return $this->refusedAttempt($name, $this->replyError(422, 'invalid_reply_text', 'Write a reply of up to 4,000 characters.'));
         }
         if ($expected === '' || strlen($expected) > 80) {
-            return $this->replyError(422, 'missing_review_revision', 'Check the live review again before sending.');
+            return $this->refusedAttempt($name, $this->replyError(422, 'missing_review_revision', 'Check the live review again before sending.'));
         }
 
         $result = $this->replies->publish(
@@ -257,9 +269,43 @@ class A1LeadsGbpController extends Controller
                 ['reply' => (string) ($data['text'] ?? $text)],
                 ['google_review_name' => $name, 'sent_at' => $data['sentAt'] ?? null],
             );
+
+            return $this->replyResult($result);
         }
 
-        return $this->replyResult($result);
+        // Anything short of a confirmed send - refused by A1 Leads, a stale
+        // revision, an already-answered review, or a connection that dropped
+        // mid-POST with the outcome unknown - is an attempt, and is recorded.
+        return $this->refusedAttempt($name, $this->replyResult($result));
+    }
+
+    /**
+     * Record a reply attempt that did NOT end in a confirmed send, and return
+     * the refusal unchanged.
+     *
+     * Who tried, which review, the status and the machine code - and never the
+     * reply text. A refused reply was not published, so the words are not the
+     * business's public statement; they are a draft that belongs to nobody but
+     * its writer. `reply_outcome_unknown` is recorded here too: it means the
+     * connection dropped during the POST, and the audit must not read as
+     * "nothing happened" when Google may have accepted it.
+     */
+    private function refusedAttempt(string $name, JsonResponse $response): JsonResponse
+    {
+        $body = $response->getData(true);
+
+        $this->audit->log(
+            'a1leads_gbp.review_reply_failed',
+            null,
+            [],
+            [
+                'google_review_name' => $name !== '' ? mb_substr($name, 0, 300) : null,
+                'status' => $response->getStatusCode(),
+                'code' => $body['error']['code'] ?? null,
+            ],
+        );
+
+        return $response;
     }
 
     private function replyScopeRefusal(Request $request): ?JsonResponse

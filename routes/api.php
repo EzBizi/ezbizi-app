@@ -752,8 +752,12 @@ Route::prefix('v1')
         // exact-review request through a separately credentialed live tunnel.
         Route::middleware('permission:a1leads_gbp.reply')->group(function () {
             Route::get('a1leads-gbp/reply/preflight', [A1LeadsGbpController::class, 'replyPreflight']);
-            Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);
         });
+
+        // The POST checks the reply grant inside the controller, not here, so a
+        // refused attempt can be audited - Rodrigo's contract audits attempts,
+        // and a middleware refusal would leave no trace.
+        Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
