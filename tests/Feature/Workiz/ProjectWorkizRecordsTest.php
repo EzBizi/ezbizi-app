@@ -504,6 +504,25 @@ class ProjectWorkizRecordsTest extends TestCase
      * stamped at its own Workiz moment — the same moment the Jobs session's
      * backfill will use, so both paths agree to the minute.
      */
+    /**
+     * Arriving already Done with NO Workiz moment stays unstamped: "now" would
+     * file historical work under the current month. The Jobs session left the
+     * 210 race duplicates unstamped for the same reason.
+     */
+    public function test_a_job_created_already_earned_with_no_workiz_moment_is_left_unstamped(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->workizVocabulary($tenant, ['Done']);
+        $this->mirror($tenant, ['status' => 'Done', 'last_status_update' => null], ['Status' => 'Done']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame('Done', $job?->status);
+        $this->assertNull($job->earned_at);
+    }
+
     public function test_a_job_created_already_earned_is_stamped_at_its_workiz_moment(): void
     {
         $tenant = $this->provisionTenant('Alpha');

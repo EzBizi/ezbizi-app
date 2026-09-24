@@ -406,8 +406,15 @@ class ProjectWorkizRecords extends Command
                 // is stamped at Workiz's own moment — the same moment the Jobs
                 // session's one-time backfill uses, so the two paths agree.
                 // Nothing is stamped while the organization names no earned
-                // status, which is correct: it only acts on the way in.
-                $job->markEarnedIfDue($this->workizMoment($mirrored, $franchise->timezone));
+                // status, which is correct: it only acts on the way in. With
+                // no Workiz moment it stays UNSTAMPED: markEarnedIfDue would
+                // read null as now and file old work under this month.
+                $moment = $this->workizMoment($mirrored, $franchise->timezone);
+
+                if ($moment !== null) {
+                    $job->markEarnedIfDue($moment);
+                }
+
                 $job->save();
 
                 $mirrored->job_id = $job->getKey();
@@ -686,7 +693,8 @@ class ProjectWorkizRecords extends Command
      * stamp four hours. Found by the test, not by reading.
      *
      * Null when Workiz gave no moment, which `markEarnedIfDue` reads as now —
-     * right for a change this pass has only just seen.
+     * right for a change this pass has only just seen, wrong for a job that
+     * ARRIVES already earned, so creation does not stamp on null.
      */
     private function workizMoment(WorkizJob $row, ?string $timezone): ?CarbonInterface
     {
