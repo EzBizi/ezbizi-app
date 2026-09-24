@@ -132,6 +132,8 @@ function ezbizi_preset_fallback($widget) {
 
     // ponytail: copied from WidgetPresets::defaults(), like the four above.
     $fallbacks['review_faces'] = array(
+        'tone' => 'light',
+        'face_size' => 56,
         'title' => 'How was your experience?',
         'text' => 'Tap a face to let us know.',
         'happy_label' => 'Great!',
@@ -1133,12 +1135,22 @@ function ezbizi_review_faces_shortcode($atts) {
 
     $id = ezbizi_widget_id('ezbizi-rf');
     $s = '#' . $id;
-    $out = '<style>' . $s . '{text-align:center;max-width:560px;margin:0 auto}'
+    $palette = ezbizi_widget_palette();
+    $accent = esc_attr(ezbizi_widget_text($palette, 'accent', '#22B24C'));
+    $on_accent = esc_attr(ezbizi_widget_text($palette, 'on_accent', '#ffffff'));
+    $size = max(40, min(120, (int) (isset($p['face_size']) ? $p['face_size'] : 56)));
+    $dark = isset($p['tone']) && $p['tone'] === 'dark';
+
+    $out = '<style>' . $s . '{text-align:center;max-width:560px;margin:0 auto' . ($dark ? ';color:#fff' : '') . '}'
+        . $s . ' h3{color:' . $accent . '}'
+        . $s . ' p,' . $s . ' label,' . $s . ' .ezbizi-rf-face{color:inherit}'
+        . $s . ' input,' . $s . ' textarea{background:#fff;color:#1b1b1b}'
         . $s . ' .ezbizi-rf-faces{display:flex;justify-content:center;gap:32px;margin:16px 0}'
         . $s . ' .ezbizi-rf-face{background:none;border:0;cursor:pointer;padding:8px;color:inherit;font:inherit}'
         . $s . ' .ezbizi-rf-face svg{display:block;margin:0 auto 6px;transition:transform .15s}'
         . $s . ' .ezbizi-rf-face:hover svg,' . $s . ' .ezbizi-rf-face:focus svg{transform:scale(1.1)}'
-        . $s . ' .ezbizi-rf-btn{display:inline-block;padding:12px 22px;border:0;border-radius:6px;background:#22B24C;color:#fff;text-decoration:none;font-weight:700;cursor:pointer}'
+        . $s . ' .ezbizi-rf-face svg{width:' . $size . 'px;height:' . $size . 'px}'
+        . $s . ' .ezbizi-rf-btn{display:inline-block;padding:12px 22px;border:0;border-radius:6px;background:' . $accent . ';color:' . $on_accent . ';text-decoration:none;font-weight:700;cursor:pointer}'
         . $s . ' form{text-align:left}'
         . $s . ' label{display:block;margin:10px 0 4px;font-weight:600}'
         . $s . ' input,' . $s . ' textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font:inherit}'

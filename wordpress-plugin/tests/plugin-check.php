@@ -1588,6 +1588,36 @@ check(
     'https://g.page/r/a1chimney/review?utm_source=footer&utm_medium=link'
 );
 
+echo PHP_EOL . "The review faces: happy to the review link, sad to Leads" . PHP_EOL;
+reset_site();
+// No review_faces preset in the payload, so this is the fallback a site
+// renders with between a plugin rollout and the app release that knows it.
+serve_preset_payload(
+    ['review_link' => 'https://g.page/r/a1chimney/review'],
+    [],
+    ['public_key' => 'pk_testkey']
+);
+
+$faces = $GLOBALS['sc']['ezbizi_review_faces']([]);
+check('it asks the question', str_contains($faces, 'How was your experience?'), true);
+check('two faces', substr_count($faces, 'class="ezbizi-rf-face"'), 2);
+check('happy goes to the review link', str_contains($faces, 'href="https://g.page/r/a1chimney/review"'), true);
+check('in a new tab', str_contains($faces, 'target="_blank" rel="noopener noreferrer"'), true);
+check('sad posts to the form endpoint', str_contains($faces, 'web' . chr(92) . '/form'), true);
+check('with the site key', str_contains($faces, 'pk_testkey'), true);
+check('the button wears the accent', str_contains($faces, 'background:#aa0000'), true);
+check('light by default', str_contains($faces, 'color:#fff}'), false);
+
+reset_site();
+serve_preset_payload([], [], ['public_key' => 'pk_testkey']);
+$no_link = $GLOBALS['sc']['ezbizi_review_faces']([]);
+check('no review link, no button to nowhere', str_contains($no_link, 'ezbizi-rf-btn" href'), false);
+check('the sad form still works', str_contains($no_link, 'web' . chr(92) . '/form'), true);
+
+reset_site();
+serve_preset_payload(['review_link' => 'https://g.page/r/a1chimney/review']);
+check('no browser key, no form a visitor cannot send', str_contains($GLOBALS['sc']['ezbizi_review_faces']([]), '<form'), false);
+
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*
  * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
@@ -1609,7 +1639,7 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('every widget is registered', count($manager->registered), 7);
+check('every widget is registered', count($manager->registered), 11);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
 

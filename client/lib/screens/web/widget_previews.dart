@@ -584,11 +584,12 @@ Widget _cta(
 Widget _reviewFaces(
     Map<String, dynamic> options, ThemeData theme, Color text) {
   String s(String k) => '${options[k] ?? ''}';
+  final size = _int(options['face_size'], 56).toDouble();
 
   Widget face(IconData icon, Color colour, String label) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 56, color: colour),
+          Icon(icon, size: size, color: colour),
           const SizedBox(height: 6),
           Text(label, style: TextStyle(color: text)),
         ],

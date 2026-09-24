@@ -217,6 +217,10 @@ final class WidgetPresets
              * in `review_link` with the others.
              */
             'review_faces' => [
+                // `dark` is for a dark section: a-1chimney.com/reviews sits
+                // on a photo of bricks under a dark overlay.
+                'tone' => 'light',
+                'face_size' => 56,
                 'title' => 'How was your experience?',
                 'text' => 'Tap a face to let us know.',
                 'happy_label' => 'Great!',
@@ -258,6 +262,9 @@ final class WidgetPresets
         'phone_box' => [
             'size' => ['small', 'medium', 'large'],
         ],
+        'review_faces' => [
+            'tone' => ['light', 'dark'],
+        ],
     ];
 
     /**
@@ -290,6 +297,7 @@ final class WidgetPresets
         'social_links' => ['size' => [16, 64], 'gap' => [0, 40]],
         'city_list' => ['columns' => [1, 6]],
         'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
+        'review_faces' => ['face_size' => [40, 120]],
     ];
 
     /**

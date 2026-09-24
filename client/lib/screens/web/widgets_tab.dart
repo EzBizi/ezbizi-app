@@ -2296,6 +2296,8 @@ const List<_Rendered> _renderedCatalogue = [
     'A happy and a sad face. Happy goes to your review link; sad opens a '
         'private form that arrives in Leads.',
     [
+      _Choice('tone', 'Background it sits on', ['light', 'dark']),
+      _Number('face_size', 'Face size', 40, 120, 56, suffix: 'px'),
       _Text('title', 'Heading'),
       _Text('text', 'Line under it', max: 160),
       _Text('happy_label', 'Happy face label', max: 30),

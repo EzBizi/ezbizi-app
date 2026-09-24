@@ -1235,12 +1235,16 @@ class WebWidgetsTest extends TestCase
                     'title' => 'Rate <b>us</b>',
                     'happy_label' => str_repeat('y', 50),
                     'ask_public' => false,
+                    'tone' => 'neon',
+                    'face_size' => 500,
                 ]]]],
             ])->assertOk()->json('config.presets.review_faces.default');
 
         $this->assertSame('Rate us', $faces['title']);
         $this->assertSame(30, mb_strlen($faces['happy_label']));
         $this->assertFalse($faces['ask_public']);
+        $this->assertSame('light', $faces['tone']);
+        $this->assertSame(120, $faces['face_size']);
         // Untouched wording keeps its default, so a site that sets one line
         // does not blank the rest.
         $this->assertSame('Not so great', $faces['sad_label']);
