@@ -412,6 +412,11 @@ class EzBiziTheme {
   static const Color accent = _cyan;
   static const Color accentDark = _cyanDark;
 
+  /// The review-faces widget's two faces, as the WordPress plugin paints
+  /// them (`ezbizi_review_faces_shortcode`), so the preview matches the page.
+  static const Color reviewHappy = Color(0xFF22B24C);
+  static const Color reviewSad = Color(0xFFE23D4B);
+
   /// Eight colours for standing in where a person has no picture.
   ///
   /// Picked by a stable hash of the sender, so the same person keeps the same

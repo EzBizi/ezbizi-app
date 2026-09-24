@@ -24,6 +24,7 @@
 /// "Springfield" is not a town anybody will think EzBizi knows about.
 library;
 
+import 'package:ezbizi_client/core/theme.dart';
 import 'package:flutter/material.dart';
 
 /// One preview, by widget key. An unknown key draws nothing rather than
@@ -615,10 +616,10 @@ Widget _reviewFaces(
       Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          face(Icons.sentiment_dissatisfied_outlined, const Color(0xFFE23D4B),
+          face(Icons.sentiment_dissatisfied_outlined, EzBiziTheme.reviewSad,
               s('sad_label')),
           const SizedBox(width: 32),
-          face(Icons.sentiment_satisfied_outlined, const Color(0xFF22B24C),
+          face(Icons.sentiment_satisfied_outlined, EzBiziTheme.reviewHappy,
               s('happy_label')),
         ],
       ),
