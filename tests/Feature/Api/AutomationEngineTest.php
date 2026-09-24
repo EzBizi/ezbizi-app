@@ -1909,6 +1909,51 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * A FOLLOW-UP JOB IS BOOKED FOR THE SAME CUSTOMER, AND A SELF-FEEDING RULE
+     * STOPS.
+     *
+     * Two halves. The job lands against the triggering job's customer and
+     * franchise, numbered and titled from the rule. And the obvious foot-gun —
+     * a rule on "job created" whose step books a job — is bounded by the
+     * engine: the new job is emitted with `causedBy`, so it inherits the cascade
+     * depth and the engine stops it. Drained end to end rather than called
+     * directly, because the bound lives in the engine, not in the arm.
+     */
+    public function test_a_follow_up_job_is_booked_and_a_self_feeding_rule_stops(): void
+    {
+        $this->automation('job.created', null, [
+            ['type' => 'job.create', 'title' => 'Follow-up: {{title}}', 'in_days' => '30'],
+        ], $this->org['admin']->id);
+
+        [$customerId, $jobId] = $this->makeJob();
+
+        // Drain until the outbox is quiet — the cascade has to come to rest.
+        for ($i = 0; $i < 20 && $this->drain() > 0; $i++) {
+        }
+
+        $jobs = $this->inTenant(fn () => Job::query()->where('customer_id', $customerId)->get());
+
+        $followUp = $jobs->firstWhere('title', 'Follow-up: A job');
+        $this->assertNotNull($followUp, 'the follow-up was not booked for the same customer');
+        $this->assertSame($this->org['franchise']->id, $followUp->franchise_id);
+        // RAW, not through the accessor: `scheduled_for` is converted to the
+        // franchise's wall time on read, which needs the tenant and is about
+        // display. What the rule stored is the thing being asserted.
+        $this->assertStringStartsWith(
+            now()->addDays(30)->toDateString(),
+            (string) $followUp->getRawOriginal('scheduled_for'),
+        );
+
+        // THE BOUND. Without `causedBy` this rule books a job for every job it
+        // books, for ever; with it the engine stops at its depth limit.
+        $this->assertLessThanOrEqual(
+            1 + AutomationEvent::MAX_DEPTH,
+            $jobs->count(),
+            'a rule that books a job on "job created" did not stop',
+        );
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

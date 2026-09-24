@@ -375,6 +375,7 @@ class ActionRunner
             'notify' => $this->notify($action, $event, $subject),
             'notify_administrators' => $this->notifyAdministrators($action, $event, $subject),
             'reassign_owner' => $this->reassignOwner($action, $subject, $automation),
+            'job.create' => $this->createFollowUpJob($action, $event, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2246,6 +2247,95 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Book a follow-up job for the same customer, at the same franchise.
+     *
+     * Built the way `missed.create_job` builds one — numbered, first allowed
+     * status, audited as created by an automation — because that is the
+     * precedent a person reading the job list already sees.
+     *
+     * EMITTED WITH `causedBy`, which is the whole loop story. A rule on "job
+     * created" whose step creates a job sets itself off; the event carries its
+     * cascade depth and the engine stops it at MAX_DEPTH, and the shared action
+     * budget stops it sooner. A misconfigured rule makes a handful of jobs,
+     * not an unbounded number.
+     *
+     * A JOB OR A CUSTOMER. A job's follow-up belongs to that job's customer and
+     * franchise; a customer's new job belongs to the customer and the franchise
+     * accountable for them. Anything else has no customer to book it for, and
+     * says so rather than inventing one.
+     */
+    private function createFollowUpJob(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'job.create';
+
+        [$customer, $franchise] = match (true) {
+            $subject instanceof Job => [$subject->customer, $subject->franchise],
+            $subject instanceof Customer => [$subject, $subject->owningFranchise],
+            default => [null, null],
+        };
+
+        if ($customer === null || $franchise === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'A job needs a customer to book it for, and this rule is about neither '
+                    .'a job nor a customer, so nothing was booked.'];
+        }
+
+        $title = trim($this->interpolate((string) ($action['title'] ?? ''), $event, $subject));
+
+        if ($title === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs a title for the job.'];
+        }
+
+        $status = Job::allowedStatuses($franchise)[0] ?? null;
+
+        if ($status === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This organization has no job statuses configured.'];
+        }
+
+        // Optional and whole days only: "in 30 days" is what a follow-up rule
+        // means, and a blank leaves it for somebody to schedule, which is the
+        // honest default for a job nobody has spoken to the customer about.
+        $inDays = trim((string) ($action['in_days'] ?? ''));
+        $scheduledFor = ctype_digit($inDays) ? now()->addDays((int) $inDays)->startOfDay()->setHour(9) : null;
+
+        $job = DB::transaction(function () use ($customer, $franchise, $title, $status, $scheduledFor, $event, $subject) {
+            $job = Job::create([
+                'franchise_id' => $franchise->id,
+                'customer_id' => $customer->id,
+                'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                'title' => $title,
+                'status' => $status,
+                'scheduled_for' => $scheduledFor,
+                'currency' => strtoupper($franchise->currency ?: 'USD'),
+            ]);
+
+            $this->audit->log(
+                action: 'job.created_by_automation',
+                target: $job,
+                metadata: [
+                    'caused_by_event' => $event->getKey(),
+                    'trigger' => $event->event_key,
+                    'follows' => $subject?->getKey(),
+                ],
+            );
+
+            $this->emitter->emit(
+                'job.created',
+                $job,
+                ['after' => $job->only(['status', 'title', 'franchise_id', 'customer_id', 'amount_minor'])],
+                causedBy: $event,
+            );
+
+            return $job;
+        });
+
+        return ['type' => $type, 'ok' => true,
+            'detail' => "Booked job {$job->number}: {$title}"
+                .($scheduledFor !== null ? ', for '.$scheduledFor->format('j M').'.' : ', not yet scheduled.')];
+    }
+
     /**
      * Hand the customer to another franchise — the audited act, not a field.
      *

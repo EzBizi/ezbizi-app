@@ -82,6 +82,7 @@ class AutomationsController extends Controller
         'notify',
         'notify_administrators',
         'reassign_owner',
+        'job.create',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -1871,6 +1872,10 @@ class AutomationsController extends Controller
             ]),
             $type('reassign_owner', 'Hand the customer to another franchise', true, [
                 $parameter('franchise', 'Which franchise', 'franchise'),
+            ]),
+            $type('job.create', 'Book a follow-up job', true, [
+                $parameter('title', 'Job title', 'text', variables: true),
+                $parameter('in_days', 'Schedule it this many days later', 'text', required: false),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

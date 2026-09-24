@@ -972,8 +972,16 @@ class ModuleServiceProvider extends ServiceProvider
                     new ActionDefinition(
                         key: 'job.create',
                         label: 'Create a job',
-                        description: 'Books a follow-up job from the record that triggered '
-                            .'the rule.',
+                        description: 'Books a follow-up job for the same customer, at the same '
+                            .'franchise — from a job or a customer the rule fired on. Leave the '
+                            .'days blank to leave it for somebody to schedule. A rule on "job '
+                            .'created" that books a job sets itself off, and the engine stops it '
+                            .'after a few rounds rather than letting it run on.',
+                        // EXPLICIT, not derived. Derived, this would be `create` —
+                        // the most generic name there is — and the next module
+                        // to declare `<thing>.create` would have its action run
+                        // by this job arm without anybody noticing.
+                        executionType: 'job.create',
                     ),
                 ],
             ),
