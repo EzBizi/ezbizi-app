@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Profit and Loss opens on the first Airtable base that has weekly figures, instead of one that is blank. A table without weeks says so instead of showing nothing.',
+        'Automations have an Add to a mailing list step. It puts somebody who enquired on your website on one of your Mailchimp lists, but only if they ticked the box agreeing to marketing email. The box arrives with version 1.14.0 of the EzBizi website plugin.',
       ],
     ),
     VersionRelease(
