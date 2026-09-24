@@ -20,6 +20,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * `source` says who decided this mapping. NULL is a person, and a person wins:
  * `scheduling:build-zip-map` rewrites only rows it derived
  * (`source = 'workiz_jobs'`) so a rebuild cannot eat a typed one.
+ *
+ * THIS IS A HOUSE RULE, NOT THIS MODULE'S PREFERENCE — `docs/DEVELOPMENT-RULES.md`,
+ * "a recurring sweep never overwrites a field a person has touched". Four
+ * sessions derived it separately on 2026-09-23 (Customers, Jobs, Scheduling,
+ * Workiz) before anybody wrote it down, which is why it now lives above any one
+ * module. Read it before simplifying this column away: the failure it prevents
+ * is silent in one direction only — a reverted correction looks like the person
+ * never made it.
  */
 #[Fillable(['organization_id', 'franchise_id', 'service_area_id', 'zip', 'city', 'source'])]
 class ServiceAreaZip extends Model implements StatesRetention

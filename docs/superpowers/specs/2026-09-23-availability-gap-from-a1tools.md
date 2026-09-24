@@ -191,6 +191,77 @@ the way A1's `reconcileJobSlots()` maps `TIME(scheduled_start)` into a block).
 Only then can "remaining" exist. Until it does, the Availability tab is honest
 that it shows CONFIGURED capacity, which is what it says today.
 
+#### The booked count does not need the zip map (Reports, 2026-09-23)
+
+Their finding and it is right. `workiz_jobs` carries `service_area`,
+`scheduled_for` and `franchise_id` as columns, and Jose ruled "mirror Workiz,
+fold nothing", so an EzBizi area name and a Workiz `service_area` are the same
+string by construction — 45 of the 57 names now match exactly, covering 97.2%
+of the history.
+
+That splits 3.3 in two, and only one half needs the map:
+
+- *"Which area does this NEW job belong to?"* — needs zip → area, because a new
+  job has an address and no area label. This is the availability SEARCH.
+- *"How many jobs are booked in area A on date D?"* — needs the name and the
+  date, both already columns. This is the booked COUNT.
+
+Counting on Workiz's own label is also more faithful than deriving it: the
+label is what a dispatcher chose, while a derived area is our inference about
+their choice.
+
+#### THE ACTUAL BLOCKER IS WHICH STATUSES ARE A SEAT
+
+Reports flagged this and half of it needs correcting, which matters because the
+correction is where the work is.
+
+Not true that there is no tenant-owned status vocabulary: `jobs.statuses` is an
+organization-scoped setting, and `jobs.earned_statuses` and
+`jobs.thumbtack_status_map` are both "which of YOUR statuses mean X", both empty
+by default on the stated grounds that silence is honest and a guess is not.
+
+The real gap is that those describe EZBIZI's statuses and the landing table
+carries WORKIZ's — a different namespace, so no existing setting can answer it.
+Measured over 7,739 captured payloads, every distinct Workiz status, with how
+many are scheduled in the FUTURE, which is the only part capacity cares about:
+
+    Status                  jobs   future
+    Done                    2,161       5
+    done pending approval   1,982       3
+    Submitted                 916     595
+    Canceled                  856       0     + 546 across 16 sub-statuses, 9 future
+    In progress               806      80
+    Pending                   511      16
+
+So the shape is the Thumbtack map's, one level over: the tenant says which
+Workiz statuses consume a seat. Proposed default — **Submitted, Pending and In
+progress consume a seat; Canceled and both Done forms do not.**
+
+**IT SHIPS POPULATED, AND THE THUMBTACK PRECEDENT MUST NOT BE COPIED HERE.**
+Reports caught this and it is the kind of consistency that would be applied
+later by somebody with a good argument. `jobs.thumbtack_status_map` defaults to
+`[]` because silence is honest: an empty map means EzBizi tells Thumbtack
+nothing, and nothing is safe.
+
+An empty map HERE is not silence. Unmapped counts as a seat — deliberately,
+since that constrains booking rather than freeing it — so `[]` means *every*
+status consumes capacity, Canceled included. A tenant who never opens the
+setting keeps the 1.3% error permanently and every future Workiz status
+inherits it. The precedent's default is honest for a setting that speaks
+outward and actively wrong for one that counts.
+
+So the registry entry carries that reason beside it, not just the value. A
+custom status nobody has mapped — "done pending approval" is one of A-1's own —
+still falls through to counting, which is the conservative direction and is the
+rule working rather than a gap in it.
+
+**And the scale of the harm is smaller than it looks**, which is worth stating
+because "cancelled jobs count as booked" reads as catastrophic: 9 future jobs
+in the whole company are Canceled, against ~690 that are live. It is 1.3%
+company-wide. It could still be decisive for one small area on one day, which
+is why it gets a setting rather than a shrug — but it is not the thing to build
+first, and it is not a reason to delay the count.
+
 ### 3.4 Per-date overrides — "closed on the 18th", "Cleveland varies daily"
 
 EzBizi's granularity stops at the weekday. A1's spec called this tier unused
@@ -329,6 +400,52 @@ real with 3.3.
   on their side: in their landing table `service_area` and `franchise_id`
   disagree on exactly those rows, so anything reading "service_area implies
   franchise" out of that table is wrong 0.5% of the time and silently.
+
+## 6b. Where the areas and the zip map actually landed, 2026-09-23
+
+**34 service areas, 2,706 zips.** A1 Tools' own map is 2,717 distinct zips, so
+this is complete rather than partial.
+
+### Booking history is NOT the current configuration, and I used it as if it were
+
+Twice I ranked names by jobs and called the busy ones live. Jose settled it:
+
+> *"yes i deleted those, and no they dont live in workiz anymore, right now the
+> service areas as they are in EzBizi are the exact reflection on Workiz Service
+> Areas, except perhaps for Nationwide."*
+
+Seattle had 26 bookings in the last thirty days and 104 in the history, and is
+not a Workiz service area any more. Portland and Long Island the same. A booking
+count measures what HAPPENED; the configured list is a decision, and only the
+person holding the account can read it — there is no endpoint (see 6). So the
+30-day proxy answers "was this used" and never "does this exist", and the second
+question is the one that was being asked.
+
+**The areas are now settled by Jose, not derived.** Anything that wants to know
+the list reads `service_areas`, and the way to change it is to change Workiz and
+tell him — not to infer it from jobs.
+
+### The consolidation had to reach the zips, not just the names
+
+Deleting `East Connecticut` did not move its territory anywhere: 343 zips existed
+only under names that no longer do. Three groups had an obvious survivor and were
+folded, by rewriting the name in the export before the aggregate, so the count
+that breaks a tie is the COMBINED count:
+
+    East Connecticut, West Connecticut  ->  Connecticut
+    Atlanta North, Atlanta South        ->  Atlanta
+    Dallas, Fort Worth                  ->  DFW
+
+Each fold stays inside one franchise, so nothing crosses a boundary. It took the
+map from 2,474 to 2,706 — Connecticut 120 → 210, DFW 78 → 166, Atlanta 80 → 134.
+
+The rest have no survivor and stay unmapped, which is correct: Seattle 66 zips,
+Kansas City 11, Portland 7, Nashville 9, and a tail of ones and twos. A zip with
+no area is a zip the search says nothing about, which is honest.
+
+**Nationwide is the one Jose flagged as unsure** — 11 areas: Boston North,
+Charlotte, Denver, Detroit, Greensboro, Los Angeles / Orange County, Miami,
+Minneapolis, Riverside, Sacramento, Saint Louis.
 
 ## 7. Jose's ruling, 2026-09-23
 
