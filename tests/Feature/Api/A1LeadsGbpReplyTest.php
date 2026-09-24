@@ -33,7 +33,7 @@ class A1LeadsGbpReplyTest extends TestCase
     private function operator(array $tenant)
     {
         return $this->userWithRole($tenant, 'GBP Operator', [
-            'a1leads_gbp.view', 'a1leads_gbp.reply',
+            'a1leads_gbp.view',
         ]);
     }
 
@@ -95,12 +95,18 @@ class A1LeadsGbpReplyTest extends TestCase
             && $request['expectedReviewUpdatedAt'] === '2026-09-24T12:00:00Z');
     }
 
-    public function test_view_grant_alone_cannot_publish(): void
+    /**
+     * Without the A1Leads GBP permission there is no reply. Replying needs
+     * exactly what reading needs (Jose, 2026-09-24) - so a user who holds
+     * EzBizi's own Reviews permission and not this one is refused, and Google
+     * hears nothing.
+     */
+    public function test_without_the_tab_permission_nothing_is_published(): void
     {
         $tenant = $this->provisionTenant('Charlie');
         $this->setupBridge($tenant);
         Http::fake();
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view']);
+        $viewer = $this->userWithRole($tenant, 'Reviews', ['reviews.view', 'reviews.edit']);
 
         $this->signedInAs($viewer)->postJson('/api/v1/a1leads-gbp/reply', [
             'googleReviewName' => self::REVIEW,
@@ -187,7 +193,7 @@ class A1LeadsGbpReplyTest extends TestCase
     }
 
     /**
-     * An attempt WITHOUT the reply grant is refused before anything is sent -
+     * An attempt WITHOUT the permission is refused before anything is sent -
      * and is audited, which a route-middleware refusal could not be.
      */
     public function test_an_attempt_without_the_grant_is_refused_and_audited(): void
@@ -195,20 +201,20 @@ class A1LeadsGbpReplyTest extends TestCase
         $tenant = $this->provisionTenant('Hotel');
         $this->setupBridge($tenant);
         Http::fake();
-        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view']);
+        $viewer = $this->userWithRole($tenant, 'Reviews', ['reviews.view']);
 
         $this->signedInAs($viewer)->postJson('/api/v1/a1leads-gbp/reply', [
             'googleReviewName' => self::REVIEW,
             'text' => 'A reply',
             'expectedReviewUpdatedAt' => '2026-09-24T12:00:00Z',
-        ])->assertForbidden()->assertJsonPath('error.code', 'no_reply_grant');
+        ])->assertForbidden()->assertJsonPath('error.code', 'no_permission');
 
         Http::assertNothingSent();
 
         $event = $this->inTenant($tenant['org'], fn () => AuditEvent::query()
             ->where('action', 'a1leads_gbp.review_reply_failed')->sole());
         $this->assertSame($viewer->getKey(), $event->actor_id);
-        $this->assertSame('no_reply_grant', $event->metadata['code']);
+        $this->assertSame('no_permission', $event->metadata['code']);
     }
 
     /**

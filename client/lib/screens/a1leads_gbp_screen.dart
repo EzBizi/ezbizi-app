@@ -34,7 +34,8 @@ import '../widgets/search_picker.dart';
 /// a reply-only key held by our server. Opening the editor reads that exact
 /// review from Google first; the reply is sent against that revision and
 /// refused if the reviewer has edited since. The button appears only when the
-/// server says every condition holds (connection, company, both grants), so
+/// server says every condition holds (connection, company, the tab's own
+/// permission - replying needs what reading needs), so
 /// it is never a control whose only outcome is a refusal.
 ///
 /// **Match manually / Report spam** stay in A1 Tools: writes nobody has
@@ -204,7 +205,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _locations = _rows(data['locations']);
       _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? const {};
       _replyAvailable = data['reply_available'] == true &&
-          widget.session.me?.can('a1leads_gbp.reply') == true;
+          widget.session.me?.can('a1leads_gbp.view') == true;
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -436,7 +437,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       if (_board['available'] == true && !_anyContact)
         'Contact is empty because A1 Leads does not send customer phone or email to EzBizi yet.',
       if (!_replyAvailable)
-        'Replying here needs the A1Leads GBP Reply permission, with A-1 Chimney in view.',
+        'Replying here needs A-1 Chimney as the company in view.',
     ];
 
     return Material(

@@ -750,11 +750,12 @@ Route::prefix('v1')
 
         // Public posting stays in A1 Leads. EzBizi only submits an audited,
         // exact-review request through a separately credentialed live tunnel.
-        Route::middleware('permission:a1leads_gbp.reply')->group(function () {
+        // Replying needs what reading needs (Jose, 2026-09-24).
+        Route::middleware('permission:a1leads_gbp.view')->group(function () {
             Route::get('a1leads-gbp/reply/preflight', [A1LeadsGbpController::class, 'replyPreflight']);
         });
 
-        // The POST checks the reply grant inside the controller, not here, so a
+        // The POST checks the permission inside the controller, not here, so a
         // refused attempt can be audited - Rodrigo's contract audits attempts,
         // and a middleware refusal would leave no trace.
         Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);

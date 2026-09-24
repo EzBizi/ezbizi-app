@@ -208,14 +208,20 @@ class A1LeadsGbpController extends Controller
         $name = trim((string) $request->input('googleReviewName', ''));
 
         /*
-         * The reply grant is checked HERE rather than by route middleware, so
-         * that a refusal can be audited. Rodrigo's contract audits reply
-         * ATTEMPTS, and a middleware refusal happens before any code of ours
-         * runs - an unauthorised attempt would have left no trace at all.
+         * WHO MAY REPLY: whoever may see the tab. Jose, 2026-09-24: "this is
+         * depending on roles y permissions, anyone with the view role should
+         * be able to." There is no separate reply grant - reading A-1's
+         * reviews and answering them are one permission, `a1leads_gbp.view`,
+         * given or withheld on the Roles screen - plus A-1 Chimney as the
+         * company in view, checked below.
+         *
+         * Checked HERE rather than by route middleware so that a refusal can
+         * be audited: Rodrigo's contract audits reply ATTEMPTS, and a
+         * middleware refusal happens before any code of ours runs.
          */
-        if (! $request->user()?->hasPermission('a1leads_gbp.reply')) {
-            return $this->refusedAttempt($name, $this->replyError(403, 'no_reply_grant',
-                'Replying to A-1 Chimney\'s reviews needs the A1Leads GBP Reply permission.'));
+        if (! $request->user()?->hasPermission('a1leads_gbp.view')) {
+            return $this->refusedAttempt($name, $this->replyError(403, 'no_permission',
+                'Replying to A-1 Chimney\'s reviews needs the A1Leads GBP permission.'));
         }
 
         if ($refusal = $this->replyScopeRefusal($request)) {
@@ -334,7 +340,8 @@ class A1LeadsGbpController extends Controller
      *
      * Every condition the endpoints enforce, so the screen never draws a button
      * whose only outcome is a refusal: the live connection configured, the
-     * company named, both grants held, and A-1 Chimney the company in view.
+     * company named, the A1Leads GBP permission held, and A-1 Chimney the
+     * company in view.
      */
     private function replyAvailable(Request $request): bool
     {
@@ -344,7 +351,6 @@ class A1LeadsGbpController extends Controller
         return $this->replies->configured()
             && is_string($companyId) && $companyId !== ''
             && $user !== null
-            && $user->hasPermission('a1leads_gbp.reply')
             && $user->hasPermission('a1leads_gbp.view')
             && $this->companyInView($user, $companyId);
     }

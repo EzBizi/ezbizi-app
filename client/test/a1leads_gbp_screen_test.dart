@@ -285,7 +285,7 @@ void main() {
     // Contact is absent, and the reason is on screen.
     expect(find.text('CONTACT'), findsNothing);
     expect(find.textContaining('does not send customer phone or email'), findsOneWidget);
-    expect(find.textContaining('needs the A1Leads GBP Reply permission'), findsOneWidget);
+    expect(find.textContaining('needs A-1 Chimney as the company in view'), findsOneWidget);
   });
 
   /// A card that DOES carry a phone brings the Contact column back.
@@ -564,7 +564,9 @@ MockClientHandler _handler({
           'role': {'id': 'role-1', 'name': 'Administrator'},
           'permissions': [
             'a1leads_gbp.view',
-            if (replyGranted) 'a1leads_gbp.reply',
+            // Replying needs what reading needs (Jose, 2026-09-24); the
+            // flag now only varies what the SERVER says is available.
+            if (replyGranted) 'a1leads_gbp.view',
           ],
           'modules': [
             {
