@@ -717,6 +717,34 @@ class ModuleServiceProvider extends ServiceProvider
                     .'act on a shift that ended yesterday.',
             ),
 
+            /*
+             * The staff assistant - Jose, 2026-09-24: "a screen in the app
+             * where im able to change the replies from the menu myself ... a
+             * new tab called AI Assistance ... 3 tabs AI - Library - Settings".
+             * AI is the assistant itself, in the app, for whoever has no
+             * WhatsApp; Library is its answers; Settings its name, welcome and
+             * which sites Find a location searches.
+             */
+            new ModuleDefinition(
+                key: 'ai_assistance',
+                label: 'AI Assistance',
+                actions: ['view', 'manage'],
+                actionRequires: ['manage' => ['ai_assistance.library.view']],
+                actionLabels: ['manage' => 'Edit answers and settings'],
+                tabs: [
+                    new TabDefinition('ai', 'AI'),
+                    new TabDefinition('library', 'Library'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['assistant_entry'],
+                automationExemptBecause: 'The Library is reference material an administrator '
+                    .'writes, like a training guide: editing an answer is not something that happened '
+                    .'to the business, and a rule firing on it would act on a reworded sentence. The '
+                    .'conversations it answers are WhatsApp messages, which already raise WhatsApp '
+                    .'events. When the AI tab starts answering in its own words, "a question it '
+                    .'could not answer" is the trigger to add here.',
+            ),
+
             new ModuleDefinition(
                 key: 'time_clock',
                 label: 'Clock in',

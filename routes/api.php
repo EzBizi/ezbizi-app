@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\AssistantController;
+use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
@@ -1327,6 +1329,19 @@ Route::prefix('v1')
          * right place for the gate, and the policy behind it says the same
          * thing for anything that reaches these another way.
          */
+        /*
+         * AI Assistance (2026-09-24). The AI tab asks the assistant; the
+         * Library tab is its answers, read on the tab and written under
+         * `ai_assistance.manage` by AssistantEntryPolicy, place by place.
+         */
+        Route::middleware('permission:ai_assistance.ai.view')->group(function () {
+            Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
+            Route::get('ai-assistance/locations', [AssistantController::class, 'locations']);
+        });
+        Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
+            ->except('show')
+            ->parameters(['entries' => 'entry']);
+
         Route::middleware('permission:work_hours.manage')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
             Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);

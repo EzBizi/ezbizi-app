@@ -45,6 +45,8 @@ class GlanceRegistry
         'web_management', 'phone', 'fleet_management', 'inventory',
         'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
+        // Its sidebar entry arrived after the others (2026-09-24).
+        'ai_assistance',
 
         // Profit & Loss AFTER Google Ads, matching the order of the chips
         // inside Reports — the module registry was changed to that order
@@ -126,6 +128,12 @@ class GlanceRegistry
          * line go in the SAME commit, or the completeness test fails the
          * other way round — a glance for a tab that no longer exists.
          */
+        // The Library is reference material and the assistant is a
+        // conversation; neither has a figure worth a home-screen box yet.
+        'ai_assistance' => [
+            'label' => 'AI Assistance',
+            'sentence' => 'Answers for your team, on WhatsApp and in the app.',
+        ],
         'profit_loss' => [
             'label' => 'Profit & Loss',
 

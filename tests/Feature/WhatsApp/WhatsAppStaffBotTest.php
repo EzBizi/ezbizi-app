@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\WhatsApp;
 
+use App\Models\AssistantEntry;
 use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
 use App\Support\Social\WhatsAppStaffBot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -63,6 +65,26 @@ class WhatsAppStaffBotTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        // The bot's answers are the organization's Library since 2026-09-24.
+        // Seeded with what A-1 actually has, through the command that put it
+        // there, so these tests keep asking about the answers techs get.
+        if ($phoneNumberId === self::BOT) {
+            $this->assertSame(0, Artisan::call('assistant:import-a1', ['--organization' => $t['org']->name]));
+        }
+    }
+
+    /** The row id of a Library section, as the main menu draws it. */
+    private function section(string $name): string
+    {
+        return WhatsAppStaffBot::SECTION.$name;
+    }
+
+    /** The row id of one Library answer, as a section's list draws it. */
+    private function entry(string $title): string
+    {
+        return WhatsAppStaffBot::ENTRY.AssistantEntry::query()->withoutGlobalScopes()
+            ->where('title', $title)->valueOrFail('id');
     }
 
     /**
@@ -155,7 +177,7 @@ class WhatsAppStaffBotTest extends TestCase
         $ids = collect($this->sent[0]['interactive']['action']['sections'])
             ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
         $this->assertSame(
-            [WhatsAppStaffBot::NFPA_211, WhatsAppStaffBot::CSIA, WhatsAppStaffBot::FIND_LOCATION],
+            [$this->section('NFPA 211'), $this->section('CSIA'), WhatsAppStaffBot::FIND_LOCATION],
             $ids,
         );
     }
@@ -218,13 +240,13 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
 
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::NFPA_211, 'NFPA 211'))->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('NFPA 211'), 'NFPA 211'))->assertOk();
 
         $this->assertSame('list', $this->sent[0]['interactive']['type']);
         $ids = collect($this->sent[0]['interactive']['action']['sections'])
             ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
-        $this->assertContains('nfpa_level2_when', $ids);
-        $this->assertContains('nfpa_flue_sizing', $ids);
+        $this->assertContains($this->entry('When a Level 2 is needed'), $ids);
+        $this->assertContains($this->entry('Flue sizing'), $ids);
     }
 
     public function test_a_code_topic_gives_the_requirement_itself_and_no_link(): void
@@ -233,7 +255,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
 
-        $this->inbound(self::BOT, $this->tap('nfpa_level2_when', 'When a Level 2 is needed'))->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->entry('When a Level 2 is needed'), 'When a Level 2 is needed'))->assertOk();
 
         $body = $this->sent[0]['text']['body'];
 
@@ -258,8 +280,9 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
 
-        $topics = ['nfpa_how_often', 'nfpa_levels', 'nfpa_level2_when',
-            'nfpa_level2_covers', 'nfpa_flue_sizing', 'nfpa_crown', WhatsAppStaffBot::CSIA];
+        $topics = [...array_map(fn (string $title) => $this->entry($title), ['How often to inspect',
+            'Inspection levels', 'When a Level 2 is needed', 'What a Level 2 covers', 'Flue sizing',
+            'Crown bond break']), $this->section('CSIA')];
 
         foreach ($topics as $i => $id) {
             $this->inbound(self::BOT, $this->tap($id, $id), 'wamid.T'.$i)->assertOk();
@@ -295,7 +318,7 @@ class WhatsAppStaffBotTest extends TestCase
         // too - a stranger's menu would leave it untested.
         $this->staff($t);
         $this->inbound(self::BOT, $this->text('hi'), 'wamid.L1')->assertOk();
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::NFPA_211, 'NFPA 211'), 'wamid.L2')->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('NFPA 211'), 'NFPA 211'), 'wamid.L2')->assertOk();
 
         $lists = array_filter($this->sent, fn ($m) => ($m['type'] ?? '') === 'interactive');
         $this->assertCount(2, $lists, 'expected the main menu and the NFPA topics');
@@ -332,9 +355,9 @@ class WhatsAppStaffBotTest extends TestCase
         $this->staff($t, '(786) 776-2666');
 
         $this->inbound(self::BOT, $this->text('hi'), 'wamid.S1')->assertOk();
-        $this->assertContains(WhatsAppStaffBot::FINANCE, $this->menuIds());
+        $this->assertContains($this->section('Finance options'), $this->menuIds());
 
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'), 'wamid.S2')->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'), 'wamid.S2')->assertOk();
         $body = $this->sent[1]['text']['body'];
 
         // The order is the point of the message: cheapest to the company first.
@@ -356,14 +379,14 @@ class WhatsAppStaffBotTest extends TestCase
 
         // Not even drawn: a row they would be refused still advertises that
         // the company has internal guidance to hide.
-        $this->assertNotContains(WhatsAppStaffBot::FINANCE, $this->menuIds());
+        $this->assertNotContains($this->section('Finance options'), $this->menuIds());
 
         // And a tap is refused anyway - the check is on the ANSWER, not only
         // on the menu, because a row id is only a string.
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'), 'wamid.X2')->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'), 'wamid.X2')->assertOk();
         $body = $this->sent[1]['text']['body'];
 
-        $this->assertStringContainsString('for A1 Chimney staff', $body);
+        $this->assertStringContainsString('for staff only', $body);
         // What must never leak to a customer who found the number.
         $this->assertStringNotContainsString('3.9%', $body);
         $this->assertStringNotContainsString('acornfinance', $body);
@@ -379,7 +402,7 @@ class WhatsAppStaffBotTest extends TestCase
         // former employee keeps reading what A1 pays each lender otherwise.
         $this->staff($t, '(786) 776-2666', active: false);
 
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'))->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'))->assertOk();
 
         $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body']);
     }
@@ -400,7 +423,7 @@ class WhatsAppStaffBotTest extends TestCase
          * which turned "4695551234" into +14695551234: the Dallas staff member.
          * Whoever owned that foreign number read what A1 pays each lender.
          */
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'),
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'),
             'wamid.FOREIGN', from: '4695551234')->assertOk();
 
         $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body'],
@@ -416,7 +439,7 @@ class WhatsAppStaffBotTest extends TestCase
 
         // The positive control: the guard must not lock out the US number the
         // profile actually means. Without this, refusing everybody would pass.
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'),
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'),
             'wamid.US', from: '14695551234')->assertOk();
 
         $this->assertStringContainsString('3.9%', $this->sent[0]['text']['body']);
@@ -432,7 +455,7 @@ class WhatsAppStaffBotTest extends TestCase
         // Active, with this exact phone - but on somebody else's books.
         $this->staff($other, '(786) 776-2666');
 
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'))->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('Finance options'), 'Finance options'))->assertOk();
 
         $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body']);
     }
@@ -592,7 +615,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->configured();
         $this->number($t, self::BOT);
 
-        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::CSIA, 'CSIA'))->assertOk();
+        $this->inbound(self::BOT, $this->tap($this->section('CSIA'), 'CSIA'))->assertOk();
 
         $rows = WhatsAppMessage::query()->withoutGlobalScopes()->orderBy('created_at')->get();
 

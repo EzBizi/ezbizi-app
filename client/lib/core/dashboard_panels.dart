@@ -60,6 +60,8 @@ IconData dashboardPanelIcon(String key) {
   // The same mark as its sidebar entry (module_screens.dart), so the rail and
   // the dashboard name Work Hours alike (2026-09-24).
   'work_hours': Icons.schedule_outlined,
+  // Same mark as its sidebar entry (module_screens.dart).
+  'ai_assistance': Icons.smart_toy_outlined,
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
     'scheduling': Icons.calendar_month_outlined,

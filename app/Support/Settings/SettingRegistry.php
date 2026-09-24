@@ -72,6 +72,7 @@ class SettingRegistry
             // Clock in and paid time off: every setting this group ever held.
             // Renamed from Human Resources when the pane left HR (2026-09-24).
             'work_hours' => ['Work Hours',       $this->hr()],
+            'ai_assistance' => ['AI Assistance',  $this->assistant()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -935,6 +936,50 @@ class SettingRegistry
                     .'happened to them. Map each of your own job statuses to one of these: '
                     .'not_scheduled, appt_scheduled, job_complete, invoice_paid, customer_cancel or '
                     .'pro_cancel. Anything you leave out is simply not reported.',
+            ),
+        ];
+    }
+
+    /**
+     * The staff assistant, on WhatsApp and in the app. Organization-wide
+     * because the WhatsApp line it answers on is: one number, one menu.
+     *
+     * No length limits in the type, so the assistant cuts each value to what
+     * WhatsApp accepts when it sends - a header over 60 characters would
+     * otherwise make Meta refuse the whole menu, which reads as no reply.
+     */
+    private function assistant(): array
+    {
+        $orgOnly = [SettingDefinition::SCOPE_ORGANIZATION];
+
+        return [
+            new SettingDefinition(
+                key: 'ai_assistance.name',
+                label: 'Assistant name',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Assistant',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'The heading of the menu, on WhatsApp and in the app. Up to 60 characters.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.welcome',
+                label: 'Welcome message',
+                type: SettingDefinition::TYPE_STRING,
+                default: 'Choose an option below.',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'What the assistant says above its menu.',
+            ),
+            new SettingDefinition(
+                key: 'ai_assistance.location_group',
+                label: 'Locations to search',
+                type: SettingDefinition::TYPE_STRING,
+                default: '',
+                allowedScopes: $orgOnly,
+                editPermission: 'ai_assistance.manage',
+                help: 'Find a location searches the sites in Web Management whose Group is this. '
+                    .'Empty searches every site.',
             ),
         ];
     }
