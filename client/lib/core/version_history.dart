@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Automations that run when a job changes status, or is completed, now also run when Workiz moves an imported job - for moves Workiz made in the last two hours, so older history sets nothing off.',
         'Replying from the A1Leads GBP table opens the reply under the review instead of switching to the board.',
+        'AI Assistance is a new item in the sidebar. AI shows the WhatsApp staff bot\'s menu and its location search; Library holds the answers the bot gives, which you can add to and edit, each for everyone or for staff only; Settings holds the bot\'s name and welcome. Administrators have it, and other roles can be given it in Roles.',
       ],
     ),
     VersionRelease(
