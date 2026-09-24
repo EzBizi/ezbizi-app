@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workiz;
 
+use App\Console\Commands\ProjectWorkizRecords;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
@@ -11,6 +12,7 @@ use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -732,5 +734,44 @@ class ProjectWorkizRecordsTest extends TestCase
 
         $this->assertCount(0, $this->statusEvents($tenant));
         $this->assertSame(3, $this->inTenant($tenant['org'], fn () => Job::query()->where('status', 'Done')->count()), 'the jobs still follow');
+    }
+
+    /**
+     * THE RACE THAT MADE 432 DUPLICATE JOBS AND 500 DUPLICATE CUSTOMERS.
+     *
+     * 2026-09-23 20:37 on production: the SCHEDULED run (limit 500) and a
+     * MANUAL run (--limit=10000, projecting the history import) overlapped.
+     * The schedule's withoutOverlapping() only guards scheduled invocations,
+     * and this command claimed rows with no lock of its own — both read the
+     * same unprojected rows and both created a job for each. Measured from the
+     * two `customer.imported` audit rows two seconds apart.
+     *
+     * So the command takes its own lock, whoever invokes it, and a second run
+     * while one is in progress does nothing at all.
+     */
+    public function test_a_run_while_another_is_in_progress_creates_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->mirror($tenant);
+
+        $held = Cache::lock(ProjectWorkizRecords::LOCK, 60);
+        $this->assertTrue($held->get(), 'the test must be able to hold the lock or it proves nothing');
+
+        try {
+            $this->artisan('ezbizi:project-workiz')
+                ->expectsOutputToContain('already running')
+                ->assertSuccessful();
+        } finally {
+            $held->release();
+        }
+
+        $this->inTenant($tenant['org'], function () {
+            $this->assertSame(0, Customer::query()->count());
+            $this->assertSame(0, Job::query()->count());
+        });
+
+        // And the lock is free again afterwards: the next run proceeds.
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Job::query()->count()));
     }
 }

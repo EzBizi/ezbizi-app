@@ -18,6 +18,7 @@ use App\Support\Workiz\StateCode;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -72,7 +73,51 @@ class ProjectWorkizRecords extends Command
      * container before the test environment's database exists. See
      * SyncWorkizJobs for the full account.
      */
+    /**
+     * ONE RUN AT A TIME, WHOEVER STARTS IT.
+     *
+     * On 2026-09-23 at 20:37 the scheduled run (limit 500) and a manual run
+     * (--limit=10000, projecting the history import) overlapped. The
+     * schedule's withoutOverlapping() guards only SCHEDULED invocations, and
+     * this command claimed rows with no lock of its own: both read the same
+     * unprojected rows, both created a job for each, and whichever link was
+     * written last won. 432 duplicate jobs and 500 duplicate customers, found by
+     * the Jobs session as twins sharing a customer and an appointment; the two
+     * `customer.imported` audit rows two seconds apart named the two runs.
+     *
+     * So the lock lives here, in the command, where a manual run cannot step
+     * around it. On production the cache store is `database`, so it is atomic
+     * across processes. It also keeps a Workiz status change from being
+     * announced twice — which, once Jose's rule exists, would be two texts to
+     * the same customer.
+     */
+    public const LOCK = 'ezbizi:project-workiz';
+
+    /**
+     * Long enough that no real run outlives it — projecting the whole history
+     * import took about two minutes — and short enough that a run killed
+     * mid-way does not hold the projection off for more than an hour.
+     */
+    private const LOCK_SECONDS = 3600;
+
     public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
+    {
+        $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            $this->info('Another Workiz projection is already running, so this one did nothing.');
+
+            return self::SUCCESS;
+        }
+
+        try {
+            return $this->project($tenant, $numbers, $audit, $events);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function project(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $limit = max(1, (int) $this->option('limit'));
