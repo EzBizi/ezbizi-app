@@ -224,4 +224,170 @@ class SyncWorkizJobsTest extends TestCase
         $this->assertCount(1, $rows);
         $this->assertSame('GOOD01', $rows->first()->remote_id);
     }
+
+    /**
+     * A mirror row nobody has refreshed since it was landed, as the A1 Tools
+     * history import left 7,822 of them.
+     */
+    private function stale(array $tenant, SocialConnection $connection, string $uuid, string $status, string $scheduled = '2026-08-25 11:00:00'): WorkizJob
+    {
+        return $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $connection->scope_id,
+            'connection_id' => $connection->getKey(),
+            'remote_id' => $uuid,
+            'status' => $status,
+            'scheduled_for' => $scheduled,
+            'payload' => $this->payload(['UUID' => $uuid, 'Status' => $status]),
+            'synced_at' => now()->subDay(),
+        ]));
+    }
+
+    /**
+     * THE MIRROR HALF OF THE BUG JOSE REPORTED.
+     *
+     * `/job/all/` returns only UPCOMING appointments - measured: it ignores
+     * start_date and does not page - so once a job's date passes, the sweep
+     * never sees it again and it is frozen at whatever status it last had.
+     * Measured on production 2026-09-24: 1,323 past-dated rows still "open".
+     * Asked Workiz directly about three: UKHSX7 was Done, DQ2W8H done pending
+     * approval, and only Y05TKI was genuinely still Submitted.
+     *
+     * `/job/get/{UUID}/` answers for a past job, so that is how it is re-read.
+     */
+    public function test_a_past_job_is_re_read_and_its_status_refreshed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+        $this->stale($tenant, $connection, 'UKHSX7', 'Submitted');
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/UKHSX7/' => Http::response(['flag' => true, 'data' => [
+                $this->payload(['UUID' => 'UKHSX7', 'Status' => 'Done', 'LastStatusUpdate' => '2026-08-28 11:00:13']),
+            ]]),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        $row = $this->inTenant($tenant['org'], fn () => WorkizJob::query()->where('remote_id', 'UKHSX7')->first());
+
+        $this->assertSame('Done', $row->status);
+    }
+
+    /**
+     * THE BUDGET IS PER BRANCH, and it is a quota decision: Workiz refuses with
+     * 429 "Account reached Api Quotas", and the account is shared with A1 Tools
+     * until its sync is switched off.
+     */
+    public function test_the_re_read_budget_caps_calls_per_branch(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+
+        foreach (['OLD001', 'OLD002', 'OLD003', 'OLD004', 'OLD005'] as $uuid) {
+            $this->stale($tenant, $connection, $uuid, 'Submitted');
+        }
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/*' => Http::response(['flag' => true, 'data' => [$this->payload(['Status' => 'Done'])]]),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 2])->assertSuccessful();
+
+        Http::assertSentCount(1 + 2); // the upcoming sweep, then two re-reads
+    }
+
+    /**
+     * Open jobs first. A Done or Canceled job rarely changes; a Submitted one
+     * whose date has passed almost certainly has, and it is the one Jose sees
+     * as wrong.
+     */
+    public function test_open_jobs_are_re_read_before_closed_ones(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+
+        // The closed one is OLDER, so least-recently-synced alone would pick it.
+        $this->inTenant($tenant['org'], fn () => WorkizJob::create([
+            'franchise_id' => $connection->scope_id,
+            'connection_id' => $connection->getKey(),
+            'remote_id' => 'CLOSED',
+            'status' => 'Done',
+            'scheduled_for' => now()->subDays(10)->format('Y-m-d H:i:s'),
+            'payload' => $this->payload(['UUID' => 'CLOSED']),
+            'synced_at' => now()->subWeek(),
+        ]));
+        $this->stale($tenant, $connection, 'OPEN01', 'Submitted');
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/*' => Http::response(['flag' => true, 'data' => [$this->payload(['Status' => 'Done'])]]),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 1])->assertSuccessful();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/job/get/OPEN01/'));
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/job/get/CLOSED/'));
+    }
+
+    /**
+     * Settled history is left alone: a job Done or Canceled more than thirty
+     * days ago is not re-read at all, so the steady-state cost is the size of
+     * what is still live, not the size of A-1's history.
+     */
+    public function test_settled_history_is_not_re_read(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+        $this->stale($tenant, $connection, 'ANCIENT', 'Done', '2025-06-01 09:00:00');
+
+        Http::fake(['api.workiz.com/*' => Http::response(['flag' => true, 'data' => []])]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/job/get/'));
+    }
+
+    /**
+     * A job the sweep refreshed in THIS run is not fetched a second time.
+     */
+    public function test_a_job_the_sweep_just_refreshed_is_not_re_read(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+        $this->stale($tenant, $connection, 'DG0KYN', 'Submitted');
+
+        Http::fake([
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => [$this->payload()]]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz')->assertSuccessful();
+
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/job/get/DG0KYN/'));
+    }
+
+    /**
+     * One refusal ends that branch's re-reads for the run. Hammering an account
+     * that has already said "quota" spends the allowance the per-minute sweep
+     * needs.
+     */
+    public function test_a_refusal_stops_that_branchs_re_reads(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connection = $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+
+        foreach (['OLD001', 'OLD002', 'OLD003'] as $uuid) {
+            $this->stale($tenant, $connection, $uuid, 'Submitted');
+        }
+
+        Http::fake([
+            'api.workiz.com/api/v1/*/job/get/*' => Http::response(['error' => true, 'code' => 429, 'msg' => 'Account reached Api Quotas'], 429),
+            'api.workiz.com/*' => Http::response(['flag' => true, 'data' => []]),
+        ]);
+
+        $this->artisan('ezbizi:sync-workiz', ['--reconcile' => 3])->assertSuccessful();
+
+        Http::assertSentCount(1 + 1); // the sweep, then ONE refused re-read
+    }
 }

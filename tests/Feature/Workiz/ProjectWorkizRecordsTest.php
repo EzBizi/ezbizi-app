@@ -209,4 +209,125 @@ class ProjectWorkizRecordsTest extends TestCase
 
         $this->assertSame(115, $this->inTenant($tenant['org'], fn () => Job::query()->first())->amount_minor);
     }
+
+    /**
+     * THE BUG JOSE REPORTED: "all the jobs show as submitted, so the status
+     * aren't updating".
+     *
+     * The projection used to be insert-only, so a job was frozen at the status
+     * it had the moment it was first projected. Measured on production
+     * 2026-09-24: 147 projected jobs already disagreed with the mirror, 63 of
+     * them mirror "In progress" and shown "Submitted".
+     */
+    public function test_a_status_change_in_workiz_reaches_the_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        // The sweep refreshes the mirror with Workiz's new word.
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame('Done', $this->inTenant($tenant['org'], fn () => Job::query()->first())->status);
+    }
+
+    /**
+     * AND THE HOUSE RULE STILL HOLDS: a status a PERSON set in EzBizi is never
+     * reverted by the sweep. The job follows Workiz only while it still holds
+     * what the projection last wrote into it.
+     */
+    public function test_a_status_a_person_changed_in_ezbizi_is_not_reverted(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () {
+            $job = Job::query()->first();
+            $job->status = 'In progress';
+            $job->save();
+        });
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Canceled';
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame(
+            'In progress',
+            $this->inTenant($tenant['org'], fn () => Job::query()->first())->status,
+            'a choice made by a person must survive the sweep',
+        );
+    }
+
+    /**
+     * Same freeze, same fix, two more fields that change over a job's life: a
+     * reschedule and the price, which Workiz fills in when the job is
+     * invoiced — most imported jobs showed USD 0.00 because A1 Tools last saw
+     * them before they were priced.
+     */
+    public function test_a_reschedule_and_a_price_change_reach_the_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->scheduled_for = '2026-10-02 13:30:00';
+            $mirrored->payload = array_merge($mirrored->payload, ['JobTotalPrice' => 349.5]);
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame('2026-10-02 13:30:00', $job->getRawOriginal('scheduled_for'));
+        $this->assertSame(34950, $job->amount_minor);
+    }
+
+    /**
+     * Which fields follow is decided PER FIELD. A person fixing the price must
+     * not stop the status from following Workiz, and the other way round.
+     */
+    public function test_a_hand_edit_to_one_field_does_not_freeze_the_others(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () {
+            $job = Job::query()->first();
+            $job->amount_minor = 99900;
+            $job->save();
+        });
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->payload = array_merge($mirrored->payload, ['JobTotalPrice' => 10]);
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame('Done', $job->status, 'status still follows Workiz');
+        $this->assertSame(99900, $job->amount_minor, 'the hand-set price is kept');
+    }
 }
