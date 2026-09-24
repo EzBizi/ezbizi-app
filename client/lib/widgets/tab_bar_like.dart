@@ -35,9 +35,15 @@ class TabBarLike extends StatelessWidget {
     //     inspection_screen   _tab.clamp(0, tabs.length - 1), plus isEmpty
     //     reports_screen      resolves by NAME, three length guards
     //     leads_screen        indexWhere(...) + 1, so -1 lands on "All"
-    //     hr_screen           converts index<->key at the call site
     //     records_tab         bare indexWhere, which answers -1
     //     phone_screen        an Offstage loop, so a stale index draws nothing
+    //
+    // The exception, and the one to copy: `hr_screen`'s `_activeTab` keeps a
+    // string KEY and derives the index against the list being drawn this
+    // build, so one getter feeds both the bar and the stack and they cannot
+    // disagree. Its comment is worth the detour — the version before it fell
+    // back in the bar ALONE and rendered a blank screen, and only a test
+    // granting a SUBSET of tabs caught it.
     //
     // What they have in common is the failure: nothing throws. An index past
     // the end lights no chip and paints a blank pane, and a screen that draws

@@ -19,11 +19,10 @@ These are current operating rules. Detailed incident evidence remains in the [ar
   Six screens had each invented their own defence, and no two are the same:
   `inspection_screen` clamps, `reports_screen` resolves by name with three
   length guards, `leads_screen` does `indexWhere(...) + 1` so -1 lands on "All",
-  `hr_screen` converts index↔key at the call site, `records_tab` and
-  `automations_screen` use a bare `indexWhere` that answers **-1**, and
-  `phone_screen` and `training_screen` use an `Offstage` loop that simply draws
-  nothing. **Six answers to one question is the tell that the question belongs
-  to the widget.** What they share is the failure mode: *nothing throws*. An
+  `records_tab` and `automations_screen` use a bare `indexWhere` that answers
+  **-1**, and `phone_screen` and `training_screen` use an `Offstage` loop that
+  simply draws nothing. **Several answers to one question is the tell that the
+  question belongs to the widget.** What they share is the failure mode: *nothing throws*. An
   out-of-range index lights no chip and paints a blank pane, and a screen
   drawing its body from the same number disagrees with its own strip — a bug
   report that says "the tab went blank" with no stack to read. `TabBarLike` now
@@ -32,28 +31,41 @@ These are current operating rules. Detailed incident evidence remains in the [ar
   looks like. The general rule: **when a shared widget takes a number that
   indexes something the CALLER owns, say what the legal numbers are.**
 
-  **COPY `work_hours_screen.dart:75` (`_active`) — it is the seventh defence and
-  the only complete one.** Added the same afternoon, by a session nobody had
-  told about any of this, on a brand-new screen:
+  **COPY `hr_screen.dart`'s `_activeTab` — it is the earliest instance and the
+  only one that carries the WHY.** Landed `b823e153`, 2026-09-17:
 
-      /// Both the bar and the stack read this, so they cannot disagree.
-      String get _active {
-        final tabs = _tabs;
-        if (tabs.isEmpty || tabs.any((t) => t.$1 == _tab)) return _tab;
-
-        return tabs.first.$1;
-      }
+      /// `_tab` starts at `dashboard` [...] and a role granted Records and
+      /// Contracts and nothing else holds no such tab. THE FIRST VERSION OF
+      /// THIS FIX FELL BACK IN THE BAR ONLY: the bar highlighted the first tab
+      /// while the stack compared every pane against a key nobody had, so all
+      /// of them stayed offstage and the screen rendered blank. A widget test
+      /// with two grants and neither of them Dashboard caught it; the
+      /// twenty-six tests that grant all seven passed against it.
+      String get _activeTab =>
+          _shownTabs.any((tab) => tab.$1 == _tab) || _shownTabs.isEmpty
+          ? _tab
+          : _shownTabs.first.$1;
 
   The state is a **string key**, never an index. The index is derived from it
-  against the list being drawn *this build*, so it cannot be stale and cannot go
-  out of range; a key whose tab has gone falls back to the first tab that is
-  actually there, rather than to a blank pane; and one getter feeds both the
-  strip and the body, so the two cannot disagree — which is the failure the
-  other six defences all leave open. `reports_screen`'s resolve-by-name is the
-  same idea reached independently. **Nothing here needed a new API.** The
-  outstanding `TabBarLike` work is not designing a key-based contract, it is
-  making the other call sites look like this one, which any session can do to
-  its own screen without waiting for anybody.
+  against the list being drawn *this build* (`_selectedIndex`), so it cannot be
+  stale and cannot go out of range; a key whose tab has gone falls back to a tab
+  that is actually there, rather than to a blank pane; and **one getter feeds
+  both the bar and the stack, so the two cannot disagree** — which is precisely
+  the bug its comment describes, and precisely what the other defences leave
+  open. `work_hours_screen.dart:75` (`_active`, 2026-09-24) is the same getter
+  with the names shortened; `reports_screen`'s resolve-by-name is the same idea
+  in a third shape.
+
+  Read the comment, not just the code: the fallback branch and the single getter
+  both look redundant until a role hides a tab, and the story of the version that
+  fell back in the bar alone is what stops somebody "simplifying" them away.
+  **Twenty-six passing tests granted all seven tabs and were blind to it** — see
+  the whole-suite rule below, and grant *subsets* when a screen filters by grant.
+
+  **Nothing here needed a new API.** The outstanding `TabBarLike` work is not
+  designing a key-based contract, it is making the other call sites look like
+  this one, which any session can do to its own screen without waiting for
+  anybody.
 
 - **Run the WHOLE client suite before you hand a client commit over, not your module's.** Scheduling's sentence, after their new Time slots card reintroduced a `DropdownButton` that `no_popup_dropdown_test` would have failed on: *"a guard named after a rule instead of a module is invisible to a module-scoped test run."* They had run only the scheduling tests and nothing was wrong with that habit — the guard simply has no module in its name, so no module-shaped command reaches it. Measured, these are the ones nobody's module filter will run: `no_popup_dropdown_test` and `theme_conventions_test` (both scan `lib/` itself), `field_prompt_vs_value_test` and `search_picker_test` (theme and shared control), `tab_stays_in_its_section_test` (the shell), `version_history_test` (the release), `tab_bar_like_test` (the shared tab strip). A module suite is evidence about a module; the guards are about the app.
 - Run `flutter analyze lib` on the MERGED tree, and the duty is whoever performs the merge. Two commits that are each self-consistent and each gated can produce a tree that does not compile, and the break exists only in the merge — which neither author ever built. On 2026-09-17 a branch commit added `if (_tabs.isEmpty)` and a main commit renamed that getter 23 seconds later; git merged them cleanly because a rename and a new call site touch different lines, and `client/lib` was red on main for twenty minutes. **Neither branch owner could have caught it** — by the time both sides exist, only the merger has a tree containing them. A conflict-marker grep is necessary and NOT sufficient: this kind has no markers, and `git show` on a merge commit never shows a name that no longer resolves. Four seconds.
