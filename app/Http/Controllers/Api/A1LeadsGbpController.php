@@ -2,10 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Franchise;
+use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
+use App\Services\A1Leads\A1LeadsReplyClient;
+use App\Support\Audit\AuditLogger;
+use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -31,7 +38,9 @@ class A1LeadsGbpController extends Controller
 {
     public function __construct(
         private readonly A1LeadsClient $a1leads,
+        private readonly A1LeadsReplyClient $replies,
         private readonly TenantContext $tenant,
+        private readonly AuditLogger $audit,
     ) {}
 
     /** GET /api/v1/a1leads-gbp */
@@ -52,6 +61,7 @@ class A1LeadsGbpController extends Controller
         if (! $source['configured'] || ! $source['reachable']) {
             return response()->json(['data' => [
                 'source' => $source,
+                'reply_available' => false,
                 'summary' => null,
                 'reviews' => [],
                 'health' => null,
@@ -78,6 +88,7 @@ class A1LeadsGbpController extends Controller
              */
             return response()->json(['data' => [
                 'source' => [...$source, 'reachable' => false, 'because' => $e->getMessage()],
+                'reply_available' => false,
                 'summary' => null,
                 'reviews' => [],
                 'health' => null,
@@ -89,8 +100,9 @@ class A1LeadsGbpController extends Controller
 
         return response()->json(['data' => [
             'source' => $source,
+            'reply_available' => $this->replyAvailable($request),
             'summary' => $summary,
-            'reviews' => $this->withBoard($reviews['data'] ?? [], $board),
+            'reviews' => $this->withBoard($this->withReplyReceipts($reviews['data'] ?? []), $board),
             'meta' => $reviews['meta'] ?? null,
             'health' => $health,
             'locations' => $locations,
@@ -141,10 +153,243 @@ class A1LeadsGbpController extends Controller
 
         return response()->json(['data' => [
             'source' => $source,
-            'reviews' => $this->withBoard($reviews['data'] ?? [], $board),
+            'reviews' => $this->withBoard($this->withReplyReceipts($reviews['data'] ?? []), $board),
             'meta' => $reviews['meta'] ?? null,
             'board' => ['available' => $board['available'], 'because' => $board['because']],
         ]]);
+    }
+
+    /**
+     * GET /api/v1/a1leads-gbp/reply/preflight?googleReviewName=...
+     *
+     * ── Replies, and why they go somewhere the reads do not ─────────
+     *
+     * Rodrigo's handoff of 24 September (A1 Leads `421fa5ef`, patch SHA-256
+     * 67D54389...ADEFAF) authorises an EzBizi operator to publish a reply to an
+     * A-1 Chimney review. A1 Leads stays the only Google writer: EzBizi never
+     * holds Google's credential. The reply goes to his LIVE A1 Leads through a
+     * loopback tunnel (127.0.0.1:3457) with its own reply-only key - never to
+     * the daily snapshot on :3456, which is read-only by design and whose key
+     * this never uses.
+     *
+     * The preflight reads that exact review from live Google before an editor
+     * may publish. The daily snapshot is never proof a review is still
+     * unanswered or unchanged: the reply is sent against the live
+     * `reviewUpdatedAt`, and A1 Leads refuses it if the reviewer edited since.
+     */
+    public function replyPreflight(Request $request): JsonResponse
+    {
+        if ($refusal = $this->replyScopeRefusal($request)) {
+            return $refusal;
+        }
+
+        $name = trim((string) $request->query('googleReviewName', ''));
+        if (! $this->validReviewName($name)) {
+            return $this->replyError(422, 'invalid_review_name', 'Choose a review from this page.');
+        }
+
+        return $this->replyResult($this->replies->preflight($name));
+    }
+
+    /**
+     * POST /api/v1/a1leads-gbp/reply - one public Google reply, by exact review.
+     *
+     * The actor is the signed-in user, derived here: an `actorId`,
+     * `businessSlug`, URL or key in the request body is ignored, so nobody can
+     * post as somebody else or for another business by editing a request.
+     *
+     * Every reply Google accepts is written to OUR audit trail as
+     * `a1leads_gbp.review_replied` - it is public, permanent, and under the
+     * business's name, and "who answered that review" must have an answer here,
+     * not only in A1 Leads' log.
+     */
+    public function publishReply(Request $request): JsonResponse
+    {
+        if ($refusal = $this->replyScopeRefusal($request)) {
+            return $refusal;
+        }
+
+        $name = trim((string) $request->input('googleReviewName', ''));
+        $text = trim((string) $request->input('text', ''));
+        $expected = trim((string) $request->input('expectedReviewUpdatedAt', ''));
+        if (! $this->validReviewName($name)) {
+            return $this->replyError(422, 'invalid_review_name', 'Choose a review from this page.');
+        }
+        if ($text === '' || mb_strlen($text) > 4000) {
+            return $this->replyError(422, 'invalid_reply_text', 'Write a reply of up to 4,000 characters.');
+        }
+        if ($expected === '' || strlen($expected) > 80) {
+            return $this->replyError(422, 'missing_review_revision', 'Check the live review again before sending.');
+        }
+
+        $result = $this->replies->publish(
+            $name,
+            $text,
+            $expected,
+            (string) $request->user()->getKey(),
+        );
+
+        if ($result['status'] >= 200 && $result['status'] < 300 && ($result['body']['data']['ok'] ?? false) === true) {
+            $data = $result['body']['data'];
+
+            try {
+                DB::table('a1leads_review_reply_receipts')->updateOrInsert(
+                    ['organization_id' => $this->tenant->idOrFail(), 'google_review_name' => $name],
+                    [
+                        'reply_text' => (string) ($data['text'] ?? $text),
+                        'sent_at' => isset($data['sentAt']) ? Carbon::parse($data['sentAt'])->utc()->toDateTimeString() : null,
+                        'actor_id' => (string) $request->user()->getKey(),
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ],
+                );
+                $result['body']['data']['receiptPersisted'] = true;
+            } catch (\Throwable $error) {
+                report($error);
+                // Google has already accepted the reply. Never turn that fact
+                // into an apparent failed send that invites a duplicate retry.
+                $result['body']['data']['receiptPersisted'] = false;
+            }
+
+            // Outside the receipt's try: a failure to write the receipt must
+            // not also lose the record of who spoke for the business.
+            $this->audit->log(
+                'a1leads_gbp.review_replied',
+                null,
+                ['reply' => (string) ($data['text'] ?? $text)],
+                ['google_review_name' => $name, 'sent_at' => $data['sentAt'] ?? null],
+            );
+        }
+
+        return $this->replyResult($result);
+    }
+
+    private function replyScopeRefusal(Request $request): ?JsonResponse
+    {
+        $source = $this->source();
+        if (! $source['configured']) {
+            return $this->replyError(403, 'wrong_organization', 'This Business Profile does not belong to your organization.');
+        }
+
+        $companyId = config('services.a1leads.reply_company_id');
+        if (! is_string($companyId) || $companyId === '') {
+            return $this->replyError(503, 'reply_company_not_configured', 'Review replies are not enabled for this company yet.');
+        }
+
+        $user = $request->user();
+        if ($user === null || ! $user->hasPermission('a1leads_gbp.view')
+            || ! $this->companyInView($user, $companyId)) {
+            return $this->replyError(403, 'wrong_company_view', 'Switch to the A1 Chimney company to reply to its reviews.');
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether this person, here, now, may be OFFERED a Reply button.
+     *
+     * Every condition the endpoints enforce, so the screen never draws a button
+     * whose only outcome is a refusal: the live connection configured, the
+     * company named, both grants held, and A-1 Chimney the company in view.
+     */
+    private function replyAvailable(Request $request): bool
+    {
+        $companyId = config('services.a1leads.reply_company_id');
+        $user = $request->user();
+
+        return $this->replies->configured()
+            && is_string($companyId) && $companyId !== ''
+            && $user !== null
+            && $user->hasPermission('a1leads_gbp.reply')
+            && $user->hasPermission('a1leads_gbp.view')
+            && $this->companyInView($user, $companyId);
+    }
+
+    private function companyInView(User $user, string $companyId): bool
+    {
+        $view = ViewScope::forUser($user);
+        if ($view->isOrganization()) {
+            return $user->reachableCompanies()->contains(fn ($company) => $company->getKey() === $companyId);
+        }
+        if ($view->type === ViewScope::FRANCHISE) {
+            return Franchise::find($view->id)?->company_id === $companyId;
+        }
+
+        return in_array($companyId, $view->companyIds(), true);
+    }
+
+    /**
+     * Keep a confirmed live send visible until the daily snapshot catches up.
+     *
+     * The snapshot is a day behind, so a reply posted at 10:00 would read as
+     * "No reply" until tomorrow's install - inviting a second, duplicate reply.
+     * The receipt overlays it, and gives way the moment the snapshot carries a
+     * reply newer than the receipt.
+     *
+     * @param  array<int, mixed>  $reviews
+     * @return array<int, mixed>
+     */
+    private function withReplyReceipts(array $reviews): array
+    {
+        if ($reviews === []) {
+            return $reviews;
+        }
+
+        $names = array_values(array_filter(array_map(
+            fn ($review) => is_array($review) ? ($review['google_review_name'] ?? null) : null,
+            $reviews,
+        ), 'is_string'));
+        if ($names === []) {
+            return $reviews;
+        }
+
+        $receipts = DB::table('a1leads_review_reply_receipts')
+            ->where('organization_id', $this->tenant->idOrFail())
+            ->whereIn('google_review_name', $names)
+            ->get()->keyBy('google_review_name');
+
+        foreach ($reviews as &$review) {
+            if (! is_array($review)) {
+                continue;
+            }
+            $receipt = $receipts->get($review['google_review_name'] ?? '');
+            if ($receipt === null) {
+                continue;
+            }
+            $snapshotSentAt = $review['reply_at'] ?? null;
+            if ($snapshotSentAt !== null && $receipt->sent_at !== null
+                && Carbon::parse($snapshotSentAt)->greaterThan(Carbon::parse($receipt->sent_at, 'UTC'))) {
+                continue;
+            }
+
+            $review['reply'] = $receipt->reply_text;
+            $review['reply_at'] = $receipt->sent_at;
+            $review['review_status'] = [
+                ...(is_array($review['review_status'] ?? null) ? $review['review_status'] : []),
+                'reply' => 'sent',
+                'replied_at' => $receipt->sent_at,
+            ];
+        }
+        unset($review);
+
+        return $reviews;
+    }
+
+    private function validReviewName(string $name): bool
+    {
+        return strlen($name) <= 300
+            && preg_match('#^accounts/[^/]+/locations/[^/]+/reviews/[^/]+$#D', $name) === 1;
+    }
+
+    /** @param array{status: int, body: array<string, mixed>} $result */
+    private function replyResult(array $result): JsonResponse
+    {
+        return response()->json($result['body'], $result['status']);
+    }
+
+    private function replyError(int $status, string $code, string $message): JsonResponse
+    {
+        return response()->json(['error' => compact('code', 'message')], $status);
     }
 
     /**

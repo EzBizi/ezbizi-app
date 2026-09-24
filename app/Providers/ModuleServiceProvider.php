@@ -2287,11 +2287,15 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'a1leads_gbp',
                 label: 'A1Leads GBP',
-                actions: ['view'],
-                automationExemptBecause: 'A read-only window onto another system. It holds '
-                    .'no records of its own and raises no events; the A1 Leads data it shows '
-                    .'is a copy, and a rule built on a copy would fire on our import rather '
-                    .'than on anything a customer did.',
+                // `reply` since 2026-09-24, on Rodrigo's handoff: one public
+                // reply to one exact review, through the live A1 Leads writer
+                // with its own key. Audited as `a1leads_gbp.review_replied`.
+                actions: ['view', 'reply'],
+                automationExemptBecause: 'This bridge holds no records of its own; the A1 Leads '
+                    .'data it shows is a copy, and a rule built on a copy would fire on our '
+                    .'import rather than on anything a customer did. Its only write is a '
+                    .'public reply a person types and approves after checking the live '
+                    .'review - an automation must not post under a customer review.',
                 glanceExemptBecause: 'It holds no records. A box for this module could only '
                     .'restate a number owned by another system, on a snapshot '
                     .'whose freshness the dashboard could not show. Not a gap - there is '

@@ -278,6 +278,10 @@ return [
          * to "nobody has said whose data this is".
          */
         'organization_id' => env('A1LEADS_ORGANIZATION_ID'),
+        // Separate, reply-only live tunnel. Never reuse the snapshot reader key.
+        'live_reply_url' => env('A1LEADS_LIVE_REPLY_URL'),
+        'live_reply_key' => env('A1LEADS_LIVE_REPLY_KEY'),
+        'reply_company_id' => env('A1LEADS_REPLY_COMPANY_ID'),
 
         // The snapshot is refreshed daily at 05:00 New York. Rodrigo's number:
         // warn after thirty hours without a successful installation, which is

@@ -285,7 +285,7 @@ void main() {
     // Contact is absent, and the reason is on screen.
     expect(find.text('CONTACT'), findsNothing);
     expect(find.textContaining('does not send customer phone or email'), findsOneWidget);
-    expect(find.textContaining('cannot write to it'), findsOneWidget);
+    expect(find.textContaining('needs the A1Leads GBP Reply permission'), findsOneWidget);
   });
 
   /// A card that DOES carry a phone brings the Contact column back.
@@ -332,6 +332,101 @@ void main() {
 
     // The control: the screen rendered, so the absence is about the width.
     expect(find.text('Dana Whitfield'), findsOneWidget);
+  });
+
+  /// REPLY: live check, draft, confirm, post - and the exact revision sent.
+  ///
+  /// Rodrigo's handoff, 24 September. The discriminating moments: nothing is
+  /// posted when "Post public reply" is pressed, only when the consequence has
+  /// been read and "Post it" answered; the request names the exact review and
+  /// the LIVE revision from the preflight, not the snapshot; and it carries no
+  /// actor - the server derives who is signed in.
+  testWidgets('a reply is checked live, confirmed, and posted against its revision', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(replyAvailable: true, replyGranted: true, requests: requests));
+
+    await tester.tap(find.text('Reply on Google'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Live Google review'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'We would like to look into this.');
+    await tester.tap(find.byKey(const ValueKey('gbp-reply-post')));
+    await tester.pumpAndSettle();
+
+    expect(
+      requests.where((r) => r.url.path.endsWith('/a1leads-gbp/reply') && r.method == 'POST'),
+      isEmpty,
+      reason: 'the first press arms the confirmation and sends nothing',
+    );
+    expect(find.textContaining("under A-1 Chimney's name"), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('gbp-reply-confirm')));
+    await tester.pumpAndSettle();
+
+    final preflight = requests.singleWhere((r) => r.url.path.endsWith('/a1leads-gbp/reply/preflight'));
+    expect(preflight.url.queryParameters['googleReviewName'], 'accounts/a/locations/l/reviews/r-1');
+
+    final send = requests.singleWhere((r) => r.url.path.endsWith('/a1leads-gbp/reply') && r.method == 'POST');
+    final body = jsonDecode(send.body) as Map<String, dynamic>;
+    expect(body['googleReviewName'], 'accounts/a/locations/l/reviews/r-1');
+    expect(body['expectedReviewUpdatedAt'], '2026-09-24T12:00:00Z', reason: 'the live revision');
+    expect(body.containsKey('actorId'), isFalse, reason: 'the server derives the signed-in user');
+
+    expect(find.textContaining('Public reply posted on Google'), findsOneWidget);
+    expect(find.text('Replied on Google'), findsOneWidget, reason: 'drawn as answered at once');
+  });
+
+  /// The editor and its confirmation fit a phone.
+  testWidgets('the reply editor and its confirmation fit a phone', (tester) async {
+    final complaints = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (d) {
+      complaints.add(d.exceptionAsString());
+      previous?.call(d);
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(tester, _handler(replyAvailable: true, replyGranted: true), size: const Size(375, 1400));
+
+    await tester.ensureVisible(find.text('Reply on Google'));
+    await tester.tap(find.text('Reply on Google'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'We would like to look into this.');
+    await tester.ensureVisible(find.byKey(const ValueKey('gbp-reply-post')));
+    await tester.tap(find.byKey(const ValueKey('gbp-reply-post')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('gbp-reply-confirm')), findsOneWidget, reason: 'the control');
+    expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
+  });
+
+  /// Holding the grant is not enough: the SERVER must say reply is available.
+  ///
+  /// It is the only side that knows whether the live connection is configured
+  /// and whether A-1 Chimney is the company in view. A button drawn on the
+  /// grant alone would, on every other company, be a control that only refuses.
+  testWidgets('the grant alone draws no reply button when the server says no', (tester) async {
+    await _pump(tester, _handler(total: 2, replyGranted: true));
+
+    // The control: the unanswered review is there.
+    expect(find.text('No reply'), findsOneWidget);
+    expect(find.text('Reply on Google'), findsNothing);
+  });
+
+  /// The table's Reply opens the editor on the board, where the review can be read.
+  testWidgets('reply from the table opens the editor on the board', (tester) async {
+    await _pump(tester, _handler(total: 3, replyAvailable: true, replyGranted: true));
+
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Reply').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('CUSTOMER'), findsNothing, reason: 'back on the board');
+    expect(find.byKey(const ValueKey('gbp-reply-editor')), findsOneWidget);
+    expect(find.text('Live Google review'), findsOneWidget);
   });
 
   /// Nothing matching the filters is a different sentence from nothing at all.
@@ -450,10 +545,14 @@ MockClientHandler _handler({
   int pageSize = 20,
   bool withPhone = false,
   bool boardDown = false,
+  bool replyAvailable = false,
+  bool replyGranted = false,
   List<Uri>? seen,
+  List<http.Request>? requests,
 }) {
   return (request) async {
     seen?.add(request.url);
+    requests?.add(request);
 
     if (request.url.path.endsWith('/me')) {
       return _json({
@@ -463,7 +562,10 @@ MockClientHandler _handler({
           'email': 'jose@example.com',
           'has_avatar': false,
           'role': {'id': 'role-1', 'name': 'Administrator'},
-          'permissions': const ['a1leads_gbp.view'],
+          'permissions': [
+            'a1leads_gbp.view',
+            if (replyGranted) 'a1leads_gbp.reply',
+          ],
           'modules': [
             {
               'key': 'a1leads_gbp',
@@ -505,6 +607,34 @@ MockClientHandler _handler({
           : 'No A1 Leads key is configured for this environment.',
     };
 
+    // The live preflight: the review as Google has it NOW.
+    if (request.url.path.endsWith('/a1leads-gbp/reply/preflight')) {
+      return _json({
+        'data': {
+          'googleReviewName': 'accounts/a/locations/l/reviews/r-1',
+          'reviewerName': 'Dana Whitfield',
+          'rating': 2,
+          'comment': 'They were late twice.',
+          'reviewUpdatedAt': '2026-09-24T12:00:00Z',
+          'replyStatus': 'none',
+          'replyText': null,
+          'canReply': true,
+        },
+      });
+    }
+
+    if (request.url.path.endsWith('/a1leads-gbp/reply') && request.method == 'POST') {
+      return _json({
+        'data': {
+          'ok': true,
+          'text': 'We would like to look into this.',
+          'sentAt': '2026-09-24T12:01:00Z',
+          'reply_status': 'sent',
+          'receiptPersisted': true,
+        },
+      });
+    }
+
     // The list route, which is what a filter change and a page ask for.
     if (request.url.path.endsWith('/a1leads-gbp/reviews')) {
       final offset = int.tryParse(request.url.queryParameters['offset'] ?? '0') ?? 0;
@@ -525,6 +655,7 @@ MockClientHandler _handler({
       return _json({
         'data': {
           'source': source,
+          'reply_available': replyAvailable,
           'summary': usable ? {'total': 13169} : null,
           'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
           'meta': {'total': total},

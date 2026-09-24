@@ -748,6 +748,13 @@ Route::prefix('v1')
             Route::get('a1leads-gbp/reviews', [A1LeadsGbpController::class, 'reviews']);
         });
 
+        // Public posting stays in A1 Leads. EzBizi only submits an audited,
+        // exact-review request through a separately credentialed live tunnel.
+        Route::middleware('permission:a1leads_gbp.reply')->group(function () {
+            Route::get('a1leads-gbp/reply/preflight', [A1LeadsGbpController::class, 'replyPreflight']);
+            Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);
+        });
+
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);
         Route::patch('business-profile/locations/{location}', [BusinessProfileController::class, 'update']);

@@ -28,18 +28,19 @@ import '../widgets/search_picker.dart';
 /// same reply bubble. Somebody who used that tab this morning should not have
 /// to learn this one.
 ///
-/// Two of its affordances are deliberately absent, and neither is an oversight:
+/// **Reply on Google** is here since 24 September, on Rodrigo's handoff. It
+/// does not go through the daily snapshot this tab reads - that is read-only by
+/// design - but to his LIVE A1 Leads, which stays the only Google writer, with
+/// a reply-only key held by our server. Opening the editor reads that exact
+/// review from Google first; the reply is sent against that revision and
+/// refused if the reviewer has edited since. The button appears only when the
+/// server says every condition holds (connection, company, both grants), so
+/// it is never a control whose only outcome is a refusal.
 ///
-///  - **Reply on Google.** A1 Leads is still the only writer to that Business
-///    Profile. Our consumer is admitted to five GET routes and the service runs
-///    with `MIGRATION_READ_ONLY=1`, so a Reply button here could only ever
-///    produce a 503. A button whose sole outcome is a refusal is worse than no
-///    button: it teaches somebody the feature is broken rather than elsewhere.
-///  - **Match manually / Report spam.** Writes, for the same reason. The match
-///    A1 Leads computed is SHOWN, because that is a read.
-///
-/// Both stay in A1 Tools until EzBizi holds the Google credential itself, and
-/// this whole module is deleted the day it does.
+/// **Match manually / Report spam** stay in A1 Tools: writes nobody has
+/// authorised here. The match A1 Leads computed is SHOWN, because that is a
+/// read. This whole module is deleted the day EzBizi holds the Google
+/// credential itself.
 ///
 /// ── Why the date is the first thing on the screen ────────────────
 ///
@@ -100,6 +101,40 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// one somebody READS, because a review is prose and a column cuts it off
   /// mid-sentence. Neither replaces the other, which is why A1 Tools has both.
   bool _asTable = false;
+
+  /// The server's answer to "may this person reply, here, now".
+  bool _replyAvailable = false;
+
+  /// The review whose reply editor is open, by its Google name.
+  String? _activeReplyName;
+
+  /// That review as live Google has it, from the preflight.
+  Map<String, dynamic>? _liveReview;
+
+  final TextEditingController _replyDraft = TextEditingController();
+
+  /// Replies posted from this screen, drawn at once rather than after
+  /// tomorrow's snapshot - the server's receipts do the same across reloads.
+  final Map<String, Map<String, dynamic>> _liveReplies = {};
+
+  bool _checkingReply = false;
+  bool _postingReply = false;
+
+  /// The confirmation is armed: the next press posts. House rule, as on
+  /// EzBizi's own Reviews screen - publishing under the business's name is
+  /// stated before it happens, inline, and answered with a button that names
+  /// the act.
+  bool _confirmingReply = false;
+
+  String? _replyError;
+  String? _replyNotice;
+  int _replyRequest = 0;
+
+  @override
+  void dispose() {
+    _replyDraft.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -168,6 +203,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _reviews = _rows(data['reviews']);
       _locations = _rows(data['locations']);
       _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _replyAvailable = data['reply_available'] == true &&
+          widget.session.me?.can('a1leads_gbp.reply') == true;
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -227,6 +264,108 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       _reviews = [..._reviews, ..._rows(data['reviews'])];
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _total;
+    });
+  }
+
+  String _replyFailure(Map<String, dynamic> body, String fallback) {
+    final error = body['error'];
+    if (error is Map && error['message'] is String) return error['message'] as String;
+    return body['message'] is String ? body['message'] as String : fallback;
+  }
+
+  Map<String, dynamic> _withLiveReply(Map<String, dynamic> review) {
+    final live = _liveReplies['${review['google_review_name'] ?? ''}'];
+    return live == null ? review : {...review, 'reply': live['text'], 'reply_at': live['sentAt']};
+  }
+
+  /// Open the editor, and read the review from LIVE Google before it may be
+  /// used. The snapshot is a day old and is never proof the review is still
+  /// unanswered or unchanged.
+  Future<void> _openReply(Map<String, dynamic> review) async {
+    if (!_replyAvailable) return;
+    final name = '${review['google_review_name'] ?? ''}';
+    if (name.isEmpty) return;
+
+    final request = ++_replyRequest;
+    setState(() {
+      _activeReplyName = name;
+      _checkingReply = true;
+      _confirmingReply = false;
+      _liveReview = null;
+      _replyError = null;
+      _replyNotice = null;
+      _replyDraft.clear();
+      // The editor lives on the board, where the whole review can be read.
+      _asTable = false;
+    });
+
+    final response = await widget.api.get('/a1leads-gbp/reply/preflight', {
+      'googleReviewName': name,
+    });
+    if (!mounted || request != _replyRequest) return;
+
+    setState(() {
+      _checkingReply = false;
+      if (!response.ok) {
+        _replyError = _replyFailure(response.body, response.message);
+        return;
+      }
+      _liveReview = (response.body['data'] as Map?)?.cast<String, dynamic>();
+      if (_liveReview == null) {
+        _replyError = 'Could not verify this review. Check it again before replying.';
+      } else if (_liveReview!['canReply'] != true) {
+        _replyError = _liveReview!['replyStatus'] == 'sent'
+            ? 'This review already has a public reply.'
+            : 'This review changed or is unavailable. Refresh before replying.';
+        final sent = '${_liveReview!['replyText'] ?? ''}'.trim();
+        if (sent.isNotEmpty) {
+          _liveReplies[name] = {'text': sent, 'sentAt': null};
+        }
+      }
+    });
+  }
+
+  Future<void> _publishReply() async {
+    final live = _liveReview;
+    final name = _activeReplyName;
+    final text = _replyDraft.text.trim();
+    final revision = '${live?['reviewUpdatedAt'] ?? ''}';
+    if (!_replyAvailable || _postingReply || live?['canReply'] != true ||
+        name == null || text.isEmpty || revision.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _postingReply = true;
+      _confirmingReply = false;
+      _replyError = null;
+      _replyNotice = null;
+    });
+
+    final response = await widget.api.post('/a1leads-gbp/reply', {
+      'googleReviewName': name,
+      'text': text,
+      'expectedReviewUpdatedAt': revision,
+    });
+    if (!mounted || name != _activeReplyName) return;
+
+    setState(() {
+      _postingReply = false;
+      if (!response.ok) {
+        // A failed or uncertain send must be checked live again, never retried
+        // blind: a dropped connection may still have posted.
+        _liveReview = null;
+        _replyError = '${_replyFailure(response.body, response.message)} '
+            'Check the live status before trying again.';
+        return;
+      }
+      final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _liveReplies[name] = {'text': data['text'] ?? text, 'sentAt': data['sentAt']};
+      _liveReview = {...live!, 'canReply': false, 'replyStatus': 'sent', 'replyText': text};
+      _replyNotice = data['receiptPersisted'] == false
+          ? 'Posted on Google, but this view could not save the receipt. '
+              'Check live status before any further action.'
+          : 'Public reply posted on Google. The daily snapshot will catch up.';
     });
   }
 
@@ -296,7 +435,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         'Status and Notes could not be read from A1 Leads: ${_board['because'] ?? 'no reason given'}.',
       if (_board['available'] == true && !_anyContact)
         'Contact is empty because A1 Leads does not send customer phone or email to EzBizi yet.',
-      'Replying happens in A1 Tools — this tab reads A1 Leads and cannot write to it.',
+      if (!_replyAvailable)
+        'Replying here needs the A1Leads GBP Reply permission, with A-1 Chimney in view.',
     ];
 
     return Material(
@@ -566,6 +706,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   }
 
   Widget _tableRow(ThemeData theme, Map<String, dynamic> review) {
+    review = _withLiveReply(review);
     final card = (review['board'] as Map?)?.cast<String, dynamic>();
     final contact = (card?['contact'] as Map?)?.cast<String, dynamic>() ?? const {};
     final name = '${review['reviewer_name'] ?? ''}'.trim();
@@ -651,11 +792,22 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                 const SizedBox(height: 4),
                 // The reply state stays visible beside the board status: it is
                 // Google's fact, where the status is A-1's process.
-                reply.isEmpty
-                    ? Text('No reply',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: theme.colorScheme.error))
-                    : Text('Replied', style: theme.textTheme.labelSmall),
+                if (reply.isNotEmpty)
+                  Text('Replied', style: theme.textTheme.labelSmall)
+                else if (_replyAvailable && review['deleted_at'] == null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () => unawaited(_openReply(review)),
+                    child: const Text('Reply'),
+                  )
+                else
+                  Text('No reply',
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: theme.colorScheme.error)),
               ],
             ),
           ),
@@ -769,6 +921,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   }
 
   Widget _row(ThemeData theme, Map<String, dynamic> review) {
+    review = _withLiveReply(review);
     final reply = '${review['reply'] ?? ''}'.trim();
     final comment = '${review['comment'] ?? ''}'.trim();
     final name = '${review['reviewer_name'] ?? ''}'.trim();
@@ -819,6 +972,16 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           ),
           _matchLine(theme, review),
           _boardLine(theme, review),
+          if (_replyAvailable && reply.isEmpty && review['deleted_at'] == null &&
+              _activeReplyName != review['google_review_name']) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => unawaited(_openReply(review)),
+              icon: const Icon(Icons.reply_outlined, size: 18),
+              label: const Text('Reply on Google'),
+            ),
+          ],
+          if (_activeReplyName == review['google_review_name']) _replyEditor(theme),
           if (reply.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
@@ -855,6 +1018,135 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                 ],
               ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The reply editor: the review as live Google has it, the draft, and a
+  /// confirmation that says what posting does before it does it.
+  Widget _replyEditor(ThemeData theme) {
+    final live = _liveReview;
+    final canSend = live?['canReply'] == true && '${live?['reviewUpdatedAt'] ?? ''}'.isNotEmpty;
+
+    return Container(
+      key: const ValueKey('gbp-reply-editor'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text('Live Google review', style: theme.textTheme.titleSmall)),
+            IconButton(
+              tooltip: 'Close reply',
+              onPressed: _postingReply
+                  ? null
+                  : () => setState(() {
+                        ++_replyRequest;
+                        _activeReplyName = null;
+                        _liveReview = null;
+                        _confirmingReply = false;
+                      }),
+              icon: const Icon(Icons.close, size: 18),
+            ),
+          ]),
+          if (_checkingReply) const LinearProgressIndicator(),
+          if (live != null) ...[
+            Text(
+              '${live['reviewerName'] ?? 'Google reviewer'} · '
+              '${live['rating'] ?? '?'}★ · updated ${_short(live['reviewUpdatedAt'])}',
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            Text('${live['comment'] ?? ''}', style: theme.textTheme.bodyMedium),
+          ],
+          if (_replyError != null) ...[
+            const SizedBox(height: 8),
+            Text(_replyError!, style: TextStyle(color: theme.colorScheme.error)),
+            TextButton(
+              onPressed: _postingReply
+                  ? null
+                  : () {
+                      final review = _reviews.firstWhere(
+                        (r) => r['google_review_name'] == _activeReplyName,
+                        orElse: () => {'google_review_name': _activeReplyName},
+                      );
+                      unawaited(_openReply(review));
+                    },
+              child: const Text('Check live status again'),
+            ),
+          ],
+          if (_replyNotice != null) ...[
+            const SizedBox(height: 8),
+            Text(_replyNotice!, style: TextStyle(color: theme.colorScheme.primary)),
+          ],
+          if (canSend) ...[
+            const SizedBox(height: 10),
+            TextField(
+              controller: _replyDraft,
+              minLines: 3,
+              maxLines: 8,
+              maxLength: 4000,
+              enabled: !_postingReply,
+              onChanged: (_) {
+                if (_confirmingReply) setState(() => _confirmingReply = false);
+              },
+              decoration: const InputDecoration(
+                labelText: 'Public reply',
+                hintText: 'Write the response this reviewer will see on Google',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (!_confirmingReply)
+              FilledButton.icon(
+                key: const ValueKey('gbp-reply-post'),
+                onPressed: _postingReply
+                    ? null
+                    : () {
+                        if (_replyDraft.text.trim().isEmpty) return;
+                        setState(() => _confirmingReply = true);
+                      },
+                icon: _postingReply
+                    ? const SizedBox(
+                        width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.send_outlined, size: 18),
+                label: Text(_postingReply ? 'Posting…' : 'Post public reply'),
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This goes live on Google under A-1 Chimney\'s name, where anybody '
+                    'reading the review will see it. Google keeps one reply per review.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() => _confirmingReply = false),
+                        child: const Text('Not yet'),
+                      ),
+                      FilledButton(
+                        key: const ValueKey('gbp-reply-confirm'),
+                        onPressed: _publishReply,
+                        // Names the act, so the last button pressed says what it does.
+                        child: const Text('Post it'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
           ],
         ],
       ),
