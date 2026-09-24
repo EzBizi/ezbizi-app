@@ -16,6 +16,8 @@ use App\Models\ReviewReply;
 use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\Lead;
+use App\Models\NewsletterAudience;
+use App\Models\SocialConnection;
 use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
 use App\Models\Vehicle;
@@ -1113,6 +1115,81 @@ class AutomationEngineTest extends TestCase
             (string) ($allowed['detail'] ?? ''),
             'website chat must not hit the compliance refusal - if it does, the arm refuses '
             .'everything and the assertion above proves nothing');
+    }
+
+    /**
+     * Adding to a mailing list reads the lead's recorded agreement and nothing
+     * else. Not agreeing is ok:true — a lead.received rule meets far more
+     * people who did not tick than who did, and five "failures" would switch
+     * it off. The consented lead is the control: an arm that never calls
+     * Mailchimp would pass the refusal on its own.
+     */
+    public function test_a_rule_adds_to_a_mailing_list_only_people_who_agreed(): void
+    {
+        $runner = app(ActionRunner::class);
+        $puts = [];
+        Http::fake(function ($request) use (&$puts) {
+            $puts[] = $request->data()['email_address'] ?? null;
+
+            // One address had unsubscribed: Mailchimp keeps its status.
+            return Http::response(['status' => ($request->data()['email_address'] ?? '') === 'left@example.com'
+                ? 'unsubscribed' : 'subscribed']);
+        });
+
+        [$event, $audience, $customerBook] = $this->inTenant(function () {
+            $c = new SocialConnection;
+            $c->forceFill(['scope_type' => SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id' => $this->org['organization']->id, 'provider' => 'mailchimp',
+                'remote_id' => 'us21:org', 'display_name' => 'Org']);
+            $c->connect(['api_key' => 'synthetic-us21']);
+            $c->save();
+
+            return [
+                AutomationEvent::create([
+                    'organization_id' => $this->org['organization']->id, 'event_key' => 'lead.received',
+                    'payload' => [], 'occurred_at' => now(), 'available_at' => now(),
+                ]),
+                NewsletterAudience::create(['name' => 'Offers', 'kind' => NewsletterAudience::KIND_MAILCHIMP,
+                    'mailchimp_list_id' => 'list-1', 'scope_type' => 'organization',
+                    'scope_id' => $this->org['organization']->id]),
+                NewsletterAudience::create(['name' => 'Customers', 'kind' => NewsletterAudience::KIND_CUSTOMERS,
+                    'scope_type' => 'organization', 'scope_id' => $this->org['organization']->id]),
+            ];
+        });
+
+        $lead = fn (string $email, bool $agreed) => $this->inTenant(function () use ($email, $agreed) {
+            $l = new Lead;
+            $l->forceFill([
+                'organization_id' => $this->org['organization']->id, 'source' => Lead::SOURCE_WEBSITE_FORM,
+                'remote_id' => $email, 'contact_name' => 'Dana', 'email' => $email,
+                'status' => Lead::STATUS_NEW, 'received_at' => now(),
+                'marketing_consent_at' => $agreed ? now() : null,
+                'marketing_consent_text' => $agreed ? 'Yes, email me offers.' : null,
+            ])->save();
+
+            return $l;
+        });
+        $add = fn ($subject, $audienceId) => $this->inTenant(
+            fn () => $runner->run(['type' => 'add_to_audience', 'audience_id' => $audienceId], $event, $subject));
+
+        $declined = $add($lead('no@example.com', false), $audience->id);
+        $this->assertTrue($declined['ok'], 'not agreeing must not count toward switching the rule off');
+        $this->assertSame([], $puts, 'somebody who did not tick the box reached Mailchimp');
+
+        $agreed = $add($lead('yes@example.com', true), $audience->id);
+        $this->assertTrue($agreed['ok'], (string) $agreed['detail']);
+        $this->assertSame(['yes@example.com'], $puts);
+        $this->assertSame('Yes, email me offers.', $this->inTenant(fn () => AuditEvent::query()
+            ->where('action', 'newsletter.member_added')->sole()->metadata['consent_text'] ?? null));
+
+        $left = $add($lead('left@example.com', true), $audience->id);
+        $this->assertTrue($left['ok']);
+        $this->assertStringNotContainsString('Added', $left['detail'],
+            'an earlier unsubscribe wins and must not be reported as an add');
+
+        $book = $add($lead('book@example.com', true), $customerBook->id);
+        $this->assertFalse($book['ok'], 'the customer book has no members to add');
+        $this->assertCount(2, $puts);
     }
 
     /**

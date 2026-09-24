@@ -151,6 +151,7 @@ function ezbizi_widget_style($id, $style) {
         . 'border:0;border-radius:' . $radius . 'px;padding:10px 16px;cursor:pointer;font:inherit}'
         . '#' . esc_attr($id) . ' input,#' . esc_attr($id) . ' textarea,#' . esc_attr($id) . ' select{'
         . 'width:100%;padding:8px;border:1px solid #ccc;border-radius:' . max(0, $radius - 6) . 'px;font:inherit}'
+        . '#' . esc_attr($id) . ' .ezbizi-consent-box{width:auto;margin:0 6px 0 0;padding:0}'
         . '</style>';
 }
 
@@ -254,6 +255,14 @@ function ezbizi_form_shortcode($atts) {
         $out .= '</p>';
     }
 
+    /*
+     * THE OPT-IN, unticked. Jose, 2026-09-16: somebody who sent an enquiry has
+     * not agreed to marketing email, so the box must be ticked by them. The
+     * words go with the tick: EzBizi records exactly what they agreed to.
+     */
+    $out .= '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
+        . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
+        . '</span></label></p>';
     $out .= '<p><button type="submit">' . esc_html(ezbizi_widget_text($config, 'button', 'Send')) . '</button></p>';
     $out .= '<p class="ezbizi-form-note" role="status" aria-live="polite"></p>';
     $out .= '</form>';
@@ -267,6 +276,7 @@ f.addEventListener('submit',function(e){
   var b=f.querySelector('button');b.disabled=true;
   var fields={},v={};
   Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
+    if(i.classList.contains('ezbizi-consent-box'))return;
     var n=i.name,low=n.toLowerCase();
     if(low==='name'){v.name=i.value;}
     else if(low==='email'){v.email=i.value;}
@@ -274,6 +284,7 @@ f.addEventListener('submit',function(e){
     fields[n]=i.value;
   });
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
+  var c=f.querySelector('.ezbizi-consent-box');if(c&&c.checked){v.marketing_consent=true;v.marketing_consent_text=c.parentNode.textContent.trim();}
   fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{
     method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},
     body:JSON.stringify(v)
@@ -389,6 +400,9 @@ function ezbizi_chat_shortcode($atts) {
         . '<label>' . esc_html($message_label) . ' <span class="ezbizi-chat-req">*</span>'
         . '<textarea name="message" rows="3" required placeholder="'
         . esc_attr(ezbizi_widget_text($config, 'placeholder', 'Type a message')) . '"></textarea></label>'
+        . '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
+        . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
+        . '</span></label></p>'
         . '<button type="submit" class="ezbizi-chat-start">'
         . esc_html(ezbizi_widget_text($config, 'start', 'Start chat')) . '</button>'
         . '<p class="ezbizi-chat-error" hidden role="alert"></p>'
@@ -522,6 +536,7 @@ pre.addEventListener('submit',function(e){
   if(!name||!contact||!text)return;
   err.hidden=true;
   var body={key:key,message:text,name:name,page_url:location.href};
+  var c=pre.querySelector('.ezbizi-consent-box');if(c&&c.checked){body.marketing_consent=true;body.marketing_consent_text=c.parentNode.textContent.trim();}
   // One field, because asking for both is asking twice. An address has an @
   // in it and a phone number does not.
   if(contact.indexOf('@')>-1)body.email=contact;else body.phone=contact;
@@ -623,6 +638,8 @@ function ezbizi_chat_style($id, $style, $position) {
         . 'border:1px solid #c8ccd2;border-radius:' . max(4, $radius - 6) . 'px;font:inherit;'
         . 'font-weight:400;line-height:1.4;box-shadow:none;min-height:0}'
         . $s . ' .ezbizi-chat-pre textarea{resize:vertical}'
+        . $s . ' .ezbizi-chat-pre .ezbizi-consent label{font-weight:400}'
+        . $s . ' .ezbizi-chat-pre .ezbizi-consent-box{display:inline;width:auto;margin:0 6px 0 0;padding:0}'
         . $s . ' .ezbizi-chat-pre input:focus,' . $s . ' .ezbizi-chat-pre textarea:focus,'
         . $s . ' .ezbizi-chat-text:focus{outline:2px solid ' . $accent . ';outline-offset:1px}'
         . $s . ' .ezbizi-chat-start{display:block;width:100%;margin:4px 0 0;background:' . $accent . ';'

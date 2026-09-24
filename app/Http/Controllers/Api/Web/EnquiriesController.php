@@ -70,6 +70,9 @@ class EnquiriesController extends Controller
             'email' => ['nullable', 'email', 'max:191'],
             'phone' => ['nullable', 'string', 'max:40'],
             'page_url' => ['nullable', 'string', 'max:500'],
+            // Same pair as the form. See submitForm.
+            'marketing_consent' => ['nullable', 'boolean'],
+            'marketing_consent_text' => ['nullable', 'string', 'max:500'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -108,6 +111,8 @@ class EnquiriesController extends Controller
                 'email' => $input['email'] ?? null,
                 'phone' => $input['phone'] ?? null,
                 'page_url' => $input['page_url'] ?? null,
+                'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
+                'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
             ]);
 
             return response()->json([
@@ -179,6 +184,10 @@ class EnquiriesController extends Controller
             'email' => ['nullable', 'email', 'max:191'],
             'phone' => ['nullable', 'string', 'max:40'],
             'page_url' => ['nullable', 'string', 'max:500'],
+            // Whether they ticked "email me news", and the words beside the box.
+            // Optional: an older widget sends neither, which records no consent.
+            'marketing_consent' => ['nullable', 'boolean'],
+            'marketing_consent_text' => ['nullable', 'string', 'max:500'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
@@ -189,6 +198,8 @@ class EnquiriesController extends Controller
                 'email' => $input['email'] ?? null,
                 'phone' => $input['phone'] ?? null,
                 'page_url' => $input['page_url'] ?? null,
+                'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
+                'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
             ]);
 
             /*

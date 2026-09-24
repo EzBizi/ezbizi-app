@@ -353,6 +353,7 @@ class AutomationCatalogue {
     this.templates = const [],
     this.trainings = const [],
     this.contracts = const [],
+    this.audiences = const [],
     this.actionBudget,
   });
 
@@ -377,6 +378,7 @@ class AutomationCatalogue {
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
       contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
+      audiences: _list(json['audiences'], CatalogueChoice.tryFromIdLabel),
       templates: [
         for (final one in (json['templates'] as List? ?? const []))
           if (one is Map) Map<String, dynamic>.from(one),
@@ -435,6 +437,10 @@ class AutomationCatalogue {
   /// Contract templates an onboarding can be started against — from Human
   /// Resources, so it offers exactly what the act accepts. Name only.
   final List<CatalogueChoice> contracts;
+
+  /// Mailchimp lists a rule can add somebody who agreed to. Never the
+  /// customer book: that audience has no members to add.
+  final List<CatalogueChoice> audiences;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

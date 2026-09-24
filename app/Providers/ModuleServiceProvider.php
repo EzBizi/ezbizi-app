@@ -1408,42 +1408,21 @@ class ModuleServiceProvider extends ServiceProvider
                         key: 'newsletter.add_to_audience',
                         label: 'Add somebody to a mailing list',
                         /*
-                         * NOT BUILT, and the description used to promise
-                         * something that does not exist: "their agreement to be
-                         * mailed, which the list records separately". No list
-                         * records it. Measured 2026-09-16 — the ONLY consent
-                         * artefact in this module is `NewsletterUnsubscribe`,
-                         * which records people who said STOP. Nothing anywhere
-                         * records anybody saying yes.
+                         * **RULED 2026-09-16, Jose: it needs an opt-in tickbox.**
+                         * Built 2026-09-24 on that ruling. The website form and
+                         * chat carry an unticked box; ticking it writes
+                         * `leads.marketing_consent_at` together with the exact
+                         * words beside the box. This step reads THAT and nothing
+                         * else — never a parameter a rule author could set, and
+                         * never the fact that somebody typed an address into a
+                         * contact form, which is the shape the ruling forbids.
                          *
-                         * And there is nothing to add them TO. An audience is
-                         * `customers` (the recipients ARE the tenant's customer
-                         * records, synced to Mailchimp at send time) or
-                         * `mailchimp` (the members live in Mailchimp and EzBizi
-                         * must not write to them). There is no membership table,
-                         * so "add to audience" has no row to create.
-                         *
-                         * **RULED 2026-09-16, Jose: no, and it needs an opt-in
-                         * tickbox.** An address that arrived as a website chat
-                         * or form enquiry may NOT be added to a mailing list
-                         * automatically. The person has to have agreed, and the
-                         * agreement has to be recorded.
-                         *
-                         * Which makes this blocked on something upstream rather
-                         * than on a decision. Measured the same day: `leads` has
-                         * no consent column and the widget form has no tickbox,
-                         * so there is nothing for this action to read. It stays
-                         * declared and unbuilt until there is.
-                         *
-                         * When it is built it takes the recorded agreement as a
-                         * PARAMETER and refuses without it — never inferring one
-                         * from the fact that somebody typed their address into a
-                         * contact form, which is the shape this ruling forbids.
+                         * Mailchimp lists only: a `customers` audience has no
+                         * members to add, it is the customer book at send time.
                          */
-                        description: 'Not built yet. It would add the person a rule fired about '
-                            .'to a mailing list, but only where they ticked a box agreeing to be '
-                            .'mailed — which nothing on the website asks yet. Somebody who sent '
-                            .'an enquiry has not agreed to marketing email.',
+                        description: 'Adds somebody who enquired on your website to one of your '
+                            .'Mailchimp lists, but only if they ticked the box agreeing to marketing '
+                            .'email. Anyone who did not tick it is left off, and the rule carries on.',
                     ),
                 ],
             ),

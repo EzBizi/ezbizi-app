@@ -37,6 +37,11 @@ use App\Models\Review;
 use App\Models\ReviewReply;
 use App\Models\Contract;
 use App\Models\Onboarding;
+use App\Models\NewsletterAudience;
+use App\Models\SocialConnection;
+use App\Support\Newsletter\MailchimpClient;
+use App\Support\Newsletter\NewsletterSendFailed;
+use App\Support\Social\SocialProvider;
 use App\Models\Role;
 use App\Support\Customers\ReassignCustomerOwner;
 use Illuminate\Support\Facades\Gate;
@@ -382,6 +387,7 @@ class ActionRunner
             'job.create' => $this->createFollowUpJob($action, $event, $subject),
             'draft_reply' => $this->draftReviewReply($action, $event, $subject),
             'onboarding.start' => $this->startOnboarding($action, $subject),
+            'add_to_audience' => $this->addToAudience($action, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2253,6 +2259,113 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Add somebody who enquired to a Mailchimp list — only if they agreed.
+     *
+     * Jose, 2026-09-17: "no, needs opt-in checkbox". Somebody who sent an
+     * enquiry asked for an answer, not a newsletter. So the lead has to carry
+     * `marketing_consent_at`, which is written only when the website's box was
+     * ticked AND the words beside it were sent, and this step reads nothing
+     * else: not the email address being present, not the source, not a guess.
+     *
+     * NOT AGREEING IS NOT A FAILURE. A rule on "lead received" meets far more
+     * people who did not tick the box than people who did. Counting each of
+     * them as a failure would switch the rule off within five enquiries — so
+     * it succeeds and says, plainly, that they were not added.
+     *
+     * A MAILCHIMP LIST ONLY. A "customers" audience holds no members to add
+     * to: it is every customer in the book, picked when a newsletter is sent.
+     *
+     * AN EARLIER UNSUBSCRIBE WINS. `syncMembers` uses Mailchimp's
+     * `status_if_new`, so somebody who left the list before stays off it even
+     * though they ticked a box today. Reported, not overridden.
+     */
+    private function addToAudience(array $action, ?Model $subject): array
+    {
+        $type = 'add_to_audience';
+
+        if (! $subject instanceof Lead) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This step only works on an enquiry, and this rule is about something else.'];
+        }
+
+        if ($subject->marketing_consent_at === null) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'They did not agree to be sent marketing email, so they were not added.'];
+        }
+
+        $email = trim((string) $subject->email);
+
+        if ($email === '') {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'They agreed to marketing email but gave no address, so there was nothing to add.'];
+        }
+
+        $audience = NewsletterAudience::query()->find((string) ($action['audience_id'] ?? ''));
+
+        if ($audience === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'The mailing list this step names no longer exists.'];
+        }
+
+        if (! $audience->isMailchimp() || ! is_string($audience->mailchimp_list_id) || $audience->mailchimp_list_id === '') {
+            return ['type' => $type, 'ok' => false,
+                'detail' => '"'.$audience->name.'" is your customer book, which already includes every '
+                    .'customer. This step adds people to a Mailchimp list.'];
+        }
+
+        $connection = $this->mailchimpConnectionFor($audience);
+        $credentials = $connection?->getAttribute('credentials');
+        $key = is_array($credentials) ? (string) ($credentials['api_key'] ?? '') : '';
+
+        if ($key === '') {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'No Mailchimp account is connected for that list, so nobody could be added.'];
+        }
+
+        try {
+            $accepted = app(MailchimpClient::class)->syncMembers($key, $audience->mailchimp_list_id, [
+                array_filter([
+                    'email' => $email,
+                    'first_name' => trim((string) $subject->contact_name),
+                ], fn ($v) => $v !== ''),
+            ]);
+        } catch (NewsletterSendFailed $refused) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refused->getMessage()];
+        }
+
+        if ($accepted === 0) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'Mailchimp kept them off "'.$audience->name.'": they had unsubscribed or been removed before.'];
+        }
+
+        // THE PROOF, next to the act. What they agreed to and when is what a
+        // business is asked for when somebody says "I never signed up".
+        $this->audit->log('newsletter.member_added', $subject, metadata: [
+            'audience' => $audience->name,
+            'consented_at' => $subject->marketing_consent_at?->toIso8601String(),
+            'consent_text' => $subject->marketing_consent_text,
+        ]);
+
+        return ['type' => $type, 'ok' => true, 'detail' => 'Added them to "'.$audience->name.'".'];
+    }
+
+    /**
+     * The Mailchimp account a list lives in: the connection at the list's own
+     * place, falling back to the organization's. Nobody is watching a rule, so
+     * there is no viewer to ask the way the Newsletter screen does.
+     */
+    private function mailchimpConnectionFor(NewsletterAudience $audience): ?SocialConnection
+    {
+        $candidates = SocialConnection::query()
+            ->where('provider', SocialProvider::Mailchimp->value)
+            ->get();
+
+        return $candidates->first(fn (SocialConnection $c) => $audience->scope_type !== null
+                && $c->scope_type === $audience->scope_type && $c->scope_id === $audience->scope_id)
+            ?? $candidates->first(fn (SocialConnection $c) => $c->scope_type === SocialConnection::SCOPE_ORGANIZATION)
+            ?? $candidates->first();
+    }
+
     /**
      * Open the paperwork for somebody who has been invited.
      *

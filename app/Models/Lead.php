@@ -358,6 +358,12 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
                 'Which member of staff wrote the note, and when - so a shared line can say '
                 .'"Maya · 2h ago" and two people cannot overwrite each other unseen.',
                 Erasure::erase()),
+            new PersonalDataEntry('marketing_consent_at, marketing_consent_text', PersonalDataEntry::ACTIVITY,
+                'Whether this person agreed to be sent marketing email, when, and the exact '
+                .'words beside the box they ticked. Kept so the business can show what '
+                .'they agreed to; erased with them, because a consent with nobody attached '
+                .'to it is not a record of anything.',
+                Erasure::erase()),
             new PersonalDataEntry('last_contact_preview', PersonalDataEntry::CONTENT,
                 'The first line of the latest message on the enquiry, copied here so the list '
                 .'can show it without a query per row. A copy of conversation text, erased '
@@ -391,6 +397,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     protected $fillable = [
         'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id',
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
+        'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
         'status', 'classification', 'classified_at', 'starred_at', 'source_status', 'charge_status', 'received_at', 'synced_at',
         'last_contact_at', 'last_contact_channel', 'last_contact_from', 'last_contact_preview',
@@ -406,6 +413,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
             'classified_at' => 'datetime',
+            'marketing_consent_at' => 'datetime',
         ];
     }
 

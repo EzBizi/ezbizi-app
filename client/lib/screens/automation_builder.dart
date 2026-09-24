@@ -290,6 +290,7 @@ class _ActionRow {
   static const Set<String> drawableKinds = {
     'text',
     'rich_text',
+    'audience',
     'boolean',
     'contract',
     'date',
@@ -2634,6 +2635,29 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   SearchOption<String>(value: contract.key, label: contract.label),
               ],
               onChanged: _busy || widget.catalogue.contracts.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
+          // A MAILCHIMP LIST. The step itself checks the tickbox; the list is
+          // the only thing the rule author chooses.
+          else if (definition.parameters[i].kind == 'audience')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.audiences.isEmpty
+                  ? 'No Mailchimp list is connected yet. Connect one in Newsletter first.'
+                  : null,
+              options: [
+                for (final audience in widget.catalogue.audiences)
+                  SearchOption<String>(value: audience.key, label: audience.label),
+              ],
+              onChanged: _busy || widget.catalogue.audiences.isEmpty
                   ? null
                   : (chosen) => setState(
                       () => row.parameter(definition.parameters[i].key).text =

@@ -13,6 +13,7 @@ use App\Models\Automation;
 use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
 use App\Support\Scoping\ViewScope;
+use App\Models\NewsletterAudience;
 use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\AutomationEvent;
@@ -86,6 +87,7 @@ class AutomationsController extends Controller
         'job.create',
         'draft_reply',
         'onboarding.start',
+        'add_to_audience',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -514,6 +516,14 @@ class AutomationsController extends Controller
                 // what startOnboarding accepts, because both ask the same
                 // `usable()`. Name only — the version is resolved when it fires.
                 'contracts' => app(InvitationActions::class)->offerableContracts(),
+
+                // Mailchimp lists only: addToAudience refuses a customer-book
+                // audience, so offering one would be a step that always fails.
+                'audiences' => NewsletterAudience::query()
+                    ->where('kind', NewsletterAudience::KIND_MAILCHIMP)
+                    ->orderBy('name')->get(['id', 'name'])
+                    ->map(fn (NewsletterAudience $a) => ['id' => $a->id, 'label' => $a->name])
+                    ->all(),
 
                 'roles' => Role::query()
                     ->orderBy('name')
@@ -1890,6 +1900,9 @@ class AutomationsController extends Controller
             ]),
             $type('onboarding.start', 'Start the onboarding', true, [
                 $parameter('contract_id', 'Which contract', 'contract'),
+            ]),
+            $type('add_to_audience', 'Add to a mailing list', true, [
+                $parameter('audience_id', 'Which list', 'audience'),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

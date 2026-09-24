@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.13.0
+Stable tag: 1.14.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.14.0 =
+* NEW: the contact form and the chat carry a box, unticked, asking
+  whether the visitor wants news and offers by email. EzBizi records the
+  tick together with the exact words beside it, and only somebody who
+  ticked it can be added to a mailing list by an automation.
 
 = 1.13.0 =
 * FIXED: a setting changed in EzBizi now reaches your visitors straight

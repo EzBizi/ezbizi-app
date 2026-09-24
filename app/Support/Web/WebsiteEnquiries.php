@@ -239,6 +239,19 @@ final class WebsiteEnquiries
     {
         $phone = isset($visitor['phone']) ? trim((string) $visitor['phone']) : null;
 
+        /*
+         * CONSENT IS RECORDED ONLY WHEN IT IS FULLY EVIDENCED.
+         *
+         * The tick AND the words beside it. A tick with no wording is not a
+         * record of what somebody agreed to, so it is treated as not given —
+         * and the enquiry still lands either way. Losing a lead because its
+         * consent was malformed would punish the visitor for the widget's bug.
+         *
+         * An older widget sends neither field, which is the same answer: no.
+         */
+        $consentText = trim((string) ($visitor['marketing_consent_text'] ?? ''));
+        $consented = ($visitor['marketing_consent'] ?? false) === true && $consentText !== '';
+
         $lead = Lead::create([
             'company_id' => $site->company_id,
 
@@ -259,6 +272,8 @@ final class WebsiteEnquiries
             'phone' => $phone !== '' ? $phone : null,
             'phone_digits' => $phone !== null && $phone !== '' ? Lead::digits($phone) : null,
             'email' => $visitor['email'] ?? null,
+            'marketing_consent_at' => $consented ? now() : null,
+            'marketing_consent_text' => $consented ? mb_substr($consentText, 0, 500) : null,
             'summary' => $site->host,
             'status' => Lead::STATUS_NEW,
             'received_at' => now(),
@@ -275,7 +290,11 @@ final class WebsiteEnquiries
         $this->events->emitAfterCommit('lead.received', $lead, [
             'after' => $lead->only([
                 'source', 'contact_name', 'phone', 'category', 'received_at',
-            ]),
+            ]) + [
+                // A yes/no a rule can test, so "only if they agreed to email"
+                // can be written as a condition as well as enforced by the step.
+                'marketing_consent' => $consented,
+            ],
         ]);
 
         return $lead;

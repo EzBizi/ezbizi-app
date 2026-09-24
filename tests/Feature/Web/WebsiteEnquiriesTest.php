@@ -100,6 +100,41 @@ class WebsiteEnquiriesTest extends TestCase
     }
 
     /**
+     * Agreeing to marketing email is recorded only when the box was ticked AND
+     * the words beside it were sent. A bare `true` proves nothing anybody could
+     * show later, so it is not consent (Jose, 2026-09-16: "needs opt-in").
+     *
+     * Three visitors, three outcomes: the control is the ticked-with-words one,
+     * without which "nobody is ever recorded" would pass the other two.
+     */
+    public function test_marketing_consent_is_recorded_only_with_the_words_they_agreed_to(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+        $words = 'Yes, send me offers and news by email.';
+
+        foreach ([
+            ['ticked@example.com', true, $words],
+            ['bare@example.com', true, ''],
+            ['unticked@example.com', false, $words],
+        ] as [$email, $ticked, $text]) {
+            $this->postJson('/api/v1/web/form', [
+                'key' => $site->public_key, 'name' => 'Visitor', 'email' => $email,
+                'marketing_consent' => $ticked, 'marketing_consent_text' => $text,
+                'fields' => ['Service' => 'Sweep'],
+            ])->assertCreated();
+        }
+
+        $leads = $this->inTenant($tenant['org'], fn () => Lead::query()->get()->keyBy('email'));
+
+        $this->assertNotNull($leads['ticked@example.com']->marketing_consent_at);
+        $this->assertSame($words, $leads['ticked@example.com']->marketing_consent_text);
+        $this->assertNull($leads['bare@example.com']->marketing_consent_at,
+            'a tick with no wording is not a record anybody could show');
+        $this->assertNull($leads['unticked@example.com']->marketing_consent_at);
+        $this->assertNull($leads['unticked@example.com']->marketing_consent_text);
+    }
+
+    /**
      * The whole point of routing website enquiries into Leads: a reply typed in
      * the Leads thread has to reach the visitor's widget.
      */
