@@ -1441,8 +1441,9 @@ class ActionRunner
      * then it would send a message via txt or whatsapp".
      *
      * Resolved NOW, through the subject's customer, and never copied into the
-     * event: automation_events is declared as holding no personal data, so a
-     * number put there would outlive the customer's erasure. This is one
+     * event: the purge finds an event about a customer by its subject or by the
+     * number in the keys AutomationEvent::identifiers lists, and a job's event
+     * carrying the customer's number would match neither. This is one
      * named relation the author picks, not the subject fall-through
      * valueFromEvent refuses.
      */
