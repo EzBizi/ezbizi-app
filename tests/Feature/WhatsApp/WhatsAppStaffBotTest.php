@@ -93,6 +93,21 @@ class WhatsAppStaffBotTest extends TestCase
         });
     }
 
+    /** Make this tenant's admin the person texting in, as a staff member. */
+    private function staff(array $t, string $phone = '(786) 776-2666', bool $active = true): void
+    {
+        $this->inTenant($t['org'], fn () => $t['admin']->forceFill([
+            'phone' => $phone,
+            'is_active' => $active,
+        ])->save());
+    }
+
+    private function menuIds(): array
+    {
+        return collect($this->sent[0]['interactive']['action']['sections'])
+            ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
+    }
+
     /** @param array<string, mixed> $message */
     private function inbound(string $phoneNumberId, array $message, string $wamid = 'wamid.IN1')
     {
@@ -276,6 +291,9 @@ class WhatsAppStaffBotTest extends TestCase
          * against a limit of 24 - and every test above would have passed.
          * These are Meta's published limits for an interactive list.
          */
+        // As staff, so the menu includes the finance row and it is measured
+        // too - a stranger's menu would leave it untested.
+        $this->staff($t);
         $this->inbound(self::BOT, $this->text('hi'), 'wamid.L1')->assertOk();
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::NFPA_211, 'NFPA 211'), 'wamid.L2')->assertOk();
 
@@ -303,6 +321,82 @@ class WhatsAppStaffBotTest extends TestCase
             }
             $this->assertLessThanOrEqual(10, $rows, 'a list may hold at most 10 rows');
         }
+    }
+
+    public function test_staff_see_finance_and_get_the_lenders_in_order(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        // Stored the way a person types it; WhatsApp sends 17867762666.
+        $this->staff($t, '(786) 776-2666');
+
+        $this->inbound(self::BOT, $this->text('hi'), 'wamid.S1')->assertOk();
+        $this->assertContains(WhatsAppStaffBot::FINANCE, $this->menuIds());
+
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'), 'wamid.S2')->assertOk();
+        $body = $this->sent[1]['text']['body'];
+
+        // The order is the point of the message: cheapest to the company first.
+        $this->assertLessThan(strpos($body, 'Enhancify'), strpos($body, 'Acorn'));
+        $this->assertLessThan(strpos($body, 'Wisetack'), strpos($body, 'Enhancify'));
+        // And here the links ARE the content - they are what a tech sends.
+        $this->assertStringContainsString('acornfinance.com/pre-qualify', $body);
+        $this->assertStringContainsString('3.9%', $body);
+    }
+
+    public function test_a_stranger_is_not_shown_finance_and_is_refused_if_they_tap_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+        // Nobody on staff has this number.
+
+        $this->inbound(self::BOT, $this->text('hi'), 'wamid.X1')->assertOk();
+
+        // Not even drawn: a row they would be refused still advertises that
+        // the company has internal guidance to hide.
+        $this->assertNotContains(WhatsAppStaffBot::FINANCE, $this->menuIds());
+
+        // And a tap is refused anyway - the check is on the ANSWER, not only
+        // on the menu, because a row id is only a string.
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'), 'wamid.X2')->assertOk();
+        $body = $this->sent[1]['text']['body'];
+
+        $this->assertStringContainsString('for A1 Chimney staff', $body);
+        // What must never leak to a customer who found the number.
+        $this->assertStringNotContainsString('3.9%', $body);
+        $this->assertStringNotContainsString('acornfinance', $body);
+    }
+
+    public function test_a_deactivated_employee_is_no_longer_staff(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        // Their phone is still on the record. That must not be enough: a
+        // former employee keeps reading what A1 pays each lender otherwise.
+        $this->staff($t, '(786) 776-2666', active: false);
+
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'))->assertOk();
+
+        $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body']);
+    }
+
+    public function test_staff_of_another_organization_are_not_staff_here(): void
+    {
+        $mine = $this->provisionTenant('A1-Group');
+        $other = $this->provisionTenant('Premier-Garage');
+        $this->configured();
+        $this->number($mine, self::BOT);
+
+        // Active, with this exact phone - but on somebody else's books.
+        $this->staff($other, '(786) 776-2666');
+
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::FINANCE, 'Finance options'))->assertOk();
+
+        $this->assertStringNotContainsString('3.9%', $this->sent[0]['text']['body']);
     }
 
     public function test_a_city_is_found_by_the_area_it_serves_not_its_street_address(): void

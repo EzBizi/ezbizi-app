@@ -2,6 +2,7 @@
 
 namespace App\Support\Social;
 
+use App\Models\User;
 use App\Models\WebValue;
 use App\Models\WhatsAppMessage;
 use App\Models\WhatsAppNumber;
@@ -50,6 +51,36 @@ final class WhatsAppStaffBot
     public const CSIA = 'csia';
 
     public const FIND_LOCATION = 'find_location';
+
+    public const FINANCE = 'finance';
+
+    /**
+     * Financing, in Jose's own words - A-1's internal guidance, 2026-09-24.
+     *
+     * ── STAFF ONLY, and this is the section that made the check necessary ──
+     *
+     * Everything else here is public. This is not: it says what A1 pays each
+     * lender ("we pay a 3.9% flat fee"), which one to push and why, and the
+     * Acorn link carries A1's dealer code. A customer who found the number and
+     * read "use Wisetack only if the others don't suit - it costs us 3.9%"
+     * is the harm, so it is offered only to staff and refused to anybody else.
+     *
+     * Unlike the code answers, the LINKS are the content here: they are what a
+     * tech sends the client. Jose's "no links" was about the codes.
+     */
+    private const FINANCE_BODY = "💰 *Finance options*\n\n"
+        .'Always offer financing when it fits. Many clients qualify for 0% APR promotional '
+        ."financing, which helps close more sales and raises the average job size.\n\n"
+        ."Use them in this order, based on the cost to the company:\n\n"
+        ."1️⃣ *Acorn Finance* - preferred\n"
+        ."✅ No dealer fees to A1\n"
+        ."https://www.acornfinance.com/pre-qualify/?d=BLEBW&utm_medium=web_pre_qual_link_copy_welcome\n\n"
+        ."2️⃣ *Enhancify* - second choice\n"
+        ."✅ Covered by our annual subscription\n"
+        ."https://www.a-1chimney.com/about-us/financing/\n\n"
+        ."3️⃣ *Wisetack* - third choice\n"
+        ."⚠️ We pay a 3.9% flat fee on every financed job. Use only if the first two don't suit.\n"
+        .'Send the prequalify link from the Workiz invoice.';
 
     /**
      * What NFPA 211 and CSIA require, as the bot says it.
@@ -220,6 +251,16 @@ final class WhatsAppStaffBot
                 .'during the first week of each month. Passing them earns CSIA CEUs.'
                 .self::CODE_FOOTER, preview: false),
 
+            /*
+             * Checked AGAIN on the tap, not only when the menu is drawn. A menu
+             * sent while somebody was staff stays in their chat after they are
+             * deactivated, and tapping it later must not still hand over what
+             * the company pays each lender.
+             */
+            self::FINANCE => $this->isStaff($number, $to)
+                ? $this->text($number, $to, self::FINANCE_BODY, preview: false)
+                : $this->text($number, $to, 'That option is for A1 Chimney staff. Text MENU to see what is available.'),
+
             self::FIND_LOCATION => $this->text($number, $to,
                 'Text a city or state and I\'ll send that location\'s phone, address and '
                 .'service area - for example *Chicago* or *NJ*.'),
@@ -295,15 +336,58 @@ final class WhatsAppStaffBot
                     'sections' => [
                         ['title' => 'Codes & training', 'rows' => [
                             ['id' => self::NFPA_211, 'title' => 'NFPA 211', 'description' => 'The chimney standard'],
-                            ['id' => self::CSIA, 'title' => 'CSIA', 'description' => 'Resources and exam guide'],
+                            ['id' => self::CSIA, 'title' => 'CSIA', 'description' => 'Exam and continuing education'],
                         ]],
                         ['title' => 'Company', 'rows' => [
                             ['id' => self::FIND_LOCATION, 'title' => 'Find a location', 'description' => 'Phone, address, service area'],
+                            // Not drawn at all for somebody who is not staff:
+                            // a row they would be refused still tells them the
+                            // company has internal finance guidance to hide.
+                            ...($this->isStaff($number, $to)
+                                ? [['id' => self::FINANCE, 'title' => 'Finance options', 'description' => 'Lenders to offer, and in what order']]
+                                : []),
                         ]],
                     ],
                 ],
             ],
         ], $body);
+    }
+
+    /**
+     * Is the sender somebody who works here?
+     *
+     * An ACTIVE user of this number's organization whose phone, in EzBizi, is
+     * the number writing in. Deliberately the people list the business already
+     * keeps, rather than a list for the bot: add a tech's phone to their
+     * profile and they are in, deactivate them and they are out, and nobody has
+     * a second list to remember.
+     *
+     * ── It fails CLOSED, in three places ──────────────────────────
+     *
+     *   - A deactivated user is not staff. Their phone stays on the record, and
+     *     a former employee must not keep reading what A1 pays each lender.
+     *   - A user with no phone on file is not staff. Measured 2026-09-24: 8 of
+     *     A-1's 12 users have one. The other four see the public menu until
+     *     their phone is added - the safe direction.
+     *   - A number that is not a real phone is not staff.
+     *
+     * Both sides go through the same E.164 normaliser, so "(305) 724-2199" in
+     * a profile matches the "13057242199" WhatsApp sends.
+     */
+    private function isStaff(WhatsAppNumber $number, string $sender): bool
+    {
+        $wanted = ThumbtackAssociatePhoneNumbers::e164($sender);
+
+        if ($wanted === null) {
+            return false;
+        }
+
+        return User::query()
+            ->where('organization_id', $number->organization_id)
+            ->where('is_active', true)
+            ->whereNotNull('phone')
+            ->pluck('phone')
+            ->contains(fn ($phone) => ThumbtackAssociatePhoneNumbers::e164((string) $phone) === $wanted);
     }
 
     private function searchLocations(WhatsAppNumber $number, string $to, string $query): void
