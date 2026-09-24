@@ -37,6 +37,7 @@ use App\Models\Review;
 use App\Models\ReviewReply;
 use App\Models\Contract;
 use App\Models\Onboarding;
+use App\Models\NewsletterUnsubscribe;
 use App\Models\NewsletterAudience;
 use App\Models\SocialConnection;
 use App\Support\Newsletter\MailchimpClient;
@@ -2313,6 +2314,20 @@ class ActionRunner
                     .'customer. This step adds people to a Mailchimp list.'];
         }
 
+        // EZBIZI'S OWN UNSUBSCRIBE WINS TOO, not only Mailchimp's. It is kept
+        // per scope and outlives the list, so a rebuilt list does not bring
+        // back somebody who used EzBizi's unsubscribe link.
+        $left = NewsletterUnsubscribe::query()
+            ->where('scope_type', $audience->scope_type)
+            ->where('scope_id', $audience->scope_id)
+            ->whereRaw('LOWER(email) = ?', [mb_strtolower($email)])
+            ->exists();
+
+        if ($left) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'They unsubscribed from this business before, so they were not added.'];
+        }
+
         $connection = $this->mailchimpConnectionFor($audience);
         $credentials = $connection?->getAttribute('credentials');
         $key = is_array($credentials) ? (string) ($credentials['api_key'] ?? '') : '';
@@ -2350,20 +2365,33 @@ class ActionRunner
     }
 
     /**
-     * The Mailchimp account a list lives in: the connection at the list's own
-     * place, falling back to the organization's. Nobody is watching a rule, so
-     * there is no viewer to ask the way the Newsletter screen does.
+     * The Mailchimp account a list lives in, following ownership: the list's
+     * own place, then its company when that place is a franchise, then the
+     * organization — and STOP. Never "any connection": that would be another
+     * business's key. None on the chain is "no account connected".
      */
     private function mailchimpConnectionFor(NewsletterAudience $audience): ?SocialConnection
     {
+        $chain = [[$audience->scope_type, $audience->scope_id]];
+
+        if ($audience->scope_type === SocialConnection::SCOPE_FRANCHISE) {
+            $chain[] = [SocialConnection::SCOPE_COMPANY, Franchise::query()->whereKey($audience->scope_id)->value('company_id')];
+        }
+
         $candidates = SocialConnection::query()
             ->where('provider', SocialProvider::Mailchimp->value)
             ->get();
 
-        return $candidates->first(fn (SocialConnection $c) => $audience->scope_type !== null
-                && $c->scope_type === $audience->scope_type && $c->scope_id === $audience->scope_id)
-            ?? $candidates->first(fn (SocialConnection $c) => $c->scope_type === SocialConnection::SCOPE_ORGANIZATION)
-            ?? $candidates->first();
+        foreach ($chain as [$scopeType, $scopeId]) {
+            $match = $candidates->first(fn (SocialConnection $c) => $scopeId !== null
+                && $c->scope_type === $scopeType && $c->scope_id === $scopeId);
+
+            if ($match !== null) {
+                return $match;
+            }
+        }
+
+        return $candidates->first(fn (SocialConnection $c) => $c->scope_type === SocialConnection::SCOPE_ORGANIZATION);
     }
 
     /**

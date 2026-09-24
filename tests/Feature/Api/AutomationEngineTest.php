@@ -17,6 +17,7 @@ use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\Lead;
 use App\Models\NewsletterAudience;
+use App\Models\NewsletterUnsubscribe;
 use App\Models\SocialConnection;
 use App\Models\Invitation;
 use App\Support\Fleet\VehicleAssignments;
@@ -1190,6 +1191,68 @@ class AutomationEngineTest extends TestCase
         $book = $add($lead('book@example.com', true), $customerBook->id);
         $this->assertFalse($book['ok'], 'the customer book has no members to add');
         $this->assertCount(2, $puts);
+
+        // EzBizi's own unsubscribe outlives a rebuilt list: ticking the box
+        // again today does not put them back in the tenant's Mailchimp.
+        $this->inTenant(fn () => NewsletterUnsubscribe::create(['email' => 'Gone@Example.com',
+            'scope_type' => 'organization', 'scope_id' => $this->org['organization']->id,
+            'unsubscribed_at' => now()]));
+        $gone = $add($lead('gone@example.com', true), $audience->id);
+        $this->assertTrue($gone['ok']);
+        $this->assertCount(2, $puts, 'somebody who used EzBizi unsubscribe link was put back on the list');
+    }
+
+    /**
+     * The key used is the one that OWNS the list: its place, its company, the
+     * organization, and nothing else. The sibling franchise's account is the
+     * trap — "any Mailchimp connection" would reach it and spend another
+     * business's key. The company connection is the control that the chain
+     * finds a key at all.
+     */
+    public function test_a_mailing_list_step_uses_only_the_account_that_owns_the_list(): void
+    {
+        $runner = app(ActionRunner::class);
+        $keys = [];
+        Http::fake(function ($request) use (&$keys) {
+            $keys[] = $request->header('Authorization')[0] ?? '';
+
+            return Http::response(['status' => 'subscribed']);
+        });
+
+        $franchise = $this->org['franchise'];
+        $connect = fn (string $scopeType, string $scopeId, string $key) => $this->inTenant(function () use ($scopeType, $scopeId, $key) {
+            $c = new SocialConnection;
+            $c->forceFill(['scope_type' => $scopeType, 'scope_id' => $scopeId, 'provider' => 'mailchimp',
+                'remote_id' => 'us21:'.$key, 'display_name' => $key]);
+            $c->connect(['api_key' => $key.'-us21']);
+            $c->save();
+        });
+
+        [$event, $audience, $lead] = $this->inTenant(fn () => [
+            AutomationEvent::create([
+                'organization_id' => $this->org['organization']->id, 'event_key' => 'lead.received',
+                'payload' => [], 'occurred_at' => now(), 'available_at' => now(),
+            ]),
+            NewsletterAudience::create(['name' => 'Branch list', 'kind' => NewsletterAudience::KIND_MAILCHIMP,
+                'mailchimp_list_id' => 'list-f', 'scope_type' => 'franchise', 'scope_id' => $franchise->id]),
+            tap(new Lead, fn (Lead $l) => $l->forceFill([
+                'organization_id' => $this->org['organization']->id, 'source' => Lead::SOURCE_WEBSITE_FORM,
+                'remote_id' => 'f-1', 'contact_name' => 'Dana', 'email' => 'dana@example.com',
+                'status' => Lead::STATUS_NEW, 'received_at' => now(),
+                'marketing_consent_at' => now(), 'marketing_consent_text' => 'Yes, email me offers.',
+            ])->save()),
+        ]);
+        $add = fn () => $this->inTenant(
+            fn () => $runner->run(['type' => 'add_to_audience', 'audience_id' => $audience->id], $event, $lead));
+
+        $connect('franchise', (string) Str::uuid(), 'sibling');
+        $refused = $add();
+        $this->assertFalse($refused['ok']);
+        $this->assertSame([], $keys, 'another business key was used');
+
+        $connect('company', $franchise->company_id, 'owner');
+        $this->assertTrue($add()['ok']);
+        $this->assertSame(['Basic '.base64_encode('anystring:owner-us21')], $keys);
     }
 
     /**
