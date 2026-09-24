@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
+use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\Lead;
 use App\Models\Invitation;
@@ -1746,6 +1747,63 @@ class AutomationEngineTest extends TestCase
         $this->assertStringContainsString('found nothing', $quiet['detail']);
 
         $this->assertSame(1, $entries(), 'a report that reached nobody was audited as sent');
+    }
+
+    /**
+     * "TELL THE ADMINISTRATORS" TELLS THE ADMINISTRATORS, AND NOBODY ELSE.
+     *
+     * The step is `notify` narrowed to administrator roles, and an empty role
+     * list means "narrow nothing" to the dispatcher. So the failure to guard is
+     * not a missed administrator — it is an organization with no administrator
+     * role having its administrators-only step tell EVERYBODY, which is the
+     * one direction nobody would report as a bug until the wrong person read
+     * something.
+     *
+     * THE PAIR: the administrator is told, the ordinary member is not, and with
+     * the flag cleared the step refuses rather than widening.
+     */
+    public function test_notify_administrators_reaches_only_administrators(): void
+    {
+        $member = $this->inTenant(fn () => User::create([
+            'organization_id' => $this->org['organization']->id,
+            'role_id'         => Role::create([
+                'organization_id' => $this->org['organization']->id,
+                'name'            => 'Dispatcher',
+                'is_administrator' => false,
+            ])->id,
+            'name'            => 'Member',
+            'email'           => 'member@alpha.test',
+            'password'        => 'a-real-password',
+            'is_active'       => true,
+        ]));
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'job.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $run = fn () => $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'notify_administrators', 'message' => 'Something needs you.',
+        ], $event, null, false, $this->automation('job.created', null, [])));
+
+        $told = $run();
+
+        $this->assertTrue($told['ok'], $told['detail']);
+        $this->assertStringContainsString('Told 1', $told['detail']);
+
+        $toMember = $this->inTenant(fn () => \App\Models\Notification::where('user_id', $member->id)->count());
+        $this->assertSame(0, $toMember, 'a member without an administrator role was told');
+
+        // And with no administrator role at all, it refuses rather than widening.
+        $this->inTenant(fn () => Role::query()->update(['is_administrator' => false]));
+
+        $none = $run();
+
+        $this->assertFalse($none['ok']);
+        $this->assertStringContainsString('Nobody else was told', $none['detail']);
     }
 
     /**

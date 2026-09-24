@@ -80,6 +80,7 @@ class AutomationsController extends Controller
         'change_status',
         'webhook',
         'notify',
+        'notify_administrators',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -1862,6 +1863,11 @@ class AutomationsController extends Controller
              * `test_every_runnable_action_has_a_form_under_its_own_type` is the
              * guard, and it asks the client's own question.
              */
+            // A notification narrowed to administrator roles. Only a message:
+            // who receives it is the point of the step, so it is not a choice.
+            $type('notify_administrators', 'Notify the administrators', true, [
+                $parameter('message', 'Message', 'rich_text', variables: true),
+            ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),
             $type('revoke', 'Withdraw the invitation', true, []),

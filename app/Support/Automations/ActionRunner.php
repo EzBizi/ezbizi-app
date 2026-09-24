@@ -33,6 +33,7 @@ use App\Models\Organization;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
+use App\Models\Role;
 use App\Models\User;
 use App\Models\Vehicle;
 use App\Support\Audit\AuditLogger;
@@ -370,6 +371,7 @@ class ActionRunner
             'change_status' => $this->changeStatus($action, $event, $subject),
             'webhook' => $this->callWebhook($action, $event, $subject, $idempotencyKey),
             'notify' => $this->notify($action, $event, $subject),
+            'notify_administrators' => $this->notifyAdministrators($action, $event, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2241,6 +2243,37 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * A notification that only the organization's administrators receive.
+     *
+     * THE NOTIFY ARM, NARROWED - not a second notification path. Reach, the
+     * company's switch, the in-app-only choice and the recipient cap all live
+     * in `notify` and the dispatcher, and a copy here would be a second place
+     * for any of them to be wrong.
+     *
+     * THE GUARD THIS ONE NEEDS AND NOTIFY DOES NOT. An empty role list means
+     * "narrow nothing", which is right for `notify` and catastrophic here: an
+     * organization with no administrator role would have its "tell the
+     * administrators" step tell EVERYBODY. So no administrator role is a
+     * refusal in words, never a fallback to all.
+     */
+    private function notifyAdministrators(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $roleIds = Role::query()->where('is_administrator', true)->pluck('id')->all();
+
+        if ($roleIds === []) {
+            return [
+                'type' => 'notify_administrators', 'ok' => false,
+                'detail' => 'This business has no administrator role, so there was nobody to tell. '
+                    .'Nobody else was told instead.',
+            ];
+        }
+
+        $result = $this->notify(['role_ids' => $roleIds] + $action, $event, $subject);
+
+        return ['type' => 'notify_administrators'] + $result;
+    }
+
     private function notify(array $action, AutomationEvent $event, ?Model $subject): array
     {
         $message = $action['message'] ?? null;
