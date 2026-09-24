@@ -118,6 +118,39 @@ class ThumbtackRepliesTest extends TestCase
         );
     }
 
+    /**
+     * A RULE MAY REPLY ON THUMBTACK NOW, AND THE ROW SAYS SOFTWARE WROTE IT.
+     *
+     * Jose, 2026-09-24: *"it should be for any lead, i don't know why you set a
+     * restriction on it."* Thumbtack's refusal was a choice, not a filing.
+     *
+     * THE PAIR IS THE TEST. A person's reply (above) is unmarked and takes the
+     * enquiry off the Unreplied list, which is correct; a rule's reply must be
+     * marked, or every lead a rule answers quietly leaves the list somebody
+     * works from. Asserting only the automatic half would pass on a column that
+     * defaulted to true.
+     */
+    public function test_a_rule_may_reply_and_the_row_is_marked_automatic(): void
+    {
+        $t          = $this->provisionTenant('A1-Group');
+        $connection = $this->connection($t);
+        $lead       = $this->lead($t, $connection);
+
+        Http::fake(['api.thumbtack.com/*' => Http::response([
+            'messageID'     => 'msg-auto',
+            'negotiationID' => 'neg-1',
+            'from'          => 'Business',
+            'text'          => 'Thanks, we will call you shortly.',
+            'sentAt'        => '2026-09-10T15:04:00Z',
+        ])]);
+
+        $row = $this->inTenant($t['org'], fn () => app(\App\Services\Leads\ThumbtackLeads::class)
+            ->send($lead, 'Thanks, we will call you shortly.', automatic: true));
+
+        $this->assertTrue((bool) $row->is_automatic,
+            'an unmarked automatic reply would take the lead off the Unreplied list');
+    }
+
     public function test_the_thread_says_a_reply_can_be_sent(): void
     {
         $t    = $this->provisionTenant('A1-Group');

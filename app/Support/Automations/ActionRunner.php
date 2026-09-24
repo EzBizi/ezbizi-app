@@ -903,9 +903,11 @@ class ActionRunner
                 // Names the source, because "this rule is wrong" and "this
                 // source may not be answered automatically" send somebody to
                 // different places.
+                // Only Google reaches this now, and the reason is a filing rather
+                // than a preference — so the sentence says whose rule it is.
                 'detail' => "Enquiries from \"{$subject->source}\" can only be answered by a "
-                    .'person, so nothing was sent. Only website live chat can be replied to by a '
-                    .'rule.',
+                    .'person, so nothing was sent. EzBizi told Google in writing that a person '
+                    .'types every reply to a Local Services enquiry.',
             ];
         }
 

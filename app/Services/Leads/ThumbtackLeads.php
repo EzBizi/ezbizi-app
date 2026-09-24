@@ -53,15 +53,20 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
     }
 
     /**
-     * No, and this one is a choice rather than a filing.
+     * YES, since 2026-09-24 — argued up exactly the way this used to say it
+     * should be.
      *
-     * Nothing EzBizi has told Thumbtack forbids it; nobody has asked for it
-     * either. A channel arrives false and gets argued up, because the failure
-     * that matters is a channel inheriting an answer nobody chose.
+     * It was a choice rather than a filing: nothing EzBizi has told Thumbtack
+     * forbids an automatic reply, and the channel arrived false because nobody
+     * had asked. Jose asked: *"specifically for the reply to the lead, it
+     * should be for any lead, i don't know why you set a restriction on it."*
+     *
+     * Google is the one that stays false, and for a different reason — a
+     * written filing, not a preference. See LocalServicesLeads.
      */
     public function allowsUnattendedReply(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -100,23 +105,6 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
      */
     public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
-        /*
-         * The callee's half of the guard. `allowsUnattendedReply()` answers
-         * false for this channel and a caller is expected to ask — but a
-         * caller that forgets, or one written later by somebody who never read
-         * that method, arrives HERE. nothing forbids it and nobody has argued for it, so the channel says no.
-         *
-         * Throws rather than ignoring the flag: a reply that went out anyway
-         * and merely read as automatic would still be the write we said we do
-         * not make.
-         */
-        if ($automatic) {
-            throw new RuntimeException(
-                'A Thumbtack enquiry can only be replied to by a person. '
-                .'See LeadReplyChannel::allowsUnattendedReply().',
-            );
-        }
-
         $connection = $lead->connection;
 
         if ($connection === null) {
@@ -137,6 +125,10 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
             'participant'     => LeadConversation::FROM_ADVERTISER,
             'occurred_at'     => self::when($sent['sentAt'] ?? null) ?? now(),
             'text'            => $text,
+            // SOFTWARE WROTE THIS, and the row has to say so: an unmarked reply
+            // reads as a person having answered and takes the enquiry off the
+            // Unreplied list, which is the list somebody works from.
+            'is_automatic'    => $automatic,
         ]);
 
         // The list's preview line is a cache of the newest row; without this

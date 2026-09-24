@@ -139,22 +139,34 @@ class MetaMessageRepliesTest extends TestCase
         Http::assertNothingSent();
     }
 
-    public function test_a_rule_may_not_send_on_this_channel(): void
+    /**
+     * A RULE MAY SEND HERE NOW, AND WHAT IT SENDS IS MARKED AS SOFTWARE.
+     *
+     * This used to assert the refusal. The channel was false as a choice, not
+     * a filing, and Jose ruled on 2026-09-24 that a rule may reply to any lead.
+     *
+     * The half that matters is the MARK. An automatic reply recorded without
+     * `is_automatic` reads as a person having answered and takes the enquiry
+     * off the Unreplied list — so allowing the send without marking the row
+     * would quietly hide every lead a rule touched from the people meant to
+     * follow it up.
+     */
+    public function test_a_rule_may_send_and_the_reply_is_marked_automatic(): void
     {
         $t = $this->provisionTenant('A1-Group');
         [$lead] = $this->enquiry($t, hoursAgo: 1);
         $this->metaAccepts();
 
-        $this->inTenant($t['org'], function () use ($lead) {
+        $row = $this->inTenant($t['org'], function () use ($lead) {
             $channel = app(LeadReplies::class)->for($lead);
 
-            $this->assertFalse($channel->allowsUnattendedReply());
+            $this->assertTrue($channel->allowsUnattendedReply());
 
-            // The CALLEE's guard, asked even though the caller should not have
-            // got here. Only this one is in the room when a new caller appears.
-            $this->expectException(RuntimeException::class);
-            $channel->send($lead, 'An automatic answer', automatic: true);
+            return $channel->send($lead, 'An automatic answer', automatic: true);
         });
+
+        $this->assertTrue((bool) $row->is_automatic,
+            'an unmarked automatic reply would take the lead off the Unreplied list');
     }
 
     public function test_a_disconnected_account_cannot_be_replied_through(): void

@@ -51,9 +51,20 @@ class UnattendedReplyIsChannelSpecificTest extends TestCase
         );
     }
 
-    public function test_thumbtack_refuses_one_too(): void
+    /**
+     * THUMBTACK ALLOWS ONE, since 2026-09-24.
+     *
+     * This asserted the opposite, and the channel said why: a choice rather
+     * than a filing, false only because nobody had asked. Jose asked — *"it
+     * should be for any lead, i don't know why you set a restriction on it"* —
+     * so it was argued up, which is the path that method was written to allow.
+     *
+     * Google's test above is untouched, and it is the one that must never flip
+     * without re-filing first.
+     */
+    public function test_thumbtack_allows_one(): void
     {
-        $this->assertFalse(app(ThumbtackLeads::class)->allowsUnattendedReply());
+        $this->assertTrue(app(ThumbtackLeads::class)->allowsUnattendedReply());
     }
 
     /**

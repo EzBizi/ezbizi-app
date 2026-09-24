@@ -49,18 +49,21 @@ final class MetaMessageReplies implements LeadReplyChannel
     }
 
     /**
-     * NO, and it arrives false the way the interface says a new channel should.
+     * YES, since 2026-09-24 — argued up, which is what this used to ask for.
      *
-     * Nothing forbids it the way Google's filing forbids theirs — this is a
-     * choice, and the argument for it is the audience. A Page message is
-     * answered in public-facing voice to somebody who chose to message a brand,
-     * and the first unattended reply a business sends on Messenger is the one
-     * that teaches its customers the account is a robot. Nobody has asked for
-     * it; it should be argued up rather than inherited.
+     * Nothing forbade it the way Google's filing forbids theirs; the argument
+     * against was the audience, and whether a business wants its Page to
+     * answer automatically is the business's call. Jose made it: *"it should
+     * be for any lead, i don't know why you set a restriction on it."*
+     *
+     * META'S OWN RULE STILL HOLDS, and it is the one that matters: a reply is
+     * only accepted within the window after the person last wrote. A rule
+     * fired by the enquiry itself is inside that window by construction; the
+     * window check below stays, so a rule firing late is refused in words.
      */
     public function allowsUnattendedReply(): bool
     {
-        return false;
+        return true;
     }
 
     public function canReply(Lead $lead): bool
@@ -70,18 +73,6 @@ final class MetaMessageReplies implements LeadReplyChannel
 
     public function send(Lead $lead, string $text, bool $automatic = false): LeadConversation
     {
-        /*
-         * The callee's own guard, not only the caller's. `allowsUnattendedReply`
-         * is asked by the caller and this is asked by the callee, and only this
-         * one is in the room when a new caller appears.
-         */
-        if ($automatic) {
-            throw new RuntimeException(
-                'Messages to a Facebook Page or an Instagram account are sent by a person, '
-                .'not by a rule.'
-            );
-        }
-
         $connection = $this->connection($lead);
 
         if ($connection === null) {
@@ -118,6 +109,9 @@ final class MetaMessageReplies implements LeadReplyChannel
             'participant' => LeadConversation::FROM_ADVERTISER,
             'occurred_at' => now(),
             'text' => $text,
+            // Marked, or an automatic reply reads as a person having answered
+            // and takes the enquiry off the Unreplied list.
+            'is_automatic' => $automatic,
         ]);
 
         $this->thread->refresh($lead);
