@@ -929,7 +929,12 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       ..._filedByTopLevel(
         (module) => [
           for (final action in module.actions)
-            _moduleItem(module, action, subject),
+            // NOT LISTED rather than listed and greyed. Jose, 2026-09-24: "i
+            // don't want to see any not built yet anymore". A module may still
+            // DECLARE an action ahead of the engine — the coverage audit reads
+            // those — but the builder offers only what will run.
+            if (widget.catalogue.canUse(action))
+              _moduleItem(module, action, subject),
         ],
       ),
     ];

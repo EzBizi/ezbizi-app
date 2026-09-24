@@ -171,9 +171,19 @@ void main() {
     expect(find.text('Chosen: Jobs › Status changed'), findsOneWidget);
   });
 
-  testWidgets('an action the engine cannot run is shown, marked and refused', (
-    tester,
-  ) async {
+  /// AN ACTION THE ENGINE CANNOT RUN IS NOT LISTED AT ALL.
+  ///
+  /// This used to assert the opposite: shown, marked "Not built yet", and
+  /// refused on tap — so somebody could see what was coming. Jose overruled it
+  /// on 2026-09-24: *"i don't want to see any not built yet anymore"*. Five of
+  /// the seven were then built, eleven more turned out to have been built and
+  /// hidden, and the last two wait on real decisions — moving a person between
+  /// places, which HR has deliberately not built for people either, and adding
+  /// somebody to a mailing list, which needs their consent first.
+  ///
+  /// THE CONTROL IS THE RUNNABLE ONE BESIDE IT. Asserting only that "Change
+  /// the status" is absent would pass against a picker that listed nothing.
+  testWidgets('an action the engine cannot run is not listed', (tester) async {
     await _pump(tester, _handler());
     await _tap(tester, find.text('Build'));
 
@@ -181,29 +191,10 @@ void main() {
     await _tap(tester, find.text('Created'));
     await _tap(tester, find.text('Add a step'));
 
-    // Everything the engine runs, plus what the modules mean to offer.
     expect(find.text('Send a notification'), findsOneWidget);
-
-    // Scoped to the step's own card: the trigger picker one section up has a
-    // category list of its own, and it is the first 'Jobs' in the tree.
-    await _tap(tester, _inStep(find.text('Jobs')));
-
-    expect(find.text('Change the status'), findsOneWidget);
-    expect(
-      find.text('Not built yet'),
-      findsOneWidget,
-      reason: 'An unimplemented action was listed with nothing to mark it.',
-    );
-
-    // Tapping it must do nothing at all — the API would refuse the save, and
-    // finding that out after filling the form in is the failure the mark exists
-    // to prevent.
-    await tester.tap(find.text('Change the status'), warnIfMissed: false);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Choose what this step does'), findsOneWidget);
-    expect(find.text('One of the steps has no action chosen.'), findsOneWidget);
-    expect(_saveButton(tester).onPressed, isNull);
+    expect(find.text('Not built yet'), findsNothing);
+    expect(find.text('Change the status'), findsNothing,
+        reason: 'an action the engine cannot run was still offered');
   });
 
   /// ── The field, and the record it belongs to ──────────────────────
