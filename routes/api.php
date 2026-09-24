@@ -1358,6 +1358,13 @@ Route::prefix('v1')
         Route::middleware('permission:hr.records.view')
             ->get('hr/people', [HrPeopleController::class, 'index']);
 
+        // One person's whole record — the Records tab's right-hand pane
+        // (2026-09-24). Gated like the list: it has exactly one consumer, the
+        // Records tab, which is the case 0051 says the middleware is right for.
+        // Declared AFTER scope-options, or `{user}` would swallow that path.
+        Route::middleware('permission:hr.records.view')
+            ->get('hr/people/{user}', [HrPeopleController::class, 'show']);
+
         // Deliberately NOT behind the hr.view policy the rest of this group
         // leans on: everybody may read their own paid time off, and `hr.view`
         // is what adds everybody else's. The controller makes that split —
