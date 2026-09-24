@@ -309,6 +309,101 @@ class WhatsAppWebhookTest extends TestCase
         $this->assertNull($fresh->read_at);
     }
 
+    /** Deliver a status for a known outbound message. */
+    private function statusArrives(string $wamid, string $state): void
+    {
+        $this->deliverSigned(json_encode(['entry' => [['changes' => [['value' => [
+            'metadata' => ['phone_number_id' => self::PHONE_ID],
+            'statuses' => [['id' => $wamid, 'status' => $state]],
+        ]]]]]]))->assertOk();
+    }
+
+    private function outbound(array $t, string $wamid): WhatsAppMessage
+    {
+        return $this->inTenant($t['org'], fn () => WhatsAppMessage::create([
+            'organization_id' => $t['org']->id,
+            'phone_number_id' => self::PHONE_ID,
+            'direction' => WhatsAppMessage::DIRECTION_OUT,
+            'counterparty' => '17867762666',
+            'wamid' => $wamid,
+            'status' => WhatsAppMessage::STATUS_SENT,
+        ]));
+    }
+
+    public function test_a_late_sent_does_not_undo_a_delivered(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+        $row = $this->outbound($t, 'wamid.ORDER');
+
+        /*
+         * THE ORDER MEASURED ON PRODUCTION, 2026-09-24.
+         *
+         * A real message to +1 786 776-2666 came to rest with `delivered_at`
+         * set and `status` = `sent`. `delivered_at` is only written when a
+         * `delivered` status is absorbed, so `delivered` arrived FIRST and a
+         * late `sent` then overwrote it. Meta does not promise order.
+         *
+         * Fed in the order that arrived rather than the order that would be
+         * convenient - in the natural order this test passes against the old
+         * code and proves nothing.
+         */
+        $this->statusArrives('wamid.ORDER', 'delivered');
+        $this->statusArrives('wamid.ORDER', 'sent');
+
+        $fresh = $this->inTenant($t['org'], fn () => $row->fresh());
+
+        $this->assertSame(WhatsAppMessage::STATUS_DELIVERED, $fresh->status,
+            'a late `sent` rolled a delivered message back to undelivered');
+        $this->assertNotNull($fresh->delivered_at);
+    }
+
+    public function test_a_stray_failed_cannot_unwind_a_message_that_was_read(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+        $row = $this->outbound($t, 'wamid.READ');
+
+        $this->statusArrives('wamid.READ', 'read');
+        $this->statusArrives('wamid.READ', 'failed');
+
+        // The person opened it. Nothing arriving afterwards makes that untrue.
+        $this->assertSame(WhatsAppMessage::STATUS_READ, $this->inTenant($t['org'], fn () => $row->fresh())->status);
+    }
+
+    public function test_failed_still_ends_a_message_that_never_arrived(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+        $row = $this->outbound($t, 'wamid.FAIL');
+
+        // The positive control for the ladder. Without it, a rule that
+        // refused EVERY later status would pass the two tests above - and
+        // would also hide the only failure anybody needs to see.
+        $this->statusArrives('wamid.FAIL', 'failed');
+
+        $this->assertSame(WhatsAppMessage::STATUS_FAILED, $this->inTenant($t['org'], fn () => $row->fresh())->status);
+    }
+
+    public function test_a_read_arriving_before_its_delivered_still_marks_delivery(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->numberBelongsTo($t);
+        $row = $this->outbound($t, 'wamid.RFIRST');
+
+        // Read implies delivered. If `delivered` never arrives, or arrives
+        // late, the row must not claim it was read and never delivered.
+        $this->statusArrives('wamid.RFIRST', 'read');
+
+        $fresh = $this->inTenant($t['org'], fn () => $row->fresh());
+        $this->assertSame(WhatsAppMessage::STATUS_READ, $fresh->status);
+        $this->assertNotNull($fresh->delivered_at, 'read without delivered is a contradiction');
+    }
+
     public function test_a_status_for_a_message_we_never_sent_invents_nothing(): void
     {
         $t = $this->provisionTenant('A1-Group');

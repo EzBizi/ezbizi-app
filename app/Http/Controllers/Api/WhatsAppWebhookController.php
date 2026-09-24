@@ -190,10 +190,49 @@ class WhatsAppWebhookController extends Controller
                 continue;
             }
 
+            /*
+             * STATUS ONLY MOVES FORWARD, because Meta does not send them in order.
+             *
+             * Measured 2026-09-24 on a real message to +1 786 776-2666: the row
+             * came to rest with `delivered_at` set and `status` = `sent`.
+             * `delivered_at` is written only when a `delivered` status is
+             * absorbed, so `delivered` arrived and a LATE `sent` then overwrote
+             * it. Every reader of `status` - a run log, a report, a list - was
+             * told a delivered message had not arrived, while the timestamp
+             * beside it said otherwise.
+             *
+             * So a status replaces the stored one only if it is further along.
+             * `failed` ranks above `sent` and below `delivered`: it can end a
+             * message that never arrived, and a stray `failed` must not unwind
+             * one the person has already opened.
+             *
+             * The timestamps are stamped regardless of the ladder: a `read`
+             * arriving before its own `delivered` still means it was delivered.
+             */
+            $rank = [
+                WhatsAppMessage::STATUS_QUEUED => 0,
+                WhatsAppMessage::STATUS_SENT => 1,
+                WhatsAppMessage::STATUS_FAILED => 2,
+                WhatsAppMessage::STATUS_DELIVERED => 3,
+                WhatsAppMessage::STATUS_READ => 4,
+            ];
+
+            // A status Meta invents later ranks level with `sent`. Ranked at
+            // the top it would be written once and then block every later
+            // `delivered` and `read` for ever; ranked below everything it
+            // would regress a delivered message. Level with `sent` it can
+            // replace `queued`, can be replaced by any real progress, and can
+            // do neither of those things.
+            $incoming = $rank[$state] ?? 1;
+            $current = $rank[$row->status] ?? 1;
+            $advances = $incoming > $current;
+
             $row->forceFill(array_filter([
-                'status' => $state,
-                'status_reason' => $status['errors'][0]['title'] ?? null,
-                'delivered_at' => $state === WhatsAppMessage::STATUS_DELIVERED ? now() : null,
+                'status' => $advances ? $state : null,
+                'status_reason' => $advances ? ($status['errors'][0]['title'] ?? null) : null,
+                'delivered_at' => in_array($state, [WhatsAppMessage::STATUS_DELIVERED, WhatsAppMessage::STATUS_READ], true)
+                    ? ($row->delivered_at ?? now())
+                    : null,
                 'read_at' => $state === WhatsAppMessage::STATUS_READ ? now() : null,
             ], fn ($v) => $v !== null))->save();
 
