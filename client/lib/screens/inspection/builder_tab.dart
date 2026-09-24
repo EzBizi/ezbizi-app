@@ -891,7 +891,14 @@ class _BuilderTabState extends State<BuilderTab> {
               options: [
                 const SearchOption(value: '', label: 'No code'),
                 for (final code in _codes)
-                  SearchOption(value: '${code['id']}', label: '${code['code']} — ${code['title'] ?? ''}'),
+                  // The code is what somebody looks up by; the title is how
+                  // they recognise it. One string put both on one line and let
+                  // a long title push the code off the end of it.
+                  SearchOption(
+                    value: '${code['id']}',
+                    label: '${code['code']}',
+                    detail: '${code['title'] ?? ''}',
+                  ),
               ],
               onChanged: (value) => _updateField(
                 (row) => row['code_id'] = (value ?? '').isEmpty ? null : value,

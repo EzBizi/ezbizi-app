@@ -201,6 +201,98 @@ class SearchPickerField<T> extends StatelessWidget {
   }
 }
 
+/// One choosable row.
+///
+/// ── Why this is not a bare ListTile any more ───────────────────────
+///
+/// Jose, 2026-09-24, on the WhatsApp template picker: *"stuff like this is
+/// unacceptable, make it look better"* — five approved templates, each one's
+/// entire body wrapped over four or five lines with nothing between them, so
+/// the dialog read as one unbroken wall of `{{1}}` and prose.
+///
+/// Two causes and the control owns one of them. The call site was passing
+/// `'$name — $body'` as the LABEL, which is its own fix. But a `ListTile` with
+/// an unbounded `Text` will wrap any label to any height, so the next caller
+/// with a long string gets the same wall — **the closed field has ellipsised
+/// since the day it was written and the dialog never did.**
+///
+/// So: the name gets one line, the detail gets two, and rows are ruled apart.
+/// A picker cannot stop somebody passing a paragraph, but it can stop a
+/// paragraph from eating the list.
+class _Row<T> extends StatelessWidget {
+  const _Row({
+    required this.option,
+    required this.chosen,
+    required this.onTap,
+  });
+
+  final SearchOption<T> option;
+  final bool chosen;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final detail = option.detail;
+
+    return InkWell(
+      onTap: option.enabled ? onTap : null,
+      child: Container(
+        decoration: BoxDecoration(
+          color: chosen ? scheme.primary.withValues(alpha: 0.07) : null,
+          border: Border(
+            bottom: BorderSide(color: scheme.outlineVariant, width: 0.5),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 10, 16, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: option.child ??
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        option.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: option.enabled
+                              ? scheme.onSurface
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (detail != null && detail.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          detail,
+                          // TWO, not one. A template body or an address needs a
+                          // second line to be recognisable, and needs a limit
+                          // to stay a row rather than a paragraph.
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+            ),
+            if (chosen) ...[
+              const SizedBox(width: 10),
+              Icon(Icons.check, size: 18, color: scheme.primary),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Wrapped so that clearing and dismissing are not the same null.
 class _Picked<T> {
   const _Picked(this.value);
@@ -302,14 +394,9 @@ class _SearchPickerDialogState<T> extends State<_SearchPickerDialog<T>> {
                                 Navigator.of(context).pop(const _Picked(null)),
                           ),
                         for (final o in hits)
-                          ListTile(
-                            dense: true,
-                            selected: o.value == widget.value,
-                            enabled: o.enabled,
-                            title: o.child ?? Text(o.label),
-                            subtitle: o.detail == null || o.child != null
-                                ? null
-                                : Text(o.detail!),
+                          _Row<T>(
+                            option: o,
+                            chosen: o.value == widget.value,
                             onTap: () =>
                                 Navigator.of(context).pop(_Picked<T>(o.value)),
                           ),

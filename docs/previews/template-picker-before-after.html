@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The Template picker — before and after</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1000px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+.pair{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;align-items:flex-start}
+.side{flex:1;min-width:330px}
+.cap{font:800 9px sans-serif;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted);margin-bottom:8px}
+.cap.bad{color:#ba1a1a}
+.cap.good{color:var(--brand)}
+
+/* The dialog, drawn the way Flutter draws it. */
+.dlg{background:var(--paper);border-radius:14px;padding:0;overflow:hidden;
+  box-shadow:0 10px 34px rgba(13,17,23,.17);border:1px solid var(--line)}
+.dlg .t{padding:18px 20px 8px;font-size:17px;font-weight:600}
+
+/* BEFORE: one Text per row, no limit, no rule. */
+.old{padding:4px 20px 18px;font-size:13.5px;color:var(--ink)}
+.old p{margin:0 0 14px}
+
+/* AFTER: name on one line, body on two, rows ruled apart. */
+.row{display:flex;align-items:flex-start;gap:10px;padding:10px 16px 10px 20px;
+  border-bottom:.5px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row.on{background:rgba(15,118,110,.07)}
+.row .nm{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.row .dt{font-size:12px;color:var(--muted);margin-top:2px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.row .g{flex:1;min-width:0}
+.row .ck{color:var(--brand);font-weight:700;font-size:15px;line-height:1.4}
+.note{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--brand);
+  border-radius:9px;padding:12px 14px;margin-top:20px;font-size:12.5px}
+</style>
+<div class="wrap">
+<h1>The Template picker &mdash; before and after</h1>
+
+<p class="sub">Jose, 2026-09-24, on the screenshot: <i>&ldquo;stuff like this is unacceptable,
+make it look better&rdquo;</i>. Same five approved templates in both.</p>
+
+<div class="pair">
+  <div class="side">
+    <div class="cap bad">Before &mdash; what you photographed</div>
+    <div class="dlg">
+      <div class="t">Template</div>
+      <div class="old">
+        <p>automation_alert &mdash; Your &ldquo;{{1}}&rdquo; automation has just run in EzBizi.
+        What happened: {{2}} Open EzBizi or check your email for the full details.</p>
+        <p>report_document &mdash; Here is the {{1}} report for {{2}}, attached above as a PDF.</p>
+        <p>report_summary &mdash; Here is the {{1}} summary for {{2}}. Spend: {{3}} Clicks: {{4}}
+        Conversions: {{5}} Open EzBizi for the full breakdown.</p>
+        <p>3p_direct_integration_test_template &mdash; Welcome! This is a test message from the
+        WhatsApp Business Platform. You have successfully configured your WhatsApp Business account
+        and completed onboarding. You can now start sending messages to your customers.</p>
+        <p>hello_world &mdash; Welcome and congratulations!! This message demonstrates your ability
+        to send a WhatsApp message notification from the Cloud API, hosted by Meta.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="cap good">After</div>
+    <div class="dlg">
+      <div class="t">Template</div>
+      <div class="row on">
+        <div class="g">
+          <div class="nm">automation_alert</div>
+          <div class="dt">Your &ldquo;{{1}}&rdquo; automation has just run in EzBizi. What
+          happened: {{2}} Open EzBizi or check your email for the full details.</div>
+        </div>
+        <div class="ck">&check;</div>
+      </div>
+      <div class="row"><div class="g">
+        <div class="nm">report_document</div>
+        <div class="dt">Here is the {{1}} report for {{2}}, attached above as a PDF.</div>
+      </div></div>
+      <div class="row"><div class="g">
+        <div class="nm">report_summary</div>
+        <div class="dt">Here is the {{1}} summary for {{2}}. Spend: {{3}} Clicks: {{4}}
+        Conversions: {{5}} Open EzBizi for the full breakdown.</div>
+      </div></div>
+      <div class="row"><div class="g">
+        <div class="nm">3p_direct_integration_test_template</div>
+        <div class="dt">Welcome! This is a test message from the WhatsApp Business Platform. You
+        have successfully configured your WhatsApp Business account and completed onboarding. You
+        can now start sending messages to your customers.</div>
+      </div></div>
+      <div class="row"><div class="g">
+        <div class="nm">hello_world</div>
+        <div class="dt">Welcome and congratulations!! This message demonstrates your ability to
+        send a WhatsApp message notification from the Cloud API, hosted by Meta.</div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<div class="note"><b>Two causes, and the control owned one of them.</b> The screen was handing the
+picker <code>"name &mdash; whole body"</code> as one string, so there was nothing to lay out
+&mdash; the name and the body were the same sentence. That is fixed where it is built. But the
+picker itself would wrap <i>any</i> long label to <i>any</i> height, so the next screen with a long
+line got the same wall: <b>the closed field has cut long text off since the day it was written and
+the open list never did.</b> Now the name gets one line, the body gets two, and the rows are ruled
+apart. Typing a word from the body still finds the template.</div>
+
+<div class="note"><b>The same fix reached a second screen you have not seen yet</b> &mdash; the
+building-code picker in the Inspection builder was doing the same thing, a code and its title
+crammed into one line so a long title pushed the code off the end.</div>
+</div>

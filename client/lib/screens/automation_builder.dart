@@ -3408,7 +3408,20 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           isDense: true,
           options: [
             for (final t in number?.templates ?? const [])
-              SearchOption(value: t.name, label: t.preview.isEmpty ? t.name : '${t.name} — ${t.preview}'),
+              SearchOption(
+                value: t.name,
+                // THE NAME IS THE LABEL AND THE BODY IS THE DETAIL.
+                //
+                // Both used to be one string — `'$name — $preview'` — so the
+                // picker drew five whole WhatsApp templates as five paragraphs
+                // with nothing between them. Jose, 2026-09-24: *"stuff like
+                // this is unacceptable"*.
+                //
+                // Both are still searched, so typing a word from the body
+                // still finds the template it belongs to.
+                label: t.name,
+                detail: t.preview,
+              ),
           ],
           onChanged: _busy
               ? null
