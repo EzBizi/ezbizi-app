@@ -59,7 +59,13 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// Monday first, because the design's week reads Mon–Sun. The VALUES stay
   /// Carbon's weekday numbers (0 = Sunday) so nothing translates on the wire.
   static const _week = <(int, String)>[
-    (1, 'Mon'), (2, 'Tue'), (3, 'Wed'), (4, 'Thu'), (5, 'Fri'), (6, 'Sat'), (0, 'Sun'),
+    (1, 'Mon'),
+    (2, 'Tue'),
+    (3, 'Wed'),
+    (4, 'Thu'),
+    (5, 'Fri'),
+    (6, 'Sat'),
+    (0, 'Sun'),
   ];
 
   final _search = TextEditingController();
@@ -79,7 +85,6 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   String? _paneError;
 
   List<Map<String, dynamic>> _areas = [];
-  Map<String, dynamic>? _pattern;
 
   /// null means the Overview is showing. The rail always has a selection.
   String? _openAreaId;
@@ -98,7 +103,28 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   List<Map<String, dynamic>> _zipList = [];
 
   /// weekday -> list of {start, end, max}. Absent weekday = closed.
+  ///
+  /// `max_jobs` may be NULL in here while editing: a window left blank on an
+  /// open day. It is never SENT — see [_saveGrid] — so a blank window is a
+  /// window that day does not offer, and never a zero.
   final Map<int, List<Map<String, dynamic>>> _grid = {};
+
+  /// The organization's windows, `{id, start_time, end_time}`, earliest first.
+  /// Every area books into these; what differs per area is the number.
+  List<Map<String, dynamic>> _timeSlots = [];
+
+  /// Whether this person may change the windows. They apply to every branch,
+  /// so a branch-level manager reads them and cannot move them.
+  bool _canEditSlots = false;
+
+  /// A failure that belongs to the time-slots card, and only to it.
+  String? _slotError;
+
+  /// The add row's two times, or the row being edited's.
+  String _draftStart = '10:00';
+  String _draftEnd = '13:00';
+  String? _editingSlotId;
+  String? _removingSlotId;
 
   Me? get _me => widget.session.me;
 
@@ -132,6 +158,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     });
 
     final response = await widget.api.get('/scheduling/areas', const {});
+    await _loadTimeSlots();
 
     if (!mounted) return;
 
@@ -143,8 +170,71 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       }
       _areas = (response.body['data'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
-      _pattern = response.body['pattern'] as Map<String, dynamic>?;
     });
+  }
+
+  /// The windows, loaded on their own so a failure here costs the card and not
+  /// the screen: an area's existing capacity is still readable and editable
+  /// without the list, because every row carries its own window.
+  Future<void> _loadTimeSlots() async {
+    final response = await widget.api.get('/scheduling/time-slots', const {});
+
+    if (!mounted) return;
+
+    setState(() {
+      if (!response.ok) {
+        _slotError = response.message;
+        return;
+      }
+      _slotError = null;
+      _timeSlots = (response.body['data'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+      _canEditSlots = response.body['can_edit'] == true;
+    });
+  }
+
+  /// Add a window, or change the hours of [_editingSlotId].
+  ///
+  /// Changing hours MOVES every area's capacity on that window — the server
+  /// does it in one transaction — so the areas and the open grid are reloaded
+  /// afterwards rather than trusted.
+  Future<void> _saveTimeSlot() async {
+    final editing = _editingSlotId;
+    final body = {'start_time': _draftStart, 'end_time': _draftEnd};
+
+    final response = editing == null
+        ? await widget.api.post('/scheduling/time-slots', body)
+        : await widget.api.patch('/scheduling/time-slots/$editing', body);
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _slotError = response.message);
+      return;
+    }
+
+    setState(() => _editingSlotId = null);
+    await _afterWindowsChanged();
+  }
+
+  Future<void> _removeTimeSlot(String id) async {
+    final response = await widget.api.delete('/scheduling/time-slots/$id');
+
+    if (!mounted) return;
+
+    if (!response.ok) {
+      setState(() => _slotError = response.message);
+      return;
+    }
+
+    setState(() => _removingSlotId = null);
+    await _afterWindowsChanged();
+  }
+
+  Future<void> _afterWindowsChanged() async {
+    final open = _openAreaId;
+    await _load();
+    if (open != null && mounted) await _openArea_(open);
   }
 
   Future<void> _openArea_(String id) async {
@@ -183,8 +273,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       _zipEntry.clear();
       _cityEntry.clear();
       _grid.clear();
-      for (final slot in (_openArea?['slots'] as List? ?? const [])
-          .cast<Map<String, dynamic>>()) {
+      for (final slot
+          in (_openArea?['slots'] as List? ?? const [])
+              .cast<Map<String, dynamic>>()) {
         (_grid[slot['weekday'] as int] ??= []).add({
           'start_time': slot['start_time'],
           'end_time': slot['end_time'],
@@ -290,8 +381,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   bool get _deleteConfirmed {
     final name = (_openArea?['name'] as String? ?? '').trim().toLowerCase();
 
-    return name.isNotEmpty &&
-        _deleteName.text.trim().toLowerCase() == name;
+    return name.isNotEmpty && _deleteName.text.trim().toLowerCase() == name;
   }
 
   /// Deletes the open area, once its name has been typed.
@@ -446,16 +536,20 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     final slots = <Map<String, dynamic>>[
       for (final entry in _grid.entries)
         for (final slot in entry.value)
-          {
-            'weekday': entry.key,
-            'start_time': slot['start_time'],
-            'end_time': slot['end_time'],
-            'max_jobs': slot['max_jobs'],
-          },
+          // A blank window is one this day does not offer. It is left out,
+          // never sent as a zero.
+          if (slot['max_jobs'] != null)
+            {
+              'weekday': entry.key,
+              'start_time': slot['start_time'],
+              'end_time': slot['end_time'],
+              'max_jobs': slot['max_jobs'],
+            },
     ];
 
-    final response =
-        await widget.api.put('/scheduling/areas/$id/slots', {'slots': slots});
+    final response = await widget.api.put('/scheduling/areas/$id/slots', {
+      'slots': slots,
+    });
 
     if (!mounted) return;
 
@@ -473,24 +567,47 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// Deletes the day's rows. Never writes zeros — see the class docblock.
   void _closeDay(int weekday) => setState(() => _grid.remove(weekday));
 
+  /// Opening a day offers EVERY window at one job each, to be changed.
+  ///
+  /// It used to write a hard-coded 08:00–12:00, which is why all 108 of A-1's
+  /// capacity rows were that window: there was nowhere else for a window to
+  /// come from. Now they come from the Time slots card, and with none stated
+  /// there is nothing to open a day onto — the editor says so instead.
   void _openDay(int weekday) => setState(() {
     _grid[weekday] = [
-      for (final slot in _pattern?['slots'] as List? ?? const [])
-        if ((slot as Map)['weekday'] == weekday)
-          {
-            'start_time': slot['start_time'],
-            'end_time': slot['end_time'],
-            'max_jobs': slot['max_jobs'],
-          },
+      for (final w in _timeSlots)
+        {
+          'start_time': w['start_time'],
+          'end_time': w['end_time'],
+          'max_jobs': 1,
+        },
     ];
-
-    // A day the pattern does not cover still has to become something.
-    if (_grid[weekday]!.isEmpty) {
-      _grid[weekday] = [
-        {'start_time': '08:00', 'end_time': '12:00', 'max_jobs': 1},
-      ];
-    }
   });
+
+  /// The windows a day shows: the organization's, plus any this area already
+  /// has capacity on that the list does not name. The second set should be
+  /// empty — changing a window moves its rows — but a row the list does not
+  /// know about must still be visible, or it is counted by availability and
+  /// cannot be seen or removed from the screen that set it.
+  List<(String, String)> _windowsFor(int weekday) {
+    final seen = <String>{};
+    final out = <(String, String)>[];
+
+    void add(String start, String end) {
+      if (seen.add('$start-$end')) out.add((start, end));
+    }
+
+    for (final w in _timeSlots) {
+      add(w['start_time'] as String, w['end_time'] as String);
+    }
+    for (final row in _grid[weekday] ?? const <Map<String, dynamic>>[]) {
+      add(row['start_time'] as String, row['end_time'] as String);
+    }
+
+    out.sort((a, b) => a.$1.compareTo(b.$1));
+
+    return out;
+  }
 
   List<Map<String, dynamic>> get _filtered {
     final q = _search.text.trim().toLowerCase();
@@ -602,7 +719,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
           child: Text(
-            areas.length == 1 ? '1 service area' : '${areas.length} service areas',
+            areas.length == 1
+                ? '1 service area'
+                : '${areas.length} service areas',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -672,7 +791,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
 
     for (final entry in entries) {
       if (entries.length > 1 && me != null) {
-        rows.add(_railHeader(theme, _railGroupLabel(me, entry.key, ambiguous: ambiguous)));
+        rows.add(
+          _railHeader(
+            theme,
+            _railGroupLabel(me, entry.key, ambiguous: ambiguous),
+          ),
+        );
       }
 
       for (final area in entry.value) {
@@ -685,8 +809,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
 
   /// The franchise a group of areas belongs to, named so it cannot be confused
   /// with another franchise of the same name under a different company.
-  String _railGroupLabel(Me me, String? franchiseId, {required bool ambiguous}) {
-    final franchise = me.franchises.where((f) => f.id == franchiseId).firstOrNull;
+  String _railGroupLabel(
+    Me me,
+    String? franchiseId, {
+    required bool ambiguous,
+  }) {
+    final franchise = me.franchises
+        .where((f) => f.id == franchiseId)
+        .firstOrNull;
 
     // A franchise the session does not list. Says so rather than showing a
     // blank heading: an area filed under something out of view is a real
@@ -868,6 +998,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
       children: [
+        _timeSlotsCard(theme),
+        const SizedBox(height: 8),
         Text('Capacity', style: theme.textTheme.titleMedium),
         const SizedBox(height: 2),
         Text(
@@ -1082,7 +1214,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               ),
           ],
         ),
-        if (_deleting) _deleteConfirmation(theme, area['name'] as String? ?? ''),
+        if (_deleting)
+          _deleteConfirmation(theme, area['name'] as String? ?? ''),
       ],
     );
   }
@@ -1246,7 +1379,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer.withValues(alpha: 0.35),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: theme.colorScheme.error.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: theme.colorScheme.error.withValues(alpha: 0.4),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1316,15 +1451,21 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// A closed day collapses to a single line, because a closed day has nothing
   /// to edit and should not cost the same height as one that does.
   Widget _dayEditor(ThemeData theme, int weekday, String label) {
-    final slots = _grid[weekday];
-    final closed = slots == null || slots.isEmpty;
+    final rows = _grid[weekday];
+    final closed = rows == null || rows.isEmpty;
     final muted = theme.colorScheme.onSurfaceVariant;
+    final canOpen = _timeSlots.isNotEmpty;
+
+    Map<String, dynamic>? rowFor(String start, String end) {
+      for (final r in rows ?? const <Map<String, dynamic>>[]) {
+        if (r['start_time'] == start && r['end_time'] == end) return r;
+      }
+      return null;
+    }
 
     return Container(
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: EzBiziTheme.edge(context)),
-        ),
+        border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
       ),
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -1337,35 +1478,37 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           Expanded(
             child: closed
                 ? Text(
-                    'Closed',
+                    canOpen
+                        ? 'Closed'
+                        : 'Closed · add time slots in Overview to open it',
                     style: theme.textTheme.bodySmall?.copyWith(color: muted),
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (var i = 0; i < slots.length; i++)
+                      for (final (start, end) in _windowsFor(weekday))
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 2),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  '${slots[i]['start_time']} – ${slots[i]['end_time']}',
+                                  '${_label(start)} – ${_label(end)}',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ),
                               SizedBox(
                                 width: 56,
                                 child: TextFormField(
-                                  key: ValueKey(
-                                    'slot-$weekday-$i-${slots[i]['start_time']}',
-                                  ),
-                                  initialValue: '${slots[i]['max_jobs']}',
+                                  key: ValueKey('slot-$weekday-$start-$end'),
+                                  initialValue:
+                                      '${rowFor(start, end)?['max_jobs'] ?? ''}',
                                   textAlign: TextAlign.center,
                                   keyboardType: TextInputType.number,
                                   style: theme.textTheme.bodyMedium,
                                   decoration: const InputDecoration(
                                     isDense: true,
+                                    hintText: '–',
                                     contentPadding: EdgeInsets.symmetric(
                                       horizontal: 8,
                                       vertical: 6,
@@ -1373,13 +1516,22 @@ class _CapacitySettingsState extends State<CapacitySettings> {
                                     border: OutlineInputBorder(),
                                   ),
                                   onChanged: (value) {
-                                    final n = int.tryParse(value);
-                                    // Zero is not storable and the server
-                                    // refuses it. Closing a day is the Close
-                                    // button, not a zero.
-                                    if (n != null && n > 0) {
-                                      slots[i]['max_jobs'] = n;
+                                    final n = int.tryParse(value.trim());
+                                    var row = rowFor(start, end);
+                                    if (row == null) {
+                                      row = {
+                                        'start_time': start,
+                                        'end_time': end,
+                                      };
+                                      rows.add(row);
                                     }
+                                    // Blank, or zero: this window is not
+                                    // offered that day. Stored as absence,
+                                    // never as a zero — the server refuses a
+                                    // zero anyway.
+                                    row['max_jobs'] = (n != null && n > 0)
+                                        ? n
+                                        : null;
                                   },
                                 ),
                               ),
@@ -1390,7 +1542,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
                   ),
           ),
           TextButton(
-            onPressed: () => closed ? _openDay(weekday) : _closeDay(weekday),
+            onPressed: closed
+                ? (canOpen ? () => _openDay(weekday) : null)
+                : () => _closeDay(weekday),
             style: TextButton.styleFrom(
               minimumSize: const Size(56, 32),
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1398,6 +1552,186 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             ),
             child: Text(closed ? 'Open' : 'Close'),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// "13:00" → "1 PM", "12:30" → "12:30 PM", "00:00" → "12 AM" — the way Jose
+  /// says them ("10 am to 1"), rather than the way the column stores them.
+  static String _label(String hm) {
+    final parts = hm.split(':');
+    final h = int.tryParse(parts.first) ?? 0;
+    final m = parts.length > 1
+        ? parts[1].padRight(2, '0').substring(0, 2)
+        : '00';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    final period = h < 12 ? 'AM' : 'PM';
+
+    return m == '00' ? '$h12 $period' : '$h12:$m $period';
+  }
+
+  /// Half-hour steps across a working day. A dropdown rather than a time
+  /// picker because the picker is a modal, and this screen does not open one.
+  static final List<String> _times = [
+    for (var minutes = 5 * 60; minutes <= 22 * 60; minutes += 30)
+      '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+          '${(minutes % 60).toString().padLeft(2, '0')}',
+  ];
+
+  Widget _timeField(String value, ValueChanged<String> onChanged, String key) {
+    // A stored window off the half-hour grid is still offered, or the
+    // dropdown would have no item matching its own value and throw.
+    final options = _times.contains(value)
+        ? _times
+        : ([..._times, value]..sort());
+
+    return DropdownButton<String>(
+      key: ValueKey(key),
+      value: value,
+      isDense: true,
+      underline: const SizedBox.shrink(),
+      items: [
+        for (final t in options)
+          DropdownMenuItem(value: t, child: Text(_label(t))),
+      ],
+      onChanged: (v) {
+        if (v != null) onChanged(v);
+      },
+    );
+  }
+
+  /// The organization's windows, stated once for every area.
+  Widget _timeSlotsCard(ThemeData theme) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    Widget editor(String saveLabel) => Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _timeField(
+          _draftStart,
+          (v) => setState(() => _draftStart = v),
+          'slot-draft-start',
+        ),
+        Text('to', style: theme.textTheme.bodySmall?.copyWith(color: muted)),
+        _timeField(
+          _draftEnd,
+          (v) => setState(() => _draftEnd = v),
+          'slot-draft-end',
+        ),
+        FilledButton.tonal(onPressed: _saveTimeSlot, child: Text(saveLabel)),
+        if (_editingSlotId != null)
+          TextButton(
+            onPressed: () => setState(() => _editingSlotId = null),
+            child: const Text('Cancel'),
+          ),
+      ],
+    );
+
+    return _card(
+      theme,
+      title: 'Time slots',
+      // Never a bare "0": this screen's rule is that a zero on the Overview
+      // means an area is full, and a test holds it to that.
+      badge: _timeSlots.isEmpty ? 'None' : '${_timeSlots.length}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'The windows every service area books into. Each area sets how '
+            'many jobs a window takes on each day.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 8),
+          if (_slotError != null) ...[
+            ErrorNote(_slotError!),
+            const SizedBox(height: 8),
+          ],
+          if (_timeSlots.isEmpty)
+            Text(
+              'None yet. Until there is one, no day can be opened.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          for (final w in _timeSlots)
+            if (_editingSlotId == w['id'])
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: editor('Save hours'),
+              )
+            else if (_removingSlotId == w['id'])
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      "Remove ${_label(w['start_time'] as String)} – "
+                      "${_label(w['end_time'] as String)} and every area's "
+                      'capacity on it?',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    TextButton(
+                      onPressed: () => _removeTimeSlot(w['id'] as String),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.error,
+                      ),
+                      child: const Text('Remove'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _removingSlotId = null),
+                      child: const Text('Keep'),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_label(w['start_time'] as String)} – '
+                      '${_label(w['end_time'] as String)}',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  if (_canEditSlots) ...[
+                    IconButton(
+                      tooltip: 'Change hours',
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      onPressed: () => setState(() {
+                        _editingSlotId = w['id'] as String;
+                        _removingSlotId = null;
+                        _draftStart = w['start_time'] as String;
+                        _draftEnd = w['end_time'] as String;
+                        _slotError = null;
+                      }),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () => setState(() {
+                        _removingSlotId = w['id'] as String;
+                        _editingSlotId = null;
+                      }),
+                    ),
+                  ],
+                ],
+              ),
+          if (_canEditSlots && _editingSlotId == null) ...[
+            const SizedBox(height: 8),
+            editor('Add time slot'),
+          ] else if (!_canEditSlots && _timeSlots.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'These apply to every branch, so they are changed at '
+              'organization level.',
+              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ],
         ],
       ),
     );

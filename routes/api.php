@@ -105,6 +105,7 @@ use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
+use App\Http\Controllers\Api\SchedulingTimeSlotsController;
 use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
 use App\Http\Controllers\Api\ServiceLabelsController;
@@ -1108,6 +1109,12 @@ Route::prefix('v1')
          * tidiness.
          */
         Route::middleware('permission:scheduling.settings.view')->group(function () {
+            // The organization's windows. Writes also need an organization-level
+            // assignment — see SchedulingTimeSlotsController.
+            Route::get('scheduling/time-slots', [SchedulingTimeSlotsController::class, 'index']);
+            Route::post('scheduling/time-slots', [SchedulingTimeSlotsController::class, 'store']);
+            Route::patch('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'update']);
+            Route::delete('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'destroy']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
