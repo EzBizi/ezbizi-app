@@ -197,7 +197,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertCount(1, $this->sent, 'a retried delivery was answered again');
     }
 
-    public function test_tapping_nfpa_211_sends_the_official_free_access_link(): void
+    public function test_tapping_nfpa_211_opens_its_topics(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $this->configured();
@@ -205,12 +205,104 @@ class WhatsAppStaffBotTest extends TestCase
 
         $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::NFPA_211, 'NFPA 211'))->assertOk();
 
-        $this->assertSame('text', $this->sent[0]['type']);
-        // NFPA's OWN free-access page, not a copy of the standard. The
-        // standard is copyrighted and sold; the link is legal, free, and
-        // always the current edition.
-        $this->assertStringContainsString('nfpa.org', $this->sent[0]['text']['body']);
-        $this->assertStringContainsString('free-access', $this->sent[0]['text']['body']);
+        $this->assertSame('list', $this->sent[0]['interactive']['type']);
+        $ids = collect($this->sent[0]['interactive']['action']['sections'])
+            ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
+        $this->assertContains('nfpa_level2_when', $ids);
+        $this->assertContains('nfpa_flue_sizing', $ids);
+    }
+
+    public function test_a_code_topic_gives_the_requirement_itself_and_no_link(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        $this->inbound(self::BOT, $this->tap('nfpa_level2_when', 'When a Level 2 is needed'))->assertOk();
+
+        $body = $this->sent[0]['text']['body'];
+
+        // Jose: "I don't want for the bot to offer links, i want the bot to be
+        // able to give out the information for the codes." The requirement is
+        // in the reply...
+        $this->assertStringContainsString('the property is being sold', $body);
+        $this->assertStringContainsString('lined or relined', $body);
+
+        // ...and nothing sends the tech elsewhere to read it.
+        $this->assertStringNotContainsString('http', $body);
+
+        // Every code answer says what it is: a summary, to be confirmed
+        // against the edition in force. A fire-code bot must not read as the
+        // standard itself.
+        $this->assertStringContainsString('Our summary of NFPA 211', $body);
+    }
+
+    public function test_every_code_answer_is_link_free_and_carries_the_footer(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        $topics = ['nfpa_how_often', 'nfpa_levels', 'nfpa_level2_when',
+            'nfpa_level2_covers', 'nfpa_flue_sizing', 'nfpa_crown', WhatsAppStaffBot::CSIA];
+
+        foreach ($topics as $i => $id) {
+            $this->inbound(self::BOT, $this->tap($id, $id), 'wamid.T'.$i)->assertOk();
+        }
+
+        $this->assertCount(count($topics), $this->sent);
+
+        foreach ($this->sent as $i => $reply) {
+            $body = $reply['text']['body'];
+            $this->assertStringNotContainsString('http', $body, "{$topics[$i]} offers a link");
+            $this->assertStringContainsString('Our summary of NFPA 211', $body, "{$topics[$i]} has no footer");
+            // No preview card for an answer that has no link to draw one from.
+            $this->assertFalse($reply['text']['preview_url'], "{$topics[$i]} asks for a preview");
+        }
+    }
+
+    public function test_every_list_the_bot_sends_fits_whatsapps_limits(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        /*
+         * META REFUSES A LIST THAT BREAKS ONE LIMIT, AND THE TECH SEES NOTHING.
+         *
+         * The reply throws, our catch logs it, and the person who tapped a
+         * button gets no answer at all. The first draft of the NFPA topics
+         * named its section "Inspections and construction" - 28 characters
+         * against a limit of 24 - and every test above would have passed.
+         * These are Meta's published limits for an interactive list.
+         */
+        $this->inbound(self::BOT, $this->text('hi'), 'wamid.L1')->assertOk();
+        $this->inbound(self::BOT, $this->tap(WhatsAppStaffBot::NFPA_211, 'NFPA 211'), 'wamid.L2')->assertOk();
+
+        $lists = array_filter($this->sent, fn ($m) => ($m['type'] ?? '') === 'interactive');
+        $this->assertCount(2, $lists, 'expected the main menu and the NFPA topics');
+
+        foreach ($lists as $m) {
+            $i = $m['interactive'];
+            $this->assertLessThanOrEqual(60, mb_strlen($i['header']['text']), 'header over 60');
+            $this->assertLessThanOrEqual(1024, mb_strlen($i['body']['text']), 'body over 1024');
+            $this->assertLessThanOrEqual(20, mb_strlen($i['action']['button']), 'button over 20');
+
+            $rows = 0;
+            foreach ($i['action']['sections'] as $section) {
+                $this->assertLessThanOrEqual(24, mb_strlen($section['title']),
+                    "section title \"{$section['title']}\" is over 24");
+
+                foreach ($section['rows'] as $row) {
+                    $rows++;
+                    $this->assertLessThanOrEqual(24, mb_strlen($row['title']),
+                        "row title \"{$row['title']}\" is over 24");
+                    $this->assertLessThanOrEqual(72, mb_strlen($row['description'] ?? ''),
+                        "row description \"{$row['title']}\" is over 72");
+                }
+            }
+            $this->assertLessThanOrEqual(10, $rows, 'a list may hold at most 10 rows');
+        }
     }
 
     public function test_a_city_is_found_by_the_area_it_serves_not_its_street_address(): void
@@ -375,6 +467,6 @@ class WhatsAppStaffBotTest extends TestCase
         // The tap is recorded as what the person SAW, not as an opaque id, and
         // our answer sits beside it - so the history reads as a conversation.
         $this->assertSame('CSIA', $rows->firstWhere('direction', 'in')->body);
-        $this->assertStringContainsString('csia.org', $rows->firstWhere('direction', 'out')->body);
+        $this->assertStringContainsString('Chimney & Venting Essentials', $rows->firstWhere('direction', 'out')->body);
     }
 }
