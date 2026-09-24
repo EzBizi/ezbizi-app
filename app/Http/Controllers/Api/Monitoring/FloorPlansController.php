@@ -8,6 +8,7 @@ use App\Models\MonitoringFloorPlan;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
+use App\Support\Monitoring\MonitoringView;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -77,6 +78,9 @@ class FloorPlansController extends Controller
 
         $query = MonitoringFloorPlan::query()->with(['company:id,name', 'franchise:id,name']);
         $this->reach->constrain($query, $actor);
+        // The LIST follows the view. show() and reachable() below stay on
+        // reach — see MonitoringView for why a lookup by id is not narrowed.
+        MonitoringView::plans($query, $actor);
 
         $plans = $query->orderByDesc('updated_at')->get();
 
