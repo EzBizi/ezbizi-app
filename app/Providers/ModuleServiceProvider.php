@@ -729,7 +729,10 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'ai_assistance',
                 label: 'AI Assistance',
                 actions: ['view', 'manage'],
-                actionRequires: ['manage' => ['ai_assistance.library.view']],
+                // No actionRequires: `manage` is spent on two tabs, Library
+                // (answers) and Settings (name, welcome), so requiring either
+                // tab would grant a pane somebody may not have been meant to
+                // see. Each tab's own grant decides where manage can be used.
                 actionLabels: ['manage' => 'Edit answers and settings'],
                 tabs: [
                     new TabDefinition('ai', 'AI'),
