@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'An automation can send its email, text or WhatsApp to The customer it is about - the customer of the job the rule fired on, looked up when it runs.',
         'The Jobs list loads faster: it no longer fetches the details of every job on the page, only of the one you open.',
+        'Web Management, Widgets: Review faces. A happy face sends the visitor to your review link, and a sad one opens a short form whose message lands in Leads rather than on Google. The wording, the background it sits on and the face size are set per preset. It shows on sites with version 1.15.0 of the EzBizi website plugin.',
       ],
     ),
     VersionRelease(
