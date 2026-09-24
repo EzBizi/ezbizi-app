@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Monitoring;
 use App\Http\Controllers\Api\Controller;
 use App\Models\MonitoredDevice;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\MonitoringView;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -56,7 +57,14 @@ class DevicesController extends Controller
 
         $devices = MonitoredDevice::query()
             ->with('user:id,name,first_name,last_name,email')
-            ->whereHas('user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor))
+            ->whereHas('user', function (Builder $u) use ($actor) {
+                // GROUPED: constrainToVisiblePeople adds bare OR arms (you, OR
+                // assigned within reach, OR unassigned). Appended after them
+                // ungrouped, the view narrowed only the LAST arm and a sibling
+                // company's person walked in through the middle one.
+                $u->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor));
+                MonitoringView::people($u, $actor);
+            })
             ->orderByDesc('last_seen_at')
             ->get();
 

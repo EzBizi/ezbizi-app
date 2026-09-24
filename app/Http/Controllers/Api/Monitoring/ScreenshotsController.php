@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringScreenshot;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\MonitoringView;
 use App\Support\Monitoring\ScreenMonitoringExemption;
 use App\Support\Monitoring\ScreenshotStore;
 use App\Support\Tenancy\TenantContext;
@@ -227,7 +228,14 @@ class ScreenshotsController extends Controller
     {
         $query = MonitoringScreenshot::query()
             ->whereHas('device', fn (Builder $d) => $d->whereHas(
-                'user', fn (Builder $u) => $this->reach->constrainToVisiblePeople($u, $actor)
+                'user', function (Builder $u) use ($actor) {
+                    // GROUPED: constrainToVisiblePeople adds bare OR arms (you, OR
+                    // assigned within reach, OR unassigned). Appended after them
+                    // ungrouped, the view narrowed only the LAST arm and a sibling
+                    // company's person walked in through the middle one.
+                    $u->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor));
+                    MonitoringView::people($u, $actor);
+                }
             ));
 
         // SECURITY: a Lead Developer's screen is exempt from monitoring, so even

@@ -7,6 +7,7 @@ use App\Models\MonitoredDevice;
 use App\Models\MonitoringFloorPlan;
 use App\Models\User;
 use App\Support\Access\ScopeReach;
+use App\Support\Monitoring\MonitoringView;
 use App\Support\Monitoring\ScheduleSummary;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -76,6 +77,9 @@ class OwnershipController extends Controller
 
         $people = User::query()
             ->where(fn (Builder $q) => $this->reach->constrainToVisiblePeople($q, $actor))
+            // Reach says who this person may see; the view says who is in the
+            // company they are standing in. See MonitoringView.
+            ->tap(fn (Builder $q) => MonitoringView::people($q, $actor))
             ->with('role:id,name')
             ->orderBy('name')
             ->get();
@@ -156,6 +160,10 @@ class OwnershipController extends Controller
 
         $plans = MonitoringFloorPlan::query();
         $this->reach->constrain($plans, $actor);
+        // A desk offered in the picker is somewhere the person is being FILED,
+        // and §3 files on the view. seatsFor() below stays on reach: where a
+        // listed person already sits is a fact about them, not a filing.
+        MonitoringView::plans($plans, $actor);
 
         $free = [];
 
