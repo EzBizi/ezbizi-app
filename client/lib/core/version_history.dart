@@ -8,6 +8,15 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0253',
+      date: '24 Sep 2026',
+      items: [
+        'Clocking in after your working day has ended - which is what the lock screen button does if you press it at 5 PM to get your computer back - now gives a short extension, 30 minutes unless your organization chose another length, instead of a shift that stays open until the 16 hour limit. The reminder still warns you and Extend still works.',
+        'Work Hours can be granted as a person seeing only their own hours. A new tick in Roles, See everyone\'s hours, is what shows the whole team. Every role that could see Work Hours before this still sees everyone, so nobody loses anything today.',
+        'The automation pickers show Marketing as one category. Newsletter, Web Management, Reviews and Business Profile were each their own heading, split the way permissions are rather than the way the Marketing screen is laid out.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0252',
       date: '23 Sep 2026',
       items: [
