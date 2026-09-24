@@ -28,17 +28,19 @@ use Illuminate\Support\Facades\DB;
  *
  * ── WHAT IT WILL NOT TOUCH ──────────────────────────────────────
  *
- * A deletion is the one mistake here nobody sees afterwards, so every rule is
+ * A deletion is the one mistake here nobody sees afterwards, so both rules are
  * about what to leave:
  *
- *  - anything a PERSON made or edited — the API audits every job and customer
- *    it creates (`job.created`, `customer.created`) and every edit, and the
- *    projection audits none of them per record;
  *  - anything without a LINKED twin — an unlinked record with no twin may be
  *    the only copy;
- *  - anything something hangs off — an attachment, or any row in any table
- *    that names it — because that means somebody used it;
- *  - a customer who still has jobs.
+ *  - anything ANY row in ANY table names — a job pointing at a customer (even a
+ *    deleted job), an attachment, a notification, an automation event, an
+ *    audit entry. The last one is what protects what a PERSON made or edited:
+ *    the API audits every job and customer it creates and every edit, and the
+ *    projection audits none of them per record.
+ *
+ * On production on 2026-09-24 nothing, in any of 438 id columns, named any of
+ * the 432 jobs or 500 customers.
  *
  * A job's twin is the same customer, branch, title and appointment. NOT price
  * or status: 0.0.0264's follow pass had already moved those on ten linked
@@ -98,18 +100,13 @@ class RemoveWorkizDuplicates extends Command
      */
     private function removeIn(AuditLogger $audit, bool $dryRun): array
     {
-        $jobTables = $this->tablesWith('job_id', ['workiz_jobs']);
-        $customerTables = $this->tablesWith('customer_id', ['workiz_clients', 'jobs']);
-
         $jobs = 0;
         $jobsKept = 0;
 
         $orphanJobs = Job::query()
             ->whereNotExists(fn ($q) => $q->from('workiz_jobs')->whereColumn('workiz_jobs.job_id', 'jobs.id'))
-            ->whereNotExists(fn ($q) => $q->from('audit_events')
-                ->whereColumn('audit_events.target_id', 'jobs.id')
-                ->where('audit_events.action', 'like', 'job.%'))
             ->get();
+        $named = $this->named($orphanJobs->modelKeys());
 
         foreach ($orphanJobs as $orphan) {
             $twin = Job::query()
@@ -121,7 +118,7 @@ class RemoveWorkizDuplicates extends Command
                 ->whereExists(fn ($q) => $q->from('workiz_jobs')->whereColumn('workiz_jobs.job_id', 'jobs.id'))
                 ->exists();
 
-            if (! $twin || $this->isUsed($orphan->getKey(), 'job_id', $jobTables)) {
+            if (! $twin || isset($named[$orphan->getKey()])) {
                 $jobsKept++;
 
                 continue;
@@ -137,15 +134,12 @@ class RemoveWorkizDuplicates extends Command
         $customers = 0;
         $customersKept = 0;
 
+        // After the jobs, so a job just removed still names its customer: the
+        // scan reads deleted rows too, and a customer anything points at stays.
         $orphanCustomers = Customer::query()
             ->whereNotExists(fn ($q) => $q->from('workiz_clients')->whereColumn('workiz_clients.customer_id', 'customers.id'))
-            ->whereNotExists(fn ($q) => $q->from('audit_events')
-                ->whereColumn('audit_events.target_id', 'customers.id')
-                ->where('audit_events.action', 'like', 'customer.%'))
-            ->whereNotExists(fn ($q) => $q->from('jobs')
-                ->whereColumn('jobs.customer_id', 'customers.id')
-                ->whereNull('jobs.deleted_at'))
             ->get();
+        $named = $this->named($orphanCustomers->modelKeys());
 
         foreach ($orphanCustomers as $orphan) {
             $twin = Customer::query()
@@ -156,7 +150,7 @@ class RemoveWorkizDuplicates extends Command
                 ->whereExists(fn ($q) => $q->from('workiz_clients')->whereColumn('workiz_clients.customer_id', 'customers.id'))
                 ->exists();
 
-            if (! $twin || $this->isUsed($orphan->getKey(), 'customer_id', $customerTables)) {
+            if (! $twin || isset($named[$orphan->getKey()])) {
                 $customersKept++;
 
                 continue;
@@ -181,44 +175,36 @@ class RemoveWorkizDuplicates extends Command
     }
 
     /**
-     * Anything that names this record — an attachment, or a row in any table
-     * with the column — means somebody used it.
+     * Which of these ids some row, in any table, names in any `…_id` column.
      *
-     * Attachments are matched on the id alone rather than the morph type, so a
-     * morph alias cannot make one invisible; ids are UUIDs and never collide.
+     * Every column comes from the schema, not a list, and is matched on the id
+     * alone, not on a column name or morph type: ids are UUIDs and never
+     * collide, so a morph alias (`attachments` says `jobs`) cannot hide a
+     * reference, and the next table to point at a job — a foreign key or a
+     * morph pair, whatever it is called — protects that job the day it exists.
+     * Deleted rows count too. On production the whole scan takes seconds.
      *
-     * @param  list<string>  $tables
+     * @param  list<string>  $ids
+     * @return array<string, true>
      */
-    private function isUsed(string $id, string $column, array $tables): bool
+    private function named(array $ids): array
     {
-        if (DB::table('attachments')->where('attachable_id', $id)->exists()) {
-            return true;
-        }
+        $columns = DB::table('information_schema.COLUMNS')
+            ->where('TABLE_SCHEMA', DB::getDatabaseName())
+            ->where('COLUMN_NAME', 'like', '%\_id')
+            ->whereIn('DATA_TYPE', ['char', 'varchar'])
+            ->get(['TABLE_NAME', 'COLUMN_NAME']);
 
-        foreach ($tables as $table) {
-            if (DB::table($table)->where($column, $id)->exists()) {
-                return true;
+        $named = [];
+
+        foreach ($columns as $column) {
+            foreach (array_chunk($ids, 500) as $chunk) {
+                foreach (DB::table($column->TABLE_NAME)->whereIn($column->COLUMN_NAME, $chunk)->distinct()->pluck($column->COLUMN_NAME) as $id) {
+                    $named[$id] = true;
+                }
             }
         }
 
-        return false;
-    }
-
-    /**
-     * Every table carrying the column, found in the schema rather than listed,
-     * because a list goes stale the day somebody adds a table that points at
-     * a job — and would then remove a record something still hangs off.
-     *
-     * @param  list<string>  $except
-     * @return list<string>
-     */
-    private function tablesWith(string $column, array $except): array
-    {
-        return DB::table('information_schema.COLUMNS')
-            ->where('TABLE_SCHEMA', DB::getDatabaseName())
-            ->where('COLUMN_NAME', $column)
-            ->whereNotIn('TABLE_NAME', $except)
-            ->pluck('TABLE_NAME')
-            ->all();
+        return $named;
     }
 }
