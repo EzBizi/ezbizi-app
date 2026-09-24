@@ -123,12 +123,45 @@ void main() {
     await _pump(tester, width: 1400);
 
     // The call rang Ada and Bo; Bo picked it up. It has to appear under Ada —
-    // her Rang column counts it — and it must not look like time she spent.
+    // her Rang column counts it — saying in WORDS who took it, with its talk
+    // time. Jose, 2026-09-24: the icons were unreadable and the rows that
+    // said "rang" read as a missing time.
+    // Bo's own avg-talk cell already reads 5:00, so the call's is counted
+    // as the one that APPEARS.
+    final before = find.text('5:00').evaluate().length;
+
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Blocked drain'), findsOneWidget);
-    expect(find.text('rang'), findsOneWidget);
+    expect(find.text('Rang · Bo answered'), findsOneWidget);
+    expect(find.text('5:00'), findsNWidgets(before + 1));
+  });
+
+  // ── the Reached nobody card ────────────────────────────────────
+
+  testWidgets('Reached nobody opens onto its calls, narrowed by reason', (
+    tester,
+  ) async {
+    await _pump(tester, width: 1400);
+
+    expect(find.textContaining('Burst pipe'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('stat-reached-nobody')));
+    await tester.pumpAndSettle();
+
+    // Both reasons, counted, and neither answered call.
+    expect(find.text('Missed call (1)'), findsOneWidget);
+    expect(find.text('Spam call (1)'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsOneWidget);
+    expect(find.textContaining('Silent line'), findsOneWidget);
+    expect(find.textContaining('Kitchen tap'), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('nobody-spam')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Silent line'), findsOneWidget);
+    expect(find.textContaining('Burst pipe'), findsNothing);
   });
 
   testWidgets('only one person is open at a time', (tester) async {
@@ -304,6 +337,7 @@ const _report = {
       'recording_id': 'rec-1',
       'answered_by': 'Ada',
       'rang': ['Ada'],
+      'outcome': 'answered',
     },
     {
       'id': 'c2',
@@ -316,6 +350,33 @@ const _report = {
       'recording_id': null,
       'answered_by': 'Bo',
       'rang': ['Ada', 'Bo'],
+      'outcome': 'answered',
+    },
+    {
+      'id': 'c3',
+      'started_at': '2026-09-16T16:00:00Z',
+      'from': '+15550003333',
+      'caller_label': 'Burst pipe',
+      'queue': 'New Client',
+      'result': 'Missed',
+      'talk_seconds': null,
+      'recording_id': null,
+      'answered_by': null,
+      'rang': [],
+      'outcome': 'missed',
+    },
+    {
+      'id': 'c4',
+      'started_at': '2026-09-16T16:10:00Z',
+      'from': '+15550004444',
+      'caller_label': 'Silent line',
+      'queue': null,
+      'result': 'Accepted',
+      'talk_seconds': null,
+      'recording_id': null,
+      'answered_by': null,
+      'rang': [],
+      'outcome': 'spam',
     },
   ],
 };

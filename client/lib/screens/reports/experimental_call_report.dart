@@ -72,6 +72,10 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
   String? _connectError;
   bool _showConnect = false;
 
+  /// The Reached nobody card, opened, and which reason it is narrowed to.
+  bool _nobodyOpen = false;
+  String? _nobodyFilter;
+
   @override
   void dispose() {
     _token.dispose();
@@ -246,6 +250,8 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _totals(context, totals)),
+            if (_nobodyOpen)
+              SliverToBoxAdapter(child: _reachedNobody(context, calls)),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
             SliverToBoxAdapter(child: _coverage(context, report)),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
@@ -324,7 +330,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
       children: [
         _stat(context, 'Calls', totals['calls']),
         _stat(context, 'Answered', totals['answered']),
-        _stat(context, 'Reached nobody', totals['reached_nobody']),
+        _stat(
+          context,
+          'Reached nobody',
+          totals['reached_nobody'],
+          key: const ValueKey('stat-reached-nobody'),
+          open: _nobodyOpen,
+          onTap: () => setState(() => _nobodyOpen = !_nobodyOpen),
+        ),
         _stat(context, 'New client', totals['new_client']),
         _stat(context, 'Existing client', totals['existing_client']),
         _stat(context, 'Jobs booked', totals['jobs']),
@@ -333,21 +346,120 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _stat(BuildContext context, String label, Object? value) {
+  Widget _stat(
+    BuildContext context,
+    String label,
+    Object? value, {
+    Key? key,
+    bool open = false,
+    VoidCallback? onTap,
+  }) {
     final theme = Theme.of(context);
 
+    return Material(
+      key: key,
+      color: open
+          ? theme.colorScheme.secondaryContainer
+          : theme.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, style: theme.textTheme.bodySmall),
+                  // A card that opens says so, or nobody finds out it does.
+                  if (onTap != null)
+                    Icon(
+                      open ? Icons.expand_less : Icons.expand_more,
+                      size: 16,
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Why a call reached nobody, in Jose's words (2026-09-24). The server
+  /// decides which is which from RingCentral's result; this only names them.
+  static const _outcomes = {
+    'missed': 'Missed call',
+    'voicemail': 'Voicemail',
+    'spam': 'Spam call',
+    'blocked': 'Blocked',
+    'other': 'Other',
+  };
+
+  /// The calls behind the Reached nobody card, narrowed by reason.
+  Widget _reachedNobody(
+    BuildContext context,
+    List<Map<String, dynamic>> calls,
+  ) {
+    final theme = Theme.of(context);
+    final nobody = calls.where((c) => c['outcome'] != 'answered').toList();
+
+    final counts = <String, int>{};
+    for (final call in nobody) {
+      final outcome = '${call['outcome']}';
+      counts[outcome] = (counts[outcome] ?? 0) + 1;
+    }
+
+    final shown = _nobodyFilter == null
+        ? nobody
+        : nobody.where((c) => c['outcome'] == _nobodyFilter).toList();
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('${value ?? 0}', style: theme.textTheme.headlineSmall),
-          Text(label, style: theme.textTheme.bodySmall),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final entry in _outcomes.entries)
+                // A reason with no calls is still offered, at zero, so the
+                // choices do not change shape from day to day - except
+                // Other, which exists only to keep the count honest.
+                if (entry.key != 'other' || (counts['other'] ?? 0) > 0)
+                  FilterChip(
+                    key: ValueKey('nobody-${entry.key}'),
+                    label: Text('${entry.value} (${counts[entry.key] ?? 0})'),
+                    selected: _nobodyFilter == entry.key,
+                    onSelected: (on) =>
+                        setState(() => _nobodyFilter = on ? entry.key : null),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Missed call: rang a line or queue, nobody picked up. '
+            'Voicemail: the caller left a message. '
+            'Spam call: hung up in the phone menu without pressing anything. '
+            'Blocked: a blocked or rejected number.',
+            style: theme.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 8),
+          if (shown.isEmpty)
+            Text('No calls.', style: theme.textTheme.bodyMedium)
+          else
+            for (final call in shown) _call(context, null, call),
         ],
       ),
     );
@@ -890,10 +1002,24 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
     );
   }
 
-  Widget _call(BuildContext context, String name, Map<String, dynamic> call) {
+  /// One call. [name] is the person whose list it sits in, or null in the
+  /// Reached nobody list.
+  Widget _call(BuildContext context, String? name, Map<String, dynamic> call) {
     final theme = Theme.of(context);
-    final answered = call['answered_by'] == name;
+    final by = call['answered_by'];
     final id = call['recording_id']?.toString();
+
+    // Said in words. Jose, 2026-09-24: "hard to understand what the icons
+    // mean" - an arrow and a bell told nobody which was which.
+    final status = by == null
+        ? (_outcomes[call['outcome']] ?? 'Nobody answered')
+        : by == name
+        ? 'Answered'
+        : 'Rang · $by answered';
+
+    // Talk time on EVERY answered call, whoever took it. It used to say
+    // "rang" on calls this person did not take, which read as a missing time.
+    final talk = by == null ? 'no talk' : _mmss(call['talk_seconds']);
     final error = id == null ? null : _recordingErrors[id];
 
     return Padding(
@@ -903,10 +1029,14 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
         children: [
           Row(
             children: [
-              Icon(
-                answered ? Icons.call_received : Icons.ring_volume_outlined,
-                size: 16,
-                color: theme.colorScheme.outline,
+              Text(
+                status,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: by != null && by == name
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -917,14 +1047,7 @@ class _ExperimentalCallReportState extends State<ExperimentalCallReport> {
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
-              Text(
-                answered
-                    ? _mmss(call['talk_seconds'])
-                    // Not a duration: they did not take it. Showing the
-                    // record's length here would read as time they spent.
-                    : 'rang',
-                style: theme.textTheme.bodySmall,
-              ),
+              Text(talk, style: theme.textTheme.bodySmall),
             ],
           ),
           if (id != null)
@@ -1105,7 +1228,11 @@ class _StickyHeader extends SliverPersistentHeaderDelegate {
   double get maxExtent => _height;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return SizedBox(height: _height, child: child);
   }
 

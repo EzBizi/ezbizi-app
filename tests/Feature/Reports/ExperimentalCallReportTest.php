@@ -106,6 +106,45 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertSame(1, $day['totals']['new_client']);
     }
 
+    /**
+     * A call that RANG people and was taken by none reached nobody too.
+     *
+     * The card used to count only calls that rang no phone, so these sat in
+     * neither Answered nor Reached nobody and the three cards did not add up.
+     */
+    public function test_a_call_that_rang_and_was_not_answered_reached_nobody(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [['Trey Brannan', 'No Answer']], result: 'Missed'),
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']]),
+        ]);
+
+        $totals = $this->reconcile()['totals'];
+
+        $this->assertSame(1, $totals['reached_nobody']);
+        $this->assertSame($totals['calls'], $totals['answered'] + $totals['reached_nobody']);
+    }
+
+    /** Each call says why it reached nobody, from RingCentral's own result. */
+    public function test_each_call_says_why_it_reached_nobody(): void
+    {
+        $this->fakeCallLog([
+            $this->inbound(rang: [], result: 'Accepted'),
+            $this->inbound(rang: [], queue: RingCentralCallLog::NEW_CLIENT_QUEUE, result: 'Missed'),
+            $this->inbound(rang: [], result: 'Voicemail'),
+            $this->inbound(rang: [], result: 'Blocked'),
+            $this->inbound(rang: [], result: 'Rejected'),
+            $this->inbound(rang: [], result: 'Something new'),
+            // Answered wins over the record's result, whatever it says.
+            $this->inbound(rang: [['Trey Brannan', 'Call connected']], result: 'Missed'),
+        ]);
+
+        $this->assertSame(
+            ['spam', 'missed', 'voicemail', 'blocked', 'blocked', 'other', 'answered'],
+            array_column($this->reconcile()['calls'], 'outcome'),
+        );
+    }
+
     // ── new versus existing ──────────────────────────────────────
 
     /** The split is the queue the caller chose, not a guess from their number. */
@@ -522,7 +561,7 @@ class ExperimentalCallReportTest extends TestCase
         $this->assertFalse($this->person($day, 'Chaim Perez')['in_jobs']);
     }
 
-    private function inbound(array $rang, ?string $queue = null, int $talkSeconds = 148, int $recordSeconds = 197): array
+    private function inbound(array $rang, ?string $queue = null, int $talkSeconds = 148, int $recordSeconds = 197, string $result = 'Accepted'): array
     {
         $legs = [[
             'legType' => 'Accept',
@@ -557,7 +596,7 @@ class ExperimentalCallReportTest extends TestCase
         return [
             'id' => '1234567890',
             'direction' => 'Inbound',
-            'result' => 'Accepted',
+            'result' => $result,
             'startTime' => '2026-09-14T13:21:11.795Z',
             'from' => ['phoneNumber' => '+17579553189', 'name' => 'PERRON,NICOLE'],
             'to' => ['phoneNumber' => '+18888602433', 'name' => 'Main - IVR'],

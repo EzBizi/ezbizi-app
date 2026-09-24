@@ -98,7 +98,11 @@ final class CallReconciliation
         $existingTotal = 0;
 
         foreach ($calls as $call) {
-            if ($call['rang'] === []) {
+            // Nobody ANSWERED, not nobody rang: a call that rang three phones
+            // and was picked up by none reached nobody too. Measured 9/23: 25
+            // such calls sat in neither card, so Answered + Reached nobody did
+            // not add up to Calls.
+            if (($call['answered_by'] ?? null) === null) {
                 $reachedNobody++;
             }
 
@@ -263,6 +267,7 @@ final class CallReconciliation
                 'caller_label' => $call['caller_label'] ?? null,
                 'queue' => $call['queue'] ?? null,
                 'result' => $call['result'] ?? null,
+                'outcome' => $this->outcome($call),
                 'talk_seconds' => $call['talk_seconds'] ?? null,
                 'recording_id' => $call['recording_id'] ?? null,
                 'answered_by' => $this->canonical($call['answered_by'] ?? null),
@@ -272,6 +277,33 @@ final class CallReconciliation
                 ))),
             ], $calls),
         ];
+    }
+
+    /**
+     * Why a call reached nobody, in Jose's words (2026-09-24).
+     *
+     * Read off RingCentral's record `result`, measured on 9/23's 664 inbound
+     * calls: `Accepted` with no answer is a caller who sat in the IVR and
+     * pressed nothing (136), `Missed` rang a queue or phone and nobody took it
+     * (95), `Voicemail` left a message (12), `Blocked`/`Rejected` never got
+     * in (14). Anything else is `other` rather than folded into a bucket it
+     * was never measured in.
+     *
+     * @param  array<string, mixed>  $call
+     */
+    private function outcome(array $call): string
+    {
+        if (($call['answered_by'] ?? null) !== null) {
+            return 'answered';
+        }
+
+        return match ($call['result'] ?? null) {
+            'Accepted' => 'spam',
+            'Missed' => 'missed',
+            'Voicemail' => 'voicemail',
+            'Blocked', 'Rejected' => 'blocked',
+            default => 'other',
+        };
     }
 
     /**
