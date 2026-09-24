@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0262',
+      date: '24 Sep 2026',
+      items: [
+        'Automations has sixteen more templates, across leads, jobs, phone, reviews, the team, social posts, the website and computers. The template list has a search bar, which also matches where a template runs.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0261',
       date: '24 Sep 2026',
       items: [
