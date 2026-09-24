@@ -7,6 +7,7 @@ use App\Models\Job;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
@@ -74,8 +75,26 @@ class RemoveWorkizDuplicatesTest extends TestCase
         });
     }
 
+    /** Made during the race's minutes — the only records the command considers. */
+    private function duringTheRace(callable $make): mixed
+    {
+        $this->travelTo(Carbon::parse('2026-09-23 20:37:05', 'UTC'));
+
+        try {
+            return $make();
+        } finally {
+            $this->travelBack();
+        }
+    }
+
     /** A job exactly as the race left it: same work, no mirror row pointing at it. */
     private function duplicateOf(array $tenant, Job $twin, array $overrides = []): Job
+    {
+        return $this->duringTheRace(fn () => $this->lookalikeOf($tenant, $twin, $overrides));
+    }
+
+    /** The same work, made whenever the test is running — NOT during the race. */
+    private function lookalikeOf(array $tenant, Job $twin, array $overrides = []): Job
     {
         return $this->inTenant($tenant['org'], fn () => Job::create(array_merge([
             'franchise_id' => $twin->franchise_id,
@@ -90,6 +109,11 @@ class RemoveWorkizDuplicatesTest extends TestCase
     }
 
     private function duplicateCustomerOf(array $tenant, Customer $twin): Customer
+    {
+        return $this->duringTheRace(fn () => $this->lookalikeCustomerOf($tenant, $twin));
+    }
+
+    private function lookalikeCustomerOf(array $tenant, Customer $twin): Customer
     {
         return $this->inTenant($tenant['org'], fn () => Customer::create([
             'owning_franchise_id' => $twin->owning_franchise_id,
@@ -263,6 +287,33 @@ class RemoveWorkizDuplicatesTest extends TestCase
         $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
 
         $this->assertTrue($this->alive($tenant, Customer::class, $duplicate->id));
+    }
+
+    /**
+     * The Customers session's case: a customer imported by CSV has no
+     * per-record audit row and nothing naming it. If it is also a Workiz client,
+     * it passes every other rule. It was not made by the race, so it stays.
+     */
+    public function test_a_lookalike_customer_made_outside_the_race_is_kept(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$twin] = $this->projected($tenant, 'CT0012');
+        $imported = $this->lookalikeCustomerOf($tenant, $twin);
+
+        $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
+
+        $this->assertTrue($this->alive($tenant, Customer::class, $imported->id));
+    }
+
+    public function test_a_lookalike_job_made_outside_the_race_is_kept(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [, $twin] = $this->projected($tenant, 'CT0013');
+        $lookalike = $this->lookalikeOf($tenant, $twin);
+
+        $this->artisan('ezbizi:workiz-remove-duplicates')->assertSuccessful();
+
+        $this->assertTrue($this->alive($tenant, Job::class, $lookalike->id));
     }
 
     public function test_a_dry_run_removes_nothing_and_says_what_it_would(): void

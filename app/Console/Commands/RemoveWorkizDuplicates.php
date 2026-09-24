@@ -28,9 +28,14 @@ use Illuminate\Support\Facades\DB;
  *
  * ── WHAT IT WILL NOT TOUCH ──────────────────────────────────────
  *
- * A deletion is the one mistake here nobody sees afterwards, so both rules are
+ * A deletion is the one mistake here nobody sees afterwards, so every rule is
  * about what to leave:
  *
+ *  - anything created outside the race's two minutes (RACE). "Unlinked and
+ *    unreferenced" is an absence; this is the positive fact. It is the Customers
+ *    session's condition: a customer imported by CSV has no per-record audit
+ *    row and nothing naming it, so a CSV copy of a Workiz client would
+ *    otherwise pass every other rule;
  *  - anything without a LINKED twin — an unlinked record with no twin may be
  *    the only copy;
  *  - anything ANY row in ANY table names — a job pointing at a customer (even a
@@ -39,8 +44,9 @@ use Illuminate\Support\Facades\DB;
  *    the API audits every job and customer it creates and every edit, and the
  *    projection audits none of them per record.
  *
- * On production on 2026-09-24 nothing, in any of 438 id columns, named any of
- * the 432 jobs or 500 customers.
+ * On production on 2026-09-24 nothing, in any of 438 id columns or 138 JSON and
+ * text columns, named any of the 432 jobs or 500 customers, and no CSV import
+ * had ever run in an organization with Workiz.
  *
  * A job's twin is the same customer, branch, title and appointment. NOT price
  * or status: 0.0.0264's follow pass had already moved those on ten linked
@@ -54,6 +60,15 @@ class RemoveWorkizDuplicates extends Command
         {--dry-run : Report what would be removed and remove nothing}';
 
     protected $description = 'Remove the duplicate jobs and customers the 2026-09-23 Workiz projection race left behind';
+
+    /**
+     * The overlapping runs' own minutes, UTC. Measured on production: the 500
+     * customers were created 20:36:57 to 20:37:10 and the 432 jobs 20:37:12 to
+     * 20:37:29, around the two runs' `customer.imported` audit rows (20:37:10,
+     * limit 500; 20:37:12, limit 10000). The runs before and after wrote theirs
+     * at 20:31:14 and 20:42:09.
+     */
+    private const RACE = ['2026-09-23 20:36:00', '2026-09-23 20:38:00'];
 
     public function handle(TenantContext $tenant, AuditLogger $audit): int
     {
@@ -104,6 +119,7 @@ class RemoveWorkizDuplicates extends Command
         $jobsKept = 0;
 
         $orphanJobs = Job::query()
+            ->whereBetween('created_at', self::RACE)
             ->whereNotExists(fn ($q) => $q->from('workiz_jobs')->whereColumn('workiz_jobs.job_id', 'jobs.id'))
             ->get();
         $named = $this->named($orphanJobs->modelKeys());
@@ -137,6 +153,7 @@ class RemoveWorkizDuplicates extends Command
         // After the jobs, so a job just removed still names its customer: the
         // scan reads deleted rows too, and a customer anything points at stays.
         $orphanCustomers = Customer::query()
+            ->whereBetween('created_at', self::RACE)
             ->whereNotExists(fn ($q) => $q->from('workiz_clients')->whereColumn('workiz_clients.customer_id', 'customers.id'))
             ->get();
         $named = $this->named($orphanCustomers->modelKeys());
