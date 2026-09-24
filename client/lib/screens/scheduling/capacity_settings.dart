@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
+import '../../widgets/search_picker.dart';
 
 /// Capacity settings — the area rail, the pattern overview, and one area's grid.
 ///
@@ -1579,25 +1580,40 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           '${(minutes % 60).toString().padLeft(2, '0')}',
   ];
 
-  Widget _timeField(String value, ValueChanged<String> onChanged, String key) {
-    // A stored window off the half-hour grid is still offered, or the
-    // dropdown would have no item matching its own value and throw.
+  /// A time of day, picked from half-hour steps with a search box — "10"
+  /// finds 10 AM and 10:30 AM rather than scrolling through thirty-five.
+  ///
+  /// NOT a DropdownButton. Jose, 2026-09-17: "this sort of popup dropdown
+  /// are terrible ui design, anything that offers users should be a search
+  /// bar picker instead" — and `no_popup_dropdown_test.dart` enforces it
+  /// across lib/. The first version of this card used one and turned that
+  /// guard red; the scheduling tests alone never ran it.
+  Widget _timeField(
+    String value,
+    ValueChanged<String> onChanged,
+    String key,
+    String label,
+  ) {
+    // A stored window off the half-hour grid is still offered, or the field
+    // would show a value that is not among its own options.
     final options = _times.contains(value)
         ? _times
         : ([..._times, value]..sort());
 
-    return DropdownButton<String>(
-      key: ValueKey(key),
-      value: value,
-      isDense: true,
-      underline: const SizedBox.shrink(),
-      items: [
-        for (final t in options)
-          DropdownMenuItem(value: t, child: Text(_label(t))),
-      ],
-      onChanged: (v) {
-        if (v != null) onChanged(v);
-      },
+    return SizedBox(
+      width: 132,
+      child: SearchPickerField<String>(
+        key: ValueKey(key),
+        value: value,
+        label: label,
+        isDense: true,
+        options: [
+          for (final t in options) SearchOption(value: t, label: _label(t)),
+        ],
+        onChanged: (v) {
+          if (v != null) onChanged(v);
+        },
+      ),
     );
   }
 
@@ -1614,12 +1630,13 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           _draftStart,
           (v) => setState(() => _draftStart = v),
           'slot-draft-start',
+          'From',
         ),
-        Text('to', style: theme.textTheme.bodySmall?.copyWith(color: muted)),
         _timeField(
           _draftEnd,
           (v) => setState(() => _draftEnd = v),
           'slot-draft-end',
+          'To',
         ),
         FilledButton.tonal(onPressed: _saveTimeSlot, child: Text(saveLabel)),
         if (_editingSlotId != null)
