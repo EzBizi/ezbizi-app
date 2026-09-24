@@ -57,6 +57,9 @@ final class WhatsAppStaffBot
     /** More than this and the reply stops being readable on a phone. */
     private const MAX_LOCATIONS = 5;
 
+    /** The `group` value Web Management gives every A1 Chimney site. */
+    private const BRAND = 'A1 Chimney';
+
     public function __construct(private readonly WhatsAppCloud $cloud) {}
 
     public function handles(string $phoneNumberId): bool
@@ -191,26 +194,76 @@ final class WhatsAppStaffBot
      */
     private function locationsMatching(string $query): Collection
     {
-        $like = '%'.addcslashes($query, '%_\\').'%';
+        $q = trim($query);
 
-        $siteIds = WebValue::query()
-            ->where('path', '')
-            ->whereIn('key', ['city', 'state', 'company_name'])
-            ->where('value', 'like', $like)
-            ->distinct()
-            ->pluck('site_id');
+        /*
+         * SHORT QUERIES MATCH WHOLE, NEVER AS A SUBSTRING.
+         *
+         * Measured against production before go-live, 2026-09-24. A tech
+         * typing a branch code - "CHI" - substring-matched the company NAME,
+         * and "chi" is inside "Chimney", so it matched all 43 A1 Chimney
+         * sites and the real Chicago branch drowned among them. A state has
+         * the same trap in addresses: "oh" is inside "John".
+         *
+         * So three characters or fewer is a code or a state, matched exactly:
+         * the `state` field, or the branch code after " - " in the name.
+         */
+        if (mb_strlen($q) <= 3) {
+            $ids = WebValue::query()
+                ->where('path', '')
+                ->where(fn ($w) => $w
+                    ->where(fn ($x) => $x->where('key', 'state')->where('value', $q))
+                    ->orWhere(fn ($x) => $x->where('key', 'company_name')->where(fn ($y) => $y
+                        ->where('value', 'like', '% - '.$q)
+                        ->orWhere('value', 'like', '% - '.$q.' - %'))))
+                ->distinct()
+                ->pluck('site_id');
+        } else {
+            /*
+             * A CITY LIVES IN `service_area`, NOT IN `city`.
+             *
+             * Also measured, not assumed: Cleveland's branch has `city` =
+             * "Warrensville Heights" and `service_area` = "Cleveland, Ohio".
+             * The word a tech types is the one the site SERVES, so searching
+             * `city` alone missed it. The address is searched too, for a
+             * street or a suburb somebody remembers.
+             */
+            $like = '%'.addcslashes($q, '%_\\').'%';
 
-        if ($siteIds->isEmpty()) {
+            $ids = WebValue::query()
+                ->where('path', '')
+                ->whereIn('key', ['service_area', 'city', 'address'])
+                ->where('value', 'like', $like)
+                ->distinct()
+                ->pluck('site_id');
+        }
+
+        if ($ids->isEmpty()) {
             return collect();
         }
 
+        /*
+         * A1 CHIMNEY ONLY. The organization also runs Everdoors and A1 Garage
+         * Door, which surfaced in the same search; this is the chimney staff
+         * line, and a tech handed a garage-door number calls the wrong
+         * business. `group` is the field that says which brand a site is.
+         */
+        $chimney = WebValue::query()
+            ->where('path', '')
+            ->where('key', 'group')
+            ->where('value', self::BRAND)
+            ->pluck('site_id');
+
         return WebValue::query()
             ->where('path', '')
-            ->whereIn('site_id', $siteIds)
+            ->whereIn('site_id', $ids->intersect($chimney))
             ->whereIn('key', ['company_name', 'phone', 'address', 'service_area', 'maps_url'])
             ->get(['site_id', 'key', 'value'])
             ->groupBy('site_id')
             ->map(fn (Collection $rows) => $rows->pluck('value', 'key')->all())
+            // An ad landing page duplicates its branch - same phone, same
+            // area - so a tech would see every such branch twice.
+            ->reject(fn (array $site) => (bool) preg_match('/-\s*ads\s*$/i', $site['company_name'] ?? ''))
             // A site with no phone and no address has nothing to tell a tech.
             ->filter(fn (array $site) => ($site['phone'] ?? '') !== '' || ($site['address'] ?? '') !== '')
             ->sortBy(fn (array $site) => $site['company_name'] ?? '')

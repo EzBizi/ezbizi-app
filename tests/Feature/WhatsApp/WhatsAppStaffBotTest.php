@@ -65,9 +65,17 @@ class WhatsAppStaffBotTest extends TestCase
         ]);
     }
 
-    /** @param array<string, string> $values */
+    /**
+     * A site as Web Management actually stores one. Defaults to the A1 Chimney
+     * brand, because that is what the bot serves; pass 'group' => null to seed
+     * another brand.
+     *
+     * @param  array<string, string|null>  $values
+     */
     private function site(array $t, array $values): void
     {
+        $values = array_filter(['group' => 'A1 Chimney', ...$values], fn ($v) => $v !== null);
+
         $this->inTenant($t['org'], function () use ($t, $values) {
             // The Web module's own fixture shape: `token_hash` is NOT NULL and
             // deliberately not fillable, so it is set on the instance.
@@ -198,39 +206,117 @@ class WhatsAppStaffBotTest extends TestCase
         $this->assertStringContainsString('free-access', $this->sent[0]['text']['body']);
     }
 
-    public function test_a_city_returns_that_locations_phone_and_address(): void
+    public function test_a_city_is_found_by_the_area_it_serves_not_its_street_address(): void
     {
         $t = $this->provisionTenant('A1-Group');
         $this->configured();
         $this->number($t, self::BOT);
 
+        /*
+         * The REAL Cleveland row, measured on production: its `city` is
+         * "Warrensville Heights" and "Cleveland" appears only in
+         * `service_area`. A search on `city` alone - the first draft - found
+         * nothing for the word a tech would actually type.
+         */
         $this->site($t, [
-            'company_name' => 'A1 Chimney - CHI',
-            'city' => 'Chicago',
-            'state' => 'IL',
-            'phone' => '(312) 555-0142',
-            'address' => '100 N Wacker Dr, Chicago, IL 60606',
-            'service_area' => 'Chicago, Evanston, Oak Park',
+            'company_name' => 'A1 Chimney - CLE',
+            'city' => 'Warrensville Heights',
+            'state' => 'OH',
+            'service_area' => 'Cleveland, Ohio',
+            'address' => '4440 Warrensville Center Rd, Warrensville Heights, OH 44128',
+            'phone' => '(888) 282-9555',
         ]);
         $this->site($t, [
-            'company_name' => 'A1 Chimney - NJ',
-            'city' => 'Newark',
-            'state' => 'NJ',
-            'phone' => '(973) 555-0199',
+            'company_name' => 'A1 Chimney - ATL',
+            'city' => 'Atlanta',
+            'state' => 'GA',
+            'service_area' => 'Atlanta, Georgia',
+            'phone' => '(888) 283-2999',
         ]);
 
-        $this->inbound(self::BOT, $this->text('Chicago'))->assertOk();
+        $this->inbound(self::BOT, $this->text('Cleveland'))->assertOk();
 
         $body = $this->sent[0]['text']['body'];
+        $this->assertStringContainsString('A1 Chimney - CLE', $body);
+        $this->assertStringContainsString('(888) 282-9555', $body);
+        // Only the match - a search returning every site passes the above.
+        $this->assertStringNotContainsString('(888) 283-2999', $body);
+    }
 
-        $this->assertStringContainsString('A1 Chimney - CHI', $body);
-        $this->assertStringContainsString('(312) 555-0142', $body);
-        $this->assertStringContainsString('100 N Wacker Dr', $body);
-        $this->assertStringContainsString('Evanston', $body);
+    public function test_a_short_query_is_not_matched_inside_the_brand_name(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
 
-        // And ONLY the match. A search that returned every site would pass
-        // every assertion above.
-        $this->assertStringNotContainsString('(973) 555-0199', $body);
+        $this->site($t, ['company_name' => 'A1 Chimney - CLE', 'state' => 'OH', 'phone' => '(888) 282-9555']);
+        $this->site($t, ['company_name' => 'A1 Chimney - ATL', 'state' => 'GA', 'phone' => '(888) 283-2999']);
+
+        /*
+         * THE TRAP MEASURED ON PRODUCTION: "chi" is inside "Chimney".
+         *
+         * There is no CHI branch here. A substring search on the name matched
+         * EVERY A1 Chimney site, so a tech asking for Chicago was handed the
+         * whole list. A short query must match a code whole or not at all.
+         */
+        $this->inbound(self::BOT, $this->text('chi'))->assertOk();
+
+        $this->assertSame('interactive', $this->sent[0]['type'], '"chi" matched the brand name, not a branch');
+        $this->assertStringContainsString('No location matched', $this->sent[0]['interactive']['body']['text']);
+    }
+
+    public function test_a_branch_code_finds_exactly_that_branch(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        $this->site($t, ['company_name' => 'A1 Chimney - CLE', 'state' => 'OH', 'phone' => '(888) 282-9555']);
+        $this->site($t, ['company_name' => 'A1 Chimney - ATL', 'state' => 'GA', 'phone' => '(888) 283-2999']);
+
+        // The positive control for the test above: a code DOES match, whole.
+        $this->inbound(self::BOT, $this->text('CLE'))->assertOk();
+
+        $body = $this->sent[0]['text']['body'];
+        $this->assertStringContainsString('(888) 282-9555', $body);
+        $this->assertStringNotContainsString('(888) 283-2999', $body);
+    }
+
+    public function test_another_brand_in_the_same_organization_is_left_out(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        $this->site($t, ['company_name' => 'A1 Chimney - NJ', 'state' => 'NJ', 'phone' => '(888) 657-9555']);
+
+        // Measured alongside it on production: the same organization runs
+        // Everdoors. Handed that number, a chimney tech calls a garage-door
+        // company.
+        $this->site($t, ['company_name' => 'Everdoors - NJ', 'state' => 'NJ',
+            'phone' => '(856) 886-4686', 'group' => null]);
+
+        $this->inbound(self::BOT, $this->text('NJ'))->assertOk();
+
+        $body = $this->sent[0]['text']['body'];
+        $this->assertStringContainsString('(888) 657-9555', $body);
+        $this->assertStringNotContainsString('Everdoors', $body);
+    }
+
+    public function test_an_ad_landing_page_does_not_list_its_branch_twice(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        // Five of the 43 A1 Chimney sites are "- Ads" copies of a branch.
+        $this->site($t, ['company_name' => 'A1 Chimney - NJ', 'state' => 'NJ', 'phone' => '(888) 657-9555']);
+        $this->site($t, ['company_name' => 'A1 Chimney - NJ - Ads', 'state' => 'NJ', 'phone' => '(888) 657-9555']);
+
+        $this->inbound(self::BOT, $this->text('NJ'))->assertOk();
+
+        $this->assertSame(1, substr_count($this->sent[0]['text']['body'], '(888) 657-9555'),
+            'the ad landing page listed its branch a second time');
     }
 
     public function test_a_search_never_sees_another_organizations_sites(): void
@@ -241,7 +327,8 @@ class WhatsAppStaffBotTest extends TestCase
         $this->number($mine, self::BOT);
 
         // The only Chicago site belongs to somebody else.
-        $this->site($other, ['company_name' => 'Premier - CHI', 'city' => 'Chicago', 'phone' => '(312) 555-0000']);
+        $this->site($other, ['company_name' => 'A1 Chimney - CHI', 'service_area' => 'Chicago, Illinois',
+            'phone' => '(312) 555-0000']);
 
         $this->inbound(self::BOT, $this->text('Chicago'))->assertOk();
 
