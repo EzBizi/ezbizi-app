@@ -176,9 +176,11 @@ class ProjectWorkizRecords extends Command
     {
         $touched = 0;
 
+        // No orderBy here, ever: chunkById pages on `id > last id`, so ordering
+        // by anything else skips rows. orderBy('booked_at') did, on production:
+        // 828 of 8,054 rows were never read, and 148 jobs never got a client.
         WorkizJob::query()
             ->whereNotNull('client_id')
-            ->orderBy('booked_at')
             ->chunkById(500, function ($mirrored) use (&$touched, $dryRun) {
                 foreach ($mirrored as $job) {
                     $payload = $job->payload ?? [];
@@ -207,13 +209,20 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    // Ordered oldest first, so the LAST write wins and that is
-                    // the most recent job — which is the rule stated in the
-                    // migration rather than an accident of iteration.
-                    WorkizClient::query()->updateOrCreate(
+                    $client = WorkizClient::query()->firstOrNew(
                         ['franchise_id' => $job->franchise_id, 'client_id' => $job->client_id],
-                        $attributes,
                     );
+
+                    // The most recent job wins, decided by its date rather than
+                    // by the order rows are read in: the history import landed
+                    // old jobs AFTER newer ones. An undated job never overwrites
+                    // a dated one.
+                    if ($client->exists && $client->last_seen_at !== null
+                        && ($job->booked_at === null || $job->booked_at->lt($client->last_seen_at))) {
+                        continue;
+                    }
+
+                    $client->fill($attributes)->save();
 
                     $touched++;
                 }

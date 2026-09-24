@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -187,6 +188,76 @@ class ProjectWorkizRecordsTest extends TestCase
 
         $this->assertSame('new@example.test', $client->email);
         $this->assertSame('NEW001', $client->from_remote_job_id);
+    }
+
+    /** Give a mirror row a chosen id, so a test can say which one landed first. */
+    private function rekey(WorkizJob $row, string $id): void
+    {
+        DB::table('workiz_jobs')->where('id', $row->id)->update(['id' => $id]);
+    }
+
+    /**
+     * An older job that LANDS later — the history import's shape — must not
+     * overwrite the newer job's contact block. Latest wins by date, not by the
+     * order the rows happen to be read in.
+     */
+    public function test_an_older_job_landing_later_does_not_overwrite_the_newer_contact(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $new = $this->mirror($tenant, [], ['UUID' => 'NEW002', 'CreatedDate' => '2026-06-01 09:00:00', 'Email' => 'new@example.test']);
+        $old = $this->mirror($tenant, [], ['UUID' => 'OLD002', 'CreatedDate' => '2025-01-01 09:00:00', 'Email' => 'old@example.test']);
+        $this->rekey($new, '00000000-0000-7000-8000-000000000001');
+        $this->rekey($old, '00000000-0000-7000-8000-000000000002');
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $client = $this->inTenant($tenant['org'], fn () => WorkizClient::query()->first());
+
+        $this->assertSame('new@example.test', $client->email);
+        $this->assertSame('NEW002', $client->from_remote_job_id);
+    }
+
+    public function test_an_undated_job_never_overwrites_a_dated_contact(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dated = $this->mirror($tenant, [], ['UUID' => 'DATED1', 'CreatedDate' => '2026-06-01 09:00:00', 'Email' => 'dated@example.test']);
+        $undated = $this->mirror($tenant, ['booked_at' => null], ['UUID' => 'UNDAT1', 'Email' => 'undated@example.test']);
+        $this->rekey($dated, '00000000-0000-7000-8000-000000000001');
+        $this->rekey($undated, '00000000-0000-7000-8000-000000000002');
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame('dated@example.test', $this->inTenant($tenant['org'], fn () => WorkizClient::query()->first())->email);
+    }
+
+    /**
+     * EVERY mirrored job's client is derived, however the rows fall into pages.
+     *
+     * Production, 2026-09-24: ordering by booked_at under chunkById, which pages
+     * by id, never visited 828 of 8,054 rows, so 148 jobs had no client and never
+     * became jobs. Here: the row with the smallest id is the most recently
+     * booked, behind a full page of older ones.
+     */
+    public function test_a_client_is_derived_from_every_mirrored_job_past_the_first_page(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $late = $this->mirror($tenant, [], ['UUID' => 'LATE01', 'ClientId' => 777, 'CreatedDate' => '2026-09-01 09:00:00']);
+        $this->rekey($late, '00000000-0000-7000-8000-000000000000');
+
+        for ($i = 1; $i <= 500; $i++) {
+            $this->mirror($tenant, [], [
+                'UUID' => sprintf('F%05d', $i),
+                'ClientId' => 1,
+                'CreatedDate' => Carbon::parse('2020-01-01 00:00:00')->addMinutes($i)->format('Y-m-d H:i:s'),
+            ]);
+        }
+
+        $this->artisan('ezbizi:project-workiz', ['--limit' => 1])->assertSuccessful();
+
+        $this->assertTrue(
+            $this->inTenant($tenant['org'], fn () => WorkizClient::query()->where('client_id', 777)->exists()),
+            'the client of the row behind the first page was never derived',
+        );
     }
 
     public function test_a_dry_run_writes_nothing(): void
