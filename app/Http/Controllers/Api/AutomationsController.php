@@ -6,6 +6,8 @@ use App\Models\Assignment;
 use Illuminate\Support\Str;
 use App\Models\Company;
 use App\Models\Franchise;
+use App\Models\TrainingGuide;
+use App\Models\TrainingTest;
 use App\Models\Automation;
 use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
@@ -485,6 +487,22 @@ class AutomationsController extends Controller
                         true,
                     ),
                 )),
+
+                /*
+                 * WHAT A RULE CAN ASSIGN: published guides and tests only.
+                 * AssignmentWriter refuses anything else, and offering a draft
+                 * would be offering a step that saves and then refuses at 3am.
+                 */
+                'trainings' => array_merge(
+                    TrainingGuide::query()->where('status', TrainingGuide::PUBLISHED)
+                        ->orderBy('title')->get(['id', 'title'])
+                        ->map(fn (TrainingGuide $g) => ['id' => 'guide:'.$g->id, 'label' => $g->title])
+                        ->all(),
+                    TrainingTest::query()->where('status', TrainingTest::PUBLISHED)
+                        ->orderBy('title')->get(['id', 'title'])
+                        ->map(fn (TrainingTest $t) => ['id' => 'test:'.$t->id, 'label' => $t->title.' (test)'])
+                        ->all(),
+                ),
 
                 'roles' => Role::query()
                     ->orderBy('name')
@@ -1829,7 +1847,53 @@ class AutomationsController extends Controller
                 $parameter('skip_when_empty', 'Only send if it found something', 'boolean', false),
             ]),
 
-            $type('lead.reply', 'Reply to the lead', true, [
+            /*
+             * ACTIONS THAT TAKE NOTHING — declared anyway, because the builder
+             * only offers an action whose execution type has an entry here.
+             *
+             * These eight arms were all built, all in IMPLEMENTED_ACTIONS, and
+             * all greyed out on screen as "Not built yet": with no entry,
+             * `payloadTypeFor` found nothing and the builder refused the row.
+             * Switching off a company, withdrawing an invitation, clocking
+             * somebody out — each of these acts on the record the rule fired on
+             * and needs nothing else, and an EMPTY parameter list is how that
+             * is said. Omitting the entry said "cannot run" instead.
+             *
+             * `test_every_runnable_action_has_a_form_under_its_own_type` is the
+             * guard, and it asks the client's own question.
+             */
+            $type('deactivate', 'Switch it off', true, []),
+            $type('resend', 'Send the invitation again', true, []),
+            $type('revoke', 'Withdraw the invitation', true, []),
+            $type('unassign', 'Remove the assignment', true, []),
+            $type('time_clock.clock_in', 'Clock them in', true, []),
+            $type('time_clock.clock_out', 'Clock them out', true, []),
+            $type('inspection_report.email', 'Email the report to the customer', true, []),
+
+            /*
+             * ONE PICKER FOR A GUIDE OR A TEST, stored as `guide:<id>` or
+             * `test:<id>`. The arm reads the pair `guide_id`/`test_id`, and
+             * asking somebody to leave one of two boxes empty is a rule every
+             * author has to learn; one choice with the kind in the value is the
+             * same shape the recipient picker uses for `user:<id>`.
+             *
+             * Nothing saved used the old shape — measured on the box, zero
+             * `training.assign` steps — because this step was greyed out as
+             * "Not built yet" for as long as it existed.
+             */
+            $type('training.assign', 'Assign training', true, [
+                $parameter('training', 'What to assign', 'training'),
+                $parameter('due_on', 'Due by', 'date', required: false),
+            ]),
+
+            // KEYED BY THE EXECUTION TYPE, `reply`, not the action key
+            // `lead.reply`. ActionDefinition derives the type from everything
+            // after the first dot, and the builder looks a step's form up by
+            // that type — so under `lead.reply` it found nothing and greyed the
+            // step out as "Not built yet", while the arm had been built and
+            // working the whole time. `sms.send` only ever worked because its
+            // key happens to survive the derivation unchanged.
+            $type('reply', 'Reply to the lead', true, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
             ]),
 

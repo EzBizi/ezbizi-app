@@ -1182,6 +1182,45 @@ void main() {
     expect(find.byType(Card), findsWidgets);
   });
 
+  /// A BUILT ACTION IS OFFERED, AND DRAWS ITS OWN FORM.
+  ///
+  /// Two defects that looked like one from the screen. Jose, 2026-09-24:
+  /// *"there is a lot of not built yet actions for the 4th step, i don't want
+  /// to see any not built yet anymore"* — and eleven of them were built. With
+  /// no `action_types` entry under their execution type the builder refused
+  /// them; and a built one that WAS offered but was not one of four types named
+  /// by hand drew a bare Message box, while the save posted parameters nobody
+  /// had been shown.
+  ///
+  /// So both halves: the parameterless one is choosable and says there is
+  /// nothing to fill in, and the one with a parameter draws that parameter —
+  /// asserted as the ABSENCE of the Message box, since a Message box beside the
+  /// right picker would pass a check for the picker alone.
+  testWidgets('built actions are offered and draw their own forms', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(catalogue: _catalogueWithBuiltActions()),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.text('Email'));
+    await _tap(tester, find.text('An email arrived'));
+    await _tap(tester, find.text('Add a step'));
+    await _tap(tester, _inStep(find.text('Training')));
+
+    expect(find.text('Not built yet'), findsNothing,
+        reason: 'both of these are built');
+
+    await _tap(tester, _inStep(find.text('Assign training')));
+
+    expect(find.widgetWithText(SearchPickerField<String>, 'What to assign'),
+        findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Message'), findsNothing,
+        reason: 'a built action must draw its own form, not a Message box');
+  });
+
   /// "Set to" is a list when the field has one, and a box when it does not.
   ///
   /// The values have been served since the condition dropdowns landed and this
@@ -2018,6 +2057,61 @@ Map<String, Object?> _leadsModule(String? parent) => {
 /// A catalogue carrying the Phone module's "Send a message", which is the
 /// first action with parameters that is NOT bound to the record the event was
 /// about — the trigger here is an email arriving.
+/// A module action with NO parameters and one with a TRAINING picker — both
+/// built, both greyed out as "Not built yet" until 2026-09-24, because neither
+/// execution type had an entry in `action_types`.
+Map<String, Object?> _catalogueWithBuiltActions() => {
+  ...Map<String, dynamic>.from(_catalogueWithSms()),
+  'trainings': const [
+    {'id': 'guide:g-1', 'label': 'Chimney safety basics'},
+    {'id': 'test:t-1', 'label': 'Chimney safety basics (test)'},
+  ],
+  'modules': [
+    ...(_catalogueWithSms()['modules'] as List),
+    {
+      'key': 'training',
+      'label': 'Training',
+      'parent': null,
+      'subject': null,
+      'triggers': [],
+      'declared_actions': [
+        {
+          'key': 'training.assign',
+          'label': 'Assign training',
+          'description': 'Give somebody a guide or a test.',
+          'type': 'training.assign',
+          'implemented': true,
+        },
+        {
+          'key': 'customer.deactivate',
+          'label': 'Switch off the customer',
+          'description': 'Marks the customer inactive.',
+          'type': 'deactivate',
+          'implemented': true,
+        },
+      ],
+    },
+  ],
+  'action_types': [
+    ...(_catalogueWithSms()['action_types'] as List),
+    {'key': 'deactivate', 'label': 'Switch it off', 'module_only': true, 'parameters': []},
+    {
+      'key': 'training.assign',
+      'label': 'Assign training',
+      'module_only': true,
+      'parameters': [
+        {
+          'key': 'training',
+          'label': 'What to assign',
+          'kind': 'training',
+          'required': true,
+          'nullable': false,
+        },
+      ],
+    },
+  ],
+};
+
 Map<String, Object?> _catalogueWithSms() => {
   ..._catalogue,
   'modules': [

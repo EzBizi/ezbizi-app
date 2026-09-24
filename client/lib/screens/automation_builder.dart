@@ -167,11 +167,11 @@ class _ActionRow {
   TextEditingController parameter(String key) =>
       parameters.putIfAbsent(key, TextEditingController.new);
 
-  /// The `_` arm below throws, and it is UNREACHABLE — see [knownTypes].
+  /// The `_` arm below throws, and it is UNREACHABLE — see [canDraw].
   ///
   /// Read on its own this method looks like it crashes on any action type the
   /// build does not know, which would make every server-side action
-  /// registration a hazard. It does not: the picker consults [knownTypes]
+  /// registration a hazard. It does not: the picker consults [canDraw]
   /// first and offers an unknown type disabled, so nothing unknown ever
   /// reaches here to be serialised.
   ///
@@ -263,29 +263,68 @@ class _ActionRow {
       },
       // Phone actions take no form fields — the subject of the event is enough.
       'voicemail.mark_dealt' || 'missed.create_job' => {'type': type},
+      // ANY DECLARED TYPE WITH NO PARAMETERS acts on the record the rule fired
+      // on and needs nothing else: switch it off, withdraw it, clock them out.
+      // Without this arm those fell to the throw below, because the generic
+      // branch above only fires when there is at least one parameter.
+      _ when definition != null && definition.parameters.isEmpty => {
+        'type': type,
+      },
       _ => throw StateError(
         'No form for action type "$type" — it should not have been selectable.',
       ),
     };
   }
 
-  /// The action types this build can actually draw a form for.
-  ///
-  /// The picker consults it, so an unknown type is never offered and the throw
-  /// above is unreachable rather than merely unlikely.
-  static const Set<String> knownTypes = {
+  /// Types that have a form written by hand rather than built from their
+  /// declared parameters.
+  static const Set<String> bespokeTypes = {
     'update_field',
     'webhook',
-    'notify',
+    'whatsapp.send',
     'voicemail.mark_dealt',
     'missed.create_job',
-    // Generic rather than module_only, so it is offered through _genericItem -
-    // which gates on THIS set. Declared server-side without adding it here and
-    // the picker would have shown "Needs a newer version of the app" on a build
-    // that has the form, with nothing to explain it.
-    'email.send',
-    'whatsapp.send',
   };
+
+  /// Every parameter kind [_parameterForm] can draw.
+  static const Set<String> drawableKinds = {
+    'text',
+    'rich_text',
+    'boolean',
+    'date',
+    'field',
+    'people',
+    'person',
+    'person_or_field',
+    'phone_number',
+    'phone_recipient',
+    'recipient',
+    'recipient_list',
+    'report',
+    'roles',
+    'training',
+    'trigger_field',
+  };
+
+  /// Whether THIS BUILD can draw a form for an action type.
+  ///
+  /// DERIVED, not listed. This used to be a hand-kept set of seven type names,
+  /// and it silently disagreed with the payload: `toJson` builds any type that
+  /// DECLARES parameters from those parameters, while this refused every type
+  /// nobody had remembered to add. So "Assign training", "Send a report" and
+  /// "Switch it off" were built on the server, runnable, and drawn as a bare
+  /// Message box or refused outright. Jose saw them as "Not built yet".
+  ///
+  /// What an old build genuinely cannot draw is a parameter KIND it has never
+  /// heard of — that is the only honest "needs a newer version", and it is the
+  /// only thing checked here. A type with no parameters needs nothing drawn.
+  static bool canDraw(CatalogueActionType? type) {
+    if (type == null) return false;
+    if (bespokeTypes.contains(type.key)) return true;
+
+    return type.parameters.every((p) => drawableKinds.contains(p.kind));
+  }
+
 
   void dispose() {
     field.dispose();
@@ -903,7 +942,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     // point of it being server-driven — and offering one produced a card saying
     // "Create a task" that saved as a notification. Checked first, because
     // "this app is too old" is true regardless of the trigger.
-    if (!_ActionRow.knownTypes.contains(type.key)) {
+    if (!_ActionRow.canDraw(type)) {
       return PickerItem(
         key: type.key,
         label: type.label,
@@ -1014,7 +1053,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   String? _payloadTypeFor(String picked) {
     for (final type in widget.catalogue.actionTypes) {
       if (type.key == picked) {
-        return _ActionRow.knownTypes.contains(type.key) ? type.key : null;
+        return _ActionRow.canDraw(type) ? type.key : null;
       }
     }
 
@@ -2455,15 +2494,23 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       'voicemail.mark_dealt' || 'missed.create_job' => _note(
         'Uses the call that triggered the rule. Nothing else to fill in.',
       ),
-      'sms.send' => _parameterForm(row, widget.catalogue.actionType('sms.send')),
-      'email.send' => _parameterForm(row, widget.catalogue.actionType('email.send')),
-      'lead.reply' => _parameterForm(row, widget.catalogue.actionType('lead.reply')),
       'whatsapp.send' => _whatsAppForm(row),
-      // Was the bespoke Message box below. It had to move in the same commit as
-      // the server declaring the parameter: _payload() flips to the generic
-      // branch on the first declared parameter and reads the PARAMETER
-      // controllers, so a hand-written box would have posted nothing.
-      'notify' => _parameterForm(row, widget.catalogue.actionType('notify')),
+      // THE SAME RULE THE PAYLOAD USES, so the two cannot disagree. `toJson`
+      // builds any action that DECLARES parameters from those parameters; this
+      // used to draw the parameter form for four types named by hand and fall
+      // through to a bare Message box for everything else. So "Send a report",
+      // "Assign to a person" and "Change the status" drew a Message box, while
+      // the save posted parameter controllers nobody had been shown — and the
+      // step was refused for a report nobody could have picked.
+      //
+      // A type with parameters gets them; a type with NONE gets a sentence
+      // saying so, because an empty card reads as a form that failed to load.
+      _ when (widget.catalogue.actionType(row.type)?.parameters.isNotEmpty ??
+              false) =>
+        _parameterForm(row, widget.catalogue.actionType(row.type)),
+      _ when widget.catalogue.actionType(row.type) != null => _note(
+        'Uses the record that triggered the rule. Nothing else to fill in.',
+      ),
       _ => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2557,6 +2604,33 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // field of the event, or an address somebody types. Jose asked for
           // the first and last on 2026-09-16; the middle one is what the step
           // shipped with.
+          // A GUIDE OR A TEST, one choice. Published only — the server
+          // offers nothing else, because assigning a draft saves and refuses.
+          else if (definition.parameters[i].kind == 'training')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.trainings.isEmpty
+                  ? 'Nothing is published in Training yet, so there is nothing '
+                        'to assign.'
+                  : null,
+              options: [
+                for (final training in widget.catalogue.trainings)
+                  SearchOption<String>(
+                    value: training.key,
+                    label: training.label,
+                  ),
+              ],
+              onChanged: _busy || widget.catalogue.trainings.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'report')
             DropdownMenu<String>(
               initialSelection:

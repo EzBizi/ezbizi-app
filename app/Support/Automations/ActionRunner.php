@@ -1731,8 +1731,14 @@ class ActionRunner
         $assigneeId = $action['assignee_id'] ?? ($subject instanceof User ? $subject->getKey() : null);
 
         $assignmentInput = [
-            'guide_id' => $action['guide_id'] ?? null,
-            'test_id' => $action['test_id'] ?? null,
+            // The builder stores ONE choice as `guide:<id>` or `test:<id>`;
+            // the pair is still read so a hand-written rule keeps working.
+            'guide_id' => $action['guide_id']
+                ?? (str_starts_with((string) ($action['training'] ?? ''), 'guide:')
+                    ? substr((string) $action['training'], 6) : null),
+            'test_id' => $action['test_id']
+                ?? (str_starts_with((string) ($action['training'] ?? ''), 'test:')
+                    ? substr((string) $action['training'], 5) : null),
             'assignee_type' => $assigneeType,
             'assignee_id' => $assigneeId,
         ];

@@ -351,6 +351,7 @@ class AutomationCatalogue {
     this.reports = const [],
     this.places = const [],
     this.templates = const [],
+    this.trainings = const [],
     this.actionBudget,
   });
 
@@ -373,6 +374,7 @@ class AutomationCatalogue {
       // constructs it and cannot construct it wrongly.
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
+      trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
       templates: [
         for (final one in (json['templates'] as List? ?? const []))
           if (one is Map) Map<String, dynamic>.from(one),
@@ -423,6 +425,10 @@ class AutomationCatalogue {
   /// knows how to read that shape from a saved rule. Typing it here would mean
   /// a second reader of the same JSON, which is the thing that drifts.
   final List<Map<String, dynamic>> templates;
+
+  /// Published guides and tests a rule can assign, as `guide:<id>` or
+  /// `test:<id>` — the stored shape, so the builder hands back what it got.
+  final List<CatalogueChoice> trainings;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

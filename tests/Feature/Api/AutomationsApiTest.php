@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'reports', 'places', 'templates', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'reports', 'places', 'templates', 'trainings', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -1150,5 +1150,42 @@ class AutomationsApiTest extends TestCase
         }
 
         $this->assertNotEmpty($modules);
+    }
+
+    /**
+     * EVERY RUNNABLE ACTION HAS A FORM THE BUILDER CAN FIND.
+     *
+     * The builder offers a module's action only when `action_types` carries a
+     * key equal to that action's EXECUTION type — ActionDefinition derives it
+     * from everything after the first dot. "Reply to the lead" was declared as
+     * `lead.reply`, derived to `reply`, and had its form filed under
+     * `lead.reply`: the arm was built and running, the server said implemented,
+     * and the builder greyed it out as "Not built yet" for as long as it
+     * existed. Jose found it, not a test.
+     *
+     * The existing drift guard compares the runner's arms with
+     * IMPLEMENTED_ACTIONS, which were both right. This asserts the third list —
+     * the one the client actually reads — and it asks the client's own
+     * question, so it cannot pass while the screen disagrees.
+     */
+    public function test_every_runnable_action_has_a_form_under_its_own_type(): void
+    {
+        $catalogue = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
+
+        $formKeys = collect($catalogue['action_types'])->pluck('key')->all();
+
+        $unreachable = [];
+
+        foreach ($catalogue['modules'] as $module) {
+            foreach ($module['declared_actions'] as $action) {
+                if (($action['implemented'] ?? false) && ! in_array($action['type'], $formKeys, true)) {
+                    $unreachable[] = "{$action['key']} (type {$action['type']})";
+                }
+            }
+        }
+
+        $this->assertSame([], $unreachable,
+            'Built and running, but the builder greys these out as "Not built yet": '
+            .'action_types has no key equal to their execution type.');
     }
 }
