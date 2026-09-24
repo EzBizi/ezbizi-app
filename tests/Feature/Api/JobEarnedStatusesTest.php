@@ -66,14 +66,17 @@ class JobEarnedStatusesTest extends TestCase
     }
 
     /**
-     * Pins the review finding on SettingRegistry.php:101-108: `jobs.earned_statuses`
-     * is TYPE_JSON, not TYPE_LIST, because TYPE_LIST's castList() throws on the
-     * empty-array default this setting requires. But castJson() only checks
-     * is_array() — unlike castList() it does not enforce array_is_list() or
-     * uniqueness — so a string-keyed map with a repeated value passes PATCH
-     * validation exactly like a plain list would, and array_intersect() in
-     * EarnedStatuses::for() matches by value, not key, so it would carry both
-     * entries through untouched without the defensive array_unique() there.
+     * A duplicated or map-shaped stored value comes out as one plain list entry.
+     *
+     * This pins the OUTCOME, not the layer that produces it, and that is why it
+     * survived the layer moving. It was written while the setting was
+     * TYPE_JSON, whose cast accepted `{"a":"completed","b":"completed"}` as-is,
+     * so an array_unique() in EarnedStatuses::for() did the work. Since
+     * 95258969 the setting is TYPE_SUBSET and the resolver casts on READ, so
+     * the cast de-duplicates and flattens the map before the reader sees it,
+     * and that array_unique() was deleted as redundant. The assertion below did
+     * not change, and must not: it is what goes red if EITHER layer stops doing
+     * the job while the other one assumes it still does.
      */
     public function test_a_duplicated_or_map_shaped_stored_value_is_deduped_to_a_plain_list(): void
     {
