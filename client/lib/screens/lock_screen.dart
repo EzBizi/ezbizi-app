@@ -38,7 +38,9 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
     // is the app's very first — and the window people saw still had its title
     // bar. ClockWindow verifies and retries as well; this removes the reason
     // it should have to.
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(ClockWindow.lock()));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(ClockWindow.lock()),
+    );
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -51,7 +53,10 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
     // another device, the organization switching Clock in or Lock screen off,
     // somebody marking this person exempt) never arrived, and the machine
     // stayed locked on an answer that was no longer true.
-    _poll = Timer.periodic(const Duration(seconds: 60), (_) => unawaited(_refresh()));
+    _poll = Timer.periodic(
+      const Duration(seconds: 60),
+      (_) => unawaited(_refresh()),
+    );
   }
 
   /// Ask the server whether this is still locked, and apply whatever it says.
@@ -166,7 +171,18 @@ class _LockScreenState extends State<LockScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  UiStrings.t('time_clock.lock_sentence'),
+                  // Past the end of the day, Clock In is not "start your day"
+                  // — it is one extension, and the sweep closes it. Two people
+                  // pressed it at 5 PM to get their machine back and were
+                  // billed sixteen hours for it (2026-09-24).
+                  me != null && me.timeClock.afterHours && today != null
+                      ? UiStrings.t('time_clock.after_hours')
+                            .replaceAll('{end}', today.end)
+                            .replaceAll(
+                              '{minutes}',
+                              '${me.timeClock.extensionMinutes}',
+                            )
+                      : UiStrings.t('time_clock.lock_sentence'),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),

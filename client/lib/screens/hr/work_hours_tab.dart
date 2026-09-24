@@ -33,6 +33,18 @@
 ///     organization's clock and 12/24h setting. Nothing here formats a time.
 ///   * **Sunday is a default, not a rule.** The week start is an organization
 ///     setting, so the header reads what the server sends rather than assuming.
+///
+/// ── Corrections: a ⋯ on every shift and every day (Jose, 2026-09-24) ──
+///
+/// He asked for edit, delete, force clock out, extra hours, notes and day tags,
+/// and picked layout 1 from the gallery for both sizes: a ⋯ on each row that
+/// opens a menu on a desk and a bottom sheet on a phone. One list of actions,
+/// two presentations, so the phone and the desk cannot disagree about what is
+/// possible. Absent entirely — not disabled — without `hr.hours.correct`.
+///
+/// Every correction answers with the whole week, and the screen replaces its
+/// state from that answer: a correction moves the total, days worked and the
+/// average, and none of them can be worked out here.
 library;
 
 import 'package:flutter/material.dart';
@@ -44,9 +56,12 @@ import '../../widgets/async_body.dart';
 import '../../widgets/user_avatar.dart';
 
 class WorkHoursTab extends StatefulWidget {
-  const WorkHoursTab({super.key, required this.api});
+  const WorkHoursTab({super.key, required this.api, this.canCorrect = false});
 
   final ApiClient api;
+
+  /// `hr.hours.correct`. Off means the ⋯ menus are not drawn at all.
+  final bool canCorrect;
 
   @override
   State<WorkHoursTab> createState() => _WorkHoursTabState();
@@ -64,6 +79,11 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
   _Week? _week;
   String? _personId;
 
+  /// The same week, for a phone's pushed person screen: it is a separate
+  /// route, so a correction made on it has to reach it through something it
+  /// listens to rather than through this State's rebuild.
+  final _weekNotifier = ValueNotifier<_Week?>(null);
+
   String _search = '';
 
   @override
@@ -71,6 +91,70 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     super.initState();
     _load();
   }
+
+  @override
+  void dispose() {
+    _weekNotifier.dispose();
+    super.dispose();
+  }
+
+  Map<String, String>? get _onQuery => _on == null ? null : {'on': _on!};
+  String get _onSuffix => _on == null ? '' : '?on=$_on';
+
+  /// Send one correction and take the week it answers with.
+  Future<void> _apply(BuildContext context, Future<ApiResponse> request) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final response = await request;
+    if (!mounted) return;
+
+    final data = response.body['data'];
+    if (!response.ok || data is! Map<String, dynamic>) {
+      messenger?.showSnackBar(SnackBar(content: Text(response.reason)));
+
+      return;
+    }
+
+    setState(() => _week = _Week.from(data));
+    _weekNotifier.value = _week;
+  }
+
+  _Actions? get _actions => !widget.canCorrect
+      ? null
+      : _Actions(
+          shift: (context, shift, action) async {
+            final path = '/hr/time-clock/shifts/${shift.id}';
+            switch (action) {
+              case 'clock_out':
+                await _apply(
+                  context,
+                  widget.api.post('$path/clock-out$_onSuffix', {}),
+                );
+              case 'edit':
+                final body = await _editTimes(context, shift);
+                if (body == null || !context.mounted) return;
+                await _apply(context, widget.api.patch(path, body, _onQuery));
+              case 'delete':
+                if (!await _confirmDelete(context) || !context.mounted) return;
+                await _apply(context, widget.api.delete(path, _onQuery));
+            }
+          },
+          day: (context, personId, date, record, action) async {
+            final body = await switch (action) {
+              'tag' => _chooseTag(context, record?.tag),
+              'extra' => _chooseExtra(context, record?.extraMinutes ?? 0),
+              'note' => _writeNote(context, record?.note),
+              _ => Future<Map<String, dynamic>?>.value(),
+            };
+            if (body == null || !context.mounted) return;
+            await _apply(
+              context,
+              widget.api.put(
+                '/hr/time-clock/people/$personId/days/$date$_onSuffix',
+                body,
+              ),
+            );
+          },
+        );
 
   Future<void> _load({String? on}) async {
     final request = ++_request;
@@ -98,6 +182,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
       }
 
       _week = _Week.from(response.body['data'] as Map<String, dynamic>?);
+      _weekNotifier.value = _week;
       final people = _week?.people ?? const <_Person>[];
       if (_personId == null || !people.any((p) => p.id == _personId)) {
         _personId = people.isEmpty ? null : people.first.id;
@@ -148,7 +233,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _WeekBar(week: _week, onMove: (on) => _load(on: on)),
+        _WeekBar(
+          week: _week,
+          onMove: (on) => _load(on: on),
+        ),
         Expanded(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,6 +259,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                         api: widget.api,
                         person: _person!,
                         week: _week!,
+                        actions: _actions,
                       ),
               ),
             ],
@@ -186,7 +275,10 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _WeekBar(week: _week, onMove: (on) => _load(on: on)),
+        _WeekBar(
+          week: _week,
+          onMove: (on) => _load(on: on),
+        ),
         Expanded(child: _peopleList(context, tappable: true)),
       ],
     );
@@ -232,14 +324,30 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
                         return;
                       }
 
+                      final id = people[i].id;
                       Navigator.of(context).push(
                         MaterialPageRoute<void>(
                           builder: (context) => Scaffold(
                             appBar: AppBar(title: Text(people[i].name)),
-                            body: _PersonWeek(
-                              api: widget.api,
-                              person: people[i],
-                              week: _week!,
+                            // Rebuilt from the notifier, so a correction made
+                            // on this pushed screen shows on it.
+                            body: ValueListenableBuilder<_Week?>(
+                              valueListenable: _weekNotifier,
+                              builder: (context, week, _) {
+                                final person = week?.people
+                                    .where((p) => p.id == id)
+                                    .firstOrNull;
+                                if (week == null || person == null) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                return _PersonWeek(
+                                  api: widget.api,
+                                  person: person,
+                                  week: week,
+                                  actions: _actions,
+                                );
+                              },
                             ),
                           ),
                         ),
@@ -405,11 +513,15 @@ class _PersonWeek extends StatelessWidget {
     required this.api,
     required this.person,
     required this.week,
+    this.actions,
   });
 
   final ApiClient api;
   final _Person person;
   final _Week week;
+
+  /// Null without `hr.hours.correct`: no ⋯ anywhere.
+  final _Actions? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -494,7 +606,14 @@ class _PersonWeek extends StatelessWidget {
           // would take a label out of the range.
           for (final day in week.days.reversed)
             if (!day.inFuture)
-              _DayCard(label: day.label, shifts: days[day.date] ?? const []),
+              _DayCard(
+                label: day.label,
+                date: day.date,
+                personId: person.id,
+                shifts: days[day.date] ?? const [],
+                record: person.records[day.date],
+                actions: actions,
+              ),
       ],
     );
   }
@@ -545,21 +664,37 @@ class _Stat extends StatelessWidget {
 }
 
 class _DayCard extends StatelessWidget {
-  const _DayCard({required this.label, required this.shifts});
+  const _DayCard({
+    required this.label,
+    required this.date,
+    required this.personId,
+    required this.shifts,
+    this.record,
+    this.actions,
+  });
 
   /// The server's own words, in the organization's language and date format.
   final String label;
+  final String date;
+  final String personId;
 
   final List<_Shift> shifts;
+
+  /// What HR said about the day: tag, extra minutes, note. Null when nothing.
+  final _DayRecord? record;
+  final _Actions? actions;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    var total = 0;
+    final extra = record?.extraMinutes ?? 0;
+    var total = extra * 60;
     for (final s in shifts) {
       total += s.durationSeconds;
     }
+    final tag = record?.tag;
+    final note = record?.note;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -580,19 +715,51 @@ class _DayCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Expanded(
-                  child: Text(label, style: theme.textTheme.labelLarge),
-                ),
+                Flexible(child: Text(label, style: theme.textTheme.labelLarge)),
+                if (tag != null) ...[
+                  const SizedBox(width: 8),
+                  _Chip(
+                    text: UiStrings.t('time_clock.tag.$tag'),
+                    colour: _tagColour(context, tag),
+                  ),
+                ],
+                const Spacer(),
                 Text(
                   formatWorked(total),
                   style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (actions != null)
+                  _MenuButton(
+                    tooltip: UiStrings.t('time_clock.day_actions'),
+                    items: [
+                      (
+                        'tag',
+                        UiStrings.t('time_clock.action.tag'),
+                        Icons.sell_outlined,
+                        false,
+                      ),
+                      (
+                        'extra',
+                        UiStrings.t('time_clock.action.extra'),
+                        Icons.more_time,
+                        false,
+                      ),
+                      (
+                        'note',
+                        UiStrings.t('time_clock.action.note'),
+                        Icons.sticky_note_2_outlined,
+                        false,
+                      ),
+                    ],
+                    onChosen: (action) =>
+                        actions!.day(context, personId, date, record, action),
+                  ),
               ],
             ),
           ),
-          if (shifts.isEmpty)
+          if (shifts.isEmpty && extra == 0)
             Container(
               padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
               decoration: BoxDecoration(
@@ -605,17 +772,68 @@ class _DayCard extends StatelessWidget {
                 ),
               ),
             ),
-          for (final shift in shifts) _ShiftRow(shift: shift),
+          for (final shift in shifts) _ShiftRow(shift: shift, actions: actions),
+          if (extra > 0)
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: scheme.outlineVariant)),
+              ),
+              child: Row(
+                children: [
+                  _Pip(colour: scheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Text(
+                    UiStrings.t('time_clock.extra_time'),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const Spacer(),
+                  Text(
+                    '+${formatWorked(extra * 60)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (note != null)
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: scheme.outlineVariant)),
+              ),
+              child: Text(
+                note,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
+Color _tagColour(BuildContext context, String tag) {
+  final scheme = Theme.of(context).colorScheme;
+
+  return switch (tag) {
+    'office' => scheme.primary,
+    'home' => scheme.tertiary,
+    'sick' => scheme.error,
+    'holiday' || 'vacation' => StateColour.of(context).caution,
+    _ => scheme.onSurfaceVariant,
+  };
+}
+
 class _ShiftRow extends StatelessWidget {
-  const _ShiftRow({required this.shift});
+  const _ShiftRow({required this.shift, this.actions});
 
   final _Shift shift;
+  final _Actions? actions;
 
   @override
   Widget build(BuildContext context) {
@@ -623,7 +841,9 @@ class _ShiftRow extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      // The trailing button carries its own padding, so the row gives up its
+      // right inset for it: at 390 the 12 was exactly the 4px that overflowed.
+      padding: EdgeInsets.fromLTRB(12, 9, actions == null ? 12 : 0, 9),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
@@ -659,6 +879,19 @@ class _ShiftRow extends StatelessWidget {
               colour: scheme.onSurfaceVariant,
             ),
           ],
+          // Who set the end, when it was not the person: a correction rewrote
+          // it, or somebody in HR pressed Clock out now.
+          if (shift.endedBy == 'correction' || shift.endedBy == 'manager') ...[
+            const SizedBox(width: 8),
+            _Chip(
+              text: UiStrings.t(
+                shift.endedBy == 'correction'
+                    ? 'time_clock.edited'
+                    : 'time_clock.ended_by_hr',
+              ),
+              colour: StateColour.of(context).caution,
+            ),
+          ],
           if (shift.outsideSchedule) ...[
             const SizedBox(width: 6),
             Flexible(
@@ -682,6 +915,32 @@ class _ShiftRow extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (actions != null)
+            _MenuButton(
+              tooltip: UiStrings.t('time_clock.shift_actions'),
+              items: [
+                if (shift.open)
+                  (
+                    'clock_out',
+                    UiStrings.t('time_clock.action.clock_out_now'),
+                    Icons.stop_circle_outlined,
+                    true,
+                  ),
+                (
+                  'edit',
+                  UiStrings.t('time_clock.action.edit'),
+                  Icons.edit_outlined,
+                  false,
+                ),
+                (
+                  'delete',
+                  UiStrings.t('time_clock.action.delete'),
+                  Icons.delete_outline,
+                  true,
+                ),
+              ],
+              onChosen: (action) => actions!.shift(context, shift, action),
+            ),
         ],
       ),
     );
@@ -797,9 +1056,7 @@ class _Week {
       end: end,
       // Built from the server's dates rather than assuming Sunday: the week
       // start is an organization setting and all seven days are allowed.
-      label: label.isEmpty
-          ? UiStrings.t('time_clock.this_week')
-          : label,
+      label: label.isEmpty ? UiStrings.t('time_clock.this_week') : label,
       days: days,
       timezoneLabel: '${json['timezone_label'] ?? ''}',
       people: [
@@ -820,6 +1077,7 @@ class _Person {
     required this.averageSeconds,
     required this.open,
     required this.shifts,
+    this.records = const {},
   });
 
   final String id;
@@ -833,6 +1091,10 @@ class _Person {
   final bool open;
 
   final List<_Shift> shifts;
+
+  /// What HR recorded per day, by date. Only days somebody said something
+  /// about are here.
+  final Map<String, _DayRecord> records;
 
   /// Shifts under their date, in the order the server sent them.
   Map<String, List<_Shift>> byDay() {
@@ -856,11 +1118,33 @@ class _Person {
       for (final row in (json['shifts'] as List?) ?? const [])
         if (row is Map<String, dynamic>) _Shift.from(row),
     ],
+    records: {
+      for (final row in (json['days'] as List?) ?? const [])
+        if (row is Map<String, dynamic>) '${row['date']}': _DayRecord.from(row),
+    },
+  );
+}
+
+/// Tag, extra minutes and note on one day (`time_clock_days`).
+class _DayRecord {
+  const _DayRecord({this.tag, this.extraMinutes = 0, this.note});
+
+  final String? tag;
+  final int extraMinutes;
+  final String? note;
+
+  static _DayRecord from(Map<String, dynamic> json) => _DayRecord(
+    tag: json['tag'] as String?,
+    extraMinutes: (json['extra_minutes'] as num?)?.toInt() ?? 0,
+    note: json['note'] as String?,
   );
 }
 
 class _Shift {
   const _Shift({
+    this.id = '',
+    this.clockedInLocal = '',
+    this.clockedOutLocal,
     required this.date,
     required this.clockedIn,
     required this.clockedOut,
@@ -870,6 +1154,14 @@ class _Shift {
     required this.endedBy,
     required this.extensions,
   });
+
+  final String id;
+
+  /// "Y-m-d H:i" in the organization's zone, for the edit pickers. Sent back
+  /// in the same shape, and read in the same zone, so no timezone is touched
+  /// on this side.
+  final String clockedInLocal;
+  final String? clockedOutLocal;
 
   final String date;
 
@@ -893,6 +1185,9 @@ class _Shift {
   final int extensions;
 
   static _Shift from(Map<String, dynamic> json) => _Shift(
+    id: '${json['id'] ?? ''}',
+    clockedInLocal: '${json['clocked_in_local'] ?? ''}',
+    clockedOutLocal: json['clocked_out_local'] as String?,
     date: '${json['date'] ?? ''}',
     clockedIn: '${json['clocked_in'] ?? ''}',
     clockedOut: '${json['clocked_out'] ?? ''}',
@@ -962,5 +1257,390 @@ class _Day {
     // the whole week rather than an empty one. A missing day is the louder
     // failure of the two.
     inFuture: json['in_future'] == true,
+  );
+}
+
+// ── the correction menus and their dialogs ─────────────────────────
+
+class _Actions {
+  const _Actions({required this.shift, required this.day});
+
+  final Future<void> Function(BuildContext context, _Shift shift, String action)
+  shift;
+  final Future<void> Function(
+    BuildContext context,
+    String personId,
+    String date,
+    _DayRecord? record,
+    String action,
+  )
+  day;
+}
+
+/// The ⋯. A menu beside it on a desk, a bottom sheet on a phone — the same
+/// items either way (layout 1 and 1).
+class _MenuButton extends StatelessWidget {
+  const _MenuButton({
+    required this.tooltip,
+    required this.items,
+    required this.onChosen,
+  });
+
+  final String tooltip;
+
+  /// (key, label, icon, destructive)
+  final List<(String, String, IconData, bool)> items;
+  final void Function(String) onChosen;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      icon: const Icon(Icons.more_horiz),
+      iconSize: 18,
+      visualDensity: VisualDensity.compact,
+      onPressed: () async {
+        final chosen = await (MediaQuery.sizeOf(context).width < 600
+            ? _sheet(context)
+            : _menu(context));
+        if (chosen != null) onChosen(chosen);
+      },
+    );
+  }
+
+  Color? _colour(BuildContext context, bool destructive) =>
+      destructive ? Theme.of(context).colorScheme.error : null;
+
+  Future<String?> _menu(BuildContext context) {
+    final box = context.findRenderObject()! as RenderBox;
+    final overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final at = box.localToGlobal(Offset(0, box.size.height), ancestor: overlay);
+
+    return showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        at.dx,
+        at.dy,
+        overlay.size.width - at.dx - box.size.width,
+        0,
+      ),
+      items: [
+        for (final (key, label, icon, destructive) in items)
+          PopupMenuItem<String>(
+            value: key,
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: _colour(context, destructive)),
+                const SizedBox(width: 10),
+                Text(
+                  label,
+                  style: TextStyle(color: _colour(context, destructive)),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<String?> _sheet(BuildContext context) => showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (key, label, icon, destructive) in items)
+            ListTile(
+              leading: Icon(icon, color: _colour(context, destructive)),
+              title: Text(
+                label,
+                style: TextStyle(color: _colour(context, destructive)),
+              ),
+              onTap: () => Navigator.of(context).pop(key),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<bool> _confirmDelete(BuildContext context) async {
+  final labels = MaterialLocalizations.of(context);
+  final yes = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      content: Text(UiStrings.t('time_clock.delete_confirm')),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+          onPressed: () => Navigator.of(context).pop(true),
+          child: Text(UiStrings.t('time_clock.action.delete')),
+        ),
+      ],
+    ),
+  );
+
+  return yes ?? false;
+}
+
+/// "2026-09-23 17:20" — wall clock in the organization's zone, which is what
+/// the server sends and what it reads back. Never converted here.
+DateTime? _parseLocal(String? value) {
+  if (value == null || value.isEmpty) return null;
+
+  return DateTime.tryParse(value.replaceFirst(' ', 'T'));
+}
+
+String _formatLocal(DateTime at) =>
+    '${at.year.toString().padLeft(4, '0')}-'
+    '${at.month.toString().padLeft(2, '0')}-'
+    '${at.day.toString().padLeft(2, '0')} '
+    '${at.hour.toString().padLeft(2, '0')}:'
+    '${at.minute.toString().padLeft(2, '0')}';
+
+/// The edit dialog. Returns the PATCH body, or null when cancelled.
+Future<Map<String, dynamic>?> _editTimes(BuildContext context, _Shift shift) {
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) => _EditTimesDialog(shift: shift),
+  );
+}
+
+class _EditTimesDialog extends StatefulWidget {
+  const _EditTimesDialog({required this.shift});
+
+  final _Shift shift;
+
+  @override
+  State<_EditTimesDialog> createState() => _EditTimesDialogState();
+}
+
+class _EditTimesDialogState extends State<_EditTimesDialog> {
+  late DateTime? _in = _parseLocal(widget.shift.clockedInLocal);
+  late DateTime? _out = _parseLocal(widget.shift.clockedOutLocal);
+
+  Future<DateTime?> _pick(DateTime? current) async {
+    // Never the device clock: this screen reads only the server's (a guard in
+    // the tests says so). Every shift has a start, so there is always one.
+    final start = current ?? _in;
+    if (start == null) return null;
+    final day = await showDatePicker(
+      context: context,
+      initialDate: start,
+      firstDate: start.subtract(const Duration(days: 60)),
+      lastDate: start.add(const Duration(days: 2)),
+    );
+    if (day == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(start),
+    );
+    if (time == null) return null;
+
+    return DateTime(day.year, day.month, day.day, time.hour, time.minute);
+  }
+
+  Widget _row(String label, DateTime? at, VoidCallback onTap) {
+    final labels = MaterialLocalizations.of(context);
+
+    return Row(
+      children: [
+        SizedBox(width: 96, child: Text(label)),
+        Expanded(
+          child: OutlinedButton(
+            onPressed: onTap,
+            child: Text(
+              at == null
+                  ? '—'
+                  : '${labels.formatMediumDate(at)}  '
+                        '${labels.formatTimeOfDay(TimeOfDay.fromDateTime(at))}',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = MaterialLocalizations.of(context);
+    final valid = _in != null && (_out == null || _out!.isAfter(_in!));
+
+    return AlertDialog(
+      title: Text(UiStrings.t('time_clock.action.edit')),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _row(UiStrings.t('time_clock.clock_in'), _in, () async {
+              final at = await _pick(_in);
+              if (at != null) setState(() => _in = at);
+            }),
+            const SizedBox(height: 10),
+            _row(UiStrings.t('time_clock.clock_out'), _out, () async {
+              final at = await _pick(_out);
+              if (at != null) setState(() => _out = at);
+            }),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: !valid
+              ? null
+              : () => Navigator.of(context).pop(<String, dynamic>{
+                  'clocked_in_at': _formatLocal(_in!),
+                  // Absent keeps an open shift open; the server refuses a
+                  // finished one being reopened anyway.
+                  if (_out != null) 'clocked_out_at': _formatLocal(_out!),
+                }),
+          child: Text(labels.saveButtonLabel),
+        ),
+      ],
+    );
+  }
+}
+
+const _tags = ['office', 'home', 'absent', 'sick', 'holiday', 'vacation'];
+
+/// Returns `{'tag': …}` (null clears), or null when cancelled.
+Future<Map<String, dynamic>?> _chooseTag(
+  BuildContext context,
+  String? current,
+) {
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) => SimpleDialog(
+      title: Text(UiStrings.t('time_clock.action.tag')),
+      children: [
+        for (final tag in [null, ..._tags])
+          SimpleDialogOption(
+            onPressed: () =>
+                Navigator.of(context).pop(<String, dynamic>{'tag': tag}),
+            child: Row(
+              children: [
+                Icon(
+                  tag == current
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  tag == null
+                      ? UiStrings.t('time_clock.no_tag')
+                      : UiStrings.t('time_clock.tag.$tag'),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+/// Returns `{'extra_minutes': n}`, or null when cancelled.
+Future<Map<String, dynamic>?> _chooseExtra(BuildContext context, int current) {
+  final hours = TextEditingController(text: '${current ~/ 60}');
+  final minutes = TextEditingController(text: '${current % 60}');
+  final labels = MaterialLocalizations.of(context);
+
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(UiStrings.t('time_clock.action.extra')),
+      content: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: hours,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: UiStrings.t('time_clock.hours'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: minutes,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: UiStrings.t('time_clock.minutes'),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: () {
+            final total =
+                (int.tryParse(hours.text.trim()) ?? 0) * 60 +
+                (int.tryParse(minutes.text.trim()) ?? 0);
+            // The server refuses outside 0..1440 with its own sentence.
+            Navigator.of(
+              context,
+            ).pop(<String, dynamic>{'extra_minutes': total});
+          },
+          child: Text(labels.saveButtonLabel),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Returns `{'note': …}` (empty clears), or null when cancelled.
+Future<Map<String, dynamic>?> _writeNote(
+  BuildContext context,
+  String? current,
+) {
+  final text = TextEditingController(text: current ?? '');
+  final labels = MaterialLocalizations.of(context);
+
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(UiStrings.t('time_clock.action.note')),
+      content: SizedBox(
+        width: 380,
+        child: TextField(
+          controller: text,
+          maxLines: 4,
+          maxLength: 2000,
+          autofocus: true,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(labels.cancelButtonLabel),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(<String, dynamic>{
+            'note': text.text.trim().isEmpty ? null : text.text.trim(),
+          }),
+          child: Text(labels.saveButtonLabel),
+        ),
+      ],
+    ),
   );
 }

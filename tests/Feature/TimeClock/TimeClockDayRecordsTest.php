@@ -226,6 +226,29 @@ class TimeClockDayRecordsTest extends TestCase
         $this->assertSame(0, TimeClockDay::query()->withoutGlobalScopes()->count());
     }
 
+    /**
+     * The edit dialog sends wall clock, and it means the ORGANIZATION'S wall
+     * clock. New York in September is UTC-4, so 17:20 there is 21:20 UTC —
+     * whatever zone the laptop sending it is in.
+     */
+    public function test_a_correction_in_wall_clock_is_read_in_the_organizations_zone(): void
+    {
+        [$alpha, $manager, $tech] = $this->tenant();
+        $shift = $this->shift($alpha['org'], $tech, '2026-09-23 21:00:14', null);
+
+        $week = $this->signedInAs($manager)
+            ->patchJson("/api/v1/hr/time-clock/shifts/{$shift->id}?on=2026-09-23", ['clocked_out_at' => '2026-09-23 17:20'])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('2026-09-23 21:20:00', $this->fresh($shift)->clocked_out_at->toDateTimeString());
+
+        // And the week hands the same shape back, for the picker to start from.
+        $row = collect($week['people'])->firstWhere('id', $tech->id)['shifts'][0];
+        $this->assertSame('2026-09-23 17:00', $row['clocked_in_local']);
+        $this->assertSame('2026-09-23 17:20', $row['clocked_out_local']);
+    }
+
     // ── The lock screen's sentence ───────────────────────────────
 
     public function test_the_block_says_when_the_day_is_over(): void

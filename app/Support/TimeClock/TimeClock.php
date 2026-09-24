@@ -394,6 +394,12 @@ final class TimeClock
         });
     }
 
+    /** The zone Work Hours shows `$actor` times in — and reads corrections back in. */
+    public function viewTimezone(User $actor): string
+    {
+        return (string) $this->settings->get('timezone', ViewScope::forUser($actor)->settingsScope());
+    }
+
     /**
      * Force clock out: HR ends somebody's running shift now (2026-09-24).
      *
@@ -978,6 +984,16 @@ final class TimeClock
             'clocked_out_at' => $this->instant($shift->clocked_out_at),
             'clocked_in' => $this->wallClock($shift->clocked_in_at, $tz, $timeFormat),
             'clocked_out' => $open ? null : $this->wallClock($shift->clocked_out_at, $tz, $timeFormat),
+            /*
+             * The same instants as "Y-m-d H:i" in the VIEW's zone, for the edit
+             * dialog's pickers (2026-09-24). The client cannot derive them: it
+             * has UTC and a formatted string, and converting UTC with the
+             * device's zone is the error that ran every reminder an hour late.
+             * The correction endpoint reads the same shape back in the same
+             * zone, so a picker never touches a timezone at all.
+             */
+            'clocked_in_local' => Carbon::parse($shift->clocked_in_at)->timezone($tz)->format('Y-m-d H:i'),
+            'clocked_out_local' => $open ? null : Carbon::parse($shift->clocked_out_at)->timezone($tz)->format('Y-m-d H:i'),
             'duration_seconds' => $open
                 ? null
                 : $shift->clocked_out_at->getTimestamp() - $shift->clocked_in_at->getTimestamp(),

@@ -851,7 +851,8 @@ class Me {
   /// Clamped on read for the same reason [navigationWidth] is: a value stored
   /// by an older build, or one whose bounds the server has since tightened,
   /// must not be able to render a pane nobody can use.
-  double get webWidgetsListWidth => _width('web.widgets.list_width', 260, 180, 460);
+  double get webWidgetsListWidth =>
+      _width('web.widgets.list_width', 260, 180, 460);
 
   double get webWidgetsPreviewWidth =>
       _width('web.widgets.preview_width', 360, 280, 640);
@@ -923,6 +924,7 @@ class TimeClockStatus {
     this.warningMinutes = 5,
     this.extensionMinutes = 30,
     this.today,
+    this.afterHours = false,
   });
 
   /// Key missing on `/me`: an older server. No button.
@@ -954,6 +956,10 @@ class TimeClockStatus {
   /// Today's window as wall clock in the schedule's own zone, for display.
   final TimeClockWindow? today;
 
+  /// Past today's scheduled end. The lock screen then says that clocking in
+  /// buys one extension, instead of "start your day" at 5 PM (2026-09-24).
+  final bool afterHours;
+
   factory TimeClockStatus.fromJson(Object? json) {
     if (json is! Map) return absent;
     final map = json is Map<String, dynamic>
@@ -983,6 +989,7 @@ class TimeClockStatus {
       today: todayRaw is Map
           ? TimeClockWindow.fromJson(Map<String, dynamic>.from(todayRaw))
           : null,
+      afterHours: map['after_hours'] == true,
     );
   }
 }

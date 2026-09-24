@@ -115,7 +115,8 @@ void main() {
     expect(
       find.text('\u2014'),
       findsWidgets,
-      reason: 'His total is an em dash rather than 0h 00m, which would read '
+      reason:
+          'His total is an em dash rather than 0h 00m, which would read '
           'as a measurement somebody made.',
     );
   });
@@ -126,9 +127,8 @@ void main() {
     await _pump(
       tester,
       timeClock: _clock(organizationEnabled: true),
-      onClock: (_, _) => _week(
-        people: [_person(total: 29100, days: 4, average: 7275)],
-      ),
+      onClock: (_, _) =>
+          _week(people: [_person(total: 29100, days: 4, average: 7275)]),
     );
 
     await _tap(tester, _tab('Work Hours'));
@@ -204,7 +204,8 @@ void main() {
     expect(
       find.text('1h 05m'),
       findsWidgets,
-      reason: 'The time so far is summed into the total, so it is shown '
+      reason:
+          'The time so far is summed into the total, so it is shown '
           'rather than hidden behind an em dash.',
     );
   });
@@ -250,7 +251,8 @@ void main() {
     expect(
       ons,
       [null, '2026-08-30'],
-      reason: 'Seven days, not one. The tab this replaces had day arrows and '
+      reason:
+          'Seven days, not one. The tab this replaces had day arrows and '
           'this one is a week, so a one-day step would look like a bug.',
     );
   });
@@ -276,7 +278,8 @@ void main() {
     expect(
       find.text('Sunday, Aug 23'),
       findsOneWidget,
-      reason: 'A day nobody worked still gets a heading, which is why the '
+      reason:
+          'A day nobody worked still gets a heading, which is why the '
           'seven days are the loop rather than the shifts.',
     );
   });
@@ -306,7 +309,8 @@ void main() {
     expect(
       tuesday,
       lessThan(sunday),
-      reason: 'Newest first: Tuesday is later than Sunday and must be higher '
+      reason:
+          'Newest first: Tuesday is later than Sunday and must be higher '
           'up the page.',
     );
 
@@ -317,7 +321,8 @@ void main() {
     expect(
       find.text('Sunday, Aug 23 – Saturday, Aug 29'),
       findsOneWidget,
-      reason: 'The week is still Sunday to Saturday even when four of its '
+      reason:
+          'The week is still Sunday to Saturday even when four of its '
           'days have not happened yet.',
     );
   });
@@ -349,10 +354,7 @@ void main() {
         .join('\n');
 
     final prose = RegExp("'([A-Za-z][A-Za-z]* [a-z][A-Za-z ,.]*)'");
-    final found = prose
-        .allMatches(code)
-        .map((m) => m.group(1)!)
-        .toSet();
+    final found = prose.allMatches(code).map((m) => m.group(1)!).toSet();
 
     // Empty, and it stays empty. It held three strings until `b166aae1`
     // landed the keys AND the Dart fallbacks -- using a key before its
@@ -364,18 +366,22 @@ void main() {
     expect(
       found.difference(pending),
       isEmpty,
-      reason: 'A sentence written here ships English to a Spanish '
+      reason:
+          'A sentence written here ships English to a Spanish '
           'organization. It belongs in UiStrings, and Clock In adds the row.',
     );
   });
 
   test('the tab names no weekday of its own', () {
-    final source = File('lib/screens/hr/work_hours_tab.dart').readAsStringSync();
+    final source = File(
+      'lib/screens/hr/work_hours_tab.dart',
+    ).readAsStringSync();
 
     expect(
       source,
       isNot(contains("'Wednesday'")),
-      reason: 'A weekday name here is locale text on a screen that ships in '
+      reason:
+          'A weekday name here is locale text on a screen that ships in '
           'two languages. Three other widgets in this tree each hardcode '
           'their own English list; this one asked for the payload instead.',
     );
@@ -386,6 +392,249 @@ void main() {
     expect(file.existsSync(), isTrue);
     expect(file.readAsStringSync(), isNot(contains('DateTime.now()')));
   });
+
+  // ── Corrections: a ⋯ on every shift and every day (2026-09-24) ──────
+  //
+  // Jose picked layout 1 for both sizes: a menu on a desk, a bottom sheet on
+  // a phone, the same items either way. Absent without hr.hours.correct.
+
+  testWidgets('without hr.hours.correct there is no ⋯ anywhere', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+    await _tap(tester, _tab('Work Hours'));
+
+    expect(find.text('8:00 AM'), findsOneWidget, reason: 'the pane rendered');
+    expect(find.byTooltip('Shift actions'), findsNothing);
+    expect(find.byTooltip('Day actions'), findsNothing);
+  });
+
+  testWidgets(
+    'deleting a shift asks first, and the week the server answers replaces '
+    'the screen',
+    (tester) async {
+      final writes = <http.Request>[];
+
+      await _pump(
+        tester,
+        timeClock: _clock(organizationEnabled: true),
+        grants: const ['hr.hours.correct'],
+        onClock: (_, _) => _week(people: [_person()]),
+        onWrite: (request) {
+          writes.add(request);
+
+          return _json({
+            'data': _week(
+              people: [
+                _person(total: 0, days: 0, average: 0, shifts: const []),
+              ],
+            ),
+          });
+        },
+      );
+      await _tap(tester, _tab('Work Hours'));
+
+      await _tap(tester, find.byTooltip('Shift actions'));
+      expect(
+        find.text('Clock out now'),
+        findsNothing,
+        reason: 'a finished shift has nothing to clock out of',
+      );
+      await _tap(tester, find.text('Delete shift'));
+
+      expect(writes, isEmpty, reason: 'nothing is sent before the confirm');
+      await _tap(tester, find.widgetWithText(FilledButton, 'Delete shift'));
+
+      expect(writes.single.method, 'DELETE');
+      expect(writes.single.url.path, '/api/v1/hr/time-clock/shifts/s-1');
+      expect(
+        find.text('8:00 AM'),
+        findsNothing,
+        reason: 'the answer IS the new week; nothing is recomputed here',
+      );
+    },
+  );
+
+  testWidgets('an open shift offers Clock out now, at the server clock', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+    final open = <String, Object?>{
+      ..._bea,
+      'open': true,
+      'clocked_out': null,
+      'clocked_out_at': null,
+      'clocked_out_local': null,
+    };
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['hr.hours.correct'],
+      onClock: (_, _) => _week(
+        people: [
+          _person(open: true, shifts: [open]),
+        ],
+      ),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': _week(people: [_person()]),
+        });
+      },
+    );
+    await _tap(tester, _tab('Work Hours'));
+
+    await _tap(tester, find.byTooltip('Shift actions'));
+    await _tap(tester, find.text('Clock out now'));
+
+    expect(writes.single.method, 'POST');
+    expect(
+      writes.single.url.path,
+      '/api/v1/hr/time-clock/shifts/s-1/clock-out',
+    );
+    expect(
+      writes.single.body,
+      '{}',
+      reason: 'no time is sent: the device clock is not the one that counts',
+    );
+  });
+
+  /// The edit dialog starts from the server's wall clock and sends the same
+  /// shape back. Saving without touching anything proves no timezone was
+  /// applied on the way through — the error that ran every reminder an hour
+  /// late would show here as a shifted hour.
+  testWidgets('editing round-trips wall clock without converting it', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['hr.hours.correct'],
+      onClock: (_, _) => _week(people: [_person()]),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': _week(people: [_person()]),
+        });
+      },
+    );
+    await _tap(tester, _tab('Work Hours'));
+
+    await _tap(tester, find.byTooltip('Shift actions'));
+    await _tap(tester, find.text('Edit times'));
+    await _tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    expect(writes.single.method, 'PATCH');
+    expect(jsonDecode(writes.single.body), {
+      'clocked_in_at': '2026-08-25 08:00',
+      'clocked_out_at': '2026-08-25 09:05',
+    });
+  });
+
+  testWidgets('a day tag is set from the day menu', (tester) async {
+    final writes = <http.Request>[];
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['hr.hours.correct'],
+      onClock: (_, _) => _week(people: [_person()]),
+      onWrite: (request) {
+        writes.add(request);
+
+        return _json({
+          'data': _week(people: [_person()]),
+        });
+      },
+    );
+    await _tap(tester, _tab('Work Hours'));
+
+    // Tuesday is the newest past day, so its ⋯ is the first one drawn.
+    await _tap(tester, find.byTooltip('Day actions'));
+    await _tap(tester, find.text('Set tag'));
+    await _tap(tester, find.text('Sick'));
+
+    expect(writes.single.method, 'PUT');
+    expect(
+      writes.single.url.path,
+      '/api/v1/hr/time-clock/people/u-2/days/2026-08-25',
+    );
+    expect(jsonDecode(writes.single.body), {'tag': 'sick'});
+  });
+
+  testWidgets(
+    'a day record draws its tag, its extra time and its note, and the day '
+    'total counts the extra time',
+    (tester) async {
+      await _pump(
+        tester,
+        timeClock: _clock(organizationEnabled: true),
+        onClock: (_, _) => _week(
+          people: [
+            _person(
+              records: const [
+                {
+                  'date': '2026-08-25',
+                  'tag': 'home',
+                  'extra_minutes': 90,
+                  'note': 'Stayed for the Henderson call.',
+                },
+              ],
+            ),
+          ],
+        ),
+      );
+      await _tap(tester, _tab('Work Hours'));
+
+      expect(find.text('Home'), findsOneWidget);
+      expect(find.text('Extra time'), findsOneWidget);
+      expect(find.text('+1h 30m'), findsOneWidget);
+      expect(find.text('Stayed for the Henderson call.'), findsOneWidget);
+      // 1h 05m clocked plus 90 minutes nobody's clock saw.
+      expect(find.text('2h 35m'), findsOneWidget);
+    },
+  );
+
+  testWidgets('on a phone the ⋯ opens a bottom sheet with the same items', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['hr.hours.correct'],
+      size: const Size(390, 844),
+      onClock: (_, _) => _week(people: [_person()]),
+    );
+    await _tap(tester, _tab('Work Hours'));
+    await _tap(tester, find.text('Bea Okafor'));
+
+    await _tap(tester, find.byTooltip('Shift actions'));
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('Edit times'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text('Delete shift'),
+      ),
+      findsOneWidget,
+    );
+  });
 }
 
 Future<void> _pump(
@@ -393,6 +642,8 @@ Future<void> _pump(
   required Map<String, Object?> timeClock,
   Map<String, dynamic> Function(Uri uri, http.Request request)? onClock,
   Size size = const Size(1400, 1600),
+  List<String> grants = const [],
+  http.Response? Function(http.Request request)? onWrite,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -403,7 +654,7 @@ Future<void> _pump(
       final path = request.url.path;
 
       if (path.endsWith('/me')) {
-        return _json({'data': _me(timeClock: timeClock)});
+        return _json({'data': _me(timeClock: timeClock, grants: grants)});
       }
 
       if (path.endsWith('/hr/dashboard')) {
@@ -419,6 +670,9 @@ Future<void> _pump(
         final payload = onClock?.call(request.url, request);
         if (payload != null) return _json({'data': payload});
       }
+
+      final written = onWrite?.call(request);
+      if (written != null) return written;
 
       return _json({'message': 'Unexpected ${request.method} $path'}, 500);
     }),
@@ -497,20 +751,48 @@ Map<String, dynamic> _week({
   // This fixture is a week in progress: Tuesday is today, Wednesday on has
   // not arrived. Today is never in the future.
   'days': const [
-    {'date': '2026-08-23', 'weekday': 'sunday', 'label': 'Sunday, Aug 23',
-      'in_future': false},
-    {'date': '2026-08-24', 'weekday': 'monday', 'label': 'Monday, Aug 24',
-      'in_future': false},
-    {'date': '2026-08-25', 'weekday': 'tuesday', 'label': 'Tuesday, Aug 25',
-      'in_future': false},
-    {'date': '2026-08-26', 'weekday': 'wednesday', 'label': 'Wednesday, Aug 26',
-      'in_future': true},
-    {'date': '2026-08-27', 'weekday': 'thursday', 'label': 'Thursday, Aug 27',
-      'in_future': true},
-    {'date': '2026-08-28', 'weekday': 'friday', 'label': 'Friday, Aug 28',
-      'in_future': true},
-    {'date': '2026-08-29', 'weekday': 'saturday', 'label': 'Saturday, Aug 29',
-      'in_future': true},
+    {
+      'date': '2026-08-23',
+      'weekday': 'sunday',
+      'label': 'Sunday, Aug 23',
+      'in_future': false,
+    },
+    {
+      'date': '2026-08-24',
+      'weekday': 'monday',
+      'label': 'Monday, Aug 24',
+      'in_future': false,
+    },
+    {
+      'date': '2026-08-25',
+      'weekday': 'tuesday',
+      'label': 'Tuesday, Aug 25',
+      'in_future': false,
+    },
+    {
+      'date': '2026-08-26',
+      'weekday': 'wednesday',
+      'label': 'Wednesday, Aug 26',
+      'in_future': true,
+    },
+    {
+      'date': '2026-08-27',
+      'weekday': 'thursday',
+      'label': 'Thursday, Aug 27',
+      'in_future': true,
+    },
+    {
+      'date': '2026-08-28',
+      'weekday': 'friday',
+      'label': 'Friday, Aug 28',
+      'in_future': true,
+    },
+    {
+      'date': '2026-08-29',
+      'weekday': 'saturday',
+      'label': 'Saturday, Aug 29',
+      'in_future': true,
+    },
   ],
   'timezone': 'Etc/GMT+5',
   'timezone_label': timezoneLabel,
@@ -525,6 +807,7 @@ Map<String, Object?> _person({
   int average = 3900,
   bool open = false,
   List<Map<String, Object?>> shifts = const [_bea],
+  List<Map<String, Object?>> records = const [],
 }) => {
   'id': id,
   'name': name,
@@ -535,6 +818,7 @@ Map<String, Object?> _person({
   'average_seconds': average,
   'open': open,
   'shifts': shifts,
+  'days': records,
 };
 
 const _bea = {
@@ -544,6 +828,8 @@ const _bea = {
   'clocked_out_at': '2026-08-25T14:05:00Z',
   'clocked_in': '8:00 AM',
   'clocked_out': '9:05 AM',
+  'clocked_in_local': '2026-08-25 08:00',
+  'clocked_out_local': '2026-08-25 09:05',
   'duration_seconds': 3900,
   'open': false,
   'ended_by': 'person',
@@ -551,7 +837,10 @@ const _bea = {
   'extensions': 0,
 };
 
-Map<String, Object?> _me({required Map<String, Object?> timeClock}) => {
+Map<String, Object?> _me({
+  required Map<String, Object?> timeClock,
+  List<String> grants = const [],
+}) => {
   'id': 'u-1',
   'name': 'Jose Silva',
   'email': 'jose@example.com',
@@ -572,6 +861,7 @@ Map<String, Object?> _me({required Map<String, Object?> timeClock}) => {
     'hr.invitations.view',
     'hr.pto.view',
     'hr.contracts.view',
+    ...grants,
   ],
   'modules': [
     {

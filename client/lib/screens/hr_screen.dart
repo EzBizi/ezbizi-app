@@ -136,7 +136,12 @@ class _HrScreenState extends State<HrScreen> {
         'hours',
         UiStrings.t('time_clock.tab'),
         Icons.schedule_outlined,
-        () => WorkHoursTab(api: widget.api),
+        () => WorkHoursTab(
+          api: widget.api,
+          canCorrect:
+              widget.session.me?.permissions.contains('hr.hours.correct') ??
+              false,
+        ),
       ),
     (
       'onboarding',
@@ -174,8 +179,10 @@ class _HrScreenState extends State<HrScreen> {
   ///
   /// One list, read by the bar and by the stack, so the two cannot disagree
   /// about what exists.
-  List<(String, String, IconData, Widget Function())> get _shownTabs =>
-      [for (final tab in _declaredTabs) if (_mayOpen(tab.$1)) tab];
+  List<(String, String, IconData, Widget Function())> get _shownTabs => [
+    for (final tab in _declaredTabs)
+      if (_mayOpen(tab.$1)) tab,
+  ];
 
   /// The tab actually on screen: `_tab` if they may open it, else the first
   /// one they may.
@@ -193,8 +200,8 @@ class _HrScreenState extends State<HrScreen> {
   /// the index conversion where only one did.
   String get _activeTab =>
       _shownTabs.any((tab) => tab.$1 == _tab) || _shownTabs.isEmpty
-          ? _tab
-          : _shownTabs.first.$1;
+      ? _tab
+      : _shownTabs.first.$1;
 
   /// Where the active tab sits in what is drawn, for the bar alone.
   int get _selectedIndex {

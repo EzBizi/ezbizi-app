@@ -37,6 +37,16 @@ class TimeClockUiStringsTest extends TestCase
         foreach ([
             'time_clock.reminder_title', 'time_clock.reminder_body', 'time_clock.extend',
             'time_clock.previous_week', 'time_clock.next_week', 'time_clock.still_in',
+            // Day tags, the lock screen's after-hours sentence and the Work
+            // Hours menus (2026-09-24).
+            'time_clock.tag.office', 'time_clock.tag.home', 'time_clock.tag.absent',
+            'time_clock.tag.sick', 'time_clock.tag.holiday', 'time_clock.tag.vacation',
+            'time_clock.after_hours',
+            'time_clock.action.clock_out_now', 'time_clock.action.edit', 'time_clock.action.delete',
+            'time_clock.action.tag', 'time_clock.action.extra', 'time_clock.action.note',
+            'time_clock.shift_actions', 'time_clock.day_actions', 'time_clock.delete_confirm',
+            'time_clock.extra_time', 'time_clock.no_tag', 'time_clock.hours', 'time_clock.minutes',
+            'time_clock.edited', 'time_clock.ended_by_hr',
             'time_clock.lock_sentence', 'time_clock.sign_out', 'time_clock.auto',
             'time_clock.outside', 'time_clock.day_off', 'time_clock.work_schedule',
             'time_clock.not_scheduled', 'time_clock.overnight', 'time_clock.exempt_on',

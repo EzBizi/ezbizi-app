@@ -146,11 +146,19 @@ class TimeClockController extends Controller
             ]);
         }
 
+        /*
+         * Either an instant with its offset ("…Z") or a bare "Y-m-d H:i", which
+         * is wall clock in the zone the screen showed it in. Carbon honours an
+         * offset in the string and falls back to the zone given only when there
+         * is none, so both shapes are one call.
+         */
+        $tz = $this->timeClock->viewTimezone($request->user());
+
         $this->timeClock->correct(
             $request->user(),
             $shift,
-            isset($data['clocked_in_at']) ? Carbon::parse($data['clocked_in_at'])->utc() : null,
-            isset($data['clocked_out_at']) ? Carbon::parse($data['clocked_out_at'])->utc() : null,
+            isset($data['clocked_in_at']) ? Carbon::parse($data['clocked_in_at'], $tz)->utc() : null,
+            isset($data['clocked_out_at']) ? Carbon::parse($data['clocked_out_at'], $tz)->utc() : null,
         );
 
         return $this->weekAfterCorrection($request);
