@@ -1121,6 +1121,60 @@ void main() {
     expect(sent, isNull);
   });
 
+  /// TEMPLATES ARE SEARCHABLE, by what they are called AND where they run.
+  ///
+  /// Jose, 2026-09-24: *"I want more templates ... also add a search bar for
+  /// them"*. The target template's name and description share no word with the
+  /// query; only its "Runs on" area matches. So this passes only if search
+  /// reads the area, and the eight others staying hidden shows it filters.
+  testWidgets('templates can be searched by the area they run on', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _handler(
+        catalogue: {
+          ...Map<String, dynamic>.from(_catalogue),
+          'templates': [
+            for (var i = 0; i < 8; i++)
+              {
+                'key': 'filler-$i',
+                'name': 'Filler number $i',
+                'description': 'Nothing to see.',
+                'trigger_key': 'customer.created',
+                'conditions': null,
+                'actions': [
+                  {'type': 'notify', 'message': 'Hi.'},
+                ],
+              },
+            {
+              'key': 'handoff',
+              'name': 'Heads-up for the new branch',
+              'description': 'Tells the branch that now looks after them.',
+              'trigger_key': 'customer.owner_reassigned',
+              'conditions': null,
+              'actions': [
+                {'type': 'notify', 'message': 'Hi.'},
+              ],
+            },
+          ],
+        },
+      ),
+    );
+
+    await _tap(tester, find.text('Build'));
+    await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
+
+    await tester.enterText(
+      find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField)),
+      'owner reassigned',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Heads-up for the new branch'), findsOneWidget);
+    expect(find.text('Filler number 0'), findsNothing);
+  });
+
   /// CARDS SIT SIDE BY SIDE, and still fit when there is no room for two.
   ///
   /// Jose, 2026-09-22: *"i would also like to see the current automations in

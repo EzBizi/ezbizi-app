@@ -103,6 +103,232 @@ final class AutomationTemplates
                     ['type' => 'notify', 'message' => '{{name}} has joined and can sign in now.'],
                 ],
             ],
+
+            /*
+             * ── Added 2026-09-24 ──────────────────────────────────────
+             *
+             * Jose: "think of what a company would be needing and make some
+             * more templates". Every {{field}} and condition below was read
+             * off the emitter's payload or the subject's columns, not guessed:
+             * a variable the event does not carry renders as nothing, and a
+             * condition on it never matches, with no error anywhere.
+             */
+
+            // Leads
+            [
+                'key' => 'answer-thumbtack',
+                'name' => 'Answer Thumbtack leads straight away',
+                'description' => 'Sends a short reply the moment a Thumbtack lead arrives, so '
+                    .'nobody is left waiting while the office is busy.',
+                'trigger_key' => 'lead.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'source', 'op' => 'eq', 'value' => 'thumbtack'],
+                    ],
+                ],
+                'actions' => [
+                    ['type' => 'reply', 'message' => 'Hi {{contact_name}}, thank you for reaching out. '
+                        .'We have your request and will be in touch shortly.'],
+                ],
+            ],
+            [
+                'key' => 'mailing-list-opt-in',
+                'name' => 'Add website visitors who opt in to your mailing list',
+                'description' => 'Only people who ticked the box on your website form or chat '
+                    .'are added. Everybody else is left off. Choose which Mailchimp list.',
+                'trigger_key' => 'lead.received',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'add_to_audience', 'audience_id' => ''],
+                ],
+            ],
+            [
+                'key' => 'lead-won',
+                'name' => 'Celebrate a lead that became a customer',
+                'description' => 'When an enquiry is turned into a customer and a job, the '
+                    .'office hears about it.',
+                'trigger_key' => 'lead.converted',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => '{{contact_name}} is now a customer, and their job has been created.'],
+                ],
+            ],
+
+            // Jobs
+            [
+                'key' => 'yearly-follow-up',
+                'name' => 'Book next year\'s visit when a job is done',
+                'description' => 'When a job is completed, a follow-up job for the same customer '
+                    .'is booked a year later. Change the number of days for a different interval.',
+                'trigger_key' => 'job.completed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'job.create', 'title' => 'Yearly check-up: {{title}}', 'in_days' => '365'],
+                ],
+            ],
+            [
+                'key' => 'inspection-report-to-customer',
+                'name' => 'Email the inspection report to the customer',
+                'description' => 'As soon as a technician submits an inspection, the customer gets '
+                    .'the report by email, without anybody in the office sending it.',
+                'trigger_key' => 'inspection.submitted',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'inspection_report.email'],
+                ],
+            ],
+
+            // Phone
+            [
+                'key' => 'missed-call-job',
+                'name' => 'Turn every missed call into a call-back',
+                'description' => 'A missed call opens a job to ring them back, and the office is '
+                    .'told, so a caller who hung up is not a lost customer.',
+                'trigger_key' => 'phone.call.missed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'missed.create_job'],
+                    ['type' => 'notify', 'message' => 'Missed call from {{from_e164}}. A job has been opened to call them back.'],
+                ],
+            ],
+            [
+                'key' => 'new-voicemail',
+                'name' => 'Tell the office about a new voicemail',
+                'description' => 'Somebody left a message. Everybody who can hear it is told who '
+                    .'called.',
+                'trigger_key' => 'phone.voicemail.left',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'New voicemail from {{from_e164}}.'],
+                ],
+            ],
+            [
+                'key' => 'phone-number-broken',
+                'name' => 'Warn the administrators when a phone number stops working',
+                'description' => 'Calls and texts to a broken number go nowhere, silently. This '
+                    .'tells the people who can fix it.',
+                'trigger_key' => 'phone.number.broken',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify_administrators', 'message' => 'The phone number {{e164}} has stopped working: {{reason}}'],
+                ],
+            ],
+
+            // Reviews
+            [
+                'key' => 'thank-five-stars',
+                'name' => 'Draft a thank-you for every 5-star review',
+                'description' => 'A reply is written for you and waits as a draft. Nothing is '
+                    .'published until somebody reads it and presses the button.',
+                'trigger_key' => 'review.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'rating', 'op' => 'eq', 'value' => '5'],
+                    ],
+                ],
+                'actions' => [
+                    ['type' => 'draft_reply', 'message' => 'Thank you so much, {{reviewer_name}}. We are '
+                        .'glad we could help, and we look forward to seeing you again.'],
+                ],
+            ],
+            [
+                'key' => 'low-review',
+                'name' => 'Flag a review of 3 stars or less',
+                'description' => 'The office hears about it straight away, so an unhappy customer '
+                    .'can be answered the same day.',
+                'trigger_key' => 'review.received',
+                'conditions' => [
+                    'all' => [
+                        ['field' => 'rating', 'op' => 'lte', 'value' => '3'],
+                    ],
+                ],
+                'actions' => [
+                    ['type' => 'notify', 'message' => '{{reviewer_name}} left a {{rating}}-star review. It is worth answering today.'],
+                ],
+            ],
+            [
+                'key' => 'review-reply-failed',
+                'name' => 'Say something when a review reply does not publish',
+                'description' => 'Google refused a reply. Without this, it looks answered in '
+                    .'EzBizi and unanswered on Google.',
+                'trigger_key' => 'review.reply_failed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'A reply to a review did not publish: {{reason}}'],
+                ],
+            ],
+
+            // Team
+            [
+                'key' => 'training-failed',
+                'name' => 'Tell the manager when somebody fails a test',
+                'description' => 'A failed training test is a conversation to have, not a '
+                    .'number to find later.',
+                'trigger_key' => 'training.failed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'Somebody did not pass a training test (score {{score}}).'],
+                ],
+            ],
+            [
+                'key' => 'training-expired',
+                'name' => 'Say when a training pass runs out',
+                'description' => 'Some certificates only last so long. When one expires, the '
+                    .'people who manage training are told it needs taking again.',
+                'trigger_key' => 'training.expired',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'A training pass has expired and needs taking again.'],
+                ],
+            ],
+            [
+                'key' => 'onboarding-complete',
+                'name' => 'Tell the administrators when a new hire finishes onboarding',
+                'description' => 'The paperwork is signed and complete, so the rest of the setup '
+                    .'can start.',
+                'trigger_key' => 'onboarding.completed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify_administrators', 'message' => 'An onboarding is complete: the {{contract}} contract is signed.'],
+                ],
+            ],
+
+            // Marketing and website
+            [
+                'key' => 'social-post-failed',
+                'name' => 'Say something when a social post does not publish',
+                'description' => 'A scheduled post that fails goes out nowhere. This says which '
+                    .'account and why.',
+                'trigger_key' => 'social.publish_failed',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'A post did not publish to {{account}}: {{because}}'],
+                ],
+            ],
+            [
+                'key' => 'website-went-quiet',
+                'name' => 'Warn when a website stops checking in',
+                'description' => 'If the EzBizi plugin on one of your websites goes silent, its '
+                    .'forms and chat may have stopped working too.',
+                'trigger_key' => 'website.went_quiet',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify_administrators', 'message' => '{{host}} has not checked in for {{hours_quiet}} hours. Its forms and chat may not be working.'],
+                ],
+            ],
+
+            // Monitoring
+            [
+                'key' => 'device-offline',
+                'name' => 'Say when a work computer goes offline',
+                'description' => 'A computer that stops reporting in may be off, broken or '
+                    .'unplugged. The people who look after them are told which one.',
+                'trigger_key' => 'monitoring.device_offline',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => '{{label}} has gone offline.'],
+                ],
+            ],
         ];
     }
 }
