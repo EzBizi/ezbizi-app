@@ -176,6 +176,11 @@ return [
         // subscription must not silently break the other.
         'messages_verify_token' => env('META_MESSAGES_VERIFY_TOKEN'),
 
+        // The ONE WhatsApp number the staff bot answers on (a phone_number_id).
+        // Unset means the bot answers nothing - the safe way to fail, since the
+        // alternative is a robot replying on lines where a person is expected.
+        'whatsapp_bot_number_id' => env('META_WHATSAPP_BOT_NUMBER_ID'),
+
         'threads_id' => env('META_THREADS_APP_ID'),
         'threads_secret' => env('META_THREADS_APP_SECRET'),
         'threads_redirect' => env('META_THREADS_REDIRECT_URI')

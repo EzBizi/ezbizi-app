@@ -119,6 +119,48 @@ final class WhatsAppCloud
     }
 
     /**
+     * A free-form reply - text or an interactive menu - row and all.
+     *
+     * FREE-FORM MEANS INSIDE THE 24-HOUR WINDOW, and that is the only reason
+     * this is safe to call without a template: the one caller is the staff bot,
+     * answering a message the person sent seconds ago. Called outside a window
+     * it would return 200 with a wamid and then fail on the webhook - see
+     * sendText().
+     *
+     * Takes the resolved number rather than a display number to look up,
+     * because the bot already knows which of our numbers the message arrived
+     * on; asking it to name one again would be a second chance to name the
+     * wrong one.
+     *
+     * @param  array<string, mixed>  $message  the `type` and its body, e.g.
+     *                                         ['type' => 'text', 'text' => [...]]
+     */
+    public function replyFreeForm(
+        WhatsAppNumber $number,
+        string $to,
+        array $message,
+        ?string $bodyForTheRecord = null,
+    ): WhatsAppMessage {
+        $row = WhatsAppMessage::create([
+            'organization_id' => $number->organization_id,
+            'phone_number_id' => $number->phone_number_id,
+            'direction' => WhatsAppMessage::DIRECTION_OUT,
+            'counterparty' => preg_replace('/\D+/', '', $to) ?? '',
+            'status' => WhatsAppMessage::STATUS_QUEUED,
+            'kind' => (string) ($message['type'] ?? 'text'),
+            // What the person was shown, so the history reads as a
+            // conversation rather than as a list of message ids.
+            'body' => $bodyForTheRecord,
+        ]);
+
+        return $this->deliver($row, [
+            'messaging_product' => 'whatsapp',
+            'to' => $row->counterparty,
+            ...$message,
+        ]);
+    }
+
+    /**
      * The APPROVED templates on a WABA, with the parameter count each needs.
      *
      * For the automation builder: a rule fires when a job is booked or an

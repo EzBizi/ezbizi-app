@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Organization;
 use App\Models\WhatsAppMessage;
+use App\Models\WhatsAppNumber;
 use App\Support\Social\WhatsAppCloud;
+use App\Support\Social\WhatsAppStaffBot;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +42,8 @@ use Throwable;
  */
 class WhatsAppWebhookController extends Controller
 {
+    public function __construct(private readonly WhatsAppStaffBot $bot) {}
+
     /**
      * GET — the subscription handshake.
      */
@@ -152,7 +156,14 @@ class WhatsAppWebhookController extends Controller
              * message into three in the list - and the unique index would throw
              * on the second rather than politely doing nothing.
              */
-            WhatsAppMessage::updateOrCreate(
+            // A tapped menu row arrives as `interactive`, carrying the row's id
+            // and title. The id is what the bot acts on; the title is what the
+            // person saw, so it is what the history records as their words.
+            $picked = $message['interactive']['list_reply']
+                ?? $message['interactive']['button_reply']
+                ?? null;
+
+            $row = WhatsAppMessage::updateOrCreate(
                 ['wamid' => $wamid],
                 [
                     'organization_id' => $organizationId,
@@ -161,15 +172,29 @@ class WhatsAppWebhookController extends Controller
                     'counterparty' => (string) ($message['from'] ?? ''),
                     'status' => WhatsAppMessage::STATUS_RECEIVED,
                     'kind' => (string) ($message['type'] ?? 'text'),
-                    // Only text is read. An image or a location arrives as a
-                    // row with a null body and its real `kind`, which is
-                    // honest - better than an empty string that reads as an
-                    // empty message somebody sent.
-                    'body' => $message['text']['body'] ?? null,
+                    // Only text and menu taps are read. An image or a location
+                    // arrives as a row with a null body and its real `kind`,
+                    // which is honest - better than an empty string that reads
+                    // as an empty message somebody sent.
+                    'body' => $message['text']['body'] ?? ($picked['title'] ?? null),
                 ],
             );
 
             $handled++;
+
+            /*
+             * ONLY A MESSAGE WE HAD NOT SEEN BEFORE IS ANSWERED.
+             *
+             * Meta retries any delivery it did not get a 200 for, carrying the
+             * same wamid. updateOrCreate makes that retry harmless for the
+             * record; `wasRecentlyCreated` is what makes it harmless for the
+             * REPLY. Without it a slow response here - which a reply that calls
+             * Meta makes more likely - earns a retry, and the retry earns the
+             * person a second copy of every answer.
+             */
+            if ($row->wasRecentlyCreated && $this->bot->handles($phoneNumberId)) {
+                $this->answer($row, $phoneNumberId, isset($picked['id']) ? (string) $picked['id'] : null);
+            }
         }
 
         foreach ((array) ($value['statuses'] ?? []) as $status) {
@@ -240,6 +265,33 @@ class WhatsAppWebhookController extends Controller
         }
 
         return $handled;
+    }
+
+    /**
+     * Let the staff bot reply, without letting a failed reply cost the record.
+     *
+     * Caught here rather than left to the caller's catch, because that catch
+     * would count the whole change as unabsorbed - and the inbound message IS
+     * absorbed; only our answer to it failed. The person's words stay in the
+     * history either way, and the failure is logged where it can be read.
+     */
+    private function answer(WhatsAppMessage $inbound, string $phoneNumberId, ?string $choice): void
+    {
+        $number = WhatsAppNumber::query()->where('phone_number_id', $phoneNumberId)->first();
+
+        if ($number === null) {
+            return;
+        }
+
+        try {
+            $this->bot->respond($number, $inbound, $choice);
+        } catch (Throwable $e) {
+            Log::warning('The WhatsApp staff bot could not reply.', [
+                'phone_number_id' => $phoneNumberId,
+                'inbound' => $inbound->getKey(),
+                'reason' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function organizationFor(string $phoneNumberId): ?Organization
