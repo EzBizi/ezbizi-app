@@ -2077,6 +2077,51 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * "IN N DAYS" IS COUNTED FROM THE FRANCHISE'S TODAY, NOT UTC'S.
+     *
+     * The deploy desk found it on the box: the app runs in UTC and every
+     * franchise is America/New_York, and the step computed the date from
+     * `now()` — UTC. A rule firing at 10 PM in New York is already tomorrow in
+     * UTC, so "in 1 day" landed a day late.
+     *
+     * `scheduled_for` is stored as NAIVE wall-clock time and read back in the
+     * franchise's zone (FranchiseWallTime), so the stored digits ARE what a
+     * person sees. That is why this asserts the raw stored string, hour
+     * included — the first version of the test compared the date only, which
+     * could see neither half of this.
+     *
+     * The clock is pinned to 02:00 UTC, which is 10 PM the previous evening in
+     * New York: the one moment where the two answers differ.
+     */
+    public function test_in_n_days_is_counted_in_the_franchise_timezone(): void
+    {
+        $this->inTenant(fn () => $this->org['franchise']->forceFill(['timezone' => 'America/New_York'])->save());
+
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-09-25 02:00:00', 'UTC'));
+
+        $rule = $this->automation('customer.created', null, [], $this->org['admin']->id);
+        [$customerId] = $this->makeJob();
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'customer.created',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'job.create', 'title' => 'Check-in', 'in_days' => '1',
+        ], $event, Customer::findOrFail($customerId)->load('owningFranchise'), false, $rule));
+
+        $stored = $this->inTenant(fn () => Job::where('title', 'Check-in')->sole()->getRawOriginal('scheduled_for'));
+
+        // Thursday evening in New York, plus one day, at nine in the morning
+        // there — not Saturday, which is what counting from UTC's date gave.
+        $this->assertSame('2026-09-25 09:00:00', $stored);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

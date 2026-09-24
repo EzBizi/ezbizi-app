@@ -2404,7 +2404,21 @@ class ActionRunner
         // means, and a blank leaves it for somebody to schedule, which is the
         // honest default for a job nobody has spoken to the customer about.
         $inDays = trim((string) ($action['in_days'] ?? ''));
-        $scheduledFor = ctype_digit($inDays) ? now()->addDays((int) $inDays)->startOfDay()->setHour(9) : null;
+
+        // COUNTED FROM THE FRANCHISE'S TODAY. The app runs in UTC, and a rule
+        // firing at 10 PM in New York is already tomorrow in UTC — so counting
+        // from `now()` landed "in 1 day" a day late for anything that fired in
+        // the evening. `scheduled_for` is stored as naive wall-clock time and
+        // read back in the franchise's zone (FranchiseWallTime), so computing
+        // in that zone makes the stored digits the ones a person reads: that
+        // day, nine in the morning where the franchise is.
+        $zone = is_string($franchise->timezone) && $franchise->timezone !== ''
+            ? $franchise->timezone
+            : (string) config('app.timezone');
+
+        $scheduledFor = ctype_digit($inDays)
+            ? now($zone)->addDays((int) $inDays)->startOfDay()->setHour(9)
+            : null;
 
         $job = DB::transaction(function () use ($customer, $franchise, $title, $status, $scheduledFor, $event, $subject) {
             $job = Job::create([
