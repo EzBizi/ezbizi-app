@@ -9,10 +9,16 @@ namespace App\Support\Privacy;
  *
  * Retention was declared on the personal-data interface, which meant only tables
  * holding personal data could state one. The two tables growing fastest in this
- * system — `automation_events` and `automation_runs` — hold no personal data of
- * their own and so had no way to say anything at all. They were not exempt from
- * retention; they were invisible to it. §10 is about what accumulates, and what
- * accumulates is not only what identifies somebody.
+ * system — `automation_events` and `automation_runs` — were believed to hold no
+ * personal data of their own and so had no way to say anything at all. They were
+ * not exempt from retention; they were invisible to it. §10 is about what
+ * accumulates, and what accumulates is not only what identifies somebody.
+ *
+ * The belief was wrong: event payloads copy callers' numbers, senders' addresses
+ * and names, and runs copy payload values into their condition trace. Since
+ * 2026-09-24 AutomationEvent is HoldsPersonalData, and its runs go with it by
+ * the cascade. Plenty of tables still only grow — settings, versions, stock
+ * moves — and this interface is theirs.
  *
  * So `HoldsPersonalData` EXTENDS this. A model holding personal data must still
  * state retention — it inherits the requirement rather than escaping it — and a
