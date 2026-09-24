@@ -161,6 +161,54 @@ class EzBiziTheme {
         filled: true,
         fillColor: isDark ? const Color(0xFF161E25) : Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+
+        /*
+         * AN EMPTY FIELD MUST NOT READ LIKE A FILLED ONE.
+         *
+         * Jose, 2026-09-24, on a column of Web Management footer fields:
+         * *"there's practically no difference on the field text for completed
+         * stuff vs placeholders, u can't tell them apart"*.
+         *
+         * Measured before changing anything, which is what makes this small:
+         *
+         *   resting label (EMPTY)   16.0  w400  #414849
+         *   entered value           16.0  w400  #060808
+         *
+         * Same size, same weight, and two greys close enough that a column of
+         * mixed fields reads as one block of text. Nothing was styled here at
+         * all — no labelStyle, no floatingLabelStyle, no hintStyle — so
+         * Material's defaults decided, and its default resting label is dark
+         * enough to pass for content.
+         *
+         * So the prompt goes properly muted and the floated caption goes
+         * SMALL AND HEAVY. After that an empty field is mid-grey body text
+         * and a filled one is a little bold caption over near-black — a
+         * difference in colour, size AND weight rather than one shade of grey.
+         *
+         * `_muted` rather than something lighter: a placeholder is still text
+         * somebody has to read, and #5B6672 on white is about 4.9:1. Going
+         * paler would have separated them by failing contrast, which is a
+         * worse screen for the people who need it most.
+         */
+        labelStyle: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w400,
+          // Dark gets an OPAQUE grey rather than white-at-60%. Translucent
+          // white over a dark fill separates by 2.48:1, under the 3:1 the
+          // light theme clears — and it reads as pure white to anything that
+          // measures colour without compositing, which is how the first
+          // version of the test for this reported 1.00:1 and meant nothing.
+          color: isDark ? const Color(0xFF8B93A0) : _muted,
+        ),
+        floatingLabelStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: isDark ? Colors.white70 : _muted,
+        ),
+        hintStyle: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w400,
+          color: isDark ? Colors.white38 : _muted.withValues(alpha: 0.75),
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: const BorderSide(color: _line),
