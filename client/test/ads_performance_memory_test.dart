@@ -268,10 +268,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.descendant(
-      of: find.byKey(const ValueKey('ads-campaigns')),
-      matching: find.byType(Checkbox),
-    ).at(1)); // [0] is the select-all header
+    await tester.tap(find.byKey(const ValueKey('ads-pick-111')));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey('ads-pause')));
@@ -319,8 +316,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byType(Checkbox).at(1));
-    await tester.tap(find.byType(Checkbox).at(1));
+    await tester.ensureVisible(find.byKey(const ValueKey('ads-pick-111')));
+    await tester.tap(find.byKey(const ValueKey('ads-pick-111')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('ads-pause')));
     await tester.tap(find.byKey(const ValueKey('ads-pause')));

@@ -172,6 +172,13 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
 
   late final _AdsMemory _memory;
 
+  /// The campaign table scrolls sideways as ONE piece, and its pinned header
+  /// is a separate widget in a separate sliver - so the header gets its own
+  /// controller and follows the body's offset. One direction only: the header
+  /// cannot be scrolled by hand, so the two can never disagree.
+  final ScrollController _tableBody = ScrollController();
+  final ScrollController _tableHead = ScrollController();
+
   /*
    * Yesterday, not 30 days. Jose's call, 2026-09-15.
    *
@@ -246,6 +253,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   void initState() {
     super.initState();
     _memory = _memories.putIfAbsent(_who, _AdsMemory.new);
+    _tableBody.addListener(() {
+      if (_tableHead.hasClients && _tableHead.offset != _tableBody.offset) {
+        _tableHead.jumpTo(_tableBody.offset);
+      }
+    });
 
     // Everything the last visit showed, before a single request is made.
     if (_memory.accounts != null) {
@@ -266,6 +278,8 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   void dispose() {
     _accountSearch.dispose();
     _campaignSearch.dispose();
+    _tableBody.dispose();
+    _tableHead.dispose();
     super.dispose();
   }
 
@@ -713,21 +727,47 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     final account =
         (_report!['account'] as Map?)?.cast<String, dynamic>() ?? const {};
     final currency = _report!['currency'];
+    final (all, rows) = _campaignRows();
 
-    return ListView(
-      children: [
-        _freshness(theme),
-        _rangeChips(theme),
-        const SizedBox(height: 12),
-        _accountCard(theme, account, currency),
-        const SizedBox(height: 16),
-        _chart(theme),
-        const SizedBox(height: 16),
-        _campaigns(theme, currency),
-        if (_refused.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _refusals(theme),
-        ],
+    /*
+     * ── A CustomScrollView SO THE COLUMN HEADER CAN PIN ─────────
+     *
+     * Jose, 2026-09-24: "make the top columns sticky, so when u scroll down u
+     * still know what column ur looking at". A DataTable cannot: it draws its
+     * header inside itself and scrolls as one box. So, as in the call report,
+     * the header is a pinned sliver of its own and the rows are beneath it,
+     * both laid out from ONE column list with fixed widths - a column added to
+     * that list cannot appear in one and not the other.
+     */
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _freshness(theme),
+              _rangeChips(theme),
+              const SizedBox(height: 12),
+              _accountCard(theme, account, currency),
+              const SizedBox(height: 16),
+              _chart(theme),
+              const SizedBox(height: 16),
+              _campaigns(theme, all, rows),
+            ],
+          ),
+        ),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _PinnedRow(child: _campaignHeader(theme, rows)),
+        ),
+        SliverToBoxAdapter(child: _campaignBody(theme, rows, currency)),
+        if (_refused.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: _refusals(theme),
+            ),
+          ),
       ],
     );
   }
@@ -960,15 +1000,10 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     );
   }
 
-  Widget _campaigns(ThemeData theme, dynamic currency) {
+  /// Every campaign, and the ones the filters leave - sorted.
+  (List<Map<String, dynamic>>, List<Map<String, dynamic>>) _campaignRows() {
     final all = (_report!['campaigns'] as List? ?? const [])
         .cast<Map<String, dynamic>>();
-
-    // Every status present in the data, so the chips describe THIS account
-    // rather than a list of Google's enum somebody typed out.
-    final present = <String>{
-      for (final c in all) (c['status'] as String?) ?? 'UNKNOWN',
-    }.toList()..sort();
 
     final needle = _campaignSearch.text.trim().toLowerCase();
 
@@ -995,7 +1030,25 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
             return _sortDescending ? -c : c;
           });
 
+    return (all, rows);
+  }
+
+  /// The controls above the table: title, Columns, the action bar, filters.
+  Widget _campaigns(
+    ThemeData theme,
+    List<Map<String, dynamic>> all,
+    List<Map<String, dynamic>> rows,
+  ) {
+    // Every status present in the data, so the chips describe THIS account
+    // rather than a list of Google's enum somebody typed out.
+    final present = <String>{
+      for (final c in all) (c['status'] as String?) ?? 'UNKNOWN',
+    }.toList()..sort();
+
     return Card(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+      ),
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1072,83 +1125,212 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                 hintText: 'Search campaigns',
               ),
             ),
-            const SizedBox(height: 12),
-            // Scrolls sideways rather than dropping columns: a narrow screen
-            // must not be a reason to show fewer required fields than the
-            // policy asks for.
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                key: const ValueKey('ads-campaigns'),
-                columnSpacing: 26,
-                sortColumnIndex: _sortIndex(),
-                sortAscending: !_sortDescending,
-                // Ticking a row selects it for Pause / Enable. Offered only to
-                // somebody holding the grant: a checkbox whose only outcome is
-                // a refusal is a control that lies about what it does.
-                showCheckboxColumn: _canManage,
-                columns: [
-                  _sortable('Campaign', 'name'),
-                  _sortable('Status', 'status'),
-                  _sortable('Cost', 'cost'),
-                  _sortable('Clicks', 'clicks'),
-                  _sortable('Impressions', 'impressions'),
-                  _sortable('Conversions', 'conversions'),
-                  _sortable('All conversions', 'all_conversions'),
-                  for (final e in _extras.where((e) => _extra.contains(e.key)))
-                    _sortable(e.label, e.key),
-                ],
-                rows: [
-                  for (final c in rows)
-                    DataRow(
-                      key: ValueKey('ads-campaign-${c['id']}'),
-                      selected: _picked.contains('${c['id']}'),
-                      onSelectChanged: !_canManage || _changing
-                          ? null
-                          : (on) => setState(() {
-                              _confirming = null;
-                              on == true
-                                  ? _picked.add('${c['id']}')
-                                  : _picked.remove('${c['id']}');
-                            }),
-                      cells: [
-                        DataCell(Text((c['name'] as String?) ?? '—')),
-                        DataCell(Text(_statusWord(c['status'] as String?))),
-                        DataCell(Text(_money(c['cost'], currency))),
-                        DataCell(Text(_number(c['clicks']))),
-                        DataCell(Text(_number(c['impressions']))),
-                        DataCell(Text(_number(c['conversions']))),
-                        DataCell(Text(_number(c['all_conversions']))),
-                        for (final e in _extras.where((e) => _extra.contains(e.key)))
-                          DataCell(Text(_format(e, c[e.key], currency))),
-                      ],
-                    ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  /// The columns in the order the table draws them, so the sort arrow sits on
-  /// the column actually sorted - including an optional one.
-  List<String> get _sortColumns => [
-    'name',
-    'status',
-    'cost',
-    'clicks',
-    'impressions',
-    'conversions',
-    'all_conversions',
-    for (final e in _extras.where((e) => _extra.contains(e.key))) e.key,
+  /// One column of the campaign table: what it holds, and how wide it is.
+  ///
+  /// Fixed widths rather than a DataTable's measured ones, because the header
+  /// and the rows are now two widgets in two slivers and must agree without
+  /// measuring each other. Scrolls sideways rather than dropping columns: a
+  /// narrow screen must not be a reason to show fewer required fields than
+  /// the policy asks for.
+  List<({String key, String label, double width, bool numeric})> get _tableColumns => [
+    (key: 'name', label: 'Campaign', width: 340, numeric: false),
+    (key: 'status', label: 'Status', width: 96, numeric: false),
+    (key: 'cost', label: 'Cost', width: 130, numeric: true),
+    (key: 'clicks', label: 'Clicks', width: 90, numeric: true),
+    (key: 'impressions', label: 'Impressions', width: 116, numeric: true),
+    (key: 'conversions', label: 'Conversions', width: 116, numeric: true),
+    (key: 'all_conversions', label: 'All conversions', width: 136, numeric: true),
+    for (final e in _extras.where((e) => _extra.contains(e.key)))
+      (key: e.key, label: e.label, width: 124, numeric: true),
   ];
 
-  int _sortIndex() {
-    final i = _sortColumns.indexOf(_sortBy);
-    return i < 0 ? 2 : i;
+  static const double _checkWidth = 48;
+
+  double get _tableWidth =>
+      (_canManage ? _checkWidth : 0) +
+      _tableColumns.fold<double>(0, (sum, c) => sum + c.width) +
+      32;
+
+  /// The header row, pinned: labels that sort, and select-all for Pause.
+  Widget _campaignHeader(ThemeData theme, List<Map<String, dynamic>> rows) {
+    final ids = [for (final c in rows) '${c['id']}'];
+    final picked = ids.where(_picked.contains).length;
+
+    return Material(
+      key: const ValueKey('ads-campaigns'),
+      // Opaque on purpose: pinned, it scrolls over the rows beneath it, and a
+      // transparent header would print the campaign names through itself.
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: SingleChildScrollView(
+        controller: _tableHead,
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        child: SizedBox(
+          width: _tableWidth,
+          height: _PinnedRow.height,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                if (_canManage)
+                  SizedBox(
+                    width: _checkWidth,
+                    child: Checkbox(
+                      key: const ValueKey('ads-pick-all'),
+                      tristate: true,
+                      value: picked == 0 ? false : (picked == ids.length ? true : null),
+                      onChanged: _changing || ids.isEmpty
+                          ? null
+                          : (_) => setState(() {
+                              _confirming = null;
+                              picked == ids.length
+                                  ? _picked.removeAll(ids)
+                                  : _picked.addAll(ids);
+                            }),
+                    ),
+                  ),
+                for (final c in _tableColumns)
+                  SizedBox(
+                    width: c.width,
+                    child: InkWell(
+                      onTap: () => _sortOn(c.key),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisAlignment:
+                              c.numeric ? MainAxisAlignment.end : MainAxisAlignment.start,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                c.label,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.labelLarge,
+                              ),
+                            ),
+                            if (_sortBy == c.key)
+                              Icon(
+                                _sortDescending ? Icons.arrow_downward : Icons.arrow_upward,
+                                key: ValueKey('ads-sort-${c.key}'),
+                                size: 14,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
+
+  /// The rows, under the pinned header, scrolling sideways with it.
+  Widget _campaignBody(
+    ThemeData theme,
+    List<Map<String, dynamic>> rows,
+    dynamic currency,
+  ) {
+    final columns = _tableColumns;
+
+    return Material(
+      color: theme.colorScheme.surface,
+      child: SingleChildScrollView(
+        controller: _tableBody,
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: _tableWidth,
+          child: Column(
+            key: const ValueKey('ads-campaign-rows'),
+            children: [
+              for (final c in rows)
+                Container(
+                  key: ValueKey('ads-campaign-${c['id']}'),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: _picked.contains('${c['id']}')
+                        ? theme.colorScheme.primaryContainer.withValues(alpha: 0.35)
+                        : null,
+                    border: Border(
+                      bottom: BorderSide(color: theme.colorScheme.outlineVariant, width: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Ticking a row selects it for Pause / Enable. Offered only
+                      // to somebody holding the grant: a checkbox whose only
+                      // outcome is a refusal is a control that lies.
+                      if (_canManage)
+                        SizedBox(
+                          width: _checkWidth,
+                          child: Checkbox(
+                            key: ValueKey('ads-pick-${c['id']}'),
+                            value: _picked.contains('${c['id']}'),
+                            onChanged: _changing
+                                ? null
+                                : (on) => setState(() {
+                                    _confirming = null;
+                                    on == true
+                                        ? _picked.add('${c['id']}')
+                                        : _picked.remove('${c['id']}');
+                                  }),
+                          ),
+                        ),
+                      for (final col in columns)
+                        SizedBox(
+                          width: col.width,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              _cell(col.key, c, currency),
+                              textAlign: col.numeric ? TextAlign.end : TextAlign.start,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _cell(String key, Map<String, dynamic> c, dynamic currency) {
+    switch (key) {
+      case 'name':
+        return (c['name'] as String?) ?? '—';
+      case 'status':
+        return _statusWord(c['status'] as String?);
+      case 'cost':
+        return _money(c['cost'], currency);
+    }
+    final extra = _extras.where((e) => e.key == key);
+    return extra.isEmpty ? _number(c[key]) : _format(extra.first, c[key], currency);
+  }
+
+  /// Sort on a column. Clicking the column already sorted flips it; a new one
+  /// starts DESCENDING, because every column but the name is a quantity and
+  /// "most" is what somebody is looking for.
+  void _sortOn(String key) => setState(() {
+    if (_sortBy == key) {
+      _sortDescending = !_sortDescending;
+    } else {
+      _sortBy = key;
+      _sortDescending = key != 'name';
+    }
+  });
 
   static const _rollupColumns = ['name', 'cost', 'clicks', 'impressions', 'conversions', 'all_conversions'];
 
@@ -1311,14 +1493,7 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
   DataColumn _sortable(String label, String key) {
     return DataColumn(
       label: Text(label),
-      onSort: (columnIndex, ascending) => setState(() {
-        if (_sortBy == key) {
-          _sortDescending = !_sortDescending;
-        } else {
-          _sortBy = key;
-          _sortDescending = key != 'name';
-        }
-      }),
+      onSort: (columnIndex, ascending) => _sortOn(key),
     );
   }
 
@@ -1463,4 +1638,31 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
       ),
     );
   }
+}
+
+/// The campaign table's header, pinned while the rows scroll beneath it.
+///
+/// A fixed height: the header is one row of labels, and measuring it would
+/// mean laying it out twice every frame.
+class _PinnedRow extends SliverPersistentHeaderDelegate {
+  const _PinnedRow({required this.child});
+
+  final Widget child;
+
+  static const double height = 44;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) =>
+      SizedBox(height: height, child: child);
+
+  /// True whenever the header WIDGET differs - which it does on every sort,
+  /// column or selection change. Returning false would pin a stale arrow.
+  @override
+  bool shouldRebuild(_PinnedRow old) => old.child != child;
 }

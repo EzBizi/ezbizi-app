@@ -538,6 +538,70 @@ void main() {
     );
   });
 
+  /// THE COLUMN HEADER STAYS PUT - Jose, 2026-09-24: "make the top columns
+  /// sticky, so when u scroll down u still know what column ur looking at".
+  ///
+  /// Asserted the way it can fail: scroll far enough that the first campaign
+  /// has LEFT the screen (so the page really moved), and the header must still
+  /// be on screen and hittable. A header that scrolled away with the rows would
+  /// pass every other test in this file.
+  testWidgets('the campaign header stays pinned while the rows scroll', (tester) async {
+    final many = report();
+    many['campaigns'] = [
+      for (var i = 0; i < 60; i++)
+        {
+          'id': '${1000 + i}',
+          'name': 'Campaign ${i.toString().padLeft(2, '0')}',
+          'status': 'ENABLED',
+          'clicks': 60 - i, 'impressions': 100, 'conversions': 1,
+          'all_conversions': 1, 'cost': 1000 - i,
+        },
+    ];
+    await pump(tester, accounts: twoAccounts(), report: many);
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    final header = find.byKey(const ValueKey('ads-campaigns'));
+    expect(header, findsOneWidget);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -1600));
+    await tester.pumpAndSettle();
+
+    // hitTestable: the rows are built whether on screen or not, so "not
+    // found" would be false; "not on screen" is the fact that proves a scroll.
+    expect(find.text('Campaign 00').hitTestable(), findsNothing, reason: 'the page really scrolled');
+    expect(header.hitTestable(), findsOneWidget, reason: 'and the header is still on screen');
+    expect(
+      tester.getTopLeft(header).dy,
+      lessThan(tester.getTopLeft(find.text('Campaign 30')).dy),
+      reason: 'above the rows it names',
+    );
+  });
+
+  /// And sideways: the header scrolls WITH the rows, so Cost stays over cost.
+  testWidgets('the pinned header follows the rows sideways', (tester) async {
+    tester.view.physicalSize = const Size(700, 1200);
+    await pump(tester, accounts: twoAccounts(), report: report());
+    tester.view.physicalSize = const Size(700, 1200);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+
+    ScrollController controllerIn(Finder of) => tester
+        .widget<SingleChildScrollView>(
+          find.descendant(of: of, matching: find.byType(SingleChildScrollView)).first,
+        )
+        .controller!;
+
+    final body = find.byKey(const ValueKey('ads-campaign-rows'));
+    await tester.drag(body, const Offset(-250, 0));
+    await tester.pumpAndSettle();
+
+    final moved = controllerIn(find.ancestor(of: body, matching: find.byType(Material)).first).offset;
+    expect(moved, greaterThan(0), reason: 'the rows really scrolled sideways');
+    expect(controllerIn(find.byKey(const ValueKey('ads-campaigns'))).offset, moved);
+  });
+
   /// Sorting by an optional column, then opening a manager, must not break the
   /// roll-up. The roll-up table used to borrow the campaign table's sort
   /// index, which counts Status and the optional columns the roll-up does not
@@ -574,9 +638,9 @@ void main() {
     await tester.tap(ctr);
     await tester.pumpAndSettle();
 
-    // The precondition, asserted: the table really is sorted on CTR, the
-    // eighth column. Without this the test could pass by never sorting.
-    expect(tester.widget<DataTable>(find.byKey(const ValueKey('ads-campaigns'))).sortColumnIndex, 7);
+    // The precondition, asserted: the table really is sorted on CTR. Without
+    // this the test could pass by never sorting.
+    expect(find.byKey(const ValueKey('ads-sort-ctr')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('ads-account-m1')));
     await tester.pumpAndSettle();
