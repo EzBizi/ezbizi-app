@@ -18,22 +18,23 @@ import 'package:http/testing.dart';
 /// "we work Sundays and are full" in storage, with nothing erroring. So this
 /// asserts on the REQUEST BODY, which is the only place the difference shows.
 void main() {
-  testWidgets('the rail pins Overview above the areas and marks one that differs', (
-    tester,
-  ) async {
-    await _pump(tester);
+  testWidgets(
+    'the rail pins Overview above the areas and marks one that differs',
+    (tester) async {
+      await _pump(tester);
 
-    expect(find.text('Overview'), findsOneWidget);
+      expect(find.text('Overview'), findsOneWidget);
 
-    // Twice each now: once in the rail, once as a row in the Overview's
-    // all-areas table. The table replaced three cards that each answered a
-    // smaller question.
-    expect(find.text('Dallas'), findsNWidgets(2));
-    expect(find.text('Houston'), findsNWidgets(2));
+      // Twice each now: once in the rail, once as a row in the Overview's
+      // all-areas table. The table replaced three cards that each answered a
+      // smaller question.
+      expect(find.text('Dallas'), findsNWidgets(2));
+      expect(find.text('Houston'), findsNWidgets(2));
 
-    // The rail still marks an off-pattern area, which is where it is useful.
-    expect(find.textContaining('differs'), findsOneWidget);
-  });
+      // The rail still marks an off-pattern area, which is where it is useful.
+      expect(find.textContaining('differs'), findsOneWidget);
+    },
+  );
 
   /// The Overview answers "what can each area take", which is what the three
   /// cards it replaced were each circling: a slot pattern, an Add button the
@@ -63,22 +64,26 @@ void main() {
   });
 
   /// The three removed cards, asserted gone rather than assumed gone.
-  testWidgets('the overview no longer carries the pattern, add or differs cards', (
-    tester,
-  ) async {
-    await _pump(tester);
+  testWidgets(
+    'the overview no longer carries the pattern, add or differs cards',
+    (tester) async {
+      await _pump(tester);
 
-    expect(find.textContaining('slot pattern'), findsNothing);
-    expect(find.textContaining('followed by'), findsNothing);
-    expect(find.text('Areas that differ'), findsNothing);
-    expect(find.textContaining('follows the pattern'), findsNothing);
+      expect(find.textContaining('slot pattern'), findsNothing);
+      expect(find.textContaining('followed by'), findsNothing);
+      expect(find.text('Areas that differ'), findsNothing);
+      expect(find.textContaining('follows the pattern'), findsNothing);
 
-    // Add lives in the rail only, and still exists — this is the control that
-    // stops "findsNothing" above passing for a screen that lost the action
-    // entirely.
-    expect(find.widgetWithText(FilledButton, 'Add service area'), findsNothing);
-    expect(find.byTooltip('Add service area'), findsOneWidget);
-  });
+      // Add lives in the rail only, and still exists — this is the control that
+      // stops "findsNothing" above passing for a screen that lost the action
+      // entirely.
+      expect(
+        find.widgetWithText(FilledButton, 'Add service area'),
+        findsNothing,
+      );
+      expect(find.byTooltip('Add service area'), findsOneWidget);
+    },
+  );
 
   /// The defect this screen shipped with: it listed areas and had no way to
   /// make one. With zero areas that is a dead end.
@@ -196,48 +201,49 @@ void main() {
   /// Items, not a comma-separated string. The old field took the whole set as
   /// one string on one Save, so a single zip held by another area refused
   /// every edit at once and named one of them.
-  testWidgets('a zip is added as an item, with its city, and saves on its own', (
-    tester,
-  ) async {
-    final saves = <Map<String, dynamic>>[];
+  testWidgets(
+    'a zip is added as an item, with its city, and saves on its own',
+    (tester) async {
+      final saves = <Map<String, dynamic>>[];
 
-    await _pump(
-      tester,
-      onRequest: (request) {
-        if (request.method == 'PUT' && request.url.path.endsWith('/zips')) {
-          saves.add(jsonDecode(request.body) as Map<String, dynamic>);
-          return _json({'data': _dallasDetail});
-        }
-        return null;
-      },
-    );
+      await _pump(
+        tester,
+        onRequest: (request) {
+          if (request.method == 'PUT' && request.url.path.endsWith('/zips')) {
+            saves.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return _json({'data': _dallasDetail});
+          }
+          return null;
+        },
+      );
 
-    await tester.tap(find.text('Dallas').first);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Dallas').first);
+      await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const Key('scheduling-zip-entry')));
-    await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('scheduling-zip-entry')));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(const Key('scheduling-zip-entry')),
-      '75202',
-    );
-    await tester.enterText(
-      find.byKey(const Key('scheduling-city-entry')),
-      'Plano',
-    );
-    await tester.tap(find.byTooltip('Add zip code'));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('scheduling-zip-entry')),
+        '75202',
+      );
+      await tester.enterText(
+        find.byKey(const Key('scheduling-city-entry')),
+        'Plano',
+      );
+      await tester.tap(find.byTooltip('Add zip code'));
+      await tester.pumpAndSettle();
 
-    expect(saves, hasLength(1), reason: 'Adding one zip saves immediately.');
+      expect(saves, hasLength(1), reason: 'Adding one zip saves immediately.');
 
-    final zips = (saves.first['zips'] as List).cast<Map<String, dynamic>>();
+      final zips = (saves.first['zips'] as List).cast<Map<String, dynamic>>();
 
-    expect(zips.map((z) => z['zip']), containsAll(['75201', '75202']));
+      expect(zips.map((z) => z['zip']), containsAll(['75201', '75202']));
 
-    final added = zips.firstWhere((z) => z['zip'] == '75202');
-    expect(added['city'], 'Plano');
-  });
+      final added = zips.firstWhere((z) => z['zip'] == '75202');
+      expect(added['city'], 'Plano');
+    },
+  );
 
   testWidgets('removing a zip sends the set without it', (tester) async {
     final saves = <Map<String, dynamic>>[];
@@ -318,7 +324,11 @@ void main() {
     await _reveal(tester, find.text('Delete Dallas'));
     await tester.tap(find.text('Delete Dallas'));
     await tester.pumpAndSettle();
-    expect(deleted, isFalse, reason: 'Another area name must not delete this one.');
+    expect(
+      deleted,
+      isFalse,
+      reason: 'Another area name must not delete this one.',
+    );
 
     // The right name, spaced and in the wrong case, does.
     await tester.enterText(
@@ -400,6 +410,7 @@ void main() {
       reason: 'Zero capacity would make "closed" and "full" the same state.',
     );
   });
+
   /// Twenty-six areas across several franchises came out as one flat list with
   /// nothing saying which franchise owned which — and the same area name can
   /// legitimately sit under two franchises, so those were indistinguishable.
@@ -494,6 +505,158 @@ void main() {
     expect(find.text('EVERDOORS › CONNECTICUT'), findsOneWidget);
     expect(find.text('PREMIER › CONNECTICUT'), findsOneWidget);
   });
+
+  // ── Time slots (Jose, 2026-09-24: "go ahead and add the Time Slots option") ──
+
+  testWidgets('time slots read in plain hours, and a new one is added', (
+    tester,
+  ) async {
+    Map<String, dynamic>? posted;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.endsWith('/scheduling/time-slots')) return null;
+        if (request.method == 'POST') {
+          posted = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': _twoWindows}, 201);
+        }
+        return _json({'data': _oneWindow, 'can_edit': true});
+      },
+    );
+
+    expect(find.text('10 AM – 1 PM'), findsOneWidget);
+
+    // A search picker, not a dropdown: type to narrow, then pick.
+    await tester.tap(find.byKey(const ValueKey('slot-draft-start')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '1 PM');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1 PM').last);
+    await tester.pumpAndSettle();
+
+    // A search picker, not a dropdown: type to narrow, then pick.
+    await tester.tap(find.byKey(const ValueKey('slot-draft-end')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '3 PM');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3 PM').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add time slot'));
+    await tester.pumpAndSettle();
+
+    expect(posted, {'start_time': '13:00', 'end_time': '15:00'});
+  });
+
+  /// THE CASE THAT MATTERS. Opening a day used to write a hard-coded 08:00–12:00;
+  /// it now offers every window at one job. Leaving a window blank means that
+  /// day does not offer it — asserted on the REQUEST BODY, because a blank sent
+  /// as a zero would look identical on screen and make "we do not do
+  /// afternoons on Tuesday" into "Tuesday afternoon is full".
+  testWidgets(
+    'opening a day offers every window, and a blank one is left out',
+    (tester) async {
+      Map<String, dynamic>? saved;
+
+      await _pump(
+        tester,
+        onRequest: (request) {
+          final path = request.url.path;
+          if (path.endsWith('/scheduling/time-slots')) {
+            return _json({'data': _twoWindows, 'can_edit': true});
+          }
+          if (request.method == 'PUT' && path.endsWith('/slots')) {
+            saved = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({'data': _dallasDetail});
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.text('Dallas').first);
+      await tester.pumpAndSettle();
+
+      // Monday is open in the fixture; Tuesday is the first closed day.
+      await tester.tap(find.text('Open').first);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('slot-2-10:00-13:00')), findsOneWidget);
+      expect(find.byKey(const ValueKey('slot-2-13:00-15:00')), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const ValueKey('slot-2-13:00-15:00')),
+        '',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.textContaining('Save Dallas'));
+      await tester.pumpAndSettle();
+
+      expect(saved, isNotNull, reason: 'The grid should have been saved.');
+
+      final tuesday = (saved!['slots'] as List)
+          .cast<Map<String, dynamic>>()
+          .where((s) => s['weekday'] == 2)
+          .toList();
+
+      expect(tuesday, [
+        {
+          'weekday': 2,
+          'start_time': '10:00',
+          'end_time': '13:00',
+          'max_jobs': 1,
+        },
+      ], reason: 'The blank afternoon must be absent, not sent as a zero.');
+    },
+  );
+
+  /// The empty state is the entry point, and the test that stubs windows in
+  /// cannot see it: with none stated there is nothing to open a day ONTO.
+  testWidgets('with no time slots a closed day says why it cannot open', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      onRequest: (request) =>
+          request.url.path.endsWith('/scheduling/time-slots')
+          ? _json({'data': const [], 'can_edit': true})
+          : null,
+    );
+
+    expect(find.textContaining('None yet'), findsOneWidget);
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('add time slots in Overview'), findsWidgets);
+
+    final open = tester.widget<TextButton>(
+      find.widgetWithText(TextButton, 'Open').first,
+    );
+    expect(open.onPressed, isNull, reason: 'There is no window to open onto.');
+  });
+
+  testWidgets(
+    'a branch-level manager reads the windows and cannot change them',
+    (tester) async {
+      await _pump(
+        tester,
+        onRequest: (request) =>
+            request.url.path.endsWith('/scheduling/time-slots')
+            ? _json({'data': _oneWindow, 'can_edit': false})
+            : null,
+      );
+
+      expect(find.text('10 AM – 1 PM'), findsOneWidget);
+      expect(find.text('Add time slot'), findsNothing);
+      expect(find.byTooltip('Change hours'), findsNothing);
+      expect(
+        find.textContaining('changed at organization level'),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 /// Scrolls the AREA pane (not the rail) until [what] is on screen.
@@ -670,3 +833,12 @@ const _me = {
     {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
   ],
 };
+
+const _oneWindow = [
+  {'id': 't-1', 'start_time': '10:00', 'end_time': '13:00'},
+];
+
+const _twoWindows = [
+  {'id': 't-1', 'start_time': '10:00', 'end_time': '13:00'},
+  {'id': 't-2', 'start_time': '13:00', 'end_time': '15:00'},
+];

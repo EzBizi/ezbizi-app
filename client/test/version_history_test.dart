@@ -73,6 +73,9 @@ void main() {
       // notes were never written. Left named rather than invented: reconstructing
       // a month-old release from its commits would put words in it that nobody
       // shipped, which is worse than an admitted hole.
+      261, // pinned at f33e8a9b and stopped in its gate: a8cd0c9f turned
+      // no_popup_dropdown_test red. No artefact exists, and its one note -
+      // Time slots - shipped in 0.0.0262 instead.
     };
     final holes = [
       for (var n = numbers.first; n <= numbers.last; n++)

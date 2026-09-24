@@ -1523,7 +1523,15 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
               // STILL REQUIRED with a child, and not decoration: this is what
               // the search filters on. A card has no single string in it, so
               // something has to say which words the list matches.
-              label: template['name'] as String,
+              // The area it runs on is searchable too, so "phone" or
+              // "reviews" finds every template for that part of EzBizi.
+              label: [
+                template['name'] as String,
+                if (template['trigger_key'] is String)
+                  widget.catalogue.describeTrigger(
+                    template['trigger_key'] as String,
+                  ),
+              ].join(' '),
               detail: template['description'] as String?,
               // A CARD, because the plain two-line row read as a wall. Jose,
               // 2026-09-22: "perhaps in card format or something, right now
@@ -2332,9 +2340,9 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       context,
       4,
       'Then do this',
-      'One step at a time, in order. Actions a module has declared but the '
-          'engine cannot run yet are listed and marked, so you can see what is '
-          'coming without building a rule around it.'
+      // Unbuilt actions are no longer offered at all (Jose, 2026-09-23), so
+      // the sentence that promised them "listed and marked" went too.
+      'One step at a time, in order.'
           '${budget == null ? '' : ' One event may set off at most $budget '
                     'actions in total before the engine stops the cascade.'}',
       Column(
