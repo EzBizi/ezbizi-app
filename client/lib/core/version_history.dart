@@ -12,6 +12,9 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'A1Leads GBP says why there is no Reply button: replying from EzBizi is not switched on yet, or A-1 Chimney is not the company in view.',
+        'HR, Work Hours: every shift has a menu to edit its times or delete it, with Clock out now on a shift still open, and every day one to set a tag, add extra hours or write a note. Shifts show when HR edited or ended them. It is there for whoever may correct hours.',
+        'After the end of the working day, the lock screen says when the day ended and how many minutes clocking in adds.',
+        'In every form, an empty field now looks different from a filled one: the prompt is paler, and the label of a filled field sits small and bold above the value. Dark mode too.',
       ],
     ),
     VersionRelease(
