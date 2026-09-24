@@ -691,6 +691,37 @@ final class TwimlRenderer
     }
 
     /**
+     * Every live device identity of the person a bare identity names.
+     *
+     * Empty when the identity names nobody on this account, or somebody with
+     * no device signed in within the staleness window — the same window the
+     * ring group dial uses, so "can be rung" means one thing everywhere.
+     *
+     * @return list<string>
+     */
+    private function devicesOf(PhoneNumber $number, string $bareIdentity): array
+    {
+        $connection = $number->connection;
+        $userId = ClientIdentity::uuidOf($bareIdentity);
+
+        if ($connection === null || $userId === null) {
+            return [];
+        }
+
+        $user = User::query()->find($userId);
+        if ($user === null) {
+            return [];
+        }
+
+        $identities = [];
+        foreach (PhoneDeviceRegistration::liveFor((string) $connection->id, [$userId]) as $device) {
+            $identities[] = ClientIdentity::of($user, (string) $device->device_id);
+        }
+
+        return $identities;
+    }
+
+    /**
      * Whether anybody on this account has an extension to dial.
      *
      * Asked before offering to collect one. A business that has assigned none
@@ -1336,6 +1367,41 @@ final class TwimlRenderer
             // looking at a screen that says the call is recorded, so there is
             // nobody here who has not been told.
             $identity = substr($to, strlen('client:'));
+
+            // A PERSON, NOT A DEVICE — so ring every device they have.
+            //
+            // Jose, 2026-09-24: "calls between team members do not work".
+            // Measured on production: six internal calls the night before,
+            // every one to a BARE identity (`019fd712…c51`, no device suffix),
+            // every one `completed` after 3-4 seconds having rung nothing.
+            //
+            // Since 2026-09-10 each device registers as `<user>_<device>`, so
+            // a bare `<user>` is an address nothing listens on. The ring group
+            // dial was moved to per-device identities then; this path — which
+            // the Dial pad's Call button on a colleague uses — never was. The
+            // client does not know a colleague's devices and should not have
+            // to, so the expansion happens here, once, for every caller.
+            //
+            // Presence is NOT consulted, deliberately: a bare identity rang the
+            // person regardless before devices were split, the caller can see
+            // the Do Not Disturb dot on the Team list, and gating here would
+            // turn "they are busy" into the same silent failure this fixes.
+            if (! str_contains($identity, '_')) {
+                $devices = $this->devicesOf($number, $identity);
+
+                if ($devices !== []) {
+                    foreach ($devices as $device) {
+                        $dial->client($device, $this->answeredBy($number, $device));
+                    }
+
+                    return;
+                }
+
+                // No live device at all. Falls through to the bare identity,
+                // which fails fast exactly as it did — an empty `<Dial>` would
+                // be invalid TwiML and fail with a Twilio error instead.
+            }
+
             $dial->client($identity, $this->answeredBy($number, $identity));
 
             return;
