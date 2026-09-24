@@ -521,12 +521,109 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->artisan('ezbizi:project-workiz')->assertSuccessful();
 
         $events = $this->statusEvents($tenant);
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
 
         $this->assertCount(1, $events);
-        $this->assertSame('Submitted', $events->first()->payload['before']['status']);
-        $this->assertSame('Done', $events->first()->payload['after']['status']);
-        $this->assertSame('Pat Rivera', $events->first()->payload['customer_name']);
-        $this->assertNotEmpty($events->first()->payload['customer_phone']);
+
+        // JobsController's exact shape — nothing more. assertEquals, not
+        // assertSame: MySQL JSON does not keep key order, so the semantic
+        // comparison is the true one (docs/DEVELOPMENT-RULES.md).
+        $this->assertEquals(
+            ['before' => ['status' => 'Submitted'], 'after' => ['status' => 'Done']],
+            $events->first()->payload,
+        );
+
+        // The JOB is the subject: that is how the Automations session's "The
+        // customer it is about" recipient reaches the customer at run time.
+        $this->assertSame(Job::class, $events->first()->subject_type);
+        $this->assertSame($job->getKey(), $events->first()->subject_id);
+    }
+
+    /**
+     * NO PERSONAL DATA IN THE EVENT. The Automations session's ruling:
+     * `automation_events` is declared as holding none and erasure never visits
+     * it, so a customer's number carried there would outlive the customer.
+     * Pinned because an earlier draft of this very pass carried it.
+     */
+    public function test_the_announcement_carries_no_customer_contact(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $payload = json_encode($this->statusEvents($tenant)->first()->payload);
+
+        $this->assertStringNotContainsString('5555550100', $payload);
+        $this->assertStringNotContainsString('someone@example.test', $payload);
+        $this->assertStringNotContainsString('Pat Rivera', $payload);
+    }
+
+    /**
+     * JobsController's companion: `job.completed` on the way INTO an earned
+     * status. Templates such as "Book next year's visit" listen on it, so a
+     * Workiz job that skipped it would silently skip them too.
+     */
+    public function test_entering_an_earned_status_also_announces_the_completion(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, ['Done']);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $completed = $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'job.completed')->get());
+
+        $this->assertCount(1, $completed);
+        $this->assertSame('Done', $completed->first()->payload['after']['status']);
+    }
+
+    /**
+     * And not while nothing is earned — which is A1-Group today. Jose's rule
+     * therefore hangs off `job.status_changed` with `after.status = Done`.
+     */
+    public function test_no_completion_is_announced_while_no_status_is_earned(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, []);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = now('America/New_York')->subMinutes(10)->format('Y-m-d H:i:s');
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertCount(1, $this->statusEvents($tenant), 'the status change is still announced');
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'job.completed')->count()));
     }
 
     /**

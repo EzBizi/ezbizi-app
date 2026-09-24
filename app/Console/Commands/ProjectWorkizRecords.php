@@ -10,6 +10,7 @@ use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\EarnedStatuses;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\PhoneE164;
@@ -544,6 +545,16 @@ class ProjectWorkizRecords extends Command
      * "when a job changes status to Done, send a text" — would never fire for
      * the work A-1 actually does.
      *
+     * ── WHO IT IS FOR IS NOT IN THE EVENT ───────────────────────
+     *
+     * The payload is exactly JobsController's, `{before, after}`, and the Job
+     * is the subject. A rule reaches the customer through the Automations
+     * session's "The customer it is about" recipient, resolved at run time via
+     * the job's customer — NOT through a phone number carried in the event,
+     * because `automation_events` is declared as holding no personal data and
+     * erasure never visits it. Their ruling, 2026-09-24; an earlier draft of
+     * this pass did carry the number and was taken back out.
+     *
      * ── ALL OR NOTHING ──────────────────────────────────────────
      *
      * The Automations session's ruling: a pass that finds more recent moves
@@ -570,32 +581,27 @@ class ProjectWorkizRecords extends Command
         }
 
         foreach ($moves as [$job, $before, $after]) {
-            $events->emit('job.status_changed', $job, $this->statusChangedPayload($job, $before, $after));
+            // Plain emit, not emitAfterCommit: this runs after the follow pass,
+            // when every row's transaction has already committed, so there is
+            // no rolled-back write for a rule to fire on.
+            $events->emit('job.status_changed', $job, [
+                'before' => ['status' => $before],
+                'after' => ['status' => $after],
+            ]);
+
+            // JobsController's companion, under its exact condition: entering an
+            // earned status from one that was not. Templates such as "Book next
+            // year's visit" listen on job.completed, so leaving it out would make
+            // Workiz jobs silently skip them. Silent today by construction —
+            // A1-Group names no earned status yet.
+            if (EarnedStatuses::isEarned($after, $job->franchise)
+                && ! EarnedStatuses::isEarned((string) ($before ?? ''), $job->franchise)) {
+                $events->emit('job.completed', $job, [
+                    'before' => ['status' => $before],
+                    'after' => ['status' => $after],
+                ]);
+            }
         }
-    }
-
-    /**
-     * The same shape JobsController raises, plus who the job is for.
-     *
-     * The customer's contact is IN the event because the send actions take a
-     * recipient only from the event, never from the subject
-     * (`ActionRunner::valueFromEvent`, deliberately). Without it a rule on this
-     * trigger has nobody to send to — which is why no rule on
-     * `job.status_changed` existed on production when Jose asked for one.
-     *
-     * @return array<string, mixed>
-     */
-    private function statusChangedPayload(Job $job, ?string $before, string $after): array
-    {
-        $customer = $job->customer;
-
-        return [
-            'before' => ['status' => $before],
-            'after' => ['status' => $after],
-            'customer_name' => $customer?->name,
-            'customer_phone' => $customer?->phone,
-            'customer_email' => $customer?->email,
-        ];
     }
 
     /**
