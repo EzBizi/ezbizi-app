@@ -30,6 +30,7 @@ use App\Support\Automations\ActionRunner;
 use App\Support\Phone\TwilioGateway;
 use App\Models\AutomationRun;
 use App\Models\AutomationVersion;
+use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\User;
@@ -1250,9 +1251,23 @@ class AutomationEngineTest extends TestCase
         $this->assertFalse($refused['ok']);
         $this->assertSame([], $keys, 'another business key was used');
 
+        // A franchise under a SUB company, Mailchimp connected at the PARENT:
+        // the chain walks the whole Org > Company > Sub Company > Franchise tree.
+        $parentId = $this->inTenant(function () use ($franchise) {
+            $parent = Company::create(['organization_id' => $this->org['organization']->id,
+                'name' => 'Parent', 'is_active' => true]);
+            Company::query()->whereKey($franchise->company_id)->update(['parent_company_id' => $parent->id]);
+
+            return $parent->id;
+        });
+        $connect('company', $parentId, 'parent');
+        $this->assertTrue($add()['ok']);
+        $this->assertSame(['Basic '.base64_encode('anystring:parent-us21')], $keys);
+
+        // The franchise's own company is nearer and wins over its parent.
         $connect('company', $franchise->company_id, 'owner');
         $this->assertTrue($add()['ok']);
-        $this->assertSame(['Basic '.base64_encode('anystring:owner-us21')], $keys);
+        $this->assertSame('Basic '.base64_encode('anystring:owner-us21'), end($keys));
     }
 
     /**

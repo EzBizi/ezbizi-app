@@ -2366,7 +2366,7 @@ class ActionRunner
 
     /**
      * The Mailchimp account a list lives in, following ownership: the list's
-     * own place, then its company when that place is a franchise, then the
+     * own place, then its company and that company's parent, then the
      * organization — and STOP. Never "any connection": that would be another
      * business's key. None on the chain is "no account connected".
      */
@@ -2374,8 +2374,18 @@ class ActionRunner
     {
         $chain = [[$audience->scope_type, $audience->scope_id]];
 
-        if ($audience->scope_type === SocialConnection::SCOPE_FRANCHISE) {
-            $chain[] = [SocialConnection::SCOPE_COMPANY, Franchise::query()->whereKey($audience->scope_id)->value('company_id')];
+        $company = match ($audience->scope_type) {
+            SocialConnection::SCOPE_FRANCHISE => Franchise::query()->whereKey($audience->scope_id)->value('company_id'),
+            SocialConnection::SCOPE_COMPANY => $audience->scope_id,
+            default => null,
+        };
+
+        if ($company !== null) {
+            // ponytail: one hop up is the whole tree — a Sub Company cannot hold
+            // Sub Companies (Company.php), so there is no deeper parent to walk.
+            $parent = Company::query()->whereKey($company)->value('parent_company_id');
+            $chain[] = [SocialConnection::SCOPE_COMPANY, $company];
+            $chain[] = [SocialConnection::SCOPE_COMPANY, $parent];
         }
 
         $candidates = SocialConnection::query()
