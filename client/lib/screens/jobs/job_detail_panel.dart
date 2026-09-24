@@ -483,10 +483,23 @@ String _datePart(String? stamp) =>
 
 /// ISO from the API (`2026-03-08T09:00:00-05:00`) as the wall clock a person
 /// typed. The franchise timezone is already baked into the stored value.
+///
+/// Only a TRAILING zone is removed -- `Z`, or `+hh:mm` / `-hh:mm` at the very
+/// end. This used to split on `[Z+-]` anywhere in the string, so it stopped at
+/// the first hyphen of the DATE and returned "2026" for every timestamp: the
+/// Scheduled-for field was empty on every panel, and an untouched Save sent
+/// `scheduled_for: "2026"`, which the server refused. No dated job could be
+/// saved from here from 38955ed6 (2026-08-19) until this. The date's own
+/// hyphens are not a zone, and only a pattern anchored to the end can tell.
+/// job_panel_wall_clock_test.dart pins it with a dated fixture, which no panel
+/// test had.
 String _wallClock(String? stamp) {
   if (stamp == null || stamp.isEmpty) return '';
 
-  return stamp.replaceFirst('T', ' ').split(RegExp(r'[Z+-]')).first.trim();
+  return stamp
+      .replaceFirst('T', ' ')
+      .replaceFirst(RegExp(r'(?:Z|[+-]\d{2}:?\d{2})$'), '')
+      .trim();
 }
 
 String _firstError(ApiResponse response) {
