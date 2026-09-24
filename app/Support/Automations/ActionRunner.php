@@ -33,6 +33,8 @@ use App\Models\Organization;
 use App\Models\PhoneCall;
 use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
+use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Models\Role;
 use App\Support\Customers\ReassignCustomerOwner;
 use Illuminate\Support\Facades\Gate;
@@ -376,6 +378,7 @@ class ActionRunner
             'notify_administrators' => $this->notifyAdministrators($action, $event, $subject),
             'reassign_owner' => $this->reassignOwner($action, $subject, $automation),
             'job.create' => $this->createFollowUpJob($action, $event, $subject),
+            'draft_reply' => $this->draftReviewReply($action, $event, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2247,6 +2250,52 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Write a suggested reply to the review and leave it for a person.
+     *
+     * A published reply appears on Google under the business's own name, in
+     * public, permanently — which is why ReviewReply has no "approved" state
+     * and publication is a person's act. This step writes a DRAFT and nothing
+     * else; nothing here can publish, and that is the whole point of it.
+     *
+     * NEVER OVER ANOTHER REPLY. Google allows one per review, so there is one
+     * row. A published one must never be touched, and a draft somebody is
+     * working on must not be replaced by a template. Either way the review
+     * already has its reply, so this succeeds and says so — a rule firing
+     * again on the same review is not a failure.
+     */
+    private function draftReviewReply(array $action, AutomationEvent $event, ?Model $subject): array
+    {
+        $type = 'draft_reply';
+
+        if (! $subject instanceof Review) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This step only works on a review, and this rule is about something else.'];
+        }
+
+        if ($subject->reply()->exists()) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'This review already has a reply or a draft, so it was left as it is.'];
+        }
+
+        $body = trim($this->interpolate((string) ($action['message'] ?? ''), $event, $subject));
+
+        if ($body === '') {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step needs the words of the reply.'];
+        }
+
+        ReviewReply::create([
+            'organization_id' => $subject->organization_id,
+            'review_id' => $subject->getKey(),
+            'body' => $body,
+            'status' => ReviewReply::STATUS_DRAFT,
+            'drafted_by' => ReviewReply::BY_AUTOMATION,
+        ]);
+
+        return ['type' => $type, 'ok' => true,
+            'detail' => 'Drafted a reply. It is waiting for a person to read and publish it.'];
+    }
+
     /**
      * Book a follow-up job for the same customer, at the same franchise.
      *

@@ -39,6 +39,13 @@ class ReviewReply extends Model implements StatesRetention
 
     public const BY_DRAFTING_JOB = 'drafting_job';
 
+    /**
+     * An automation rule wrote these words, from a message its author typed.
+     * Still a draft and still published only by a person — this names who
+     * composed it, which is the question the reply screen answers.
+     */
+    public const BY_AUTOMATION = 'automation';
+
     public static function retention(): RetentionPolicy
     {
         return RetentionPolicy::forever(

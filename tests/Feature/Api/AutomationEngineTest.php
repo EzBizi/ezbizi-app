@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use App\Models\PhoneConnection;
 use App\Models\PhoneNumber;
+use App\Models\Review;
+use App\Models\ReviewReply;
 use App\Models\Role;
 use App\Models\SavedReport;
 use App\Models\Lead;
@@ -1951,6 +1953,70 @@ class AutomationEngineTest extends TestCase
             $jobs->count(),
             'a rule that books a job on "job created" did not stop',
         );
+    }
+
+    /**
+     * A RULE DRAFTS A REPLY, NEVER PUBLISHES ONE, AND NEVER WRITES OVER ONE.
+     *
+     * A published reply appears on Google under the business's name, in
+     * public, permanently — so this step writes a DRAFT and leaves it for a
+     * person. Asserted on the stored row's status, because "drafted" in the
+     * run log above a published row is exactly the failure that matters.
+     *
+     * And the second half: a review that already has a reply is left alone,
+     * because a template must never replace words somebody was working on.
+     */
+    public function test_a_rule_drafts_a_review_reply_and_never_overwrites_one(): void
+    {
+        $review = $this->inTenant(function () {
+            $connection = \App\Models\SocialConnection::create([
+                'organization_id' => $this->org['organization']->id,
+                'scope_type'      => \App\Models\SocialConnection::SCOPE_ORGANIZATION,
+                'scope_id'        => $this->org['organization']->id,
+                'provider'        => \App\Support\Social\SocialProvider::GoogleBusinessProfile->value,
+                'remote_id'       => 'accounts/1',
+                'display_name'    => 'A-1 Chimney',
+            ]);
+
+            return Review::create([
+                'organization_id' => $this->org['organization']->id,
+                'connection_id'   => $connection->id,
+                'remote_name'     => 'accounts/1/locations/2/reviews/r1',
+                'location_name'   => 'accounts/1/locations/2',
+                'reviewer_name'   => 'Dana Whitfield',
+                'rating'          => 5,
+                'comment'         => 'Great work.',
+                'reviewed_at'     => now()->subDay(),
+            ]);
+        });
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'review.received',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $run = fn () => $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'draft_reply', 'message' => 'Thank you, {{reviewer_name}}!',
+        ], $event, $review->fresh(), false, $this->automation('review.received', null, [])));
+
+        $first = $run();
+        $this->assertTrue($first['ok'], $first['detail']);
+
+        $reply = $this->inTenant(fn () => ReviewReply::where('review_id', $review->id)->sole());
+        $this->assertSame(ReviewReply::STATUS_DRAFT, $reply->status, 'a rule published a review reply');
+        $this->assertSame('Thank you, Dana Whitfield!', $reply->body);
+        $this->assertSame(ReviewReply::BY_AUTOMATION, $reply->drafted_by);
+
+        // A person edits the draft; the rule fires again and must not undo it.
+        $this->inTenant(fn () => $reply->forceFill(['body' => 'Edited by a person.'])->save());
+
+        $again = $run();
+        $this->assertTrue($again['ok'], $again['detail']);
+        $this->assertSame('Edited by a person.',
+            $this->inTenant(fn () => ReviewReply::where('review_id', $review->id)->sole()->body));
     }
 
     /**
