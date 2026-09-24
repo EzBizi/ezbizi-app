@@ -12,6 +12,8 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Two Workiz imports running at once can no longer create the same job or customer twice.',
+        'Jobs is a table under day headings - Today, Tomorrow, Yesterday and the weekdays - each with the day\'s count. It opens on Upcoming, with Past and All beside it, and the status chips count within that window; Canceled is red. Click a job and the table becomes a list with the job open beside it. Amounts read like $289.00, and a job with no lines shows a dash instead of USD 0.00.',
+        'Customers is the same kind of table under letter headings, with a City column and chips for repeat customers and for customers with no jobs yet. A customer\'s record lists their jobs.',
       ],
     ),
     VersionRelease(
