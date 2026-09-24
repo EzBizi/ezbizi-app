@@ -69,7 +69,37 @@ class TimeClockNeverEndingShiftTest extends TestCase
         $shift = $this->open($alpha, $person);
 
         $this->assertNotNull($shift->scheduled_end_at, 'a null end is a shift nothing will ever close');
-        $this->assertSame('2026-09-09 15:00:00', $shift->scheduled_end_at->toDateTimeString(), 'the 16-hour cap from the punch');
+        // One extension (30 by default), not the 16-hour cap — see the next test.
+        $this->assertSame('2026-09-08 23:30:00', $shift->scheduled_end_at->toDateTimeString());
+    }
+
+    /**
+     * The lock screen's Clock In, pressed at the end of the day (2026-09-24).
+     *
+     * The cap closed the forgotten shifts, and the next evening two more
+     * opened: the sweep at 21:00:02, Adeline at 21:00:14, Jason at 21:00:24.
+     * The lock screen still locks after the scheduled end on a working day and
+     * its button is Clock In; somebody who wants their machine back presses it
+     * and leaves. Under the cap that was sixteen hours each. It must be one
+     * extension, which the reminder warns about and the sweep closes.
+     */
+    public function test_clocking_back_in_the_moment_the_day_ends_buys_one_extension(): void
+    {
+        [$alpha, $person] = $this->scheduled();
+
+        // Tuesday 17:00:14 local, twelve seconds after the sweep closed her.
+        Carbon::setTestNow(Carbon::parse('2026-09-08 22:00:14', 'UTC'));
+        $block = $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
+
+        $this->assertSame('2026-09-08T22:30:14Z', $block['scheduled_end_at']);
+
+        // And nobody touches anything: the sweep closes it at the half hour.
+        Carbon::setTestNow(Carbon::parse('2026-09-08 22:31:00', 'UTC'));
+        $this->artisan('ezbizi:close-ended-shifts')->assertSuccessful();
+
+        $this->assertNull($this->open($alpha, $person));
+        $closed = $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->where('user_id', $person->id)->sole());
+        $this->assertSame(30 * 60, $closed->clocked_out_at->getTimestamp() - $closed->clocked_in_at->getTimestamp());
     }
 
     /** A day off has no schedule at all, and still gets the backstop. */
@@ -102,10 +132,10 @@ class TimeClockNeverEndingShiftTest extends TestCase
         [$alpha, $person] = $this->scheduled();
         $this->set($alpha['org'], 'time_clock.max_hours', 8);
 
-        Carbon::setTestNow(Carbon::parse('2026-09-08 23:00:00', 'UTC'));
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: no window, so the cap
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
 
-        $this->assertSame('2026-09-09 07:00:00', $this->open($alpha, $person)->scheduled_end_at->toDateTimeString());
+        $this->assertSame('2026-09-12 23:00:00', $this->open($alpha, $person)->scheduled_end_at->toDateTimeString());
     }
 
     /**
@@ -123,7 +153,7 @@ class TimeClockNeverEndingShiftTest extends TestCase
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
         $this->signedInAs($person)->postJson('/api/v1/time-clock/extend')->assertOk();
 
-        $this->assertSame('2026-09-09 15:30:00', $this->open($alpha, $person)->scheduled_end_at->toDateTimeString());
+        $this->assertSame('2026-09-09 00:00:00', $this->open($alpha, $person)->scheduled_end_at->toDateTimeString(), 'two extensions');
     }
 
     /**
@@ -135,16 +165,16 @@ class TimeClockNeverEndingShiftTest extends TestCase
     {
         [$alpha, $person] = $this->scheduled();
 
-        Carbon::setTestNow(Carbon::parse('2026-09-08 22:00:10', 'UTC')); // eight seconds past her end
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:00:00', 'UTC')); // Saturday: no schedule at all
         $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk();
 
         // A minute later nothing is due: the cap is a backstop, not a length.
-        Carbon::setTestNow(Carbon::parse('2026-09-08 22:01:10', 'UTC'));
+        Carbon::setTestNow(Carbon::parse('2026-09-12 15:01:00', 'UTC'));
         $this->artisan('ezbizi:close-ended-shifts')->assertSuccessful();
         $this->assertNotNull($this->open($alpha, $person));
 
         // Sixteen hours on, plus the minute the scheduler takes to notice.
-        Carbon::setTestNow(Carbon::parse('2026-09-09 14:01:00', 'UTC'));
+        Carbon::setTestNow(Carbon::parse('2026-09-13 07:01:00', 'UTC'));
         $this->artisan('ezbizi:close-ended-shifts')->assertSuccessful();
 
         $this->assertNull($this->open($alpha, $person), 'still open past the cap');

@@ -38,6 +38,14 @@ class TimeClockShift extends Model implements HoldsPersonalData
      */
     public const ENDED_BY_CORRECTION = 'correction';
 
+    /*
+     * Clocked out by somebody in HR while the shift was still running — Force
+     * clock out on Work Hours (2026-09-24). Not `correction`: nothing was
+     * rewritten, the end is the moment it happened, it just was not the
+     * person who pressed it.
+     */
+    public const ENDED_BY_MANAGER = 'manager';
+
     // ── §9 data inventory ────────────────────────────────────────
 
     public static function personalDataPurpose(): string

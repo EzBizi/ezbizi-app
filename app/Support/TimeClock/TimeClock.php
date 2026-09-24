@@ -5,6 +5,7 @@ namespace App\Support\TimeClock;
 use App\Models\Assignment;
 use App\Models\AutomationEvent;
 use App\Models\Organization;
+use App\Models\TimeClockDay;
 use App\Models\TimeClockShift;
 use App\Models\User;
 use App\Support\Access\Refusal;
@@ -16,6 +17,7 @@ use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -85,6 +87,9 @@ final class TimeClock
             'warning_minutes' => (int) $this->settings->get('time_clock.warning_minutes', $organization),
             'extension_minutes' => (int) $this->settings->get('time_clock.extension_minutes', $organization),
             'today' => $window === null ? null : ['start' => $window['start'], 'end' => $window['end']],
+            // So the lock screen stops saying "start your day" at 5 PM: after
+            // the end, Clock In buys one extension, and it should say so.
+            'after_hours' => $window !== null && now()->gte($window['end_at']),
         ];
     }
 
@@ -149,9 +154,37 @@ final class TimeClock
                      * shift could not be extended before, because extend()
                      * refuses a row with no scheduled end.
                      */
-                    'scheduled_end_at' => $window !== null && $now->lt($window['end_at'])
-                        ? $window['end_at']
-                        : $now->copy()->addHours($this->maxHours($user)),
+                    'scheduled_end_at' => match (true) {
+                        // No schedule today at all — a day off, or nobody set
+                        // one. The cap is the only end there is.
+                        $window === null => $now->copy()->addHours($this->maxHours($user)),
+                        $now->lt($window['end_at']) => $window['end_at'],
+                        /*
+                         * AFTER THE DAY HAS ENDED: one extension, not the cap
+                         * (2026-09-24).
+                         *
+                         * Measured on production the evening after the cap
+                         * shipped: the sweep closed six shifts at 21:00:02 and
+                         * Adeline clocked back in at 21:00:14, Jason at
+                         * 21:00:24. Adeline did the same the night before, at
+                         * 21:00:10. That is not overtime, it is the lock screen:
+                         * on a working day it still locks after the scheduled
+                         * end, its button is Clock In, and a person who wants
+                         * their computer back to save a file presses it and
+                         * goes home. With the cap each of those was a 16-hour
+                         * shift.
+                         *
+                         * The extension length is the right bound because it is
+                         * already what this organization decided working past
+                         * the end costs: the reminder fires before it, Extend
+                         * pushes it the same way as any shift, and somebody who
+                         * really is staying late sees exactly the prompt they
+                         * would have seen at 4:55.
+                         */
+                        default => $now->copy()->addMinutes(
+                            (int) $this->settings->get('time_clock.extension_minutes', $user->organization)
+                        ),
+                    },
                     // A day off, or well before the start. Informational —
                     // Clock In is never refused by the schedule (design §3.4).
                     'outside_schedule' => $window === null
@@ -264,8 +297,10 @@ final class TimeClock
      * somebody is clocked out" on it would text a technician who went home
      * yesterday. The audit entry below is the trail.
      */
-    public function correct(TimeClockShift $shift, ?Carbon $in, ?Carbon $out): void
+    public function correct(User $actor, TimeClockShift $shift, ?Carbon $in, ?Carbon $out): void
     {
+        $this->assertReaches($actor, $shift->user);
+
         DB::transaction(function () use ($shift, $in, $out) {
             $shift = TimeClockShift::query()->whereKey($shift->getKey())->lockForUpdate()->firstOrFail();
 
@@ -343,8 +378,10 @@ final class TimeClock
      * the next query somebody writes. The audit entry carries both times, so
      * the deletion can be read and undone by hand.
      */
-    public function remove(TimeClockShift $shift): void
+    public function remove(User $actor, TimeClockShift $shift): void
     {
+        $this->assertReaches($actor, $shift->user);
+
         DB::transaction(function () use ($shift) {
             $this->audit->log('time_clock.deleted', $shift, changes: [
                 'before' => [
@@ -355,6 +392,132 @@ final class TimeClock
 
             $shift->delete();
         });
+    }
+
+    /**
+     * Force clock out: HR ends somebody's running shift now (2026-09-24).
+     *
+     * Through clockOut() rather than a row write, so it is audited, raises
+     * `time_clock.clocked_out` for automations, and lands on the lock screen
+     * exactly like any other close — it IS a clock-out that happened to the
+     * business, unlike a correction, which amends one after the fact.
+     */
+    public function forceClockOut(User $actor, TimeClockShift $shift): void
+    {
+        $this->assertReaches($actor, $shift->user);
+
+        if ($shift->clocked_out_at !== null) {
+            throw ValidationException::withMessages([
+                'shift' => 'This shift has already ended.',
+            ]);
+        }
+
+        $this->clockOut($shift->user, endedBy: TimeClockShift::ENDED_BY_MANAGER);
+    }
+
+    /**
+     * Set what HR says about one person's day: a tag, extra minutes, a note.
+     *
+     * Each key is optional and absent means unchanged; null (or 0 for minutes)
+     * clears it. A day left with nothing on it is deleted rather than kept as
+     * an empty row, so "has a record" always means somebody said something.
+     *
+     * Tags may be set on a future date — Vacation next week is the commonest
+     * reason to open this — but extra minutes may not: time not yet worked is
+     * not time worked.
+     *
+     * @param  array{tag?: ?string, extra_minutes?: ?int, note?: ?string}  $changes
+     */
+    public function recordDay(User $actor, User $person, string $date, array $changes): void
+    {
+        $this->assertReaches($actor, $person);
+
+        $view = ViewScope::forUser($actor);
+        $tz = (string) $this->settings->get('timezone', $view->settingsScope());
+
+        if (($changes['extra_minutes'] ?? 0) > 0 && $date > Carbon::now($tz)->toDateString()) {
+            throw ValidationException::withMessages([
+                'extra_minutes' => 'Extra hours cannot be added to a day that has not happened yet.',
+            ]);
+        }
+
+        DB::transaction(function () use ($person, $date, $changes) {
+            $day = TimeClockDay::query()
+                ->where('user_id', $person->getKey())
+                ->whereDate('date', $date)
+                ->lockForUpdate()
+                ->first()
+                ?? new TimeClockDay([
+                    'organization_id' => $person->organization_id,
+                    'user_id' => $person->getKey(),
+                    'date' => $date,
+                    'extra_minutes' => 0,
+                ]);
+
+            $before = $day->exists ? $this->presentDay($day) : null;
+
+            foreach (['tag', 'note'] as $key) {
+                if (array_key_exists($key, $changes)) {
+                    $value = $changes[$key];
+                    $day->{$key} = is_string($value) && trim($value) !== '' ? trim($value) : null;
+                }
+            }
+
+            if (array_key_exists('extra_minutes', $changes)) {
+                $day->extra_minutes = (int) ($changes['extra_minutes'] ?? 0);
+            }
+
+            $empty = $day->tag === null && $day->note === null && (int) $day->extra_minutes === 0;
+
+            if ($empty) {
+                if ($day->exists) {
+                    $day->delete();
+                }
+            } else {
+                $day->save();
+            }
+
+            $this->audit->log('time_clock.day_recorded', $person, changes: [
+                'date' => $date,
+                'before' => $before,
+                'after' => $empty ? null : $this->presentDay($day),
+            ]);
+        });
+    }
+
+    /**
+     * Refuse a shift or day that belongs to somebody outside the actor's reach.
+     *
+     * The route gate says the actor may correct hours; it does not say WHOSE.
+     * The tenant scope stops another organization, and this stops another
+     * franchise: a branch manager holding `hr.hours.correct` sees only their
+     * own people on Work Hours, and must not be able to edit anybody else's
+     * by pasting an id. Same rule the week list draws with, so what can be
+     * seen and what can be changed cannot drift apart.
+     *
+     * 404 rather than 403, so an id from outside does not confirm it exists.
+     */
+    private function assertReaches(User $actor, ?User $person): void
+    {
+        $visible = $person !== null && User::query()
+            ->whereKey($person->getKey())
+            ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
+            ->exists();
+
+        if (! $visible) {
+            throw (new ModelNotFoundException)->setModel(User::class);
+        }
+    }
+
+    /** @return array{date: string, tag: ?string, extra_minutes: int, note: ?string} */
+    private function presentDay(TimeClockDay $day): array
+    {
+        return [
+            'date' => Carbon::parse($day->date)->toDateString(),
+            'tag' => $day->tag,
+            'extra_minutes' => (int) $day->extra_minutes,
+            'note' => $day->note,
+        ];
     }
 
     /**
@@ -577,6 +740,14 @@ final class TimeClock
             ->orderBy('name')
             ->get(['id', 'name', 'is_active', 'avatar_path']);
 
+        $records = TimeClockDay::query()
+            ->whereIn('user_id', $people->modelKeys())
+            ->whereDate('date', '>=', $weekStart->toDateString())
+            ->whereDate('date', '<=', $weekStart->copy()->addDays(6)->toDateString())
+            ->orderBy('date')
+            ->get()
+            ->groupBy('user_id');
+
         return [
             'week_start' => $weekStart->toDateString(),
             'week_end' => $weekStart->copy()->addDays(6)->toDateString(),
@@ -588,6 +759,7 @@ final class TimeClock
                 ->map(fn (User $person) => $this->presentWeekPerson(
                     $person,
                     $shifts->get($person->getKey()) ?? collect(),
+                    $records->get($person->getKey()) ?? collect(),
                     $tz,
                     $timeFormat,
                 ))
@@ -670,7 +842,7 @@ final class TimeClock
      *
      * @param  iterable<TimeClockShift>  $shifts
      */
-    private function presentWeekPerson(User $person, iterable $shifts, string $tz, string $timeFormat): array
+    private function presentWeekPerson(User $person, iterable $shifts, iterable $records, string $tz, string $timeFormat): array
     {
         $now = now();
         $total = 0;
@@ -695,6 +867,21 @@ final class TimeClock
             $rows[] = $row;
         }
 
+        /*
+         * Extra minutes count toward the total and make a day WORKED; a tag on
+         * its own does not. "Sick" with no time is a day away, and counting it
+         * would pull the average down for being ill.
+         */
+        $dayRows = [];
+        foreach ($records as $record) {
+            $row = $this->presentDay($record);
+            $total += $row['extra_minutes'] * 60;
+            if ($row['extra_minutes'] > 0) {
+                $days[$row['date']] = true;
+            }
+            $dayRows[] = $row;
+        }
+
         $worked = count($days);
 
         return [
@@ -710,6 +897,10 @@ final class TimeClock
             'average_seconds' => $worked === 0 ? 0 : intdiv($total, $worked),
             'open' => $open,
             'shifts' => $rows,
+            // A LIST, not a map keyed by date: an empty PHP array encodes as
+            // `[]`, and a client expecting `{}` for a week with no records
+            // would fail on exactly the commonest week there is.
+            'days' => $dayRows,
         ];
     }
 

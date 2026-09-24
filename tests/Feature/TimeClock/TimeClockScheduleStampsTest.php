@@ -110,7 +110,8 @@ class TimeClockScheduleStampsTest extends TestCase
 
         Carbon::setTestNow(Carbon::parse('2026-09-08 23:30:00', 'UTC')); // Tuesday 18:30 local, after 17:00
         $block = $this->signedInAs($person)->postJson('/api/v1/time-clock/clock-in')->assertOk()->json('data.time_clock');
-        $this->assertSame('2026-09-09T15:30:00Z', $block['scheduled_end_at']);
+        // One extension past the punch, not the cap (2026-09-24).
+        $this->assertSame('2026-09-09T00:00:00Z', $block['scheduled_end_at']);
         $shift = $this->open($alpha, $person);
         $this->assertFalse($shift->outside_schedule, 'working late is not working outside the schedule');
         $this->assertNotNull($shift->scheduled_end_at);

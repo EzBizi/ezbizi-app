@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\TimeClockDay;
 use App\Models\TimeClockShift;
+use App\Models\User;
 use App\Support\TimeClock\TimeClock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -144,6 +147,7 @@ class TimeClockController extends Controller
         }
 
         $this->timeClock->correct(
+            $request->user(),
             $shift,
             isset($data['clocked_in_at']) ? Carbon::parse($data['clocked_in_at'])->utc() : null,
             isset($data['clocked_out_at']) ? Carbon::parse($data['clocked_out_at'])->utc() : null,
@@ -157,7 +161,38 @@ class TimeClockController extends Controller
     {
         $this->authorize('correct', TimeClockShift::class);
 
-        $this->timeClock->remove($shift);
+        $this->timeClock->remove($request->user(), $shift);
+
+        return $this->weekAfterCorrection($request);
+    }
+
+    /** POST /api/v1/hr/time-clock/shifts/{shift}/clock-out — Force clock out, at the server's now. */
+    public function forceClockOut(Request $request, TimeClockShift $shift): JsonResponse
+    {
+        $this->authorize('correct', TimeClockShift::class);
+
+        $this->timeClock->forceClockOut($request->user(), $shift);
+
+        return $this->weekAfterCorrection($request);
+    }
+
+    /**
+     * PUT /api/v1/hr/time-clock/people/{user}/days/{date} — tag, extra
+     * minutes, note. Each key optional; absent is unchanged, null clears.
+     */
+    public function recordDay(Request $request, User $user, string $date): JsonResponse
+    {
+        $this->authorize('correct', TimeClockShift::class);
+
+        abort_unless((bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) && strtotime($date) !== false, 404);
+
+        $data = $request->validate([
+            'tag' => ['sometimes', 'nullable', Rule::in(TimeClockDay::TAGS)],
+            'extra_minutes' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1440'],
+            'note' => ['sometimes', 'nullable', 'string', 'max:2000'],
+        ]);
+
+        $this->timeClock->recordDay($request->user(), $user, $date, $data);
 
         return $this->weekAfterCorrection($request);
     }

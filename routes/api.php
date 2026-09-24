@@ -1310,6 +1310,9 @@ Route::prefix('v1')
         Route::middleware('permission:hr.hours.correct')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
             Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
+            // Force clock out, and the day's tag / extra hours / note (2026-09-24).
+            Route::post('hr/time-clock/shifts/{shift}/clock-out', [TimeClockController::class, 'forceClockOut']);
+            Route::put('hr/time-clock/people/{user}/days/{date}', [TimeClockController::class, 'recordDay']);
         });
 
         // The tab the owner asked for. It computes nothing itself — the figures
