@@ -984,10 +984,11 @@ Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 Future<void> _openPerson(WidgetTester tester, String name) =>
     _tap(tester, find.text(name).first);
 
-/// A section of the open record. Its own tab strip is the LAST one on screen,
-/// so "Onboarding" here can never be the module's Onboarding chip.
+/// A section of the open record, found in the record's OWN strip by key —
+/// "Onboarding" is also a module chip, and a positional finder would re-aim
+/// silently if another strip were ever drawn below this one.
 Finder _section(String label) => find.descendant(
-  of: find.byType(TabBarLike).last,
+  of: find.byKey(RecordsTab.sectionsKey),
   matching: find.widgetWithText(ChoiceChip, label),
 );
 
