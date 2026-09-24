@@ -66,7 +66,11 @@ class A1LeadsGbpScreen extends StatefulWidget {
 class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   Map<String, dynamic> _source = const {};
   List<Map<String, dynamic>> _reviews = const [];
-  List<Map<String, dynamic>> _cities = const [];
+  List<Map<String, dynamic>> _locations = const [];
+
+  /// Whether A1 Leads' board (Status, Notes, Contact) could be read, and the
+  /// server's own words when it could not.
+  Map<String, dynamic> _board = const {};
   int _total = 0;
 
   bool _loading = true;
@@ -87,7 +91,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   String _match = '';
   String _range = '';
   String _sort = 'newest';
-  String? _city;
+  String? _location;
 
   /// Board or table, the way the A1 Tools bad-review board offers both.
   ///
@@ -116,7 +120,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       if (_match == 'matched') 'matched': 'true',
       if (_match == 'unverified') 'matched': 'false',
       'from': ?from,
-      'city': ?_city,
+      'location': ?_location,
       'sort': _sort,
       'limit': '20',
     };
@@ -162,7 +166,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       _source = (data['source'] as Map?)?.cast<String, dynamic>() ?? const {};
       _reviews = _rows(data['reviews']);
-      _cities = _rows(data['cities']);
+      _locations = _rows(data['locations']);
+      _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? const {};
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -195,6 +200,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
 
       final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
       _source = (data['source'] as Map?)?.cast<String, dynamic>() ?? _source;
+      _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? _board;
       _reviews = _rows(data['reviews']);
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
@@ -271,26 +277,40 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           ),
         ),
         if (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom)
-          _notGranted(theme),
+          _tableNote(theme),
       ],
     );
   }
 
-  /// The three columns that are not here, and why — said once, at the bottom.
-  Widget _notGranted(ThemeData theme) {
+  /// What the table cannot show, and why — said once, at the bottom.
+  ///
+  /// Three different sentences, because they are three different facts. The
+  /// board being unreadable is a fault somebody can fix. Contact being empty is
+  /// a decision on A1 Leads' side: its feed for EzBizi carries only a saved
+  /// customer match, never the name-guessing A1 Tools does, and on 24 September
+  /// that left the phone and email empty on all 387 cards. And replying lives
+  /// in A1 Tools, because this connection reads and does not write.
+  Widget _tableNote(ThemeData theme) {
+    final lines = [
+      if (_board['available'] == false)
+        'Status and Notes could not be read from A1 Leads: ${_board['because'] ?? 'no reason given'}.',
+      if (_board['available'] == true && !_anyContact)
+        'Contact is empty because A1 Leads does not send customer phone or email to EzBizi yet.',
+      'Replying happens in A1 Tools — this tab reads A1 Leads and cannot write to it.',
+    ];
+
     return Material(
       color: theme.colorScheme.surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(Icons.info_outline, size: 16, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Contact, Status and Notes are not here yet: they live on an A1 Leads '
-                'route this connection is not admitted to. Replying also happens in '
-                'A1 Tools for now — this tab can read A1 Leads and cannot write to it.',
+                lines.join(' '),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
@@ -300,6 +320,16 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       ),
     );
   }
+
+  /// Whether any card on this page carries a way to reach the customer.
+  ///
+  /// The Contact column is drawn only when one does. Empty everywhere, it
+  /// would read as "these customers have no phone number" when the truth is
+  /// that the feed does not carry it; the note below the table says that.
+  bool get _anyContact => _reviews.any((r) {
+        final c = ((r['board'] as Map?)?['contact'] as Map?) ?? const {};
+        return c['phone'] != null || c['email'] != null;
+      });
 
   /// The band that makes the age of the data impossible to miss.
   Widget _sourceBand(ThemeData theme) {
@@ -407,31 +437,21 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           // holding nothing but "All locations" is a control that cannot do
           // anything, and this list comes from another service.
           //
-          // CITIES rather than GBP listings, and that is forced rather than
-          // chosen: the route carrying a listing's resource name is not one of
-          // the five this consumer was granted, and the one that is carries no
-          // resource name. `city` is the filter that works with what we can
-          // see - measured against the live service, Boston narrows 13,169 to
-          // 221 and a city that does not exist returns none.
-          if (_cities.isNotEmpty)
+          // One entry per LISTING, filtered on its exact GBP id. Until 24
+          // September the only route we held carried no id and this was a
+          // city list, which merged two listings in one city; Rodrigo's release
+          // c7ac999b added the id to every row.
+          if (_locations.isNotEmpty)
             _picker<String>(
               width: 240,
-              value: _city ?? '',
+              value: _location ?? '',
               hint: 'All locations',
               options: [
                 const SearchOption(value: '', label: 'All locations'),
-                for (final c in _cities)
-                  SearchOption(
-                    value: '${c['city']}',
-                    // Every one of these listings is titled with the bare brand
-                    // ("A1 Chimney") nine times over, so the state is what tells
-                    // two cities of the same name apart.
-                    label: [c['city'], c['state']]
-                        .where((p) => '${p ?? ''}'.trim().isNotEmpty)
-                        .join(', '),
-                  ),
+                for (final l in _locations)
+                  SearchOption(value: '${l['name']}', label: '${l['label']}'),
               ],
-              onChanged: (v) => setState(() => _city = (v ?? '').isEmpty ? null : v),
+              onChanged: (v) => setState(() => _location = (v ?? '').isEmpty ? null : v),
             ),
           _picker<String>(
             width: 190,
@@ -488,18 +508,13 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     );
   }
 
-  /// The table, and the three columns that are NOT in it.
+  /// The table: A1 Tools' bad-review board columns, as far as they can be
+  /// filled.
   ///
-  /// Contact, Status and Notes are the columns A1 Tools' bad-review board
-  /// carries, and every one of them lives on `GET /api/v1/reviews/workflow/
-  /// cards` — a route this consumer is not granted, which answers 403. It is a
-  /// GET and involves no writing, so it is one line of Rodrigo's consumer
-  /// policy away; until then those columns would be three empty headers, and an
-  /// empty column reads as "this customer has no phone number" rather than "we
-  /// were not given this".
-  ///
-  /// So they are absent and SAID, once, under the table. A missing thing nobody
-  /// explains is indistinguishable from a broken one.
+  /// Status and Notes come from A1 Leads' board feed, joined to each review by
+  /// its Google id; a review with no card - most of the thirteen thousand -
+  /// shows a dash rather than a blank, because "not on the board" and "on the
+  /// board with nothing written" are different things.
   Widget _table(ThemeData theme) {
     final more = _reviews.length < _total;
     final heading = theme.textTheme.labelSmall?.copyWith(
@@ -517,11 +532,13 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                Expanded(flex: 22, child: Text('CUSTOMER', style: heading)),
-                Expanded(flex: 46, child: Text('REVIEW', style: heading)),
-                Expanded(flex: 12, child: Text('DATE', style: heading)),
-                Expanded(flex: 10, child: Text('RATING', style: heading)),
-                Expanded(flex: 10, child: Text('REPLY', style: heading)),
+                Expanded(flex: 20, child: Text('CUSTOMER', style: heading)),
+                Expanded(flex: 38, child: Text('REVIEW', style: heading)),
+                if (_anyContact) Expanded(flex: 16, child: Text('CONTACT', style: heading)),
+                Expanded(flex: 11, child: Text('DATE', style: heading)),
+                Expanded(flex: 9, child: Text('RATING', style: heading)),
+                Expanded(flex: 14, child: Text('STATUS', style: heading)),
+                Expanded(flex: 20, child: Text('NOTES', style: heading)),
               ],
             ),
           ),
@@ -549,6 +566,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   }
 
   Widget _tableRow(ThemeData theme, Map<String, dynamic> review) {
+    final card = (review['board'] as Map?)?.cast<String, dynamic>();
+    final contact = (card?['contact'] as Map?)?.cast<String, dynamic>() ?? const {};
     final name = '${review['reviewer_name'] ?? ''}'.trim();
     final comment = '${review['comment'] ?? ''}'.trim();
     final reply = '${review['reply'] ?? ''}'.trim();
@@ -563,7 +582,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            flex: 22,
+            flex: 20,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -585,7 +604,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             ),
           ),
           Expanded(
-            flex: 46,
+            flex: 38,
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Text(
@@ -599,21 +618,109 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               ),
             ),
           ),
+          if (_anyContact)
+            Expanded(
+              flex: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final key in ['phone', 'email'])
+                    if (contact[key] != null)
+                      Text('${contact[key]}',
+                          style: theme.textTheme.bodySmall, overflow: TextOverflow.ellipsis),
+                  if (contact['phone'] == null && contact['email'] == null) Text('—', style: quiet),
+                ],
+              ),
+            ),
           Expanded(
-            flex: 12,
+            flex: 11,
             child: Text(_short(review['review_created_at']), style: quiet),
           ),
-          Expanded(flex: 10, child: _stars(theme, (review['rating'] as num?)?.toInt())),
+          // A compact "★ 2" rather than five stars: the table's rating column
+          // is narrower than five 15px icons at the widths it is offered at,
+          // and A1 Tools' board draws it the same way.
+          Expanded(flex: 9, child: _ratingChip(theme, (review['rating'] as num?)?.toInt())),
           Expanded(
-            flex: 10,
-            child: reply.isEmpty
-                ? Text('No reply',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.error))
-                : Text('Replied', style: quiet),
+            flex: 14,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                card == null || card['status'] == null
+                    ? Text('—', style: quiet)
+                    : _statusPill(theme, '${card['status']}'),
+                const SizedBox(height: 4),
+                // The reply state stays visible beside the board status: it is
+                // Google's fact, where the status is A-1's process.
+                reply.isEmpty
+                    ? Text('No reply',
+                        style: theme.textTheme.labelSmall
+                            ?.copyWith(color: theme.colorScheme.error))
+                    : Text('Replied', style: theme.textTheme.labelSmall),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 20,
+            child: Text(
+              '${card?['note'] ?? '—'}',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: card?['note'] == null ? quiet : theme.textTheme.bodySmall,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  /// A-1's board status and note, in the board view, when the review has a
+  /// card. Nothing at all when it has none - most reviews are not on the board.
+  Widget _boardLine(ThemeData theme, Map<String, dynamic> review) {
+    final card = (review['board'] as Map?)?.cast<String, dynamic>();
+
+    if (card == null || (card['status'] == null && card['note'] == null)) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (card['status'] != null) _statusPill(theme, '${card['status']}'),
+          if (card['note'] != null) ...[
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${card['note']}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// A-1's words for where a card is, drawn verbatim.
+  ///
+  /// Not remapped to EzBizi's own vocabulary: "Awaiting report" and "Reported -
+  /// Failed" are A1 Leads' lanes, and a dispatcher reading both screens must
+  /// see the same word in both. Colour follows the one distinction that is
+  /// safe to draw without owning their workflow: finished or not.
+  Widget _statusPill(ThemeData theme, String status) {
+    final done = status == 'Removed';
+    final bg = done ? theme.colorScheme.tertiaryContainer : theme.colorScheme.secondaryContainer;
+    final fg = done ? theme.colorScheme.onTertiaryContainer : theme.colorScheme.onSecondaryContainer;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Text(status,
+          style: theme.textTheme.labelSmall?.copyWith(color: fg), overflow: TextOverflow.ellipsis),
     );
   }
 
@@ -711,6 +818,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           _matchLine(theme, review),
+          _boardLine(theme, review),
           if (reply.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
@@ -833,6 +941,32 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     }
 
     return null;
+  }
+
+  Widget _ratingChip(ThemeData theme, int? rating) {
+    if (rating == null) {
+      return Text('—', style: theme.textTheme.bodySmall);
+    }
+
+    final low = rating <= 3;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: low ? theme.colorScheme.errorContainer : theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          '★ $rating',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: low ? theme.colorScheme.onErrorContainer : theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _stars(ThemeData theme, int? rating) {

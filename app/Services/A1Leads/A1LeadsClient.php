@@ -3,6 +3,7 @@
 namespace App\Services\A1Leads;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -24,7 +25,7 @@ use RuntimeException;
  *
  * ── The five routes, and why the list is closed ──────────────────
  *
- * `phase1:ezbizi` is allowed exactly five routes. A sixth would answer 403, so
+ * `phase1:ezbizi` is allowed exactly six routes. A seventh would answer 403, so
  * naming them here turns "the policy refused you" into a mistake that cannot
  * reach the network — and the list doubles as the documentation of what this
  * integration is allowed to know.
@@ -44,6 +45,13 @@ class A1LeadsClient
         'reviews_summary' => '/api/v1/reviews/summary',
         'gbp_health' => '/api/v1/gbp/health',
         'gbp_locations' => '/api/v1/gbp/locations',
+
+        // The sixth, granted by Rodrigo on 24 September for the bad-review
+        // board's Status and Notes columns, and ONLY this route: his handoff
+        // says in as many words that it authorises no reply, card edit or
+        // other POST. Activated on the host by appending exactly this entry to
+        // the `phase1:ezbizi` array; removing that one entry revokes it.
+        'cards' => '/api/v1/reviews/workflow/cards',
     ];
 
     public function configured(): bool
@@ -152,35 +160,24 @@ class A1LeadsClient
     }
 
     /**
-     * The cities A-1 has a listing in, for the tab's location filter.
+     * A-1's listings, for the tab's location filter.
      *
-     * ── Why this is a CITY filter and not a location filter ──────────
+     * ── Exact listings now, not cities ───────────────────────────────
      *
-     * A1 Tools filters by `location`, whose value is a GBP resource name
-     * (`locations/14144755587586148209`), and reads that list from
-     * `/api/v1/reviews/locations`. That route is NOT one of the five this
-     * consumer was granted and answers 403. `/api/v1/gbp/locations` IS granted
-     * and returns 46 listings — measured, 2026-09-23 — but carries
-     * `{title, address, zip, rating, reviews, phone, maps}` and no resource
-     * name at all, so it cannot produce a value the `location` filter accepts.
+     * Until 24 September `/api/v1/gbp/locations` carried no identifier, so the
+     * filter was built on `city` - which works, but merges two listings in one
+     * city into one entry. Rodrigo's release c7ac999b added `gbp_location_name`
+     * to every row (46 of 46, measured after install), and `/api/v1/reviews`
+     * filters on exactly that value, so the dropdown is now one entry per
+     * listing and picking one narrows to that listing alone.
      *
-     * `city` is the filter that works with what we can see: measured against
-     * the live service, `city=Boston` narrows 13,169 to 221 and every row comes
-     * back with a Boston address, while a city that does not exist returns 0
-     * rather than everything.
+     * Every listing is titled "A1 Chimney", so the label is built from the
+     * address: the city and state for a street address, the address itself
+     * (trimmed) for a service area, which has no single city to name.
      *
-     * ── What is deliberately left out ────────────────────────────────
-     *
-     * Rows with no `zip` are service-area listings whose address reads
-     * "Serves Cobb County, GA, USA, Henry County, GA, USA +8 more". There is no
-     * one city in that, and inventing one would put a name in the dropdown that
-     * narrows to nothing. Those listings' reviews are reachable through every
-     * other filter and through All locations; they simply have no city of their
-     * own to be picked by.
-     *
-     * @return list<array{city: string, state: ?string}>
+     * @return list<array{name: string, label: string}>
      */
-    public function cities(): array
+    public function locations(): array
     {
         $rows = $this->get('gbp_locations')['data'] ?? [];
 
@@ -188,40 +185,129 @@ class A1LeadsClient
             return [];
         }
 
-        $found = [];
+        $out = [];
 
         foreach ($rows as $row) {
             if (! is_array($row)) {
                 continue;
             }
 
-            // The zip is what distinguishes a street address from a service
-            // area, and it is the listing's own field rather than something
-            // parsed out of the string.
-            if (self::text($row['zip'] ?? null) === null) {
+            $name = self::text($row['gbp_location_name'] ?? null);
+
+            // A row without the identifier cannot be filtered on, and a
+            // dropdown entry that narrows to nothing is worse than none.
+            if ($name === null) {
                 continue;
             }
 
-            $parts = array_values(array_filter(array_map(
-                'trim',
-                explode(',', (string) ($row['address'] ?? '')),
-            ), fn ($p) => $p !== ''));
-
-            // "…, City, ST, ZIP" — the city is third from the end, because the
-            // street half varies in length and the tail does not.
-            if (count($parts) < 3) {
-                continue;
-            }
-
-            $city = $parts[count($parts) - 3];
-            $state = $parts[count($parts) - 2];
-
-            $found[mb_strtolower($city)] = ['city' => $city, 'state' => $state];
+            $out[$name] = ['name' => $name, 'label' => self::label($row)];
         }
 
-        ksort($found);
+        $out = array_values($out);
+        usort($out, fn ($a, $b) => strcasecmp($a['label'], $b['label']));
 
-        return array_values($found);
+        return $out;
+    }
+
+    /** "Morton Grove, IL" from "8145 Austin Ave, Morton Grove, IL, 60053". */
+    private static function label(array $row): string
+    {
+        $address = (string) ($row['address'] ?? '');
+        $parts = array_values(array_filter(array_map('trim', explode(',', $address)), fn ($p) => $p !== ''));
+
+        if (self::text($row['zip'] ?? null) !== null && count($parts) >= 3) {
+            return $parts[count($parts) - 3].', '.$parts[count($parts) - 2];
+        }
+
+        // A service area: "Serves Cobb County, GA, USA, …" - say so, briefly.
+        return mb_strimwidth($address !== '' ? $address : (string) ($row['title'] ?? ''), 0, 60, '…');
+    }
+
+    /**
+     * The bad-review board, keyed by the review it belongs to.
+     *
+     * ── Every page, one generation ───────────────────────────────────
+     *
+     * Rodrigo's rules for this feed, each one a way to be silently wrong:
+     * follow `meta.next_cursor` while `meta.has_more` (the old default of 200
+     * truncated a 391-card board); keep every page on ONE installed snapshot
+     * generation and restart if it changes mid-read; never forward a filter the
+     * route does not know (it answers 400). All three are done here.
+     *
+     * ── Cached per generation, because it cannot change otherwise ────
+     *
+     * The replica is replaced once a day and is read-only in between, so the
+     * board is identical for every request until the next install. Keying the
+     * cache on the installed generation makes it exactly as fresh as the data
+     * and no fresher, and it is how "the importer should pace itself" is met:
+     * one read of this route per day rather than one per filter change.
+     *
+     * Keyed by `review_ref` - `accounts/…/locations/…/reviews/…` - which is the
+     * same string `/api/v1/reviews` returns as `google_review_name`. Rodrigo
+     * names it the stable unique key.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public function cards(): array
+    {
+        $generation = (string) ($this->receipt()['installed_generation'] ?? 'unknown');
+
+        return Cache::remember('a1leads:cards:'.$generation, now()->addDay(), function () use ($generation) {
+            for ($attempt = 0; $attempt < 2; $attempt++) {
+                $cards = [];
+                $after = null;
+
+                do {
+                    $page = $this->get('cards', [
+                        'business' => 'a1-chimney',
+                        'limit' => 500,
+                        'after' => $after,
+                    ]);
+
+                    foreach ((array) ($page['data'] ?? []) as $card) {
+                        if (is_array($card) && is_string($card['review_ref'] ?? null)) {
+                            $cards[$card['review_ref']] = self::card($card);
+                        }
+                    }
+
+                    $after = ($page['meta']['has_more'] ?? false) ? ($page['meta']['next_cursor'] ?? null) : null;
+                } while ($after !== null);
+
+                // The replica was replaced under us: a board assembled from two
+                // snapshots is neither of them. Read it again, once.
+                if ((string) ($this->receipt()['installed_generation'] ?? 'unknown') === $generation) {
+                    return $cards;
+                }
+            }
+
+            throw new RuntimeException('A1 Leads was refreshed twice while the board was being read.');
+        });
+    }
+
+    /**
+     * The three facts the tab shows, and nothing else of the card.
+     *
+     * The card carries operator notes, match evidence and report reasoning.
+     * Rodrigo's handoff asks that none of it be logged or passed around, so it
+     * is reduced HERE, before it reaches a cache or a response, to what a
+     * column displays.
+     *
+     * @param  array<string, mixed>  $card
+     * @return array{status: ?string, note: ?string, contact: array{name: ?string, phone: ?string, email: ?string}}
+     */
+    private static function card(array $card): array
+    {
+        $contact = is_array($card['contact'] ?? null) ? $card['contact'] : [];
+
+        return [
+            'status' => self::text($card['status'] ?? null),
+            'note' => self::text($card['note'] ?? null),
+            'contact' => [
+                'name' => self::text($contact['name'] ?? null),
+                'phone' => self::text($contact['phone'] ?? null),
+                'email' => self::text($contact['email'] ?? null),
+            ],
+        ];
     }
 
     private static function text(mixed $value): ?string

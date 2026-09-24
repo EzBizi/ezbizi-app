@@ -66,7 +66,7 @@ class A1LeadsGbpController extends Controller
                 filters: $this->filters($request),
             );
             $health = $this->a1leads->gbpHealth()['data'] ?? null;
-            $cities = $this->a1leads->cities();
+            $locations = $this->a1leads->locations();
         } catch (RuntimeException $e) {
             /*
              * A refusal from the other side is reported as a source problem,
@@ -81,17 +81,20 @@ class A1LeadsGbpController extends Controller
                 'summary' => null,
                 'reviews' => [],
                 'health' => null,
-                'cities' => [],
+                'locations' => [],
             ]]);
         }
+
+        $board = $this->board();
 
         return response()->json(['data' => [
             'source' => $source,
             'summary' => $summary,
-            'reviews' => $reviews['data'] ?? [],
+            'reviews' => $this->withBoard($reviews['data'] ?? [], $board),
             'meta' => $reviews['meta'] ?? null,
             'health' => $health,
-            'cities' => $cities,
+            'locations' => $locations,
+            'board' => ['available' => $board['available'], 'because' => $board['because']],
         ]]);
     }
 
@@ -134,11 +137,59 @@ class A1LeadsGbpController extends Controller
             ]]);
         }
 
+        $board = $this->board();
+
         return response()->json(['data' => [
             'source' => $source,
-            'reviews' => $reviews['data'] ?? [],
+            'reviews' => $this->withBoard($reviews['data'] ?? [], $board),
             'meta' => $reviews['meta'] ?? null,
+            'board' => ['available' => $board['available'], 'because' => $board['because']],
         ]]);
+    }
+
+    /**
+     * Whether the board's columns could be read, and why not when they could not.
+     *
+     * The board is ENRICHMENT: the reviews are the page, Status and Notes are
+     * columns beside them. So a failure here - most likely the one policy entry
+     * being removed, which is exactly how Rodrigo said to revoke it - leaves the
+     * reviews standing and says the columns are unavailable, rather than
+     * taking the whole tab down with a 403 it did not need to.
+     *
+     * @return array{available: bool, because: ?string, cards: array<string, array<string, mixed>>}
+     */
+    private function board(): array
+    {
+        try {
+            return ['available' => true, 'because' => null, 'cards' => $this->a1leads->cards()];
+        } catch (RuntimeException $e) {
+            return ['available' => false, 'because' => $e->getMessage(), 'cards' => []];
+        }
+    }
+
+    /**
+     * Each review with its board card beside it, when it has one.
+     *
+     * Joined on `google_review_name` = the card's `review_ref`. Most reviews
+     * have no card - the board holds the few hundred bad ones out of thirteen
+     * thousand - and `board: null` says that, which is different from a card
+     * whose status is blank.
+     *
+     * @param  array<int, mixed>  $reviews
+     * @param  array{cards: array<string, array<string, mixed>>}  $board
+     * @return array<int, mixed>
+     */
+    private function withBoard(array $reviews, array $board): array
+    {
+        return array_map(function ($review) use ($board) {
+            if (! is_array($review)) {
+                return $review;
+            }
+
+            $ref = $review['google_review_name'] ?? null;
+
+            return [...$review, 'board' => is_string($ref) ? ($board['cards'][$ref] ?? null) : null];
+        }, $reviews);
     }
 
     /**

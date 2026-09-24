@@ -60,6 +60,37 @@ class A1LeadsGbpSourceTest extends TestCase
         return $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
     }
 
+    /**
+     * One page of A1 Leads' board, in the shape measured on 2026-09-24.
+     *
+     * Trimmed to the fields that matter here, but nested exactly as the live
+     * route nests them - `contact` is an object whose phone and email were
+     * null on all 387 real cards, and the fixture keeps them null for the same
+     * reason: a fixture that invented a phone number would prove a column the
+     * real feed cannot fill.
+     *
+     * @return array<string, mixed>
+     */
+    private static function cardsPage(): array
+    {
+        return [
+            'data' => [[
+                'review_ref' => 'accounts/a/locations/l/reviews/r-1',
+                'status' => 'Working on it',
+                'raw_status' => 'working',
+                'note' => 'Outreach made, waiting on the customer.',
+                'assignee' => 'Adeline',
+                'contact' => [
+                    'status' => 'none', 'name' => null, 'phone' => null, 'email' => null,
+                    'address' => null, 'info' => null, 'matched_lead_id' => 7,
+                ],
+                'customer_match' => ['status' => 'unmatched', 'matched' => false],
+                'report' => ['dishonest' => false, 'reasons' => []],
+            ]],
+            'meta' => ['count' => 1, 'has_more' => false, 'next_cursor' => null],
+        ];
+    }
+
     /** A receipt on disk, because that is how the real one arrives. */
     private function receiptFile(string $capturedAt, ?string $installedAt = null): string
     {
@@ -80,44 +111,47 @@ class A1LeadsGbpSourceTest extends TestCase
         Http::fake([
             '*/_info' => Http::response(['version' => '1.10.1'], 200),
             '*/api/v1/reviews/summary' => Http::response(['data' => ['total' => 13169]], 200),
+            // Before `reviews*`, which would otherwise answer for it: Http::fake
+            // takes the FIRST pattern that matches, and this URL matches both.
+            '*/api/v1/reviews/workflow/cards*' => Http::response(self::cardsPage(), 200),
             '*/api/v1/reviews*' => Http::response([
                 'data' => [['google_review_name' => 'accounts/a/locations/l/reviews/r-1', 'rating' => 5]],
                 'meta' => ['total' => 13169],
             ], 200),
             '*/api/v1/gbp/health' => Http::response(['data' => ['locations' => 3]], 200),
             /*
-             * The REAL shape, captured from the live service on 2026-09-23.
-             *
-             * It carries no GBP resource name at all - that lives on
-             * `/api/v1/reviews/locations`, which this consumer is not granted -
-             * so the tab's location filter is built from these addresses. A
-             * fixture invented from the route's NAME would have had an `id` and
-             * proved only that the parser agreed with itself.
+             * The REAL shape, captured from the live service after Rodrigo's
+             * release c7ac999b was installed on 2026-09-24: 46 rows, every one
+             * carrying `gbp_location_name`. The day before it carried no id at
+             * all, which is why this filter was briefly a list of cities.
              */
             '*/api/v1/gbp/locations' => Http::response(['data' => [
                 [
+                    'gbp_location_name' => 'locations/111',
+                    'title' => 'A1 Chimney',
+                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
+                    'zip' => '60053',
+                ],
+                [
+                    'gbp_location_name' => 'locations/222',
                     'title' => 'A1 Chimney',
                     'address' => '101 Arch St #831, Boston, MA, 02110',
                     'zip' => '02110',
                     'rating' => 4.8,
                     'reviews' => 221,
                 ],
+                // A service area, which has no one city.
                 [
-                    'title' => 'A1 Chimney',
-                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
-                    'zip' => '60053',
-                ],
-                // The same listing again: A-1 has several rows per address.
-                [
-                    'title' => 'A1 Chimney',
-                    'address' => '8145 Austin Ave, Morton Grove, IL, 60053',
-                    'zip' => '60053',
-                ],
-                // A service area, which has no one city and no zip.
-                [
+                    'gbp_location_name' => 'locations/333',
                     'title' => 'A1 Chimney',
                     'address' => 'Serves Cobb County, GA, USA, Henry County, GA, USA +8 more',
                     'zip' => null,
+                ],
+                // No id: cannot be filtered on, so it must not be offered.
+                [
+                    'title' => 'A1 Chimney',
+                    'address' => '1 Nowhere Rd, Nowhere, TX, 75001',
+                    'zip' => '75001',
                 ],
             ]], 200),
         ]);
@@ -309,37 +343,143 @@ class A1LeadsGbpSourceTest extends TestCase
     }
 
     /**
-     * THE LOCATION FILTER IS A LIST OF CITIES, derived rather than fetched.
+     * THE LOCATION FILTER IS ONE ENTRY PER LISTING, on its exact GBP id.
      *
-     * `/api/v1/reviews/locations` carries the GBP resource names and is not one
-     * of this consumer's five routes. `/api/v1/gbp/locations` is, and carries
-     * addresses and no resource name - so the filter is `city`, which was
-     * measured against the live service: Boston narrows 13,169 to 221, and a
-     * city that does not exist returns none rather than everything.
+     * Until Rodrigo's release c7ac999b, `/api/v1/gbp/locations` carried no id
+     * and the filter had to be `city`, which merges two listings in one city.
+     * Now each row carries `gbp_location_name` and `/api/v1/reviews` filters on
+     * exactly that value.
      *
-     * Both halves are asserted. A service area ("Serves Cobb County, GA, USA
-     * +8 more") has no one city, so it is left out rather than guessed at - a
-     * name in the dropdown that narrows to nothing is worse than an absence.
-     * And the duplicate row for one address appears once.
+     * The discriminating row is the one with NO id: it cannot be filtered on,
+     * so it must not be offered - a dropdown entry that narrows to nothing is
+     * worse than an absence. And a service area is labelled with its own
+     * address, because it has no single city to name.
      */
-    public function test_the_location_filter_is_built_from_the_cities_it_can_see(): void
+    public function test_the_location_filter_offers_each_listing_by_its_id(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        Carbon::setTestNow(Carbon::parse('2026-09-24T18:00:00Z'));
         $this->fakeA1Leads();
 
         $t = $this->provisionTenant('Juliett');
 
-        $cities = $this->signedInAs($this->readerAt($t))
-            ->getJson(self::ENDPOINT)->assertOk()->json('data.cities');
+        $locations = $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data.locations');
 
         $this->assertSame(
             [
-                ['city' => 'Boston', 'state' => 'MA'],
-                ['city' => 'Morton Grove', 'state' => 'IL'],
+                ['name' => 'locations/222', 'label' => 'Boston, MA'],
+                ['name' => 'locations/111', 'label' => 'Morton Grove, IL'],
+                ['name' => 'locations/333', 'label' => 'Serves Cobb County, GA, USA, Henry County, GA, USA +8 more'],
             ],
-            $cities,
-            'one row per city, the service area left out, sorted',
+            $locations,
+            'one entry per listing with an id, labelled by place, the id-less row left out',
         );
+    }
+
+    /**
+     * STATUS AND NOTES ARRIVE BESIDE THE REVIEW THEY BELONG TO.
+     *
+     * Joined on `google_review_name` = the card's `review_ref`. The positive
+     * half is the joined card; the negative half is what does NOT travel -
+     * the card's assignee, match evidence and report reasoning are operator
+     * data Rodrigo asked us not to pass around, and the tab shows three
+     * columns, not the card.
+     */
+    public function test_the_board_status_and_note_are_joined_onto_the_review(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-24T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Kilo');
+
+        $data = $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $card = $data['reviews'][0]['board'];
+
+        $this->assertTrue($data['board']['available']);
+        $this->assertSame('Working on it', $card['status']);
+        $this->assertSame('Outreach made, waiting on the customer.', $card['note']);
+        $this->assertSame(['name' => null, 'phone' => null, 'email' => null], $card['contact']);
+
+        $this->assertArrayNotHasKey('assignee', $card, 'operator data stays on their side');
+        $this->assertArrayNotHasKey('customer_match', $card);
+        $this->assertArrayNotHasKey('report', $card);
+        $this->assertArrayNotHasKey('cards', $data['board'], 'the whole board is never sent to the screen');
+    }
+
+    /**
+     * A board that cannot be read leaves the reviews standing.
+     *
+     * Rodrigo's revocation is "remove only this new policy entry", after which
+     * the route answers 403. That must cost the tab two columns, not the whole
+     * page - and the sentence must say which kind of nothing it is.
+     */
+    public function test_a_refused_board_costs_two_columns_not_the_page(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-24T18:00:00Z'));
+        Http::fake([
+            '*/_info' => Http::response(['version' => '1.10.1'], 200),
+            '*/api/v1/reviews/summary' => Http::response(['data' => ['total' => 13169]], 200),
+            '*/api/v1/reviews/workflow/cards*' => Http::response(['error' => 'forbidden'], 403),
+            '*/api/v1/reviews*' => Http::response([
+                'data' => [['google_review_name' => 'accounts/a/locations/l/reviews/r-1', 'rating' => 1]],
+                'meta' => ['total' => 1],
+            ], 200),
+            '*/api/v1/gbp/health' => Http::response(['data' => []], 200),
+            '*/api/v1/gbp/locations' => Http::response(['data' => []], 200),
+        ]);
+        Http::preventStrayRequests();
+
+        $t = $this->provisionTenant('Lima');
+
+        $data = $this->signedInAs($this->readerAt($t))
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertTrue($data['source']['reachable'], 'the source is fine');
+        $this->assertCount(1, $data['reviews'], 'and the reviews are still there');
+        $this->assertNull($data['reviews'][0]['board']);
+        $this->assertFalse($data['board']['available']);
+        $this->assertStringContainsString('403', (string) $data['board']['because']);
+    }
+
+    /**
+     * EVERY PAGE, and no `after` on the first.
+     *
+     * Rodrigo's feed truncated at 200 before his fix, and a timestamp-only
+     * cursor skipped tied rows. So this follows `next_cursor` while `has_more`,
+     * and a card on page two must arrive. The first request must not carry an
+     * empty `after=`: the route answers 400 to a parameter it does not expect.
+     * (Laravel's client drops a null query value itself - a sabotage that
+     * removed our own filter for it stayed green - so this pins the behaviour
+     * we rely on rather than code of ours.)
+     */
+    public function test_the_board_is_read_to_its_last_page(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-24T18:00:00Z'));
+        Http::fake([
+            '*/api/v1/reviews/workflow/cards*' => Http::sequence()
+                ->push([
+                    'data' => [['review_ref' => 'ref-1', 'status' => 'Removed', 'note' => null]],
+                    'meta' => ['has_more' => true, 'next_cursor' => 'cursor-2'],
+                ], 200)
+                ->push([
+                    'data' => [['review_ref' => 'ref-2', 'status' => 'Awaiting report', 'note' => null]],
+                    'meta' => ['has_more' => false, 'next_cursor' => null],
+                ], 200),
+        ]);
+        Http::preventStrayRequests();
+
+        $cards = app(A1LeadsClient::class)->cards();
+
+        $this->assertSame(['ref-1', 'ref-2'], array_keys($cards), 'the second page arrived');
+        $this->assertSame('Awaiting report', $cards['ref-2']['status']);
+
+        $sent = Http::recorded()->map(fn ($pair) => $pair[0]->url())->values()->all();
+
+        $this->assertStringNotContainsString('after=', $sent[0], 'no empty cursor on the first page');
+        $this->assertStringContainsString('after=cursor-2', $sent[1]);
+        $this->assertStringContainsString('business=a1-chimney', $sent[0]);
     }
 
     /**
@@ -413,7 +553,7 @@ class A1LeadsGbpSourceTest extends TestCase
      *
      * The host refuses mutations two ways already, and neither is ours. This
      * asserts the third, which is: there is no method here that can produce
-     * anything but a GET, and a route outside the allowed five fails before it
+     * anything but a GET, and a route outside the allowed six fails before it
      * reaches the network rather than as somebody else's 403.
      */
     public function test_the_client_cannot_reach_a_route_it_was_not_granted(): void

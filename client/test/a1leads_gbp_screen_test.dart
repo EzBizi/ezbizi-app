@@ -228,15 +228,17 @@ void main() {
     expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
-  /// The location filter names cities, with the state that tells two apart.
+  /// The location filter offers each listing, labelled by place, and filters
+  /// on its exact id.
   ///
   /// Every one of A-1's listings is titled with the bare brand, so a dropdown
-  /// of titles would be "A1 Chimney" twenty-nine times. The state is there for
-  /// the same reason: there is a Rochester in more than one of them.
-  testWidgets('the location filter offers the cities the source could name', (
+  /// of titles would be "A1 Chimney" forty-six times. The label is the place;
+  /// the value sent is the listing's GBP id.
+  testWidgets('the location filter offers each listing and sends its id', (
     tester,
   ) async {
-    await _pump(tester, _handler());
+    final seen = <Uri>[];
+    await _pump(tester, _handler(seen: seen));
 
     expect(find.text('All locations'), findsOneWidget);
 
@@ -245,17 +247,23 @@ void main() {
 
     expect(find.text('Boston, MA'), findsOneWidget);
     expect(find.text('Morton Grove, IL'), findsOneWidget);
+
+    await tester.tap(find.text('Boston, MA'));
+    await tester.pumpAndSettle();
+
+    final asked = seen.lastWhere((u) => u.path.endsWith('/a1leads-gbp/reviews'));
+    expect(asked.queryParameters['location'], 'locations/222', reason: 'the id, not the label');
+    expect(asked.queryParameters.containsKey('city'), isFalse);
   });
 
-  /// THE TABLE, and the columns that are honestly not in it.
+  /// THE TABLE: Status and Notes from A-1's board, and Contact honestly absent.
   ///
-  /// Jose asked for A1 Tools' bad-review board columns. Contact, Status and
-  /// Notes all live on `GET /api/v1/reviews/workflow/cards`, which answers 403
-  /// for this consumer — measured, not assumed. Three empty headers would read
-  /// as "this customer has no phone number" rather than "we were not granted
-  /// this", so they are absent AND said, and the sentence is asserted here
-  /// because an unexplained absence is the thing this tab must never produce.
-  testWidgets('the table shows the columns it can fill and names the ones it cannot', (
+  /// Rodrigo opened the board feed on 24 September. Measured after install,
+  /// Status was filled on 387 of 387 cards and Notes on 354 - and Contact on
+  /// NONE, because A1 Leads sends EzBizi only a saved customer match and never
+  /// the name-guessing A1 Tools does. An empty Contact column would read as
+  /// "these customers have no phone", so it is not drawn and the reason is.
+  testWidgets('the table shows status and notes, and says why contact is absent', (
     tester,
   ) async {
     await _pump(tester, _handler(total: 3));
@@ -263,17 +271,48 @@ void main() {
     await tester.tap(find.text('Table'));
     await tester.pumpAndSettle();
 
-    for (final column in ['CUSTOMER', 'REVIEW', 'DATE', 'RATING', 'REPLY']) {
-      expect(find.text(column), findsOneWidget, reason: '$column is a column we can fill');
+    for (final column in ['CUSTOMER', 'REVIEW', 'DATE', 'RATING', 'STATUS', 'NOTES']) {
+      expect(find.text(column), findsOneWidget, reason: '$column is a column we fill');
     }
 
-    // The rows really are there, in the table rather than the board.
-    expect(find.text('Dana Whitfield'), findsOneWidget);
-    expect(find.textContaining('Matched: Dana M. Whitfield'), findsOneWidget);
+    // The card joined to Dana's review, verbatim in A1 Leads' own words.
+    expect(find.text('Working on it'), findsOneWidget);
+    expect(find.text('Outreach made, waiting on the customer.'), findsOneWidget);
 
-    // And the absent three are explained rather than left blank.
-    expect(find.textContaining('Contact, Status and Notes are not here yet'), findsOneWidget);
+    // A review with no card says so with a dash, not a blank.
+    expect(find.text('—'), findsWidgets);
+
+    // Contact is absent, and the reason is on screen.
+    expect(find.text('CONTACT'), findsNothing);
+    expect(find.textContaining('does not send customer phone or email'), findsOneWidget);
     expect(find.textContaining('cannot write to it'), findsOneWidget);
+  });
+
+  /// A card that DOES carry a phone brings the Contact column back.
+  ///
+  /// The discriminating half of the test above: without it, a table that had
+  /// simply lost the column would pass.
+  testWidgets('a card with a phone number draws the contact column', (tester) async {
+    await _pump(tester, _handler(total: 3, withPhone: true));
+
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('CONTACT'), findsOneWidget);
+    expect(find.text('(404) 555-0100'), findsOneWidget);
+    expect(find.textContaining('does not send customer phone or email'), findsNothing);
+  });
+
+  /// A board that could not be read says so, and the reviews stay.
+  testWidgets('an unreadable board is a sentence, not missing columns', (tester) async {
+    await _pump(tester, _handler(total: 3, boardDown: true));
+
+    await tester.tap(find.text('Table'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+    expect(find.textContaining('Status and Notes could not be read'), findsOneWidget);
+    expect(find.textContaining('HTTP 403'), findsOneWidget);
   });
 
   /// The board is the default, because a review is prose.
@@ -333,7 +372,13 @@ Future<void> _pump(
 ///
 /// Field names are A1 Leads', taken from the reader A1 Tools has been pointing
 /// at this endpoint for months rather than from a specification.
-List<Map<String, Object?>> _reviews(int total, int offset, int pageSize) {
+List<Map<String, Object?>> _reviews(
+  int total,
+  int offset,
+  int pageSize, {
+  bool withPhone = false,
+  bool boardDown = false,
+}) {
   final all = <Map<String, Object?>>[
     {
       'id': 1,
@@ -348,6 +393,13 @@ List<Map<String, Object?>> _reviews(int total, int offset, int pageSize) {
       'match_customer_name': 'Dana M. Whitfield',
       'workiz_tenant': 'NJ',
       'reply': null,
+      'board': {
+        'status': 'Working on it',
+        'note': 'Outreach made, waiting on the customer.',
+        // Typed, because a literal of three nulls infers Map<String, Null> and
+        // the phone-number variant below could not be written into it.
+        'contact': <String, Object?>{'name': null, 'phone': null, 'email': null},
+      },
     },
     {
       'id': 2,
@@ -373,6 +425,16 @@ List<Map<String, Object?>> _reviews(int total, int offset, int pageSize) {
     },
   ];
 
+  if (withPhone) {
+    ((all[0]['board'] as Map)['contact'] as Map)['phone'] = '(404) 555-0100';
+  }
+
+  if (boardDown) {
+    for (final r in all) {
+      r['board'] = null;
+    }
+  }
+
   return all
       .take(total)
       .skip(offset)
@@ -386,6 +448,8 @@ MockClientHandler _handler({
   bool stale = false,
   int total = 1,
   int pageSize = 20,
+  bool withPhone = false,
+  bool boardDown = false,
   List<Uri>? seen,
 }) {
   return (request) async {
@@ -448,8 +512,11 @@ MockClientHandler _handler({
       return _json({
         'data': {
           'source': source,
-          'reviews': usable ? _reviews(total, offset, pageSize) : <dynamic>[],
+          'reviews': usable ? _reviews(total, offset, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
           'meta': {'total': total},
+          'board': boardDown
+              ? {'available': false, 'because': 'A1 Leads refused cards with HTTP 403.'}
+              : {'available': true, 'because': null},
         },
       });
     }
@@ -459,15 +526,18 @@ MockClientHandler _handler({
         'data': {
           'source': source,
           'summary': usable ? {'total': 13169} : null,
-          'reviews': usable ? _reviews(total, 0, pageSize) : <dynamic>[],
+          'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
           'meta': {'total': total},
           'health': null,
-          'cities': usable
+          'locations': usable
               ? [
-                  {'city': 'Boston', 'state': 'MA'},
-                  {'city': 'Morton Grove', 'state': 'IL'},
+                  {'name': 'locations/222', 'label': 'Boston, MA'},
+                  {'name': 'locations/111', 'label': 'Morton Grove, IL'},
                 ]
               : <dynamic>[],
+          'board': boardDown
+              ? {'available': false, 'because': 'A1 Leads refused cards with HTTP 403.'}
+              : {'available': true, 'because': null},
         },
       });
     }
