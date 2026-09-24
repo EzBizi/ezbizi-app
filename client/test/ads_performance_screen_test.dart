@@ -538,6 +538,53 @@ void main() {
     );
   });
 
+  /// Sorting by an optional column, then opening a manager, must not break the
+  /// roll-up. The roll-up table used to borrow the campaign table's sort
+  /// index, which counts Status and the optional columns the roll-up does not
+  /// have - so a sort on CTR pointed past its last column and DataTable threw.
+  testWidgets('a sort on an optional column does not break the roll-up', (tester) async {
+    await pump(
+      tester,
+      accounts: [
+        {'connection_id': 'm1', 'customer_id': '9998887776', 'name': 'A1 Chimney - Ads Manager', 'is_manager': true},
+        ...twoAccounts(),
+      ],
+      report: report(),
+      rollup: {
+        'children_total': 1,
+        'not_connected': 0,
+        'data': [
+          {'connection_id': 'c1', 'id': '4051729356', 'name': 'A1 Chimney - Cleveland', 'clicks': 412,
+           'impressions': 10500, 'conversions': 31.5, 'all_conversions': 44.25, 'cost': 1234.56, 'currency': 'USD'},
+        ],
+      },
+    );
+
+    await tester.tap(find.byKey(const ValueKey('ads-account-c1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-columns')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('ads-column-ctr')));
+    await tester.pumpAndSettle();
+
+    // Sort the campaign table by the optional column.
+    final ctr = find.descendant(of: find.byKey(const ValueKey('ads-campaigns')), matching: find.text('CTR'));
+    await tester.ensureVisible(ctr);
+    await tester.pumpAndSettle();
+    await tester.tap(ctr);
+    await tester.pumpAndSettle();
+
+    // The precondition, asserted: the table really is sorted on CTR, the
+    // eighth column. Without this the test could pass by never sorting.
+    expect(tester.widget<DataTable>(find.byKey(const ValueKey('ads-campaigns'))).sortColumnIndex, 7);
+
+    await tester.tap(find.byKey(const ValueKey('ads-account-m1')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('ads-rollup')), findsOneWidget, reason: 'the control: the roll-up is drawn');
+  });
+
   testWidgets('a manager rolls up instead of reporting on itself', (
     tester,
   ) async {

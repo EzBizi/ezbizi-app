@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -1151,6 +1150,13 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     return i < 0 ? 2 : i;
   }
 
+  static const _rollupColumns = ['name', 'cost', 'clicks', 'impressions', 'conversions', 'all_conversions'];
+
+  int? _rollupSortIndex() {
+    final i = _rollupColumns.indexOf(_sortBy);
+    return i < 0 ? null : i;
+  }
+
   bool get _canManage => widget.session.me?.can('ads_performance.manage') ?? false;
 
   /// An optional figure in its own unit. Null is a dash: a rate with nothing
@@ -1378,7 +1384,12 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
               child: DataTable(
                 key: const ValueKey('ads-rollup'),
                 columnSpacing: 26,
-                sortColumnIndex: _sortIndex(),
+                // Its OWN column order, not the campaign table's: that one has
+                // Status second and optional columns after, so reusing its
+                // index put the arrow one column off here - and past the last
+                // column entirely when an optional one was sorted, which
+                // DataTable asserts on.
+                sortColumnIndex: _rollupSortIndex(),
                 sortAscending: !_sortDescending,
                 columns: [
                   _sortable('Account', 'name'),

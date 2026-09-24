@@ -145,11 +145,6 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder figure(String label) => find.descendant(
-    of: find.byKey(const ValueKey('ads-account-figures')),
-    matching: find.text(label),
-  );
-
   setUp(() {
     requests = [];
     performance = [];
