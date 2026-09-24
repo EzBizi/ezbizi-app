@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0264',
+      date: '24 Sep 2026',
+      items: [
+        'Replying to A-1 Chimney\'s Google reviews is on: anyone who can see A1Leads GBP, with A-1 Chimney in view, can post a public reply, and every attempt is recorded in the audit log.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0263',
       date: '24 Sep 2026',
       items: [
