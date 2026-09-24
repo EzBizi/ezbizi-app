@@ -1303,10 +1303,16 @@ class AutomationEngineTest extends TestCase
 
         $sent = $send($job);
         $this->assertTrue($sent['ok'], $sent['detail'] ?? '');
-        $this->assertStringContainsString('buyer@example.test', $sent['detail']);
+        Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('buyer@example.test'));
+
+        // The run log says "the customer", never their address: it hangs off a
+        // job event, which the customer's erasure does not reach.
+        $this->assertStringNotContainsString('buyer@example.test', $sent['detail']);
+        $this->assertStringContainsString('the customer', $sent['detail']);
 
         $this->inTenant(fn () => Customer::query()->whereKey($customerId)->update(['email' => 'moved@example.test']));
-        $this->assertStringContainsString('moved@example.test', $send($job)['detail']);
+        $this->assertTrue($send($job)['ok']);
+        Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('moved@example.test'));
 
         $none = $send($this->org['admin']);
         $this->assertFalse($none['ok']);

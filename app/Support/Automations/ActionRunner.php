@@ -1333,7 +1333,8 @@ class ActionRunner
             // status that expires would leave a green line above a message that
             // never arrived. The row keeps the outcome; this sentence does not
             // claim one.
-            'detail' => "Handed the \"{$template}\" template to WhatsApp for {$row->counterparty}, "
+            'detail' => "Handed the \"{$template}\" template to WhatsApp for "
+                .($field === self::RECIPIENT_CUSTOMER ? 'the customer' : $row->counterparty).', '
                 ."from EzBizi's number. WhatsApp accepts or refuses it afterwards.",
             // THE LINK, so a reader can show the outcome without this row ever
             // being rewritten: the sentence above is a true-forever snapshot of
@@ -1427,9 +1428,15 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
 
-        $this->audit->log('automation.emailed', $event, metadata: ['to' => $to]);
+        // THE CUSTOMER'S ADDRESS IS NOT WRITTEN DOWN HERE. The run log and this
+        // audit row hang off a job event, which a customer's erasure does not
+        // reach, so their address would outlive them. "the customer" is enough
+        // to read the log by; the message itself is the record of where it went.
+        $shown = $field === self::RECIPIENT_CUSTOMER ? 'the customer' : $to;
 
-        return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$to}: {$subject}"];
+        $this->audit->log('automation.emailed', $event, metadata: ['to' => $shown]);
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$shown}: {$subject}"];
     }
 
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
@@ -1724,7 +1731,9 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Sent a message from '.$number->e164.' to '.$to.'.',
+            // Not the customer's number, for the reason given in sendEmail.
+            'detail' => 'Sent a message from '.$number->e164.' to '
+                .(($action['to'] ?? '') === self::RECIPIENT_CUSTOMER ? 'the customer' : $to).'.',
         ];
     }
 
