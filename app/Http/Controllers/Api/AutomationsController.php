@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\TrainingGuide;
 use App\Models\TrainingTest;
+use App\Support\Hr\InvitationActions;
 use App\Models\Automation;
 use App\Support\Automations\AutomationTemplates;
 use App\Support\Automations\EventScope;
@@ -84,6 +85,7 @@ class AutomationsController extends Controller
         'reassign_owner',
         'job.create',
         'draft_reply',
+        'onboarding.start',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -507,6 +509,11 @@ class AutomationsController extends Controller
                         ->map(fn (TrainingTest $t) => ['id' => 'test:'.$t->id, 'label' => $t->title.' (test)'])
                         ->all(),
                 ),
+
+                // From Human Resources, not from a query here: it offers exactly
+                // what startOnboarding accepts, because both ask the same
+                // `usable()`. Name only — the version is resolved when it fires.
+                'contracts' => app(InvitationActions::class)->offerableContracts(),
 
                 'roles' => Role::query()
                     ->orderBy('name')
@@ -1880,6 +1887,9 @@ class AutomationsController extends Controller
             ]),
             $type('draft_reply', 'Draft a reply to the review', true, [
                 $parameter('message', 'The reply', 'rich_text', variables: true),
+            ]),
+            $type('onboarding.start', 'Start the onboarding', true, [
+                $parameter('contract_id', 'Which contract', 'contract'),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

@@ -2020,6 +2020,63 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * A RULE OPENS THE PAPERWORK, AS NOBODY, AGAINST A CONTRACT HR WOULD ACCEPT.
+     *
+     * Human Resources built `startOnboarding` for this caller, with a nullable
+     * starter: a rule is nobody, and borrowing the rule's author would record
+     * an act against somebody who did not perform it. So the assertion is that
+     * `started_by` stays NULL — a version that passed the author would pass
+     * every other check here.
+     *
+     * Contracts come from `hr:publish-onboarding-catalog`, HR's own real ones,
+     * rather than a fixture that proves only that a test agrees with itself.
+     */
+    public function test_a_rule_starts_the_onboarding_as_nobody(): void
+    {
+        $this->artisan('hr:publish-onboarding-catalog', ['organization' => 'Alpha'])->assertSuccessful();
+
+        [$contract, $invitation] = $this->inTenant(function () {
+            $row = new \App\Models\Invitation;
+            $row->forceFill([
+                'organization_id' => $this->org['organization']->id,
+                'email' => 'starter@alpha.test',
+                'role_id' => $this->org['admin']->role_id,
+                'invited_by_user_id' => $this->org['admin']->id,
+                'assigned_franchise_id' => $this->org['franchise']->id,
+                'sent_at' => now(),
+                'expires_at' => now()->addWeek(),
+                'token_hash' => hash('sha256', 'seed-'.uniqid()),
+            ])->save();
+
+            return [\App\Models\Contract::query()->firstOrFail(), $row];
+        });
+
+        $event = $this->inTenant(fn () => AutomationEvent::create([
+            'organization_id' => $this->org['organization']->id,
+            'event_key'       => 'invitation.accepted',
+            'payload'         => [],
+            'occurred_at'     => now(),
+            'available_at'    => now(),
+        ]));
+
+        $run = fn () => $this->inTenant(fn () => app(ActionRunner::class)->run([
+            'type' => 'onboarding.start', 'contract_id' => $contract->id,
+        ], $event, $invitation->fresh(), false, $this->automation('invitation.accepted', null, [])));
+
+        $started = $run();
+        $this->assertTrue($started['ok'], $started['detail']);
+
+        $onboarding = $this->inTenant(fn () => \App\Models\Onboarding::where('invitation_id', $invitation->id)->sole());
+        $this->assertNull($onboarding->started_by_user_id,
+            'a rule-started onboarding was attributed to a person who did not start it');
+
+        // Firing again finds it open: a success, not one of the five failures.
+        $again = $run();
+        $this->assertTrue($again['ok'], $again['detail']);
+        $this->assertStringContainsString('already open', $again['detail']);
+    }
+
+    /**
      * A flat payload is readable by a condition.
      *
      * The customer's rule, verbatim: mail from notify@ringcentral.com whose

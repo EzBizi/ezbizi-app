@@ -352,6 +352,7 @@ class AutomationCatalogue {
     this.places = const [],
     this.templates = const [],
     this.trainings = const [],
+    this.contracts = const [],
     this.actionBudget,
   });
 
@@ -375,6 +376,7 @@ class AutomationCatalogue {
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
+      contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
       templates: [
         for (final one in (json['templates'] as List? ?? const []))
           if (one is Map) Map<String, dynamic>.from(one),
@@ -429,6 +431,10 @@ class AutomationCatalogue {
   /// Published guides and tests a rule can assign, as `guide:<id>` or
   /// `test:<id>` — the stored shape, so the builder hands back what it got.
   final List<CatalogueChoice> trainings;
+
+  /// Contract templates an onboarding can be started against — from Human
+  /// Resources, so it offers exactly what the act accepts. Name only.
+  final List<CatalogueChoice> contracts;
 
   /// Fixed in code on the server and deliberately so — a runtime-editable
   /// operator set is arbitrary expressions over arbitrary fields. They still

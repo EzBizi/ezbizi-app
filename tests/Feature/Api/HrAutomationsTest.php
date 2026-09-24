@@ -496,8 +496,11 @@ class HrAutomationsTest extends TestCase
              * onboarding.start - which is how this list was checked rather
              * than assumed.
              */
+            // onboarding.start joined the built list on 2026-09-24, against
+            // InvitationActions::startOnboarding and offerableContracts — the
+            // contract picker this comment said it was waiting for.
             $this->assertSame(
-                in_array($action['key'], ['invitation.resend', 'invitation.revoke'], strict: true),
+                in_array($action['key'], ['invitation.resend', 'invitation.revoke', 'onboarding.start'], strict: true),
                 $action['implemented'],
                 $action['key'],
             );

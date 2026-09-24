@@ -35,6 +35,8 @@ use App\Models\PhoneNumber;
 use App\Models\TrainingAssignment;
 use App\Models\Review;
 use App\Models\ReviewReply;
+use App\Models\Contract;
+use App\Models\Onboarding;
 use App\Models\Role;
 use App\Support\Customers\ReassignCustomerOwner;
 use Illuminate\Support\Facades\Gate;
@@ -379,6 +381,7 @@ class ActionRunner
             'reassign_owner' => $this->reassignOwner($action, $subject, $automation),
             'job.create' => $this->createFollowUpJob($action, $event, $subject),
             'draft_reply' => $this->draftReviewReply($action, $event, $subject),
+            'onboarding.start' => $this->startOnboarding($action, $subject),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2250,6 +2253,60 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Open the paperwork for somebody who has been invited.
+     *
+     * Human Resources built `InvitationActions::startOnboarding` for exactly
+     * this caller: `$startedBy` is null when a rule causes it, and the column
+     * is nullable for that reason — "who started it" has no answer when nobody
+     * did, and borrowing the rule's author would attribute an act to somebody
+     * who did not perform it. So null is passed, not the author.
+     *
+     * Every state rule is theirs — not already carrying paperwork, not
+     * withdrawn, not lapsed, a published version with a signature field — and
+     * they refuse in their own words, which the run log prints as-is.
+     *
+     * ALREADY STARTED IS A SUCCESS. A rule firing twice on one invitation finds
+     * the paperwork already open; that is the rule having done its job, not a
+     * failure toward the five that switch it off. Asked before calling, because
+     * their refusal for it is the same exception class as the real ones.
+     */
+    private function startOnboarding(array $action, ?Model $subject): array
+    {
+        $type = 'onboarding.start';
+
+        if (! $subject instanceof Invitation) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'This step only works on an invitation, and this rule is about something else.'];
+        }
+
+        $contract = Contract::query()->find((string) ($action['contract_id'] ?? ''));
+
+        if ($contract === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'The contract template this step names no longer exists.'];
+        }
+
+        $alreadyOpen = Onboarding::query()
+            ->where('invitation_id', $subject->getKey())
+            ->where('status', '!=', Onboarding::CANCELLED)
+            ->exists();
+
+        if ($alreadyOpen) {
+            return ['type' => $type, 'ok' => true,
+                'detail' => 'The paperwork for this invitation is already open.'];
+        }
+
+        try {
+            app(InvitationActions::class)->startOnboarding($subject, $contract, startedBy: null);
+        } catch (CannotActOnInvitation $refused) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refused->getMessage()];
+        }
+
+        return ['type' => $type, 'ok' => true,
+            'detail' => "Opened the onboarding against \"{$contract->name}\"."];
+    }
+
     /**
      * Write a suggested reply to the review and leave it for a person.
      *

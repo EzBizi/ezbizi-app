@@ -291,6 +291,7 @@ class _ActionRow {
     'text',
     'rich_text',
     'boolean',
+    'contract',
     'date',
     'field',
     'franchise',
@@ -2610,6 +2611,30 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
           // ONE FRANCHISE, from the places this person can reach — the same
           // list "Where it applies" uses, narrowed to franchises, because a
           // customer is owned by a franchise and never by a company.
+          // A CONTRACT TEMPLATE, by name. Human Resources decides the list, so
+          // a template nobody could sign is never offered here.
+          else if (definition.parameters[i].kind == 'contract')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.contracts.isEmpty
+                  ? 'No contract template has a published version with a signature '
+                        'yet, so there is nothing to start against.'
+                  : null,
+              options: [
+                for (final contract in widget.catalogue.contracts)
+                  SearchOption<String>(value: contract.key, label: contract.label),
+              ],
+              onChanged: _busy || widget.catalogue.contracts.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
           else if (definition.parameters[i].kind == 'franchise')
             SearchPickerField<String>(
               value: row.parameter(definition.parameters[i].key).text.isEmpty

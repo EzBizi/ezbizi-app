@@ -671,6 +671,10 @@ class ModuleServiceProvider extends ServiceProvider
                         description: 'Opens the form for somebody who has been invited, against '
                             .'a contract template the rule names. It is the step an employer '
                             .'takes by hand today, and the one most worth not forgetting.',
+                        // EXPLICIT: derived this would be `start`, as generic a name
+                        // as `create`, and any later `<thing>.start` would be run by
+                        // the onboarding arm.
+                        executionType: 'onboarding.start',
                     ),
                 ],
             ),
