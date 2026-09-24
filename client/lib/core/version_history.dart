@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0256',
+      date: '24 Sep 2026',
+      items: [
+        'Calling a colleague from the Dial pad rings them again - it had been hanging up after a few seconds.',
+        'On the call report, Reached nobody opens onto the calls behind it, which you can filter by why: missed, voicemail or spam. It now counts every call nobody answered, so Answered and Reached nobody add up to the total.',
+        'The WhatsApp template picker shows each template as its own entry, instead of one unbroken wall of text.',
+        'On Google Ads, the campaign table keeps its header in view while the rows scroll, and the header follows when the table scrolls sideways.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0255',
       date: '24 Sep 2026',
       items: [
