@@ -29,7 +29,7 @@ class TimeClockDayListTest extends TestCase
     public function test_org_off_refuses_the_day_list(): void
     {
         $alpha = $this->provisionTenant('Alpha');
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
 
         $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock')
             // 409, not 403: the feature being off is not a permission failure,
@@ -60,7 +60,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
 
         // 03:00 UTC is still 23:00 the previous calendar day in the default
         // America/New_York (August is EDT, UTC−4). Device/UTC "today" would be
@@ -89,7 +89,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
         $puncher = $this->userWithRole($alpha, 'Zed', ['time_clock.view'], 'zed@alpha.test');
 
         $this->inTenant($alpha['org'], function () use ($alpha, $puncher) {
@@ -125,7 +125,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
 
         $texas = $this->inTenant($alpha['org'], function () use ($alpha) {
             $franchise = Franchise::create([
@@ -199,7 +199,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
         $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
 
         $this->inTenant($alpha['org'], function () use ($alpha, $puncher) {
@@ -237,7 +237,7 @@ class TimeClockDayListTest extends TestCase
         ]));
 
         $viewer = $this->userWithRole(
-            $alpha, 'Here', ['hr.hours.view'], 'here@alpha.test', onlyAt: $alpha['franchise'],
+            $alpha, 'Here', ['hr.hours.view', 'hr.hours.all'], 'here@alpha.test', onlyAt: $alpha['franchise'],
         );
         $insider = $this->userWithRole(
             $alpha, 'Insider', ['time_clock.view'], 'in@alpha.test', onlyAt: $alpha['franchise'],
@@ -314,9 +314,9 @@ class TimeClockDayListTest extends TestCase
         });
 
         $atFranchise = $this->userWithRole(
-            $alpha, 'AtFranchise', ['hr.hours.view'], 'atf@alpha.test', onlyAt: $alpha['franchise'],
+            $alpha, 'AtFranchise', ['hr.hours.view', 'hr.hours.all'], 'atf@alpha.test', onlyAt: $alpha['franchise'],
         );
-        $atOrg = $this->userWithRole($alpha, 'AtOrg', ['hr.hours.view'], 'atorg@alpha.test');
+        $atOrg = $this->userWithRole($alpha, 'AtOrg', ['hr.hours.view', 'hr.hours.all'], 'atorg@alpha.test');
 
         $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([
             'organization_id' => $alpha['org']->id,
@@ -350,7 +350,7 @@ class TimeClockDayListTest extends TestCase
         $this->enableClockIn($alpha['org']);
         $this->enableClockIn($bravo['org']);
 
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
         $bravoPuncher = $this->userWithRole($bravo, 'Tech', ['time_clock.view']);
 
         $this->inTenant($bravo['org'], function () use ($bravo, $bravoPuncher) {
@@ -374,7 +374,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
         $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test');
 
         // 03:00 UTC = 22:00 the previous local day in UTC−5. Still open.
@@ -407,7 +407,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
 
         $this->assertRefusedWithSentence(
             $this->signedInAs($viewer)->getJson('/api/v1/hr/time-clock?on=yesterday'),
@@ -441,7 +441,7 @@ class TimeClockDayListTest extends TestCase
     {
         $alpha = $this->provisionTenant('Alpha');
         $this->enableClockIn($alpha['org']);
-        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view']);
+        $viewer = $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all']);
         $puncher = $this->userWithRole($alpha, 'Tech', ['time_clock.view']);
 
         $this->inTenant($alpha['org'], fn () => TimeClockShift::query()->create([

@@ -288,6 +288,13 @@ final class ModuleDefinition
          */
         public readonly ?string $glanceExemptBecause = null,
         public readonly ?string $parent = null,
+        /**
+         * Checkbox wording for an action whose key reads badly, e.g.
+         * `hours.all` => "See everyone's hours". Absent = derived from the key.
+         *
+         * @var array<string, string> action => label
+         */
+        public readonly array $actionLabels = [],
     ) {
         if ($parent !== null && $parent === $key) {
             throw new InvalidArgumentException(

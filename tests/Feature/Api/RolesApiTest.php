@@ -145,7 +145,12 @@ class RolesApiTest extends TestCase
         //            which was removed because an automation could reach it
         //            without `training.monitor`: the premise was made true by
         //            the refusal itself.
-        $argued = ['reports'];
+        //
+        //   hr       `hours.all` requires `hr.hours.view` (it widens that tab),
+        //            and `hours.correct` requires `hr.hours.all`: without it
+        //            the only rows reachable are your own, so correct-alone is
+        //            editing your own paid hours (Jose, 2026-09-24).
+        $argued = ['hr', 'reports'];
 
         $declaring = [];
 

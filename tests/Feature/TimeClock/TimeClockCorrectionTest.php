@@ -218,7 +218,7 @@ class TimeClockCorrectionTest extends TestCase
 
         return [
             $alpha,
-            $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.correct'], 'hr@alpha.test'),
+            $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all', 'hr.hours.correct'], 'hr@alpha.test'),
             $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test'),
         ];
     }

@@ -445,7 +445,13 @@ class ModuleServiceProvider extends ServiceProvider
                 // already maintains the people list. Jose asked for the
                 // correction system on 2026-09-23; it is the grant that opens
                 // Edit and Delete on a Work Hours row.
-                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct'],
+                // `hours.all` (2026-09-24, Jose): "let people see only their
+                // own time". Work Hours without it shows the holder's own row
+                // only; TimeClock::visibleTo is the one place that reads it.
+                actions: ['view', 'create', 'edit', 'security.reset', 'hours.correct', 'hours.all'],
+                // Correct without All would be editing only your own paid hours.
+                actionRequires: ['hours.all' => ['hr.hours.view'], 'hours.correct' => ['hr.hours.all']],
+                actionLabels: ['hours.all' => "See everyone's hours"],
                 /*
                  * ── The seven tabs, grantable one at a time ──
                  *

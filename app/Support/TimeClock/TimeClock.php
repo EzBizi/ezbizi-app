@@ -746,7 +746,14 @@ final class TimeClock
      */
     private function visibleTo(Builder $query, User $actor): void
     {
-        $query->whereKey($actor->getKey())
+        $query->whereKey($actor->getKey());
+
+        // Work Hours without `hr.hours.all` is the holder's own time only.
+        if (! $actor->hasPermission('hr.hours.all')) {
+            return;
+        }
+
+        $query
             ->orWhereHas('assignments', fn (Builder $a) => $this->reach->constrain($a, $actor));
 
         if ($actor->canActOnOrganization($actor->organization)) {

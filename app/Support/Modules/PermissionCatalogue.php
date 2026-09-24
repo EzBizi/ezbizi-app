@@ -157,7 +157,7 @@ class PermissionCatalogue
             }
         }
 
-        return ucfirst(str_replace('_', ' ', $action));
+        return $module?->actionLabels[$action] ?? ucfirst(str_replace('_', ' ', $action));
     }
 
     // ── what a person holds ──────────────────────────────────────
