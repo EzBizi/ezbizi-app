@@ -13,7 +13,9 @@ use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\PhoneE164;
 use App\Support\Workiz\StateCode;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -314,31 +316,47 @@ class ProjectWorkizRecords extends Command
                 continue;
             }
 
-            $job = Job::create([
-                'franchise_id' => $franchise->getKey(),
-                'customer_id' => $client->customer_id,
-                'number' => $numbers->next(RecordNumberGenerator::JOBS, $franchise),
-                'title' => $this->title($mirrored),
-                'description' => $this->text($mirrored->payload['JobNotes'] ?? null),
+            /*
+             * THE JOB AND ITS LINK ARE ONE ACT, for the reason Customers gave
+             * about the customer and its link: if the job is written and the
+             * link is not, the next run sees a mirror row naming no job and
+             * projects a second one — silently.
+             */
+            DB::transaction(function () use ($mirrored, $franchise, $client, $numbers) {
+                $job = new Job([
+                    'franchise_id' => $franchise->getKey(),
+                    'customer_id' => $client->customer_id,
+                    'number' => $numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                    'title' => $this->title($mirrored),
+                    'description' => $this->text($mirrored->payload['JobNotes'] ?? null),
 
-                // Workiz's own word. Job statuses are tenant-configured rather
-                // than an enum, so A-1's vocabulary lands as A-1's list and
-                // needs no mapping table.
-                'status' => $mirrored->status,
+                    // Workiz's own word. Job statuses are tenant-configured rather
+                    // than an enum, so A-1's vocabulary lands as A-1's list and
+                    // needs no mapping table.
+                    'status' => $mirrored->status,
 
-                // The naive 'Y-m-d H:i:s' string, handed straight to
-                // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
-                // is absent from every real payload — so building a Carbon
-                // first would arrive pre-shifted and the cast could not tell.
-                'scheduled_for' => $mirrored->scheduled_for?->format('Y-m-d H:i:s'),
+                    // The naive 'Y-m-d H:i:s' string, handed straight to
+                    // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
+                    // is absent from every real payload — so building a Carbon
+                    // first would arrive pre-shifted and the cast could not tell.
+                    'scheduled_for' => $mirrored->scheduled_for?->format('Y-m-d H:i:s'),
 
-                'amount_minor' => $this->minor($mirrored->payload['JobTotalPrice'] ?? null),
-                'currency' => strtoupper($franchise->currency ?: 'USD'),
-            ]);
+                    'amount_minor' => $this->minor($mirrored->payload['JobTotalPrice'] ?? null),
+                    'currency' => strtoupper($franchise->currency ?: 'USD'),
+                ]);
 
-            $mirrored->job_id = $job->getKey();
-            $mirrored->projected = $this->followedValues($job);
-            $mirrored->save();
+                // Arriving already Done is a move INTO an earned status, and it
+                // is stamped at Workiz's own moment — the same moment the Jobs
+                // session's one-time backfill uses, so the two paths agree.
+                // Nothing is stamped while the organization names no earned
+                // status, which is correct: it only acts on the way in.
+                $job->markEarnedIfDue($this->workizMoment($mirrored, $franchise->timezone));
+                $job->save();
+
+                $mirrored->job_id = $job->getKey();
+                $mirrored->projected = $this->followedValues($job);
+                $mirrored->save();
+            });
 
             $created++;
         }
@@ -447,7 +465,27 @@ class ProjectWorkizRecords extends Command
 
                     DB::transaction(function () use ($row, $job, $changes, $last) {
                         if ($changes !== []) {
-                            $job->forceFill($changes)->save();
+                            $job->forceFill($changes);
+
+                            /*
+                             * WORKIZ-COMPLETED WORK MUST REACH REVENUE.
+                             *
+                             * `earned_at` had one writer, JobsController, which
+                             * fires only through the API — so a job this pass
+                             * moved to Done got no stamp, and revenue, which
+                             * reads `whereNotNull('earned_at')`, never saw it.
+                             * The Jobs session's `markEarnedIfDue` is the ONE
+                             * rule for that, called rather than copied.
+                             *
+                             * Only when the status actually moved. A job already
+                             * sitting at Done is not re-stamped by a sync, or a
+                             * year of revenue would land in this month.
+                             */
+                            if (array_key_exists('status', $changes)) {
+                                $job->markEarnedIfDue($this->workizMoment($row, $job->franchise?->timezone));
+                            }
+
+                            $job->save();
                         }
 
                         // What we have written, field by field. A field a
@@ -467,6 +505,34 @@ class ProjectWorkizRecords extends Command
         }
 
         return $followed;
+    }
+
+    /**
+     * When Workiz says the status last changed, as an instant.
+     *
+     * `LastStatusUpdate` is wall time with no zone — `Timezone` is absent from
+     * every real payload — so it is read in the branch's own zone. Reading it
+     * as UTC would move the stamp four or five hours and, at a month end, into
+     * the wrong month. No zone on the franchise falls back to UTC, the same
+     * fallback `FranchiseWallTime` uses, so the stamp and the schedule agree.
+     *
+     * Returned in UTC, and that is load-bearing rather than tidy: Laravel stores
+     * a date in whatever zone the Carbon is holding, so handing over a New York
+     * instant writes its New York wall clock into a UTC column and moves the
+     * stamp four hours. Found by the test, not by reading.
+     *
+     * Null when Workiz gave no moment, which `markEarnedIfDue` reads as now —
+     * right for a change this pass has only just seen.
+     */
+    private function workizMoment(WorkizJob $row, ?string $timezone): ?CarbonInterface
+    {
+        $raw = $row->getRawOriginal('last_status_update');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        return Carbon::parse($raw, ($timezone ?? '') !== '' ? $timezone : 'UTC')->utc();
     }
 
     /**

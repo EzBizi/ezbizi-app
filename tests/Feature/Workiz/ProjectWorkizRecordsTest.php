@@ -6,7 +6,9 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -329,5 +331,153 @@ class ProjectWorkizRecordsTest extends TestCase
 
         $this->assertSame('Done', $job->status, 'status still follows Workiz');
         $this->assertSame(99900, $job->amount_minor, 'the hand-set price is kept');
+    }
+
+    /**
+     * A-1's real vocabulary, as the Jobs session wrote it to production on
+     * 2026-09-24, plus an earned list. `EarnedStatuses::isEarned` only counts a
+     * status the organization ALLOWS, so both settings are needed.
+     *
+     * @param  list<string>  $earned
+     */
+    private function workizVocabulary(array $tenant, array $earned): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $earned) {
+            $resolver = app(SettingsResolver::class);
+            $resolver->set('jobs.statuses', $tenant['org'], array_map(
+                fn (string $s) => ['value' => $s, 'label' => $s],
+                ['Submitted', 'Pending', 'In progress', 'done pending approval', 'Done', 'Canceled'],
+            ));
+            $resolver->set('jobs.earned_statuses', $tenant['org'], $earned);
+        });
+    }
+
+    private function inNewYork(array $tenant): void
+    {
+        $this->inTenant($tenant['org'], fn () => $tenant['franchise']->forceFill(['timezone' => 'America/New_York'])->save());
+    }
+
+    /**
+     * WORKIZ-COMPLETED WORK MUST REACH REVENUE. The Jobs session's finding:
+     * `earned_at` has one writer, JobsController, which only fires through the
+     * API. A job the projection moved to Done got no stamp, and revenue reads
+     * `whereNotNull('earned_at')`, so that money was invisible for ever.
+     *
+     * Stamped at the moment WORKIZ recorded, read in the branch's own zone —
+     * `LastStatusUpdate` is wall time with no zone, and reading it as UTC moves
+     * the stamp four or five hours and, at a month end, into the wrong month.
+     */
+    public function test_a_job_workiz_moves_into_an_earned_status_is_stamped_at_the_workiz_moment(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, ['Done']);
+        $mirrored = $this->mirror($tenant);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertNull($this->inTenant($tenant['org'], fn () => Job::query()->first())->earned_at);
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->status = 'Done';
+            $mirrored->last_status_update = '2026-08-28 11:00:13';
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame('Done', $job->status);
+        $this->assertNotNull($job->earned_at);
+        $this->assertSame(
+            Carbon::parse('2026-08-28 11:00:13', 'America/New_York')->getTimestamp(),
+            $job->earned_at->getTimestamp(),
+            'the Workiz moment in the branch\'s zone, not now and not UTC',
+        );
+    }
+
+    /**
+     * THE 2,256 ALREADY SITTING AT DONE ARE NOT STAMPED BY A SYNC.
+     *
+     * Their status does not move, so nothing is stamped — otherwise every one
+     * would be earned NOW and a year of revenue would land in this month. That
+     * backfill is a one-time act the Jobs session owns, using this same method
+     * with each job's own moment.
+     */
+    public function test_a_job_already_sitting_in_an_earned_status_is_not_stamped_now(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, []);
+        $this->mirror($tenant, [], ['Status' => 'Done']);
+        $this->inTenant($tenant['org'], fn () => WorkizJob::query()->update(['status' => 'Done']));
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        // Jose names Done as earned AFTER the job was imported.
+        $this->workizVocabulary($tenant, ['Done']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertNull($this->inTenant($tenant['org'], fn () => Job::query()->first())->earned_at);
+    }
+
+    /**
+     * A job that arrives already Done, once an earned status exists, is
+     * stamped at its own Workiz moment — the same moment the Jobs session's
+     * backfill will use, so both paths agree to the minute.
+     */
+    public function test_a_job_created_already_earned_is_stamped_at_its_workiz_moment(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, ['Done']);
+        $this->mirror($tenant, ['status' => 'Done', 'last_status_update' => '2026-07-04 16:30:00'], ['Status' => 'Done']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame(
+            Carbon::parse('2026-07-04 16:30:00', 'America/New_York')->getTimestamp(),
+            $job->earned_at?->getTimestamp(),
+        );
+    }
+
+    /**
+     * THE CASE THAT CAN ACTUALLY STAMP THE BACKLOG BY MISTAKE.
+     *
+     * A Done job that is not stamped is never a candidate on status alone —
+     * mirror and job agree. But Workiz fills in the PRICE when a job is
+     * invoiced, which makes an already-Done job a candidate on a different
+     * field. Stamping on "this row changed" rather than "the status moved"
+     * would earn it NOW, and a year of revenue would drift into this month
+     * one invoice at a time.
+     */
+    public function test_a_price_change_on_an_already_earned_job_does_not_stamp_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inNewYork($tenant);
+        $this->workizVocabulary($tenant, []);
+        $mirrored = $this->mirror($tenant, ['status' => 'Done'], ['Status' => 'Done']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->workizVocabulary($tenant, ['Done']);
+
+        $this->inTenant($tenant['org'], function () use ($mirrored) {
+            $mirrored->refresh();
+            $mirrored->payload = array_merge($mirrored->payload, ['JobTotalPrice' => 425]);
+            $mirrored->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $job = $this->inTenant($tenant['org'], fn () => Job::query()->first());
+
+        $this->assertSame(42500, $job->amount_minor, 'the price still follows Workiz');
+        $this->assertNull($job->earned_at, 'but a price is not a move into Done');
     }
 }
