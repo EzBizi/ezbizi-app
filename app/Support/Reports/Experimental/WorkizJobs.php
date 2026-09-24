@@ -397,6 +397,55 @@ final class WorkizJobs
     }
 
     /**
+     * One job, by its Workiz id, as Workiz holds it NOW.
+     *
+     * ── WHY THE SWEEP ALONE CANNOT KEEP THE MIRROR TRUE ─────────
+     *
+     * `/job/all/` answers only for upcoming appointments — measured against the
+     * live API: it ignores `start_date` and does not page. So once a job's date
+     * passes, the sweep never sees it again, and it stays at whatever status it
+     * last had. On production 2026-09-24, 1,323 past-dated mirror rows still
+     * read as open; asked about three, Workiz said Done, done pending approval,
+     * and — only one of them — still Submitted.
+     *
+     * `/job/get/{UUID}/` answers for a past job, which makes it the only way to
+     * learn that one has closed.
+     *
+     * Same rule as `raw()`: no failure message is built from the request,
+     * because the token is in the path.
+     *
+     * @return array{job: ?array<string, mixed>, failed: ?string}
+     */
+    public function find(SocialConnection $connection, string $uuid): array
+    {
+        $token = (string) ($connection->credentials['api_token'] ?? '');
+
+        if ($token === '') {
+            return ['job' => null, 'failed' => 'This branch has no stored token.'];
+        }
+
+        try {
+            $response = Http::acceptJson()->get(
+                'https://api.workiz.com/api/v1/'.$token.'/job/get/'.rawurlencode($uuid).'/'
+            );
+        } catch (ConnectionException) {
+            return ['job' => null, 'failed' => 'Workiz could not be reached.'];
+        }
+
+        if ($response->failed()) {
+            return ['job' => null, 'failed' => 'Workiz refused the job ('.$response->status().').'];
+        }
+
+        // A list with one job in it, measured — though a bare object is
+        // accepted too, because the documented shape and the real one have
+        // disagreed before.
+        $data = $response->json('data');
+        $job = is_array($data) && array_is_list($data) ? ($data[0] ?? null) : $data;
+
+        return ['job' => is_array($job) ? $job : null, 'failed' => null];
+    }
+
+    /**
      * One page of Workiz rows, reduced to what this report reads.
      *
      * @param  list<array<string, mixed>>  $page

@@ -92,6 +92,7 @@ class ProjectWorkizRecords extends Command
                 $clients = $this->deriveClients($dryRun);
                 $customers = $this->projectCustomers($numbers, $audit, $limit, $dryRun);
                 $jobs = $this->projectJobs($numbers, $limit, $dryRun);
+                $this->followWorkiz($dryRun);
 
                 return [$clients, $customers, $jobs];
             });
@@ -336,6 +337,7 @@ class ProjectWorkizRecords extends Command
             ]);
 
             $mirrored->job_id = $job->getKey();
+            $mirrored->projected = $this->followedValues($job);
             $mirrored->save();
 
             $created++;
@@ -346,6 +348,150 @@ class ProjectWorkizRecords extends Command
         }
 
         return $created;
+    }
+
+    /**
+     * The fields that change over a job's life in Workiz, and so must keep
+     * following it after the job has been projected.
+     *
+     * Status is the one Jose reported. Schedule and price are the same freeze:
+     * a job gets rescheduled, and Workiz fills the price in when it is
+     * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
+     * them before they were priced.
+     */
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor'];
+
+    /**
+     * Keep projected jobs following Workiz — per field, and only where nobody
+     * in EzBizi has changed that field since the projection last wrote it.
+     *
+     * ── WHY NOT SIMPLY OVERWRITE ────────────────────────────────
+     *
+     * `docs/DEVELOPMENT-RULES.md`: a recurring sweep never overwrites a field a
+     * person has touched. Insert-only honoured that by never following Workiz
+     * at all, which froze every job at the status it was imported with — the
+     * bug. Overwriting would honour Workiz by reverting people. The two are
+     * told apart by remembering what was written: if the job still holds it,
+     * nobody chose otherwise and Workiz's new value may follow; if it does not,
+     * a person decided, and that field stops following.
+     *
+     * ── CANDIDATES BY VALUE, NOT BY CLOCK ───────────────────────
+     *
+     * The database is asked for rows where the mirror and the job DISAGREE on
+     * a followed field; only those are loaded. Comparing `updated_at` against a
+     * last-followed timestamp would have been shorter and wrong: DATETIME has
+     * one-second precision, so a change landing in the same second as the last
+     * run compares equal and is skipped — for a past job, possibly for ever.
+     * The SQL is only a pre-filter; the decision is made in PHP below.
+     *
+     * ── IT RAISES NO AUTOMATION EVENT ───────────────────────────
+     *
+     * Deliberately, for the reason in the class docblock: the first run after
+     * this ships follows well over a thousand jobs at once, and an emit here
+     * would turn that into as many notifications. `job.status_changed` for a
+     * Workiz job needs a backfill guard carried with it, and belongs to the
+     * Jobs and Automations sessions.
+     */
+    private function followWorkiz(bool $dryRun): int
+    {
+        $followed = 0;
+
+        WorkizJob::query()
+            ->select('workiz_jobs.*')
+            ->join('jobs', 'jobs.id', '=', 'workiz_jobs.job_id')
+            ->where(function ($q) {
+                $q->whereColumn('workiz_jobs.status', '<>', 'jobs.status')
+                    ->orWhereRaw('NOT (workiz_jobs.scheduled_for <=> jobs.scheduled_for)')
+                    ->orWhereRaw("NOT (ROUND(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice') * 100) <=> jobs.amount_minor)");
+            })
+            ->chunkById(500, function ($mirrored) use (&$followed, $dryRun) {
+                $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
+
+                foreach ($mirrored as $row) {
+                    $job = $jobs->get($row->job_id);
+
+                    if ($job === null) {
+                        continue;
+                    }
+
+                    $last = $row->projected ?? $this->followedValues($job);
+                    $now = $this->followedValues($job);
+                    $workiz = [
+                        'status' => $row->status,
+                        'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
+                        'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
+                    ];
+
+                    $changes = [];
+
+                    foreach (self::FOLLOWED as $field) {
+                        $untouched = $this->same($now[$field], $last[$field]);
+                        $moved = ! $this->same($workiz[$field], $now[$field]);
+
+                        // A job with no status is not a job: never follow Workiz
+                        // into an empty one, for the same reason creation skips it.
+                        if ($field === 'status' && ($workiz['status'] ?? '') === '') {
+                            continue;
+                        }
+
+                        if ($untouched && $moved) {
+                            $changes[$field] = $workiz[$field];
+                        }
+                    }
+
+                    if ($dryRun) {
+                        $followed += $changes === [] ? 0 : 1;
+
+                        continue;
+                    }
+
+                    DB::transaction(function () use ($row, $job, $changes, $last) {
+                        if ($changes !== []) {
+                            $job->forceFill($changes)->save();
+                        }
+
+                        // What we have written, field by field. A field a
+                        // person changed is NOT recorded as ours: `last` keeps
+                        // our old write, so their value goes on not matching and
+                        // stays theirs.
+                        $row->projected = array_merge($last, array_intersect_key($changes, $last));
+                        $row->save();
+                    });
+
+                    $followed += $changes === [] ? 0 : 1;
+                }
+            }, 'workiz_jobs.id', 'id');
+
+        if ($followed > 0) {
+            $this->info($followed.' projected jobs followed a change in Workiz.');
+        }
+
+        return $followed;
+    }
+
+    /**
+     * The followed fields as the `jobs` row holds them, in the same shapes the
+     * projection writes — the raw wall-clock string for the schedule, never a
+     * Carbon, because the cast stores naive time.
+     *
+     * @return array{status: ?string, scheduled_for: ?string, amount_minor: ?int}
+     */
+    private function followedValues(Job $job): array
+    {
+        return [
+            'status' => $job->status,
+            'scheduled_for' => $job->getRawOriginal('scheduled_for'),
+            'amount_minor' => $job->amount_minor,
+        ];
+    }
+
+    /**
+     * Equal as stored, whatever PHP type each side arrived as — JSON hands back
+     * ints where the model holds strings and the other way round.
+     */
+    private function same(mixed $a, mixed $b): bool
+    {
+        return (string) ($a ?? '') === (string) ($b ?? '');
     }
 
     /**
