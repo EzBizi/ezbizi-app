@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0265',
+      date: '24 Sep 2026',
+      items: [
+        'An automation can send its email, text or WhatsApp to The customer it is about - the customer of the job the rule fired on, looked up when it runs.',
+        'The Jobs list loads faster: it no longer fetches the details of every job on the page, only of the one you open.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0264',
       date: '24 Sep 2026',
       items: [
