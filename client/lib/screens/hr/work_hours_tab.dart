@@ -40,7 +40,7 @@
 /// and picked layout 1 from the gallery for both sizes: a ⋯ on each row that
 /// opens a menu on a desk and a bottom sheet on a phone. One list of actions,
 /// two presentations, so the phone and the desk cannot disagree about what is
-/// possible. Absent entirely — not disabled — without `hr.hours.correct`.
+/// possible. Absent entirely — not disabled — without `work_hours.manage`.
 ///
 /// Every correction answers with the whole week, and the screen replaces its
 /// state from that answer: a correction moves the total, days worked and the
@@ -73,7 +73,7 @@ class WorkHoursTab extends StatefulWidget {
   /// pane alone; the panel falls back to ISO without it.
   final Session? session;
 
-  /// `hr.hours.correct`. Off means the ⋯ menus are not drawn at all.
+  /// `work_hours.manage`. Off means the ⋯ menus are not drawn at all.
   final bool canCorrect;
 
   @override
@@ -558,7 +558,7 @@ class _PersonWeek extends StatelessWidget {
   final _Person person;
   final _Week week;
 
-  /// Null without `hr.hours.correct`: no ⋯ anywhere.
+  /// Null without `work_hours.manage`: no ⋯ anywhere.
   final _Actions? actions;
 
   @override

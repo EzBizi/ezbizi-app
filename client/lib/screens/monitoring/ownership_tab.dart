@@ -20,7 +20,7 @@ import '../../widgets/async_body.dart';
 ///
 /// `computer_name` needs `monitoring.specs.view`, and `work_days`/`shift` need
 /// HR's own
-/// `hr.hours.view`, and the endpoint omits the KEY rather than sending null —
+/// `work_hours.general.view`, and the endpoint omits the KEY rather than sending null —
 /// so a column nobody may see is not drawn at all, instead of being drawn
 /// empty. An empty column reads as "nobody has hours set", which is a claim
 /// about the office rather than about the reader's permissions.
