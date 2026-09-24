@@ -269,6 +269,11 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
           ? null
           : [
               row['number'],
+              // The company as well as the franchise, as on the list row: two
+              // companies may each run a "Texas", and this subtitle is what
+              // somebody reads before editing or reassigning the customer.
+              // The list said which Texas; the panel it opens must not stop.
+              (owner?['company'] as Map<String, dynamic>?)?['name'],
               owner?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
