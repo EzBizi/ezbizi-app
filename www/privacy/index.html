@@ -52,7 +52,7 @@ nav{border-bottom:1px solid var(--border);padding-bottom:16px}
 <p>EzBizi is a field-service CRM operated by <strong>EZBIZI LLC</strong>, 800 SE 4th Ave Ste 107, Hallandale Beach, FL 33009, United States. Contact: <a href="mailto:contact@ezbizi.com">contact@ezbizi.com</a>.</p>
 <h2>Where EzBizi runs</h2>
 <p>This notice covers EzBizi wherever you use it: in a browser at <a href="https://app.ezbizi.com">app.ezbizi.com</a>, in the Windows desktop app, and in the Android and iPhone apps. They are one product against one account, and they are treated identically here.</p>
-<p><strong>Your phone asks you before the app gets any of these.</strong> <strong>Notifications</strong>, so EzBizi can tell you about something assigned to you — you can refuse and keep using the app. On iPhone, the <strong>microphone</strong>, used only while you are on a call EzBizi placed or answered, and only if your organization uses the phone features. And <strong>your location</strong>, only if your employer has turned on Field tracking for your role — described in full below. <strong>We ask for nothing else</strong>: no camera, no photo library, no contacts, no calendar. Unless Field tracking is on for you, nothing is collected in the background when you are not using the app.</p>
+<p><strong>Your phone asks you before the app gets any of these.</strong> <strong>Notifications</strong>, so EzBizi can tell you about something assigned to you — you can refuse and keep using the app. The <strong>microphone</strong>, used only while you are on a call EzBizi placed or answered, and on Android also the <strong>phone</strong> permission, which Android requires before an app can place or take a call — both only if your organization uses the phone features. And <strong>your location</strong>, only if your employer has turned on Field tracking for your role — described in full below. <strong>We ask for nothing else</strong>: no camera, no photo library, no contacts, no calendar. Unless Field tracking is on for you, nothing is collected in the background when you are not using the app.</p>
 
 <h2>What we collect</h2>
 <p>Three kinds of information, and it is worth keeping them apart:</p>
@@ -102,7 +102,7 @@ nav{border-bottom:1px solid var(--border);padding-bottom:16px}
 <p><strong>Why.</strong> To keep you safe — SOS, and an alert if you have stopped for too long or lost signal. To know when you arrive at and leave a job. And to suggest the quickest route between your jobs.</p>
 <p><strong>Who sees it.</strong> People in your employer&rsquo;s organization who have been given the Field Map permission and whose area covers you. Nobody outside your employer.</p>
 <p><strong>How long.</strong> Your location trail, your last known position and any safety alerts are kept for <strong>three months</strong> and then deleted automatically. If your personal data is erased, your trail is deleted with it immediately.</p>
-<p><strong>Google.</strong> To show jobs on a map and plan routes, EzBizi sends Google Maps Platform the addresses and locations of the <em>jobs</em>. <strong>Your own location trail is not sent to Google</strong>; it stays on our servers.</p>
+<p><strong>Google.</strong> To show jobs on a map and plan routes, EzBizi sends Google Maps Platform the addresses and locations of the <em>jobs</em> and, when today&rsquo;s route is planned while your position is current, that one position as the route&rsquo;s starting point. <strong>Your location trail is not sent to Google</strong>; it stays on our servers.</p>
 <p>Whether tracking your staff is lawful where you are, and what you must tell them first, is the employer&rsquo;s responsibility. Several US states and many countries require notice, consent, or both.</p>
 
 <h2>Connected social accounts</h2>
@@ -126,6 +126,7 @@ nav{border-bottom:1px solid var(--border);padding-bottom:16px}
 <li><strong>Twilio</strong> — calls and messages for an organization that has connected a number, and the verification texts EzBizi sends you.</li>
 <li><strong>Meta Platforms</strong> — WhatsApp messages, and the Facebook and Instagram messages of an organization that connects them, as described under Calls and messages.</li>
 <li><strong>Apple and Google</strong> — a notification sent to a phone carries its title and text through Apple’s or Google’s delivery service, because that is the only way to wake an app that is not open.</li>
+<li><strong>Google Maps Platform</strong> — only where an organization uses Field: the addresses and locations of its jobs, and a route&rsquo;s starting point, as described under Location.</li>
 <li><strong>Mailchimp</strong> — only where an organization connects its own Mailchimp account to send a newsletter. If the audience is one kept in EzBizi, those email addresses are added to that organization’s own Mailchimp list before the campaign goes out.</li>
 <li><strong>The accounts you connect</strong>, and only the ones you connect — the social networks described above, and any business account EzBizi reads from at your instruction, such as Google Ads.</li>
 </ul>
