@@ -649,7 +649,7 @@ final class TimeClock
         return (int) $this->settings->get('time_clock.max_hours', $user->organization);
     }
 
-    private function scheduleFor(User $user): ?array
+    public function scheduleFor(User $user): ?array
     {
         $assignment = $user->assignments()->orderBy('created_at')->first();
         $scope = match ($assignment?->scopeType()) {

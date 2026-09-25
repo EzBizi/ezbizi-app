@@ -7,6 +7,7 @@ use App\Models\BusinessLocation;
 use App\Models\A1LeadsReviewEvent;
 use App\Models\Company;
 use App\Models\Customer;
+use App\Models\FieldAlert;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\InspectionRun;
@@ -3617,6 +3618,66 @@ class ModuleServiceProvider extends ServiceProvider
                     .'to fire on. This stops being true the day a week is cached or watched: '
                     .'an alert on a branch going into loss is a real trigger, and it needs this '
                     .'line removed rather than reworded.',
+            ),
+
+            /*
+             * Field — GPS tracking of the people a role says to track, for
+             * safety and compliance, and suggested routes for their jobs
+             * (docs/superpowers/specs/2026-09-25-field-module-design.md).
+             *
+             * `tracked` is not something a person DOES, it is something done
+             * to them: holding it is what puts a role's phones on the map. It
+             * is a grant rather than a setting because "which roles" is
+             * exactly the question the roles editor already answers, per role,
+             * at every level of the organization.
+             *
+             * `manage` acknowledges alerts. Settings edits ride the settings
+             * registry's own editPermission, which names it too.
+             */
+            new ModuleDefinition(
+                key: 'field',
+                label: 'Field',
+                actions: ['view', 'tracked', 'manage'],
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('map', 'Map'),
+                    new TabDefinition('route', 'Route'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['field'],
+                emits: [Job::class, FieldAlert::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'field.arrived_at_job',
+                        label: 'Arrived at a job',
+                        description: 'A tracked person came within the arrival distance of one of '
+                            .'their jobs today. It is about the job, and carries who arrived.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.left_job',
+                        label: 'Left a job',
+                        description: 'A tracked person who had arrived at a job moved away from it. '
+                            .'It is about the job, and carries who left.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.stopped_too_long',
+                        label: 'Stopped too long',
+                        description: 'A tracked person has not moved for the minutes set in Field › '
+                            .'Settings, away from any of their jobs. Fires once until they move again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.signal_lost',
+                        label: 'Lost signal',
+                        description: 'A tracked person\'s phone has not reported for the minutes set in '
+                            .'Field › Settings while they should be tracked. Fires once until it reports again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.sos',
+                        label: 'SOS pressed',
+                        description: 'A tracked person pressed SOS. It carries where they were. '
+                            .'Managers who can see them are told straight away, rule or no rule.',
+                    ),
+                ],
             ),
         ];
     }

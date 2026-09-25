@@ -8,6 +8,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/inspection_screen.dart';
+import '../screens/field_screen.dart';
 import '../screens/fleet_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
@@ -87,6 +88,10 @@ final Map<String, ModuleScreen> moduleScreens = {
   'hr': ModuleScreen(
     Icons.badge_outlined,
     (api, session) => HrScreen(api: api, session: session),
+  ),
+  'field': ModuleScreen(
+    Icons.near_me_outlined,
+    (api, session) => FieldScreen(api: api, session: session),
   ),
   'work_hours': ModuleScreen(
     Icons.schedule_outlined,

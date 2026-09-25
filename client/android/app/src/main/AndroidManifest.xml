@@ -21,6 +21,19 @@
       permission is granted at install and this line changes nothing.
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!--
+      Field (docs/superpowers/specs/2026-09-25-field-module-design.md): GPS for
+      people whose role is tracked. NOT ACCESS_BACKGROUND_LOCATION, on purpose:
+      the stream always starts while the app is open and keeps running as a
+      foreground service with a visible notification, which needs only
+      "while using the app". Play still asks for a FOREGROUND_SERVICE_LOCATION
+      declaration in the console.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="EzBizi"
         android:name="${applicationName}"

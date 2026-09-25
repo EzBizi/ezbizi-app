@@ -70,6 +70,9 @@ dependencies:
   file_selector: ^1.0.3
   audioplayers: ^6.7.1
   window_manager: ^0.5.2
+  geolocator: ^14.0.3
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AccountDeletionController;
@@ -1162,6 +1163,29 @@ Route::prefix('v1')
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
                 ->parameters(['areas' => 'area']);
+        });
+
+        // Field — docs/superpowers/specs/2026-09-25-field-module-design.md.
+        // `me` answers anybody (a phone asks before it knows its role); the
+        // phone's writes need `tracked`; every read is one tab's grant.
+        Route::get('field/me', [FieldController::class, 'me']);
+        Route::middleware('permission:field.tracked')->group(function () {
+            Route::post('field/locations', [FieldController::class, 'ingest'])->middleware('throttle:120,1');
+            Route::post('field/sos', [FieldController::class, 'sos'])->middleware('throttle:10,1');
+        });
+        Route::middleware('permission:field.dashboard.view')->group(function () {
+            Route::get('field/dashboard', [FieldController::class, 'dashboard']);
+        });
+        Route::middleware('permission:field.manage')->group(function () {
+            Route::post('field/alerts/{alert}/acknowledge', [FieldController::class, 'acknowledge']);
+        });
+        Route::middleware('permission:field.map.view')->group(function () {
+            Route::get('field/map', [FieldController::class, 'map']);
+            Route::get('field/map/tiles', [FieldController::class, 'tiles']);
+        });
+        Route::middleware('permission:field.route.view')->group(function () {
+            Route::get('field/people', [FieldController::class, 'people']);
+            Route::get('field/route', [FieldController::class, 'route']);
         });
 
         // Training — guides people read, the tests they take, and (later
