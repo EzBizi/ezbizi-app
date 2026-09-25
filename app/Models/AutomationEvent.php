@@ -133,7 +133,8 @@ class AutomationEvent extends Model implements HoldsPersonalData
      *
      * The emitters write these keys: phone events `after.from_e164`/`to_e164`,
      * lead and customer events `after.phone`, `email.received` a top-level
-     * `from_address`, customer and invitation events `after.email`.
+     * `from_address`, customer and invitation events `after.email`; Field a
+     * top-level `user_id`, training and onboarding `after.user_id`.
      *
      * @return array<string, string> payload dot path => value
      */
@@ -148,6 +149,12 @@ class AutomationEvent extends Model implements HoldsPersonalData
             'after.phone'     => $subject instanceof Customer ? $phone : '',
             'from_address'    => $email,
             'after.email'     => $email,
+            // An employee's id, where the event is about THEM: Field puts it
+            // beside where they were (latitude, longitude, map_url), training
+            // and onboarding beside their result. The id is not personal data
+            // on its own, but the row it sits in describes that person.
+            'user_id'         => $subject instanceof User ? (string) $subject->getKey() : '',
+            'after.user_id'   => $subject instanceof User ? (string) $subject->getKey() : '',
         ], fn (string $v) => $v !== '');
     }
 
