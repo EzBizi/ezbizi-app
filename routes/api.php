@@ -1119,6 +1119,9 @@ Route::prefix('v1')
             Route::patch('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'update']);
             Route::delete('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'destroy']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
+            Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
+            Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
+            Route::put('scheduling/areas/{area}/available-from', [SchedulingAreasController::class, 'availableFrom']);
             Route::put('scheduling/areas/{area}/zips', [SchedulingAreasController::class, 'zips']);
             Route::post('scheduling/pattern/preview', [SchedulingPatternController::class, 'preview']);
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);

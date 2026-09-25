@@ -657,6 +657,60 @@ void main() {
       );
     },
   );
+
+  /// "Closed on the 18th": picked from a date picker, never typed, and sent as
+  /// `closed: true` — not as zeros on each window, which would read as "open
+  /// and full" to everything that counts.
+  testWidgets('a specific date is closed from the date picker, as closed', (
+    tester,
+  ) async {
+    String? path;
+    Map<String, dynamic>? body;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        final p = request.url.path;
+        if (p.endsWith('/scheduling/time-slots')) {
+          return _json({'data': _twoWindows, 'can_edit': true});
+        }
+        if (request.method == 'PUT' && p.contains('/dates/')) {
+          path = p;
+          body = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': _dallasDetail});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    await _reveal(tester, find.byKey(const Key('add-specific-date')));
+    await tester.tap(find.byKey(const Key('add-specific-date')));
+    await tester.pumpAndSettle();
+
+    // The picker opens on today; accept it.
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await _reveal(tester, find.byKey(const Key('date-closed')));
+    await tester.tap(find.byKey(const Key('date-closed')));
+    await tester.pumpAndSettle();
+
+    await _reveal(tester, find.byKey(const Key('save-specific-date')));
+    await tester.tap(find.byKey(const Key('save-specific-date')));
+    await tester.pumpAndSettle();
+
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+
+    expect(path, endsWith('/dates/$today'));
+    expect(body, {'closed': true});
+  });
 }
 
 /// Scrolls the AREA pane (not the rail) until [what] is on screen.

@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * A named region a franchise works in — "Dallas", "Houston"
  * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md §2).
  */
-#[Fillable(['organization_id', 'franchise_id', 'name'])]
+#[Fillable(['organization_id', 'franchise_id', 'name', 'available_from'])]
 class ServiceArea extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
@@ -38,6 +38,17 @@ class ServiceArea extends Model implements StatesRetention
     public function zips(): HasMany
     {
         return $this->hasMany(ServiceAreaZip::class);
+    }
+
+    /** Specific dates that replace the weekly pattern. */
+    public function dateOverrides(): HasMany
+    {
+        return $this->hasMany(ServiceAreaDateOverride::class);
+    }
+
+    protected function casts(): array
+    {
+        return ['available_from' => 'date:Y-m-d'];
     }
 
     public function slots(): HasMany

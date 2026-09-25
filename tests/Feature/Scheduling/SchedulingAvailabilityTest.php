@@ -331,6 +331,106 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('Dallas', $this->first($tenant, 'city=Plano')['area_name']);
     }
 
+    // ── Specific dates and "full until" (Jose, 2026-09-25: finish it so A1
+    //    Tools can go — A1 runs Cleveland on 612 of these) ───────────────────
+
+    /** A date marked closed is skipped; the next Monday is first. */
+    public function test_a_closed_specific_date_is_skipped(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-05", ['closed' => true])
+            ->assertOk()
+            ->assertJsonPath('data.dates.0.date', '2026-10-05')
+            ->assertJsonPath('data.dates.0.closed', true);
+
+        $this->assertSame('2026-10-12', $this->first($tenant, 'zip=75201')['first']['date']);
+    }
+
+    /**
+     * A specific date REPLACES the day's windows — including opening a day the
+     * pattern does not work (A1: "3 jobs on Sunday the 14th").
+     */
+    public function test_a_specific_date_can_open_a_non_working_day_with_its_own_windows(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-05", ['closed' => true])
+            ->assertOk();
+
+        // Tuesday the 6th: Dallas does not work Tuesdays. Open it, one window.
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-06", [
+                'windows' => [['start_time' => '10:00', 'end_time' => '13:00', 'max_jobs' => 3]],
+            ])->assertOk();
+
+        $this->booked($tenant, '2026-10-06 10:00:00');
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame('2026-10-06', $first['date']);
+        $this->assertSame([['10:00', 2]], array_map(
+            fn ($w) => [$w['start_time'], $w['remaining']],
+            $first['windows'],
+        ), 'The date offers only its own window, and a booking in it counts.');
+    }
+
+    /** Clearing a date puts the weekly pattern back. */
+    public function test_clearing_a_specific_date_restores_the_pattern(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-05", ['closed' => true])
+            ->assertOk();
+        $this->signedInAs($tenant['admin'])
+            ->deleteJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-05")
+            ->assertOk()
+            ->assertJsonPath('data.dates', []);
+
+        $this->assertSame('2026-10-05', $this->first($tenant, 'zip=75201')['first']['date']);
+    }
+
+    /**
+     * "We are full until the 15th": every day before it is CLOSED — skipped,
+     * not shown as full — and the first Monday on or after it is offered.
+     */
+    public function test_available_from_closes_every_day_before_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/available-from", ['available_from' => '2026-10-15'])
+            ->assertOk()
+            ->assertJsonPath('data.available_from', '2026-10-15');
+
+        $this->assertSame('2026-10-19', $this->first($tenant, 'zip=75201')['first']['date']);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/available-from", ['available_from' => null])
+            ->assertOk();
+
+        $this->assertSame('2026-10-05', $this->first($tenant, 'zip=75201')['first']['date']);
+    }
+
+    /** A window is never stored as a zero; closing is its own flag. */
+    public function test_a_specific_date_refuses_a_zero(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/dates/2026-10-05", [
+                'windows' => [['start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 0]],
+            ])->assertUnprocessable();
+    }
+
     /** The suggest box offers all three kinds, and says what each one is. */
     public function test_suggest_offers_areas_cities_and_zips(): void
     {

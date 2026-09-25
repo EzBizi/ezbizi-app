@@ -3,6 +3,7 @@
 namespace App\Support\Scheduling;
 
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -84,6 +85,19 @@ final class Openings
 
         $taken = $this->taken($area, $from, $from->addDays($days));
 
+        // Specific dates replace the weekly pattern outright; a row with no
+        // window closes the whole day. See the migration
+        // `add_date_overrides_and_horizon_to_service_areas`.
+        $overrides = ServiceAreaDateOverride::query()
+            ->where('service_area_id', $area->id)
+            ->whereBetween('date', [$from->toDateString(), $from->addDays($days)->toDateString()])
+            ->orderBy('start_time')
+            ->get()
+            ->groupBy(fn (ServiceAreaDateOverride $o) => $o->date->toDateString());
+
+        // Every day before this is CLOSED, not full. NULL is no floor.
+        $floor = $area->available_from?->toDateString();
+
         $out = [];
 
         for ($i = 0; $i < $days; $i++) {
@@ -94,7 +108,15 @@ final class Openings
             $windows = [];
             $placed = 0;
 
-            foreach ($slots->get($date->dayOfWeek, collect()) as $slot) {
+            $pattern = match (true) {
+                $floor !== null && $key < $floor => collect(),
+                $overrides->has($key) => $overrides[$key]->contains(fn ($o) => $o->start_time === null)
+                    ? collect()
+                    : $overrides[$key],
+                default => $slots->get($date->dayOfWeek, collect()),
+            };
+
+            foreach ($pattern as $slot) {
                 $start = substr((string) $slot->start_time, 0, 5);
                 $end = substr((string) $slot->end_time, 0, 5);
                 $in = count(array_filter($booked['times'], fn ($t) => $t >= $start && $t < $end));
@@ -225,6 +247,8 @@ final class Openings
     /** Whether anybody has stated any capacity for this area at all. */
     public static function hasCapacity(ServiceArea $area): bool
     {
-        return ServiceAreaSlot::query()->where('service_area_id', $area->id)->exists();
+        return ServiceAreaSlot::query()->where('service_area_id', $area->id)->exists()
+            || ServiceAreaDateOverride::query()->where('service_area_id', $area->id)
+                ->whereNotNull('start_time')->exists();
     }
 }

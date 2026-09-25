@@ -1194,6 +1194,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 24),
+        _datesCard(theme),
+        const SizedBox(height: 8),
         _zipCard(theme),
         const SizedBox(height: 8),
         Row(
@@ -1218,6 +1220,320 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         if (_deleting)
           _deleteConfirmation(theme, area['name'] as String? ?? ''),
       ],
+    );
+  }
+
+  // ── Specific dates and "not taking bookings before" ──────────────
+
+  /// The date being edited in the inline editor, or null.
+  String? _dateEditing;
+  bool _dateClosed = false;
+
+  /// `start-end` -> what was typed for that window on that date.
+  final Map<String, String> _dateValues = {};
+
+  static const _monthsShort = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static const _daysShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  static String _prettyDate(String ymd) {
+    final d = DateTime.parse(ymd);
+    return '${_daysShort[d.weekday - 1]}, ${_monthsShort[d.month - 1]} ${d.day}';
+  }
+
+  static String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// A date picker, never a typed date. Jose, on A1 Tools: "i want a date
+  /// picker, not the yyyy--mm-dd shit".
+  Future<String?> _pickDate({String? initial}) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial == null ? now : DateTime.parse(initial),
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 2),
+    );
+    return picked == null ? null : _ymd(picked);
+  }
+
+  Future<void> _areaWrite(Future<ApiResponse> Function(String id) call) async {
+    final id = _openAreaId;
+    if (id == null) return;
+
+    setState(() {
+      _saving = true;
+      _paneError = null;
+    });
+
+    final response = await call(id);
+    if (!mounted) return;
+
+    setState(() {
+      _saving = false;
+      if (!response.ok) {
+        _paneError = response.message;
+        return;
+      }
+      _openArea = response.body['data'] as Map<String, dynamic>?;
+      _dateEditing = null;
+    });
+
+    if (response.ok) await _load();
+  }
+
+  Future<void> _setAvailableFrom(String? date) => _areaWrite(
+    (id) => widget.api.put('/scheduling/areas/$id/available-from', {
+      'available_from': date,
+    }),
+  );
+
+  /// Opens the editor for [date], prefilled from what that date already has,
+  /// or from the weekly pattern for its weekday.
+  void _editDate(String date) {
+    final existing = (_openArea?['dates'] as List? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .where((d) => d['date'] == date)
+        .firstOrNull;
+
+    _dateValues.clear();
+
+    if (existing != null) {
+      _dateClosed = existing['closed'] == true;
+      for (final w
+          in (existing['windows'] as List? ?? const [])
+              .cast<Map<String, dynamic>>()) {
+        _dateValues['${w['start_time']}-${w['end_time']}'] = '${w['max_jobs']}';
+      }
+    } else {
+      _dateClosed = false;
+      // Carbon's weekday numbers: 0 is Sunday.
+      final weekday = DateTime.parse(date).weekday % 7;
+      for (final row in _grid[weekday] ?? const <Map<String, dynamic>>[]) {
+        if (row['max_jobs'] != null) {
+          _dateValues['${row['start_time']}-${row['end_time']}'] =
+              '${row['max_jobs']}';
+        }
+      }
+    }
+
+    setState(() => _dateEditing = date);
+  }
+
+  Future<void> _saveDate() async {
+    final date = _dateEditing;
+    if (date == null) return;
+
+    final windows = <Map<String, dynamic>>[
+      for (final entry in _dateValues.entries)
+        if ((int.tryParse(entry.value.trim()) ?? 0) > 0)
+          {
+            'start_time': entry.key.split('-').first,
+            'end_time': entry.key.split('-').last,
+            'max_jobs': int.parse(entry.value.trim()),
+          },
+    ];
+
+    await _areaWrite(
+      (id) => widget.api.put(
+        '/scheduling/areas/$id/dates/$date',
+        _dateClosed || windows.isEmpty
+            ? {'closed': true}
+            : {'windows': windows},
+      ),
+    );
+  }
+
+  Future<void> _clearDate(String date) => _areaWrite(
+    (id) => widget.api.delete('/scheduling/areas/$id/dates/$date'),
+  );
+
+  Widget _datesCard(ThemeData theme) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final from = _openArea?['available_from'] as String?;
+    final dates = (_openArea?['dates'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+
+    String summary(Map<String, dynamic> d) {
+      if (d['closed'] == true) return 'Closed all day';
+      return (d['windows'] as List? ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(
+            (w) =>
+                '${_label(w['start_time'] as String)}–'
+                '${_label(w['end_time'] as String)}: ${w['max_jobs']}',
+          )
+          .join('  ·  ');
+    }
+
+    return _card(
+      theme,
+      title: 'Specific dates',
+      badge: dates.isEmpty ? 'None' : '${dates.length}',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'A date here replaces the weekly hours for that day — close it, or '
+            'change how many jobs it takes.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                from == null
+                    ? 'Taking bookings from: any day'
+                    : 'Not taking bookings before ${_prettyDate(from)}',
+                style: theme.textTheme.bodyMedium,
+              ),
+              TextButton(
+                key: const Key('set-available-from'),
+                onPressed: _saving
+                    ? null
+                    : () async {
+                        final d = await _pickDate(initial: from);
+                        if (d != null) await _setAvailableFrom(d);
+                      },
+                child: Text(from == null ? 'Set a date' : 'Change'),
+              ),
+              if (from != null)
+                TextButton(
+                  onPressed: _saving ? null : () => _setAvailableFrom(null),
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+          const Divider(height: 20),
+          for (final d in dates)
+            if (_dateEditing == d['date'])
+              _dateEditor(theme)
+            else
+              Row(
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: Text(
+                      _prettyDate(d['date'] as String),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(summary(d), style: theme.textTheme.bodySmall),
+                  ),
+                  IconButton(
+                    tooltip: 'Change this date',
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: () => _editDate(d['date'] as String),
+                  ),
+                  IconButton(
+                    tooltip: 'Back to the weekly hours',
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: _saving
+                        ? null
+                        : () => _clearDate(d['date'] as String),
+                  ),
+                ],
+              ),
+          if (_dateEditing != null &&
+              !dates.any((d) => d['date'] == _dateEditing))
+            _dateEditor(theme),
+          if (_dateEditing == null) ...[
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              key: const Key('add-specific-date'),
+              onPressed: () async {
+                final d = await _pickDate();
+                if (d != null) _editDate(d);
+              },
+              icon: const Icon(Icons.event_outlined, size: 18),
+              label: const Text('Add a date'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _dateEditor(ThemeData theme) {
+    final date = _dateEditing!;
+    final windows = <(String, String)>[
+      for (final w in _timeSlots)
+        (w['start_time'] as String, w['end_time'] as String),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: EzBiziTheme.edge(context)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(_prettyDate(date), style: theme.textTheme.titleSmall),
+          SwitchListTile(
+            key: const Key('date-closed'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Closed all day'),
+            value: _dateClosed,
+            onChanged: (v) => setState(() => _dateClosed = v),
+          ),
+          if (!_dateClosed)
+            for (final (start, end) in windows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('${_label(start)} – ${_label(end)}')),
+                    SizedBox(
+                      width: 56,
+                      child: TextFormField(
+                        key: ValueKey('date-$date-$start-$end'),
+                        initialValue: _dateValues['$start-$end'] ?? '',
+                        textAlign: TextAlign.center,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: '–',
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          border: OutlineInputBorder(),
+                        ),
+                        onChanged: (v) => _dateValues['$start-$end'] = v,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton(
+                key: const Key('save-specific-date'),
+                onPressed: _saving ? null : _saveDate,
+                child: const Text('Save date'),
+              ),
+              TextButton(
+                onPressed: () => setState(() => _dateEditing = null),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

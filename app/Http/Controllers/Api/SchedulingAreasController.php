@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\SlotShape;
@@ -239,6 +240,107 @@ class SchedulingAreasController extends Controller
     }
 
     /**
+     * PUT /api/v1/scheduling/areas/{area}/dates/{date}
+     *
+     * One specific date, replacing the weekly pattern for that day: either
+     * `closed: true` (the whole day), or the windows that day with how many
+     * jobs each takes. Replaces whatever that date had. A window is never sent
+     * with a zero — leaving it out is how a date does not offer it, the same
+     * rule as the weekly pattern.
+     */
+    public function setDate(Request $request, string $area, string $date): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+        $day = $this->day($date);
+
+        $data = $request->validate([
+            'closed' => ['sometimes', 'boolean'],
+            'windows' => ['required_unless:closed,true', 'array'],
+            'windows.*.start_time' => ['required', 'date_format:H:i'],
+            'windows.*.end_time' => ['required', 'date_format:H:i'],
+            'windows.*.max_jobs' => ['required', 'integer', 'min:1', 'max:9999'],
+        ]);
+
+        $closed = (bool) ($data['closed'] ?? false);
+        $windows = $closed ? [] : $data['windows'];
+
+        if (! $closed && $windows === []) {
+            throw ValidationException::withMessages([
+                'windows' => 'Give that date at least one window, or mark it closed.',
+            ]);
+        }
+
+        foreach ($windows as $w) {
+            if ($w['end_time'] <= $w['start_time']) {
+                throw ValidationException::withMessages([
+                    'windows' => 'A window has to end after it starts.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($row, $day, $closed, $windows) {
+            ServiceAreaDateOverride::where('service_area_id', $row->id)->where('date', $day)->delete();
+
+            if ($closed) {
+                ServiceAreaDateOverride::create(['service_area_id' => $row->id, 'date' => $day]);
+
+                return;
+            }
+
+            foreach ($windows as $w) {
+                ServiceAreaDateOverride::create([
+                    'service_area_id' => $row->id,
+                    'date' => $day,
+                    'start_time' => $w['start_time'],
+                    'end_time' => $w['end_time'],
+                    'max_jobs' => $w['max_jobs'],
+                ]);
+            }
+        });
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    /** DELETE /api/v1/scheduling/areas/{area}/dates/{date} — back to the weekly pattern. */
+    public function clearDate(Request $request, string $area, string $date): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+
+        ServiceAreaDateOverride::where('service_area_id', $row->id)->where('date', $this->day($date))->delete();
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    /**
+     * PUT /api/v1/scheduling/areas/{area}/available-from
+     *
+     * "We are full until the 7th." Every day before the date is closed; null
+     * clears it.
+     */
+    public function availableFrom(Request $request, string $area): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+
+        $data = $request->validate(['available_from' => ['present', 'nullable', 'date_format:Y-m-d']]);
+
+        $row->update(['available_from' => $data['available_from']]);
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
+    private function day(string $date): string
+    {
+        $parsed = \DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+
+        abort_if($parsed === false || $parsed->format('Y-m-d') !== $date, 422, 'Dates are YYYY-MM-DD.');
+
+        return $date;
+    }
+
+    /**
      * PUT /api/v1/scheduling/areas/{area}/zips
      *
      * Replaces the set. A zip another area in this ORGANIZATION already holds
@@ -428,6 +530,24 @@ class SchedulingAreasController extends Controller
             'id' => $area->id,
             'name' => $area->name,
             'franchise_id' => $area->franchise_id,
+            'available_from' => $area->available_from?->toDateString(),
+            // Upcoming specific dates only — a past one changes nothing, and
+            // the editor lists what is still ahead.
+            'dates' => ServiceAreaDateOverride::query()
+                ->where('service_area_id', $area->id)
+                ->where('date', '>=', now()->toDateString())
+                ->orderBy('date')->orderBy('start_time')
+                ->get()
+                ->groupBy(fn (ServiceAreaDateOverride $o) => $o->date->toDateString())
+                ->map(fn ($rows, $date) => [
+                    'date' => $date,
+                    'closed' => $rows->contains(fn ($o) => $o->start_time === null),
+                    'windows' => $rows->whereNotNull('start_time')->map(fn ($o) => [
+                        'start_time' => substr((string) $o->start_time, 0, 5),
+                        'end_time' => substr((string) $o->end_time, 0, 5),
+                        'max_jobs' => $o->max_jobs,
+                    ])->values()->all(),
+                ])->values()->all(),
             'zips' => $area->zips
                 ->sortBy('zip')
                 ->map(fn (ServiceAreaZip $z) => ['zip' => $z->zip, 'city' => $z->city])
