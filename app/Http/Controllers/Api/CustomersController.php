@@ -60,24 +60,19 @@ class CustomersController extends Controller
     {
         $this->authorize('viewAny', Customer::class);
 
+        $request->validate([
+            'segment' => ['nullable', Rule::in(['repeat', 'none'])],
+        ]);
+
         $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
 
-        $customers = Customer::query()
-            /*
-             * The franchise's COMPANY comes with it, because the name alone
-             * does not identify it. Two companies in one organization may each
-             * have a franchise called Florida, and a row tagged "Florida" then
-             * says nothing about which — see `present()` for why that tag
-             * carries the weight it does.
-             *
-             * `company_id` is in the select because the nested load needs the
-             * foreign key, not because anything reads it. Trimming it to "only
-             * what we need" does not error: the belongsTo resolves to null and
-             * `company` goes quietly empty. That is the bug this line already
-             * had once, on the duplicate-check path.
-             */
-            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
-            ->withCount('jobs')
+        /*
+         * Every filter, with the segment optional — the chips count "how many
+         * would I see", so each count leaves the segment out and keeps the
+         * rest (the search, the franchise). See JobsController::index, which
+         * counts its status chips the same way.
+         */
+        $filtered = fn (?string $segment) => Customer::query()
             /*
              * Scoped by OWNING franchise, and only when a search is not running.
              *
@@ -110,17 +105,49 @@ class CustomersController extends Controller
                 });
             })
             ->when($request->boolean('active_only'), fn ($q) => $q->where('is_active', true))
+            // Repeat and never-booked, by the same count the Jobs column shows,
+            // so a chip and the column beneath it cannot disagree.
+            ->when($segment === 'repeat', fn ($q) => $q->has('jobs', '>=', 2))
+            ->when($segment === 'none', fn ($q) => $q->doesntHave('jobs'));
+
+        $customers = $filtered($request->query('segment'))
+            /*
+             * The franchise's COMPANY comes with it, because the name alone
+             * does not identify it. Two companies in one organization may each
+             * have a franchise called Florida, and a row tagged "Florida" then
+             * says nothing about which — see `present()` for why that tag
+             * carries the weight it does.
+             *
+             * `company_id` is in the select because the nested load needs the
+             * foreign key, not because anything reads it. Trimming it to "only
+             * what we need" does not error: the belongsTo resolves to null and
+             * `company` goes quietly empty. That is the bug this line already
+             * had once, on the duplicate-check path.
+             */
+            ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
+            ->withCount('jobs')
             ->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
+        $meta = [
+            'total'        => $customers->total(),
+            'per_page'     => $customers->perPage(),
+            'current_page' => $customers->currentPage(),
+            'last_page'    => $customers->lastPage(),
+        ];
+
+        // First page only: "Load more" changes no count, and each is a query.
+        if ($customers->currentPage() === 1) {
+            $meta['segment_counts'] = [
+                'all'    => $filtered(null)->count(),
+                'repeat' => $filtered('repeat')->count(),
+                'none'   => $filtered('none')->count(),
+            ];
+        }
+
         return response()->json([
             'data' => collect($customers->items())->map(fn (Customer $c) => $this->present($c)),
-            'meta' => [
-                'total'        => $customers->total(),
-                'per_page'     => $customers->perPage(),
-                'current_page' => $customers->currentPage(),
-                'last_page'    => $customers->lastPage(),
-            ],
+            'meta' => $meta,
         ]);
     }
 
@@ -378,6 +405,10 @@ class CustomersController extends Controller
                 'company' => $customer->owningFranchise?->company?->only(['id', 'name']),
             ],
             'jobs_count' => $customer->jobs_count ?? $customer->jobs()->count(),
+            // On the LIST row too, for its City column. The full address stays
+            // in the detailed payload; a list row needs where, not the door.
+            'city'  => $customer->city,
+            'state' => $customer->state,
         ];
 
         if (! $detailed) {

@@ -101,7 +101,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// find the four that need doing among the day's reviews. The board is the
   /// one somebody READS, because a review is prose and a column cuts it off
   /// mid-sentence. Neither replaces the other, which is why A1 Tools has both.
-  bool _asTable = false;
+  ///
+  /// The TABLE opens first - Jose, 2026-09-24: "table view should be the
+  /// default". Under [_tableFrom] wide there is no table, so a phone still
+  /// opens on the board.
+  bool _asTable = true;
 
   /// The server's answer to "may this person reply, here, now".
   bool _replyAvailable = false;
@@ -298,8 +302,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _replyError = null;
       _replyNotice = null;
       _replyDraft.clear();
-      // The editor lives on the board, where the whole review can be read.
-      _asTable = false;
+      // The view stays where it is: the table opens the editor under the row
+      // (Jose, 2026-09-24: switching to the board on Reply "is not good UI").
     });
 
     final response = await widget.api.get('/a1leads-gbp/reply/preflight', {
@@ -726,7 +730,31 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _tableCells(theme, review, card, contact, name, comment, reply, matched, customer, quiet),
+          // Replying opens here, under its own row, rather than moving the
+          // reader to the board.
+          if (_activeReplyName == review['google_review_name']) _replyEditor(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableCells(
+    ThemeData theme,
+    Map<String, dynamic> review,
+    Map<String, dynamic>? card,
+    Map<String, dynamic> contact,
+    String name,
+    String comment,
+    String reply,
+    bool matched,
+    String customer,
+    TextStyle? quiet,
+  ) {
+    return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
@@ -828,7 +856,6 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             ),
           ),
         ],
-      ),
     );
   }
 

@@ -48,7 +48,9 @@ import 'package:http/testing.dart';
 /// hr_onboarding_test.dart and hr_dashboard_test.dart defend what they do. The
 /// Dashboard chip is one glance; certifications is a sentence on that card.
 void main() {
-  testWidgets('the six tabs are drawn, in the owner’s order, and switch', (
+  // Five since 2026-09-24: Paid time off (and Work Hours) left for the
+  // Work Hours module — see work hours' own screen test.
+  testWidgets('the five tabs are drawn, in the owner’s order, and switch', (
     tester,
   ) async {
     await _pump(tester, _handler());
@@ -58,7 +60,6 @@ void main() {
       'Onboarding',
       'Records',
       'Invitations',
-      'Paid time off',
       'Contracts',
     ]);
 
@@ -550,13 +551,12 @@ void main() {
 
     await _pump(tester, _handler(onTraining: (user) => askedAbout = user));
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
-    await _tap(tester, find.text('What onboarding collected'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Training'));
 
-    // The record page, and beneath it Training's card about the PERSON —
-    // the counts strip at this width, the lapsed row, and the line saying
+    // Their record, on its Training section: Training's card about the PERSON
+    // — the counts strip at this width, the lapsed row, and the line saying
     // whose it is to act on.
-    expect(find.text('All records'), findsOneWidget);
     expect(find.byKey(TrainingCard.countsKey), findsOneWidget);
     expect(find.text('Ladder safety'), findsOneWidget);
     expect(
@@ -583,9 +583,13 @@ void main() {
     );
 
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
-    await _tap(tester, find.text('Change their role'));
-    await _tap(tester, find.text('Technician'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Employment'));
+    await _choose(tester, 'Role', 'Technician');
+
+    expect(path, isNull, reason: 'Choosing is not saving — the section has a Save.');
+
+    await _tap(tester, find.text('Save employment'));
 
     expect(path, '/api/v1/hr/people/u-2');
     expect(patched, {'role_id': 'role-2'});
@@ -599,8 +603,16 @@ void main() {
     await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
 
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
-    await _tap(tester, find.text('Deactivate'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Employment'));
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byType(SegmentedButton<bool>),
+        matching: find.text('Deactivated'),
+      ),
+    );
+    await _tap(tester, find.text('Save employment'));
 
     // The owner's rule, stated where the decision is made: every employee is a
     // user account and the record survives deactivation.
@@ -633,7 +645,8 @@ void main() {
     );
 
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Access'));
     await _tap(tester, find.text('Reset their authenticator'));
 
     // Says what it does before it does it — signed out everywhere, and that
@@ -661,7 +674,8 @@ void main() {
     );
 
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Access'));
     await _tap(tester, find.text('Password reset link'));
 
     expect(posted, '/api/v1/hr/people/u-2/reset-link');
@@ -682,13 +696,19 @@ void main() {
     await _pump(tester, _handler(onPostPerson: (path) => posted = path));
 
     await _tap(tester, _tab('Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Access'));
 
     for (final label in ['Reset their authenticator', 'Password reset link']) {
-      final item = tester.widget<PopupMenuItem<String>>(
-        find.ancestor(of: find.text(label), matching: find.byType(PopupMenuItem<String>)),
+      final button = tester.widget<ButtonStyleButton>(
+        find
+            .ancestor(
+              of: find.text(label),
+              matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+            )
+            .first,
       );
-      expect(item.enabled, isFalse, reason: '"$label" was offered without the key');
+      expect(button.onPressed, isNull, reason: '"$label" was offered without the key');
     }
     expect(find.textContaining('reset somebody’s sign-in security'), findsNWidgets(2));
 
@@ -740,24 +760,140 @@ void main() {
   ) async {
     await _pump(tester, _handler(scopeOptionsStatus: 403));
     await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Employment'));
 
+    // Said beside the control it is about, rather than once at the top of a
+    // list where nobody connects it to a greyed field.
     expect(find.textContaining('roles are read-only here'), findsOneWidget);
+    expect(_dropdown(tester, 'Role').onChanged, isNull);
 
-    await _tap(tester, find.byType(PopupMenuButton<String>).last);
-
+    // And the rest of the record still works. Not being able to hand out a
+    // role does not stop switching somebody off, or anything else here.
     expect(
       tester
-          .widget<PopupMenuItem<String>>(
-            find.widgetWithText(PopupMenuItem<String>, 'Change their role'),
+          .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+          .onSelectionChanged,
+      isNotNull,
+    );
+  });
+
+  // ── Records: everybody on the left, one whole record on the right ──
+  //
+  // Jose, 2026-09-24, desktop 2 and phone 5 from
+  // docs/previews/hr-records-person-layouts.html.
+
+  /// Nothing opens until somebody is chosen — and nothing is READ either.
+  ///
+  /// Opening a record is an audited read of somebody's personal details, so
+  /// opening the first person automatically would log a read nobody made.
+  testWidgets('no record is opened, or asked for, until somebody is chosen', (
+    tester,
+  ) async {
+    final asked = <String>[];
+
+    await _pump(tester, _handler(onRecord: asked.add));
+    await _tap(tester, _tab('Records'));
+
+    expect(
+      find.text('Choose somebody on the left to see their whole record.'),
+      findsOneWidget,
+    );
+    expect(asked, isEmpty, reason: 'A record was fetched that nobody opened.');
+
+    // The control: choosing somebody DOES ask, exactly once and for them.
+    await _openPerson(tester, 'Bea Okafor');
+
+    expect(asked, ['u-2']);
+    expect(find.text('41 Elm St, Stamford CT'), findsOneWidget);
+  });
+
+  /// Only what changed is sent — a phone number cannot carry their name, or
+  /// anything else, along with it.
+  testWidgets('saving personal details sends only the field that changed', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+
+    await _pump(tester, _handler(onPatchPerson: (_, body) => patched = body));
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    // Save is off until something differs from what was saved.
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Save personal details'),
           )
-          .enabled,
-      isFalse,
+          .onPressed,
+      isNull,
     );
 
-    // And the rest of the tab still works. Not being able to hand out a role
-    // does not make the list of people unreadable, or switching somebody off
-    // something they may no longer do.
-    expect(find.text('Deactivate'), findsOneWidget);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Phone'),
+      '(203) 555-0199',
+    );
+    await tester.pump();
+    await _tap(tester, find.text('Save personal details'));
+
+    expect(patched, {'phone': '(203) 555-0199'});
+  });
+
+  /// Email is shown and not editable, and says why where it is drawn.
+  testWidgets('email is read only on the record, with the reason beside it', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    expect(find.widgetWithText(TextField, 'Email'), findsNothing);
+    expect(find.textContaining('They sign in with this'), findsOneWidget);
+  });
+
+  /// What onboarding collected still opens full page, and comes back to the
+  /// person rather than to an empty list.
+  testWidgets('an onboarding opens full page and returns to the person', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+    await _tap(tester, _section('Onboarding'));
+    await _tap(tester, find.byIcon(Icons.chevron_right).first);
+
+    expect(find.text('Back to Bea Okafor'), findsOneWidget);
+
+    await _tap(tester, find.text('Back to Bea Okafor'));
+
+    expect(find.text('41 Elm St, Stamford CT'), findsNothing,
+        reason: 'It came back to the Onboarding section, not Personal.');
+    expect(find.byIcon(Icons.chevron_right), findsWidgets);
+  });
+
+  /// A phone has no room for a sidebar: the list, then the record over it,
+  /// with a way back.
+  testWidgets('on a phone the record replaces the list and has a way back', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(390, 900));
+    await _tap(tester, _tab('Records'));
+
+    expect(find.text('Bea Okafor'), findsOneWidget);
+    expect(
+      find.text('Choose somebody on the left to see their whole record.'),
+      findsNothing,
+      reason: 'There is no "left" on a phone.',
+    );
+
+    await _openPerson(tester, 'Bea Okafor');
+
+    expect(find.text('Jose Silva'), findsNothing, reason: 'The list is still drawn beside the record.');
+    expect(find.byTooltip('All people'), findsOneWidget);
+
+    await _tap(tester, find.byTooltip('All people'));
+
+    expect(find.text('Jose Silva'), findsOneWidget);
   });
 
   /// "Abandoned" used to be one word for two different things — nobody came,
@@ -845,6 +981,17 @@ Future<void> _pump(
 /// behind it, so an unscoped `find.text` matches two things once it is open.
 Finder _tab(String label) => find.widgetWithText(ChoiceChip, label);
 
+Future<void> _openPerson(WidgetTester tester, String name) =>
+    _tap(tester, find.text(name).first);
+
+/// A section of the open record, found in the record's OWN strip by key —
+/// "Onboarding" is also a module chip, and a positional finder would re-aim
+/// silently if another strip were ever drawn below this one.
+Finder _section(String label) => find.descendant(
+  of: find.byKey(RecordsTab.sectionsKey),
+  matching: find.widgetWithText(ChoiceChip, label),
+);
+
 List<String> _chips(WidgetTester tester) => tester
     .widgetList<ChoiceChip>(
       find.descendant(
@@ -914,6 +1061,7 @@ MockClientHandler _handler({
   void Function(String path, Map<String, dynamic> body)? onPatchPerson,
   void Function(String path)? onPostPerson,
   void Function(String? user)? onTraining,
+  void Function(String id)? onRecord,
   // The signed-in person, so a test can hold or lack a key. Defaults to the
   // administrator every other test in this file drives.
   Map<String, Object?> me = _me,
@@ -1017,6 +1165,25 @@ MockClientHandler _handler({
               {'message': 'You may not invite people.'},
               scopeOptionsStatus,
             );
+    }
+
+    // One person's record — HrPeopleController::show, the list row plus what
+    // the list deliberately leaves out.
+    if (request.method == 'GET' && RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
+      final id = path.split('/').last;
+      onRecord?.call(id);
+      return _json({
+        'data': {
+          ..._people.firstWhere((person) => person['id'] == id),
+          'middle_name': null,
+          'phone': '(203) 555-0148',
+          'address': '41 Elm St, Stamford CT',
+          'gender': null,
+          'date_of_birth': null,
+          'started_on': null,
+          'pto': null,
+        },
+      });
     }
 
     if (path.endsWith('/hr/people')) {

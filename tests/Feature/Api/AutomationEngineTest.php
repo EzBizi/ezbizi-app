@@ -1271,6 +1271,55 @@ class AutomationEngineTest extends TestCase
     }
 
     /**
+     * "The customer it is about" reaches the JOB'S customer, read when it runs.
+     *
+     * Jose, 2026-09-24: text the customer when a job is Done. job.status_changed
+     * carries only the status, and must: automation_events holds no personal
+     * data, so the address comes through the job's customer at run time. The
+     * address change proves it is read NOW rather than copied; the rule about a
+     * person with no customer is the control that it refuses rather than
+     * guessing.
+     */
+    public function test_a_step_can_send_to_the_customer_the_job_is_about(): void
+    {
+        Mail::fake();
+        $runner = app(ActionRunner::class);
+        [$customerId, $jobId] = $this->makeJob();
+
+        [$event, $job] = $this->inTenant(function () use ($customerId, $jobId) {
+            Customer::query()->whereKey($customerId)->update(['email' => 'buyer@example.test']);
+
+            return [AutomationEvent::create([
+                'organization_id' => $this->org['organization']->id, 'event_key' => 'job.status_changed',
+                'payload' => ['before' => ['status' => 'scheduled'], 'after' => ['status' => 'completed']],
+                'occurred_at' => now(), 'available_at' => now(),
+            ]), Job::query()->findOrFail($jobId)];
+        });
+
+        $send = fn ($subject) => $this->inTenant(fn () => $runner->run(
+            ['type' => 'email.send', 'to_field' => 'customer:', 'subject' => 'Done', 'body' => 'All done.'],
+            $event, $subject,
+        ));
+
+        $sent = $send($job);
+        $this->assertTrue($sent['ok'], $sent['detail'] ?? '');
+        Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('buyer@example.test'));
+
+        // The run log says "the customer", never their address: it hangs off a
+        // job event, which the customer's erasure does not reach.
+        $this->assertStringNotContainsString('buyer@example.test', $sent['detail']);
+        $this->assertStringContainsString('the customer', $sent['detail']);
+
+        $this->inTenant(fn () => Customer::query()->whereKey($customerId)->update(['email' => 'moved@example.test']));
+        $this->assertTrue($send($job)['ok']);
+        Mail::assertSent(AutomationMessage::class, fn ($m) => $m->hasTo('moved@example.test'));
+
+        $none = $send($this->org['admin']);
+        $this->assertFalse($none['ok']);
+        $this->assertStringContainsString('not about a customer', $none['detail']);
+    }
+
+    /**
      * An email step addresses a person, a field of the event, or a typed address.
      *
      * Jose asked for the first and third on 2026-09-16; the middle is what it

@@ -168,12 +168,12 @@ class TimeClockDayRecordsTest extends TestCase
 
     /**
      * The tab alone reads; it does not write. The subject holds the OTHER
-     * candidate, `hr.hours.view`, and is shown to reach the pane first.
+     * candidate, `work_hours.general.view`, and is shown to reach the pane first.
      */
     public function test_the_work_hours_tab_alone_cannot_tag_or_force(): void
     {
         [$alpha, , $tech] = $this->tenant();
-        $reader = $this->userWithRole($alpha, 'Dispatch', ['hr.hours.view', 'hr.hours.all'], 'dispatch@alpha.test');
+        $reader = $this->userWithRole($alpha, 'Dispatch', ['work_hours.general.view', 'work_hours.all'], 'dispatch@alpha.test');
         $shift = $this->shift($alpha['org'], $tech, '2026-09-24 13:00:00', null);
 
         $this->signedInAs($reader)->getJson('/api/v1/hr/time-clock/week')->assertOk();
@@ -198,7 +198,7 @@ class TimeClockDayRecordsTest extends TestCase
         $elsewhere = $this->extraFranchise($alpha, 'Alpha F2');
 
         $branch = $this->userWithRole(
-            $alpha, 'Branch', ['hr.hours.view', 'hr.hours.all', 'hr.hours.correct'], 'branch@alpha.test', onlyAt: $alpha['franchise'],
+            $alpha, 'Branch', ['work_hours.general.view', 'work_hours.all', 'work_hours.manage'], 'branch@alpha.test', onlyAt: $alpha['franchise'],
         );
         $mine = $this->userWithRole($alpha, 'Mine', ['time_clock.view'], 'mine@alpha.test', onlyAt: $alpha['franchise']);
         $theirs = $this->userWithRole($alpha, 'Theirs', ['time_clock.view'], 'theirs@alpha.test', onlyAt: $elsewhere);
@@ -278,7 +278,7 @@ class TimeClockDayRecordsTest extends TestCase
 
         return [
             $alpha,
-            $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all', 'hr.hours.correct'], 'hr@alpha.test'),
+            $this->userWithRole($alpha, 'Hr', ['work_hours.general.view', 'work_hours.all', 'work_hours.manage'], 'hr@alpha.test'),
             $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test'),
         ];
     }

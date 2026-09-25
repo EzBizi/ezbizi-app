@@ -318,3 +318,95 @@ class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
         echo ezbizi_post_title_shortcode(array());
     }
 }
+
+/** Phone, email and address as one block. */
+class EzBizi_Elementor_Contact_Info extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-contact-info';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Contact Details', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-bullet-list';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('contact', 'phone', 'email', 'address'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_contact_info_shortcode(array('preset' => $preset));
+    }
+}
+
+/** A button that calls, books or opens the form. */
+class EzBizi_Elementor_Cta extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-cta';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Call to Action', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-button';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('cta', 'call', 'button', 'book'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_cta_shortcode(array('preset' => $preset));
+    }
+}
+
+/** The phone number on its own. */
+class EzBizi_Elementor_Phone_Box extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-phone-box';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Phone', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-headphones';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('phone', 'call', 'number'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_phone_box_shortcode(array('preset' => $preset));
+    }
+}
+
+/** A happy face to the review link, a sad one to a private form. */
+class EzBizi_Elementor_Review_Faces extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-review-faces';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Review Faces', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-rating';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('review', 'smiley', 'feedback', 'google', 'rating'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_review_faces_shortcode(array('preset' => $preset));
+    }
+}

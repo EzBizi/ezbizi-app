@@ -1,3 +1,5 @@
+import 'theme.dart';
+
 /// One job status: the value jobs store, and the name people see.
 class JobStatus {
   const JobStatus({required this.value, required this.label, this.was});
@@ -63,4 +65,26 @@ String _humanize(String value) {
             : '${word[0].toUpperCase()}${word.substring(1)}',
       )
       .join(' ');
+}
+
+/// The colour a job status wears, read from its VALUE.
+///
+/// Statuses are the organization's own words (`jobs.statuses`), so there is no
+/// enum to switch on: the defaults say `cancelled` and `completed`, and A-1's
+/// imported ones say `Canceled` and `Done`. Keywords cover both, and anything
+/// they do not recognise is [Tone.neutral] — a pill that guessed a colour for a
+/// status it does not know would be telling somebody something untrue.
+///
+/// Order matters: "done pending approval" contains both "done" and "pending",
+/// and is neither finished nor waiting on the customer.
+Tone toneForJobStatus(String value) {
+  final v = value.toLowerCase().replaceAll('_', ' ');
+
+  if (v.contains('cancel')) return Tone.bad;
+  if (v.contains('approval')) return Tone.review;
+  if (v.startsWith('done') || v.contains('complete')) return Tone.ok;
+  if (v.contains('progress')) return Tone.info;
+  if (v.contains('pending') || v.contains('hold')) return Tone.caution;
+
+  return Tone.neutral;
 }

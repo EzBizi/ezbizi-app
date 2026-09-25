@@ -57,47 +57,170 @@ class JobsController extends Controller
     {
         $this->authorize('viewAny', Job::class);
 
+        $request->validate([
+            'when'  => ['nullable', Rule::in(['upcoming', 'past', 'all'])],
+            // REQUIRED with a window, never defaulted. The server's own date is
+            // UTC, and from about 8pm Eastern that is already tomorrow — a job
+            // at 10pm tonight would file as Past while it is still ahead.
+            'today' => ['nullable', 'required_if:when,upcoming,past', 'date_format:Y-m-d'],
+        ]);
+
         // The current view, already narrowed to what §4 allows.
         $reachable = collect(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds());
 
-        $jobs = Job::query()
-            ->with(['franchise:id,name', 'customer:id,name,number,owning_franchise_id'])
-            // The roll-up, and the boundary. whereIn on an empty list matches
-            // nothing, which is the correct answer for a user with no
-            // assignments — not "everything".
-            ->whereIn('franchise_id', $reachable)
-            ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
-            ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
-            ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
-            ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
-            ->when(filled($request->query('search')), function ($q) use ($request) {
-                $term = trim((string) $request->query('search'));
-                $like = '%'.$term.'%';
+        $when = $request->query('when', 'all');
 
-                $q->where(function ($inner) use ($like) {
-                    $inner->where('title', 'like', $like)
-                        ->orWhere('number', 'like', $like)
-                        ->orWhereHas('customer', function ($customers) use ($like) {
-                            $customers->where('name', 'like', $like)
-                                ->orWhere('number', 'like', $like);
-                        });
-                });
-            })
+        /*
+         * Where "upcoming" starts: midnight, as a NAIVE wall clock.
+         *
+         * scheduled_for is stored as wall time in the franchise's own zone
+         * (FranchiseWallTime), so the boundary has to be wall time too — an
+         * instant would move it by each franchise's offset. And it is the
+         * READER's date, sent by the client, because "today" belongs to the
+         * person looking and the server has no clock of theirs. There is no
+         * fallback on purpose: the one available, the server's date, is UTC and
+         * wrong every US evening (Jobs' review of 11f50399). Null when the
+         * caller sent no date — then there is no window, and no window counts.
+         *
+         * One reader's date is applied to every franchise's wall clock. Right
+         * while an organization sits in one zone (A-1's branches are all
+         * Eastern); an organization spanning zones would see a branch's late
+         * evening filed a day early or late. The fix then is per-franchise
+         * midnights, not a different default here.
+         */
+        $today = $request->query('today');
+        $midnight = $today === null ? null : $today.' 00:00:00';
+
+        /*
+         * Every filter, with the status and the window each OPTIONAL.
+         *
+         * The chips count "how many of each status would I see", so their
+         * counts leave the status filter out and keep everything else — a count
+         * that applied its own filter would show zero on every chip but the
+         * lit one. The Upcoming/Past counts do the same for the window.
+         */
+        $filtered = function (?string $status, string $window) use ($request, $reachable, $midnight) {
+            return Job::query()
+                // The roll-up, and the boundary. whereIn on an empty list matches
+                // nothing, which is the correct answer for a user with no
+                // assignments — not "everything".
+                ->whereIn('franchise_id', $reachable)
+                ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
+                ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
+                ->when($status, fn ($q, $s) => $q->where('status', $s))
+                ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
+                ->when(filled($request->query('search')), function ($q) use ($request) {
+                    $term = trim((string) $request->query('search'));
+                    $like = '%'.$term.'%';
+
+                    $q->where(function ($inner) use ($like) {
+                        $inner->where('title', 'like', $like)
+                            ->orWhere('number', 'like', $like)
+                            ->orWhereHas('customer', function ($customers) use ($like) {
+                                $customers->where('name', 'like', $like)
+                                    ->orWhere('number', 'like', $like);
+                            });
+                    });
+                })
+                // A job with no date yet is work still to arrange, so it is
+                // upcoming — never past, which would file it with the finished.
+                ->when($window === 'upcoming', fn ($q) => $q->where(
+                    fn ($w) => $w->where('scheduled_for', '>=', $midnight)->orWhereNull('scheduled_for'),
+                ))
+                ->when($window === 'past', fn ($q) => $q->where('scheduled_for', '<', $midnight));
+        };
+
+        $status = $request->query('status');
+
+        $query = $filtered($status, $when)
+            // Everything present() reads for a LIST row, loaded once for the
+            // page. `timezone` because FranchiseWallTime reads it to give
+            // scheduled_for its offset — loaded without it, the list shipped
+            // every time with a UTC offset. `assignedRole` because the base
+            // payload carries the role column.
+            ->with([
+                'franchise:id,name,timezone',
+                'customer:id,name,number,owning_franchise_id',
+                'assignedRole:id,name',
+            ]);
+
+        match ($when) {
+            // Soonest first: the next job is the one somebody is about to go
+            // to. Undated last, because they have no place in a day yet.
+            'upcoming' => $query->orderByRaw('scheduled_for IS NULL')
+                ->orderBy('scheduled_for')
+                ->orderBy('created_at'),
+            'past' => $query->orderByDesc('scheduled_for')->orderByDesc('created_at'),
             // COALESCE, not scheduled_for alone. MySQL sorts NULLs last under
             // DESC, and a job created without a date has a null one — so a user
             // who had just created one watched it fail to appear.
-            ->orderByRaw('COALESCE(scheduled_for, created_at) DESC')
-            ->orderByDesc('created_at')
-            ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+            default => $query->orderByRaw('COALESCE(scheduled_for, created_at) DESC')
+                ->orderByDesc('created_at'),
+        };
+
+        $jobs = $query->paginate(perPage: min((int) $request->query('per_page', 50), 200));
+
+        $meta = [
+            'total'        => $jobs->total(),
+            'per_page'     => $jobs->perPage(),
+            'current_page' => $jobs->currentPage(),
+            'last_page'    => $jobs->lastPage(),
+        ];
+
+        // On the first page only. "Load more" changes no count, and each one
+        // is a query of its own.
+        if ($jobs->currentPage() === 1) {
+            // An OBJECT even when empty: an empty PHP array encodes as [], and
+            // a client reading a map would then be handed a list.
+            $meta['status_counts'] = (object) $filtered(null, $when)
+                ->toBase()
+                ->select('status', DB::raw('count(*) as n'))
+                ->groupBy('status')
+                ->pluck('n', 'status')
+                ->map(fn ($n) => (int) $n)
+                ->all();
+
+            // Only with the reader's date: without it there is no boundary to
+            // count either side of.
+            if ($midnight !== null) {
+                $meta['when_counts'] = [
+                    'upcoming' => $filtered($status, 'upcoming')->count(),
+                    'past'     => $filtered($status, 'past')->count(),
+                ];
+            }
+        }
+
+        /*
+         * Each day heading's total, for the days on THIS page — every page, since
+         * each brings days of its own. A page that stops halfway through a
+         * Thursday must still head it "38 jobs", not the 12 it happened to hold.
+         * DATE() of a naive wall clock IS the wall date, the day the heading
+         * names (FranchiseWallTime). Keyed `Y-m-d`, and `none` for undated.
+         */
+        $days = collect($jobs->items())
+            ->map(fn (Job $j) => $j->getRawOriginal('scheduled_for'))
+            ->map(fn ($raw) => $raw === null ? null : substr((string) $raw, 0, 10))
+            ->unique();
+        $dated = $days->filter()->values()->all();
+
+        $dayCounts = $dated === [] ? [] : $filtered($status, $when)
+            ->toBase()
+            ->selectRaw('DATE(scheduled_for) as d, count(*) as n')
+            ->whereIn(DB::raw('DATE(scheduled_for)'), $dated)
+            ->groupBy('d')
+            ->pluck('n', 'd')
+            ->map(fn ($n) => (int) $n)
+            ->all();
+
+        if ($days->contains(null)) {
+            $dayCounts['none'] = $filtered($status, $when)->whereNull('scheduled_for')->count();
+        }
+
+        $meta['day_counts'] = (object) $dayCounts;
 
         return response()->json([
             'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j)),
-            'meta' => [
-                'total'        => $jobs->total(),
-                'per_page'     => $jobs->perPage(),
-                'current_page' => $jobs->currentPage(),
-                'last_page'    => $jobs->lastPage(),
-            ],
+            'meta' => $meta,
         ]);
     }
 
@@ -207,12 +330,13 @@ class JobsController extends Controller
             $job->fill($input);
 
             // The money is earned once, at the first transition into an earned
-            // status. Not re-stamped on a later correction: a closed month has
-            // to stay closed (§8.1).
-            if (array_key_exists('status', $job->getDirty())
-                && $job->earned_at === null
-                && EarnedStatuses::isEarned($job->status, $job->franchise)) {
-                $job->earned_at = now();
+            // status (§8.1). WHETHER to stamp is decided here — only when the
+            // status is actually changing, so correcting the title of an old
+            // completed job cannot stamp it into this month. WHAT to stamp is
+            // Job::markEarnedIfDue()'s, the one rule the Workiz projection
+            // calls too.
+            if (array_key_exists('status', $job->getDirty())) {
+                $job->markEarnedIfDue();
             }
 
             $changed = $job->getDirty();
@@ -376,9 +500,13 @@ class JobsController extends Controller
 
     private function present(Job $job, bool $detailed = false): array
     {
+        // Only what the BASE payload reads. `lines` and `performedBy` are
+        // detail-only and are loaded in that branch below: loading them here
+        // ran on every list row, for a panel nobody had opened (UI/UX measured
+        // it, 2026-09-24; JobListQueryCountTest pins it).
         $job->loadMissing([
-            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id', 'lines',
-            'assignedRole:id,name', 'performedBy:id,name',
+            'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id',
+            'assignedRole:id,name',
         ]);
 
         $base = [
@@ -418,6 +546,8 @@ class JobsController extends Controller
         if (! $detailed) {
             return $base;
         }
+
+        $job->loadMissing(['lines', 'performedBy:id,name']);
 
         return $base + [
             'description'      => $job->description,

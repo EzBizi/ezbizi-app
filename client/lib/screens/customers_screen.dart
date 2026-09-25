@@ -1,12 +1,15 @@
 import '../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
+import '../core/numbers.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/data_transfer.dart';
 import '../widgets/error_note.dart';
 import '../widgets/franchise_field.dart';
+import '../widgets/grouped_rows.dart';
 import '../widgets/refused.dart';
+import '../widgets/search_picker.dart';
 import '../widgets/side_panel.dart';
 import '../widgets/tag.dart';
 import 'customers/customer_detail_panel.dart';
@@ -86,6 +89,21 @@ class _CustomersScreenState extends State<CustomersScreen> {
   /// slower of two answers lands last and wins.
   int _request = 0;
 
+  /// Below this the table has no room for its columns — see jobs_screen.
+  static const _tableFrom = 900.0;
+
+  /// Everyone, repeat customers, or those who never booked (queue 24).
+  String? _segment;
+  String? _franchiseId;
+
+  /// What each chip would show, from the server's first page; empty from a
+  /// server that does not count, and the chips then carry no numbers.
+  Map<String, int> _segmentCounts = const {};
+
+  /// The customer open beside the list on a wide screen. Null shows the table.
+  String? _openId;
+  final _openDirty = ValueNotifier<bool>(false);
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +113,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   @override
   void dispose() {
     _search.dispose();
+    _openDirty.dispose();
     super.dispose();
   }
 
@@ -122,6 +141,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
     final response = await widget.api.get('/customers', {
       'page': '$page',
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
+      'segment': ?_segment,
+      'franchise_id': ?_franchiseId,
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -153,6 +174,16 @@ class _CustomersScreenState extends State<CustomersScreen> {
       _total = meta?['total'] as int? ?? _customers.length;
       _lastPage = meta?['last_page'] as int? ?? 1;
       _page = page;
+
+      if (page == 1) {
+        final counts = meta?['segment_counts'];
+        _segmentCounts = counts is Map
+            ? {
+                for (final e in counts.entries)
+                  if (e.value is int) '${e.key}': e.value as int,
+              }
+            : const {};
+      }
     });
   }
 
@@ -179,6 +210,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
               )
             : null);
 
+    return LayoutBuilder(
+      builder: (context, constraints) => _page0(
+        context,
+        me: me,
+        label: label,
+        refused: refused,
+        wide: constraints.maxWidth >= _tableFrom,
+      ),
+    );
+  }
+
+  Widget _page0(
+    BuildContext context, {
+    required Me me,
+    required String label,
+    required String? refused,
+    required bool wide,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -186,9 +235,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
           note: (_loading || _error != null)
               ? 'Shared across the organization — the $label tag shows who is accountable.'
               : _customers.length < _total
-              ? 'Showing ${_customers.length} of $_total shared across the '
+              ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
                     'organization. The $label tag shows who is accountable.'
-              : '$_total shared across the organization. The $label tag shows who is '
+              : '${formatCount(_total)} shared across the organization. The $label tag shows who is '
                     'accountable for each relationship.',
           // A Wrap rather than a Row: on a narrow window — and on a phone, which
           // is coming — three controls side by side either overflow or squeeze
@@ -234,131 +283,419 @@ class _CustomersScreenState extends State<CustomersScreen> {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-          child: TextField(
-            controller: _search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name, email, phone or number',
-              suffixIcon: _search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: () {
-                        _search.clear();
-                        _load();
-                      },
-                    ),
-            ),
-            onSubmitted: (_) => _load(),
-            onChanged: (_) => setState(() {}),
-          ),
-        ),
+        if (wide) _segmentChips(context),
+        _filters(context, me, wide: wide),
         Expanded(
           child: AsyncBody(
             loading: _loading,
             error: _error,
             onRetry: _load,
-            child: _customers.isEmpty
-                ? Center(
-                    child: Text(
-                      _search.text.trim().isEmpty
-                          ? 'No customers yet.'
-                          // "No customers yet" after a search reads as data loss.
-                          : 'Nothing matches "${_search.text.trim()}".',
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                    itemCount: _customers.length + (_page < _lastPage ? 1 : 0),
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) => i == _customers.length
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_pageError != null) ...[
-                                  ErrorNote(_pageError!),
-                                  const SizedBox(height: 8),
-                                ],
-                                TextButton(
-                                  onPressed: _fetching
-                                      ? null
-                                      : () => _load(page: _page + 1),
-                                  child: Text(
-                                    _fetching
-                                        ? 'Loading…'
-                                        : _pageError != null
-                                        ? 'Try again'
-                                        : 'Load more (${_total - _customers.length} left)',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : _row(context, _customers[i]),
-                  ),
+            child: _body(context, wide: wide),
           ),
         ),
       ],
     );
   }
 
-  Widget _row(BuildContext context, Map<String, dynamic> customer) {
-    final owner = customer['owning_franchise'] as Map<String, dynamic>;
-    final jobs = customer['jobs_count'] as int? ?? 0;
+  Widget _segmentChips(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
 
-    // "EzBizi · Florida", or just the franchise on a server that does not send
-    // the company yet — the older shape reads as it always did rather than as
-    // a row with something missing from it.
-    final company = (owner['company'] as Map<String, dynamic>?)?['name'];
-    final franchise = owner['name'] as String? ?? 'Unassigned';
-    final ownerLabel = company is String && company.isNotEmpty
-        ? '$company · $franchise'
-        : franchise;
+    Widget chip(String? value, String label, String key) {
+      final n = _segmentCounts[key];
 
-    return Card(
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        onTap: () => _open(customer),
-        title: Row(
-          children: [
-            Flexible(
-              child: Text(
-                customer['name'] as String,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            // §5.2: visible in the list, not only on the detail screen.
-            //
-            // Flexible because the label now carries two names, and a Row hands
-            // a non-flex child unbounded width: an organization with a company
-            // called something long would otherwise push the row off the right
-            // edge of a phone rather than shortening the tag.
-            Flexible(child: Tag(ownerLabel)),
-            if (customer['is_active'] == false)
-              const Tag('Inactive', warn: true),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            [
-              customer['number'],
-              if (customer['phone'] != null)
-                formatPhoneNumber(customer['phone'] as String?),
-              if (customer['email'] != null) customer['email'],
-              '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
-            ].join(' · '),
-            style: Theme.of(context).textTheme.bodyMedium,
+      return ChoiceChip(
+        key: ValueKey('segment-chip-${value ?? 'all'}'),
+        showCheckmark: false,
+        selected: _segment == value,
+        label: Text.rich(
+          TextSpan(
+            text: label,
+            children: [
+              if (n != null)
+                TextSpan(
+                  text: '  ${formatCount(n)}',
+                  style: TextStyle(color: muted, fontWeight: FontWeight.w500),
+                ),
+            ],
           ),
         ),
+        onSelected: (_) {
+          setState(() => _segment = value);
+          _load();
+        },
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          chip(null, 'All', 'all'),
+          chip('repeat', 'Repeat customers', 'repeat'),
+          chip('none', 'No jobs yet', 'none'),
+        ],
       ),
     );
   }
+
+  Widget _filters(BuildContext context, Me me, {required bool wide}) {
+    final franchises = me.franchisesInView;
+    final label = me.organization.franchiseLabel;
+
+    String counted(String word, String key) {
+      final n = _segmentCounts[key];
+      return n == null ? word : '$word (${formatCount(n)})';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 360,
+            child: TextField(
+              controller: _search,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search),
+                hintText: 'Name, email, phone or number',
+                suffixIcon: _search.text.isEmpty
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: 'Clear the search',
+                        onPressed: () {
+                          _search.clear();
+                          _load();
+                        },
+                      ),
+              ),
+              onSubmitted: (_) => _load(),
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          // The chips' choice, as a picker where three chips would wrap.
+          if (!wide)
+            SizedBox(
+              // Two to a line at 375, not one each under the search box.
+              width: wide ? 220 : 160,
+              child: SearchPickerField<String?>(
+                value: _segment,
+                label: 'Show',
+                options: [
+                  SearchOption<String?>(
+                    value: null,
+                    label: counted('Everyone', 'all'),
+                  ),
+                  SearchOption<String?>(
+                    value: 'repeat',
+                    label: counted('Repeat customers', 'repeat'),
+                  ),
+                  SearchOption<String?>(
+                    value: 'none',
+                    label: counted('No jobs yet', 'none'),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() => _segment = value);
+                  _load();
+                },
+              ),
+            ),
+          // Narrowing, not a boundary — customers are shared, see the
+          // controller. One franchise is no choice, so no picker.
+          if (franchises.length > 1)
+            SizedBox(
+              // Two to a line at 375, not one each under the search box.
+              width: wide ? 220 : 160,
+              child: SearchPickerField<String?>(
+                value: _franchiseId,
+                label: label,
+                options: [
+                  SearchOption<String?>(
+                    value: null,
+                    label: 'All ${label.toLowerCase()}s',
+                  ),
+                  for (final f in franchises)
+                    SearchOption<String?>(value: f.id, label: f.name),
+                ],
+                onChanged: (value) {
+                  setState(() => _franchiseId = value);
+                  _load();
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body(BuildContext context, {required bool wide}) {
+    if (_customers.isEmpty) {
+      final term = _search.text.trim();
+
+      return Center(
+        child: Text(
+          term.isNotEmpty
+              // "No customers yet" after a search reads as data loss.
+              ? 'Nothing matches "$term".'
+              : _segment != null
+              ? 'Nobody here yet.'
+              : 'No customers yet.',
+        ),
+      );
+    }
+
+    final groups = _byLetter(_customers);
+    final footer = _page < _lastPage ? _loadMore() : null;
+
+    if (!wide) {
+      return GroupedList<Map<String, dynamic>>(
+        groups: groups,
+        idOf: _id,
+        tile: _tile,
+        onOpen: _open,
+        footer: footer,
+      );
+    }
+
+    if (_openId == null) {
+      return GroupedTable<Map<String, dynamic>>(
+        columns: _columns(context),
+        groups: groups,
+        idOf: _id,
+        onOpen: _dock,
+        footer: footer,
+      );
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 380,
+            child: GroupedList<Map<String, dynamic>>(
+              groups: groups,
+              idOf: _id,
+              tile: _tile,
+              onOpen: _dock,
+              selectedId: _openId,
+              footer: footer,
+            ),
+          ),
+          VerticalDivider(width: 1, color: scheme.outlineVariant),
+          Expanded(
+            child: CustomerDetailPanel(
+              key: ValueKey('open-$_openId'),
+              api: widget.api,
+              session: widget.session,
+              id: _openId!,
+              onDone: _undock,
+              dirty: _openDirty,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _loadMore() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_pageError != null) ...[
+            ErrorNote(_pageError!),
+            const SizedBox(height: 8),
+          ],
+          TextButton(
+            onPressed: _fetching ? null : () => _load(page: _page + 1),
+            child: Text(
+              _fetching
+                  ? 'Loading…'
+                  : _pageError != null
+                  ? 'Try again'
+                  : 'Load more (${formatCount(_total - _customers.length)} left)',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  List<TableColumn<Map<String, dynamic>>> _columns(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+    return [
+      TableColumn(
+        'Customer',
+        width: 96,
+        cell: (_, c) =>
+            Text('${c['number'] ?? ''}', style: TextStyle(color: muted)),
+      ),
+      TableColumn(
+        'Name',
+        flex: 3,
+        cell: (_, c) => Row(
+          children: [
+            Flexible(
+              child: Text(
+                '${c['name'] ?? ''}',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (c['is_active'] == false) const Tag('Inactive', warn: true),
+          ],
+        ),
+      ),
+      TableColumn(
+        'Phone',
+        width: 140,
+        cell: (_, c) => Text(
+          c['phone'] == null ? '' : formatPhoneNumber(c['phone'] as String?),
+        ),
+      ),
+      TableColumn(
+        'Email',
+        flex: 3,
+        cell: (_, c) =>
+            Text('${c['email'] ?? ''}', style: TextStyle(color: muted)),
+      ),
+      TableColumn('City', flex: 2, cell: (_, c) => Text(_place(c))),
+      // §5.2: visible in the list, not only on the detail screen — on every
+      // row, company included; see the class docblock for why.
+      TableColumn(
+        widget.session.me!.organization.franchiseLabel,
+        flex: 3,
+        cell: (context, c) => _owner(context, c),
+      ),
+      TableColumn(
+        'Jobs',
+        width: 60,
+        numeric: true,
+        cell: (_, c) {
+          final jobs = c['jobs_count'] as int? ?? 0;
+          return Text(
+            '$jobs',
+            style: jobs == 0 ? TextStyle(color: muted) : null,
+          );
+        },
+      ),
+    ];
+  }
+
+  Widget _tile(BuildContext context, Map<String, dynamic> customer) {
+    final jobs = customer['jobs_count'] as int? ?? 0;
+
+    return TwoLineTile(
+      title: '${customer['name'] ?? ''}',
+      badge: customer['is_active'] == false
+          ? const Tag('Inactive', warn: true)
+          : null,
+      topRight: jobs == 0
+          ? 'No jobs yet'
+          : '$jobs ${jobs == 1 ? 'job' : 'jobs'}',
+      subtitle: [
+        _place(customer),
+        _ownerText(customer),
+      ].where((s) => s.isNotEmpty).join(' · '),
+    );
+  }
+
+  /// "EzBizi · Florida", with the company quieter than the franchise — both
+  /// named, because the franchise alone does not say which Florida. Just the
+  /// franchise on a server that does not send the company yet, so the older
+  /// shape reads as it always did rather than as a row with something missing.
+  Widget _owner(BuildContext context, Map<String, dynamic> customer) {
+    final (company, franchise) = _ownerParts(customer);
+    if (company == null) return Text(franchise);
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$company · ',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          TextSpan(text: franchise),
+        ],
+      ),
+    );
+  }
+
+  String _ownerText(Map<String, dynamic> customer) {
+    final (company, franchise) = _ownerParts(customer);
+    return company == null ? franchise : '$company · $franchise';
+  }
+
+  static (String?, String) _ownerParts(Map<String, dynamic> customer) {
+    final owner = customer['owning_franchise'] as Map<String, dynamic>? ?? {};
+    final company = (owner['company'] as Map<String, dynamic>?)?['name'];
+    final franchise = owner['name'] as String? ?? 'Unassigned';
+
+    return (
+      company is String && company.isNotEmpty ? company : null,
+      franchise,
+    );
+  }
+
+  static String _place(Map<String, dynamic> customer) => [
+    customer['city'],
+    customer['state'],
+  ].whereType<String>().where((s) => s.trim().isNotEmpty).join(', ');
+
+  static String _id(Map<String, dynamic> customer) => customer['id'] as String;
+
+  /// Letter headings over a list the server already sorted by name.
+  ///
+  /// By the first character as stored, with accented capitals read as their
+  /// letter — the database's collation sorts "Ángela" among the A's, so a
+  /// heading that filed her under # would split the A's in two. Anything else
+  /// that is not a letter is #, and sorts first, as it does on the server.
+  static List<RowGroup<Map<String, dynamic>>> _byLetter(
+    List<Map<String, dynamic>> customers,
+  ) {
+    final groups = <String, List<Map<String, dynamic>>>{};
+
+    for (final customer in customers) {
+      final name = '${customer['name'] ?? ''}';
+      final first = name.isEmpty ? '' : name[0].toUpperCase();
+      final letter = _unaccented[first] ?? first;
+      final key = RegExp(r'^[A-Z]$').hasMatch(letter) ? letter : '#';
+      (groups[key] ??= []).add(customer);
+    }
+
+    return [
+      for (final MapEntry(:key, :value) in groups.entries)
+        RowGroup(heading: key, rows: value),
+    ];
+  }
+
+  static const _unaccented = {
+    'Á': 'A', 'À': 'A', 'Â': 'A', 'Ä': 'A', 'Ã': 'A', 'Å': 'A', //
+    'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E', //
+    'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I', //
+    'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Ö': 'O', 'Õ': 'O', //
+    'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U', //
+    'Ñ': 'N', 'Ç': 'C', 'Ý': 'Y',
+  };
 
   Future<void> _create() async {
     final created = await showSidePanel<Map<String, dynamic>>(
@@ -426,6 +763,31 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
   }
 
+  /// Open beside the list. Refused while the open customer has unsaved
+  /// changes — see jobs_screen's `_dock`.
+  void _dock(Map<String, dynamic> customer) {
+    final id = customer['id'] as String;
+    if (id == _openId) return;
+
+    if (_openId != null && _openDirty.value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Save or cancel the changes to this customer first.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _openId = id);
+  }
+
+  void _undock(bool changed) {
+    _openDirty.value = false;
+    setState(() => _openId = null);
+    if (changed) _load();
+  }
+
+  /// Open over the list — on a phone, where there is no room beside it.
   Future<void> _open(Map<String, dynamic> customer) async {
     final changed = await showSidePanel<bool>(
       context,

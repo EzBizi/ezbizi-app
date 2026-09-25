@@ -412,6 +412,11 @@ class EzBiziTheme {
   static const Color accent = _cyan;
   static const Color accentDark = _cyanDark;
 
+  /// The review-faces widget's two faces, as the WordPress plugin paints
+  /// them (`ezbizi_review_faces_shortcode`), so the preview matches the page.
+  static const Color reviewHappy = Color(0xFF22B24C);
+  static const Color reviewSad = Color(0xFFE23D4B);
+
   /// Eight colours for standing in where a person has no picture.
   ///
   /// Picked by a stable hash of the sender, so the same person keeps the same
@@ -551,4 +556,70 @@ class StateColour {
 
   static StateColour of(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark ? dark : light;
+}
+
+/// What a status MEANS, for the pill that shows it.
+///
+/// Six, because that is how many the Jobs list needed on the day it gained
+/// colour (queue 24): six statuses in real use, each a different kind of news.
+/// The mapping from a status to its tone lives beside the status
+/// (`toneForJobStatus`); this is only where the colours come from, so a second
+/// list that colours its states reaches for these rather than writing six more
+/// literals.
+enum Tone {
+  /// Nothing to act on yet, or nothing known — the fallback for a value no
+  /// mapping recognises, because a guessed colour is a claim.
+  neutral,
+
+  /// Under way.
+  info,
+
+  /// Waiting on somebody.
+  caution,
+
+  /// Finished, and waiting for sign-off.
+  review,
+
+  /// Done.
+  ok,
+
+  /// Not going to happen. Red at Jose's word, 2026-09-24: *"the canceled tab
+  /// should be red, not gray"*.
+  bad,
+}
+
+/// A pill's fill and its text, for each [Tone].
+///
+/// The text is at least 4.5:1 on its fill in both brightnesses, measured by
+/// `tone_colours_test` rather than asserted here.
+class ToneColours {
+  const ToneColours(this.fill, this.ink);
+
+  final Color fill;
+  final Color ink;
+
+  static const _light = {
+    Tone.neutral: ToneColours(Color(0xFFE8ECF0), Color(0xFF33404A)),
+    Tone.info: ToneColours(Color(0xFFD9EFF8), Color(0xFF00566E)),
+    Tone.caution: ToneColours(Color(0xFFFFF0D2), Color(0xFF734600)),
+    Tone.review: ToneColours(Color(0xFFEEE5FA), Color(0xFF5A3290)),
+    Tone.ok: ToneColours(Color(0xFFE1F2E5), Color(0xFF16662D)),
+    Tone.bad: ToneColours(Color(0xFFFDECEC), Color(0xFF9F1D1D)),
+  };
+
+  static const _dark = {
+    Tone.neutral: ToneColours(Color(0xFF2C333B), Color(0xFFD3DAE0)),
+    Tone.info: ToneColours(Color(0xFF0E3A48), Color(0xFF8FD6EE)),
+    Tone.caution: ToneColours(Color(0xFF3D2E0C), Color(0xFFF1C56A)),
+    Tone.review: ToneColours(Color(0xFF33264A), Color(0xFFCDB6F2)),
+    Tone.ok: ToneColours(Color(0xFF163A22), Color(0xFF8FDBA4)),
+    Tone.bad: ToneColours(Color(0xFF4A1C1C), Color(0xFFFF8A8A)),
+  };
+
+  static ToneColours of(BuildContext context, Tone tone) =>
+      (Theme.of(context).brightness == Brightness.dark ? _dark : _light)[tone]!;
+
+  /// Both tables, for the contrast test.
+  static Map<Tone, ToneColours> table(Brightness brightness) =>
+      brightness == Brightness.dark ? _dark : _light;
 }

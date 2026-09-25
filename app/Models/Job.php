@@ -145,6 +145,87 @@ class Job extends Model implements StatesRetention
         ])->save();
     }
 
+    /**
+     * Keep `earned_at` in step with whether this job is earned: stamp it on the
+     * way IN to an earned status, clear it on the way OUT of every earned one.
+     *
+     * The invariant, from 2026-09-24: `earned_at` is NOT NULL exactly when the
+     * job's status is earned. Status decides WHETHER a job counts; `earned_at`
+     * decides WHEN. §8.1's "a closed month stays closed" still holds for
+     * everything that stays earned -- the first moment is kept while the job is
+     * earned, including across a move between two earned statuses. What clears
+     * is a job that stops being earned, which is a real change, not a re-read.
+     *
+     * Why clearing, and why now: Workiz re-reads reaching old closed jobs move
+     * some that a stale A1 Tools copy had as Done back to "done pending
+     * approval", which Jose ruled is not earned ("Only Done"). Kept, their stamp
+     * would count revenue that was never earned. Re-entering Done later stamps
+     * the moment Workiz actually reports, not the stale one.
+     *
+     * The name predates the clearing branch and is kept so the two callers --
+     * JobsController and the Workiz follow pass, both of which call this on ANY
+     * status change -- gain the clear with no change of their own.
+     *
+     * The ONE place that decides when money was earned (spec §8.1, §8.2). It
+     * used to live inline in JobsController::update, which made the API its
+     * only writer: a job whose status changed any other way — the Workiz
+     * projection following a job to Done — could never reach revenue, because
+     * Revenue reads `whereNotNull('earned_at')` with no status clause. A second,
+     * inlined copy would let the API and the projection disagree about the
+     * month, so both call this.
+     *
+     * It decides three things and deliberately NOT a fourth:
+     *   - at most once: an already-earned job keeps its first moment, so a
+     *     closed month stays closed;
+     *   - only for a status the organization counts as earned;
+     *   - at the moment given, or now.
+     * WHETHER the status just changed is the CALLER's to decide, because only
+     * the caller knows. JobsController calls this only when `status` is dirty —
+     * otherwise correcting the title of an old completed job would stamp it
+     * into the current month. A backfill, by contrast, wants exactly the
+     * already-earned jobs, and calls it on them directly.
+     *
+     * `$at` is any instant, in ANY zone, and it is stored as that instant.
+     * Normalised to UTC here, by construction, because Laravel formats a
+     * Carbon in the zone it is HOLDING and this column is UTC: a caller passing
+     * 12:30 in New York used to get 12:30 UTC stored -- four hours early, and at
+     * the end of a month, in the wrong month. Workiz hit it on 2026-09-24 and
+     * their test caught it. Worse, this docblock recommended that exact call.
+     * It is safe now whatever zone the caller holds.
+     *
+     * What the caller still has to get right is which zone a NAKED wall-clock
+     * time belongs to, because only the caller knows. Workiz's
+     * `last_status_update` has no zone and is the franchise's local time, so
+     * parse it there -- `Carbon::parse($wall, $this->franchise->timezone)` --
+     * and pass the result; this method takes it from there.
+     *
+     * Sets the attribute and does not save; the caller saves, inside whatever
+     * transaction already holds the record and its audit row.
+     */
+    public function markEarnedIfDue(?\DateTimeInterface $at = null): void
+    {
+        // Left every earned status: no longer earned, so no earned moment.
+        // Cleared rather than kept, because revenue reads whereNotNull with no
+        // status clause -- a stamp left on a job that is not earned is revenue
+        // that was never earned. Checked FIRST, before the once-guard below,
+        // or an already-stamped job could never be cleared.
+        if (! \App\Support\Jobs\EarnedStatuses::isEarned((string) $this->status, $this->franchise)) {
+            $this->earned_at = null;
+
+            return;
+        }
+
+        // Still earned: keep the first moment. Moving between two earned
+        // statuses does not move the month (§8.1).
+        if ($this->earned_at !== null) {
+            return;
+        }
+
+        $this->earned_at = $at !== null
+            ? \Illuminate\Support\Carbon::instance($at)->utc()
+            : now()->utc();
+    }
+
     // ── status (§2.1 category 5) ─────────────────────────────────
 
     /**

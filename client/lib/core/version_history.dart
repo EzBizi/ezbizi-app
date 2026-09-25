@@ -8,17 +8,63 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
-      version: '0.0.0262',
+      version: '0.0.0268',
       date: '24 Sep 2026',
       items: [
-        'Automations has sixteen more templates, across leads, jobs, phone, reviews, the team, social posts, the website and computers. The template list has a search bar, which also matches where a template runs.',
+        'The 432 jobs and 500 customers that the Workiz import had created twice are gone, so no A-1 Chimney job shows twice. Revenue never counted them twice.',
+        'Every imported Workiz job is now checked against Workiz again over time, closed ones included, so a job whose status changed there long ago catches up here too.',
+        'A job moved out of the statuses that mean the money is earned stops counting as revenue, so a past month can go down. A job that returns to one counts from the day it returned.',
       ],
     ),
     VersionRelease(
-      version: '0.0.0261',
+      version: '0.0.0267',
+      date: '24 Sep 2026',
+      items: [
+        'Automations that run when a job changes status, or is completed, now also run when Workiz moves an imported job - for moves Workiz made in the last two hours, so older history sets nothing off.',
+        'Replying from the A1Leads GBP table opens the reply under the review instead of switching to the board.',
+        'AI Assistance is a new item in the sidebar. AI shows the WhatsApp staff bot\'s menu and its location search; Library holds the answers the bot gives, which you can add to and edit, each for everyone or for staff only; Settings holds the bot\'s name and welcome. Administrators have it, and other roles can be given it in Roles.',
+        'Two Workiz imports running at once can no longer create the same job or customer twice.',
+        'Jobs is a table under day headings - Today, Tomorrow, Yesterday and the weekdays - each with the day\'s count. It opens on Upcoming, with Past and All beside it, and the status chips count within that window; Canceled is red. Click a job and the table becomes a list with the job open beside it. Amounts read like \$289.00, and a job with no lines shows a dash instead of USD 0.00.',
+        'Customers is the same kind of table under letter headings, with a City column and chips for repeat customers and for customers with no jobs yet. A customer\'s record lists their jobs.',
+        'A customer\'s record names the company beside the franchise, as the list row that opened it does.',
+        '148 jobs that were in Workiz but never reached EzBizi arrive with the next imports, with their customers.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0265',
+      date: '24 Sep 2026',
+      items: [
+        'An automation can send its email, text or WhatsApp to The customer it is about - the customer of the job the rule fired on, looked up when it runs.',
+        'The Jobs list loads faster: it no longer fetches the details of every job on the page, only of the one you open.',
+        'Web Management, Widgets: Review faces. A happy face sends the visitor to your review link, and a sad one opens a short form whose message lands in Leads rather than on Google. The wording, the background it sits on and the face size are set per preset. It shows on sites with version 1.15.0 of the EzBizi website plugin.',
+        'A job with a date can be saved from its panel again. Save was refused with "The scheduled for field must be a valid date", and Scheduled for showed empty, on almost every job. It is also what still stopped the imported jobs that 0.0.0251 said could be saved.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0264',
+      date: '24 Sep 2026',
+      items: [
+        'Replying to A-1 Chimney\'s Google reviews is on: anyone who can see A1Leads GBP, with A-1 Chimney in view, can post a public reply, and every attempt is recorded in the audit log.',
+        'Jobs imported from Workiz follow Workiz: a job that is done, canceled or in progress there reads the same here, and so do its date and price - unless somebody changed that field in EzBizi, which stays theirs. Past jobs catch up over the next few hours.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0263',
+      date: '24 Sep 2026',
+      items: [
+        'HR, Records: pick a person from the list and their record opens beside it, in sections - Personal, Employment, Work, Onboarding, Time off, Training and Access. HR can now edit the name, phone, home address, gender, date of birth and start date. Email, onboarding answers and time off stay read only.',
+        'Work Hours is its own item in the sidebar, beside Human Resources, with three tabs: General (what was Work Hours in HR), Paid Time Off (moved from HR) and Settings. Roles that could see those in HR keep the same access in Work Hours.',
+        'From a person\'s week in Work Hours, whoever may manage Work Hours can set their work schedule.',
+        'The dashboard can show a Work Hours box: who is clocked in now, and the hours clocked in the period.',
+        'A1Leads GBP shows A-1 Chimney\'s reviews only while A-1 Chimney is in view - the whole organization, A-1 Chimney or one of its franchises. With another company in view it says whose reviews these are. It opens on the table; a phone still opens on the board.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0262',
       date: '24 Sep 2026',
       items: [
         'Scheduling Settings has a Time slots section. Set the windows your business books into once, and every service area uses them. Each area sets how many jobs a window takes on each day.',
+        'Automations has sixteen more templates, across leads, jobs, phone, reviews, the team, social posts, the website and computers. The template list has a search bar, which also matches where a template runs.',
       ],
     ),
     VersionRelease(

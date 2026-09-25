@@ -1,0 +1,337 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>HR › Records — a person's whole record, editable</title>
+<style>
+:root{
+  --paper:#fff; --ground:#f4f7f8; --ink:#0d1117; --muted:#5b6b73;
+  --line:#d7e0e3; --brand:#0f766e; --bad:#ba1a1a; --warn:#8a5a00;
+  --ok:#1a7f37; --soft:#f6fafa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);
+  font:14px/1.55 -apple-system,Segoe UI,Roboto,system-ui,sans-serif;padding:26px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:21px;margin:0 0 10px}
+h2{font-size:17px;margin:34px 0 4px;display:flex;align-items:baseline;gap:10px}
+h2 .n{display:inline-flex;width:28px;height:28px;border-radius:50%;background:var(--ink);
+  color:#fff;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--brand);border:1px solid var(--brand);
+  border-radius:999px;padding:2px 8px}
+.sub{color:#2b3a41;font-size:13.5px;margin:0 0 9px;max-width:900px}
+.cap{font-size:12.5px;color:var(--muted);margin:2px 0 10px;max-width:900px}
+code{background:#e6eef0;padding:1px 4px;border-radius:4px;font-size:12px}
+.facts{background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  padding:14px 18px;font-size:13px;max-width:980px}
+.facts ul{margin:6px 0 0;padding-left:18px}
+.facts li{margin:3px 0}
+.win{width:1120px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.body{display:flex;min-height:560px}
+.side{width:268px;border-right:1px solid var(--line);display:flex;flex-direction:column}
+.search{margin:12px;border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+  font-size:12.5px;color:var(--muted)}
+.filt{display:flex;gap:6px;padding:0 12px 10px}
+.filt span{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.filt span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.prow{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:12.5px;
+  border-top:1px solid #eef2f3}
+.prow.on{background:#eaf3f2;box-shadow:inset 3px 0 0 var(--brand)}
+.prow.off .nm{color:var(--muted)}
+.av{width:30px;height:30px;border-radius:50%;background:#e6eef0;display:flex;
+  align-items:center;justify-content:center;font-size:10.5px;font-weight:800;
+  color:#516067;flex:0 0 auto}
+.av.big{width:52px;height:52px;font-size:17px}
+.prow .t{flex:1;min-width:0}
+.prow .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .rl{font-size:11px;color:var(--muted)}
+.tag{font-size:10px;font-weight:700;border-radius:999px;padding:2px 7px;
+  background:#f1f3f4;color:var(--muted)}
+.main{flex:1;padding:18px 22px;overflow:auto;background:#fbfcfc}
+.who{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.who .n{font-weight:700;font-size:17px}
+.who .s{font-size:12px;color:var(--muted)}
+.chip{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px}
+.chip.ok{background:#e7f4ea;color:var(--ok)}
+.chip.off{background:#f1f3f4;color:var(--muted)}
+.who .acts{margin-left:auto;display:flex;gap:8px}
+.btn{font:600 12px/1 inherit;padding:8px 12px;border:1px solid var(--line);
+  border-radius:8px;background:var(--paper);white-space:nowrap}
+.btn.pri{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn.link{border:0;background:none;color:var(--brand);padding:4px 0}
+.sec{background:var(--paper);border:1px solid var(--line);border-radius:12px;
+  margin-bottom:12px}
+.sec .h{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #eef2f3;
+  font-weight:700;font-size:13px}
+.sec .h .btn{margin-left:auto}
+.sec .h .ro{margin-left:auto;font-size:11px;font-weight:500;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 18px;padding:12px 14px}
+.grid.two{grid-template-columns:repeat(2,1fr)}
+.f .k{font:700 9.5px sans-serif;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin-bottom:2px}
+.f .v{font-size:13px}
+.f .v.none{color:var(--muted);font-style:italic}
+.f .why{font-size:11px;color:var(--muted);margin-top:2px}
+.in{border:1px solid #b9c7cc;border-radius:7px;padding:6px 9px;font-size:13px;
+  background:#fff;min-height:32px}
+.in.sel::after{content:" ▾";color:var(--muted)}
+.in.dirty{border-color:var(--brand);box-shadow:0 0 0 2px #cfe6e3}
+.in.locked{background:#f4f6f7;color:var(--muted)}
+.editbar{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 12px}
+.itabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 14px;flex-wrap:wrap}
+.itabs span{font-size:12.5px;font-weight:600;padding:8px 12px;color:var(--muted);
+  border-bottom:2px solid transparent}
+.itabs span.on{color:var(--ink);border-color:var(--brand)}
+.dock{position:sticky;bottom:0;display:flex;align-items:center;gap:10px;
+  background:#0d1117;color:#fff;border-radius:10px;padding:10px 14px;margin-top:6px;
+  font-size:12.5px}
+.dock .btn{background:#fff}
+.dock .sp{flex:1}
+.list{padding:10px 14px;font-size:12.5px}
+.list .it{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #f0f3f4}
+.list .it:last-child{border:0}
+.list .it .d{margin-left:auto;color:var(--muted);font-size:11.5px}
+/* phones */
+.phones{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.ph{width:360px;max-width:100%;background:var(--paper);border:1px solid var(--line);
+  border-radius:26px;overflow:hidden}
+.ph .top{display:flex;align-items:center;gap:10px;padding:14px 16px;
+  border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+.ph .top .bk{font-size:18px;color:var(--brand)}
+.ph .pc{padding:14px;background:#fbfcfc;min-height:560px}
+.ph .lbl{font-size:11px;color:var(--muted);margin:4px 2px 8px}
+.ph .prow{border:1px solid var(--line);border-radius:11px;margin-bottom:7px;background:#fff}
+.hchips{display:flex;gap:6px;overflow:hidden;margin:0 0 12px}
+.hchips span{font-size:12px;font-weight:600;padding:7px 12px;border:1px solid var(--line);
+  border-radius:999px;white-space:nowrap;background:#fff}
+.hchips span.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.sheet{border:1px solid var(--line);border-radius:18px 18px 0 0;background:#fff;
+  box-shadow:0 -8px 24px #0d111718;padding:14px;margin:14px -14px -14px}
+.sheet .grab{width:38px;height:4px;border-radius:9px;background:#d0d8db;margin:0 auto 12px}
+.expand{border:1px solid var(--brand);border-radius:12px;background:#fff;margin-bottom:7px}
+.expand .prow{border:0;margin:0;border-radius:12px 12px 0 0;background:#eaf3f2}
+.pair{display:flex;justify-content:space-between;font-size:12.5px;padding:5px 12px}
+.pair .k{color:var(--muted)}
+.note{font-size:11.5px;color:var(--muted);margin:6px 2px}
+.pick{margin-top:40px;background:var(--paper);border:1px solid var(--line);
+  border-radius:12px;padding:14px 18px;font-size:13.5px;max-width:980px}
+@media (max-width:700px){.grid{grid-template-columns:1fr 1fr}}
+</style>
+
+<div class="wrap">
+
+<h1>HR › Records — everybody on the left, their whole record on the right, and editable</h1>
+<p class="sub">Jose, 2026-09-24: <i>"i'd like the users to be on a left side bar and clicking on them brings
+out all the information, which can be edited."</i> The desktop shape is yours already — list left, record
+right. These three differ in <b>how the record is laid out and how editing works</b>. The phone cannot
+hold a sidebar, so its three are designed for the phone rather than narrowed. Pick one desktop
+(<b>1–3</b>) and one phone (<b>4–6</b>).</p>
+
+<div class="facts">
+<b>What a record actually holds today</b> — measured from the code, so nothing below is invented:
+<ul>
+<li><b>Personal</b> — first, middle and last name, phone, home address, date of birth, gender, email.
+  Today only the person can change these, in Your account. After this, HR can too — <i>the same record,
+  not a copy</i>, and every change is logged with who made it.</li>
+<li><b>Employment</b> — role, active or deactivated, where they work, start date, and when their
+  account was created.</li>
+<li><b>Work</b> — their work schedule, and whether the lock screen is switched off for them.</li>
+<li><b>Onboarding</b> — what they filled in and signed, per contract, plus uploaded documents.</li>
+<li><b>Time off, Training, Access</b> — their paid-time-off allowance and date, training, and the
+  authenticator reset / password reset link that already live in the row's menu.</li>
+</ul>
+<p style="margin:8px 0 0"><b>Three things stay read-only on purpose, in every option:</b>
+<b>email</b> (it is how they sign in — changing it from here can lock them out),
+<b>what onboarding collected</b> (it is what they signed; editing it afterwards would change a signed
+record), and <b>time off</b> (it comes from the organization's policy in Settings).
+<b>Start date becomes editable</b> — nothing can record a start date that already happened today, which is
+why Paid time off says "we cannot tell you" for everybody who was here before it existed.</p>
+</div>
+
+<!-- ───────────────────────── DESKTOP 1 ───────────────────────── -->
+<h2><span class="n">1</span>One record, each section edits on its own <span class="rec">recommended</span></h2>
+<p class="cap">Everything on one scrolling page. Each section has its own <b>Edit</b>, which turns just that
+section into fields with Save and Cancel. Fixing a phone number cannot touch their role by accident, and each
+save is one small, logged change.</p>
+<div class="win"><div class="body">
+  <div class="side">
+    <div class="search">Search people…</div>
+    <div class="filt"><span class="on">Active 14</span><span>Deactivated 2</span></div>
+    <div class="prow"><div class="av">BO</div><div class="t"><div class="nm">Bea Okafor</div><div class="rl">Technician · Stamford</div></div></div>
+    <div class="prow on"><div class="av">JA</div><div class="t"><div class="nm">Jon Ames</div><div class="rl">Dispatcher · Stamford</div></div></div>
+    <div class="prow"><div class="av">MS</div><div class="t"><div class="nm">Marco Silva</div><div class="rl">Office · Organization</div></div></div>
+    <div class="prow"><div class="av">NR</div><div class="t"><div class="nm">Nadia Ruiz</div><div class="rl">Technician · Norwalk</div></div></div>
+    <div class="prow"><div class="av">PL</div><div class="t"><div class="nm">Priya Lal</div><div class="rl">Manager · Norwalk</div></div></div>
+    <div class="prow off"><div class="av">TK</div><div class="t"><div class="nm">Tom Kerr</div><div class="rl">Technician</div></div><span class="tag">Deactivated</span></div>
+  </div>
+  <div class="main">
+    <div class="who"><div class="av big">JA</div><div><div class="n">Jon Ames</div>
+      <div class="s">Dispatcher · Stamford · <span class="chip ok">Active</span></div></div>
+      <div class="acts"><span class="btn">Password reset link</span><span class="btn">⋯</span></div></div>
+
+    <div class="sec"><div class="h">Personal<span class="btn pri" style="margin-left:auto">Save</span><span class="btn" style="margin-left:8px">Cancel</span></div>
+      <div class="grid">
+        <div class="f"><div class="k">First name</div><div class="in">Jon</div></div>
+        <div class="f"><div class="k">Middle name</div><div class="in"></div></div>
+        <div class="f"><div class="k">Last name</div><div class="in">Ames</div></div>
+        <div class="f"><div class="k">Phone</div><div class="in dirty">(203) 555-0148</div></div>
+        <div class="f"><div class="k">Date of birth</div><div class="in">Mar 4, 1991</div></div>
+        <div class="f"><div class="k">Gender</div><div class="in">Male</div></div>
+        <div class="f" style="grid-column:span 2"><div class="k">Home address</div><div class="in">41 Elm St, Stamford CT 06902</div></div>
+        <div class="f"><div class="k">Email</div><div class="in locked">jon@a1group.test</div><div class="why">They sign in with this — they change it under Your account.</div></div>
+      </div></div>
+
+    <div class="sec"><div class="h">Employment<span class="btn">Edit</span></div>
+      <div class="grid">
+        <div class="f"><div class="k">Role</div><div class="v">Dispatcher</div></div>
+        <div class="f"><div class="k">Status</div><div class="v">Active</div></div>
+        <div class="f"><div class="k">Works at</div><div class="v">Stamford</div></div>
+        <div class="f"><div class="k">Start date</div><div class="v">Jun 2, 2025</div></div>
+        <div class="f"><div class="k">Account created</div><div class="v">Sep 10, 2026</div><div class="why">When EzBizi got them, not when they started.</div></div>
+      </div></div>
+
+    <div class="sec"><div class="h">Work<span class="btn">Edit</span></div>
+      <div class="grid two">
+        <div class="f"><div class="k">Schedule</div><div class="v">Mon–Fri 8:00 AM – 5:00 PM</div></div>
+        <div class="f"><div class="k">Lock screen</div><div class="v">On</div></div>
+      </div></div>
+
+    <div class="sec"><div class="h">Onboarding<span class="ro">What they signed — read only</span></div>
+      <div class="list">
+        <div class="it"><b>Dispatcher agreement</b> v3 · 12 answers · 2 documents<span class="d">Completed Sep 12, 2026 · <span class="btn link">Open</span></span></div>
+      </div></div>
+
+    <div class="sec"><div class="h">Time off · Training · Access<span class="ro">From other tabs</span></div>
+      <div class="grid">
+        <div class="f"><div class="k">Paid time off</div><div class="v">6 days a year</div><div class="why">Usable from Aug 31, 2025</div></div>
+        <div class="f"><div class="k">Training</div><div class="v">2 of 3 complete</div></div>
+        <div class="f"><div class="k">Authenticator</div><div class="v"><span class="btn link">Reset it</span></div></div>
+      </div></div>
+  </div>
+</div></div>
+
+<!-- ───────────────────────── DESKTOP 2 ───────────────────────── -->
+<h2><span class="n">2</span>Sections as tabs inside the record</h2>
+<p class="cap">The same list on the left. The record has its own row of section tabs, so nothing scrolls —
+one section at a time, edited in place. Quicker to reach one thing; you never see the whole person at once.</p>
+<div class="win"><div class="body">
+  <div class="side">
+    <div class="search">Search people…</div>
+    <div class="filt"><span class="on">Active 14</span><span>Deactivated 2</span></div>
+    <div class="prow"><div class="av">BO</div><div class="t"><div class="nm">Bea Okafor</div><div class="rl">Technician · Stamford</div></div></div>
+    <div class="prow on"><div class="av">JA</div><div class="t"><div class="nm">Jon Ames</div><div class="rl">Dispatcher · Stamford</div></div></div>
+    <div class="prow"><div class="av">MS</div><div class="t"><div class="nm">Marco Silva</div><div class="rl">Office · Organization</div></div></div>
+    <div class="prow"><div class="av">NR</div><div class="t"><div class="nm">Nadia Ruiz</div><div class="rl">Technician · Norwalk</div></div></div>
+    <div class="prow"><div class="av">PL</div><div class="t"><div class="nm">Priya Lal</div><div class="rl">Manager · Norwalk</div></div></div>
+  </div>
+  <div class="main">
+    <div class="who"><div class="av big">JA</div><div><div class="n">Jon Ames</div>
+      <div class="s">Dispatcher · Stamford · <span class="chip ok">Active</span></div></div></div>
+    <div class="itabs"><span>Personal</span><span class="on">Employment</span><span>Work</span><span>Onboarding</span><span>Time off</span><span>Training</span><span>Access</span></div>
+    <div class="grid two" style="padding:0;max-width:640px">
+      <div class="f"><div class="k">Role</div><div class="in sel">Dispatcher</div></div>
+      <div class="f"><div class="k">Status</div><div class="in sel">Active</div></div>
+      <div class="f"><div class="k">Works at</div><div class="in locked">Stamford</div><div class="why">Set when they were invited.</div></div>
+      <div class="f"><div class="k">Start date</div><div class="in dirty">Jun 2, 2025</div></div>
+      <div class="f"><div class="k">Account created</div><div class="in locked">Sep 10, 2026</div></div>
+    </div>
+    <div class="editbar" style="justify-content:flex-start;padding:16px 0"><span class="btn pri">Save employment</span><span class="btn">Discard</span></div>
+  </div>
+</div></div>
+
+<!-- ───────────────────────── DESKTOP 3 ───────────────────────── -->
+<h2><span class="n">3</span>Always a form, one Save for everything</h2>
+<p class="cap">Every editable field is a field all the time — no Edit buttons. Change anything and a bar appears
+at the bottom: Save or Discard. Fastest when you are correcting several things; the easiest of the three to
+change something without meaning to.</p>
+<div class="win"><div class="body">
+  <div class="side">
+    <div class="search">Search people…</div>
+    <div class="filt"><span class="on">Active 14</span><span>Deactivated 2</span></div>
+    <div class="prow"><div class="av">BO</div><div class="t"><div class="nm">Bea Okafor</div><div class="rl">Technician · Stamford</div></div></div>
+    <div class="prow on"><div class="av">JA</div><div class="t"><div class="nm">Jon Ames</div><div class="rl">Dispatcher · Stamford</div></div></div>
+    <div class="prow"><div class="av">MS</div><div class="t"><div class="nm">Marco Silva</div><div class="rl">Office · Organization</div></div></div>
+    <div class="prow"><div class="av">NR</div><div class="t"><div class="nm">Nadia Ruiz</div><div class="rl">Technician · Norwalk</div></div></div>
+  </div>
+  <div class="main">
+    <div class="who"><div class="av big">JA</div><div><div class="n">Jon Ames</div>
+      <div class="s">Dispatcher · Stamford · <span class="chip ok">Active</span></div></div></div>
+    <div class="grid" style="padding:0 0 14px">
+      <div class="f"><div class="k">First name</div><div class="in">Jon</div></div>
+      <div class="f"><div class="k">Last name</div><div class="in">Ames</div></div>
+      <div class="f"><div class="k">Phone</div><div class="in dirty">(203) 555-0148</div></div>
+      <div class="f"><div class="k">Date of birth</div><div class="in">Mar 4, 1991</div></div>
+      <div class="f"><div class="k">Role</div><div class="in sel">Dispatcher</div></div>
+      <div class="f"><div class="k">Start date</div><div class="in dirty">Jun 2, 2025</div></div>
+      <div class="f" style="grid-column:span 2"><div class="k">Home address</div><div class="in">41 Elm St, Stamford CT 06902</div></div>
+      <div class="f"><div class="k">Schedule</div><div class="in">Mon–Fri 8–5</div></div>
+    </div>
+    <div class="sec"><div class="h">Onboarding<span class="ro">Read only</span></div>
+      <div class="list"><div class="it"><b>Dispatcher agreement</b> v3 · 12 answers<span class="d">Sep 12, 2026</span></div></div></div>
+    <div class="dock">2 unsaved changes — phone, start date<span class="sp"></span><span class="btn">Discard</span><span class="btn pri">Save</span></div>
+  </div>
+</div></div>
+
+<!-- ───────────────────────── PHONES ───────────────────────── -->
+<h2 style="margin-top:44px">On a phone — pick one of 4, 5 or 6</h2>
+<p class="cap">There is no room for a sidebar on a phone, so each of these starts from the list.</p>
+
+<div class="phones">
+
+<div>
+<h2 style="margin-top:6px"><span class="n">4</span>List, then the record <span class="rec">recommended</span></h2>
+<p class="cap" style="max-width:360px">Tap a name, the record opens full screen with a back arrow.
+Sections stack; Edit opens that section in a sheet from the bottom.</p>
+<div class="ph"><div class="top"><span class="bk">‹</span>Jon Ames</div><div class="pc">
+  <div class="who"><div class="av big">JA</div><div><div class="n">Jon Ames</div><div class="s">Dispatcher · <span class="chip ok">Active</span></div></div></div>
+  <div class="sec"><div class="h">Personal<span class="btn">Edit</span></div>
+    <div class="pair"><span class="k">Phone</span><span>(203) 555-0148</span></div>
+    <div class="pair"><span class="k">Address</span><span>41 Elm St, Stamford</span></div>
+    <div class="pair"><span class="k">Born</span><span>Mar 4, 1991</span></div></div>
+  <div class="sec"><div class="h">Employment<span class="btn">Edit</span></div>
+    <div class="pair"><span class="k">Role</span><span>Dispatcher</span></div>
+    <div class="pair"><span class="k">Start date</span><span>Jun 2, 2025</span></div></div>
+  <div class="sheet"><div class="grab"></div><b style="font-size:13px">Edit personal</b>
+    <div class="f" style="margin-top:10px"><div class="k">Phone</div><div class="in dirty">(203) 555-0148</div></div>
+    <div class="editbar" style="padding:12px 0 0"><span class="btn">Cancel</span><span class="btn pri">Save</span></div></div>
+</div></div>
+</div>
+
+<div>
+<h2 style="margin-top:6px"><span class="n">5</span>Record with section chips</h2>
+<p class="cap" style="max-width:360px">Same full-screen record, but a row of chips jumps between sections,
+like desktop 2. Less scrolling; one section at a time.</p>
+<div class="ph"><div class="top"><span class="bk">‹</span>Jon Ames</div><div class="pc">
+  <div class="who"><div class="av big">JA</div><div><div class="n">Jon Ames</div><div class="s">Dispatcher · <span class="chip ok">Active</span></div></div></div>
+  <div class="hchips"><span>Personal</span><span class="on">Employment</span><span>Work</span><span>Onboarding</span></div>
+  <div class="f" style="margin-bottom:10px"><div class="k">Role</div><div class="in sel">Dispatcher</div></div>
+  <div class="f" style="margin-bottom:10px"><div class="k">Status</div><div class="in sel">Active</div></div>
+  <div class="f" style="margin-bottom:10px"><div class="k">Start date</div><div class="in dirty">Jun 2, 2025</div></div>
+  <div class="f" style="margin-bottom:10px"><div class="k">Works at</div><div class="in locked">Stamford</div></div>
+  <div class="editbar" style="padding:8px 0 0"><span class="btn">Discard</span><span class="btn pri">Save</span></div>
+</div></div>
+</div>
+
+<div>
+<h2 style="margin-top:6px"><span class="n">6</span>Open in place</h2>
+<p class="cap" style="max-width:360px">No second screen. Tapping a person unfolds a short summary under their
+name; <b>Open record</b> goes to the full view. Good for glancing at several people in a row.</p>
+<div class="ph"><div class="top">Records</div><div class="pc">
+  <div class="search" style="margin:0 0 10px;background:#fff">Search people…</div>
+  <div class="prow"><div class="av">BO</div><div class="t"><div class="nm">Bea Okafor</div><div class="rl">Technician · Stamford</div></div></div>
+  <div class="expand"><div class="prow"><div class="av">JA</div><div class="t"><div class="nm">Jon Ames</div><div class="rl">Dispatcher · Stamford</div></div><span class="chip ok">Active</span></div>
+    <div class="pair"><span class="k">Phone</span><span>(203) 555-0148</span></div>
+    <div class="pair"><span class="k">Started</span><span>Jun 2, 2025</span></div>
+    <div class="pair"><span class="k">Schedule</span><span>Mon–Fri 8–5</span></div>
+    <div style="padding:6px 12px 12px;display:flex;gap:8px"><span class="btn pri">Open record</span><span class="btn">Edit</span></div></div>
+  <div class="prow"><div class="av">MS</div><div class="t"><div class="nm">Marco Silva</div><div class="rl">Office</div></div></div>
+  <div class="prow"><div class="av">NR</div><div class="t"><div class="nm">Nadia Ruiz</div><div class="rl">Technician · Norwalk</div></div></div>
+</div></div>
+</div>
+
+</div>
+
+<div class="pick"><b>Reply with two numbers</b> — one desktop (1–3) and one phone (4–6). My recommendation is
+<b>1 and 4</b>: the whole person on one page, and each section saved on its own, so correcting a phone number
+is one logged change that cannot touch their role or schedule.</div>
+
+</div>

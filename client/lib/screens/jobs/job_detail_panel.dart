@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';
 
@@ -25,11 +27,24 @@ class JobDetailPanel extends StatefulWidget {
     required this.api,
     required this.session,
     required this.id,
+    this.onDone,
+    this.dirty,
   });
 
   final ApiClient api;
   final Session session;
   final String id;
+
+  /// Set when the panel is DOCKED beside the jobs list rather than opened over
+  /// it: called where the panel would otherwise pop its route — true after a
+  /// save or a delete, false when it is closed. Its presence is what docks it.
+  final ValueChanged<bool>? onDone;
+
+  /// Kept true while something typed here is unsaved, so the list beside a
+  /// docked panel can refuse to switch jobs underneath it. Clicking the next
+  /// row is the natural move in that layout, and it would otherwise discard
+  /// the edit without a word.
+  final ValueNotifier<bool>? dirty;
 
   @override
   State<JobDetailPanel> createState() => _JobDetailPanelState();
@@ -54,10 +69,41 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   String? get _editRefusal => _me.refusal('jobs.edit', 'change a job');
   String? get _deleteRefusal => _me.refusal('jobs.delete', 'delete a job');
 
+  /// The fields as loaded, to tell an edit from the job as it stands.
+  String _loaded = '';
+
+  /// The job's time exactly as loaded, seconds included -- see [_minuteOf].
+  String _loadedScheduled = '';
+
+  String get _typed => [
+    _title.text,
+    _description.text,
+    _minuteOf(_scheduled.text),
+    _duration.text,
+    _status,
+  ].join('\u0000');
+
+  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+
   @override
   void initState() {
     super.initState();
+    for (final c in [_title, _description, _scheduled, _duration]) {
+      c.addListener(_markDirty);
+    }
     _load();
+  }
+
+  /// Where the panel goes when it is finished: its route, or the list it is
+  /// docked beside.
+  void _done(bool? changed) {
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone(changed ?? false);
+      return;
+    }
+
+    Navigator.of(context).pop(changed);
   }
 
   @override
@@ -94,12 +140,16 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       _row = row;
       _loading = false;
     });
+
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   void _fill(Map<String, dynamic> row) {
     _title.text = row['title'] as String? ?? '';
     _description.text = row['description'] as String? ?? '';
     _scheduled.text = _wallClock(row['scheduled_for'] as String?);
+    _loadedScheduled = _scheduled.text;
     final duration = row['duration_minutes'];
     _duration.text = duration == null ? '' : '$duration';
 
@@ -148,7 +198,15 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       _error = null;
     });
 
-    final scheduled = _scheduled.text.trim();
+    // Unchanged to the minute -> send back exactly what was loaded. The date
+    // field rewrites its text as `YYYY-MM-DD HH:MM` on blur, so a click in and
+    // out turns 09:43:33 into 09:43; sending that would move the job by up to
+    // 59 seconds, and the Workiz follow pass reads a changed time as a
+    // person's edit and stops following the appointment.
+    final typed = _scheduled.text.trim();
+    final scheduled = _minuteOf(typed) == _minuteOf(_loadedScheduled)
+        ? _loadedScheduled
+        : typed;
 
     final response = await widget.api.patch('/jobs/${widget.id}', {
       'title': _title.text.trim(),
@@ -170,7 +228,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   Future<void> _delete() async {
@@ -191,7 +249,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   @override
@@ -211,9 +269,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
               franchise?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
+      docked: widget.onDone != null,
+      onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : () => _done(null),
           child: const Text('Cancel'),
         ),
         Refused(
@@ -239,9 +299,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        Tag(
+                        // The pill the list shows, so a job reads the same
+                        // colour open as it did in its row.
+                        StatusPill(
                           row['status_label'] as String? ??
                               row['status'] as String,
+                          tone: toneForJobStatus(row['status'] as String),
                         ),
                         if (customer?['owned_by_this_franchise'] == false)
                           const Tag('Shared customer', warn: true),
@@ -263,7 +326,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       .map((s) => SearchOption(value: s.value, label: s.label))
                       .toList(),
                   onChanged: editable
-                      ? (v) => setState(() => _status = v ?? _status)
+                      ? (v) {
+                          setState(() => _status = v ?? _status);
+                          _markDirty();
+                        }
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -483,10 +549,38 @@ String _datePart(String? stamp) =>
 
 /// ISO from the API (`2026-03-08T09:00:00-05:00`) as the wall clock a person
 /// typed. The franchise timezone is already baked into the stored value.
+///
+/// Only a TRAILING zone is removed -- `Z`, or `+hh:mm` / `-hh:mm` at the very
+/// end. This used to split on `[Z+-]` anywhere in the string, so it stopped at
+/// the first hyphen of the DATE and returned "2026" for every timestamp: the
+/// Scheduled-for field was empty on every panel, and an untouched Save sent
+/// `scheduled_for: "2026"`, which the server refused. No dated job could be
+/// saved from here from 38955ed6 (2026-08-19) until this. The date's own
+/// hyphens are not a zone, and only a pattern anchored to the end can tell.
+/// job_panel_wall_clock_test.dart pins it with a dated fixture, which no panel
+/// test had.
+/// A wall-clock time reduced to what a person can see and change: the minute.
+///
+/// CalendarDayField shows and writes `YYYY-MM-DD HH:MM`, while a stored job can
+/// carry seconds (161 on production do, from Workiz). Comparing the two as text
+/// made a click into the date and out again read as an edit -- on every dated
+/// job, because even `08:00:00` and `08:00` differ as strings. Anything that
+/// does not parse is returned as typed, so a half-typed date still counts as a
+/// change.
+String _minuteOf(String text) {
+  final parsed = parseWallDateTime(text);
+  return parsed == null
+      ? text.trim()
+      : formatWallDateTime(parsed.day, parsed.hour, parsed.minute);
+}
+
 String _wallClock(String? stamp) {
   if (stamp == null || stamp.isEmpty) return '';
 
-  return stamp.replaceFirst('T', ' ').split(RegExp(r'[Z+-]')).first.trim();
+  return stamp
+      .replaceFirst('T', ' ')
+      .replaceFirst(RegExp(r'(?:Z|[+-]\d{2}:?\d{2})$'), '')
+      .trim();
 }
 
 String _firstError(ApiResponse response) {

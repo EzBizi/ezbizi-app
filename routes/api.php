@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\AssistantController;
+use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AccountDeletionController;
 use App\Http\Controllers\Api\AddressLookupController;
 use App\Http\Controllers\Api\AdsPerformanceController;
@@ -1305,7 +1307,7 @@ Route::prefix('v1')
          *
          * These two are the pane that shows everybody's week.
          */
-        Route::middleware('permission:hr.hours.view')->group(function () {
+        Route::middleware('permission:work_hours.general.view')->group(function () {
             // Clock in–out chip on Human Resources. `?on=` is a calendar date in
             // the current view timezone (design §9).
             Route::get('hr/time-clock', [TimeClockController::class, 'index']);
@@ -1327,7 +1329,20 @@ Route::prefix('v1')
          * right place for the gate, and the policy behind it says the same
          * thing for anything that reaches these another way.
          */
-        Route::middleware('permission:hr.hours.correct')->group(function () {
+        /*
+         * AI Assistance (2026-09-24). The AI tab asks the assistant; the
+         * Library tab is its answers, read on the tab and written under
+         * `ai_assistance.manage` by AssistantEntryPolicy, place by place.
+         */
+        Route::middleware('permission:ai_assistance.ai.view')->group(function () {
+            Route::get('ai-assistance/menu', [AssistantController::class, 'menu']);
+            Route::get('ai-assistance/locations', [AssistantController::class, 'locations']);
+        });
+        Route::apiResource('ai-assistance/entries', AssistantEntriesController::class)
+            ->except('show')
+            ->parameters(['entries' => 'entry']);
+
+        Route::middleware('permission:work_hours.manage')->group(function () {
             Route::patch('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'update']);
             Route::delete('hr/time-clock/shifts/{shift}', [TimeClockController::class, 'destroy']);
             // Force clock out, and the day's tag / extra hours / note (2026-09-24).
@@ -1357,6 +1372,13 @@ Route::prefix('v1')
 
         Route::middleware('permission:hr.records.view')
             ->get('hr/people', [HrPeopleController::class, 'index']);
+
+        // One person's whole record — the Records tab's right-hand pane
+        // (2026-09-24). Gated like the list: it has exactly one consumer, the
+        // Records tab, which is the case 0051 says the middleware is right for.
+        // Declared AFTER scope-options, or `{user}` would swallow that path.
+        Route::middleware('permission:hr.records.view')
+            ->get('hr/people/{user}', [HrPeopleController::class, 'show']);
 
         // Deliberately NOT behind the hr.view policy the rest of this group
         // leans on: everybody may read their own paid time off, and `hr.view`

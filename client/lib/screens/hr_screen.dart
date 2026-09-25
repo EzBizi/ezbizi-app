@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
-import '../core/ui_strings.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/contracts_tab.dart';
 import 'hr/dashboard_tab.dart';
 import 'hr/invitations_tab.dart';
 import 'hr/onboarding_tab.dart';
-import 'hr/pto_tab.dart';
 import 'hr/records_tab.dart';
-import 'hr/work_hours_tab.dart';
 
 /// Human Resources — five tabs (HR plan), plus Clock in–out when the
 /// organization has turned Clock in on.
@@ -131,18 +128,8 @@ class _HrScreenState extends State<HrScreen> {
       Icons.insights_outlined,
       () => DashboardTab(api: widget.api, session: widget.session),
     ),
-    if (_showClockInOut)
-      (
-        'hours',
-        UiStrings.t('time_clock.tab'),
-        Icons.schedule_outlined,
-        () => WorkHoursTab(
-          api: widget.api,
-          canCorrect:
-              widget.session.me?.permissions.contains('hr.hours.correct') ??
-              false,
-        ),
-      ),
+    // Work Hours and Paid time off left for their own module on 2026-09-24
+    // (work_hours_screen.dart).
     (
       'onboarding',
       'Onboarding',
@@ -160,12 +147,6 @@ class _HrScreenState extends State<HrScreen> {
       'Invitations',
       Icons.mail_outline,
       () => InvitationsTab(api: widget.api, session: widget.session),
-    ),
-    (
-      'pto',
-      'Paid time off',
-      Icons.beach_access_outlined,
-      () => PtoTab(api: widget.api, session: widget.session),
     ),
     (
       'contracts',
@@ -219,15 +200,6 @@ class _HrScreenState extends State<HrScreen> {
   bool _mayOpen(String tab) =>
       widget.session.me?.permissions.contains('hr.$tab.view') ?? false;
 
-  /// Chip rule (design §4 / §9): org switch on and `hr.view`. Absent
-  /// `time_clock` on `/me` is `organizationEnabled: false`.
-  bool get _showClockInOut {
-    final me = widget.session.me;
-    return me != null &&
-        me.timeClock.organizationEnabled &&
-        me.permissions.contains('hr.view');
-  }
-
   void _select(String tab) => setState(() {
     _tab = tab;
     _shown.add(tab);
@@ -272,8 +244,8 @@ class _HrScreenState extends State<HrScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'The tabs inside this module are granted one at a time — Work '
-                'Hours, Records, Onboarding and the rest — and none of them is '
+                'The tabs inside this module are granted one at a time — '
+                'Records, Onboarding and the rest — and none of them is '
                 'on your role.',
                 style: theme.textTheme.bodyMedium,
               ),

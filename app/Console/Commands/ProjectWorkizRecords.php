@@ -9,11 +9,16 @@ use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\EventEmitter;
+use App\Support\Jobs\EarnedStatuses;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\PhoneE164;
 use App\Support\Workiz\StateCode;
+use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -57,7 +62,8 @@ class ProjectWorkizRecords extends Command
 {
     protected $signature = 'ezbizi:project-workiz
         {--limit=500 : Most records of each kind to project in one run}
-        {--dry-run : Report what would be created and write nothing}';
+        {--dry-run : Report what would be created and write nothing}
+        {--announce-limit=200 : More recent status moves than this in one run is a backfill, and none is announced}';
 
     protected $description = 'Project mirrored Workiz clients and jobs into EzBizi customers and jobs';
 
@@ -67,7 +73,51 @@ class ProjectWorkizRecords extends Command
      * container before the test environment's database exists. See
      * SyncWorkizJobs for the full account.
      */
-    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit): int
+    /**
+     * ONE RUN AT A TIME, WHOEVER STARTS IT.
+     *
+     * On 2026-09-23 at 20:37 the scheduled run (limit 500) and a manual run
+     * (--limit=10000, projecting the history import) overlapped. The
+     * schedule's withoutOverlapping() guards only SCHEDULED invocations, and
+     * this command claimed rows with no lock of its own: both read the same
+     * unprojected rows, both created a job for each, and whichever link was
+     * written last won. 432 duplicate jobs and 500 duplicate customers, found by
+     * the Jobs session as twins sharing a customer and an appointment; the two
+     * `customer.imported` audit rows two seconds apart named the two runs.
+     *
+     * So the lock lives here, in the command, where a manual run cannot step
+     * around it. On production the cache store is `database`, so it is atomic
+     * across processes. It also keeps a Workiz status change from being
+     * announced twice — which, once Jose's rule exists, would be two texts to
+     * the same customer.
+     */
+    public const LOCK = 'ezbizi:project-workiz';
+
+    /**
+     * Long enough that no real run outlives it — projecting the whole history
+     * import took about two minutes — and short enough that a run killed
+     * mid-way does not hold the projection off for more than an hour.
+     */
+    private const LOCK_SECONDS = 3600;
+
+    public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
+    {
+        $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
+
+        if (! $lock->get()) {
+            $this->info('Another Workiz projection is already running, so this one did nothing.');
+
+            return self::SUCCESS;
+        }
+
+        try {
+            return $this->project($tenant, $numbers, $audit, $events);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function project(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
     {
         $dryRun = (bool) $this->option('dry-run');
         $limit = max(1, (int) $this->option('limit'));
@@ -88,10 +138,11 @@ class ProjectWorkizRecords extends Command
         $jobs = 0;
 
         foreach ($organizations as $organization) {
-            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $limit, $dryRun) {
+            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $events, $limit, $dryRun) {
                 $clients = $this->deriveClients($dryRun);
                 $customers = $this->projectCustomers($numbers, $audit, $limit, $dryRun);
                 $jobs = $this->projectJobs($numbers, $limit, $dryRun);
+                $this->followWorkiz($events, $dryRun);
 
                 return [$clients, $customers, $jobs];
             });
@@ -125,9 +176,11 @@ class ProjectWorkizRecords extends Command
     {
         $touched = 0;
 
+        // No orderBy here, ever: chunkById pages on `id > last id`, so ordering
+        // by anything else skips rows. orderBy('booked_at') did, on production:
+        // 828 of 8,054 rows were never read, and 148 jobs never got a client.
         WorkizJob::query()
             ->whereNotNull('client_id')
-            ->orderBy('booked_at')
             ->chunkById(500, function ($mirrored) use (&$touched, $dryRun) {
                 foreach ($mirrored as $job) {
                     $payload = $job->payload ?? [];
@@ -156,13 +209,20 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    // Ordered oldest first, so the LAST write wins and that is
-                    // the most recent job — which is the rule stated in the
-                    // migration rather than an accident of iteration.
-                    WorkizClient::query()->updateOrCreate(
+                    $client = WorkizClient::query()->firstOrNew(
                         ['franchise_id' => $job->franchise_id, 'client_id' => $job->client_id],
-                        $attributes,
                     );
+
+                    // The most recent job wins, decided by its date rather than
+                    // by the order rows are read in: the history import landed
+                    // old jobs AFTER newer ones. An undated job never overwrites
+                    // a dated one.
+                    if ($client->exists && $client->last_seen_at !== null
+                        && ($job->booked_at === null || $job->booked_at->lt($client->last_seen_at))) {
+                        continue;
+                    }
+
+                    $client->fill($attributes)->save();
 
                     $touched++;
                 }
@@ -313,30 +373,54 @@ class ProjectWorkizRecords extends Command
                 continue;
             }
 
-            $job = Job::create([
-                'franchise_id' => $franchise->getKey(),
-                'customer_id' => $client->customer_id,
-                'number' => $numbers->next(RecordNumberGenerator::JOBS, $franchise),
-                'title' => $this->title($mirrored),
-                'description' => $this->text($mirrored->payload['JobNotes'] ?? null),
+            /*
+             * THE JOB AND ITS LINK ARE ONE ACT, for the reason Customers gave
+             * about the customer and its link: if the job is written and the
+             * link is not, the next run sees a mirror row naming no job and
+             * projects a second one — silently.
+             */
+            DB::transaction(function () use ($mirrored, $franchise, $client, $numbers) {
+                $job = new Job([
+                    'franchise_id' => $franchise->getKey(),
+                    'customer_id' => $client->customer_id,
+                    'number' => $numbers->next(RecordNumberGenerator::JOBS, $franchise),
+                    'title' => $this->title($mirrored),
+                    'description' => $this->text($mirrored->payload['JobNotes'] ?? null),
 
-                // Workiz's own word. Job statuses are tenant-configured rather
-                // than an enum, so A-1's vocabulary lands as A-1's list and
-                // needs no mapping table.
-                'status' => $mirrored->status,
+                    // Workiz's own word. Job statuses are tenant-configured rather
+                    // than an enum, so A-1's vocabulary lands as A-1's list and
+                    // needs no mapping table.
+                    'status' => $mirrored->status,
 
-                // The naive 'Y-m-d H:i:s' string, handed straight to
-                // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
-                // is absent from every real payload — so building a Carbon
-                // first would arrive pre-shifted and the cast could not tell.
-                'scheduled_for' => $mirrored->scheduled_for?->format('Y-m-d H:i:s'),
+                    // The naive 'Y-m-d H:i:s' string, handed straight to
+                    // FranchiseWallTime's cast. Workiz sends no zone — `Timezone`
+                    // is absent from every real payload — so building a Carbon
+                    // first would arrive pre-shifted and the cast could not tell.
+                    'scheduled_for' => $mirrored->scheduled_for?->format('Y-m-d H:i:s'),
 
-                'amount_minor' => $this->minor($mirrored->payload['JobTotalPrice'] ?? null),
-                'currency' => strtoupper($franchise->currency ?: 'USD'),
-            ]);
+                    'amount_minor' => $this->minor($mirrored->payload['JobTotalPrice'] ?? null),
+                    'currency' => strtoupper($franchise->currency ?: 'USD'),
+                ]);
 
-            $mirrored->job_id = $job->getKey();
-            $mirrored->save();
+                // Arriving already Done is a move INTO an earned status, and it
+                // is stamped at Workiz's own moment — the same moment the Jobs
+                // session's one-time backfill uses, so the two paths agree.
+                // Nothing is stamped while the organization names no earned
+                // status, which is correct: it only acts on the way in. With
+                // no Workiz moment it stays UNSTAMPED: markEarnedIfDue would
+                // read null as now and file old work under this month.
+                $moment = $this->workizMoment($mirrored, $franchise->timezone);
+
+                if ($moment !== null) {
+                    $job->markEarnedIfDue($moment);
+                }
+
+                $job->save();
+
+                $mirrored->job_id = $job->getKey();
+                $mirrored->projected = $this->followedValues($job);
+                $mirrored->save();
+            });
 
             $created++;
         }
@@ -346,6 +430,306 @@ class ProjectWorkizRecords extends Command
         }
 
         return $created;
+    }
+
+    /**
+     * The fields that change over a job's life in Workiz, and so must keep
+     * following it after the job has been projected.
+     *
+     * Status is the one Jose reported. Schedule and price are the same freeze:
+     * a job gets rescheduled, and Workiz fills the price in when it is
+     * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
+     * them before they were priced.
+     */
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor'];
+
+    /**
+     * Keep projected jobs following Workiz — per field, and only where nobody
+     * in EzBizi has changed that field since the projection last wrote it.
+     *
+     * ── WHY NOT SIMPLY OVERWRITE ────────────────────────────────
+     *
+     * `docs/DEVELOPMENT-RULES.md`: a recurring sweep never overwrites a field a
+     * person has touched. Insert-only honoured that by never following Workiz
+     * at all, which froze every job at the status it was imported with — the
+     * bug. Overwriting would honour Workiz by reverting people. The two are
+     * told apart by remembering what was written: if the job still holds it,
+     * nobody chose otherwise and Workiz's new value may follow; if it does not,
+     * a person decided, and that field stops following.
+     *
+     * ── CANDIDATES BY VALUE, NOT BY CLOCK ───────────────────────
+     *
+     * The database is asked for rows where the mirror and the job DISAGREE on
+     * a followed field; only those are loaded. Comparing `updated_at` against a
+     * last-followed timestamp would have been shorter and wrong: DATETIME has
+     * one-second precision, so a change landing in the same second as the last
+     * run compares equal and is skipped — for a past job, possibly for ever.
+     * The SQL is only a pre-filter; the decision is made in PHP below.
+     *
+     * ── IT RAISES NO AUTOMATION EVENT ───────────────────────────
+     *
+     * Deliberately, for the reason in the class docblock: the first run after
+     * this ships follows well over a thousand jobs at once, and an emit here
+     * would turn that into as many notifications. `job.status_changed` for a
+     * Workiz job needs a backfill guard carried with it, and belongs to the
+     * Jobs and Automations sessions.
+     */
+    private function followWorkiz(EventEmitter $events, bool $dryRun): int
+    {
+        $followed = 0;
+        $announce = [];
+
+        WorkizJob::query()
+            ->select('workiz_jobs.*')
+            ->join('jobs', 'jobs.id', '=', 'workiz_jobs.job_id')
+            ->where(function ($q) {
+                $q->whereColumn('workiz_jobs.status', '<>', 'jobs.status')
+                    ->orWhereRaw('NOT (workiz_jobs.scheduled_for <=> jobs.scheduled_for)')
+                    ->orWhereRaw("NOT (ROUND(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice') * 100) <=> jobs.amount_minor)");
+            })
+            ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
+                $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
+
+                foreach ($mirrored as $row) {
+                    $job = $jobs->get($row->job_id);
+
+                    if ($job === null) {
+                        continue;
+                    }
+
+                    $last = $row->projected ?? $this->followedValues($job);
+                    $now = $this->followedValues($job);
+                    $workiz = [
+                        'status' => $row->status,
+                        'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
+                        'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
+                    ];
+
+                    $changes = [];
+
+                    foreach (self::FOLLOWED as $field) {
+                        $untouched = $this->same($now[$field], $last[$field]);
+                        $moved = ! $this->same($workiz[$field], $now[$field]);
+
+                        // A job with no status is not a job: never follow Workiz
+                        // into an empty one, for the same reason creation skips it.
+                        if ($field === 'status' && ($workiz['status'] ?? '') === '') {
+                            continue;
+                        }
+
+                        if ($untouched && $moved) {
+                            $changes[$field] = $workiz[$field];
+                        }
+                    }
+
+                    if ($dryRun) {
+                        $followed += $changes === [] ? 0 : 1;
+
+                        continue;
+                    }
+
+                    DB::transaction(function () use ($row, $job, $changes, $last, $now, &$announce) {
+                        if ($changes !== []) {
+                            $job->forceFill($changes);
+
+                            /*
+                             * WORKIZ-COMPLETED WORK MUST REACH REVENUE.
+                             *
+                             * `earned_at` had one writer, JobsController, which
+                             * fires only through the API — so a job this pass
+                             * moved to Done got no stamp, and revenue, which
+                             * reads `whereNotNull('earned_at')`, never saw it.
+                             * The Jobs session's `markEarnedIfDue` is the ONE
+                             * rule for that, called rather than copied.
+                             *
+                             * Only when the status actually moved. A job already
+                             * sitting at Done is not re-stamped by a sync, or a
+                             * year of revenue would land in this month.
+                             */
+                            if (array_key_exists('status', $changes)) {
+                                $job->markEarnedIfDue($this->workizMoment($row, $job->franchise?->timezone));
+                            }
+
+                            $job->save();
+
+                            if (array_key_exists('status', $changes)
+                                && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                                $announce[] = [$job, $now['status'], $changes['status']];
+                            }
+                        }
+
+                        // What we have written, field by field. A field a
+                        // person changed is NOT recorded as ours: `last` keeps
+                        // our old write, so their value goes on not matching and
+                        // stays theirs.
+                        $row->projected = array_merge($last, array_intersect_key($changes, $last));
+                        $row->save();
+                    });
+
+                    $followed += $changes === [] ? 0 : 1;
+                }
+            }, 'workiz_jobs.id', 'id');
+
+        if ($followed > 0) {
+            $this->info($followed.' projected jobs followed a change in Workiz.');
+        }
+
+        $this->announce($events, $announce);
+
+        return $followed;
+    }
+
+    /**
+     * How recently Workiz must have changed a status for it to be announced.
+     *
+     * The catch-up after 0.0.0264 follows about 1,300 past jobs whose status
+     * changed weeks or months ago. Announcing those would text customers about
+     * work finished in August. So what decides is WHEN WORKIZ SAYS it happened,
+     * not when this pass noticed — a property of the row, not a flag somebody
+     * can forget to set.
+     *
+     * Two hours must comfortably exceed the time a real change takes to arrive:
+     * an upcoming job is swept every minute and followed within five, and a
+     * past one waits in the re-read queue, which rotates in well under an hour
+     * once the backlog is cleared. A change older than that is history.
+     */
+    private const ANNOUNCE_WITHIN_HOURS = 2;
+
+    /**
+     * Raise `job.status_changed` for the moves this pass made — or none at all.
+     *
+     * ── WHY IT IS RAISED HERE ───────────────────────────────────
+     *
+     * A-1 works in Workiz, so almost every real "went to Done" reaches EzBizi
+     * through this pass, and a write through the model emits nothing: every
+     * other `job.*` emit lives in JobsController. Without this, Jose's rule —
+     * "when a job changes status to Done, send a text" — would never fire for
+     * the work A-1 actually does.
+     *
+     * ── WHO IT IS FOR IS NOT IN THE EVENT ───────────────────────
+     *
+     * The payload is exactly JobsController's, `{before, after}`, and the Job
+     * is the subject. A rule reaches the customer through the Automations
+     * session's "The customer it is about" recipient, resolved at run time via
+     * the job's customer — NOT through a phone number carried in the event,
+     * because `automation_events` is declared as holding no personal data and
+     * erasure never visits it. Their ruling, 2026-09-24; an earlier draft of
+     * this pass did carry the number and was taken back out.
+     *
+     * ── ALL OR NOTHING ──────────────────────────────────────────
+     *
+     * The Automations session's ruling: a pass that finds more recent moves
+     * than any real hour produces is a backfill, and announces NONE rather than
+     * a subset. A partial flood is worse than none, because nobody can tell
+     * which customers were texted. Decided after the pass, before a single
+     * event exists, because an event cannot be taken back.
+     *
+     * @param  list<array{0: Job, 1: ?string, 2: string}>  $moves
+     */
+    private function announce(EventEmitter $events, array $moves): void
+    {
+        if ($moves === []) {
+            return;
+        }
+
+        $limit = max(0, (int) $this->option('announce-limit'));
+
+        if (count($moves) > $limit) {
+            $this->warn(count($moves).' jobs changed status in Workiz in one pass — more than '.$limit
+                .', so this is treated as a backfill and no automation is told.');
+
+            return;
+        }
+
+        foreach ($moves as [$job, $before, $after]) {
+            // Plain emit, not emitAfterCommit: this runs after the follow pass,
+            // when every row's transaction has already committed, so there is
+            // no rolled-back write for a rule to fire on.
+            $events->emit('job.status_changed', $job, [
+                'before' => ['status' => $before],
+                'after' => ['status' => $after],
+            ]);
+
+            // JobsController's companion, under its exact condition: entering an
+            // earned status from one that was not. Templates such as "Book next
+            // year's visit" listen on job.completed, so leaving it out would make
+            // Workiz jobs silently skip them. Silent today by construction —
+            // A1-Group names no earned status yet.
+            if (EarnedStatuses::isEarned($after, $job->franchise)
+                && ! EarnedStatuses::isEarned((string) ($before ?? ''), $job->franchise)) {
+                $events->emit('job.completed', $job, [
+                    'before' => ['status' => $before],
+                    'after' => ['status' => $after],
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Whether Workiz stamped this row's last change recently enough to announce.
+     * No stamp, no announcement: a text that should have gone and did not is
+     * recoverable; one about a months-old job is not.
+     */
+    private function happenedRecently(WorkizJob $row, ?string $timezone): bool
+    {
+        $moment = $this->workizMoment($row, $timezone);
+
+        return $moment !== null
+            && $moment->greaterThanOrEqualTo(now()->subHours(self::ANNOUNCE_WITHIN_HOURS));
+    }
+
+    /**
+     * When Workiz says the status last changed, as an instant.
+     *
+     * `LastStatusUpdate` is wall time with no zone — `Timezone` is absent from
+     * every real payload — so it is read in the branch's own zone. Reading it
+     * as UTC would move the stamp four or five hours and, at a month end, into
+     * the wrong month. No zone on the franchise falls back to UTC, the same
+     * fallback `FranchiseWallTime` uses, so the stamp and the schedule agree.
+     *
+     * Returned in UTC, and that is load-bearing rather than tidy: Laravel stores
+     * a date in whatever zone the Carbon is holding, so handing over a New York
+     * instant writes its New York wall clock into a UTC column and moves the
+     * stamp four hours. Found by the test, not by reading.
+     *
+     * Null when Workiz gave no moment, which `markEarnedIfDue` reads as now —
+     * right for a change this pass has only just seen, wrong for a job that
+     * ARRIVES already earned, so creation does not stamp on null.
+     */
+    private function workizMoment(WorkizJob $row, ?string $timezone): ?CarbonInterface
+    {
+        $raw = $row->getRawOriginal('last_status_update');
+
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        return Carbon::parse($raw, ($timezone ?? '') !== '' ? $timezone : 'UTC')->utc();
+    }
+
+    /**
+     * The followed fields as the `jobs` row holds them, in the same shapes the
+     * projection writes — the raw wall-clock string for the schedule, never a
+     * Carbon, because the cast stores naive time.
+     *
+     * @return array{status: ?string, scheduled_for: ?string, amount_minor: ?int}
+     */
+    private function followedValues(Job $job): array
+    {
+        return [
+            'status' => $job->status,
+            'scheduled_for' => $job->getRawOriginal('scheduled_for'),
+            'amount_minor' => $job->amount_minor,
+        ];
+    }
+
+    /**
+     * Equal as stored, whatever PHP type each side arrived as — JSON hands back
+     * ints where the model holds strings and the other way round.
+     */
+    private function same(mixed $a, mixed $b): bool
+    {
+        return (string) ($a ?? '') === (string) ($b ?? '');
     }
 
     /**

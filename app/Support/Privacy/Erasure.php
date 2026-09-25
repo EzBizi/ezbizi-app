@@ -145,7 +145,8 @@ final class Erasure
      * never applied — the Anonymiser checks for it first — so a model must not
      * mix `drop` with `erase`, and
      * PersonalDataPurgeTest::test_no_model_both_drops_its_rows_and_blanks_their_columns
-     * fails the build if one does.
+     * fails the build if one does. The exception is a model that says per row
+     * which applies, through `personalDataToErase` (see HoldsPersonalData).
      */
     public static function drop(string $because): self
     {

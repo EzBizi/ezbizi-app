@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../screens/ai_assistance_screen.dart';
 import '../screens/ads_performance_screen.dart';
 import '../screens/automations_screen.dart';
 import '../screens/customers_screen.dart';
@@ -23,6 +24,7 @@ import '../screens/scheduling_screen.dart';
 import '../screens/services_screen.dart';
 import '../screens/training_screen.dart';
 import '../screens/web_screen.dart';
+import '../screens/work_hours_screen.dart';
 import 'api_client.dart';
 import 'session.dart';
 
@@ -85,6 +87,14 @@ final Map<String, ModuleScreen> moduleScreens = {
   'hr': ModuleScreen(
     Icons.badge_outlined,
     (api, session) => HrScreen(api: api, session: session),
+  ),
+  'work_hours': ModuleScreen(
+    Icons.schedule_outlined,
+    (api, session) => WorkHoursScreen(api: api, session: session),
+  ),
+  'ai_assistance': ModuleScreen(
+    Icons.smart_toy_outlined,
+    (api, session) => AiAssistanceScreen(api: api, session: session),
   ),
   // Declared and not built, and it has an entry here for exactly that reason.
   // The sidebar draws the intersection of what the server declares with what

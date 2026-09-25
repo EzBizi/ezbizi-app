@@ -172,14 +172,14 @@ class TimeClockCorrectionTest extends TestCase
     /**
      * Reading the hours and rewriting them are different authorities.
      *
-     * The subject holds `hr.hours.view` specifically — the OTHER candidate —
+     * The subject holds `work_hours.general.view` specifically — the OTHER candidate —
      * because a fixture holding neither would be refused under either rule and
      * could not tell which one is in force.
      */
     public function test_the_work_hours_tab_alone_does_not_let_you_correct(): void
     {
         [$alpha, , $tech] = $this->tenant();
-        $reader = $this->userWithRole($alpha, 'Dispatch', ['hr.hours.view'], 'dispatch@alpha.test');
+        $reader = $this->userWithRole($alpha, 'Dispatch', ['work_hours.general.view'], 'dispatch@alpha.test');
         $shift = $this->row($alpha['org'], $tech, '2026-09-22 13:00:00', '2026-09-22 21:00:00');
 
         // The positive control: this person CAN read the pane. Without it a
@@ -218,7 +218,7 @@ class TimeClockCorrectionTest extends TestCase
 
         return [
             $alpha,
-            $this->userWithRole($alpha, 'Hr', ['hr.hours.view', 'hr.hours.all', 'hr.hours.correct'], 'hr@alpha.test'),
+            $this->userWithRole($alpha, 'Hr', ['work_hours.general.view', 'work_hours.all', 'work_hours.manage'], 'hr@alpha.test'),
             $this->userWithRole($alpha, 'Tech', ['time_clock.view'], 'tech@alpha.test'),
         ];
     }

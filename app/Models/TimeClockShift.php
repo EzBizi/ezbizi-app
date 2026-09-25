@@ -31,7 +31,7 @@ class TimeClockShift extends Model implements HoldsPersonalData
     public const ENDED_BY_AUTOMATION = 'automation';
 
     /*
-     * Somebody with `hr.hours.correct` set this time by hand. It is its own
+     * Somebody with `work_hours.manage` set this time by hand. It is its own
      * value for the reason `ended_by` exists at all: a row reading `person`
      * claims the person clocked out, and on a corrected row that is false —
      * the commonest correction is exactly the shift they FORGOT to close.

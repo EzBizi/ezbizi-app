@@ -394,6 +394,15 @@ final class TimeClock
         });
     }
 
+    /**
+     * The people Work Hours shows `$actor` — for the dashboard box, so the box
+     * and the screen cannot count different people.
+     */
+    public function visiblePeople(User $actor): Builder
+    {
+        return User::query()->where(fn (Builder $q) => $this->visibleTo($q, $actor));
+    }
+
     /** The zone Work Hours shows `$actor` times in — and reads corrections back in. */
     public function viewTimezone(User $actor): string
     {
@@ -496,14 +505,14 @@ final class TimeClock
      *
      * The route gate says the actor may correct hours; it does not say WHOSE.
      * The tenant scope stops another organization, and this stops another
-     * franchise: a branch manager holding `hr.hours.correct` sees only their
+     * franchise: a branch manager holding `work_hours.manage` sees only their
      * own people on Work Hours, and must not be able to edit anybody else's
      * by pasting an id. Same rule the week list draws with, so what can be
      * seen and what can be changed cannot drift apart.
      *
      * 404 rather than 403, so an id from outside does not confirm it exists.
      */
-    private function assertReaches(User $actor, ?User $person): void
+    public function assertReaches(User $actor, ?User $person): void
     {
         $visible = $person !== null && User::query()
             ->whereKey($person->getKey())
@@ -744,7 +753,7 @@ final class TimeClock
         $people = User::query()
             ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
             ->orderBy('name')
-            ->get(['id', 'name', 'is_active', 'avatar_path']);
+            ->get(['id', 'organization_id', 'name', 'is_active', 'avatar_path', 'work_schedule']);
 
         $records = TimeClockDay::query()
             ->whereIn('user_id', $people->modelKeys())
@@ -907,6 +916,18 @@ final class TimeClock
             // `[]`, and a client expecting `{}` for a week with no records
             // would fail on exactly the commonest week there is.
             'days' => $dayRows,
+            /*
+             * The schedule the clock is running on for this person, for the
+             * Work schedule card on their week (2026-09-24). Effective, not
+             * stored: somebody with no personal schedule is on the place's
+             * business hours, and the card should say which hours those are
+             * rather than "none". `schedule_is_personal` tells the two apart.
+             *
+             * ponytail: one scheduleFor() per person (an assignment read and a
+             * settings read each); batch it if a week ever lists hundreds.
+             */
+            'schedule' => (object) ($this->scheduleFor($person)['days'] ?? []),
+            'schedule_is_personal' => is_array($person->work_schedule),
         ];
     }
 
@@ -945,8 +966,8 @@ final class TimeClock
     {
         $query->whereKey($actor->getKey());
 
-        // Work Hours without `hr.hours.all` is the holder's own time only.
-        if (! $actor->hasPermission('hr.hours.all')) {
+        // Work Hours without `work_hours.all` is the holder's own time only.
+        if (! $actor->hasPermission('work_hours.all')) {
             return;
         }
 

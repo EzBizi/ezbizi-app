@@ -2,12 +2,17 @@ import '../../core/phone_numbers.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/job_status.dart';
+import '../../core/numbers.dart';
 import '../../core/session.dart';
+import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/franchise_field.dart';
 import '../../widgets/refused.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
+import '../jobs/job_detail_panel.dart';
 
 /// One customer, opened from the list.
 ///
@@ -20,11 +25,21 @@ class CustomerDetailPanel extends StatefulWidget {
     required this.api,
     required this.session,
     required this.id,
+    this.onDone,
+    this.dirty,
   });
 
   final ApiClient api;
   final Session session;
   final String id;
+
+  /// Set when the panel is DOCKED beside the customers list: called where it
+  /// would otherwise pop its route — true after a change, false on close.
+  final ValueChanged<bool>? onDone;
+
+  /// True while something typed here is unsaved, so the list beside a docked
+  /// panel can refuse to switch customers underneath it. See JobDetailPanel.
+  final ValueNotifier<bool>? dirty;
 
   @override
   State<CustomerDetailPanel> createState() => _CustomerDetailPanelState();
@@ -55,10 +70,42 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
   String? get _deleteRefusal =>
       _me.refusal('customers.delete', 'delete a customer');
 
+  /// The fields as loaded, to tell an edit from the record as it stands.
+  String _loaded = '';
+
+  List<TextEditingController> get _fields => [
+    _name,
+    _phone,
+    _email,
+    _line1,
+    _line2,
+    _city,
+    _state,
+    _postal,
+    _notes,
+  ];
+
+  String get _typed => _fields.map((c) => c.text).join('\u0000');
+
+  void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
+
   @override
   void initState() {
     super.initState();
+    for (final c in _fields) {
+      c.addListener(_markDirty);
+    }
     _load();
+  }
+
+  void _done(bool? changed) {
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone(changed ?? false);
+      return;
+    }
+
+    Navigator.of(context).pop(changed);
   }
 
   @override
@@ -101,6 +148,9 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       _row = row;
       _loading = false;
     });
+
+    _loaded = _typed;
+    widget.dirty?.value = false;
   }
 
   void _fill(Map<String, dynamic> row) {
@@ -157,7 +207,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       _busy = false;
     });
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   Future<void> _reassign() async {
@@ -181,7 +231,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   Future<void> _delete() async {
@@ -202,7 +252,7 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
       return;
     }
 
-    Navigator.of(context).pop(true);
+    _done(true);
   }
 
   @override
@@ -219,12 +269,19 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
           ? null
           : [
               row['number'],
+              // The company as well as the franchise, as on the list row: two
+              // companies may each run a "Texas", and this subtitle is what
+              // somebody reads before editing or reassigning the customer.
+              // The list said which Texas; the panel it opens must not stop.
+              (owner?['company'] as Map<String, dynamic>?)?['name'],
               owner?['name'],
             ].where((s) => s != null && '$s'.isNotEmpty).join(' · '),
       width: 520,
+      docked: widget.onDone != null,
+      onClose: widget.onDone == null ? null : () => _done(null),
       actions: [
         TextButton(
-          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          onPressed: _busy ? null : () => _done(null),
           child: const Text('Cancel'),
         ),
         Refused(
@@ -327,6 +384,15 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   enabled: editable,
                 ),
                 const SizedBox(height: 20),
+                if (row != null && _me.can('jobs.view')) ...[
+                  _CustomerJobs(
+                    api: widget.api,
+                    session: widget.session,
+                    customerId: widget.id,
+                    total: jobs,
+                  ),
+                  const SizedBox(height: 20),
+                ],
                 Text(
                   'Accountability',
                   style: Theme.of(context).textTheme.titleSmall,
@@ -450,4 +516,185 @@ String _firstError(ApiResponse response) {
   }
 
   return response.message;
+}
+
+/// The customer's jobs, newest first — the history the list promised.
+///
+/// Jose chose the record beside the list (queue 24, option 7), and the drawing
+/// he chose lists a customer's jobs under their details. Until then the only
+/// trace was a count on the row: "3 jobs", and no way to see which.
+///
+/// Read through the JOBS list, not a new endpoint: `customer_id` is a filter it
+/// already had, so reach applies exactly as it does on the Jobs screen. A
+/// customer is shared across the organization and their jobs are not, so a
+/// reader can see fewer jobs than the customer has — and says so, rather than
+/// showing two and letting "3 jobs" elsewhere look like a miscount.
+class _CustomerJobs extends StatefulWidget {
+  const _CustomerJobs({
+    required this.api,
+    required this.session,
+    required this.customerId,
+    required this.total,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final String customerId;
+
+  /// `jobs_count` on the customer: every job, whoever may open it.
+  final int total;
+
+  @override
+  State<_CustomerJobs> createState() => _CustomerJobsState();
+}
+
+class _CustomerJobsState extends State<_CustomerJobs> {
+  List<Map<String, dynamic>>? _jobs;
+  int _visible = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final response = await widget.api.get('/jobs', {
+      'customer_id': widget.customerId,
+      'per_page': '50',
+    });
+
+    if (!mounted) return;
+
+    setState(() {
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+
+      _jobs = List<Map<String, dynamic>>.from(response.data as List);
+      final meta = response.body['meta'] as Map<String, dynamic>?;
+      _visible = meta?['total'] as int? ?? _jobs!.length;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final jobs = _jobs;
+    final hidden = widget.total - _visible;
+    final place = widget.session.me!.organization.franchiseLabel.toLowerCase();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Jobs', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        if (_error != null)
+          ErrorNote(_error!)
+        else if (jobs == null)
+          const LinearProgressIndicator(minHeight: 2)
+        else ...[
+          if (jobs.isEmpty && hidden <= 0) Text('No jobs yet.', style: muted),
+          for (final job in jobs) _row(context, job),
+          if (_visible > jobs.length)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'The latest ${jobs.length} of $_visible.',
+                style: muted,
+              ),
+            ),
+          if (hidden > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                hidden == 1
+                    ? '1 more, in a $place you cannot open.'
+                    : '$hidden more, in ${place}s you cannot open.',
+                style: muted,
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Widget _row(BuildContext context, Map<String, dynamic> job) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final wall = parseWallDateTime(job['scheduled_for'] as String?);
+    final when = wall == null
+        ? 'Not scheduled'
+        : widget.session.me!.display.formatDate(wall.day);
+    final status = job['status'] as String? ?? '';
+
+    return InkWell(
+      onTap: () => showSidePanel<bool>(
+        context,
+        builder: (_) => JobDetailPanel(
+          api: widget.api,
+          session: widget.session,
+          id: job['id'] as String,
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: theme.colorScheme.outlineVariant,
+              width: 0.5,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    job['title'] as String? ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    '${job['number']} · $when',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: StatusPill(
+                job['status_label'] as String? ?? status,
+                tone: toneForJobStatus(status),
+              ),
+            ),
+            SizedBox(
+              width: 84,
+              child: Text(
+                listAmount(job['amount']) ?? '—',
+                textAlign: TextAlign.right,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

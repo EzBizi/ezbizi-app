@@ -1273,16 +1273,18 @@ class ActionRunner
             ];
         }
 
-        $to = $this->contactFromStored($field, $event, 'phone');
+        $to = $this->contactFromStored($field, $event, 'phone', $subject);
 
         if (! is_string($to) || trim($to) === '') {
             return [
                 'type' => $type, 'ok' => false,
-                'detail' => str_starts_with($field, self::RECIPIENT_USER)
+                'detail' => $field === self::RECIPIENT_CUSTOMER
+                    ? $this->noCustomerContact('phone number')
+                    : (str_starts_with($field, self::RECIPIENT_USER)
                     ? 'The person this step sends to no longer works here, or has no phone '
                         .'number, so there was nobody to send to.'
                     : "This event carried nothing in \"{$field}\", so there was no number to "
-                        .'send to.',
+                        .'send to.'),
             ];
         }
 
@@ -1331,7 +1333,8 @@ class ActionRunner
             // status that expires would leave a green line above a message that
             // never arrived. The row keeps the outcome; this sentence does not
             // claim one.
-            'detail' => "Handed the \"{$template}\" template to WhatsApp for {$row->counterparty}, "
+            'detail' => "Handed the \"{$template}\" template to WhatsApp for "
+                .($field === self::RECIPIENT_CUSTOMER ? 'the customer' : $row->counterparty).', '
                 ."from EzBizi's number. WhatsApp accepts or refuses it afterwards.",
             // THE LINK, so a reader can show the outcome without this row ever
             // being rewritten: the sentence above is a true-forever snapshot of
@@ -1388,7 +1391,7 @@ class ActionRunner
             ];
         }
 
-        $to = $this->emailRecipient($field, $event);
+        $to = $this->emailRecipient($field, $event, $record);
 
         if (! is_string($to) || filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
             return [
@@ -1397,10 +1400,10 @@ class ActionRunner
                 // something that is not an address" send somebody to two
                 // different places - the rule, or the record.
                 'detail' => $to === null || $to === ''
-                    ? (str_starts_with($field, self::RECIPIENT_USER)
+                    ? ($field === self::RECIPIENT_CUSTOMER ? $this->noCustomerContact('email address') : (str_starts_with($field, self::RECIPIENT_USER)
                         ? 'The person this step sends to no longer works here, or has no email '
                             .'address, so there was nobody to send to.'
-                        : "This event carried nothing in \"{$field}\", so there was no address to send to.")
+                        : "This event carried nothing in \"{$field}\", so there was no address to send to."))
                     : "\"{$field}\" held ".json_encode($to).', which is not an email address.',
             ];
         }
@@ -1425,13 +1428,38 @@ class ActionRunner
             return ['type' => $type, 'ok' => false, 'detail' => $refusal->getMessage()];
         }
 
-        $this->audit->log('automation.emailed', $event, metadata: ['to' => $to]);
+        // THE CUSTOMER'S ADDRESS IS NOT WRITTEN DOWN HERE. The run log and this
+        // audit row hang off a job event, which a customer's erasure does not
+        // reach, so their address would outlive them. "the customer" is enough
+        // to read the log by; the message itself is the record of where it went.
+        $shown = $field === self::RECIPIENT_CUSTOMER ? 'the customer' : $to;
 
-        return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$to}: {$subject}"];
+        $this->audit->log('automation.emailed', $event, metadata: ['to' => $shown]);
+
+        return ['type' => $type, 'ok' => true, 'detail' => "Emailed {$shown}: {$subject}"];
     }
 
     /** Prefix marking a stored recipient as a person rather than a field or an address. */
     private const RECIPIENT_USER = 'user:';
+
+    /**
+     * The customer the rule is about — the job's, the report's, or the
+     * customer itself. Jose, 2026-09-24: "when a job changes status to Done,
+     * then it would send a message via txt or whatsapp".
+     *
+     * Resolved NOW, through the subject's customer, and never copied into the
+     * event: the purge finds an event about a customer by its subject or by the
+     * number in the keys AutomationEvent::identifiers lists, and a job's event
+     * carrying the customer's number would match neither. This is one
+     * named relation the author picks, not the subject fall-through
+     * valueFromEvent refuses.
+     */
+    private const RECIPIENT_CUSTOMER = 'customer:';
+
+    private function noCustomerContact(string $what): string
+    {
+        return "This is not about a customer, or the customer has no {$what}, so nothing was sent.";
+    }
 
     /**
      * Who the email goes to: a person here, a field of the event, or an address.
@@ -1464,9 +1492,9 @@ class ActionRunner
      * table, which is the thing that would actually see a tenant going wrong.
      * That gap is with Jose and is the reason this docblock names it.
      */
-    private function emailRecipient(string $stored, AutomationEvent $event): mixed
+    private function emailRecipient(string $stored, AutomationEvent $event, ?Model $subject = null): mixed
     {
-        return $this->contactFromStored($stored, $event, 'email');
+        return $this->contactFromStored($stored, $event, 'email', $subject);
     }
 
     /**
@@ -1476,8 +1504,16 @@ class ActionRunner
      * and differ only in which column answers it. Two resolvers would be two
      * places to fix the day a fourth source is added.
      */
-    private function contactFromStored(string $stored, AutomationEvent $event, string $column): mixed
+    private function contactFromStored(string $stored, AutomationEvent $event, string $column, ?Model $subject = null): mixed
     {
+        if ($stored === self::RECIPIENT_CUSTOMER) {
+            $customer = $subject instanceof Customer
+                ? $subject
+                : (($id = $subject?->getAttribute('customer_id')) ? Customer::query()->find($id) : null);
+
+            return $customer?->getAttribute($column);
+        }
+
         if (str_starts_with($stored, self::RECIPIENT_USER)) {
             $user = User::query()
                 ->where('is_active', true)
@@ -1620,7 +1656,7 @@ class ActionRunner
         // asked somebody to keep a phone number correct inside a rule for
         // years.
         $to = trim((string) $this->contactFromStored(
-            trim((string) ($action['to'] ?? '')), $event, 'phone',
+            trim((string) ($action['to'] ?? '')), $event, 'phone', $subject,
         ));
         // INTERPOLATED LIKE EVERY OTHER MESSAGE. This arm was the last one
         // sending {{...}} out as braces: a missed-call text that cannot name the
@@ -1634,7 +1670,9 @@ class ActionRunner
                 'type' => $type,
                 'ok' => false,
                 'detail' => $to === ''
-                    ? 'No number to send to, so nothing was sent.'
+                    ? ($action['to'] ?? '') === self::RECIPIENT_CUSTOMER
+                        ? $this->noCustomerContact('phone number')
+                        : 'No number to send to, so nothing was sent.'
                     : 'The message was empty, so nothing was sent.',
             ];
         }
@@ -1693,7 +1731,9 @@ class ActionRunner
         return [
             'type' => $type,
             'ok' => true,
-            'detail' => 'Sent a message from '.$number->e164.' to '.$to.'.',
+            // Not the customer's number, for the reason given in sendEmail.
+            'detail' => 'Sent a message from '.$number->e164.' to '
+                .(($action['to'] ?? '') === self::RECIPIENT_CUSTOMER ? 'the customer' : $to).'.',
         ];
     }
 

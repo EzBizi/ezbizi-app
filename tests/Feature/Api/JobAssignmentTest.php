@@ -79,7 +79,7 @@ class JobAssignmentTest extends TestCase
      * `earned_at === null` guard deliberately removed). `Carbon::setTestNow()`
      * puts a full day between the two stamps so a re-stamp cannot hide.
      */
-    public function test_earned_at_is_stamped_once_on_the_first_earned_transition(): void
+    public function test_leaving_earned_clears_the_stamp_and_returning_stamps_the_return(): void
     {
         $alpha = $this->provisionTenant('Alpha');
 
@@ -101,18 +101,36 @@ class JobAssignmentTest extends TestCase
             $first = $this->jobRow($jobId)->earned_at;
             $this->assertNotNull($first);
 
-            // Out of earned and back in again does NOT re-stamp: the money was
-            // earned when the work was first finished, and a later correction
-            // must not move a closed month. A full day later, so a re-stamp
-            // cannot round back to the same second as the first one.
+            // POLICY REVERSED 2026-09-24 (Jobs), deliberately and not to make
+            // a red go green. This test used to assert the opposite -- out of
+            // earned and back in KEPT the first stamp, "a later correction must
+            // not move a closed month". That rule had a hole it never tested:
+            // a job that leaves earned and STAYS out kept its stamp, and Revenue
+            // (whereNotNull, no status clause) went on counting it. Real and
+            // imminent: Workiz re-reads move jobs a stale A1 Tools copy had as
+            // Done back to "done pending approval", which Jose ruled is not
+            // earned ("Only Done"). Status alone cannot tell a correction that
+            // should not un-earn from one revealing the job was never earned;
+            // of the two failures, counting money that was never earned is the
+            // one that is wrong about money. So: earned_at is NOT NULL exactly
+            // when the job is earned. Leaving clears; returning stamps the
+            // return. A full day apart, so a re-stamp cannot round to the same
+            // second -- the clock control is still what makes this readable.
             Carbon::setTestNow(Carbon::parse('2026-01-11 09:00:00'));
 
             $this->signedInAs($alpha['admin'])
                 ->patchJson("/api/v1/jobs/{$jobId}", ['status' => 'scheduled'])->assertOk();
+
+            $this->assertNull($this->jobRow($jobId)->earned_at,
+                'Out of every earned status: no longer earned, no stamp.');
+
             $this->signedInAs($alpha['admin'])
                 ->patchJson("/api/v1/jobs/{$jobId}", ['status' => 'completed'])->assertOk();
 
-            $this->assertEquals($first, $this->jobRow($jobId)->earned_at);
+            $this->assertNotEquals($first, $this->jobRow($jobId)->earned_at,
+                'Back in: the RETURN is the earned moment, not the first one.');
+            $this->assertSame('2026-01-11 09:00:00',
+                Carbon::parse($this->jobRow($jobId)->earned_at)->utc()->toDateTimeString());
         } finally {
             Carbon::setTestNow();
         }

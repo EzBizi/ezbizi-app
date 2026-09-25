@@ -107,6 +107,8 @@ class UiStrings {
     'time_clock.hours': 'Hours',
     'time_clock.minutes': 'Minutes',
     'time_clock.edited': 'Edited',
+    'time_clock.using_business_hours':
+        'No schedule of their own — these are the business hours.',
     'time_clock.ended_by_hr': 'Ended by HR',
     'time_clock.off': 'Clock in is switched off for this organization.',
     'time_clock.already_in': 'You are already clocked in.',

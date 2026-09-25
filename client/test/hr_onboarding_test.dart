@@ -11,6 +11,7 @@ import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/screens/hr/onboarding_tab.dart';
 import 'package:ezbizi_client/screens/hr_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
+import 'package:ezbizi_client/screens/hr/records_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -617,14 +618,24 @@ void main() {
     await _pumpHr(tester, _handler(form: _asEmployer));
 
     await _tap(tester, find.widgetWithText(ChoiceChip, 'Records'));
-    await _tap(tester, find.byType(PopupMenuButton<String>).first);
-    await _tap(tester, find.text('What onboarding collected'));
+    // The list on the left, then her record, then its Onboarding section —
+    // in the record's own strip, by key, so this is never the module's
+    // Onboarding chip.
+    await _tap(tester, find.text('Bea Okafor').first);
+    await _tap(
+      tester,
+      find.descendant(
+        of: find.byKey(RecordsTab.sectionsKey),
+        matching: find.widgetWithText(ChoiceChip, 'Onboarding'),
+      ),
+    );
+    await _tap(tester, find.byIcon(Icons.chevron_right).first);
 
     // The same form, so there is one renderer for these answers and one place
     // that decides a sensitive value is masked.
     expect(find.text('Technician, full time'), findsOneWidget);
     expect(find.textContaining('Filled in by Jose Silva'), findsWidgets);
-    expect(find.text('All records'), findsOneWidget);
+    expect(find.text('Back to Bea Okafor'), findsOneWidget);
   });
 }
 
@@ -959,6 +970,21 @@ MockClientHandler _handler({
 
     if (path.endsWith('/hr/people/scope-options')) {
       return _json({'data': _scopeOptions});
+    }
+
+    if (request.method == 'GET' && RegExp(r'/hr/people/u-\d+$').hasMatch(path)) {
+      final id = path.split('/').last;
+      return _json({
+        'data': {
+          ..._people.firstWhere((person) => person['id'] == id),
+          'phone': null,
+          'address': null,
+          'gender': null,
+          'date_of_birth': null,
+          'started_on': null,
+          'pto': null,
+        },
+      });
     }
 
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);

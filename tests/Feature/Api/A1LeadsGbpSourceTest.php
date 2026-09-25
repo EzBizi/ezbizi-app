@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Company;
 use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -56,6 +57,7 @@ class A1LeadsGbpSourceTest extends TestCase
     private function readerAt(array $t): User
     {
         config()->set('services.a1leads.organization_id', $t['org']->getKey());
+        config()->set('services.a1leads.company_id', $t['company']->getKey());
 
         return $this->userWithRole($t, 'Bridge', ['a1leads_gbp.view']);
     }
@@ -301,6 +303,7 @@ class A1LeadsGbpSourceTest extends TestCase
 
         // Named to the owner, and both users hold the identical grant.
         config()->set('services.a1leads.organization_id', $owner['org']->getKey());
+        config()->set('services.a1leads.company_id', $owner['company']->getKey());
 
         $mine = $this->signedInAs($this->userWithRole($owner, 'Bridge', ['a1leads_gbp.view']))
             ->getJson(self::ENDPOINT)->assertOk()->json('data');
@@ -318,6 +321,62 @@ class A1LeadsGbpSourceTest extends TestCase
             (string) $theirs['source']['because'],
             'and it says which kind of nothing this is',
         );
+    }
+
+    /**
+     * THE COMPANY IS THE BOUNDARY TOO: another company in the SAME organization
+     * reads nothing. Jose, 2026-09-24: "this belongs to a-1chimney ... right
+     * now i can see it everywhere no matter what company or franchise im in".
+     *
+     * One user, one run, one fake - only the view changes, so the refusal
+     * cannot be a missing grant or an unreachable service. The franchise case
+     * reaches the franchise branch of the rule, which the organization and
+     * company views do not.
+     */
+    public function test_only_the_company_the_data_belongs_to_may_read_it(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('A1-Group');
+        $reader = $this->readerAt($t);
+        $sibling = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name' => 'Everdoors',
+        ]));
+
+        $as = fn (string $view) => $this->signedInAs($reader)
+            ->withHeader('X-EzBizi-View', $view)
+            ->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $organization = $as('organization');
+        $owner = $as('company:'.$t['company']->id);
+        $ownFranchise = $as('franchise:'.$t['franchise']->id);
+        $other = $as('company:'.$sibling->id);
+
+        $this->assertTrue($organization['source']['configured'], 'the organization view contains A-1 Chimney');
+        $this->assertNotEmpty($owner['reviews'], 'the positive control');
+        $this->assertNotEmpty($ownFranchise['reviews'], 'a franchise of the owning company');
+
+        $this->assertFalse($other['source']['configured']);
+        $this->assertSame([], $other['reviews'], 'not one row of A-1 Chimney\'s reviews under Everdoors');
+        $this->assertStringContainsString('Switch to A-1 Chimney', (string) $other['source']['because']);
+    }
+
+    /** No company named: nobody has said whose reviews these are, so nobody reads them. */
+    public function test_an_unnamed_company_reads_nothing(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-09-23T18:00:00Z'));
+        $this->fakeA1Leads();
+
+        $t = $this->provisionTenant('Hotel');
+        $reader = $this->readerAt($t);
+        config()->set('services.a1leads.company_id', null);
+
+        $data = $this->signedInAs($reader)->getJson(self::ENDPOINT)->assertOk()->json('data');
+
+        $this->assertFalse($data['source']['configured']);
+        $this->assertSame([], $data['reviews']);
     }
 
     /**

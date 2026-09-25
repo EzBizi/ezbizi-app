@@ -664,6 +664,12 @@ class PersonalDataPurgeTest extends TestCase
     public function test_no_model_both_drops_its_rows_and_blanks_their_columns(): void
     {
         foreach (app(DeclaringModels::class)->holdingPersonalData() as $class) {
+            // A model that answers per row which applies does both, for
+            // different rows. See HoldsPersonalData on personalDataToErase.
+            if (method_exists($class, 'personalDataToErase')) {
+                continue;
+            }
+
             $dispositions = array_unique(array_map(
                 fn (PersonalDataEntry $e) => $e->erasure->disposition,
                 $class::personalDataHeld(),

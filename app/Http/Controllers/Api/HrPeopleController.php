@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
+use App\Models\EmploymentEvent;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\AdministratorFloor;
@@ -12,14 +13,17 @@ use App\Support\Automations\EventEmitter;
 use App\Support\Hr\PtoPolicy;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
+use App\Support\Privacy\SensitiveValues;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use App\Support\TimeClock\TimeClock;
 use App\Support\TimeClock\WorkSchedule;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use App\Services\Auth\PasswordResets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -38,14 +42,21 @@ use Illuminate\Validation\ValidationException;
  *   role_id    bounded by what the caller themselves holds (§4 escalation)
  *   is_active  bounded by last-administrator protection (§4)
  *
+ * ── Personal details: editable here since 2026-09-24, still one home ──
+ *
+ * This used to refuse names, phone numbers and dates of birth, on the plan's
+ * one-home rule: core identity lives on the person's own profile and HR points
+ * at it. Jose reversed the refusal ("able to see more information as well as
+ * able to edit"), and the rule survives the reversal because HR writes the SAME
+ * columns Your account does, under the same validation — there is still exactly
+ * one home, it now has two doors. What the rule was protecting against was a
+ * copy that drifts, and there is no copy.
+ *
+ * Email is the exception and stays the person's own: they sign in with it.
+ *
  * ── What is deliberately NOT here ────────────────────────────────
  *
- * Names, phone numbers, dates of birth. The plan's one-home rule: core identity
- * lives on the user's own profile and HR points at it rather than copying it.
- * The employee owns it and edits it in "Your account"; an employer editing it
- * here would be the second home, and two homes for one fact is the trap.
- *
- * Assignments, too. Changing where somebody works is a real act with its own
+ * Assignments. Changing where somebody works is a real act with its own
  * consequences and it is not this release — the invitation sets the first one,
  * and moving people between places comes with onboarding.
  */
@@ -291,7 +302,32 @@ class HrPeopleController extends Controller
             // The lock-screen exemption (design 2026-09-08 §4). Same
             // authority as the rest of the row: hr.edit within reach.
             'lock_screen_exempt' => ['sometimes', 'required', 'boolean'],
+
+            // Their personal details, 2026-09-24 (Jose: "able to see more
+            // information as well as able to edit"). The SAME columns the person
+            // edits under Your account and the same rules ProfileController
+            // applies, so the one-home rule still holds: HR writes the one
+            // record rather than keeping a copy of it. Email is deliberately not
+            // here — they sign in with it, and changing it from this screen can
+            // lock them out with no way back that does not go through somebody
+            // else.
+            'first_name'    => ['sometimes', 'required', 'string', 'max:60'],
+            'middle_name'   => ['sometimes', 'nullable', 'string', 'max:60'],
+            'last_name'     => ['sometimes', 'required', 'string', 'max:60'],
+            'phone'         => ['sometimes', 'nullable', 'string', 'max:40'],
+            'address'       => ['sometimes', 'nullable', 'string', 'max:500'],
+            'gender'        => ['sometimes', 'nullable', 'string', 'max:40'],
+            'date_of_birth' => ['sometimes', 'nullable', 'date', 'before:today'],
+
+            // The day they started. Not a `users` column — it is the earliest
+            // `started` employment event, which is what PtoPolicy counts from.
+            // Until this, nothing could record a start date that had already
+            // happened: both writers of that event stamp today.
+            'started_on' => ['sometimes', 'required', 'date', 'after:1900-01-01'],
         ]);
+
+        $startedOn = $input['started_on'] ?? null;
+        unset($input['started_on']);
 
         $deactivating = array_key_exists('is_active', $input)
             && $input['is_active'] === false
@@ -335,8 +371,21 @@ class HrPeopleController extends Controller
             $this->administrators->assertNotTheLast($user, 'is_active');
         }
 
-        DB::transaction(function () use ($user, $input, $actor) {
+        DB::transaction(function () use ($user, $input, $actor, $startedOn) {
+            if ($startedOn !== null) {
+                $this->recordStartDate($user, $startedOn, $actor);
+            }
+
             $user->fill($input);
+
+            // `name` stays the composed display value, the rule ProfileController
+            // keeps for the same columns: every list, the audit trail and the API
+            // read it, so it cannot drift from the parts.
+            if ($user->isDirty(['first_name', 'middle_name', 'last_name'])) {
+                $user->name = trim(implode(' ', array_filter([
+                    $user->first_name, $user->middle_name, $user->last_name,
+                ])));
+            }
 
             $changed = $user->getDirty();
 
@@ -350,7 +399,19 @@ class HrPeopleController extends Controller
             // itself, which is worse than none.
             $before = array_intersect_key($user->getOriginal(), $changed);
 
-            $this->audit->logChange('user.updated', $user);
+            // Not `logChange`: `User` is not a HoldsSensitiveValues model, so
+            // that would copy a date of birth into an append-only table that
+            // erasure cannot reach — which ProfileController refuses to do for
+            // the same column (§9). The FACT of the change stays on the row; the
+            // value is masked, in both directions.
+            $masked = fn (array $values) => array_key_exists('date_of_birth', $values)
+                ? ['date_of_birth' => SensitiveValues::MASK] + $values
+                : $values;
+
+            $this->audit->log('user.updated', $user, changes: [
+                'before' => $masked($before),
+                'after'  => $masked($changed),
+            ], actor: $actor);
 
             $user->save();
 
@@ -403,6 +464,98 @@ class HrPeopleController extends Controller
         return response()->json([
             'data' => $this->present($user->fresh()->load('role', 'assignments'), $actor),
         ]);
+    }
+
+    /**
+     * GET /api/v1/hr/people/{user} — one person's whole record.
+     *
+     * Jose, 2026-09-24: "i'd like the users to be on a left side bar and
+     * clicking on them brings out all the information, which can be edited."
+     * The list row stays short on purpose — a date of birth and a home address
+     * for fifty people at once is fifty disclosures nobody asked for — so the
+     * personal details come from here, one person, when somebody opens them.
+     *
+     * Audited as a read, on the reasoning `consents()` gives: "who looked at
+     * this person's personal details" is a question a privacy answer should be
+     * able to answer itself.
+     */
+    public function show(Request $request, User $user): JsonResponse
+    {
+        $this->authorize('view', $user);
+
+        $actor = $request->user();
+
+        $this->audit->log('data.record_read', $user);
+
+        $user->load('role:id,name', 'assignments.assignedCompany:id,name',
+            'assignments.assignedFranchise:id,name');
+
+        $pto    = app(PtoPolicy::class);
+        $answer = $pto->for($user);
+
+        return response()->json(['data' => $this->present($user, $actor) + [
+            'middle_name'   => $user->middle_name,
+            'phone'         => $user->phone,
+            'address'       => $user->address,
+            'gender'        => $user->gender,
+            'date_of_birth' => $user->date_of_birth?->toDateString(),
+            'started_on'    => $answer['started_on'],
+
+            // Null rather than a zero allowance when the organization has not
+            // set paid time off up: "not set up" and "none" read the same as a
+            // number and are not the same thing.
+            'pto' => $pto->enabledFor($user->organization)
+                ? collect($answer)->only([
+                    'allowance', 'allowance_period', 'eligible_from', 'eligible',
+                ])->all()
+                : null,
+        ]]);
+    }
+
+    /**
+     * Move the day somebody started — the earliest `started` event.
+     *
+     * The earliest, because that is what PtoPolicy counts from and what a
+     * person means by their start date: somebody rehired has two, and the
+     * waiting period runs from the first. When there is none — everybody on
+     * the books before employment_events existed — one is written.
+     *
+     * Deliberately NOT through the activation path. That writes a `started`
+     * event stamped today and fires `user.activated`, so using it to record a
+     * date that already happened would fire automations for somebody who has
+     * been here for years and still record the wrong day.
+     */
+    private function recordStartDate(User $user, string $on, User $actor): void
+    {
+        $date = Carbon::parse($on)->toDateString();
+
+        $first = EmploymentEvent::query()
+            ->where('user_id', $user->getKey())
+            ->where('kind', EmploymentEvent::STARTED)
+            ->orderBy('occurred_on')
+            ->first();
+
+        $before = $first?->occurred_on?->toDateString();
+
+        if ($before === $date) {
+            return;
+        }
+
+        if ($first !== null) {
+            $first->update(['occurred_on' => $date]);
+        } else {
+            EmploymentEvent::create([
+                'organization_id' => $user->organization_id,
+                'user_id'         => $user->getKey(),
+                'kind'            => EmploymentEvent::STARTED,
+                'occurred_on'     => $date,
+            ]);
+        }
+
+        $this->audit->log('user.start_date_changed', $user, changes: [
+            'before' => ['started_on' => $before],
+            'after'  => ['started_on' => $date],
+        ], actor: $actor);
     }
 
     // ── shared ───────────────────────────────────────────────────
@@ -464,7 +617,10 @@ class HrPeopleController extends Controller
         $actor = $request->user();
         $policy = app(PtoPolicy::class);
 
-        $people = $actor->can('viewAny', User::class)
+        // `work_hours.all` since PTO moved into Work Hours (2026-09-24): whoever
+        // may see everybody's hours sees everybody's allowance beside them.
+        // `hr.view` still answers too, so nobody who read it yesterday cannot.
+        $people = $actor->can('viewAny', User::class) || $actor->hasPermission('work_hours.all')
             ? User::query()
                 ->with('role:id,name')
                 ->where(fn (Builder $q) => $this->visibleTo($q, $actor))
@@ -545,7 +701,17 @@ class HrPeopleController extends Controller
      */
     public function updateSchedule(Request $request, User $user): JsonResponse
     {
-        $this->authorize('update', $user);
+        /*
+         * Two doors, one rule each (2026-09-24). Work Hours' `manage` sets
+         * schedules from the person's week, bounded by the same reach the week
+         * is drawn with; HR's `edit` on Records keeps working as it did.
+         */
+        $actor = $request->user();
+        if ($actor->hasPermission('work_hours.manage')) {
+            app(TimeClock::class)->assertReaches($actor, $user);
+        } else {
+            $this->authorize('update', $user);
+        }
 
         $days = WorkSchedule::validate($request->input('days'));
         $zone = (string) $this->settings->get('timezone', ViewScope::forUser($request->user())->settingsScope());

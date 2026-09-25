@@ -271,9 +271,20 @@ class Anonymiser
             return $line;
         }
 
-        return $drops !== []
-            ? $this->dropRows($line, $rows, $dryRun, $doomed)
-            : $this->eraseColumns($line, $rows, $entries, $table, $subject, $dryRun, $doomed);
+        if ($drops === []) {
+            return $this->eraseColumns($line, $rows, $entries, $table, $subject, $dryRun, $doomed);
+        }
+
+        // A dropping model whose row merely NAMES this person — an automation
+        // event they triggered, about somebody else — answers
+        // `personalDataToErase` with the columns that name them. Those rows are
+        // erased; the rows ABOUT the person (an empty answer) are dropped.
+        if (method_exists($class, 'personalDataToErase')) {
+            [$named, $rows] = $rows->partition(fn (Model $row) => $row->personalDataToErase($subject) !== []);
+            $line = $this->eraseColumns($line, $named, $entries, $table, $subject, $dryRun, $doomed);
+        }
+
+        return $this->dropRows($line, $rows, $dryRun, $doomed);
     }
 
     /**

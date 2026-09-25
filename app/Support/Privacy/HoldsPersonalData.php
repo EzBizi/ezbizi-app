@@ -57,6 +57,13 @@ use Illuminate\Database\Eloquent\Model;
  * still reports every row returned by `personalDataAbout()`; it only narrows the
  * overwrite. This keeps a creator's activity visible without erasing a snapshot
  * that belongs to the linked target.
+ *
+ * On a model that DROPS its rows the same method splits them: a row answering
+ * with columns only names the person and has those columns erased; a row
+ * answering `[]` is about them and is dropped. That is the one case where a
+ * model may declare `drop` and `erase` side by side — AutomationEvent, whose
+ * outbox rows are dropped when they are about somebody and keep their history
+ * with the actor's label erased when that somebody merely triggered them.
  */
 interface HoldsPersonalData extends StatesRetention
 {

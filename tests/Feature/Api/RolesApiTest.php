@@ -146,11 +146,14 @@ class RolesApiTest extends TestCase
         //            without `training.monitor`: the premise was made true by
         //            the refusal itself.
         //
-        //   hr       `hours.all` requires `hr.hours.view` (it widens that tab),
-        //            and `hours.correct` requires `hr.hours.all`: without it
-        //            the only rows reachable are your own, so correct-alone is
-        //            editing your own paid hours (Jose, 2026-09-24).
-        $argued = ['hr', 'reports'];
+        //   work_hours  `all` requires `work_hours.general.view` (it widens
+        //            that tab), and `manage` requires `work_hours.all`: without
+        //            it the only rows reachable are your own, so manage-alone
+        //            is editing your own paid hours (Jose, 2026-09-24). These
+        //            were HR's `hours.all` / `hours.correct` until Work Hours
+        //            became its own module the same day; the argument moved
+        //            with them and HR no longer declares any requirement.
+        $argued = ['reports', 'work_hours'];
 
         $declaring = [];
 

@@ -253,6 +253,23 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
       return;
     }
 
+    // The minute already held is not a change, whatever its text. A value
+    // loaded with seconds — a job booked at 09:43:33 — used to be rewritten as
+    // 09:43 on every click in and out of a box: the seconds were dropped on
+    // the next save, and anything comparing text read an edit nobody made
+    // (Jobs, 83533a1c, which fixed it in the job panel; this is the root).
+    final held = parseWallDateTime(widget.controller.text);
+    if (held != null &&
+        held.day.year == day.year &&
+        held.day.month == day.month &&
+        held.day.day == day.day &&
+        held.hour == clock.$1 &&
+        held.minute == clock.$2) {
+      widget.onChanged?.call(widget.controller.text);
+      setState(() => _invalid = null);
+      return;
+    }
+
     _setIso(formatWallDateTime(day, clock.$1, clock.$2));
     setState(() => _invalid = null);
   }
