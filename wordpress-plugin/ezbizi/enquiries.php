@@ -206,9 +206,39 @@ function ezbizi_form_shortcode($atts) {
         return '';
     }
 
+    // The questions and words come from the form's config; a preset only
+    // styles them (see WidgetPresets `form`), which is all an argument can
+    // reach — the fields and the button are EzBizi's.
+    $preset = ezbizi_preset('form', $atts);
     $id = ezbizi_widget_id('ezbizi-form');
+    $gap = max(0, min(40, (int) (isset($preset['field_gap']) ? $preset['field_gap'] : 12)));
     $out = ezbizi_widget_style($id, $config['style']);
+    $out .= '<style>#' . $id . ' .ezbizi-form-fields{display:flex;flex-wrap:wrap;gap:' . $gap . 'px}'
+        . '#' . $id . ' .ezbizi-field{margin:0;box-sizing:border-box}'
+        . '#' . $id . ' .ezbizi-field label{display:block;margin:0 0 4px}'
+        . '#' . $id . ' .ezbizi-help{display:block;opacity:.8;font-size:.85em;margin-top:3px}'
+        . '#' . $id . ' .ezbizi-choice{display:flex;align-items:center;gap:6px;margin:2px 0}'
+        . '#' . $id . ' .ezbizi-choice input{width:auto}'
+        . '#' . $id . ' .ezbizi-form-title{margin:0 0 4px}'
+        . '#' . $id . ' .ezbizi-form-subtitle{margin:0 0 14px}'
+        . (isset($preset['button_width']) && $preset['button_width'] === 'full' ? '#' . $id . ' .ezbizi-form-submit{width:100%}' : '')
+        . '@media (max-width:767px){#' . $id . ' .ezbizi-field{flex-basis:100%!important;max-width:100%!important}}'
+        . '</style>';
+
     $out .= '<form class="ezbizi-form" id="' . esc_attr($id) . '" novalidate>';
+
+    $title = ezbizi_widget_text($config, 'title');
+    $subtitle = ezbizi_widget_text($config, 'subtitle');
+
+    if ($title !== '') {
+        $out .= '<h3 class="ezbizi-form-title">' . esc_html($title) . '</h3>';
+    }
+
+    if ($subtitle !== '') {
+        $out .= '<p class="ezbizi-form-subtitle">' . esc_html($subtitle) . '</p>';
+    }
+
+    $out .= '<div class="ezbizi-form-fields">';
 
     foreach ($fields as $index => $field) {
         if (! is_array($field)) {
@@ -224,48 +254,89 @@ function ezbizi_form_shortcode($atts) {
         $type = ezbizi_widget_text($field, 'type', 'text');
         $required = ! empty($field['required']);
         $field_id = $id . '-' . $index;
+        $placeholder = ezbizi_widget_text($field, 'placeholder');
+        $help = ezbizi_widget_text($field, 'help');
+        $options = isset($field['options']) && is_array($field['options']) ? $field['options'] : array();
+        $width = in_array((int) (isset($field['width']) ? $field['width'] : 100), array(100, 75, 66, 50, 33, 25), true)
+            ? (int) $field['width'] : 100;
 
-        $out .= '<p><label for="' . esc_attr($field_id) . '">' . esc_html($label);
+        if ($type === 'hidden') {
+            $out .= '<input type="hidden" name="' . esc_attr($label) . '" value="' . esc_attr(ezbizi_widget_text($field, 'value')) . '" />';
 
-        if ($required) {
-            $out .= ' <span aria-hidden="true">*</span>';
+            continue;
         }
 
-        $out .= '</label><br />';
+        $out .= '<div class="ezbizi-field" style="flex:0 0 calc(' . $width . '% - ' . $gap . 'px);max-width:' . $width . '%">';
+        $mark = $required ? ' <span class="ezbizi-required" aria-hidden="true">*</span>' : '';
+        $common = 'name="' . esc_attr($label) . '"' . ($required ? ' required' : '');
 
-        $common = 'id="' . esc_attr($field_id) . '" name="' . esc_attr($label) . '"'
-            . ($required ? ' required' : '');
+        if ($type === 'checkbox' || $type === 'radio') {
+            $out .= '<fieldset style="border:0;margin:0;padding:0"><legend>' . esc_html($label) . $mark . '</legend>';
+            $choices = $options === array() ? array(__('Yes', 'ezbizi')) : $options;
 
-        if ($type === 'textarea') {
-            $out .= '<textarea ' . $common . ' rows="4"></textarea>';
-        } elseif ($type === 'select') {
-            $out .= '<select ' . $common . '><option value=""></option>';
-
-            foreach (isset($field['options']) && is_array($field['options']) ? $field['options'] : array() as $option) {
+            foreach ($choices as $i => $option) {
                 $option = (string) $option;
-                $out .= '<option value="' . esc_attr($option) . '">' . esc_html($option) . '</option>';
+                $out .= '<label class="ezbizi-choice"><input type="' . $type . '" ' . $common
+                    . ' value="' . esc_attr($option) . '" data-group="' . esc_attr($label) . '" /> '
+                    . esc_html($options === array() ? $label : $option) . '</label>';
             }
 
-            $out .= '</select>';
+            $out .= '</fieldset>';
         } else {
-            $html_type = in_array($type, array('email', 'tel'), true) ? $type : 'text';
-            $out .= '<input type="' . esc_attr($html_type) . '" ' . $common . ' />';
+            $out .= '<label for="' . esc_attr($field_id) . '">' . esc_html($label) . $mark . '</label>';
+            $attrs = 'id="' . esc_attr($field_id) . '" class="ezbizi-input" ' . $common
+                . ($placeholder !== '' ? ' placeholder="' . esc_attr($placeholder) . '"' : '');
+
+            if ($type === 'textarea') {
+                $out .= '<textarea ' . $attrs . ' rows="4"></textarea>';
+            } elseif ($type === 'select') {
+                $out .= '<select ' . $attrs . '><option value="">' . esc_html($placeholder) . '</option>';
+
+                foreach ($options as $option) {
+                    $option = (string) $option;
+                    $out .= '<option value="' . esc_attr($option) . '">' . esc_html($option) . '</option>';
+                }
+
+                $out .= '</select>';
+            } else {
+                $html_type = in_array($type, array('email', 'tel', 'number', 'date', 'time'), true) ? $type : 'text';
+                $out .= '<input type="' . esc_attr($html_type) . '" ' . $attrs . ' />';
+            }
         }
 
-        $out .= '</p>';
+        if ($help !== '') {
+            $out .= '<small class="ezbizi-help">' . esc_html($help) . '</small>';
+        }
+
+        $out .= '</div>';
     }
+
+    $out .= '</div>';
 
     /*
      * THE OPT-IN, unticked. Jose, 2026-09-16: somebody who sent an enquiry has
      * not agreed to marketing email, so the box must be ticked by them. The
      * words go with the tick: EzBizi records exactly what they agreed to.
      */
-    $out .= '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
-        . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
-        . '</span></label></p>';
-    $out .= '<p><button type="submit">' . esc_html(ezbizi_widget_text($config, 'button', 'Send')) . '</button></p>';
+    if (! isset($config['consent_on']) || ! empty($config['consent_on'])) {
+        $out .= '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
+            . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
+            . '</span></label></p>';
+    }
+
+    // A box a person ticks and a script does not bother with: A1's "I'm not a
+    // robot". Not a CAPTCHA, and not presented as one.
+    if (! empty($config['antibot'])) {
+        $out .= '<p class="ezbizi-antibot"><label><input type="checkbox" class="ezbizi-antibot-box" /> <span>'
+            . esc_html(ezbizi_widget_text($config, 'antibot_label', "I'm not a robot")) . '</span></label></p>';
+    }
+
+    $out .= '<p><button type="submit" class="ezbizi-form-submit">' . esc_html(ezbizi_widget_text($config, 'button', 'Send')) . '</button></p>';
     $out .= '<p class="ezbizi-form-note" role="status" aria-live="polite"></p>';
     $out .= '</form>';
+
+    $redirect = ezbizi_widget_text($config, 'redirect');
+    $redirect = preg_match('~^https?://~i', $redirect) ? esc_url_raw($redirect) : '';
 
     $out .= "<script>(function(){
 var f=document.getElementById(" . wp_json_encode($id) . ");
@@ -273,16 +344,26 @@ if(!f)return;
 var note=f.querySelector('.ezbizi-form-note');
 f.addEventListener('submit',function(e){
   e.preventDefault();
+  var bot=f.querySelector('.ezbizi-antibot-box');
+  if(bot&&!bot.checked){note.textContent=" . wp_json_encode(__('Please tick the box to show you are not a robot.', 'ezbizi')) . ";return;}
+  if(!f.checkValidity()){f.reportValidity();return;}
   var b=f.querySelector('button');b.disabled=true;
-  var fields={},v={};
+  var fields={},v={},first='',last='';
   Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
-    if(i.classList.contains('ezbizi-consent-box'))return;
-    var n=i.name,low=n.toLowerCase();
-    if(low==='name'){v.name=i.value;}
-    else if(low==='email'){v.email=i.value;}
-    else if(low==='phone'){v.phone=i.value;}
-    fields[n]=i.value;
+    if(i.classList.contains('ezbizi-consent-box')||i.classList.contains('ezbizi-antibot-box'))return;
+    var n=i.name,low=n.toLowerCase(),val=i.value;
+    if(i.type==='checkbox'||i.type==='radio'){
+      if(!i.checked){if(!(n in fields))fields[n]='';return;}
+      fields[n]=fields[n]?fields[n]+', '+val:val;return;
+    }
+    if(low==='name'||low==='full name'){v.name=val;}
+    else if(low==='first name'){first=val;}
+    else if(low==='last name'){last=val;}
+    else if(low==='email'||low==='email address'){v.email=val;}
+    else if(low==='phone'||low==='phone number'){v.phone=val;}
+    fields[n]=val;
   });
+  if(!v.name&&(first||last))v.name=(first+' '+last).trim();
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
   var c=f.querySelector('.ezbizi-consent-box');if(c&&c.checked){v.marketing_consent=true;v.marketing_consent_text=c.parentNode.textContent.trim();}
   fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{
@@ -291,13 +372,18 @@ f.addEventListener('submit',function(e){
   }).then(function(r){
     if(!r.ok)throw new Error(r.status);
     f.reset();note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'thanks', 'Thank you.')) . ";
+    " . ($redirect !== '' ? 'location.href=' . wp_json_encode($redirect) . ';' : '') . "
   }).catch(function(){
     note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'error', 'That did not send.')) . ";
   }).then(function(){b.disabled=false;});
 });
 })();</script>";
 
-    return $out;
+    return $out . ezbizi_style_css('form', $id, $preset, array(
+        'box' => '', 'title' => ' .ezbizi-form-title', 'subtitle' => ' .ezbizi-form-subtitle',
+        'label' => ' .ezbizi-field label', 'input' => ' .ezbizi-input', 'submit' => ' .ezbizi-form-submit',
+        'consent' => ' .ezbizi-consent', 'help' => ' .ezbizi-help',
+    ));
 }
 
 /**

@@ -25,7 +25,10 @@ use App\Support\Branding\Branding;
 final class WidgetDefaults
 {
     /** The field types a form may ask for. Anything else is not rendered. */
-    public const FIELD_TYPES = ['text', 'textarea', 'email', 'tel', 'select'];
+    public const FIELD_TYPES = ['text', 'textarea', 'email', 'tel', 'select', 'number', 'date', 'time', 'checkbox', 'radio', 'hidden'];
+
+    /** How wide a field may be, in percent of the form's width. */
+    public const FIELD_WIDTHS = [100, 75, 66, 50, 33, 25];
 
     /**
      * @param  string|null  $brand  the customer's own colour, when we know it
@@ -361,6 +364,23 @@ final class WidgetDefaults
                 'thanks' => self::text($form['thanks'] ?? '', 300),
                 'error' => self::text($form['error'] ?? '', 300),
                 'fields' => self::fields($form['fields'] ?? []),
+                // Toula's Contact Form list (01a0d8e5-81db) and A1's live
+                // "Book an Appointment Online" form: a title and a line under
+                // it, the robot check, the consent box's own words (or none),
+                // and where to send somebody after it goes.
+                'title' => self::text($form['title'] ?? '', 120),
+                'subtitle' => self::text($form['subtitle'] ?? '', 300),
+                'antibot' => self::flag($form['antibot'] ?? false, false),
+                'antibot_label' => self::text($form['antibot_label'] ?? '', 80),
+                'consent_on' => self::flag($form['consent_on'] ?? true, true),
+                'consent' => self::text($form['consent'] ?? '', 500),
+                'redirect' => (function () use ($form): string {
+                    $url = trim((string) ($form['redirect'] ?? ''));
+
+                    return preg_match('~^https?://~i', $url) === 1 && filter_var($url, FILTER_VALIDATE_URL) !== false
+                        ? mb_substr($url, 0, 500)
+                        : '';
+                })(),
             ],
             /*
              * How the RENDERED widgets look, as named bundles. Beside the chat
@@ -471,13 +491,24 @@ final class WidgetDefaults
 
             $type = in_array($field['type'] ?? '', self::FIELD_TYPES, true) ? $field['type'] : 'text';
 
+            $width = (int) ($field['width'] ?? 100);
+
             $one = [
                 'label' => $label,
                 'type' => $type,
                 'required' => (bool) ($field['required'] ?? false),
+                'placeholder' => self::text($field['placeholder'] ?? '', 120),
+                'help' => self::text($field['help'] ?? '', 200),
+                'width' => in_array($width, self::FIELD_WIDTHS, true) ? $width : 100,
             ];
 
-            if ($type === 'select') {
+            if ($type === 'hidden') {
+                // Sent with every enquiry and never shown: a campaign name, say.
+                $one['value'] = self::text($field['value'] ?? '', 200);
+                $one['required'] = false;
+            }
+
+            if (in_array($type, ['select', 'radio', 'checkbox'], true)) {
                 $options = [];
 
                 foreach (is_array($field['options'] ?? null) ? $field['options'] : [] as $option) {
@@ -488,11 +519,13 @@ final class WidgetDefaults
                     }
                 }
 
-                // A select with nothing to select from is a text box.
+                // A select or a radio with nothing to choose from is a text
+                // box; a checkbox with no options is one box, ticked or not.
                 if ($options === []) {
-                    $one['type'] = 'text';
+                    $one['type'] = $type === 'checkbox' ? 'checkbox' : 'text';
                 } else {
-                    $one['options'] = array_slice($options, 0, 40);
+                    // 100, not 40: A1's service list alone has 59.
+                    $one['options'] = array_slice($options, 0, 100);
                 }
             }
 

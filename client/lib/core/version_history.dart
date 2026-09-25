@@ -15,6 +15,9 @@ class VersionHistory {
         'Field, Route: the jobs of a technician for the day in the fastest order from where they are, with drive times and a warning where they would be late. Navigate opens Google Maps, and booked times are never changed.',
         'Field, Settings: when phones share their location - while clocked in (the default), during scheduled hours, or always - and the arrival distance, stopped-too-long time and lost-signal time. Automations gain five triggers: arrived at a job, left a job, stopped too long, lost signal and SOS.',
         'Nobody is tracked until an administrator grants Field, Tracked to a role in Roles, and administrators themselves are never tracked. Tracking runs on the Android and iOS apps only, and the phone always shows when it is sharing.',
+        'A1Leads GBP shows the Google reviews of A-1 Chimney live from A1 Leads, within a minute, instead of the snapshot from the day before: new reviews, replies, card changes and removals show up as they happen.',
+        'Web Management, Widgets: the Contact details, City list and Social links widgets have the sections A1 Tools drew and more options, shown on the sites once the next EzBizi website plugin update reaches them.',
+        'On Android, pressing Call places the call - it had been silently doing nothing, because the app never asked for permission to make calls. It asks now, and a call that is refused no longer takes the person out of their ring group.',
       ],
     ),
     VersionRelease(

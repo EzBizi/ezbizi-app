@@ -842,9 +842,36 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   ];
 
   List<Widget> _formFields(ThemeData theme, Map<String, dynamic> form) => [
+      _text(theme, 'Title', form['title'], (v) => _set('form', 'title', v)),
+      _text(theme, 'Line under the title', form['subtitle'],
+          (v) => _set('form', 'subtitle', v)),
       _text(theme, 'Button', form['button'], (v) => _set('form', 'button', v)),
       _text(theme, 'Thank you message', form['thanks'],
           (v) => _set('form', 'thanks', v)),
+      _text(theme, 'Message when it fails', form['error'],
+          (v) => _set('form', 'error', v)),
+      _text(theme, 'After sending, go to (optional link)', form['redirect'],
+          (v) => _set('form', 'redirect', v)),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        title: const Text('Ask "I\'m not a robot"'),
+        value: form['antibot'] == true,
+        onChanged: widget.canEdit ? (on) => _set('form', 'antibot', on) : null,
+      ),
+      if (form['antibot'] == true)
+        _text(theme, 'Robot check wording', form['antibot_label'],
+            (v) => _set('form', 'antibot_label', v)),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        title: const Text('Offer the consent box'),
+        value: form['consent_on'] != false,
+        onChanged: widget.canEdit ? (on) => _set('form', 'consent_on', on) : null,
+      ),
+      if (form['consent_on'] != false)
+        _text(theme, 'Consent box wording', form['consent'],
+            (v) => _set('form', 'consent', v)),
       const SizedBox(height: 12),
       _FieldList(
         fields: (form['fields'] as List? ?? const [])
@@ -855,8 +882,21 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         canEdit: widget.canEdit,
         onChanged: (fields) => _set('form', 'fields', fields),
       ),
-
+      const SizedBox(height: 16),
+      // How it looks: a preset, like the rendered widgets, so one page's form
+      // can sit dark and another's light.
+      ..._renderedFields(theme, _formLook),
   ];
+
+  static const _Rendered _formLook = _Rendered(
+    'form',
+    'Contact form look',
+    'How the form is drawn.',
+    [
+      _Number('field_gap', 'Space between questions', 0, 40, 12, suffix: 'px'),
+      _Choice('button_width', 'Send button', ['auto', 'full']),
+    ],
+  );
 
   /// Shared by every widget, which is why it is its own card rather than a
   /// section inside one: a colour changed here moves the chat, the form and
@@ -1838,22 +1878,61 @@ class _WidgetEditorState extends State<_WidgetEditor> {
 /// rather than what the widget looks like — which is the thing the bug
 /// destroys.
 class _QuestionRow {
-  _QuestionRow({String label = '', this.type = 'text', this.required = false})
-    : label = TextEditingController(text: label);
+  _QuestionRow({
+    String label = '',
+    this.type = 'text',
+    this.required = false,
+    this.width = 100,
+    String placeholder = '',
+    String help = '',
+    String options = '',
+    String value = '',
+  })  : label = TextEditingController(text: label),
+        placeholder = TextEditingController(text: placeholder),
+        help = TextEditingController(text: help),
+        options = TextEditingController(text: options),
+        value = TextEditingController(text: value);
 
   final TextEditingController label;
+  final TextEditingController placeholder;
+  final TextEditingController help;
+
+  /// One choice per line, for a select, radio or checkbox question.
+  final TextEditingController options;
+
+  /// What a hidden question always sends.
+  final TextEditingController value;
   final Key key = UniqueKey();
 
   String type;
   bool required;
+  int width;
+  bool open = false;
 
+  /// Everything the question carries. Dropping a key here is what used to
+  /// wipe a select's options on the next save, silently.
   Map<String, dynamic> toJson() => {
     'label': label.text,
     'type': type,
     'required': required,
+    'width': width,
+    'placeholder': placeholder.text,
+    'help': help.text,
+    if (const ['select', 'radio', 'checkbox'].contains(type))
+      'options': [
+        for (final line in options.text.split('\n'))
+          if (line.trim().isNotEmpty) line.trim(),
+      ],
+    if (type == 'hidden') 'value': value.text,
   };
 
-  void dispose() => label.dispose();
+  void dispose() {
+    label.dispose();
+    placeholder.dispose();
+    help.dispose();
+    options.dispose();
+    value.dispose();
+  }
 }
 
 class _FieldList extends StatefulWidget {
@@ -1918,11 +1997,104 @@ class _FieldListState extends State<_FieldList> {
             ? '${field['type']}'
             : widget.types.first,
         required: field['required'] == true,
+        width: (field['width'] as num?)?.toInt() ?? 100,
+        placeholder: '${field['placeholder'] ?? ''}',
+        help: '${field['help'] ?? ''}',
+        options: (field['options'] as List? ?? const []).join('\n'),
+        value: '${field['value'] ?? ''}',
       ),
   ];
 
   /// What the rows currently say, handed up as the plain list the API takes.
   void _publish() => widget.onChanged([for (final row in _rows) row.toJson()]);
+
+  /// The rest of one question: required, width, placeholder, help, its
+  /// choices or its hidden value. Folded, because most questions need none.
+  Widget _more(ThemeData theme, _QuestionRow row) {
+    InputDecoration box(String label, {String? hint}) =>
+        InputDecoration(labelText: label, hintText: hint, isDense: true);
+
+    return Container(
+      key: ValueKey('more-${row.key}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            row.label.text.isEmpty ? 'This question' : row.label.text,
+            style: theme.textTheme.bodySmall,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: const Text('Required'),
+            value: row.required,
+            onChanged: widget.canEdit
+                ? (on) {
+                    setState(() => row.required = on);
+                    _publish();
+                  }
+                : null,
+          ),
+          SearchPickerField<int>(
+            value: row.width,
+            label: 'Width on a wide screen',
+            isDense: true,
+            options: [
+              for (final w in const [100, 75, 66, 50, 33, 25])
+                SearchOption(value: w, label: '$w%'),
+            ],
+            onChanged: widget.canEdit
+                ? (w) {
+                    if (w == null) return;
+                    setState(() => row.width = w);
+                    _publish();
+                  }
+                : null,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: row.placeholder,
+            enabled: widget.canEdit,
+            decoration: box('Placeholder', hint: 'Shown in the empty box'),
+            onChanged: (_) => _publish(),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: row.help,
+            enabled: widget.canEdit,
+            decoration: box('Help text', hint: 'A line under the box'),
+            onChanged: (_) => _publish(),
+          ),
+          if (const ['select', 'radio', 'checkbox'].contains(row.type)) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: row.options,
+              enabled: widget.canEdit,
+              minLines: 3,
+              maxLines: 8,
+              decoration: box('Choices, one per line'),
+              onChanged: (_) => _publish(),
+            ),
+          ],
+          if (row.type == 'hidden') ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: row.value,
+              enabled: widget.canEdit,
+              decoration: box('Value it always sends'),
+              onChanged: (_) => _publish(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1984,6 +2156,11 @@ class _FieldListState extends State<_FieldList> {
                   ),
                 ),
                 IconButton(
+                  tooltip: row.open ? 'Fewer settings' : 'More settings',
+                  icon: Icon(row.open ? Icons.expand_less : Icons.tune, size: 18),
+                  onPressed: () => setState(() => row.open = !row.open),
+                ),
+                IconButton(
                   tooltip: 'Remove',
                   icon: const Icon(Icons.close, size: 18),
                   onPressed: widget.canEdit
@@ -1999,6 +2176,8 @@ class _FieldListState extends State<_FieldList> {
               ],
             ),
           ),
+        for (final row in _rows)
+          if (row.open) _more(theme, row),
         if (widget.canEdit)
           Align(
             alignment: Alignment.centerLeft,
@@ -2289,6 +2468,12 @@ const List<_Rendered> _renderedCatalogue = [
       _Number('size', 'Icon size', 16, 64, 28, suffix: 'px'),
       _Number('gap', 'Space between', 0, 40, 10, suffix: 'px'),
       _Flag('labels', 'Name each network beside its icon', false),
+      _Text('networks', 'Which networks, in order',
+          hint: 'e.g. facebook,instagram,youtube — empty shows every one set',
+          max: 300),
+      _Choice('colors', 'Colours', ['single', 'brand']),
+      _Flag('new_tab', 'Open in a new tab', true),
+      _Choice('hover', 'On hover', ['none', 'fade', 'grow', 'lift']),
     ],
   ),
   _Rendered(
@@ -2300,6 +2485,16 @@ const List<_Rendered> _renderedCatalogue = [
       _Number('columns', 'Columns', 1, 6, 3),
       _Flag('group', 'Group them by county', true),
       _Flag('link', 'Link each town to its page', true),
+      _Flag('show_state', 'Add the state after each town', true),
+      _Flag('search', 'A search box above the towns', false),
+      _Text('search_placeholder', 'Search box text', max: 60),
+      _Text('empty_text', 'When a search finds nothing', max: 80),
+      _Flag('count', 'Show how many towns each group has', false),
+      _Flag('bullets', 'Bullets', false),
+      _Flag('open_first', 'Folded: open the first group', false),
+      _Flag('one_open', 'Folded: one group open at a time', false),
+      _Flag('new_tab', 'Open town pages in a new tab', false),
+      _Number('column_gap', 'Space between columns', 0, 80, 28, suffix: 'px'),
     ],
   ),
   _Rendered(
@@ -2321,12 +2516,28 @@ const List<_Rendered> _renderedCatalogue = [
     'Contact details',
     'Phone, email and address as one block, the way a footer shows them.',
     [
-      _Choice('layout', 'Arrangement', ['stack', 'row', 'compact']),
+      _Choice('layout', 'Arrangement', ['stack', 'row', 'compact', 'grid', 'inline']),
       _Flag('icons', 'Show an icon beside each one', true),
       _Flag('labels', 'Label each one', true),
       _Flag('phone', 'Include the phone number', true),
       _Flag('email', 'Include the email address', true),
       _Flag('address', 'Include the address', true),
+      _Flag('hours', 'Include the hours', false),
+      _Flag('license', 'Include the licence number', false),
+      _Flag('secondary', 'Include the second number and inbox', false),
+      _Text('phone_title', 'Phone title', max: 40),
+      _Text('email_title', 'Email title', max: 40),
+      _Text('address_title', 'Address title', max: 40),
+      _Text('hours_title', 'Hours title', max: 40),
+      _Text('license_title', 'Licence title', max: 40),
+      _Text('closed_text', 'A closed day says', max: 30),
+      _Text('order', 'Order', hint: 'phone,email,address,hours,license', max: 60),
+      _Number('icon_gap', 'Space beside the icon', 0, 40, 10, suffix: 'px'),
+      _Number('item_gap', 'Space between items', 0, 80, 18, suffix: 'px'),
+      _Flag('links', 'Make them tappable (call, email, map)', true),
+      _Flag('underline', 'Underline links', false),
+      _Flag('dividers', 'Lines between items', false),
+      _Colour('divider_color', 'Line colour'),
     ],
   ),
   _Rendered(

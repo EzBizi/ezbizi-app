@@ -37,6 +37,8 @@ void main() {
     // belongs to — information the old flat column let it leave out.
     String? open,
     double textScale = 1.0,
+    // The form's questions, when a test needs other than the fixture's two.
+    List<Map<String, Object?>>? formFields,
   }) async {
     final writes = saved ?? <String, Object?>{};
 
@@ -129,10 +131,11 @@ void main() {
               'enabled': true,
               'button': 'Send it',
               'thanks': 'Got it.',
-              'fields': [
-                {'label': 'Name', 'type': 'text', 'required': true},
-                {'label': 'What needs doing?', 'type': 'textarea'},
-              ],
+              'fields': formFields ??
+                  [
+                    {'label': 'Name', 'type': 'text', 'required': true},
+                    {'label': 'What needs doing?', 'type': 'textarea'},
+                  ],
             },
             // Exactly what WidgetPresets::resolve() guarantees: four widgets,
             // each with a `default`, whatever is stored. A fixture with fewer
@@ -2079,6 +2082,45 @@ void main() {
   /// after a keystroke but where FOCUS is, which is the thing the bug destroys.
   /// Verified by putting the original shape back and watching it fail with
   /// "Focus left the question after one character."
+  /// A save used to send each question as label, type and required, and
+  /// nothing else — so a select's choices were wiped the first time anybody
+  /// saved the form. A1's appointment form has 59 of them.
+  testWidgets('a question keeps its choices and settings through a save', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Contact form',
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: true,
+      sent: sent,
+      formFields: [
+        {
+          'label': 'Service Need',
+          'type': 'select',
+          'required': true,
+          'options': ['Chimney Sweep', 'Chimney Repair'],
+          'placeholder': 'Pick one',
+          'width': 50,
+        },
+      ],
+    );
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final fields = ((sent.single['config'] as Map)['form'] as Map)['fields'] as List;
+    final service = fields.single as Map;
+
+    expect(service['options'], ['Chimney Sweep', 'Chimney Repair']);
+    expect(service['placeholder'], 'Pick one');
+    expect(service['width'], 50);
+    expect(service['required'], isTrue);
+  });
+
   testWidgets('a question is driven by its own controller', (tester) async {
     await pump(
       tester,

@@ -237,6 +237,21 @@ abstract class VoiceDevice {
   void dispose();
 }
 
+/// The platform refused to place an outbound call, and here is why.
+///
+/// Thrown rather than returned so that nothing already written against
+/// `connect()` has to change shape — and so the one caller that must react to
+/// it cannot miss it by ignoring a return value.
+class CallRefused implements Exception {
+  const CallRefused(this.reason);
+
+  /// A sentence to show the person who pressed Call.
+  final String reason;
+
+  @override
+  String toString() => reason;
+}
+
 class VoiceIncoming {
   const VoiceIncoming({required this.from});
 

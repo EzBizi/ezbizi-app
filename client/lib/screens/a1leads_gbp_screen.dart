@@ -512,8 +512,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                     ? 'This data is from ${_short(_source['captured_at'])} and has not '
                         'refreshed since — ${_source['hours_old']} hours old. Treat it as '
                         'historical rather than current.'
-                    : 'Read from A1 Leads. Snapshot captured ${_short(_source['captured_at'])}, '
-                        'installed ${_short(_source['installed_at'])}.',
+                    : _source['live'] == true
+                        // The live copy, in step with A1 Leads every minute.
+                        ? 'Live from A1 Leads, as of ${_short(_source['captured_at'])}.'
+                        : 'Read from A1 Leads. Snapshot captured ${_short(_source['captured_at'])}, '
+                            'installed ${_short(_source['installed_at'])}.',
                 style: theme.textTheme.bodySmall?.copyWith(color: onColour),
               ),
             ),

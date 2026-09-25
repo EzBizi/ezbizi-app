@@ -851,6 +851,45 @@ check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), tr
 check('and its position', str_contains($chat, 'right:20px'), true);
 check('the chat posts to the chat endpoint', str_contains($chat, '/api/v1/web/chat'), true);
 
+echo PHP_EOL . "The form carries A1's appointment form" . PHP_EOL;
+reset_site();
+$booking = json_decode(widget_payload(), true);
+$booking['widgets']['form'] = array_merge($booking['widgets']['form'], [
+    'title' => 'Book an Appointment Online',
+    'subtitle' => 'Schedule directly with our scheduling system.',
+    'antibot' => true, 'antibot_label' => "I'm not a robot",
+    'consent_on' => false,
+    'redirect' => 'https://a1.test/thanks/',
+    'fields' => [
+        ['label' => 'First Name', 'type' => 'text', 'required' => true, 'placeholder' => 'John', 'width' => 25],
+        ['label' => 'Last Name', 'type' => 'text', 'required' => true, 'width' => 25],
+        ['label' => 'Appointment Date', 'type' => 'date', 'required' => true, 'width' => 50],
+        ['label' => 'Contact me by', 'type' => 'radio', 'options' => ['Phone', 'Email']],
+        ['label' => 'Campaign', 'type' => 'hidden', 'value' => 'spring'],
+    ],
+]);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($booking)];
+ezbizi_fetch();
+do_action('init');
+$bform = $GLOBALS['sc']['ezbizi_form']([]);
+check('its title', str_contains($bform, '>Book an Appointment Online</h3>'), true);
+check('and the line under it', str_contains($bform, 'Schedule directly'), true);
+check('a quarter-width field', str_contains($bform, 'calc(25% - '), true);
+check('a placeholder', str_contains($bform, 'placeholder="John"'), true);
+check('a date picker', str_contains($bform, 'type="date"'), true);
+check('radio choices', substr_count($bform, 'type="radio"'), 2);
+check('a hidden value sent with it', str_contains($bform, 'type="hidden" name="Campaign" value="spring"'), true);
+check('the robot box', str_contains($bform, 'ezbizi-antibot-box'), true);
+check('no consent box when switched off', str_contains($bform, '<input type="checkbox" class="ezbizi-consent-box"'), false);
+check('where it goes after', str_contains($bform, 'location.href="https:\/\/a1.test\/thanks\/"'), true);
+check('first and last name make the lead\'s name', str_contains($bform, "low==='first name'"), true);
+
+// Back to the standard widget payload for the sections that follow.
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+do_action('init');
+
 echo PHP_EOL . "A shortcode argument cannot override EzBizi" . PHP_EOL;
 $forced = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Something,Else', 'button' => 'Override me']);
 check('the fields still come from EzBizi', str_contains($forced, 'What needs doing?'), true);
@@ -1222,6 +1261,21 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'icon_color' => ['type' => 'color', 'part' => 'icon', 'prop' => 'color'],
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
+                    'networks' => ['type' => 'text', 'max' => 300],
+                    'colors' => ['type' => 'choice', 'choices' => ['single', 'brand']],
+                    'new_tab' => ['type' => 'bool'],
+                ],
+                'city_list' => [
+                    'search' => ['type' => 'bool'],
+                    'count' => ['type' => 'bool'],
+                    'show_state' => ['type' => 'bool'],
+                ],
+                'contact_info' => [
+                    'hours' => ['type' => 'bool'],
+                    'secondary' => ['type' => 'bool'],
+                    'links' => ['type' => 'bool'],
+                    'closed_text' => ['type' => 'text', 'max' => 30],
+                    'order' => ['type' => 'text', 'max' => 60],
                 ],
                 'cta' => [
                     'action' => ['type' => 'choice', 'choices' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp']],
@@ -1318,6 +1372,12 @@ check('an override cannot write its own CSS', str_contains($GLOBALS['sc']['ezbiz
 // Compared without the element id, which every call numbers afresh.
 $strip = fn ($html) => preg_replace('/ezbizi-social-\d+/', '', $html);
 check('an option nobody described is ignored', $strip($GLOBALS['sc']['ezbizi_social_links'](['onclick' => 'x'])) === $strip($GLOBALS['sc']['ezbizi_social_links']([])), true);
+
+$picked = $GLOBALS['sc']['ezbizi_social_links'](['networks' => 'tiktok,facebook']);
+check('only the networks asked for', substr_count($picked, '<a class="ezbizi-social-link'), 2);
+check('in the order asked for', strpos($picked, 'tiktok.com') < strpos($picked, 'facebook.com'), true);
+check('brand colours', str_contains($GLOBALS['sc']['ezbizi_social_links'](['colors' => 'brand']), '#1877F2'), true);
+check('a new tab can be switched off', str_contains($GLOBALS['sc']['ezbizi_social_links'](['new_tab' => 'no']), 'target="_blank"'), false);
 
 // Jose, 2026-09-25: "i want all the options, for all the widgets".
 $styled = $GLOBALS['sc']['ezbizi_social_links'](['icon_color' => '#FF0000', 'label_font_family' => 'Oswald', 'box_devices' => 'mobile']);
@@ -1504,7 +1564,11 @@ $folded = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded']);
 // `<details>` because the accordion has to work with JavaScript off, and
 // because the alternative is enqueuing a script for a fold.
 check('the accordion folds with no script', str_contains($folded, '<details'), true);
-check('each group is a panel', str_contains($folded, '<summary>North Jersey</summary>'), true);
+$searchable = $GLOBALS['sc']['ezbizi_city_list'](['search' => 'yes', 'count' => 'yes']);
+check('a search box over the towns', str_contains($searchable, 'class="ezbizi-cities-search"'), true);
+check('a count beside each group', (bool) preg_match('/ezbizi-cities-count">\(\d+\)/', $searchable), true);
+check('the state can be left off', str_contains($GLOBALS['sc']['ezbizi_city_list'](['show_state' => 'no']), ', NJ<'), false);
+check('each group is a panel', str_contains($folded, '<summary class="ezbizi-cities-label">North Jersey</summary>'), true);
 check('and nothing is enqueued to make it work', str_contains($folded, '<script'), false);
 
 check(
@@ -1873,6 +1937,22 @@ check('the city list draws on a real page', str_contains(ob_get_clean(), 'North 
 ob_start();
 $manager->registered['ezbizi-post-title']->ezbizi_call_render();
 check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
+
+echo PHP_EOL . "Contact details carry A1's sections" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'phone' => '(888) 984-4344', 'phone_secondary' => '(888) 111-2222', 'email' => 'office@a1.test',
+    'hours' => "Mon\u{2013}Fri 8:00 AM \u{2013} 5:00 PM \u{00B7} Sat closed",
+]);
+$contact = fn ($atts) => $GLOBALS['sc']['ezbizi_contact_info']($atts);
+$withHours = $contact(['hours' => 'yes', 'closed_text' => 'Shut']);
+check('hours as a section', str_contains($withHours, 'class="ezbizi-contact-day">Mon'), true);
+check('with the closed wording chosen', str_contains($withHours, '>Shut<'), true);
+$ordered = $contact(['order' => 'email,phone']);
+check('in the order asked for', strpos($ordered, 'office@a1.test') < strpos($ordered, '984-4344'), true);
+check('the second number when asked', str_contains($contact(['secondary' => 'yes']), '111-2222'), true);
+check('and not otherwise', str_contains($contact([]), '111-2222'), false);
+check('links can be switched off', str_contains($contact(['links' => 'no']), 'mailto:'), false);
 
 echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
 reset_site();

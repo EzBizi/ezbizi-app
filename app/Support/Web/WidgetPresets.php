@@ -69,6 +69,10 @@ final class WidgetPresets
         'team',
         'branches',
         'store_locator',
+        // The form's LOOK. Its questions and words stay in the form's own
+        // config; a preset only styles them, so one form can sit dark on one
+        // page and light on another.
+        'form',
     ];
 
     public const DEFAULT = 'default';
@@ -141,16 +145,17 @@ final class WidgetPresets
      */
     private const PARTS = [
         'social_links' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text'],
-        'city_list' => ['box' => 'box', 'heading' => 'text', 'link' => 'text'],
+        'city_list' => ['box' => 'box', 'heading' => 'text', 'group' => 'box', 'link' => 'text', 'count' => 'text', 'search' => 'button', 'arrow' => 'icon', 'bullet' => 'icon'],
         'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
         'google_map' => ['box' => 'box'],
-        'contact_info' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text'],
+        'contact_info' => ['box' => 'box', 'item' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text', 'day' => 'text', 'time' => 'text'],
         'cta' => ['box' => 'box', 'button' => 'button', 'icon' => 'icon'],
         'phone_box' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'number' => 'text'],
         'review_faces' => ['box' => 'box', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
         'team' => ['box' => 'box', 'heading' => 'text', 'name' => 'text', 'role' => 'text', 'photo' => 'box'],
         'branches' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'button' => 'button'],
         'store_locator' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'link' => 'text'],
+        'form' => ['box' => 'box', 'title' => 'text', 'subtitle' => 'text', 'label' => 'text', 'input' => 'button', 'submit' => 'button', 'consent' => 'text', 'help' => 'text'],
     ];
 
     /**
@@ -185,6 +190,8 @@ final class WidgetPresets
             'color' => ['color'],
             'hover_color' => ['color'],
             'bg' => ['color'],
+            'border_color' => ['color'],
+            'border_width' => ['range', 0, 20],
             'size' => ['range', 0, 120],
             'padding' => ['range', 0, 60],
             'radius' => ['range', 0, 100],
@@ -285,6 +292,14 @@ final class WidgetPresets
                 'size' => 28,
                 'gap' => 10,
                 'labels' => false,
+                // Toula's Social Links (01a0d8e6-c580): which networks and in
+                // what order (empty is every one this site has, in EzBizi's
+                // order), their brand colours or one colour, a new tab, and a
+                // hover effect.
+                'networks' => '',
+                'colors' => 'single',
+                'new_tab' => true,
+                'hover' => 'none',
             ],
             /*
              * The accordion is A1's most-used arrangement — 17 of them on
@@ -297,6 +312,20 @@ final class WidgetPresets
                 'columns' => 3,
                 'group' => true,
                 'link' => true,
+                // Toula's City List (01a0d8e6-28cc) and A1's live lists: a
+                // search box, the state after each town, bullets, a count per
+                // group, the first group open, one open at a time, links in a
+                // new tab, and what to say when a search finds nothing.
+                'search' => false,
+                'search_placeholder' => 'Search cities...',
+                'show_state' => true,
+                'bullets' => false,
+                'count' => false,
+                'open_first' => false,
+                'one_open' => false,
+                'new_tab' => false,
+                'column_gap' => 28,
+                'empty_text' => 'No cities match that search.',
             ],
             /*
              * `today` earns its default: the reason a visitor reads an hours
@@ -337,6 +366,26 @@ final class WidgetPresets
                 'phone' => true,
                 'email' => true,
                 'address' => true,
+                // Toula's Contact Details list (01a0d8e6-6684) and what A1's
+                // live info boxes use: hours and licence sections, the second
+                // number and inbox, each section's own title (empty hides it),
+                // their order, spacing, links and dividers.
+                'hours' => false,
+                'license' => false,
+                'secondary' => false,
+                'phone_title' => 'Phone',
+                'email_title' => 'Email',
+                'address_title' => 'Location',
+                'hours_title' => 'Hours',
+                'license_title' => 'License',
+                'closed_text' => 'Closed',
+                'order' => 'phone,email,address,hours,license',
+                'icon_gap' => 10,
+                'item_gap' => 18,
+                'links' => true,
+                'underline' => false,
+                'dividers' => false,
+                'divider_color' => '',
             ],
             /*
              * A1's sticky yellow "CALL US TODAY" bar, and Everdoors' popup.
@@ -441,20 +490,26 @@ final class WidgetPresets
                 'images' => true,
                 'maps' => true,
             ],
+            'form' => [
+                'field_gap' => 12,
+                'button_width' => 'auto',
+            ],
         ];
     }
 
     /** The values each option may take. Anything else becomes the default. */
     private const CHOICES = [
-        'social_links' => [
-            'style' => ['plain', 'solid', 'outline'],
-            'shape' => ['circle', 'square', 'rounded'],
-        ],
         'city_list' => [
             'layout' => ['columns', 'list', 'accordion'],
         ],
+        'social_links' => [
+            'style' => ['plain', 'solid', 'outline'],
+            'shape' => ['circle', 'square', 'rounded'],
+            'colors' => ['single', 'brand'],
+            'hover' => ['none', 'fade', 'grow', 'lift'],
+        ],
         'contact_info' => [
-            'layout' => ['stack', 'row', 'compact'],
+            'layout' => ['stack', 'row', 'compact', 'grid', 'inline'],
         ],
         'cta' => [
             // `bar` is fixed to the bottom of the window, `popup` opens over
@@ -472,6 +527,9 @@ final class WidgetPresets
         ],
         'review_faces' => [
             'tone' => ['light', 'dark'],
+        ],
+        'form' => [
+            'button_width' => ['auto', 'full'],
         ],
         'team' => [
             'photo' => ['square', 'circle'],
@@ -495,6 +553,12 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
+        'city_list' => ['search_placeholder' => 60, 'empty_text' => 80],
+        'social_links' => ['networks' => 300],
+        'contact_info' => [
+            'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
+            'license_title' => 40, 'closed_text' => 30, 'order' => 60,
+        ],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
             'happy_title' => 80, 'happy_text' => 160, 'button' => 60,
@@ -506,17 +570,20 @@ final class WidgetPresets
     /** Numbers, with the range a website can survive. */
     private const RANGES = [
         'social_links' => ['size' => [16, 64], 'gap' => [0, 40]],
-        'city_list' => ['columns' => [1, 6]],
+        'city_list' => ['columns' => [1, 6], 'column_gap' => [0, 80]],
         'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
         'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
+        'contact_info' => ['icon_gap' => [0, 40], 'item_gap' => [0, 80]],
+        'form' => ['field_gap' => [0, 40]],
     ];
 
     /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
     private const COLORS = [
         'cta' => ['glow_color'],
+        'contact_info' => ['divider_color'],
     ];
 
     /**

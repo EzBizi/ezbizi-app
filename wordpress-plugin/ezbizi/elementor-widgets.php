@@ -66,7 +66,7 @@ abstract class EzBizi_Elementor_Widget extends \Elementor\Widget_Base {
 }
 
 /** The contact form, landing as a Lead in EzBizi. */
-class EzBizi_Elementor_Form extends EzBizi_Elementor_Widget {
+class EzBizi_Elementor_Form extends EzBizi_Elementor_Preset_Widget {
     public function get_name() {
         return 'ezbizi-form';
     }
@@ -79,15 +79,14 @@ class EzBizi_Elementor_Form extends EzBizi_Elementor_Widget {
         return 'eicon-form-horizontal';
     }
 
-    protected function render() {
-        if (ezbizi_in_elementor_editor()) {
-            echo ezbizi_elementor_placeholder(esc_html__('EzBizi Contact Form', 'ezbizi'));
-
-            return;
-        }
-
+    /**
+     * A preset and "This widget only" style its look (Jose, 2026-09-25:
+     * "company wide preset but allowing per widget override"); its questions
+     * and words stay the form's own, set in EzBizi.
+     */
+    protected function ezbizi_draw($atts) {
         // The shortcode escapes everything it prints; see enquiries.php.
-        echo ezbizi_form_shortcode(array());
+        return ezbizi_form_shortcode($atts);
     }
 }
 

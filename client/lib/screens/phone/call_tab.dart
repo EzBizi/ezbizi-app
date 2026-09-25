@@ -617,6 +617,16 @@ class _CallTabState extends State<CallTab> {
     }
 
     await _service.connect(to: to, callerId: number.e164);
+
+    // Refused by the platform before it started — say so where the Call
+    // button is, and do NOT tell the server this person is on a call.
+    final refused = _service.callRefusal;
+    if (refused != null) {
+      if (mounted) setState(() => _bridgeNote = refused);
+
+      return;
+    }
+
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': 'on_call',
