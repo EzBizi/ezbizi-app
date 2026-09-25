@@ -179,6 +179,22 @@ class FieldController extends Controller
         return response()->json(['data' => ['url' => $this->maps->tileUrl()]]);
     }
 
+    /** GET /field/map/attribution — Google's copyright line for what is on screen. */
+    public function attribution(Request $request): JsonResponse
+    {
+        $v = $request->validate([
+            'zoom' => ['required', 'integer', 'between:0,22'],
+            'north' => ['required', 'numeric', 'between:-90,90'],
+            'south' => ['required', 'numeric', 'between:-90,90'],
+            'east' => ['required', 'numeric', 'between:-180,180'],
+            'west' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+
+        return response()->json(['data' => ['copyright' => $this->maps->attribution(
+            (int) $v['zoom'], (float) $v['north'], (float) $v['south'], (float) $v['east'], (float) $v['west'],
+        )]]);
+    }
+
     /** GET /field/people — who the Route picker may choose. */
     public function people(Request $request): JsonResponse
     {

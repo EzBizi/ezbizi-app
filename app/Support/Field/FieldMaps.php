@@ -7,7 +7,8 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 /**
- * The three Google Maps Platform calls Field makes, and nothing else.
+ * The Google Maps Platform calls Field makes (geocode, route, tiles and
+ * their attribution), and nothing else.
  *
  * Every method answers null when the key is missing or Google refuses, so a
  * screen can say "not configured" instead of throwing. Nothing here knows
@@ -139,6 +140,34 @@ final class FieldMaps
         }
 
         return 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session='.urlencode($session).'&key='.urlencode($key);
+    }
+
+    /**
+     * The copyright line Google requires beside its tiles for this viewport
+     * ("Map data ©2026 Google"), shown in full, bottom right (Map Tiles
+     * policies). It changes with the area, so it is asked for, not written.
+     * Cached per rounded viewport: panning a street does not change it.
+     */
+    public function attribution(int $zoom, float $north, float $south, float $east, float $west): ?string
+    {
+        $key = (string) config('services.google_maps.tiles_key');
+        $url = $this->tileUrl(); // also ensures a session exists
+
+        if ($key === '' || $url === null) {
+            return null;
+        }
+
+        $cacheKey = 'field.tiles_copyright.'.md5(json_encode([$zoom, round($north, 1), round($south, 1), round($east, 1), round($west, 1)]));
+
+        return Cache::remember($cacheKey, now()->addHour(), function () use ($key, $zoom, $north, $south, $east, $west) {
+            $response = Http::timeout(10)->get('https://tile.googleapis.com/tile/v1/viewport', [
+                'session' => Cache::get('field.tiles_session'),
+                'key' => $key,
+                'zoom' => $zoom, 'north' => $north, 'south' => $south, 'east' => $east, 'west' => $west,
+            ]);
+
+            return $response->ok() ? (string) $response->json('copyright', '') : null;
+        });
     }
 
     /** Great-circle distance in metres. */

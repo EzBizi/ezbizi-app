@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
@@ -33,6 +35,17 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
   String? _actionError;
   Map<String, dynamic> _data = const {};
 
+  /// The first tap arms SOS for a few seconds; the second sends it. Inline,
+  /// because the app has no dialogs, and two taps stop the accidental one.
+  bool _armed = false;
+  Timer? _disarm;
+
+  @override
+  void dispose() {
+    _disarm?.cancel();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -63,30 +76,22 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     _load();
   }
 
+  void _arm() {
+    _disarm?.cancel();
+    setState(() => _armed = true);
+    _disarm = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _armed = false);
+    });
+  }
+
+  void _cancel() {
+    _disarm?.cancel();
+    setState(() => _armed = false);
+  }
+
   Future<void> _sos() async {
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Send SOS?'),
-        content: const Text(
-          'Your managers are told straight away, with where you are now.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Send SOS'),
-          ),
-        ],
-      ),
-    );
-    if (sure != true || !mounted) return;
+    _disarm?.cancel();
+    setState(() => _armed = false);
 
     final here = await FieldTracker.currentPosition();
     if (!mounted) return;
@@ -161,14 +166,25 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
                         : Icons.location_off_outlined,
                   ),
                   title: Text('${me['reason'] ?? ''}'),
-                  trailing: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: theme.colorScheme.error,
-                      foregroundColor: theme.colorScheme.onError,
-                    ),
-                    onPressed: _sos,
-                    icon: const Icon(Icons.sos),
-                    label: const Text('SOS'),
+                  trailing: Wrap(
+                    spacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (_armed)
+                        TextButton(
+                          onPressed: _cancel,
+                          child: const Text('Cancel'),
+                        ),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: theme.colorScheme.error,
+                          foregroundColor: theme.colorScheme.onError,
+                        ),
+                        onPressed: _armed ? _sos : _arm,
+                        icon: const Icon(Icons.sos),
+                        label: Text(_armed ? 'Tap again to send SOS' : 'SOS'),
+                      ),
+                    ],
                   ),
                 ),
               ),

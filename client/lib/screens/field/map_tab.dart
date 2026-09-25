@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -33,6 +35,38 @@ class _FieldMapTabState extends State<FieldMapTab> {
   DateTime _day = DateTime.now();
   List<LatLng> _trail = const [];
 
+  /// Google's copyright line for what is on screen. Map Tiles policy: shown
+  /// in full, bottom right, beside "Google Maps", and asked for per viewport.
+  String _copyright = '';
+  Timer? _attributionDebounce;
+
+  @override
+  void dispose() {
+    _attributionDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _viewportChanged() {
+    if (_tiles == null) return;
+    _attributionDebounce?.cancel();
+    _attributionDebounce = Timer(const Duration(milliseconds: 600), () async {
+      final camera = _map.camera;
+      final b = camera.visibleBounds;
+      final response = await widget.api.get('/field/map/attribution', {
+        'zoom': '${camera.zoom.round().clamp(0, 22)}',
+        'north': '${b.north.clamp(-90, 90)}',
+        'south': '${b.south.clamp(-90, 90)}',
+        'east': '${b.east.clamp(-180, 180)}',
+        'west': '${b.west.clamp(-180, 180)}',
+      });
+      if (!mounted || !response.ok) return;
+      setState(
+        () => _copyright =
+            ((response.body['data'] as Map?)?['copyright'] as String?) ?? '',
+      );
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +93,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
       }
     });
     _fit(_people.map(_at).toList());
+    _viewportChanged();
   }
 
   Future<void> _loadTrail() async {
@@ -103,7 +138,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   Color _colour(Map<String, dynamic> p, ColorScheme scheme) {
     if (p['silent'] == true || p['fresh'] != true) return scheme.outline;
     if (p['stopped'] == true) return scheme.error;
-    if (p['at_job'] != null) return Colors.green.shade700;
+    if (p['at_job'] != null) return scheme.tertiary;
 
     return scheme.primary;
   }
@@ -120,9 +155,11 @@ class _FieldMapTabState extends State<FieldMapTab> {
         children: [
           FlutterMap(
             mapController: _map,
-            options: const MapOptions(
-              initialCenter: LatLng(39.5, -98.35), // the contiguous US
+            options: MapOptions(
+              initialCenter: const LatLng(39.5, -98.35), // the contiguous US
               initialZoom: 4,
+              onMapReady: _viewportChanged,
+              onPositionChanged: (_, _) => _viewportChanged(),
             ),
             children: [
               if (_tiles != null)
@@ -182,6 +219,21 @@ class _FieldMapTabState extends State<FieldMapTab> {
               ),
             ],
           ),
+          if (_tiles != null)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 5),
+                color: scheme.surface.withValues(alpha: 0.85),
+                child: Text(
+                  _copyright.isEmpty
+                      ? 'Google Maps'
+                      : 'Google Maps · $_copyright',
+                  style: TextStyle(fontSize: 11, color: scheme.onSurface),
+                ),
+              ),
+            ),
           Positioned(
             left: 12,
             top: 12,
