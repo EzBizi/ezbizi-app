@@ -558,33 +558,40 @@ class StateColour {
       Theme.of(context).brightness == Brightness.dark ? dark : light;
 }
 
-/// What a status MEANS, for the pill that shows it.
+/// How much attention a state asks for, for the pill or chip that shows it.
 ///
 /// Six, because that is how many the Jobs list needed on the day it gained
-/// colour (queue 24): six statuses in real use, each a different kind of news.
-/// The mapping from a status to its tone lives beside the status
-/// (`toneForJobStatus`); this is only where the colours come from, so a second
-/// list that colours its states reaches for these rather than writing six more
-/// literals.
+/// colour (queue 24). The tones are LEVELS, not job words, so a second screen
+/// can map its own states onto them — and one has: Scheduling's availability
+/// chips (726cfcb8). Each mapping lives beside the thing it colours
+/// (`toneForJobStatus`, the availability pane's own switch); this is only
+/// where the colours come from, so nobody writes six more literals.
+///
+/// The uses below are the ones in the tree. A new use that does not read as
+/// the same LEVEL of news as the ones listed is a sign it wants a different
+/// tone, not a sign this list is out of date.
 enum Tone {
-  /// Nothing to act on yet, or nothing known — the fallback for a value no
+  /// Nothing to act on, or nothing known — and the fallback for a value no
   /// mapping recognises, because a guessed colour is a claim.
+  /// Jobs: Submitted. Availability: Full, where there is nothing to offer.
   neutral,
 
-  /// Under way.
+  /// Under way. Jobs: In progress.
   info,
 
-  /// Waiting on somebody.
+  /// Needs somebody soon. Jobs: Pending. Availability: 2 spots left.
   caution,
 
-  /// Finished, and waiting for sign-off.
+  /// Finished, and waiting for sign-off. Jobs: Done pending approval.
   review,
 
-  /// Done.
+  /// All is well. Jobs: Done. Availability: 3 or more left, and the first
+  /// available date.
   ok,
 
-  /// Not going to happen. Red at Jose's word, 2026-09-24: *"the canceled tab
-  /// should be red, not gray"*.
+  /// The strongest word on the screen: gone, or about to be. Red at Jose's
+  /// word, 2026-09-24: *"the canceled tab should be red, not gray"*.
+  /// Jobs: Canceled. Availability: 1 spot left.
   bad,
 }
 
