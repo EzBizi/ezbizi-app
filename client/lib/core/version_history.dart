@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Reports has a service-area column, Days until next free spot. Filter it at a number of days and an automation can warn when an area is booked out that far ahead; an area that is closed or not set up stays blank.',
+        'Web Management: a page has a Street View link field, for the Google Maps embed of the place a location page is about. The website plugin that draws it, with a photo gallery and a video carousel like the A1 Tools ones, rolls out to the sites separately.',
       ],
     ),
     VersionRelease(
