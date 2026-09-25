@@ -102,6 +102,9 @@ class Job extends Model implements StatesRetention
             // JobsController::update() serialises correctly on save — see
             // AutomationEvent::casts() for the same reasoning on delivered_at.
             'earned_at'        => 'datetime',
+            // Set only by a person's change; the Workiz projection leaves the
+            // area alone once it is (see its migration).
+            'service_area_chosen_at' => 'datetime',
         ];
     }
 

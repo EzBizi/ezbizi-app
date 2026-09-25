@@ -256,12 +256,15 @@ class JobsController extends Controller
         $this->assertAreaOfFranchise($input['service_area_id'] ?? null, $franchise);
 
         $job = DB::transaction(function () use ($input, $franchise, $customer) {
-            $job = Job::create($input + [
+            $job = Job::make($input + [
                 'number' => $this->numbers->next(RecordNumberGenerator::JOBS, $franchise),
                 // From the franchise, so the amount and its currency can never
                 // disagree with where the work happened.
                 'currency' => strtoupper($franchise->currency ?: 'USD'),
             ]);
+            // Not fillable: only the server says a person chose the area.
+            $job->service_area_chosen_at = filled($input['service_area_id'] ?? null) ? now() : null;
+            $job->save();
 
             $this->audit->log('job.created', $job, metadata: [
                 'franchise' => $franchise->name,
@@ -345,6 +348,13 @@ class JobsController extends Controller
             // calls too.
             if (array_key_exists('status', $job->getDirty())) {
                 $job->markEarnedIfDue();
+            }
+
+            // A person decided the area, clearing included, so the Workiz
+            // projection leaves it alone from now on. On a CHANGE only: the
+            // panel may send the field with every save, as it does the status.
+            if ($job->isDirty('service_area_id')) {
+                $job->service_area_chosen_at = now();
             }
 
             $changed = $job->getDirty();
