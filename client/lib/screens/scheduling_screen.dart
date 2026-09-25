@@ -5,8 +5,9 @@ import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
+import 'scheduling/schedule_pane.dart';
 
-/// Scheduling. Availability and Settings are real; Schedule is not built yet.
+/// Scheduling: Availability, the Schedule board, and Settings.
 ///
 /// design: docs/previews/scheduling-layouts.html — #4 Availability, #7 Settings
 class SchedulingScreen extends StatefulWidget {
@@ -49,11 +50,12 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'schedule',
       'Schedule',
       Icons.calendar_month_outlined,
-      // ponytail: still a placeholder. Nothing books a slot yet — Job has no
-      // service area — so there is no schedule to draw. It becomes real with
-      // Scheduled Jobs, which is also what turns Availability's "configured
-      // capacity" into "remaining".
-      () => const _NotBuilt('Schedule is not built yet.'),
+      // One day's board, read-only: A-1 assigns in Workiz. See SchedulePane.
+      () => SchedulePane(
+        api: widget.api,
+        session: widget.session,
+        visible: _visible('schedule'),
+      ),
     ),
     (
       'settings',
@@ -68,8 +70,10 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
   ];
 
   /// The tabs this person may actually open.
-  List<(String, String, IconData, Widget Function())> get _tabs =>
-      [for (final tab in _declaredTabs) if (_mayOpen(tab.$1)) tab];
+  List<(String, String, IconData, Widget Function())> get _tabs => [
+    for (final tab in _declaredTabs)
+      if (_mayOpen(tab.$1)) tab,
+  ];
 
   /// Absent `/me` answers NO, not yes. This screen is reached only with a
   /// session, so a null here is a load that has not finished or a state nobody
@@ -168,26 +172,6 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _NotBuilt extends StatelessWidget {
-  const _NotBuilt(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Text(
-        message,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
     );
   }
 }
