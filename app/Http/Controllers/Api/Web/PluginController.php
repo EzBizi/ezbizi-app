@@ -11,6 +11,7 @@ use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\SiteLists;
 use App\Support\Web\ValueResolver;
+use App\Support\Web\WidgetPresets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -107,7 +108,8 @@ class PluginController extends Controller
                  * changing a colour in EzBizi reaches the site without anybody
                  * editing a page or updating a plugin.
                  */
-                'widgets' => WebWidget::publishedFor($site),
+                // With the rules a per-widget override is checked by.
+                'widgets' => [...WebWidget::publishedFor($site), 'schema' => WidgetPresets::schema()],
                 // The lists the team, branches and store-locator widgets draw.
                 'team' => SiteLists::team($site),
                 'locations' => SiteLists::locations($site),

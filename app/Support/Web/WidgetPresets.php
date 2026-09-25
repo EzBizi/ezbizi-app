@@ -432,6 +432,40 @@ final class WidgetPresets
     }
 
     /**
+     * What each option IS, for the plugin to check a per-widget override by.
+     *
+     * Jose, 2026-09-25: "company wide preset but allowing per widget
+     * override". The preset stays the default; a placed widget may change any
+     * of its options, as a shortcode attribute or an Elementor control. The
+     * override never passes through this server — it is typed on the customer's
+     * site — so the plugin needs the same rules `one()` applies here, and this
+     * is them, sent rather than copied so they cannot drift.
+     *
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    public static function schema(): array
+    {
+        $out = [];
+
+        foreach (self::defaults() as $widget => $defaults) {
+            foreach ($defaults as $key => $default) {
+                $out[$widget][$key] = match (true) {
+                    is_bool($default) => ['type' => 'bool'],
+                    isset(self::RANGES[$widget][$key]) => [
+                        'type' => 'range',
+                        'min' => self::RANGES[$widget][$key][0],
+                        'max' => self::RANGES[$widget][$key][1],
+                    ],
+                    isset(self::TEXT[$widget][$key]) => ['type' => 'text', 'max' => self::TEXT[$widget][$key]],
+                    default => ['type' => 'choice', 'choices' => self::CHOICES[$widget][$key] ?? [$default]],
+                };
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * A preset name somebody can type into a shortcode without quoting rules.
      *
      * Lowercase, letters, digits, hyphen and underscore, 32 characters. The

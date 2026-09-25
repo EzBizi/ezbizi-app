@@ -50,6 +50,8 @@ if (! defined('ABSPATH')) {
  * because the payload can be older than the server that is running.
  */
 function ezbizi_preset($widget, $atts) {
+    // Kept whole for the overrides; `shortcode_atts` below keeps only `preset`.
+    $given = is_array($atts) ? $atts : array();
     $atts = shortcode_atts(
         array('preset' => ''),
         is_array($atts) ? $atts : array(),
@@ -72,7 +74,67 @@ function ezbizi_preset($widget, $atts) {
         $chosen = $stored['default'];
     }
 
-    return array_merge(ezbizi_preset_fallback($widget), $chosen);
+    return ezbizi_apply_overrides($widget, array_merge(ezbizi_preset_fallback($widget), $chosen), $given);
+}
+
+/**
+ * This widget's own changes on top of its preset.
+ *
+ * Jose, 2026-09-25: "company wide preset but allowing per widget override".
+ * An override is a shortcode attribute named like the option
+ * (`[ezbizi_social_links size="40" labels="yes"]`) or, in Elementor, the
+ * widget's "This widget only" controls, which arrive here the same way.
+ *
+ * Checked against the rules EzBizi sends in `widgets.schema`, never trusted:
+ * this is typed on the page, not saved through EzBizi, and it ends up in a
+ * `<style>` block. An option EzBizi does not describe is ignored, and a value
+ * outside its rule is dropped, so a typo keeps the preset's value rather than
+ * breaking the page. A payload from before the schema existed allows nothing.
+ */
+function ezbizi_apply_overrides($widget, $preset, $atts) {
+    $payload = ezbizi_payload();
+    $rules = isset($payload['widgets']['schema'][$widget]) && is_array($payload['widgets']['schema'][$widget])
+        ? $payload['widgets']['schema'][$widget]
+        : array();
+
+    if (! is_array($atts) || $rules === array()) {
+        return $preset;
+    }
+
+    foreach ($rules as $key => $rule) {
+        if (! isset($atts[$key]) || ! is_scalar($atts[$key]) || trim((string) $atts[$key]) === '' || ! is_array($rule)) {
+            continue;
+        }
+
+        $raw = trim((string) $atts[$key]);
+
+        switch (isset($rule['type']) ? $rule['type'] : '') {
+            case 'bool':
+                $read = filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($read !== null) {
+                    $preset[$key] = $read;
+                }
+                break;
+            case 'range':
+                if (is_numeric($raw)) {
+                    $preset[$key] = max((int) $rule['min'], min((int) $rule['max'], (int) $raw));
+                }
+                break;
+            case 'choice':
+                if (in_array($raw, isset($rule['choices']) ? (array) $rule['choices'] : array(), true)) {
+                    $preset[$key] = $raw;
+                }
+                break;
+            case 'text':
+                $clean = trim((string) preg_replace('/\s+/u', ' ', strip_tags($raw)));
+                $preset[$key] = function_exists('mb_substr')
+                    ? mb_substr($clean, 0, (int) (isset($rule['max']) ? $rule['max'] : 80))
+                    : substr($clean, 0, (int) (isset($rule['max']) ? $rule['max'] : 80));
+                break;
+        }
+    }
+
+    return $preset;
 }
 
 /**

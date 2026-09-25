@@ -1210,6 +1210,16 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
         'pages' => $pages,
         'widgets' => [
             'presets' => preset_bundles(),
+            // As WidgetPresets::schema() sends it; WebWidgetsTest pins that side.
+            'schema' => [
+                'social_links' => [
+                    'style' => ['type' => 'choice', 'choices' => ['plain', 'solid', 'outline']],
+                    'shape' => ['type' => 'choice', 'choices' => ['circle', 'square', 'rounded']],
+                    'size' => ['type' => 'range', 'min' => 16, 'max' => 64],
+                    'gap' => ['type' => 'range', 'min' => 0, 'max' => 40],
+                    'labels' => ['type' => 'bool'],
+                ],
+            ],
             'style' => [
                 'accent' => '#aa0000', 'on_accent' => '#ffffff', 'text' => '#111111',
                 'background' => '#ffffff', 'font' => 'inherit', 'radius' => 12,
@@ -1282,6 +1292,18 @@ $typo = $GLOBALS['sc']['ezbizi_social_links'](['preset' => 'foter']);
 
 check('an unknown name renders something', $typo !== '', true);
 check('and it is the default', str_contains($typo, 'border-radius:999px'), true);
+
+// Jose, 2026-09-25: "company wide preset but allowing per widget override".
+$own = $GLOBALS['sc']['ezbizi_social_links'](['size' => '40', 'labels' => 'yes']);
+check('a widget can change one option of its preset', str_contains($own, 'width:40px'), true);
+check('and another', str_contains($own, 'ezbizi-social-label'), true);
+check('while the rest stay the preset\'s', str_contains($own, 'border-radius:999px'), true);
+check('a number past its range is held to it', str_contains($GLOBALS['sc']['ezbizi_social_links'](['size' => '9999']), 'width:64px'), true);
+check('a choice EzBizi does not offer is ignored', str_contains($GLOBALS['sc']['ezbizi_social_links'](['shape' => 'hexagon']), 'border-radius:999px'), true);
+check('an override cannot write its own CSS', str_contains($GLOBALS['sc']['ezbizi_social_links'](['size' => '40;}body{display:none']), 'display:none'), false);
+// Compared without the element id, which every call numbers afresh.
+$strip = fn ($html) => preg_replace('/ezbizi-social-\d+/', '', $html);
+check('an option nobody described is ignored', $strip($GLOBALS['sc']['ezbizi_social_links'](['onclick' => 'x'])) === $strip($GLOBALS['sc']['ezbizi_social_links']([])), true);
 check('not the named one', str_contains($typo, 'ezbizi-social-label'), false);
 
 // A name typed the way somebody would type it still finds the preset: the
@@ -1753,8 +1775,10 @@ $GLOBALS['is_admin'] = false;
 $social_widget = $manager->registered['ezbizi-social-links'];
 $social_widget->ezbizi_call_register_controls();
 
-check('one control', count($social_widget->ezbizi_controls), 1);
-check('and it is the preset name', isset($social_widget->ezbizi_controls['ezbizi_preset']), true);
+check('the preset name comes first', array_key_first($social_widget->ezbizi_controls), 'ezbizi_preset');
+check('then each option, for this widget only', isset($social_widget->ezbizi_controls['ezo_size'], $social_widget->ezbizi_controls['ezo_labels']), true);
+check('a number as a number', $social_widget->ezbizi_controls['ezo_size']['type'] ?? '', \Elementor\Controls_Manager::NUMBER);
+check('empty unless somebody sets it', $social_widget->ezbizi_controls['ezo_size']['default'] ?? null, '');
 check(
     'a free-text field, not a copy of the preset',
     $social_widget->ezbizi_controls['ezbizi_preset']['type'] ?? '',
@@ -1780,6 +1804,13 @@ $social_widget->ezbizi_settings = ['ezbizi_preset' => 'footer'];
 ob_start();
 $social_widget->ezbizi_call_render();
 check('and the name reaches the shortcode', str_contains(ob_get_clean(), 'height:40px'), true);
+
+$social_widget->ezbizi_settings = ['ezbizi_preset' => '', 'ezo_size' => '48', 'ezo_labels' => ''];
+ob_start();
+$social_widget->ezbizi_call_render();
+$overridden = ob_get_clean();
+check('an Elementor override reaches the shortcode', str_contains($overridden, 'width:48px'), true);
+check('and an empty one leaves the preset alone', str_contains($overridden, 'ezbizi-social-label'), false);
 
 // The editor gets a still picture of every one of them, for the reason the
 // chat does: an editor that renders live widgets makes real requests.

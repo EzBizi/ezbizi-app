@@ -242,6 +242,9 @@ new token" in EzBizi for that.
   View link. Only a Google Maps embed is drawn.
 * NEW: EzBizi Gallery and EzBizi Video Carousel Elementor widgets, for a
   page's own pictures and YouTube videos.
+* NEW: one widget can change any option of its preset for itself, as a
+  shortcode attribute ([ezbizi_social_links size="40"]) or under "This
+  widget only" in Elementor. The rest still comes from the preset.
 
 = 1.15.0 =
 * NEW: [ezbizi_review_faces], and an Elementor widget for it. A happy and

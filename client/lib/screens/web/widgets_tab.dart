@@ -1114,7 +1114,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         'Paste the shortcode where it belongs on the page; everything about '
         'how it looks is set here. A page that needs a different look asks '
         'for a preset by name, and a name nobody has made renders the '
-        'default rather than nothing.',
+        'default rather than nothing. One widget can also change any option '
+        'for itself — in the shortcode, like size="40", or under "This '
+        'widget only" in Elementor — and keep the rest of its preset.',
         style: theme.textTheme.bodySmall,
       ),
       const SizedBox(height: 12),

@@ -709,6 +709,32 @@ class WebWidgetsTest extends TestCase
     // ── helpers ──────────────────────────────────────────────────────
 
     /** @return array{site: array<string, mixed>, editor: User, tenant: array<string, mixed>} */
+    /**
+     * Jose, 2026-09-25: "company wide preset but allowing per widget
+     * override". The override is typed on the customer's page, so the plugin
+     * checks it against these rules — the ones `resolve()` applies here.
+     */
+    public function test_the_plugin_is_sent_the_rules_an_override_is_checked_by(): void
+    {
+        ['site' => $site] = $this->site();
+
+        $schema = $this->withToken($site['token'])
+            ->getJson('/api/v1/web/plugin/values?host='.$site['data']['host'])
+            ->assertOk()
+            ->json('widgets.schema');
+
+        // Every widget with a preset, every option of it.
+        $this->assertSame(WidgetPresets::WIDGETS, array_keys($schema));
+        foreach (WidgetPresets::defaults() as $widget => $defaults) {
+            $this->assertSame(array_keys($defaults), array_keys($schema[$widget]), $widget);
+        }
+
+        $this->assertSame(['type' => 'range', 'min' => 16, 'max' => 64], $schema['social_links']['size']);
+        $this->assertSame(['type' => 'bool'], $schema['social_links']['labels']);
+        $this->assertSame(['circle', 'square', 'rounded'], $schema['social_links']['shape']['choices']);
+        $this->assertSame(['type' => 'text', 'max' => 80], $schema['cta']['text']);
+    }
+
     private function site(): array
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -68,6 +68,8 @@ namespace Elementor {
         const RAW_HTML = 'raw_html';
 
         const TEXT = 'text';
+        const SELECT = 'select';
+        const NUMBER = 'number';
     }
 
     /** `Plugin::$instance->editor->is_edit_mode()` and nothing else. */

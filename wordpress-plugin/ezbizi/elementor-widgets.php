@@ -136,8 +136,61 @@ class EzBizi_Elementor_Chat extends EzBizi_Elementor_Widget {
  * widget draws the moment it is dropped on the canvas.
  */
 abstract class EzBizi_Elementor_Preset_Widget extends EzBizi_Elementor_Widget {
-    /** The shortcode this widget is a face for. */
-    abstract protected function ezbizi_draw($preset);
+    /** The shortcode this widget is a face for, given `preset` and any overrides. */
+    abstract protected function ezbizi_draw($atts);
+
+    /** The preset family: `ezbizi-social-links` draws `social_links`. */
+    protected function ezbizi_widget() {
+        return str_replace('-', '_', substr($this->get_name(), strlen('ezbizi-')));
+    }
+
+    /**
+     * "This widget only": one optional control per preset option, from the
+     * rules EzBizi sends. Empty means "use the preset", so the section can be
+     * ignored entirely — which is the normal case.
+     */
+    protected function ezbizi_override_controls() {
+        $payload = ezbizi_payload();
+        $rules = isset($payload['widgets']['schema'][$this->ezbizi_widget()])
+            ? (array) $payload['widgets']['schema'][$this->ezbizi_widget()]
+            : array();
+
+        if ($rules === array()) {
+            return;
+        }
+
+        $this->start_controls_section('ezbizi_override_section', array(
+            'label' => esc_html__('This widget only', 'ezbizi'),
+        ));
+
+        $this->add_control('ezbizi_override_note', array(
+            'type' => \Elementor\Controls_Manager::RAW_HTML,
+            'raw' => esc_html__('Leave these empty to use the preset. Anything set here changes this widget only.', 'ezbizi'),
+            'content_classes' => 'elementor-descriptor',
+        ));
+
+        foreach ($rules as $key => $rule) {
+            $label = ucfirst(str_replace('_', ' ', $key));
+            $id = 'ezo_' . $key;
+            $type = isset($rule['type']) ? $rule['type'] : '';
+
+            if ($type === 'bool') {
+                $this->add_control($id, array('label' => $label, 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '',
+                    'options' => array('' => esc_html__('From the preset', 'ezbizi'), 'yes' => esc_html__('On', 'ezbizi'), 'no' => esc_html__('Off', 'ezbizi'))));
+            } elseif ($type === 'choice') {
+                $this->add_control($id, array('label' => $label, 'type' => \Elementor\Controls_Manager::SELECT, 'default' => '',
+                    'options' => array('' => esc_html__('From the preset', 'ezbizi')) + array_combine((array) $rule['choices'], array_map('ucfirst', (array) $rule['choices']))));
+            } elseif ($type === 'range') {
+                $this->add_control($id, array('label' => $label, 'type' => \Elementor\Controls_Manager::NUMBER, 'default' => '',
+                    'min' => (int) $rule['min'], 'max' => (int) $rule['max'], 'placeholder' => esc_html__('Preset', 'ezbizi')));
+            } elseif ($type === 'text') {
+                $this->add_control($id, array('label' => $label, 'type' => \Elementor\Controls_Manager::TEXT, 'default' => '',
+                    'placeholder' => esc_html__('From the preset', 'ezbizi')));
+            }
+        }
+
+        $this->end_controls_section();
+    }
 
     protected function register_controls() {
         $this->start_controls_section('ezbizi_preset_section', array(
@@ -155,6 +208,23 @@ abstract class EzBizi_Elementor_Preset_Widget extends EzBizi_Elementor_Widget {
         ));
 
         $this->end_controls_section();
+
+        $this->ezbizi_override_controls();
+    }
+
+    /** The preset name and every override somebody set, as shortcode attributes. */
+    protected function ezbizi_atts($settings) {
+        $atts = array(
+            'preset' => isset($settings['ezbizi_preset']) && is_string($settings['ezbizi_preset']) ? $settings['ezbizi_preset'] : '',
+        );
+
+        foreach ((array) $settings as $key => $value) {
+            if (strpos((string) $key, 'ezo_') === 0 && is_scalar($value) && trim((string) $value) !== '') {
+                $atts[substr($key, 4)] = (string) $value;
+            }
+        }
+
+        return $atts;
     }
 
     protected function render() {
@@ -164,13 +234,8 @@ abstract class EzBizi_Elementor_Preset_Widget extends EzBizi_Elementor_Widget {
             return;
         }
 
-        $settings = $this->get_settings_for_display();
-        $preset = isset($settings['ezbizi_preset']) && is_string($settings['ezbizi_preset'])
-            ? $settings['ezbizi_preset']
-            : '';
-
         // The shortcodes escape everything they print; see widgets.php.
-        echo $this->ezbizi_draw($preset);
+        echo $this->ezbizi_draw($this->ezbizi_atts($this->get_settings_for_display()));
     }
 }
 
@@ -192,8 +257,8 @@ class EzBizi_Elementor_Social_Links extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('social', 'icons', 'facebook', 'instagram'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_social_links_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_social_links_shortcode($atts);
     }
 }
 
@@ -215,8 +280,8 @@ class EzBizi_Elementor_Google_Map extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('map', 'google maps', 'location', 'address'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_google_map_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_google_map_shortcode($atts);
     }
 }
 
@@ -238,8 +303,8 @@ class EzBizi_Elementor_Hours_Table extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('hours', 'opening hours', 'schedule', 'table'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_hours_table_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_hours_table_shortcode($atts);
     }
 }
 
@@ -261,8 +326,8 @@ class EzBizi_Elementor_City_List extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('cities', 'towns', 'service area', 'locations'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_city_list_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_city_list_shortcode($atts);
     }
 }
 
@@ -337,8 +402,8 @@ class EzBizi_Elementor_Contact_Info extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('contact', 'phone', 'email', 'address'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_contact_info_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_contact_info_shortcode($atts);
     }
 }
 
@@ -360,8 +425,8 @@ class EzBizi_Elementor_Cta extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('cta', 'call', 'button', 'book'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_cta_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_cta_shortcode($atts);
     }
 }
 
@@ -383,8 +448,8 @@ class EzBizi_Elementor_Phone_Box extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('phone', 'call', 'number'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_phone_box_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_phone_box_shortcode($atts);
     }
 }
 
@@ -406,8 +471,8 @@ class EzBizi_Elementor_Review_Faces extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('review', 'smiley', 'feedback', 'google', 'rating'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_review_faces_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_review_faces_shortcode($atts);
     }
 }
 
@@ -452,8 +517,8 @@ class EzBizi_Elementor_Team extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('team', 'staff', 'people', 'about'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_team_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_team_shortcode($atts);
     }
 }
 
@@ -475,8 +540,8 @@ class EzBizi_Elementor_Branches extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('franchise', 'branches', 'locations', 'offices'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_branches_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_branches_shortcode($atts);
     }
 }
 
@@ -498,7 +563,7 @@ class EzBizi_Elementor_Store_Locator extends EzBizi_Elementor_Preset_Widget {
         return array_merge(parent::get_keywords(), array('store', 'locator', 'locations', 'map', 'search'));
     }
 
-    protected function ezbizi_draw($preset) {
-        return ezbizi_store_locator_shortcode(array('preset' => $preset));
+    protected function ezbizi_draw($atts) {
+        return ezbizi_store_locator_shortcode($atts);
     }
 }
