@@ -23,12 +23,13 @@ use Illuminate\Support\Facades\DB;
  * unassigned job is one that day with nobody on it, cancelled and done left
  * out.
  *
- * ── READ-ONLY, deliberately, for now ────────────────────────────
+ * ── Reads here; writes through Workiz ───────────────────────────
  *
- * A-1 books and assigns in Workiz, and A1 Tools' own rule is that "based on
- * what the app tells them, they schedule correctly on Workiz". Assigning from
- * here means writing to Workiz, which is the Workiz module's integration and a
- * decision for Jose — so this board shows the schedule and changes nothing.
+ * This reads. Assign, unassign and move are SchedulingDispatchController,
+ * which writes TO Workiz through the Workiz module's WorkizJobWriter — Jose,
+ * 2026-09-25: "it should be possible on both with the sync". So a card carries
+ * its mirror row (`job_id`) and who is on it (`team`), and a technician carries
+ * the areas Workiz lets them take (`service_areas`).
  *
  * ── Where the facts come from ───────────────────────────────────
  *
@@ -80,7 +81,7 @@ class SchedulingBoardController extends Controller
             ->where('scheduled_for', '>=', $data['date'].' 00:00:00')
             ->where('scheduled_for', '<=', $data['date'].' 23:59:59')
             ->orderBy('scheduled_for')
-            ->get(['remote_id', 'franchise_id', 'service_area', 'status', 'scheduled_for', 'city', 'address', 'payload']);
+            ->get(['id', 'remote_id', 'franchise_id', 'service_area', 'status', 'scheduled_for', 'city', 'address', 'payload']);
 
         $technicians = [];
         $scheduled = [];
@@ -92,11 +93,17 @@ class SchedulingBoardController extends Controller
             ->where('is_active', true)
             ->where('is_field_tech', true)
             ->orderBy('name')
-            ->get(['franchise_id', 'remote_id', 'name']) as $tech) {
+            ->get(['id', 'franchise_id', 'remote_id', 'name', 'service_areas']) as $tech) {
             $technicians[$tech->franchise_id.'|'.$tech->remote_id] = [
                 'id' => $tech->franchise_id.'|'.$tech->remote_id,
+                // The mirror row, which is what dispatching sends.
+                'member_id' => $tech->id,
                 'name' => trim((string) $tech->name),
+                'franchise_id' => $tech->franchise_id,
                 'franchise_name' => $franchises[$tech->franchise_id] ?? null,
+                // Workiz refuses a technician on a job outside these (measured
+                // 2026-09-25), so the assign picker offers only covering ones.
+                'service_areas' => json_decode((string) $tech->service_areas, true) ?: [],
                 'jobs' => 0,
             ];
         }
@@ -110,6 +117,9 @@ class SchedulingBoardController extends Controller
             $time = substr((string) $job->scheduled_for, 11, 5);
             $card = [
                 'id' => $job->remote_id,
+                // The mirror row, which is what dispatching sends.
+                'job_id' => $job->id,
+                'franchise_id' => $job->franchise_id,
                 'number' => (string) ($payload['SerialId'] ?? ''),
                 'customer' => trim(($payload['FirstName'] ?? '').' '.($payload['LastName'] ?? '')) ?: null,
                 'job_type' => $payload['JobType'] ?? null,
@@ -129,6 +139,13 @@ class SchedulingBoardController extends Controller
                 fn ($t) => is_array($t) && isset($t['id']),
             ));
 
+            // Who is on it, by mirror row where the mirror has them — the key
+            // an Unassign needs.
+            $card['team'] = array_map(fn ($t) => [
+                'member_id' => $technicians[$job->franchise_id.'|'.$t['id']]['member_id'] ?? null,
+                'name' => trim((string) ($t['Name'] ?? 'Unknown')),
+            ], $team);
+
             if ($team === []) {
                 $unassigned[] = $card;
 
@@ -143,8 +160,11 @@ class SchedulingBoardController extends Controller
                 // quiet day that is not one.
                 $technicians[$key] ??= [
                     'id' => $key,
+                    'member_id' => null,
                     'name' => trim((string) ($member['Name'] ?? 'Unknown')),
+                    'franchise_id' => $job->franchise_id,
                     'franchise_name' => $franchises[$job->franchise_id] ?? null,
+                    'service_areas' => [],
                     'jobs' => 0,
                 ];
                 $technicians[$key]['jobs']++;
@@ -174,6 +194,9 @@ class SchedulingBoardController extends Controller
                 'technicians' => $technicians,
                 'scheduled' => $scheduled,
                 'unassigned' => $unassigned,
+                // Whether this person may dispatch; the board draws no button
+                // that would only be refused.
+                'can_dispatch' => $request->user()->hasPermission('scheduling.edit'),
                 'counts' => [
                     'scheduled' => count(array_unique(array_column($scheduled, 'id'))),
                     'unassigned' => count($unassigned),

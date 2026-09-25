@@ -107,6 +107,7 @@ use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
+use App\Http\Controllers\Api\SchedulingDispatchController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
@@ -1114,6 +1115,13 @@ Route::prefix('v1')
         // The Schedule tab: one day's board, read-only.
         Route::middleware('permission:scheduling.schedule.view')->group(function () {
             Route::get('scheduling/board', [SchedulingBoardController::class, 'show']);
+        });
+
+        // Dispatching writes to Workiz: the Schedule tab AND Scheduling's edit.
+        Route::middleware(['permission:scheduling.schedule.view', 'permission:scheduling.edit'])->group(function () {
+            Route::post('scheduling/board/jobs/{job}/assign', [SchedulingDispatchController::class, 'assign']);
+            Route::post('scheduling/board/jobs/{job}/unassign', [SchedulingDispatchController::class, 'unassign']);
+            Route::post('scheduling/board/jobs/{job}/reschedule', [SchedulingDispatchController::class, 'reschedule']);
         });
 
         Route::middleware('permission:scheduling.availability.view')->group(function () {
