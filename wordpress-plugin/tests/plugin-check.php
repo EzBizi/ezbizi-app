@@ -1218,6 +1218,10 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'size' => ['type' => 'range', 'min' => 16, 'max' => 64],
                     'gap' => ['type' => 'range', 'min' => 0, 'max' => 40],
                     'labels' => ['type' => 'bool'],
+                    // Three of the generated style options, as the server describes them.
+                    'icon_color' => ['type' => 'color', 'part' => 'icon', 'prop' => 'color'],
+                    'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
+                    'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
                 ],
             ],
             'style' => [
@@ -1304,6 +1308,15 @@ check('an override cannot write its own CSS', str_contains($GLOBALS['sc']['ezbiz
 // Compared without the element id, which every call numbers afresh.
 $strip = fn ($html) => preg_replace('/ezbizi-social-\d+/', '', $html);
 check('an option nobody described is ignored', $strip($GLOBALS['sc']['ezbizi_social_links'](['onclick' => 'x'])) === $strip($GLOBALS['sc']['ezbizi_social_links']([])), true);
+
+// Jose, 2026-09-25: "i want all the options, for all the widgets".
+$styled = $GLOBALS['sc']['ezbizi_social_links'](['icon_color' => '#FF0000', 'label_font_family' => 'Oswald', 'box_devices' => 'mobile']);
+check('a style option becomes a rule on its part', (bool) preg_match('/#ezbizi-social-\d+#ezbizi-social-\d+ \.ezbizi-social-link\{color:#ff0000\}/', $styled), true);
+check('a font by name', str_contains($styled, 'font-family:Oswald'), true);
+check('mobile only hides it on a wide screen', str_contains($styled, '@media (min-width:768px)'), true);
+check('a colour that is not a colour prints nothing', str_contains($GLOBALS['sc']['ezbizi_social_links'](['icon_color' => 'red;}body{display:none']), 'display:none'), false);
+check('a font name cannot close the rule', str_contains($GLOBALS['sc']['ezbizi_social_links'](['label_font_family' => 'x;}body{display:none']), '}body{'), false);
+check('nothing set, no extra style at all', substr_count($GLOBALS['sc']['ezbizi_social_links']([]), '<style>'), 1);
 check('not the named one', str_contains($typo, 'ezbizi-social-label'), false);
 
 // A name typed the way somebody would type it still finds the preset: the

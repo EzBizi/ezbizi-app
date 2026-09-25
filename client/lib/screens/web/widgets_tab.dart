@@ -378,6 +378,10 @@ class _WidgetEditorState extends State<_WidgetEditor> {
   Map<String, dynamic> _config = {};
   Map<String, dynamic> _inherited = {};
 
+  /// What each preset option is, from the server: how the generated style
+  /// options are drawn without this screen keeping its own list of them.
+  Map<String, dynamic> _schema = {};
+
   /// The colour this business publishes under, or null if it has told us none.
   String? _brand;
 
@@ -416,6 +420,8 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           response.body['config'] as Map? ?? const {});
       _inherited = Map<String, dynamic>.from(
           response.body['inherited'] as Map? ?? const {});
+      _schema = Map<String, dynamic>.from(
+          response.body['schema'] as Map? ?? const {});
       _own = response.body['own'] == true;
       _brand = response.body['brand'] as String?;
       _fieldTypes = ((response.body['field_types'] as List?) ?? const ['text'])
@@ -1122,6 +1128,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       const SizedBox(height: 12),
       _PresetCard(
         rendered: rendered,
+        schema: Map<String, dynamic>.from(
+          _schema[rendered.key] as Map? ?? const {},
+        ),
         presets: Map<String, dynamic>.from(
           stored[rendered.key] as Map? ?? const {},
         ),
@@ -2035,6 +2044,7 @@ sealed class _Knob {
     _Choice(:final options) => options.first,
     _Number(:final fallback) => fallback,
     _Flag(:final fallback) => fallback,
+    _Colour() => '',
     // Empty, and the plugin reads empty as "use the wording that matches the
     // action" — so a site that says nothing still gets a sentence.
     _Text() => '',
@@ -2083,6 +2093,37 @@ class _Flag extends _Knob {
   const _Flag(super.key, super.label, this.fallback);
 
   final bool fallback;
+}
+
+/// A colour as #rrggbb, or empty for the website's own.
+class _Colour extends _Knob {
+  const _Colour(super.key, super.label);
+}
+
+/// The colour a box holds, or a hollow square when it holds none (yet).
+class _Swatch extends StatelessWidget {
+  const _Swatch(this.hex);
+
+  final String hex;
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = hex.replaceFirst('#', '');
+    final full = raw.length == 3
+        ? raw.split('').map((c) => '$c$c').join()
+        : raw;
+    final value = full.length == 6 ? int.tryParse('FF$full', radix: 16) : null;
+
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: value == null ? null : Color(value),
+        border: Border.all(color: Theme.of(context).colorScheme.outline),
+        borderRadius: BorderRadius.circular(3),
+      ),
+    );
+  }
 }
 
 /// An option somebody types.
@@ -2453,9 +2494,14 @@ class _PresetCard extends StatefulWidget {
     required this.presets,
     required this.canEdit,
     required this.onChanged,
+    this.schema = const {},
   });
 
   final _Rendered rendered;
+
+  /// Option → rule, for this widget. The ones with a `part` are the generated
+  /// style options, drawn in groups below the widget's own knobs.
+  final Map<String, dynamic> schema;
 
   /// Name → values, as the server sends them. `default` is always among them.
   final Map<String, dynamic> presets;
@@ -2656,10 +2702,106 @@ class _PresetCardState extends State<_PresetCard> {
           const SizedBox(height: 8),
           for (final knob in widget.rendered.knobs)
             _knob(theme, knob, values, name),
+          ..._styleGroups(theme, values, name),
         ],
       ),
     );
   }
+
+  /// Jose, 2026-09-25: "i want all the options, for all the widgets".
+  ///
+  /// The style options are generated on the server — colours, type, border,
+  /// spacing for each part of the widget — so they are drawn from its schema,
+  /// one folded group per part. Every one starts empty, meaning "the website's
+  /// own look", which is why they can sit folded away until somebody wants one.
+  List<Widget> _styleGroups(
+    ThemeData theme,
+    Map<String, dynamic> values,
+    String preset,
+  ) {
+    final parts = <String, List<_Knob>>{};
+
+    widget.schema.forEach((key, raw) {
+      final rule = Map<String, dynamic>.from(raw as Map? ?? const {});
+      final part = rule['part'];
+      if (part is! String) return;
+
+      final label = _propLabels[rule['prop']] ?? '${rule['prop']}';
+      final knob = switch (rule['type']) {
+        'color' => _Colour(key, label),
+        'range' => _Number(key, label, (rule['min'] as num).toInt(),
+            (rule['max'] as num).toInt(), 0),
+        'choice' => _Choice(key, label,
+            [for (final c in rule['choices'] as List) '$c']),
+        _ => _Text(key, label,
+            hint: 'Empty uses the website\'s own font.', max: 60),
+      };
+
+      parts.putIfAbsent(part, () => []).add(knob);
+    });
+
+    return [
+      for (final entry in parts.entries)
+        ExpansionTile(
+          key: ValueKey('style-$preset-${entry.key}'),
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          title: Text(
+            'Style — ${_partLabels[entry.key] ?? entry.key}',
+            style: theme.textTheme.bodyMedium,
+          ),
+          subtitle: Text(
+            'Empty or 0 keeps the website\'s own look.',
+            style: theme.textTheme.bodySmall,
+          ),
+          children: [
+            for (final knob in entry.value) _knob(theme, knob, values, preset),
+          ],
+        ),
+    ];
+  }
+
+  static const Map<String, String> _partLabels = {
+    'box': 'the whole widget',
+    'icon': 'icons',
+    'label': 'labels',
+    'value': 'values',
+    'text': 'text',
+    'title': 'heading',
+    'heading': 'headings',
+    'link': 'links',
+    'button': 'button',
+    'number': 'number',
+    'day': 'day names',
+    'time': 'times',
+    'closed': 'closed days',
+    'name': 'names',
+    'role': 'job titles',
+    'photo': 'photos',
+    'card': 'each card',
+  };
+
+  static const Map<String, String> _propLabels = {
+    'color': 'Colour',
+    'hover_color': 'Colour on hover',
+    'bg': 'Background',
+    'hover_bg': 'Background on hover',
+    'border_color': 'Border colour',
+    'hover_border_color': 'Border colour on hover',
+    'border_width': 'Border width',
+    'radius': 'Corner radius',
+    'padding': 'Padding',
+    'shadow': 'Shadow',
+    'align': 'Alignment',
+    'devices': 'Show on',
+    'font_family': 'Font',
+    'font_size': 'Text size',
+    'font_weight': 'Weight',
+    'text_transform': 'Capitals',
+    'letter_spacing': 'Letter spacing',
+    'line_height': 'Line height (%)',
+    'size': 'Size',
+  };
 
   Widget _knob(
     ThemeData theme,
@@ -2681,7 +2823,11 @@ class _PresetCardState extends State<_PresetCard> {
             isDense: true,
             options: [
               for (final option in choice.options)
-                SearchOption(value: option, label: option),
+                SearchOption(
+                  value: option,
+                  // An empty choice is "not set": the website's own look.
+                  label: option.isEmpty ? 'Website default' : option,
+                ),
             ],
             onChanged: widget.canEdit
                 ? (chosen) => chosen == null ? null : set(chosen)
@@ -2697,6 +2843,28 @@ class _PresetCardState extends State<_PresetCard> {
               : values[flag.key] == true,
           onChanged: widget.canEdit ? (on) => set(on) : null,
           title: Text(flag.label, style: theme.textTheme.bodyMedium),
+        ),
+      _Colour colour => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: TextFormField(
+            key: ValueKey('$preset:${colour.key}'),
+            initialValue: '${values[colour.key] ?? ''}',
+            enabled: widget.canEdit,
+            maxLength: 9,
+            decoration: InputDecoration(
+              labelText: colour.label,
+              hintText: '#rrggbb — empty uses the website\'s',
+              isDense: true,
+              counterText: '',
+              prefixIcon: Padding(
+                padding: const EdgeInsets.all(10),
+                child: _Swatch('${values[colour.key] ?? ''}'),
+              ),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
+            onChanged: (v) => set(v.trim()),
+          ),
         ),
       _Text text => Padding(
           padding: const EdgeInsets.only(bottom: 8),

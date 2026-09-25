@@ -78,6 +78,143 @@ function ezbizi_preset($widget, $atts) {
 }
 
 /**
+ * The style options of a widget as CSS on its own parts.
+ *
+ * Jose, 2026-09-25: "i want all the options, for all the widgets". The
+ * options are generated server-side as `<part>_<property>` (WidgetPresets
+ * PARTS × PROPS) and described in `widgets.schema`; this turns whichever are
+ * set into rules on the selector the widget gives each part. Nothing set,
+ * nothing printed — a site that never touches them renders as before.
+ *
+ * The id is doubled (`#x#x`) so a rule here outranks the widget's own base
+ * style without `!important`. Every value is re-checked against its rule
+ * before it is printed, since a preset from an older payload never passed
+ * the override checks.
+ *
+ * @param array $parts part => selector suffix inside the widget, '' for the widget itself
+ */
+function ezbizi_style_css($widget, $id, $p, $parts) {
+    $payload = ezbizi_payload();
+    $rules = isset($payload['widgets']['schema'][$widget]) && is_array($payload['widgets']['schema'][$widget])
+        ? $payload['widgets']['schema'][$widget]
+        : array();
+
+    $css = array();
+    $media = array();
+    $scope = '#' . $id . '#' . $id;
+
+    foreach ($rules as $key => $rule) {
+        if (! is_array($rule) || empty($rule['part']) || ! isset($parts[$rule['part']], $p[$key])) {
+            continue;
+        }
+
+        $value = $p[$key];
+        $prop = isset($rule['prop']) ? $rule['prop'] : '';
+        $type = isset($rule['type']) ? $rule['type'] : '';
+
+        if ($value === '' || $value === 0 || $value === '0' || $value === null || $value === false) {
+            continue;
+        }
+
+        if ($type === 'color' && ! preg_match('/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/', (string) $value)) {
+            continue;
+        }
+
+        if ($type === 'range') {
+            $value = max((int) $rule['min'], min((int) $rule['max'], (int) $value));
+        }
+
+        if ($type === 'choice' && ! in_array((string) $value, isset($rule['choices']) ? (array) $rule['choices'] : array(), true)) {
+            continue;
+        }
+
+        $sel = $scope . $parts[$rule['part']];
+        $hover = $sel . ':hover';
+
+        switch ($prop) {
+            case 'color':
+                $css[$sel][] = 'color:' . $value;
+                break;
+            case 'hover_color':
+                $css[$hover][] = 'color:' . $value;
+                break;
+            case 'bg':
+                $css[$sel][] = 'background:' . $value;
+                break;
+            case 'hover_bg':
+                $css[$hover][] = 'background:' . $value;
+                break;
+            case 'border_color':
+                $css[$sel][] = 'border-color:' . $value;
+                break;
+            case 'hover_border_color':
+                $css[$hover][] = 'border-color:' . $value;
+                break;
+            case 'border_width':
+                $css[$sel][] = 'border-width:' . $value . 'px;border-style:solid';
+                break;
+            case 'radius':
+                $css[$sel][] = 'border-radius:' . $value . 'px';
+                break;
+            case 'padding':
+                $css[$sel][] = 'padding:' . $value . 'px';
+                break;
+            case 'font_family':
+                $family = preg_replace('/[^A-Za-z0-9 ,\'"-]/', '', (string) $value);
+                if ($family !== '') {
+                    $css[$sel][] = 'font-family:' . $family;
+                }
+                break;
+            case 'font_size':
+                $css[$sel][] = 'font-size:' . $value . 'px';
+                break;
+            case 'font_weight':
+                $css[$sel][] = 'font-weight:' . $value;
+                break;
+            case 'text_transform':
+                $css[$sel][] = 'text-transform:' . $value;
+                break;
+            case 'letter_spacing':
+                $css[$sel][] = 'letter-spacing:' . $value . 'px';
+                break;
+            case 'line_height':
+                $css[$sel][] = 'line-height:' . round($value / 100, 2);
+                break;
+            case 'size':
+                $css[$sel][] = 'font-size:' . $value . 'px';
+                $css[$sel . ' svg'][] = 'width:' . $value . 'px;height:' . $value . 'px';
+                break;
+            case 'shadow':
+                $css[$sel][] = 'box-shadow:' . ($value === 'strong' ? '0 6px 24px rgba(0,0,0,.28)' : ($value === 'soft' ? '0 2px 10px rgba(0,0,0,.12)' : 'none'));
+                break;
+            case 'align':
+                $css[$sel][] = 'text-align:' . $value . ';justify-content:' . ($value === 'left' ? 'flex-start' : ($value === 'right' ? 'flex-end' : 'center'));
+                break;
+            case 'devices':
+                // Shown on one kind of screen only: hidden on the other.
+                $media[$value === 'desktop' ? '(max-width:767px)' : '(min-width:768px)'][] = $sel . '{display:none}';
+                break;
+        }
+    }
+
+    if ($css === array() && $media === array()) {
+        return '';
+    }
+
+    $out = '<style>';
+
+    foreach ($css as $sel => $decls) {
+        $out .= $sel . '{' . implode(';', $decls) . '}';
+    }
+
+    foreach ($media as $query => $blocks) {
+        $out .= '@media ' . $query . '{' . implode('', $blocks) . '}';
+    }
+
+    return $out . '</style>';
+}
+
+/**
  * This widget's own changes on top of its preset.
  *
  * Jose, 2026-09-25: "company wide preset but allowing per widget override".
@@ -125,8 +262,17 @@ function ezbizi_apply_overrides($widget, $preset, $atts) {
                     $preset[$key] = $raw;
                 }
                 break;
+            case 'color':
+                $raw = strtolower($raw);
+                if (preg_match('/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/', $raw)) {
+                    $preset[$key] = $raw;
+                }
+                break;
             case 'text':
                 $clean = trim((string) preg_replace('/\s+/u', ' ', strip_tags($raw)));
+                if (! empty($rule['font'])) {
+                    $clean = (string) preg_replace('/[^A-Za-z0-9 ,\'"-]/', '', $clean);
+                }
                 $preset[$key] = function_exists('mb_substr')
                     ? mb_substr($clean, 0, (int) (isset($rule['max']) ? $rule['max'] : 80))
                     : substr($clean, 0, (int) (isset($rule['max']) ? $rule['max'] : 80));
@@ -321,7 +467,9 @@ function ezbizi_social_links_shortcode($atts) {
             . '</a>';
     }
 
-    return $out . '</div>';
+    return $out . '</div>' . ezbizi_style_css('social_links', $id, $preset, array(
+        'box' => '', 'icon' => ' .ezbizi-social-link', 'label' => ' .ezbizi-social-label',
+    ));
 }
 
 /**
@@ -506,7 +654,10 @@ function ezbizi_google_map_shortcode($atts) {
         $src = 'https://maps.google.com/maps?q=' . rawurlencode($latitude) . ',' . rawurlencode($longitude)
             . '&z=' . (int) $preset['zoom'] . '&output=embed';
 
-        return '<iframe class="ezbizi-map" src="' . esc_url($src) . '"'
+        $id = ezbizi_widget_id('ezbizi-map');
+
+        return ezbizi_style_css('google_map', $id, $preset, array('box' => ''))
+            . '<iframe class="ezbizi-map" id="' . esc_attr($id) . '" src="' . esc_url($src) . '"'
             // Named, because an unnamed iframe is announced as "frame" and a
             // visitor using a screen reader has no way to know what it holds.
             . ' title="' . esc_attr($title) . '"'
@@ -617,11 +768,13 @@ function ezbizi_hours_table_shortcode($atts) {
 
         $out .= '<tr' . ($is_today ? ' class="ezbizi-hours-today" aria-current="true"' : '') . '>'
             . '<th scope="row">' . esc_html($name) . '</th>'
-            . '<td>' . $hours . '</td>'
+            . (! empty($day['closed']) ? '<td class="ezbizi-hours-closed">' : '<td>') . $hours . '</td>'
             . '</tr>';
     }
 
-    return $out . '</tbody></table>';
+    return $out . '</tbody></table>' . ezbizi_style_css('hours_table', $id, $preset, array(
+        'box' => '', 'day' => ' th', 'time' => ' td', 'closed' => ' td.ezbizi-hours-closed',
+    ));
 }
 
 /**
@@ -830,7 +983,9 @@ function ezbizi_city_list_shortcode($atts) {
         $out .= ezbizi_city_links($loose, $link);
     }
 
-    return $out . '</div>';
+    return $out . '</div>' . ezbizi_style_css('city_list', $id, $preset, array(
+        'box' => '', 'heading' => ' .ezbizi-cities-label', 'link' => ' a',
+    ));
 }
 
 /** Towns in the order a reader expects them. */
@@ -973,7 +1128,10 @@ function ezbizi_contact_info_shortcode($atts) {
         $out .= '</span></div></div>';
     }
 
-    return $out . '</div>';
+    return $out . '</div>' . ezbizi_style_css('contact_info', $id, $preset, array(
+        'box' => '', 'icon' => ' .ezbizi-contact-icon', 'label' => ' .ezbizi-contact-label',
+        'value' => ' .ezbizi-contact-value',
+    ));
 }
 
 /** Digits a phone can dial, from a number written for a person to read. */
@@ -1091,11 +1249,15 @@ function ezbizi_cta_shortcode($atts) {
             . 'root.querySelector(".ezbizi-cta-close").addEventListener("click",function(){root.hidden=true;});'
             . '})();</script>';
 
-        return $out;
+        return $out . ezbizi_style_css('cta', $id, $preset, array(
+            'box' => '', 'button' => ' .ezbizi-cta-button', 'icon' => ' .ezbizi-cta-icon',
+        ));
     }
 
     return $out . '<div class="ezbizi-cta ezbizi-cta-' . esc_attr($placement) . '" id="'
-        . esc_attr($id) . '">' . $button . '</div>';
+        . esc_attr($id) . '">' . $button . '</div>' . ezbizi_style_css('cta', $id, $preset, array(
+        'box' => '', 'button' => ' .ezbizi-cta-button', 'icon' => ' .ezbizi-cta-icon',
+    ));
 }
 
 function ezbizi_cta_style($id, $wide) {
@@ -1168,7 +1330,10 @@ function ezbizi_phone_box_shortcode($atts) {
         ? '<a href="' . esc_url('tel:' . ezbizi_dial($value)) . '">' . $inner . '</a>'
         : $inner;
 
-    return $out . '</div></div>';
+    return $out . '</div></div>' . ezbizi_style_css('phone_box', $id, $preset, array(
+        'box' => '', 'icon' => ' .ezbizi-phone-icon', 'label' => ' .ezbizi-phone-label',
+        'number' => ' .ezbizi-phone-number',
+    ));
 }
 
 // ── Street View ─────────────────────────────────────────────────────
@@ -1326,7 +1491,9 @@ f.addEventListener('submit',function(e){
 });
 })();</script>";
 
-    return $out;
+    return $out . ezbizi_style_css('review_faces', $id, $p, array(
+        'box' => '', 'title' => ' h3', 'text' => ' p', 'button' => ' .ezbizi-rf-btn',
+    ));
 }
 
 add_action('init', function () {
