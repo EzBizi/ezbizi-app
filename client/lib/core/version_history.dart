@@ -8,6 +8,14 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0281',
+      date: '25 Sep 2026',
+      items: [
+        'The incoming-call card can be dragged out of the way, no longer darkens the screen behind it, and is switched on or off for the whole company in Settings, Communication. The personal switch on the Dial pad is gone, so a card someone had turned off shows again unless the company turns it off.',
+        'Scheduling, Availability has a Calendar View: pick a franchise or one of its areas to see the month with the spots left each day (green, amber, red), closed days, and days booked over what they take. In Settings, the weekday row of the Overview stays at the top while you scroll.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0280',
       date: '25 Sep 2026',
       items: [
