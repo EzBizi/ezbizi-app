@@ -163,6 +163,97 @@ class JobMarkEarnedTest extends TestCase
             'A title edit must not decide when the money was earned.');
     }
 
+    /**
+     * Leaving EVERY earned status clears the stamp -- earned_at is not null
+     * exactly when the job is earned.
+     *
+     * The case is real and imminent: Workiz re-reads reaching old closed jobs
+     * (147e02fb) will move jobs the stale A1 Tools copy had as Done back to
+     * "done pending approval", which Jose ruled is not earned. The backfill
+     * stamped them while they read Done. Kept, they would count as revenue that
+     * was never earned; Revenue reads whereNotNull('earned_at') with no status
+     * clause, so only clearing the stamp takes them out.
+     */
+    public function test_leaving_every_earned_status_clears_the_stamp(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-05-10 14:00:00', 'UTC')));
+        $this->assertNotNull($job->earned_at, 'The control: it was earned.');
+
+        $job->status = 'scheduled';
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue());
+
+        $this->assertNull($job->earned_at);
+    }
+
+    /**
+     * Coming back into an earned status stamps the NEW moment, not the old one.
+     *
+     * This is why the old stamp is cleared rather than parked: the moment Workiz
+     * really reports Done is the one revenue should date, not the stale copy's.
+     */
+    public function test_re_entering_an_earned_status_stamps_the_new_moment(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-05-10 14:00:00', 'UTC')));
+
+        $job->status = 'scheduled';
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue());
+
+        $job->status = 'completed';
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-09-20 11:00:00', 'UTC')));
+
+        $this->assertSame('2026-09-20 11:00:00', $job->earned_at?->utc()->toDateTimeString());
+    }
+
+    /**
+     * Moving BETWEEN two earned statuses keeps the first moment -- §8.1 still
+     * holds for everything that stays earned. Only leaving them all clears.
+     */
+    public function test_moving_between_two_earned_statuses_keeps_the_first_moment(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed', 'in_progress']);
+
+        $job = $this->aJob($alpha, 'completed');
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-06-01 09:00:00', 'UTC')));
+
+        $job->status = 'in_progress';
+        $this->inTenant($alpha['org'], fn () => $job->markEarnedIfDue(Carbon::parse('2026-10-01 09:00:00', 'UTC')));
+
+        $this->assertSame('2026-06-01 09:00:00', $job->earned_at?->utc()->toDateTimeString());
+    }
+
+    /**
+     * End to end through the API, and the figure a person reads moves with it.
+     *
+     * A person moving an earned job out of every earned status through the
+     * panel takes it off revenue. The subject here is what Revenue REPORTS, not
+     * the column, because a cleared column the widget still counted would be
+     * the same bug one layer up.
+     */
+    public function test_moving_a_job_off_done_through_the_api_takes_it_off_revenue(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $this->earnedStatuses($alpha, ['completed']);
+
+        $job = $this->aJob($alpha, 'scheduled');
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$job->id}", ['status' => 'completed'])->assertOk();
+        $this->assertNotNull($job->fresh()->earned_at, 'The control: completing it stamped it.');
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$job->id}", ['status' => 'scheduled'])->assertOk();
+
+        $this->assertNull($job->fresh()->earned_at);
+    }
+
     /** @param  list<string>  $statuses */
     private function earnedStatuses(array $tenant, array $statuses): void
     {

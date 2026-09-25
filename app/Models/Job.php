@@ -146,7 +146,25 @@ class Job extends Model implements StatesRetention
     }
 
     /**
-     * Stamp `earned_at` if this job's status means the money is earned — once.
+     * Keep `earned_at` in step with whether this job is earned: stamp it on the
+     * way IN to an earned status, clear it on the way OUT of every earned one.
+     *
+     * The invariant, from 2026-09-24: `earned_at` is NOT NULL exactly when the
+     * job's status is earned. Status decides WHETHER a job counts; `earned_at`
+     * decides WHEN. §8.1's "a closed month stays closed" still holds for
+     * everything that stays earned -- the first moment is kept while the job is
+     * earned, including across a move between two earned statuses. What clears
+     * is a job that stops being earned, which is a real change, not a re-read.
+     *
+     * Why clearing, and why now: Workiz re-reads reaching old closed jobs move
+     * some that a stale A1 Tools copy had as Done back to "done pending
+     * approval", which Jose ruled is not earned ("Only Done"). Kept, their stamp
+     * would count revenue that was never earned. Re-entering Done later stamps
+     * the moment Workiz actually reports, not the stale one.
+     *
+     * The name predates the clearing branch and is kept so the two callers --
+     * JobsController and the Workiz follow pass, both of which call this on ANY
+     * status change -- gain the clear with no change of their own.
      *
      * The ONE place that decides when money was earned (spec §8.1, §8.2). It
      * used to live inline in JobsController::update, which made the API its
@@ -186,11 +204,20 @@ class Job extends Model implements StatesRetention
      */
     public function markEarnedIfDue(?\DateTimeInterface $at = null): void
     {
-        if ($this->earned_at !== null) {
+        // Left every earned status: no longer earned, so no earned moment.
+        // Cleared rather than kept, because revenue reads whereNotNull with no
+        // status clause -- a stamp left on a job that is not earned is revenue
+        // that was never earned. Checked FIRST, before the once-guard below,
+        // or an already-stamped job could never be cleared.
+        if (! \App\Support\Jobs\EarnedStatuses::isEarned((string) $this->status, $this->franchise)) {
+            $this->earned_at = null;
+
             return;
         }
 
-        if (! \App\Support\Jobs\EarnedStatuses::isEarned((string) $this->status, $this->franchise)) {
+        // Still earned: keep the first moment. Moving between two earned
+        // statuses does not move the month (§8.1).
+        if ($this->earned_at !== null) {
             return;
         }
 
