@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.17.0
+Stable tag: 1.18.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,20 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.18.0 =
+* NEW: the contact form takes number, date, time, checkbox, radio and hidden
+  questions, a placeholder, help line and width per question, a title and a
+  line under it, an "I'm not a robot" box, its own consent wording, and a
+  page to go to after sending. Its look takes a preset and per-widget changes.
+* NEW: contact details can show the hours, the licence and the second number
+  and inbox, with each section's own title, in any order, in a grid or a row.
+* NEW: the city list can have a search box, a count per group, bullets and the
+  state left off; social links can show chosen networks in order, in their
+  brand colours, with a hover effect.
+* NEW: [ezbizi_state_name] and [ezbizi_state_anchor] print the state's full
+  name, linked to its website.
+* NEW: the call to action can show the number, address or link itself.
 
 = 1.17.0 =
 * NEW: style options for every widget: colours and hover colours, font,
