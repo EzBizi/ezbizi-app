@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Web Management, Widgets: a widget keeps its company-wide preset but can change any option for itself, in its shortcode or under This widget only in Elementor. It needs version 1.16.0 of the EzBizi website plugin, which rolls out separately.',
         'Availability counts booked jobs by the service area EzBizi placed them in, so a job Workiz filed under an old area name, or under none, still takes its spot in the right area.',
+        'A1Leads GBP does what A1 Tools did on a review: Draft with AI in the reply editor, and on each card set its status, add a note, pick the right Workiz customer, or report it to Google. Replying needs the Reply permission; the card actions need the new A1Leads GBP Manage permission.',
       ],
     ),
     VersionRelease(
