@@ -1,5 +1,16 @@
 # Apple — reply to Guideline 2.1 (Information Needed)
 
+> **The live Notes text is `docs/apple-review-notes/ios.txt` and `macos.txt`,**
+> byte for byte - not this document. Edit those, then run
+> `python scripts/asc-review-notes.py --push`, which writes both platforms to
+> App Store Connect and reads each back. Run it without `--push` to see
+> whether live and the files still agree. No browser or password needed.
+>
+> A change that alters what the app asks for (a permission, a background
+> mode, an outside service) must change those files **in the same commit**.
+> They were false for three weeks because the permission line was written
+> once and never re-read against the binary.
+
 Paste the block below into **App Store Connect → App Review Information → Notes**,
 and reply on the Resolution Center thread pointing at it.
 
