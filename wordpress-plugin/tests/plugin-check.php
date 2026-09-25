@@ -1827,7 +1827,7 @@ $gallery = ezbizi_gallery_render([
         ['image' => ['url' => ''], 'category' => 'Skipped'],
     ],
     'bulk_groups' => [['category' => 'Dryer vent', 'gallery' => [['url' => 'https://x.test/d1.jpg'], ['url' => 'https://x.test/d2.jpg']]]],
-    'per_page' => '4', 'columns' => '2',
+    'per_page' => 4, 'columns' => 2,
     'projects_button_label' => 'View Our Projects', 'back_button_label' => 'Back to Our Work',
 ]);
 check('our work comes first', strpos($gallery, 'data-view="work"') < strpos($gallery, 'data-view="projects"'), true);
@@ -1836,6 +1836,7 @@ check('two work pictures and three projects, the empty row dropped', substr_coun
 check('a before picture sits beside its after', str_contains($gallery, 'before.jpg') && str_contains($gallery, 'ezg-pair'), true);
 check('two categories, so a filter', str_contains($gallery, '<select'), true);
 check('two columns', str_contains($gallery, 'repeat(2,'), true);
+check('a number stored as an int is still the setting', str_contains($gallery, 'data-per="4"'), true);
 check('nothing at all renders nothing', ezbizi_gallery_render([]), '');
 check('a picture link cannot carry a script', str_contains(ezbizi_gallery_render(['images' => [['image' => ['url' => 'javascript:alert(1)']]]]), 'javascript:'), false);
 

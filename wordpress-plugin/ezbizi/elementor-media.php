@@ -45,7 +45,9 @@ if (! defined('ABSPATH')) {
  */
 function ezbizi_gallery_render($s) {
     $text = function ($k, $d) use ($s) {
-        return isset($s[$k]) && is_string($s[$k]) && trim($s[$k]) !== '' ? $s[$k] : $d;
+        // Elementor stores a number as an int or a string depending on the
+        // control that wrote it; both are the setting.
+        return isset($s[$k]) && is_scalar($s[$k]) && trim((string) $s[$k]) !== '' ? (string) $s[$k] : $d;
     };
     $url = function ($media) {
         return is_array($media) && ! empty($media['url']) ? (string) $media['url'] : '';
