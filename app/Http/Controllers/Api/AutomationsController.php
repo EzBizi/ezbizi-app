@@ -88,6 +88,7 @@ class AutomationsController extends Controller
         'draft_reply',
         'onboarding.start',
         'add_to_audience',
+        'review_reply',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -1903,6 +1904,9 @@ class AutomationsController extends Controller
             ]),
             $type('add_to_audience', 'Add to a mailing list', true, [
                 $parameter('audience_id', 'Which list', 'audience'),
+            ]),
+            $type('review_reply', 'Reply on Google', true, [
+                $parameter('message', 'The reply', 'rich_text', variables: true),
             ]),
             $type('deactivate', 'Switch it off', true, []),
             $type('resend', 'Send the invitation again', true, []),

@@ -2376,6 +2376,27 @@ class ModuleServiceProvider extends ServiceProvider
                             .'has a reply.',
                     ),
                 ],
+                /*
+                 * Jose, 2026-09-25, on Rodrigo's cutover checklist: "this will
+                 * be set using EzBizi Automations that Bar himself will set up
+                 * for the reply." That ruling retired the exemption that said
+                 * an automation must not post under a customer review.
+                 *
+                 * ONE WRITER. The step calls A1LeadsGbpReplies::publish, the same
+                 * path the Reply button uses, so A1 Leads stays the only thing
+                 * that writes to Google (Rodrigo's rule). It never answers a
+                 * review that already has a reply: publish() reads it live first.
+                 */
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'a1leads_gbp.review_reply',
+                        label: 'Reply on Google',
+                        description: 'Posts a public reply under the review on Google, through A1 Leads. '
+                            .'Skipped if the review already has a reply. A1 Leads checks the text before '
+                            .'it goes out: greet by first name only, no job, address, phone or technician, '
+                            .'no promises or admissions, no emoji, hashtags, dashes or signature.',
+                    ),
+                ],
             ),
 
             /*
