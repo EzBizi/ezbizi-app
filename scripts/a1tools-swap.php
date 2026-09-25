@@ -693,6 +693,14 @@ function a1swap_element(&$e, &$report) {
     );
 
     if (isset($keep_all[$type])) {
+        // Same settings, but a colour held as a kit global is written out, so
+        // a renderer that reads the setting finds the colour.
+        foreach (a1swap_settings($e) as $k => $v) {
+            if (isset($e['settings']['__globals__'][$k]) && a1swap_color($v) !== null && empty($e['settings'][$k])) {
+                $e['settings'][$k] = $v;
+            }
+        }
+
         $e['widgetType'] = $keep_all[$type];
         $report['widgets'][$type] = ($report['widgets'][$type] ?? 0) + 1;
     } elseif (isset($mapped[$type])) {

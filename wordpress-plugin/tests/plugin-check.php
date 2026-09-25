@@ -2158,6 +2158,14 @@ check('the privacy-enhanced player', str_contains($videos, 'youtube-nocookie.com
 check('a looped video names itself as the playlist', str_contains($videos, 'playlist=abcdefghijk'), true);
 check('two videos fit in four, so no arrows', str_contains($videos, 'class="ezv-arrow'), false);
 check('no videos renders nothing', ezbizi_video_carousel_render(['videos' => [['video_url' => 'nope']]]), '');
+$a1g = ezbizi_gallery_render(['image_ratio' => '16-9', 'page_color' => '#ffd500', 'work_gallery' => [['url' => 'https://a1.test/w.jpg']], 'images' => [['image' => ['url' => 'https://a1.test/a.jpg']]]]);
+check('a gallery ratio crops every tile to it', str_contains($a1g, 'aspect-ratio:16/9'), true);
+check('work tiles are one height, as A1 drew them', str_contains($a1g, '[data-view=work] .ezg-item{height:360px'), true);
+check('the page numbers take A1\'s colour', str_contains($a1g, 'color:#ffd500'), true);
+check('and a colour that is not one is dropped', str_contains(ezbizi_gallery_render(['page_color' => 'red;}body{x', 'images' => [['image' => ['url' => 'https://a1.test/a.jpg']]]]), 'red;}'), false);
+$a1v = ezbizi_video_carousel_render(['slides_per_view' => 1, 'arrows_position' => 'outside', 'arrows_color' => '#ffd500', 'videos' => [['video_url' => 'https://youtu.be/08aVKV6xiPI'], ['video_url' => 'https://youtu.be/kXrNMnDSGZo']]]);
+check('arrows can sit outside the videos', str_contains($a1v, 'color:#ffd500') && str_contains($a1v, 'padding:0 48px'), true);
+check('with a dot per page', substr_count($a1v, 'aria-label="Page '), 2);
 check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?feature=x&v=abcdefghijk'), 'abcdefghijk');
 
 echo "\n".($failures === 0

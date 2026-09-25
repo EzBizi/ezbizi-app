@@ -107,12 +107,30 @@ function ezbizi_gallery_render($s) {
     $id = function_exists('ezbizi_widget_id') ? ezbizi_widget_id('ezbizi-gallery') : 'ezbizi-gallery-' . wp_rand();
     $g = '#' . $id;
 
+    // A1's ratio, corner and page colours, read under A1's own names.
+    $ratio = $text('image_ratio', 'original');
+    $cut = preg_match('/^(\d+)-(\d+)$/', $ratio, $r) ? $r[1] . '/' . $r[2] : '';
+    $hex = function ($k) use ($s) {
+        return isset($s[$k]) && is_string($s[$k]) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $s[$k]) ? $s[$k] : '';
+    };
+    $corner = isset($s['item_radius']['size']) && is_numeric($s['item_radius']['size']) ? max(0, min(60, (int) $s['item_radius']['size'])) : 6;
+    $pages = '';
+
+    if ($hex('page_color') !== '' || $hex('page_bg') !== '') {
+        $pages = $g . ' .ezg-pages button{border:0;background:' . ($hex('page_bg') ?: 'transparent') . ';color:' . ($hex('page_color') ?: 'inherit') . '}'
+            . $g . ' .ezg-pages button[aria-current=true]{background:' . ($hex('page_active_bg') ?: 'transparent') . ';color:' . ($hex('page_active_color') ?: 'var(--ezg-accent)') . '}';
+    }
+
     $out = '<style>'
         . $g . '{--ezg-accent:' . $accent . ';--ezg-on:' . $on_accent . '}'
         . $g . ' .ezg-grid{display:grid;grid-template-columns:repeat(' . $columns . ',minmax(0,1fr));gap:12px}'
         . '@media (max-width:767px){' . $g . ' .ezg-grid{grid-template-columns:repeat(' . min(2, $columns) . ',minmax(0,1fr))}}'
-        . $g . ' .ezg-item{position:relative;margin:0;cursor:zoom-in;overflow:hidden;border-radius:6px}'
-        . $g . ' .ezg-item img{display:block;width:100%;height:auto;transition:transform .2s}'
+        . $g . ' .ezg-item{position:relative;margin:0;cursor:zoom-in;overflow:hidden;border-radius:' . $corner . 'px' . ($cut !== '' ? ';aspect-ratio:' . $cut : '') . '}'
+        . $g . ' .ezg-item img{display:block;width:100%;height:' . ($cut !== '' ? '100%;object-fit:cover' : 'auto') . ';transition:transform .2s}'
+        // A1's "our work" tiles: one height, the picture cropped to fill it.
+        . $g . ' [data-view=work] .ezg-item{height:360px;aspect-ratio:auto}'
+        . '@media (max-width:767px){' . $g . ' [data-view=work] .ezg-item{height:220px}}'
+        . $g . ' [data-view=work] .ezg-item img{height:100%;object-fit:cover}'
         . $g . ' .ezg-item:hover img{transform:scale(1.04)}'
         . $g . ' .ezg-pair{display:grid;grid-template-columns:1fr 1fr;gap:4px}'
         . $g . ' .ezg-tag{position:absolute;left:6px;top:6px;font-size:12px;padding:2px 8px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff}'
@@ -123,6 +141,7 @@ function ezbizi_gallery_render($s) {
         . $g . ' .ezg-pages button[aria-current=true],' . $g . ' .ezg-switch{background:var(--ezg-accent);color:var(--ezg-on)}'
         . $g . ' .ezg-actions{text-align:center;margin:12px 0}'
         . $g . ' .ezg-empty{text-align:center;opacity:.8}'
+        . $pages
         . '.ezg-box{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;z-index:99999;cursor:zoom-out}'
         . '.ezg-box img{max-width:92vw;max-height:92vh}'
         . '</style>';

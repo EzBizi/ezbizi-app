@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.4
+Stable tag: 1.20.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.5 =
+* NEW: the gallery crops its tiles to a chosen ratio, draws "our work" tiles
+  at one height, and takes its corner and page-number colours.
 
 = 1.20.4 =
 * NEW: the city list can show group names as headings, and folds towns in
