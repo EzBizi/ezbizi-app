@@ -441,6 +441,30 @@ class SeoFields
     }
 
     /** @return string[] */
+    /**
+     * The General fields a site publishes nothing for: neither its own value
+     * nor one inherited from its primary.
+     *
+     * Jose, 2026-09-25: "i would also like to have the incompleted fields
+     * highlighted ... and a counter" beside each website. General only: an
+     * empty social link is a network the business is not on, not a gap. The
+     * one-line address and the website address are filled in for the site,
+     * so they never count.
+     *
+     * @param  array<string, string>  $effective  what the site publishes
+     * @return list<string>
+     */
+    public static function missing(array $effective): array
+    {
+        $derived = ['address', 'website_url'];
+
+        return array_values(array_filter(
+            array_keys(array_filter(self::all(), fn (array $f) => $f['section'] === self::GENERAL)),
+            fn (string $key) => ! in_array($key, $derived, true)
+                && trim((string) ($effective[$key] ?? '')) === '',
+        ));
+    }
+
     public static function keys(): array
     {
         return array_keys(self::all());

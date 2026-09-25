@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\Web;
 use App\Http\Controllers\Api\Controller;
 use App\Models\Company;
 use App\Models\WebSite;
+use App\Models\WebValue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\SeoFields;
+use App\Support\Web\ValueResolver;
+use Illuminate\Support\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -64,8 +67,13 @@ class SitesController extends Controller
                 ->orderBy('host')
                 ->get();
 
+        $missing = $this->missingCounts($sites);
+
         return response()->json([
-            'data' => $sites->map(fn (WebSite $site) => $this->present($site))->values(),
+            'data' => $sites->map(fn (WebSite $site) => [
+                ...$this->present($site),
+                'missing' => $missing[$site->id] ?? 0,
+            ])->values(),
             // The editor's sections, so adding one stays a line in SeoFields
             // rather than a line there and a matching line in Dart.
             'sections' => SeoFields::sections(),
@@ -336,6 +344,47 @@ class SitesController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /**
+     * How many General fields each site publishes nothing for, for the count
+     * beside it in the list. Two queries for the whole list, not two a site.
+     *
+     * @param  Collection<int, WebSite>  $sites
+     * @return array<string, int>
+     */
+    private function missingCounts(Collection $sites): array
+    {
+        if ($sites->isEmpty()) {
+            return [];
+        }
+
+        $primaries = WebSite::query()
+            ->whereIn('company_id', $sites->pluck('company_id')->unique()->values())
+            ->whereNotNull('primary_company_id')
+            ->pluck('id', 'company_id');
+
+        $rows = WebValue::query()
+            ->whereIn('site_id', $sites->pluck('id')->merge($primaries->values())->unique()->values())
+            ->where('path', '')
+            ->get(['site_id', 'key', 'value'])
+            ->groupBy('site_id');
+
+        // Blank rows dropped, so a cleared box does not hide the primary's value.
+        $map = fn (?string $id) => $id === null ? [] : array_filter(
+            ($rows[$id] ?? collect())->pluck('value', 'key')->map(fn ($v) => (string) $v)->all(),
+            fn (string $v) => trim($v) !== '',
+        );
+
+        return $sites->mapWithKeys(function (WebSite $site) use ($primaries, $map) {
+            $primary = $site->is_primary ? null : ($primaries[$site->company_id] ?? null);
+            $effective = ValueResolver::withWebsiteUrl(
+                ValueResolver::withComposedAddress(array_merge($map($primary), $map($site->id))),
+                $site->host,
+            );
+
+            return [$site->id => count(SeoFields::missing($effective))];
+        })->all();
+    }
+
     private function present(WebSite $site): array
     {
         $site->loadMissing('company:id,name', 'franchise:id,name');

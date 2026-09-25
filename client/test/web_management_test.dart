@@ -282,6 +282,59 @@ void main() {
   /// somebody clear a field, watch it stay blank, and find the old number still
   /// on their website. So the field shows what it will publish and says where
   /// it came from.
+  /// Jose, 2026-09-25: "add a counter ... on the sidebar which shows the
+  /// pages with the amount of missing fields". The branch has none missing,
+  /// so it carries no badge at all rather than a zero.
+  testWidgets('each website shows how many fields it is missing', (
+    tester,
+  ) async {
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+
+    expect(find.byTooltip('4 general fields not filled in'), findsOneWidget);
+    expect(find.byTooltip('0 general fields not filled in'), findsNothing);
+  });
+
+  /// "It's still hard to differentiate what is a filled field vs what is a
+  /// placeholder." An empty field says so in words; a filled one does not.
+  testWidgets('an empty field says it is not filled in', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    // Company name is empty and inherits nothing; the phone has a value.
+    final companyName = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Company name'),
+    );
+    final phone = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Phone number'),
+    );
+
+    expect(companyName.decoration?.hintText, 'Not filled in');
+    expect(companyName.decoration?.filled, isTrue);
+    expect(phone.decoration?.hintText, isNull);
+    expect(phone.decoration?.filled, isFalse);
+    expect(
+      companyName.decoration?.floatingLabelBehavior,
+      FloatingLabelBehavior.always,
+    );
+  });
+
+  testWidgets('an inherited value is not marked missing', (tester) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+      emptyValues: true,
+    );
+
+    final companyName = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Company name'),
+    );
+
+    expect(companyName.decoration?.hintText, 'A-1 Chimney');
+    expect(companyName.decoration?.filled, isFalse);
+  });
+
   testWidgets('a blank field says what it inherits and from where', (
     tester,
   ) async {
@@ -708,6 +761,7 @@ const List<Map<String, Object?>> _sites = [
     'last_seen_at': '2026-08-28T11:00:00+00:00',
     'plugin_version': '1.0.0',
     'public_key': 'pk_fixture_browser_key',
+    'missing': 4,
   },
   {
     'id': 'site-2',

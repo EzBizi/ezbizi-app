@@ -4,6 +4,8 @@ namespace Tests\Feature\Api;
 
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\Role;
+use App\Models\ServiceArea;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
@@ -60,6 +62,17 @@ class JobListQueryCountTest extends TestCase
                 'name'   => 'List Customer',
             ]);
 
+            // A role and an area on every job, or the list's eager loads of them
+            // go unmeasured: Laravel skips an eager load whose keys are all null.
+            // Measured 2026-09-25 -- removing `serviceArea` from the list's
+            // with() left this test green until its jobs had one.
+            $role = Role::create(['organization_id' => $tenant['org']->id, 'name' => 'Sweep '.$count, 'is_system' => false]);
+            $area = ServiceArea::create([
+                'organization_id' => $tenant['org']->id,
+                'franchise_id'    => $tenant['franchise']->id,
+                'name'            => 'Area '.$count,
+            ]);
+
             for ($i = 0; $i < $count; $i++) {
                 Job::create([
                     'franchise_id' => $tenant['franchise']->id,
@@ -68,6 +81,8 @@ class JobListQueryCountTest extends TestCase
                     'title'    => "Job {$i}",
                     'status'   => 'scheduled',
                     'currency' => 'USD',
+                    'assigned_role_id' => $role->id,
+                    'service_area_id'  => $area->id,
                 ]);
             }
         });

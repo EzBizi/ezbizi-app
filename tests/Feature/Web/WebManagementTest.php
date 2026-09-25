@@ -430,6 +430,36 @@ class WebManagementTest extends TestCase
         $this->signedInAs($stranger)->get('/api/v1/web/plugin')->assertForbidden();
     }
 
+    /**
+     * The count beside each website: General fields it publishes nothing for.
+     *
+     * A value inherited from the primary is published, so it is not missing;
+     * the composed address and the website address fill themselves in.
+     */
+    public function test_each_site_says_how_many_general_fields_it_is_missing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editorFor($tenant);
+
+        $main = $this->registerSite($editor, $tenant, 'a-1chimney.com');
+        $branch = $this->registerSite($editor, $tenant, 'nj.a-1chimney.com');
+        $this->signedInAs($editor)->postJson("/api/v1/web/sites/{$main['data']['id']}/primary")->assertOk();
+
+        $general = count(array_filter(SeoFields::catalogue(), fn (array $f) => $f['section'] === SeoFields::GENERAL));
+        $counted = $general - 2; // address and website_url fill themselves in
+
+        $this->setValues($editor, $main['data']['id'], ['company_name' => 'A-1', 'phone' => '555-0100', 'facebook' => 'https://facebook.com/a1']);
+        $this->setValues($editor, $branch['data']['id'], ['city' => 'Newark', 'phone' => '']);
+
+        $missing = collect($this->signedInAs($editor)->getJson('/api/v1/web/sites')->assertOk()->json('data'))
+            ->pluck('missing', 'host');
+
+        // The social link does not count either way.
+        $this->assertSame($counted - 2, $missing['a-1chimney.com']);
+        // Inherits both, adds a city; the cleared phone does not hide the primary's.
+        $this->assertSame($counted - 3, $missing['nj.a-1chimney.com']);
+    }
+
     // ── 7. §4: permissions and tenants ──────────────────────────────
 
     public function test_a_viewer_can_read_sites_and_cannot_change_them(): void

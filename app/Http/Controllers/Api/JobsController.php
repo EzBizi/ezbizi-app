@@ -8,6 +8,7 @@ use App\Models\InspectionReport;
 use App\Models\InventoryIssueLine;
 use App\Models\Job;
 use App\Models\JobLine;
+use App\Models\ServiceArea;
 use App\Models\User;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
@@ -109,6 +110,7 @@ class JobsController extends Controller
                 ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
                 ->when($status, fn ($q, $s) => $q->where('status', $s))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
+                ->when($request->query('service_area_id'), fn ($q, $id) => $q->where('service_area_id', $id))
                 ->when(filled($request->query('search')), function ($q) use ($request) {
                     $term = trim((string) $request->query('search'));
                     $like = '%'.$term.'%';
@@ -137,11 +139,12 @@ class JobsController extends Controller
             // page. `timezone` because FranchiseWallTime reads it to give
             // scheduled_for its offset — loaded without it, the list shipped
             // every time with a UTC offset. `assignedRole` because the base
-            // payload carries the role column.
+            // payload carries the role column, `serviceArea` the area column.
             ->with([
                 'franchise:id,name,timezone',
                 'customer:id,name,number,owning_franchise_id',
                 'assignedRole:id,name',
+                'serviceArea',
             ]);
 
         match ($when) {
@@ -250,6 +253,7 @@ class JobsController extends Controller
 
         $this->assertStatusAllowed($input['status'], $franchise);
         $this->assertPerformerReach($input['performed_by_user_id'] ?? null, $franchise);
+        $this->assertAreaOfFranchise($input['service_area_id'] ?? null, $franchise);
 
         $job = DB::transaction(function () use ($input, $franchise, $customer) {
             $job = Job::create($input + [
@@ -324,6 +328,10 @@ class JobsController extends Controller
 
         if (array_key_exists('performed_by_user_id', $input)) {
             $this->assertPerformerReach($input['performed_by_user_id'], $job->franchise);
+        }
+
+        if (array_key_exists('service_area_id', $input)) {
+            $this->assertAreaOfFranchise($input['service_area_id'], $job->franchise);
         }
 
         DB::transaction(function () use ($job, $input) {
@@ -454,6 +462,23 @@ class JobsController extends Controller
         }
     }
 
+    /**
+     * A job's area must be one of its OWN franchise's: an area is a part of a
+     * franchise, and a job cannot be in a part of somebody else's -- the rule
+     * JobServiceArea applies to Workiz, applied to a person's choice. `exists`
+     * could only prove it is an area somewhere in the organization. ServiceArea
+     * is tenant-scoped, so another organization's id gets this same answer.
+     */
+    private function assertAreaOfFranchise(?string $areaId, Franchise $franchise): void
+    {
+        if ($areaId !== null && ! ServiceArea::query()->whereKey($areaId)
+            ->where('franchise_id', $franchise->getKey())->exists()) {
+            throw ValidationException::withMessages([
+                'service_area_id' => 'That service area is not one of this franchise\'s.',
+            ]);
+        }
+    }
+
     private function rules(bool $forUpdate = false): array
     {
         $required = $forUpdate ? 'sometimes' : 'required';
@@ -495,6 +520,10 @@ class JobsController extends Controller
             // Who did it. Scoped the same way; whether they can REACH this
             // franchise is checked below, because `exists` cannot express it.
             'performed_by_user_id' => ['nullable', 'uuid', $this->existsInTenant('users')],
+
+            // Which of the franchise's service areas the work is in. Its
+            // franchise is checked below, for the same reason as the performer.
+            'service_area_id' => ['nullable', 'uuid'],
         ];
     }
 
@@ -506,7 +535,7 @@ class JobsController extends Controller
         // it, 2026-09-24; JobListQueryCountTest pins it).
         $job->loadMissing([
             'franchise:id,name,timezone', 'customer:id,name,number,owning_franchise_id',
-            'assignedRole:id,name',
+            'assignedRole:id,name', 'serviceArea',
         ]);
 
         $base = [
@@ -541,6 +570,10 @@ class JobsController extends Controller
             'assigned_role' => $job->assignedRole
                 ? ['id' => $job->assigned_role_id, 'name' => $job->assignedRole->name]
                 : null,
+            // Null when nothing placed the job (JobServiceArea) and nobody chose.
+            'service_area' => $job->serviceArea
+                ? ['id' => $job->service_area_id, 'name' => $job->serviceArea->name]
+                : null,
         ];
 
         if (! $detailed) {
@@ -555,6 +588,11 @@ class JobsController extends Controller
             'allowed_statuses' => $job->franchise
                 ? Job::statusEntries($job->franchise)
                 : [],
+            // The choices for the area, here rather than from Scheduling's
+            // endpoint, which is gated by a permission a job editor may lack.
+            'allowed_service_areas' => ServiceArea::query()
+                ->where('franchise_id', $job->franchise_id)->orderBy('name')
+                ->get(['id', 'name'])->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name])->all(),
             'lines' => $job->lines->map(fn (JobLine $line) => [
                 'id'               => $line->id,
                 'service_id'       => $line->service_id,
