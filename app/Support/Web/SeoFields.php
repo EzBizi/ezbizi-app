@@ -272,6 +272,17 @@ class SeoFields
                 // A business with no Google listing yet has nothing to point at.
                 'requirement' => self::OPTIONAL,
             ],
+            /*
+             * The Google "ask for reviews" link, apart from `review_link`.
+             * A1 sites point their "Review us" buttons at their own /reviews/
+             * page, which carries the review faces; the happy face there
+             * needs the Google link itself, or it links to the page it is on.
+             */
+            'google_review_link' => [
+                'label' => 'Google review link',
+                'hint' => 'The g.page/r/…/review link from your Google profile. Where the happy face sends a happy customer.',
+                'requirement' => self::OPTIONAL,
+            ],
             'review_link' => [
                 'label' => 'Leave-a-review link',
                 'hint' => 'Where a "Review us" button should send somebody.',

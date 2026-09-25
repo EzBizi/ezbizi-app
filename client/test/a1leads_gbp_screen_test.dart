@@ -790,10 +790,17 @@ MockClientHandler _handler({
       return _json({'data': {'reasons': ['fake_or_deceptive', 'conflict_of_interest']}});
     }
     if (request.url.path.endsWith('/suggestions')) {
+      // The live shape, measured 2026-09-25: the jobs sit under `data.jobs`.
       return _json({
-        'data': [
-          {'tenant': 'NJ', 'jobId': '7001', 'customerName': 'Dana M. Whitfield', 'serviceDate': '2026-09-01', 'technician': 'Amit'},
-        ],
+        'data': {
+          'tenant': 'NJ',
+          'tenants': ['NJ', 'TX'],
+          'localOnly': true,
+          'currentMatch': <String, dynamic>{},
+          'jobs': [
+            {'tenant': 'NJ', 'jobId': '7001', 'jobNumber': 100077846, 'name': 'Dana M. Whitfield', 'date': '2026-09-01', 'team': ['Amit']},
+          ],
+        },
       });
     }
     if (request.url.path.endsWith('/a1leads-gbp/reply/preflight')) {
