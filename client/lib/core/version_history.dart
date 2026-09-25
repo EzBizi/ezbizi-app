@@ -8,6 +8,16 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0279',
+      date: '25 Sep 2026',
+      items: [
+        'Scheduling Settings, Availability: the Overview groups areas by franchise, with the daily totals of each franchise, and flags areas that have no capacity yet. Tap a franchise name in the list to see that franchise alone, with its daily totals at the top.',
+        'On Android, refusing the permission to make calls now refuses the call and says why, instead of asking again, showing an error or pretending a call is on.',
+        'Web Management: the Contact form widget has the appointment form A1 Tools had, saving a form no longer wipes the choices of a pick-one question, the Call to action can show the number, address or link itself, and SEO has a Google review link field that the Review faces happy face uses.',
+        'Field: SOS from a computer or the web sends without a location. Only the Android and iPhone apps ask for one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0278',
       date: '25 Sep 2026',
       items: [
