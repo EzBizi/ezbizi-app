@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0269',
+      date: '24 Sep 2026',
+      items: [
+        'AI Assistance has an Ask field, and the WhatsApp staff bot answers what is typed to it: a question is matched against the Library answers that person may read. One clear answer is sent, several come as a list to pick from, and otherwise it looks for a location as before.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0268',
       date: '24 Sep 2026',
       items: [
