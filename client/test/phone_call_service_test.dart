@@ -64,6 +64,51 @@ void main() {
     service.stop();
   });
 
+  /// A CALL THE PLATFORM REFUSED IS NOT A CALL.
+  ///
+  /// Android will not place an outbound call without CALL_PHONE, and this app
+  /// never asked for it — the plugin logs "Missing CALL_PHONE permission" and
+  /// returns, with nothing reaching Dart. The first Android outbound call that
+  /// connected (0.0.0277) did so only on an emulator where the permission had
+  /// been granted by hand.
+  ///
+  /// The half pinned here is the desk's: a refusal must NOT mark this person
+  /// on a call. `on_call` takes somebody out of their own ring group, and it
+  /// would have been set for a call that never started.
+  testWidgets('a refused call leaves the desk off a call, and says why', (
+    tester,
+  ) async {
+    final device = _FakeDevice()
+      ..refusesCalls = 'Android has not given EzBizi permission to place calls.';
+    final service = await _started(tester, device: device);
+
+    await service.connect(to: '+13055550100', callerId: '+12035550142');
+
+    expect(service.onCall, isFalse, reason: 'marked on a call that never started');
+    expect(service.callRefusal, contains('permission to place calls'));
+
+    // In the body, as every other case in this file does. The helper's
+    // `addTearDown` runs after the binding checks for pending timers, so it
+    // cannot clear the renewal timer in time.
+    service.stop();
+  });
+
+  /// The control: a call the platform places DOES put the desk on a call.
+  ///
+  /// Without it the case above passes on a desk that never marks anybody on a
+  /// call at all.
+  testWidgets('a placed call puts the desk on a call', (tester) async {
+    final device = _FakeDevice();
+    final service = await _started(tester, device: device);
+
+    await service.connect(to: '+13055550100', callerId: '+12035550142');
+
+    expect(service.onCall, isTrue);
+    expect(service.callRefusal, isNull);
+
+    service.stop();
+  });
+
   /// A HANDSET GETS NO EXPIRY EVENT, so the desk renews on the clock.
   ///
   /// Android reported this on 2026-09-17 with the greps: `tokenWillExpire`
@@ -754,9 +799,17 @@ class _FakeDevice implements VoiceDevice {
 
   @override
   Future<void> connect({required String to, String? callerId}) async {
+    // What Android does without CALL_PHONE, once the device says so out loud.
+    final refuse = refusesCalls;
+    if (refuse != null) throw CallRefused(refuse);
+
     connectedTo = to;
     this.callerId = callerId;
   }
+
+  /// Set to make `connect` refuse the way an Android phone without CALL_PHONE
+  /// now does.
+  String? refusesCalls;
 
   @override
   void hangUp() {}

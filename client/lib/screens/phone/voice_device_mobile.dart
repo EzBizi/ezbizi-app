@@ -319,6 +319,28 @@ class MobileVoiceDevice implements VoiceDevice {
       // Nothing to say here that registration will not say better.
     }
 
+    // ANDROID WILL NOT PLACE AN OUTBOUND CALL WITHOUT CALL_PHONE, and says so
+    // only to logcat.
+    //
+    // Found 2026-09-25 by reading the plugin rather than by a device:
+    // `TVConnectionService.onStartCommand` checks `hasCallPhonePermission()`
+    // and, if it is missing, logs "Missing CALL_PHONE permission" and RETURNS
+    // — before `telecomManager.placeCall`. No error reaches Dart. Pressing
+    // Call does nothing at all.
+    //
+    // This app never asked for it. The first Android outbound call that
+    // connected (0.0.0277, on an emulator) worked only because CALL_PHONE had
+    // been granted there by hand with `pm grant`, so it proved the path works
+    // WITH the permission and said nothing about a real phone, which would
+    // never have been asked.
+    //
+    // Asked here for the same reason as the microphone: a prompt arriving at
+    // the moment somebody presses Call is a prompt read while the customer
+    // waits. Its own try, not fatal — inbound needs none of this, so a refusal
+    // must not be reported as the phone failing to register. `connect()` asks
+    // again, because a refusal here is not the end of it.
+    await _askToPlaceCalls();
+
     // BEFORE the token and before Twilio, because neither can help.
     //
     // Twilio registration succeeding while Telecom refuses the call is the
@@ -481,8 +503,55 @@ class MobileVoiceDevice implements VoiceDevice {
     }
   }
 
+  /// CALL_PHONE, and the self-managed-calls permission beside it.
+  ///
+  /// Android only: iOS has no such permission and places calls through
+  /// CallKit without one. Returns whether an outbound call can now be placed,
+  /// so `connect()` can tell somebody why nothing happened rather than doing
+  /// nothing — which is exactly what the plugin does on its own.
+  Future<bool> _askToPlaceCalls() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return true;
+
+    try {
+      final voice = TwilioVoicePlatform.instance;
+
+      if (!await voice.hasCallPhonePermission()) {
+        await voice.requestCallPhonePermission();
+      }
+
+      // Normally granted at install on every Android version this app
+      // supports, but the plugin refuses without it just as silently, so it is
+      // checked rather than assumed.
+      if (!await voice.hasManageOwnCallsPermission()) {
+        await voice.requestManageOwnCallsPermission();
+      }
+
+      return await voice.hasCallPhonePermission();
+    } catch (_) {
+      // A platform channel that throws is not a refusal. Let the call be
+      // attempted and fail, if it is going to, where the plugin can say so.
+      return true;
+    }
+  }
+
   @override
   Future<void> connect({required String to, String? callerId}) async {
+    // ASKED AGAIN, because the answer at start-up is not the last word. And
+    // refused OUT LOUD: the plugin's own behaviour here is to log and return,
+    // which leaves somebody pressing Call on a phone that does nothing and
+    // says nothing.
+    //
+    // A THROW, where every other failure in this method is swallowed as a
+    // state. The difference is that the desk has to NOT mark this person on a
+    // call — a call that was never placed must not put somebody `on_call` and
+    // take them out of their own ring group.
+    if (!await _askToPlaceCalls()) {
+      throw const CallRefused(
+        'Android has not given EzBizi permission to place calls. Allow it '
+        'under Settings › Apps › EzBizi › Permissions › Phone.',
+      );
+    }
+
     try {
       await TwilioVoicePlatform.instance.call.place(
         from: callerId ?? '',
