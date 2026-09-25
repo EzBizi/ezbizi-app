@@ -69,6 +69,10 @@ final class WidgetPresets
         'team',
         'branches',
         'store_locator',
+        // The form's LOOK. Its questions and words stay in the form's own
+        // config; a preset only styles them, so one form can sit dark on one
+        // page and light on another.
+        'form',
     ];
 
     public const DEFAULT = 'default';
@@ -151,6 +155,7 @@ final class WidgetPresets
         'team' => ['box' => 'box', 'heading' => 'text', 'name' => 'text', 'role' => 'text', 'photo' => 'box'],
         'branches' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'button' => 'button'],
         'store_locator' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'link' => 'text'],
+        'form' => ['box' => 'box', 'title' => 'text', 'subtitle' => 'text', 'label' => 'text', 'input' => 'button', 'submit' => 'button', 'consent' => 'text', 'help' => 'text'],
     ];
 
     /**
@@ -485,6 +490,10 @@ final class WidgetPresets
                 'images' => true,
                 'maps' => true,
             ],
+            'form' => [
+                'field_gap' => 12,
+                'button_width' => 'auto',
+            ],
         ];
     }
 
@@ -518,6 +527,9 @@ final class WidgetPresets
         ],
         'review_faces' => [
             'tone' => ['light', 'dark'],
+        ],
+        'form' => [
+            'button_width' => ['auto', 'full'],
         ],
         'team' => [
             'photo' => ['square', 'circle'],
@@ -565,6 +577,7 @@ final class WidgetPresets
         'branches' => ['columns' => [1, 4]],
         'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
         'contact_info' => ['icon_gap' => [0, 40], 'item_gap' => [0, 80]],
+        'form' => ['field_gap' => [0, 40]],
     ];
 
     /** Hand-written options that are a colour: a hex, or empty for the site's accent. */

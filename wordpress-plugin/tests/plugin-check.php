@@ -851,6 +851,45 @@ check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), tr
 check('and its position', str_contains($chat, 'right:20px'), true);
 check('the chat posts to the chat endpoint', str_contains($chat, '/api/v1/web/chat'), true);
 
+echo PHP_EOL . "The form carries A1's appointment form" . PHP_EOL;
+reset_site();
+$booking = json_decode(widget_payload(), true);
+$booking['widgets']['form'] = array_merge($booking['widgets']['form'], [
+    'title' => 'Book an Appointment Online',
+    'subtitle' => 'Schedule directly with our scheduling system.',
+    'antibot' => true, 'antibot_label' => "I'm not a robot",
+    'consent_on' => false,
+    'redirect' => 'https://a1.test/thanks/',
+    'fields' => [
+        ['label' => 'First Name', 'type' => 'text', 'required' => true, 'placeholder' => 'John', 'width' => 25],
+        ['label' => 'Last Name', 'type' => 'text', 'required' => true, 'width' => 25],
+        ['label' => 'Appointment Date', 'type' => 'date', 'required' => true, 'width' => 50],
+        ['label' => 'Contact me by', 'type' => 'radio', 'options' => ['Phone', 'Email']],
+        ['label' => 'Campaign', 'type' => 'hidden', 'value' => 'spring'],
+    ],
+]);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($booking)];
+ezbizi_fetch();
+do_action('init');
+$bform = $GLOBALS['sc']['ezbizi_form']([]);
+check('its title', str_contains($bform, '>Book an Appointment Online</h3>'), true);
+check('and the line under it', str_contains($bform, 'Schedule directly'), true);
+check('a quarter-width field', str_contains($bform, 'calc(25% - '), true);
+check('a placeholder', str_contains($bform, 'placeholder="John"'), true);
+check('a date picker', str_contains($bform, 'type="date"'), true);
+check('radio choices', substr_count($bform, 'type="radio"'), 2);
+check('a hidden value sent with it', str_contains($bform, 'type="hidden" name="Campaign" value="spring"'), true);
+check('the robot box', str_contains($bform, 'ezbizi-antibot-box'), true);
+check('no consent box when switched off', str_contains($bform, '<input type="checkbox" class="ezbizi-consent-box"'), false);
+check('where it goes after', str_contains($bform, 'location.href="https:\/\/a1.test\/thanks\/"'), true);
+check('first and last name make the lead\'s name', str_contains($bform, "low==='first name'"), true);
+
+// Back to the standard widget payload for the sections that follow.
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+do_action('init');
+
 echo PHP_EOL . "A shortcode argument cannot override EzBizi" . PHP_EOL;
 $forced = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Something,Else', 'button' => 'Override me']);
 check('the fields still come from EzBizi', str_contains($forced, 'What needs doing?'), true);
