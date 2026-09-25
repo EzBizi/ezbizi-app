@@ -181,6 +181,29 @@ class SyncWorkizTeamTest extends TestCase
         $this->assertSame('Renamed', $row->name);
     }
 
+    /**
+     * "Not linked" is a decision too. Scheduling › Settings › Schedule stamps
+     * `link_confirmed_at` when somebody removes a wrong email match; without
+     * the stamp the next sweep would propose the same match again.
+     */
+    public function test_an_unlink_made_by_a_person_survives_the_next_sweep(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->connect($tenant, $tenant['franchise'], 'NewJersey');
+        $this->userWithRole($tenant, 'Wrong', [], email: 'auto@example.test');
+        $this->fakeTeam([$this->member(['email' => 'auto@example.test'])]);
+
+        $this->artisan('ezbizi:sync-workiz-team')->assertSuccessful();
+        $this->assertNotNull($this->inTenant($tenant['org'], fn () => WorkizTeamMember::query()->first())->user_id);
+
+        $this->inTenant($tenant['org'], fn () => WorkizTeamMember::query()->first()
+            ->forceFill(['user_id' => null, 'auto_matched' => false, 'link_confirmed_at' => now()])->save());
+
+        $this->artisan('ezbizi:sync-workiz-team')->assertSuccessful();
+
+        $this->assertNull($this->inTenant($tenant['org'], fn () => WorkizTeamMember::query()->first())->user_id);
+    }
+
     public function test_running_twice_refreshes_rather_than_duplicating(): void
     {
         $tenant = $this->provisionTenant('Alpha');

@@ -51,6 +51,15 @@ use Illuminate\Support\Facades\DB;
  * filter is what keeps a Nationwide call-centre job tagged "New York" off the
  * New York franchise's area.
  *
+ * NOT SWITCHED YET, and the precondition is measured, not assumed. Jobs'
+ * backfill wrote 7,645 areas at 2026-09-25 13:58 UTC, and the two sources
+ * agree over the next 30 days — 667 by name, 668 by `service_area_id`, three
+ * areas off by one where the zip placed a job its name could not. But a job
+ * created AFTER the backfill gets no area until the Workiz projection calls
+ * `JobServiceArea::resolve()`, so switching now would undercount every new
+ * booking: the optimistic direction, the one A1's silent zero taught us nobody
+ * notices. Switch when that projection is live, and re-run the comparison.
+ *
  * ponytail: FREE_STATUSES and EXCLUDED_TAGS are constants, not settings. They
  * hold A-1's vocabulary; the day another organization's words differ, they
  * move into SettingRegistry as org-scoped lists — POPULATED by default, not
