@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Web Management, Widgets: Services, Reviews, Before and After, and FAQ, each with its own list and a website widget.',
         'Reviews and Business Profile have moved out of Marketing into a new Customer Experience tab. Nothing about either changes except where it is drawn, and who can see them is unchanged.',
+        'Web Management, Widgets: Phone, Opening hours, Map, Page title and Live Chat have the full set of options.',
       ],
     ),
     VersionRelease(
