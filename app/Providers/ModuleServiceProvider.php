@@ -2354,7 +2354,11 @@ class ModuleServiceProvider extends ServiceProvider
                 // the live A1 Leads writer with its own key; every attempt
                 // audited (`a1leads_gbp.review_replied`,
                 // `a1leads_gbp.review_reply_failed`).
-                actions: ['view', 'reply'],
+                // `manage` since 2026-09-25: a review's workflow card, its
+                // Workiz match and a policy report to Google - the A1 Tools
+                // operations moved here before A1 Tools is retired. None of
+                // them posts a public reply; that is `reply` alone.
+                actions: ['view', 'reply', 'manage'],
                 // AUTOMATED since 2026-09-25. Jose: "this will be set using EzBizi
                 // Automations that Bar himself will set up for the reply." It was
                 // exempt until then, on the grounds that a rule built on a copy

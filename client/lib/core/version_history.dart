@@ -8,6 +8,31 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0277',
+      date: '24 Sep 2026',
+      items: [
+        'Customer match on A1Leads GBP lists the Workiz jobs A1 Leads finds for your search; before, it showed no suggestion on every review. It asks for a name, phone or address to search by.',
+        'Scheduling, Schedule: tap a job to assign a technician, unassign one, or move it to another day and time slot. Changes go straight to Workiz, and only technicians who cover the service area of the job in Workiz are offered. Dispatching needs the Scheduling Edit permission.',
+        'Web Management, Widgets: each part of a widget has its own style options - font, colour, background, border, corners, spacing and hover colours - and the Call to action widget has the full set of options. The websites show them once the next EzBizi website plugin update reaches them.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0276',
+      date: '24 Sep 2026',
+      items: [
+        'Scheduling Settings, Availability: the week is one compact grid - a row per day, the time slots as columns and the total for the day first - and every row and daily-total tile is the same size.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0275',
+      date: '24 Sep 2026',
+      items: [
+        'Web Management, Widgets: a widget keeps its company-wide preset but can change any option for itself, in its shortcode or under This widget only in Elementor. It needs version 1.16.0 of the EzBizi website plugin, which rolls out separately.',
+        'Availability counts booked jobs by the service area EzBizi placed them in, so a job Workiz filed under an old area name, or under none, still takes its spot in the right area.',
+        'A1Leads GBP does what A1 Tools did on a review: Draft with AI in the reply editor, and on each card set its status, add a note, pick the right Workiz customer, or report it to Google. Replying needs the Reply permission; the card actions need the new A1Leads GBP Manage permission.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0274',
       date: '24 Sep 2026',
       items: [

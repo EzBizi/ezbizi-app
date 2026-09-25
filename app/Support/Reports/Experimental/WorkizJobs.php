@@ -446,6 +446,46 @@ final class WorkizJobs
     }
 
     /**
+     * A WRITE to one job -- /job/update/, /job/assign/ or /job/unassign/.
+     *
+     * Needs the account's SECOND key, `auth_secret`, in the JSON body beside
+     * the token in the path. The nine were copied from A1 Tools on 2026-09-25
+     * with Jose's OK. Measured that day on the test job 99QWJ0: a write answers
+     * with no job in it, so a caller that wants the result re-reads with find().
+     *
+     * Null when Workiz accepted it. Otherwise Workiz's own sentence -- "Cannot
+     * assign Chaim Perez to job 99QWJ0, User is not assigned to select service
+     * area." -- because that is what a dispatcher can act on. Same rule as
+     * raw(): nothing is built from the request, whose path holds the token.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    public function post(SocialConnection $connection, string $path, array $body): ?string
+    {
+        $token = (string) ($connection->credentials['api_token'] ?? '');
+        $secret = (string) ($connection->credentials['auth_secret'] ?? '');
+
+        if ($token === '' || $secret === '') {
+            return 'This branch has no Workiz write key, so EzBizi cannot change its jobs.';
+        }
+
+        try {
+            $response = Http::acceptJson()->asJson()->post(
+                'https://api.workiz.com/api/v1/'.$token.$path,
+                ['auth_secret' => $secret] + $body,
+            );
+        } catch (ConnectionException) {
+            return 'Workiz could not be reached.';
+        }
+
+        if ($response->successful()) {
+            return null;
+        }
+
+        return (string) ($response->json('details.error') ?: $response->json('msg') ?: 'Workiz refused the change ('.$response->status().').');
+    }
+
+    /**
      * One page of Workiz rows, reduced to what this report reads.
      *
      * @param  list<array<string, mixed>>  $page

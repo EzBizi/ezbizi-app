@@ -140,7 +140,10 @@ function ezbizi_team_shortcode($atts) {
         $out .= '</div>';
     }
 
-    return $out . '</div>';
+    return $out . '</div>' . ezbizi_style_css('team', $id, $p, array(
+        'box' => '', 'heading' => ' .ezbizi-team-heading', 'name' => ' h4',
+        'role' => ' .ezbizi-team-role', 'photo' => ' img',
+    ));
 }
 
 // ── Branches ────────────────────────────────────────────────────────
@@ -187,7 +190,9 @@ function ezbizi_branches_shortcode($atts) {
             . '</div>';
     }
 
-    return $out . '</div>';
+    return $out . '</div>' . ezbizi_style_css('branches', $id, $p, array(
+        'box' => '', 'card' => ' .ezbizi-branch', 'name' => ' h3', 'button' => ' .ezbizi-loc-directions',
+    ));
 }
 
 // ── Store locator ───────────────────────────────────────────────────
@@ -226,7 +231,7 @@ function ezbizi_store_locator_shortcode($atts) {
     $out .= '<div class="ezbizi-stores" id="' . esc_attr($id) . '">';
 
     if (! empty($p['search'])) {
-        $out .= '<div class="ezbizi-stores-bar"><input type="search" placeholder="' . esc_attr__('Search by town, state or ZIP', 'ezbizi') . '" aria-label="' . esc_attr__('Search locations', 'ezbizi') . '" />';
+        $out .= '<div class="ezbizi-stores-bar"><input type="search" placeholder="' . esc_attr__('Search by town or ZIP', 'ezbizi') . '" aria-label="' . esc_attr__('Search locations', 'ezbizi') . '" />';
 
         if (count($states) > 1) {
             $out .= '<select aria-label="' . esc_attr__('State', 'ezbizi') . '"><option value="">' . esc_html__('All states', 'ezbizi') . '</option>';
@@ -280,7 +285,9 @@ q.addEventListener('input',run);if(st)st.addEventListener('change',run);
 })();</script>";
     }
 
-    return $out;
+    return $out . ezbizi_style_css('store_locator', $id, $p, array(
+        'box' => '', 'card' => ' .ezbizi-store', 'name' => ' h3', 'link' => ' .ezbizi-store-links a',
+    ));
 }
 
 add_action('init', function () {

@@ -704,7 +704,7 @@ Widget _storeLocator(Map<String, dynamic> options, Color accent, Color text) {
               border: Border.all(color: text.withValues(alpha: 0.3)),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text('Search by town, state or ZIP',
+            child: Text('Search by town or ZIP',
                 style: TextStyle(color: text.withValues(alpha: 0.6), fontSize: 12)),
           ),
         const SizedBox(height: 8),

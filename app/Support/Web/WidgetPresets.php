@@ -114,6 +114,164 @@ final class WidgetPresets
      */
     public static function defaults(): array
     {
+        $out = self::base();
+
+        foreach ($out as $widget => $options) {
+            foreach (self::generated($widget) as $key => $rule) {
+                $out[$widget][$key] = $rule['default'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The parts of each widget that can be styled, and what kind each is.
+     *
+     * Jose, 2026-09-25: "i want all the options, for all the widgets please",
+     * on Toula's lists — colours, hover colours, typography, borders, radius,
+     * padding, shadows and alignment for every widget. Written out per widget
+     * they would be several hundred options; they are the same few properties
+     * applied to a handful of kinds of thing, so they are GENERATED from this
+     * table and `PROPS`. Every one is optional: empty (or 0) leaves the look
+     * to the theme, so an existing site renders exactly as it did.
+     *
+     * The plugin maps each part to a selector inside its widget; the screen
+     * draws the editors from the schema; the rules live only here.
+     */
+    private const PARTS = [
+        'social_links' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text'],
+        'city_list' => ['box' => 'box', 'heading' => 'text', 'link' => 'text'],
+        'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
+        'google_map' => ['box' => 'box'],
+        'contact_info' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text'],
+        'cta' => ['box' => 'box', 'button' => 'button', 'icon' => 'icon'],
+        'phone_box' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'number' => 'text'],
+        'review_faces' => ['box' => 'box', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
+        'team' => ['box' => 'box', 'heading' => 'text', 'name' => 'text', 'role' => 'text', 'photo' => 'box'],
+        'branches' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'button' => 'button'],
+        'store_locator' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'link' => 'text'],
+    ];
+
+    /**
+     * What each kind of part can be given. `[type, …]`: a colour is a hex or
+     * empty; a range is whole pixels (percent for line height) with 0 meaning
+     * "not set"; a choice's first option is its default.
+     */
+    private const PROPS = [
+        'text' => [
+            'color' => ['color'],
+            'hover_color' => ['color'],
+            'font_family' => ['font'],
+            'font_size' => ['range', 0, 96],
+            'font_weight' => ['choice', ['', '300', '400', '500', '600', '700', '800', '900']],
+            'text_transform' => ['choice', ['', 'none', 'uppercase', 'lowercase', 'capitalize']],
+            'letter_spacing' => ['range', 0, 20],
+            'line_height' => ['range', 0, 300],
+        ],
+        'box' => [
+            'bg' => ['color'],
+            'hover_bg' => ['color'],
+            'border_color' => ['color'],
+            'hover_border_color' => ['color'],
+            'border_width' => ['range', 0, 20],
+            'radius' => ['range', 0, 100],
+            'padding' => ['range', 0, 120],
+            'shadow' => ['choice', ['', 'none', 'soft', 'strong']],
+            'align' => ['choice', ['', 'left', 'center', 'right']],
+            'devices' => ['choice', ['', 'desktop', 'mobile']],
+        ],
+        'icon' => [
+            'color' => ['color'],
+            'hover_color' => ['color'],
+            'bg' => ['color'],
+            'size' => ['range', 0, 120],
+            'padding' => ['range', 0, 60],
+            'radius' => ['range', 0, 100],
+        ],
+        'button' => [
+            'color' => ['color'],
+            'bg' => ['color'],
+            'hover_color' => ['color'],
+            'hover_bg' => ['color'],
+            'border_color' => ['color'],
+            'border_width' => ['range', 0, 20],
+            'radius' => ['range', 0, 100],
+            'padding' => ['range', 0, 60],
+            'font_family' => ['font'],
+            'font_size' => ['range', 0, 96],
+            'font_weight' => ['choice', ['', '300', '400', '500', '600', '700', '800', '900']],
+            'text_transform' => ['choice', ['', 'none', 'uppercase', 'lowercase', 'capitalize']],
+            'letter_spacing' => ['range', 0, 20],
+        ],
+    ];
+
+    /**
+     * The generated style options of one widget, keyed `<part>_<property>`.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function generated(string $widget): array
+    {
+        static $cache = [];
+
+        if (isset($cache[$widget])) {
+            return $cache[$widget];
+        }
+
+        $out = [];
+
+        foreach (self::PARTS[$widget] ?? [] as $part => $kind) {
+            foreach (self::PROPS[$kind] as $prop => $spec) {
+                $rule = match ($spec[0]) {
+                    'color' => ['type' => 'color', 'default' => ''],
+                    'font' => ['type' => 'text', 'max' => 60, 'font' => true, 'default' => ''],
+                    'range' => ['type' => 'range', 'min' => $spec[1], 'max' => $spec[2], 'default' => 0],
+                    'choice' => ['type' => 'choice', 'choices' => $spec[1], 'default' => $spec[1][0]],
+                };
+
+                $out[$part.'_'.$prop] = $rule + ['part' => $part, 'prop' => $prop];
+            }
+        }
+
+        return $cache[$widget] = $out;
+    }
+
+    /**
+     * How one option is read: the same rule for a stored preset here and for
+     * an override the plugin checks.
+     *
+     * @return array<string, mixed>
+     */
+    private static function rule(string $widget, string $key, mixed $default): array
+    {
+        if (isset(self::generated($widget)[$key])) {
+            $rule = self::generated($widget)[$key];
+            unset($rule['default']);
+
+            return $rule;
+        }
+
+        return match (true) {
+            in_array($key, self::COLORS[$widget] ?? [], true) => ['type' => 'color'],
+            is_bool($default) => ['type' => 'bool'],
+            isset(self::RANGES[$widget][$key]) => [
+                'type' => 'range',
+                'min' => self::RANGES[$widget][$key][0],
+                'max' => self::RANGES[$widget][$key][1],
+            ],
+            isset(self::TEXT[$widget][$key]) => ['type' => 'text', 'max' => self::TEXT[$widget][$key]],
+            default => ['type' => 'choice', 'choices' => self::CHOICES[$widget][$key] ?? [$default]],
+        };
+    }
+
+    /**
+     * The options each widget offers before generation. See `defaults()`.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function base(): array
+    {
         return [
             /*
              * Live pages show 21–25 of these in a row. `plain` rather than a
@@ -203,6 +361,20 @@ final class WidgetPresets
                  * nothing still gets a sentence rather than a blank button.
                  */
                 'text' => '',
+                // Toula's CTA list (suggestion 01a0d8e6-8d95): a custom link,
+                // tracking on it, a new tab, the icon, an animation, and what
+                // the button does on a phone.
+                'url' => '',
+                'url_params' => '',
+                'new_tab' => false,
+                'icon_type' => 'auto',
+                'icon_position' => 'left',
+                'icon_gap' => 8,
+                'animation' => 'none',
+                'animation_speed' => 2,
+                'animate_on' => 'always',
+                'glow_color' => '',
+                'mobile' => 'same',
             ],
             /*
              * The phone on its own, which is the most-placed single widget on
@@ -288,7 +460,12 @@ final class WidgetPresets
             // `bar` is fixed to the bottom of the window, `popup` opens over
             // the page once per visit, `inline` sits where it was pasted.
             'placement' => ['inline', 'bar', 'popup'],
-            'action' => ['call', 'book', 'form'],
+            'action' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp'],
+            'icon_type' => ['auto', 'phone', 'email', 'calendar', 'star', 'arrow', 'chat', 'none'],
+            'icon_position' => ['left', 'right'],
+            'animation' => ['none', 'pulse', 'shake', 'bounce', 'glow'],
+            'animate_on' => ['always', 'hover'],
+            'mobile' => ['same', 'bar', 'hide'],
         ],
         'phone_box' => [
             'size' => ['small', 'medium', 'large'],
@@ -316,7 +493,7 @@ final class WidgetPresets
      * size limit rather than a safety one.
      */
     private const TEXT = [
-        'cta' => ['text' => 80],
+        'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
@@ -334,6 +511,12 @@ final class WidgetPresets
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
+        'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
+    ];
+
+    /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
+    private const COLORS = [
+        'cta' => ['glow_color'],
     ];
 
     /**
@@ -395,40 +578,47 @@ final class WidgetPresets
         foreach ($defaults as $key => $default) {
             $value = $stored[$key] ?? null;
 
-            if ($value === null) {
-                $out[$key] = $default;
-
-                continue;
-            }
-
-            if (is_bool($default)) {
-                $read = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                $out[$key] = $read ?? $default;
-
-                continue;
-            }
-
-            if (isset(self::RANGES[$widget][$key])) {
-                [$min, $max] = self::RANGES[$widget][$key];
-                $out[$key] = max($min, min($max, (int) $value));
-
-                continue;
-            }
-
-            if (isset(self::TEXT[$widget][$key])) {
-                $clean = trim(strip_tags((string) $value));
-                $clean = preg_replace('/\s+/u', ' ', $clean) ?? '';
-
-                $out[$key] = mb_substr($clean, 0, self::TEXT[$widget][$key]);
-
-                continue;
-            }
-
-            $choices = self::CHOICES[$widget][$key] ?? [];
-            $out[$key] = in_array($value, $choices, true) ? $value : $default;
+            $out[$key] = $value === null
+                ? $default
+                : self::read(self::rule($widget, $key, $default), $value, $default);
         }
 
         return $out;
+    }
+
+    /**
+     * One value, by its rule. Anything that does not fit becomes the default:
+     * this ends up in a `<style>` block on somebody's live page.
+     */
+    private static function read(array $rule, mixed $value, mixed $default): mixed
+    {
+        switch ($rule['type']) {
+            case 'bool':
+                return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+
+            case 'range':
+                return is_numeric($value) ? max($rule['min'], min($rule['max'], (int) $value)) : $default;
+
+            case 'color':
+                $value = strtolower(trim((string) $value));
+
+                return preg_match('/^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/', $value) === 1 ? $value : '';
+
+            case 'text':
+                $clean = trim(strip_tags((string) $value));
+                $clean = preg_replace('/\s+/u', ' ', $clean) ?? '';
+
+                if (! empty($rule['font'])) {
+                    // A font name reaches CSS unquoted-safe: letters, digits,
+                    // spaces, commas, hyphens and quotes, nothing that closes a rule.
+                    $clean = preg_replace('/[^A-Za-z0-9 ,\'"-]/', '', $clean) ?? '';
+                }
+
+                return mb_substr($clean, 0, $rule['max']);
+
+            default:
+                return in_array($value, $rule['choices'], true) ? $value : $default;
+        }
     }
 
     /**
@@ -449,16 +639,7 @@ final class WidgetPresets
 
         foreach (self::defaults() as $widget => $defaults) {
             foreach ($defaults as $key => $default) {
-                $out[$widget][$key] = match (true) {
-                    is_bool($default) => ['type' => 'bool'],
-                    isset(self::RANGES[$widget][$key]) => [
-                        'type' => 'range',
-                        'min' => self::RANGES[$widget][$key][0],
-                        'max' => self::RANGES[$widget][$key][1],
-                    ],
-                    isset(self::TEXT[$widget][$key]) => ['type' => 'text', 'max' => self::TEXT[$widget][$key]],
-                    default => ['type' => 'choice', 'choices' => self::CHOICES[$widget][$key] ?? [$default]],
-                };
+                $out[$widget][$key] = self::rule($widget, $key, $default);
             }
         }
 

@@ -188,6 +188,20 @@ void main() {
               : <String, Object?>{},
           'brand': brand,
           'field_types': const ['text', 'textarea', 'email', 'tel', 'select'],
+          // Two of the generated style options, as WidgetPresets::schema()
+          // describes them; the hand-drawn options carry no `part`.
+          'schema': const {
+            'social_links': {
+              'size': {'type': 'range', 'min': 16, 'max': 64},
+              'icon_color': {'type': 'color', 'part': 'icon', 'prop': 'color'},
+              'box_devices': {
+                'type': 'choice',
+                'choices': ['', 'desktop', 'mobile'],
+                'part': 'box',
+                'prop': 'devices',
+              },
+            },
+          },
         };
       } else if (path.endsWith('/widgets/chat') ||
           path.endsWith('/widgets/refresh')) {
@@ -1673,6 +1687,43 @@ void main() {
     // name would hand this site a `default` it never chose.
     expect(social.keys, containsAll(<String>['default', 'footer']));
     expect((social['default'] as Map)['size'], 28);
+  });
+
+  /// Jose, 2026-09-25: "i want all the options, for all the widgets". The
+  /// style options come from the server's schema, grouped by the part they
+  /// style, and a colour typed into one goes up with the preset.
+  testWidgets('a style option from the schema is drawn and saved', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+
+    await pump(
+      tester,
+      open: 'Social links',
+      permissions: ['web_management.view', 'web_management.edit'],
+      own: true,
+      sent: sent,
+    );
+
+    await _reachPresets(tester, 'social_links');
+
+    final group = find.text('Style — icons');
+    await tester.scrollUntilVisible(group, 300, scrollable: _editor);
+    expect(find.text('Style — the whole widget'), findsOneWidget);
+    // An option without a part is the widget's own, not a style group.
+    expect(find.text('Style — size'), findsNothing);
+
+    await tester.tap(group);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Colour'), '#ff0000');
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.text('Save'), 300, scrollable: _editor);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    final social = ((sent.single['config'] as Map)['presets'] as Map)['social_links'] as Map;
+    expect((social['default'] as Map)['icon_color'], '#ff0000');
   });
 
   /// Renaming is a dialog because it changes a KEY. Applied per keystroke it

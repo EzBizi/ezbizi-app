@@ -48,6 +48,107 @@ void main() {
     expect(find.text('Tonya Yates'), findsNothing);
   });
 
+  /// Jose, 2026-09-25: assigning "should be possible on both with the sync".
+  testWidgets('a job opens a panel that assigns a covering technician', (
+    tester,
+  ) async {
+    final posts = <http.Request>[];
+    await _pump(tester, board: _board, posts: posts);
+
+    await tester.tap(find.text('Sheila Content'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ON THIS JOB'), findsOneWidget);
+    expect(find.text('Nobody yet.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dispatch-assign')));
+    await tester.pumpAndSettle();
+
+    // Harry covers Michigan; Workiz refuses him on a Connecticut job, so he
+    // is not offered at all.
+    expect(
+      find.text('Harry Jenkins'),
+      findsOneWidget,
+      reason: 'board row only',
+    );
+    await tester.tap(find.text('Ivan Sharkov').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign'));
+    await tester.pumpAndSettle();
+
+    expect(posts, hasLength(1));
+    expect(
+      posts.single.url.path,
+      endsWith('/scheduling/board/jobs/wj-3/assign'),
+    );
+    expect(jsonDecode(posts.single.body), {'member_id': 'm-ivan'});
+  });
+
+  testWidgets("a refusal shows Workiz's own sentence", (tester) async {
+    const sentence =
+        'Cannot assign Ivan Sharkov to job 200022773, User is not assigned '
+        'to select service area.';
+    await _pump(
+      tester,
+      board: _board,
+      onPost: (_) => _json({'message': sentence}, 422),
+    );
+
+    await tester.tap(find.text('Sheila Content'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('dispatch-assign')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ivan Sharkov').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Assign'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('not assigned to select service area'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('moving sends the day and the slot', (tester) async {
+    final posts = <http.Request>[];
+    await _pump(tester, board: _board, posts: posts);
+
+    await tester.tap(find.text('Sheila Content'));
+    await tester.pumpAndSettle();
+
+    // Sheila is at 8 AM, so the 8–11 slot is already chosen; pick 11–2.
+    await tester.tap(find.byKey(const Key('dispatch-move-window')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('11 AM – 2 PM').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Move'));
+    await tester.pumpAndSettle();
+
+    expect(
+      posts.single.url.path,
+      endsWith('/scheduling/board/jobs/wj-3/reschedule'),
+    );
+    final body = jsonDecode(posts.single.body) as Map<String, dynamic>;
+    expect(body['start_time'], '11:00');
+    expect(body['end_time'], '14:00');
+    expect(body['date'], matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
+  });
+
+  testWidgets(
+    'without Scheduling edit the panel shows the job and no buttons',
+    (tester) async {
+      await _pump(tester, board: {..._board, 'can_dispatch': false});
+
+      await tester.tap(find.text('Sheila Content'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ON THIS JOB'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Assign'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Move'), findsNothing);
+    },
+  );
+
   testWidgets('with no time slots the board says where to set them', (
     tester,
   ) async {
@@ -87,14 +188,21 @@ const _board = {
   'technicians': [
     {
       'id': 'fr-ct|101',
+      'member_id': 'm-ivan',
       'name': 'Ivan Sharkov',
+      'franchise_id': 'fr-ct',
       'franchise_name': 'Connecticut',
+      'service_areas': ['Connecticut'],
       'jobs': 1,
     },
     {
       'id': 'fr-ct|102',
+      'member_id': 'm-harry',
       'name': 'Harry Jenkins',
+      'franchise_id': 'fr-ct',
       'franchise_name': 'Connecticut',
+      // Covers somewhere else: Workiz would refuse him on a Connecticut job.
+      'service_areas': ['Michigan'],
       'jobs': 0,
     },
   ],
@@ -125,6 +233,10 @@ const _board = {
     },
     {
       'id': 'J3',
+      'job_id': 'wj-3',
+      'franchise_id': 'fr-ct',
+      'service_area': 'Connecticut',
+      'team': [],
       'number': '200022773',
       'customer': 'Sheila Content',
       'job_type': 'Free Estimate',
@@ -136,12 +248,15 @@ const _board = {
     },
   ],
   'counts': {'scheduled': 1, 'unassigned': 2},
+  'can_dispatch': true,
 };
 
 Future<void> _pump(
   WidgetTester tester, {
   required Map<String, dynamic> board,
   double width = 1400,
+  List<http.Request>? posts,
+  http.Response Function(http.Request)? onPost,
 }) async {
   tester.view.physicalSize = Size(width, 1000);
   tester.view.devicePixelRatio = 1.0;
@@ -150,6 +265,13 @@ Future<void> _pump(
   final api = ApiClient(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/me')) return _json({'data': _me});
+      if (request.method == 'POST') {
+        posts?.add(request);
+        return onPost?.call(request) ??
+            _json({
+              'data': {'id': 'wj-3'},
+            });
+      }
       if (request.url.path.endsWith('/scheduling/board')) {
         return _json({'data': board});
       }

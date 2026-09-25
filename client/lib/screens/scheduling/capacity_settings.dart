@@ -598,13 +598,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// `capacityForBlock` — equal shares, and the earliest windows take the
   /// remainder one each. So 4 over three is 2/1/1, and 2 over three is 1/1
   /// with the last window not offered (never a zero; see the top of the file).
-  /// Spread over the windows the day SHOWS, so the Day box always equals what
-  /// is on screen.
+  /// Spread over the grid's columns, so the Day box always equals the row.
   void _splitDay(int weekday, String value) {
     final n = int.tryParse(value.trim());
     if (n == null || n <= 0) return;
 
-    final windows = _windowsFor(weekday);
+    final windows = _columns;
     if (windows.isEmpty) return;
 
     final base = n ~/ windows.length;
@@ -643,12 +642,15 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _syncDayTotal(weekday);
   });
 
-  /// The windows a day shows: the organization's, plus any this area already
+  /// The week's columns: the organization's windows, plus any this area already
   /// has capacity on that the list does not name. The second set should be
   /// empty — changing a window moves its rows — but a row the list does not
   /// know about must still be visible, or it is counted by availability and
   /// cannot be seen or removed from the screen that set it.
-  List<(String, String)> _windowsFor(int weekday) {
+  ///
+  /// One set for every day, so the editor is a grid: a day without capacity
+  /// on a column shows that cell blank.
+  List<(String, String)> get _columns {
     final seen = <String>{};
     final out = <(String, String)>[];
 
@@ -659,8 +661,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     for (final w in _timeSlots) {
       add(w['start_time'] as String, w['end_time'] as String);
     }
-    for (final row in _grid[weekday] ?? const <Map<String, dynamic>>[]) {
-      add(row['start_time'] as String, row['end_time'] as String);
+    for (final rows in _grid.values) {
+      for (final row in rows) {
+        add(row['start_time'] as String, row['end_time'] as String);
+      }
     }
 
     out.sort((a, b) => a.$1.compareTo(b.$1));
@@ -1236,17 +1240,15 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         _dailyTotals(theme, area),
         const SizedBox(height: 18),
         Text(
-          'Jobs ${area['name']} can take per slot, per weekday. Type a '
-          "day's total in Day and it splits across the slots, earliest "
-          'first — or set each slot yourself.',
+          "Type a day's total and it splits across the time slots, earliest "
+          'first — or set each slot yourself. A blank slot is not offered '
+          'that day.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 10),
-        // One card per day, slots as rows. The seven-column grid is dropped
-        // entirely rather than made to scroll sideways.
-        for (final (weekday, label) in _week) _dayEditor(theme, weekday, label),
+        _weekGrid(theme),
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
@@ -1856,66 +1858,73 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            for (final (weekday, label) in _week) ...[
-              if (weekday != 1) const SizedBox(width: 6),
-              Expanded(
-                child: Builder(
-                  builder: (context) {
-                    final total = dayTotal(weekday);
-                    final tone = ToneColours.of(
-                      context,
-                      total > 0 ? Tone.ok : Tone.neutral,
-                    );
-                    final whole = franchiseTotal(weekday, total);
+        // IntrinsicHeight + stretch: every tile as tall as the tallest. A
+        // closed day and a day without an "in all" line have less in them,
+        // and were drawing shorter than their neighbours.
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (weekday, label) in _week) ...[
+                if (weekday != 1) const SizedBox(width: 6),
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      final total = dayTotal(weekday);
+                      final tone = ToneColours.of(
+                        context,
+                        total > 0 ? Tone.ok : Tone.neutral,
+                      );
+                      final whole = franchiseTotal(weekday, total);
 
-                    return Container(
-                      key: ValueKey('daily-total-$weekday'),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: tone.fill,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            label,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: tone.ink,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          FittedBox(
-                            child: Text(
-                              total > 0 ? '$total' : 'Closed',
-                              style:
-                                  (total > 0
-                                          ? theme.textTheme.titleLarge
-                                          : theme.textTheme.labelMedium)
-                                      ?.copyWith(
-                                        color: tone.ink,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                            ),
-                          ),
-                          if (siblings.isNotEmpty && whole > 0)
-                            FittedBox(
-                              child: Text(
-                                '$whole in all',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: tone.ink.withValues(alpha: 0.75),
-                                ),
+                      return Container(
+                        key: ValueKey('daily-total-$weekday'),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: tone.fill,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              label,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: tone.ink,
                               ),
                             ),
-                        ],
-                      ),
-                    );
-                  },
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              child: Text(
+                                total > 0 ? '$total' : 'Closed',
+                                style:
+                                    (total > 0
+                                            ? theme.textTheme.titleLarge
+                                            : theme.textTheme.labelMedium)
+                                        ?.copyWith(
+                                          color: tone.ink,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                              ),
+                            ),
+                            if (siblings.isNotEmpty && whole > 0)
+                              FittedBox(
+                                child: Text(
+                                  '$whole in all',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: tone.ink.withValues(alpha: 0.75),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
             ],
-          ],
+          ),
         ),
         if (siblings.isNotEmpty) ...[
           const SizedBox(height: 6),
@@ -1933,154 +1942,193 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
-  /// One ROW per day, not one card.
+  /// The week as one grid: a row per day, the time slots as columns, and the
+  /// day's total first because it is what gets typed most (Jose, 2026-09-25,
+  /// "so it's easier to fill up").
   ///
-  /// Seven cards with their own padding, borders and a full-height button each
-  /// filled the screen for twenty-one numbers. Jose's words: "the days are
-  /// massive for no reason and cover most of the screen". A day is a label, its
-  /// hours, a number and a switch — a row's worth of information given a card's
-  /// worth of space.
+  /// Replaced a stack of three rows per day with the Day box off at the far
+  /// edge of a wide screen, which Jose asked to look better. Capped at 760
+  /// wide so the numbers sit beside their day instead of across the screen.
   ///
-  /// A closed day collapses to a single line, because a closed day has nothing
-  /// to edit and should not cost the same height as one that does.
-  Widget _dayEditor(ThemeData theme, int weekday, String label) {
-    final rows = _grid[weekday];
-    final closed = rows == null || rows.isEmpty;
+  /// EVERY ROW IS THE SAME HEIGHT, closed ones included. Jose, twice, about
+  /// sibling tiles drawn at different sizes; the test measures it.
+  Widget _weekGrid(ThemeData theme) {
+    final columns = _columns;
     final muted = theme.colorScheme.onSurfaceVariant;
     final canOpen = _timeSlots.isNotEmpty;
+    const rowHeight = 48.0;
+    const dayWidth = 44.0;
+    const actionWidth = 60.0;
 
-    Map<String, dynamic>? rowFor(String start, String end) {
-      for (final r in rows ?? const <Map<String, dynamic>>[]) {
-        if (r['start_time'] == start && r['end_time'] == end) return r;
-      }
-      return null;
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+    Widget cell(Widget child) => Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: child,
       ),
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    );
+
+    InputDecoration box({Color? fill}) => InputDecoration(
+      isDense: true,
+      hintText: '–',
+      filled: fill != null,
+      fillColor: fill,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      border: const OutlineInputBorder(),
+    );
+
+    final header = SizedBox(
+      height: 36,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          SizedBox(
-            width: 46,
-            child: Text(label, style: theme.textTheme.titleSmall),
-          ),
-          Expanded(
-            child: closed
-                ? Text(
-                    canOpen
-                        ? 'Closed'
-                        : 'Closed · add time slots in Overview to open it',
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
-                  )
-                : KeyedSubtree(
-                    key: ValueKey('day-$weekday-${_dayGen[weekday] ?? 0}'),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (final (start, end) in _windowsFor(weekday))
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '${_label(start)} – ${_label(end)}',
-                                    style: theme.textTheme.bodyMedium,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 56,
-                                  child: TextFormField(
-                                    key: ValueKey('slot-$weekday-$start-$end'),
-                                    initialValue:
-                                        '${rowFor(start, end)?['max_jobs'] ?? ''}',
-                                    textAlign: TextAlign.center,
-                                    keyboardType: TextInputType.number,
-                                    style: theme.textTheme.bodyMedium,
-                                    decoration: const InputDecoration(
-                                      isDense: true,
-                                      hintText: '–',
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 6,
-                                      ),
-                                      border: OutlineInputBorder(),
-                                    ),
-                                    onChanged: (value) {
-                                      final n = int.tryParse(value.trim());
-                                      var row = rowFor(start, end);
-                                      if (row == null) {
-                                        row = {
-                                          'start_time': start,
-                                          'end_time': end,
-                                        };
-                                        rows.add(row);
-                                      }
-                                      // Blank, or zero: this window is not
-                                      // offered that day. Stored as absence,
-                                      // never as a zero — the server refuses a
-                                      // zero anyway.
-                                      // setState so the daily totals above
-                                      // follow the typing.
-                                      setState(() {
-                                        row!['max_jobs'] = (n != null && n > 0)
-                                            ? n
-                                            : null;
-                                        _syncDayTotal(weekday);
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-          ),
-          if (!closed) ...[
-            const SizedBox(width: 12),
-            SizedBox(
-              width: 64,
-              child: TextField(
-                key: ValueKey('day-total-field-$weekday'),
-                controller: _dayTotal[weekday] ??= TextEditingController(
-                  text: _sumOf(weekday) > 0 ? '${_sumOf(weekday)}' : '',
-                ),
-                textAlign: TextAlign.center,
-                keyboardType: TextInputType.number,
-                style: theme.textTheme.titleSmall,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  labelText: 'Day',
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (value) => _splitDay(weekday, value),
+          const SizedBox(width: dayWidth),
+          cell(
+            Text(
+              'Day total',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w700,
               ),
             ),
-          ],
-          TextButton(
-            onPressed: closed
-                ? (canOpen ? () => _openDay(weekday) : null)
-                : () => _closeDay(weekday),
-            style: TextButton.styleFrom(
-              minimumSize: const Size(56, 32),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              visualDensity: VisualDensity.compact,
-            ),
-            child: Text(closed ? 'Open' : 'Close'),
           ),
+          for (final (start, end) in columns)
+            cell(
+              Text(
+                _shortWindow(start, end),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: theme.textTheme.labelSmall?.copyWith(color: muted),
+              ),
+            ),
+          const SizedBox(width: actionWidth),
         ],
       ),
     );
+
+    Widget dayRow(int weekday, String label) {
+      final rows = _grid[weekday];
+      final closed = rows == null || rows.isEmpty;
+
+      Map<String, dynamic>? rowFor(String start, String end) {
+        for (final r in rows ?? const <Map<String, dynamic>>[]) {
+          if (r['start_time'] == start && r['end_time'] == end) return r;
+        }
+        return null;
+      }
+
+      return Container(
+        key: ValueKey('day-row-$weekday'),
+        height: rowHeight,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: EzBiziTheme.edge(context))),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: dayWidth,
+              child: Text(label, style: theme.textTheme.titleSmall),
+            ),
+            if (closed)
+              Expanded(
+                child: Text(
+                  canOpen
+                      ? 'Closed'
+                      : 'Closed · add time slots in Overview to open it',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              )
+            else ...[
+              cell(
+                TextField(
+                  key: ValueKey('day-total-field-$weekday'),
+                  controller: _dayTotal[weekday] ??= TextEditingController(
+                    text: _sumOf(weekday) > 0 ? '${_sumOf(weekday)}' : '',
+                  ),
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: box(fill: ToneColours.of(context, Tone.ok).fill),
+                  onChanged: (value) => _splitDay(weekday, value),
+                ),
+              ),
+              for (final (start, end) in columns)
+                cell(
+                  // Keyed by the split generation: the field reads its value
+                  // once, so a split draws it fresh.
+                  KeyedSubtree(
+                    key: ValueKey('day-$weekday-${_dayGen[weekday] ?? 0}'),
+                    child: TextFormField(
+                      key: ValueKey('slot-$weekday-$start-$end'),
+                      initialValue: '${rowFor(start, end)?['max_jobs'] ?? ''}',
+                      textAlign: TextAlign.center,
+                      keyboardType: TextInputType.number,
+                      style: theme.textTheme.bodyMedium,
+                      decoration: box(),
+                      onChanged: (value) {
+                        final n = int.tryParse(value.trim());
+                        var row = rowFor(start, end);
+                        if (row == null) {
+                          row = {'start_time': start, 'end_time': end};
+                          rows.add(row);
+                        }
+                        // Blank, or zero: this window is not offered that
+                        // day. Stored as absence, never as a zero — the
+                        // server refuses a zero anyway.
+                        setState(() {
+                          row!['max_jobs'] = (n != null && n > 0) ? n : null;
+                          _syncDayTotal(weekday);
+                        });
+                      },
+                    ),
+                  ),
+                ),
+            ],
+            SizedBox(
+              width: actionWidth,
+              child: TextButton(
+                onPressed: closed
+                    ? (canOpen ? () => _openDay(weekday) : null)
+                    : () => _closeDay(weekday),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                ),
+                child: Text(closed ? 'Open' : 'Close'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            for (final (weekday, label) in _week) dayRow(weekday, label),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "8 AM – 11 AM" as "8–11 AM", "11 AM – 2 PM" as "11 AM–2 PM": a column
+  /// header has the room of one number field.
+  static String _shortWindow(String start, String end) {
+    final a = _label(start);
+    final b = _label(end);
+    final pa = a.substring(a.length - 2);
+    final pb = b.substring(b.length - 2);
+
+    return pa == pb ? '${a.substring(0, a.length - 3)}–$b' : '$a–$b';
   }
 
   /// "13:00" → "1 PM", "12:30" → "12:30 PM", "00:00" → "12 AM" — the way Jose

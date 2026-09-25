@@ -332,6 +332,91 @@ void main() {
     expect(find.byKey(const ValueKey('gbp-customer-accounts/a/locations/l/reviews/r-2')), findsNothing);
   });
 
+  /// DRAFT WITH AI fills the editor and posts nothing. Rodrigo: "Never send a
+  /// draft just because it was generated" - it goes out only through the same
+  /// Post and confirm as a typed reply.
+  testWidgets('draft with AI fills the editor and posts nothing', (tester) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(replyAvailable: true, replyGranted: true, opsAvailable: true, requests: requests));
+    await _board(tester);
+    await tester.tap(find.text('Reply on Google'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('gbp-reply-draft')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hi Dana, thank you for telling us about the delay.'), findsOneWidget);
+    final draft = requests.singleWhere((r) => r.url.path.endsWith('/draft'));
+    expect(draft.url.path, endsWith('/a1leads-gbp/reviews/1/draft'), reason: "A1 Leads' review id");
+    expect(requests.where((r) => r.url.path.endsWith('/a1leads-gbp/reply') && r.method == 'POST'), isEmpty);
+  });
+
+  /// The card's status is set from the board, one change per request.
+  testWidgets('a card status is set from the review', (tester) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(opsAvailable: true, manageGranted: true, requests: requests));
+    await _board(tester);
+
+    await tester.tap(find.text('Status').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done').last);
+    await tester.pumpAndSettle();
+
+    final mark = requests.singleWhere((r) => r.url.path.endsWith('/a1leads-gbp/cards/mark'));
+    expect(jsonDecode(mark.body), {'ref': 'accounts/a/locations/l/reviews/r-1', 'status': 'Done'});
+  });
+
+  /// A report is queued only once somebody confirms a policy reason.
+  testWidgets('a report needs a reason and a confirmation', (tester) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(opsAvailable: true, manageGranted: true, requests: requests));
+    await _board(tester);
+
+    await tester.tap(find.text('Report to Google').first);
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const ValueKey('gbp-report-confirm'));
+    expect(tester.widget<FilledButton>(confirm).onPressed, isNull, reason: 'not before confirming');
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    final report = requests.singleWhere((r) => r.url.path.endsWith('/a1leads-gbp/report'));
+    expect(jsonDecode(report.body), {'reviewIds': [1], 'reason': 'fake_or_deceptive', 'confirmed': true});
+  });
+
+  /// A suggested Workiz job is picked; nobody types a job number.
+  testWidgets('a customer match is picked from the suggestions', (tester) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(opsAvailable: true, manageGranted: true, requests: requests));
+    await _board(tester);
+
+    await tester.tap(find.text('Customer match').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dana M. Whitfield').last);
+    await tester.pumpAndSettle();
+
+    final match = requests.singleWhere((r) => r.url.path.endsWith('/match'));
+    expect(match.url.path, endsWith('/a1leads-gbp/reviews/1/match'));
+    expect(jsonDecode(match.body), {'tenant': 'NJ', 'jobId': '7001'});
+  });
+
+  /// No actions without the manage permission, or before the routes are connected.
+  testWidgets('the card actions need the manage permission and the connection', (tester) async {
+    await _pump(tester, _handler(opsAvailable: true));
+    await _board(tester);
+    expect(find.text('Report to Google'), findsNothing, reason: 'no manage permission');
+    expect(find.text('Dana Whitfield'), findsOneWidget, reason: 'the control: the board rendered');
+  });
+
+  testWidgets('the card actions wait for the review-ops connection', (tester) async {
+    await _pump(tester, _handler(manageGranted: true));
+    await _board(tester);
+    expect(find.text('Report to Google'), findsNothing);
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+  });
+
   /// A card that DOES carry a phone brings the Contact column back.
   ///
   /// The discriminating half of the test above: without it, a table that had
@@ -628,6 +713,8 @@ MockClientHandler _handler({
   String? replyBecause = 'company_not_in_view',
   bool replyGranted = false,
   bool withCustomer = false,
+  bool opsAvailable = false,
+  bool manageGranted = false,
   List<Uri>? seen,
   List<http.Request>? requests,
 }) {
@@ -647,6 +734,7 @@ MockClientHandler _handler({
             'a1leads_gbp.view',
             // Replying is its own permission (Jose, 2026-09-25).
             if (replyGranted) 'a1leads_gbp.reply',
+            if (manageGranted) 'a1leads_gbp.manage',
           ],
           'modules': [
             {
@@ -690,6 +778,31 @@ MockClientHandler _handler({
     };
 
     // The live preflight: the review as Google has it NOW.
+    if (request.url.path.endsWith('/draft') && request.method == 'POST') {
+      return _json({'data': {'text': 'Hi Dana, thank you for telling us about the delay.'}});
+    }
+    if (request.url.path.endsWith('/a1leads-gbp/cards/mark') ||
+        request.url.path.endsWith('/a1leads-gbp/report') ||
+        request.url.path.endsWith('/match')) {
+      return _json({'data': {'ok': true}});
+    }
+    if (request.url.path.endsWith('/a1leads-gbp/report/status')) {
+      return _json({'data': {'reasons': ['fake_or_deceptive', 'conflict_of_interest']}});
+    }
+    if (request.url.path.endsWith('/suggestions')) {
+      // The live shape, measured 2026-09-25: the jobs sit under `data.jobs`.
+      return _json({
+        'data': {
+          'tenant': 'NJ',
+          'tenants': ['NJ', 'TX'],
+          'localOnly': true,
+          'currentMatch': <String, dynamic>{},
+          'jobs': [
+            {'tenant': 'NJ', 'jobId': '7001', 'jobNumber': 100077846, 'name': 'Dana M. Whitfield', 'date': '2026-09-01', 'team': ['Amit']},
+          ],
+        },
+      });
+    }
     if (request.url.path.endsWith('/a1leads-gbp/reply/preflight')) {
       return _json({
         'data': {
@@ -739,6 +852,7 @@ MockClientHandler _handler({
           'source': source,
           'reply_available': replyAvailable,
           'reply_unavailable_because': replyAvailable ? null : replyBecause,
+          'ops_available': opsAvailable,
           'summary': usable ? {'total': 13169} : null,
           'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer) : <dynamic>[],
           'meta': {'total': total},
