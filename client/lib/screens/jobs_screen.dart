@@ -19,6 +19,7 @@ import '../widgets/status_pill.dart';
 import '../widgets/tag.dart';
 import 'jobs/job_days.dart';
 import 'jobs/job_detail_panel.dart';
+import 'jobs/job_where.dart';
 
 /// Jobs (plan §5.2).
 ///
@@ -61,7 +62,28 @@ class _JobsScreenState extends State<JobsScreen> {
   // offered them.
   final Map<String, String> _roles = {};
   String? _roleId;
-  String? _franchiseId;
+
+  /// The Where picker's choice (queue 25): null is anywhere, `none` the jobs no
+  /// area has claimed, `f:<id>` a whole franchise, `a:<id>` one of its areas.
+  /// One choice, because a franchise and an area inside it are two answers to
+  /// the same question.
+  String? _where;
+
+  /// Every area the reader can reach, from the server's first page. Empty from
+  /// a server that does not send them, and the picker then offers franchises
+  /// only — exactly the Franchise picker it replaced.
+  List<({String id, String name, String franchiseId})> _areas = const [];
+
+  /// Jobs with no area, within every filter but Where's own.
+  int? _unplaced;
+
+  String? get _whereFranchise =>
+      _where?.startsWith('f:') ?? false ? _where!.substring(2) : null;
+
+  String? get _whereArea => _where == 'none'
+      ? 'none'
+      : (_where?.startsWith('a:') ?? false ? _where!.substring(2) : null);
+
   int _total = 0;
   // Page one only, until asked. The header used to claim a total the list did
   // not render, with no next-page control and nothing saying records were
@@ -176,7 +198,8 @@ class _JobsScreenState extends State<JobsScreen> {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'status': ?_status,
       'assigned_role_id': ?_roleId,
-      'franchise_id': ?_franchiseId,
+      'franchise_id': ?_whereFranchise,
+      'service_area_id': ?_whereArea,
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -216,6 +239,21 @@ class _JobsScreenState extends State<JobsScreen> {
         _statusCounts = _counts(meta?['status_counts']);
         _whenCounts = _counts(meta?['when_counts']);
         _dayCounts.clear();
+
+        final areas = meta?['service_areas'];
+        if (areas is List) {
+          _areas = [
+            for (final a in areas)
+              if (a is Map && a['id'] is String && a['name'] is String)
+                (
+                  id: a['id'] as String,
+                  name: a['name'] as String,
+                  franchiseId: '${a['franchise_id']}',
+                ),
+          ];
+        }
+        final unplaced = meta?['unplaced_count'];
+        _unplaced = unplaced is int ? unplaced : null;
       }
       _dayCounts.addAll(_counts(meta?['day_counts']));
     });
@@ -322,6 +360,36 @@ class _JobsScreenState extends State<JobsScreen> {
         JobStatus(value: value, label: jobStatusLabel(null, value)),
   ];
 
+  /// Anywhere, the unplaced, then each franchise with its areas under it:
+  /// "Illinois" is every area in Illinois, "Illinois · Chicago" one of them.
+  /// Search reads the whole label, so typing "Denver" finds Nationwide's.
+  List<SearchOption<String?>> _whereOptions(Me me) => [
+    const SearchOption<String?>(value: null, label: 'Anywhere'),
+    if (_areas.isNotEmpty)
+      SearchOption<String?>(
+        value: 'none',
+        label: 'Not placed yet',
+        detail: _unplaced == null
+            ? 'Jobs no area has claimed'
+            : 'Jobs no area has claimed — ${formatCount(_unplaced!)}',
+      ),
+    for (final f in me.franchisesInView) ...[
+      SearchOption<String?>(
+        value: 'f:${f.id}',
+        label: f.name,
+        detail: _areas.any((a) => a.franchiseId == f.id)
+            ? 'Every area in ${f.name}'
+            : null,
+      ),
+      for (final a in _areas.where((a) => a.franchiseId == f.id))
+        // A franchise whose only area is itself — Connecticut's "Connecticut"
+        // — would offer the same word twice. The franchise row says it.
+        if (!(a.name.toLowerCase() == f.name.toLowerCase() &&
+            _areas.where((x) => x.franchiseId == f.id).length == 1))
+          SearchOption<String?>(value: 'a:${a.id}', label: '${f.name} · ${a.name}'),
+    ],
+  ];
+
   Widget _statusChips(BuildContext context) {
     final counted = _statusCounts.isNotEmpty;
     final all = _statusCounts.values.fold(0, (a, b) => a + b);
@@ -387,7 +455,6 @@ class _JobsScreenState extends State<JobsScreen> {
 
   Widget _filters(BuildContext context, Me me, {required bool wide}) {
     final franchises = me.franchisesInView;
-    final franchiseLabel = me.organization.franchiseLabel;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
@@ -436,24 +503,19 @@ class _JobsScreenState extends State<JobsScreen> {
                 },
               ),
             ),
-          // One franchise is no choice, and a picker offering it is chrome.
-          if (franchises.length > 1)
+          // One franchise with no areas is no choice, and a picker offering it
+          // is chrome.
+          if (franchises.length > 1 || _areas.isNotEmpty)
             SizedBox(
               // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
+              width: wide ? 260 : 160,
               child: SearchPickerField<String?>(
-                value: _franchiseId,
-                label: franchiseLabel,
-                options: [
-                  SearchOption<String?>(
-                    value: null,
-                    label: 'All ${franchiseLabel.toLowerCase()}s',
-                  ),
-                  for (final f in franchises)
-                    SearchOption<String?>(value: f.id, label: f.name),
-                ],
+                key: const Key('jobs-where'),
+                value: _where,
+                label: 'Where',
+                options: _whereOptions(me),
                 onChanged: (value) {
-                  setState(() => _franchiseId = value);
+                  setState(() => _where = value);
                   _load();
                 },
               ),
@@ -623,7 +685,6 @@ class _JobsScreenState extends State<JobsScreen> {
   );
 
   List<TableColumn<Map<String, dynamic>>> _columns(BuildContext context) {
-    final me = widget.session.me!;
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
 
     return [
@@ -639,10 +700,11 @@ class _JobsScreenState extends State<JobsScreen> {
         flex: 3,
         cell: (_, job) => Text('${_customer(job)['name'] ?? ''}'),
       ),
+      // Franchise and area in one column (queue 25): "Illinois · Chicago".
       TableColumn(
-        me.organization.franchiseLabel,
-        flex: 2,
-        cell: (_, job) => Text('${_franchise(job)['name'] ?? ''}'),
+        'Where',
+        flex: 3,
+        cell: (_, job) => WhereLabel(job, placeable: _placeable(job)),
       ),
       // The time alone: the heading above already says which day.
       TableColumn('Time', width: 88, cell: (_, job) => Text(_time(job) ?? '—')),
@@ -696,9 +758,12 @@ class _JobsScreenState extends State<JobsScreen> {
       topRight: _time(job),
       subtitle: [
         _customer(job)['name'],
-        _franchise(job)['name'],
+        whereText(job),
         role,
       ].whereType<String>().where((s) => s.isNotEmpty).join(' · '),
+      subtitleBadge: jobWhere(job).area == null && _placeable(job)
+          ? const NotPlacedMark()
+          : null,
       bottomRight: StatusPill(
         _statusLabel(job),
         tone: toneForJobStatus('${job['status'] ?? ''}'),
@@ -708,11 +773,14 @@ class _JobsScreenState extends State<JobsScreen> {
 
   static String _id(Map<String, dynamic> job) => job['id'] as String;
 
+  /// Its franchise has areas to place it in — see [WhereLabel.placeable].
+  bool _placeable(Map<String, dynamic> job) {
+    final franchise = (job['franchise'] as Map<String, dynamic>?)?['id'];
+    return _areas.any((a) => a.franchiseId == franchise);
+  }
+
   static Map<String, dynamic> _customer(Map<String, dynamic> job) =>
       job['customer'] as Map<String, dynamic>? ?? const {};
-
-  static Map<String, dynamic> _franchise(Map<String, dynamic> job) =>
-      job['franchise'] as Map<String, dynamic>? ?? const {};
 
   static bool _ownedHere(Map<String, dynamic> job) =>
       _customer(job)['owned_by_this_franchise'] as bool? ?? true;
@@ -784,7 +852,7 @@ class _JobsScreenState extends State<JobsScreen> {
     if (term.isEmpty &&
         _status == null &&
         _roleId == null &&
-        _franchiseId == null) {
+        _where == null) {
       return switch (_when) {
         // Not "No jobs yet" — there may be thousands, all of them behind Past.
         'upcoming' when (_whenCounts['past'] ?? 0) > 0 =>

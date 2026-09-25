@@ -2958,7 +2958,23 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 25 · Jobs · a job's service area — **DRAWN, awaiting Jose**
+### 25 · Jobs · a job's service area — **BUILT: Jose picked 1 and 4** ("as you recommend")
+
+**Built (client):** the table's Franchise column became **Where** (`WhereLabel`: "Illinois ·
+Chicago", the area alone when it repeats the franchise, "Ohio · Not placed" in amber); the
+Franchise picker became the **Where** picker — Anywhere, Not placed yet (with the count), each
+franchise, and "Franchise · Area" — mapping to `franchise_id` or `service_area_id` (`none` for the
+unplaced). The job record gained a **Service area** field (only where the franchise has areas,
+saved with Save, part of the unsaved-edit check) and the amber mark beside its status. Phone rows
+carry the area in the second line.
+
+**"Not placed" only where there is somewhere to place it.** The mark needs the franchise to have
+areas in `meta.service_areas`; an older server, or a franchise with none, shows the franchise
+alone. Without that, every row of an organization with no areas would have turned amber and the
+mark would have meant nothing. Server half (`none`, `meta.service_areas`, `meta.unplaced_count`)
+is Jobs', to the spec sent with the pick.
+
+**The drawing, as he saw it:**
 
 `docs/previews/job-service-area-layouts.html`. Asked by Jobs (API `4f82c62f`), from Jose,
 2026-09-25: *"Service Areas — sub divisions within the franchise"*. Desktop **1** one "Where"
@@ -2976,10 +2992,13 @@ top · **6** a banner for the unplaced.
   Connecticut"), by the settled "a second badge must say something the first does not".
 - **Longest name: "Los Angeles / Orange County"**, 27 characters — drawn, because it is the one
   that decides whether a combined column fits.
-- **No job is placed yet** (0 of 8,550): the backfill rides the next cut. Jobs estimates ~94%
-  placed after it, and ~5.5% left empty on purpose.
-- **Nothing records WHO placed an area** — a zip or a person. So no option draws provenance; it
-  would need a field the API does not have.
+- **No job was placed when this was drawn** (0 of 8,550). *Since:* the backfill ran at 13:58 UTC
+  on 2026-09-25 — 7,645 A1-Group jobs placed, 448 live jobs left empty on purpose (retired names
+  like "Seattle", 105 of them; call-centre tags pointing at another franchise's area).
+- **Nothing recorded WHO placed an area** when this was drawn, so no option draws provenance.
+  *Since:* `b309bb80` added `jobs.service_area_chosen_at` — null when the machine placed it, a
+  time when a person changed it (clearing included). Only a person's choice is final; a Workiz
+  rename still moves a machine-placed job. Not in the payload, and Jose's pick does not need it.
 
 **Every picker drawn is the app's own** (`SearchPickerField`: a searching list over the page),
 not a menu hanging off a field — the first render drew one, against the 2026-09-17 ruling,

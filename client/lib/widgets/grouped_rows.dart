@@ -213,6 +213,7 @@ class TwoLineTile extends StatelessWidget {
     this.bottomRight,
     this.leading,
     this.badge,
+    this.subtitleBadge,
   });
 
   final String title;
@@ -224,6 +225,10 @@ class TwoLineTile extends StatelessWidget {
   /// A mark after the title that must be seen before anybody acts — "Shared
   /// customer". It keeps its size; the title is what shortens.
   final Widget? badge;
+
+  /// The same, after the subtitle — "Not placed" beside the franchise it is
+  /// missing an area of. The subtitle shortens; the mark does not.
+  final Widget? subtitleBadge;
 
   @override
   Widget build(BuildContext context) {
@@ -270,11 +275,23 @@ class TwoLineTile extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: muted,
+                            ),
+                          ),
+                        ),
+                        if (subtitleBadge != null) ...[
+                          const SizedBox(width: 6),
+                          subtitleBadge!,
+                        ],
+                      ],
                     ),
                   ),
                   if (bottomRight != null) ...[

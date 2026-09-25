@@ -12,6 +12,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/status_pill.dart';
 import '../../widgets/tag.dart';
 import 'job_lines_tab.dart';
+import 'job_where.dart';
 
 /// One job, opened from the list.
 ///
@@ -60,6 +61,12 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
   List<JobStatus> _statusChoices = const [];
   List<String> _statuses = const [];
   String _status = 'scheduled';
+
+  /// The job's service area (queue 25), and the ones its franchise offers.
+  /// Null is "not placed" — a real answer somebody can choose, not a blank.
+  String? _areaId;
+  List<({String id, String name})> _areaChoices = const [];
+
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -81,6 +88,7 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
     _minuteOf(_scheduled.text),
     _duration.text,
     _status,
+    _areaId ?? '',
   ].join('\u0000');
 
   void _markDirty() => widget.dirty?.value = !_loading && _typed != _loaded;
@@ -166,6 +174,15 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
         : parsed;
     _statuses = _statusChoices.map((s) => s.value).toList();
     _status = row['status'] as String? ?? _statuses.first;
+
+    _areaId = (row['service_area'] as Map<String, dynamic>?)?['id'] as String?;
+    final areas = row['allowed_service_areas'];
+    _areaChoices = [
+      if (areas is List)
+        for (final a in areas)
+          if (a is Map && a['id'] is String && a['name'] is String)
+            (id: a['id'] as String, name: a['name'] as String),
+    ];
     if (!_statuses.contains(_status)) {
       _statusChoices = [
         JobStatus(
@@ -216,6 +233,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
           : _description.text.trim(),
       'scheduled_for': scheduled.isEmpty ? null : scheduled,
       'duration_minutes': minutes,
+      // Only where there was a choice to make. The server stamps a CHANGE as
+      // a person's choice, which no zip may overwrite (Jose, 2026-08-31);
+      // sending the value it already holds changes nothing.
+      if (_areaChoices.isNotEmpty) 'service_area_id': _areaId,
     });
 
     if (!mounted) return;
@@ -308,6 +329,10 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                         ),
                         if (customer?['owned_by_this_franchise'] == false)
                           const Tag('Shared customer', warn: true),
+                        // The same amber mark as its row in the list, so an
+                        // unplaced job reads the same open as closed.
+                        if (_areaChoices.isNotEmpty && _areaId == null)
+                          const NotPlacedMark(),
                       ],
                     ),
                   ),
@@ -332,6 +357,36 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                         }
                       : null,
                 ),
+                // Only when the franchise has areas to offer: a franchise with
+                // none has no question to ask.
+                if (_areaChoices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SearchPickerField<String?>(
+                    key: const Key('job-service-area'),
+                    value: _areaId,
+                    label: 'Service area',
+                    hint: 'Not placed',
+                    helperText: _areaId == null
+                        ? 'Which of ${franchise?['name'] ?? 'the franchise'}\'s '
+                              '${_areaChoices.length} areas is this job in?'
+                        : null,
+                    options: [
+                      const SearchOption<String?>(
+                        value: null,
+                        label: 'Not placed',
+                        detail: 'Leave it for somebody to place',
+                      ),
+                      for (final a in _areaChoices)
+                        SearchOption<String?>(value: a.id, label: a.name),
+                    ],
+                    onChanged: editable
+                        ? (v) {
+                            setState(() => _areaId = v);
+                            _markDirty();
+                          }
+                        : null,
+                  ),
+                ],
                 const SizedBox(height: 12),
                 CalendarDayField(
                   controller: _scheduled,
