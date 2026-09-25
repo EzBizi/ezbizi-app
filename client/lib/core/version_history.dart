@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0282',
+      date: '25 Sep 2026',
+      items: [
+        'Web Management, Widgets: the City list has a heading level and an Other label, and the consent wording on a form can be up to 1,000 characters.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0281',
       date: '25 Sep 2026',
       items: [
