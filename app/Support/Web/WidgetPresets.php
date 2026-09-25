@@ -144,7 +144,7 @@ final class WidgetPresets
         'city_list' => ['box' => 'box', 'heading' => 'text', 'link' => 'text'],
         'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
         'google_map' => ['box' => 'box'],
-        'contact_info' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text'],
+        'contact_info' => ['box' => 'box', 'item' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text', 'day' => 'text', 'time' => 'text'],
         'cta' => ['box' => 'box', 'button' => 'button', 'icon' => 'icon'],
         'phone_box' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'number' => 'text'],
         'review_faces' => ['box' => 'box', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
@@ -185,6 +185,8 @@ final class WidgetPresets
             'color' => ['color'],
             'hover_color' => ['color'],
             'bg' => ['color'],
+            'border_color' => ['color'],
+            'border_width' => ['range', 0, 20],
             'size' => ['range', 0, 120],
             'padding' => ['range', 0, 60],
             'radius' => ['range', 0, 100],
@@ -337,6 +339,26 @@ final class WidgetPresets
                 'phone' => true,
                 'email' => true,
                 'address' => true,
+                // Toula's Contact Details list (01a0d8e6-6684) and what A1's
+                // live info boxes use: hours and licence sections, the second
+                // number and inbox, each section's own title (empty hides it),
+                // their order, spacing, links and dividers.
+                'hours' => false,
+                'license' => false,
+                'secondary' => false,
+                'phone_title' => 'Phone',
+                'email_title' => 'Email',
+                'address_title' => 'Location',
+                'hours_title' => 'Hours',
+                'license_title' => 'License',
+                'closed_text' => 'Closed',
+                'order' => 'phone,email,address,hours,license',
+                'icon_gap' => 10,
+                'item_gap' => 18,
+                'links' => true,
+                'underline' => false,
+                'dividers' => false,
+                'divider_color' => '',
             ],
             /*
              * A1's sticky yellow "CALL US TODAY" bar, and Everdoors' popup.
@@ -454,7 +476,7 @@ final class WidgetPresets
             'layout' => ['columns', 'list', 'accordion'],
         ],
         'contact_info' => [
-            'layout' => ['stack', 'row', 'compact'],
+            'layout' => ['stack', 'row', 'compact', 'grid', 'inline'],
         ],
         'cta' => [
             // `bar` is fixed to the bottom of the window, `popup` opens over
@@ -495,6 +517,10 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
+        'contact_info' => [
+            'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
+            'license_title' => 40, 'closed_text' => 30, 'order' => 60,
+        ],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
             'happy_title' => 80, 'happy_text' => 160, 'button' => 60,
@@ -512,11 +538,13 @@ final class WidgetPresets
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
         'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
+        'contact_info' => ['icon_gap' => [0, 40], 'item_gap' => [0, 80]],
     ];
 
     /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
     private const COLORS = [
         'cta' => ['glow_color'],
+        'contact_info' => ['divider_color'],
     ];
 
     /**

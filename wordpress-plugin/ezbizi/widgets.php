@@ -1060,30 +1060,49 @@ function ezbizi_contact_info_shortcode($atts) {
     $icons = ! empty($preset['icons']);
     $labels = ! empty($preset['labels']);
 
-    $wanted = array();
+    // The order somebody asked for, then anything they left out, in the usual order.
+    $order = array_values(array_intersect(
+        array_unique(array_merge(
+            array_map('trim', explode(',', isset($preset['order']) ? (string) $preset['order'] : '')),
+            array('phone', 'email', 'address', 'hours', 'license')
+        )),
+        array('phone', 'email', 'address', 'hours', 'license')
+    ));
 
-    foreach (array('phone', 'email', 'address') as $what) {
-        // Absent means yes. An older payload has none of these keys, and a
-        // plugin that read that as "show nothing" would blank the block on
-        // every site that had not refreshed yet.
-        if (! isset($preset[$what]) || ! empty($preset[$what])) {
-            $wanted[] = $what;
-        }
-    }
+    $title = function ($key, $fallback) use ($preset) {
+        return isset($preset[$key]) ? (string) $preset[$key] : $fallback;
+    };
+    $links = ! isset($preset['links']) || ! empty($preset['links']);
+    $secondary = ! empty($preset['secondary']);
 
     $rows = array();
 
-    foreach ($wanted as $what) {
+    foreach ($order as $what) {
+        // Absent means yes for the first three, no for the two added later. An
+        // older payload has none of these keys, and a plugin that read that as
+        // "show nothing" would blank the block on every site not yet refreshed.
+        $on = in_array($what, array('hours', 'license'), true)
+            ? ! empty($preset[$what])
+            : (! isset($preset[$what]) || ! empty($preset[$what]));
+
+        if (! $on) {
+            continue;
+        }
+
         if ($what === 'phone') {
-            $value = ezbizi_value('phone');
-            $href = $value === '' ? '' : 'tel:' . ezbizi_dial($value);
-            $rows[] = array('phone', __('Phone', 'ezbizi'), $value, $href);
+            foreach (array_unique(array_filter(array(ezbizi_value('phone'), $secondary ? ezbizi_value('phone_secondary') : ''))) as $i => $value) {
+                $rows[] = array('phone', $i === 0 ? $title('phone_title', 'Phone') : '', $value, 'tel:' . ezbizi_dial($value), false);
+            }
         } elseif ($what === 'email') {
-            $value = ezbizi_value('email');
-            $rows[] = array('email', __('Email', 'ezbizi'), $value, $value === '' ? '' : 'mailto:' . $value);
+            foreach (array_unique(array_filter(array(ezbizi_value('email'), $secondary ? ezbizi_value('email_secondary') : ''))) as $i => $value) {
+                $rows[] = array('email', $i === 0 ? $title('email_title', 'Email') : '', $value, 'mailto:' . $value, false);
+            }
         } elseif ($what === 'address') {
-            $value = ezbizi_value('address');
-            $rows[] = array('address', __('Location', 'ezbizi'), $value, ezbizi_value('maps_url'));
+            $rows[] = array('address', $title('address_title', 'Location'), ezbizi_value('address'), ezbizi_value('maps_url'), false);
+        } elseif ($what === 'hours') {
+            $rows[] = array('hours', $title('hours_title', 'Hours'), ezbizi_contact_hours($title('closed_text', 'Closed')), '', true);
+        } elseif ($what === 'license') {
+            $rows[] = array('license', $title('license_title', 'License'), ezbizi_value('license'), '', false);
         }
     }
 
@@ -1106,9 +1125,10 @@ function ezbizi_contact_info_shortcode($atts) {
     $out .= '<div class="ezbizi-contact ezbizi-contact-' . esc_attr($layout) . '" id="' . esc_attr($id) . '">';
 
     foreach ($drawn as $row) {
-        list($kind, $label, $value, $href) = $row;
+        list($kind, $label, $value, $href, $html) = $row;
+        $href = $links ? $href : '';
 
-        $out .= '<div class="ezbizi-contact-item">';
+        $out .= '<div class="ezbizi-contact-item ezbizi-contact-' . esc_attr($kind) . '">';
 
         if ($icons) {
             $out .= '<span class="ezbizi-contact-icon" aria-hidden="true">'
@@ -1117,21 +1137,63 @@ function ezbizi_contact_info_shortcode($atts) {
 
         $out .= '<div class="ezbizi-contact-text">';
 
-        if ($labels) {
+        if ($labels && $label !== '') {
             $out .= '<span class="ezbizi-contact-label">' . esc_html($label) . '</span>';
         }
 
         $out .= '<span class="ezbizi-contact-value">';
-        $out .= $href === ''
+        // Hours are markup built here from escaped parts; everything else is text.
+        $out .= $html ? $value : ($href === ''
             ? esc_html($value)
-            : '<a href="' . esc_url($href) . '">' . esc_html($value) . '</a>';
+            : '<a href="' . esc_url($href) . '">' . esc_html($value) . '</a>');
         $out .= '</span></div></div>';
     }
 
+    $sel = '#' . $id;
+    $gap = function ($key, $fallback) use ($preset) {
+        return max(0, min(80, (int) (isset($preset[$key]) ? $preset[$key] : $fallback)));
+    };
+    $divider = isset($preset['divider_color']) && preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $preset['divider_color'])
+        ? (string) $preset['divider_color']
+        : 'currentColor';
+    $out .= '<style>' . $sel . '{gap:' . $gap('item_gap', 18) . 'px}'
+        . $sel . ' .ezbizi-contact-item{gap:' . $gap('icon_gap', 10) . 'px}'
+        . $sel . ' a{text-decoration:' . (! empty($preset['underline']) ? 'underline' : 'none') . '}'
+        . (! empty($preset['dividers']) ? $sel . ' .ezbizi-contact-item + .ezbizi-contact-item{border-top:1px solid ' . $divider . ';padding-top:' . $gap('item_gap', 18) . 'px}' : '')
+        . '</style>';
+
     return $out . '</div>' . ezbizi_style_css('contact_info', $id, $preset, array(
-        'box' => '', 'icon' => ' .ezbizi-contact-icon', 'label' => ' .ezbizi-contact-label',
-        'value' => ' .ezbizi-contact-value',
+        'box' => '', 'item' => ' .ezbizi-contact-item', 'icon' => ' .ezbizi-contact-icon',
+        'label' => ' .ezbizi-contact-label', 'value' => ' .ezbizi-contact-value',
+        'day' => ' .ezbizi-contact-day', 'time' => ' .ezbizi-contact-time',
     ));
+}
+
+/**
+ * The week as lines, from the site's hours sentence ("Mon–Fri 8:00 AM – 5:00
+ * PM · Sat closed"), with the closed wording somebody chose. Escaped here,
+ * because the caller prints it as markup.
+ */
+function ezbizi_contact_hours($closed) {
+    $hours = trim(ezbizi_value('hours'));
+
+    if ($hours === '') {
+        return '';
+    }
+
+    $out = '';
+
+    foreach (preg_split('/\s*\x{00B7}\s*/u', $hours) as $part) {
+        if (! preg_match('/^(\S+)\s+(.+)$/u', trim($part), $m)) {
+            continue;
+        }
+
+        $time = strcasecmp(trim($m[2]), 'closed') === 0 ? $closed : $m[2];
+        $out .= '<span class="ezbizi-contact-hours-row"><span class="ezbizi-contact-day">' . esc_html($m[1]) . '</span> '
+            . '<span class="ezbizi-contact-time">' . esc_html($time) . '</span></span><br />';
+    }
+
+    return $out;
 }
 
 /** Digits a phone can dial, from a number written for a person to read. */
@@ -1163,6 +1225,8 @@ function ezbizi_contact_info_style($id, $layout) {
         . $sel . '.ezbizi-contact-stack{flex-direction:column}'
         . $sel . '.ezbizi-contact-row{flex-direction:row;flex-wrap:wrap}'
         . $sel . '.ezbizi-contact-compact{flex-direction:row;flex-wrap:wrap;gap:12px}'
+        . $sel . '.ezbizi-contact-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}'
+        . $sel . '.ezbizi-contact-inline{flex-direction:row;flex-wrap:wrap;align-items:center}'
         . $sel . ' .ezbizi-contact-item{display:flex;align-items:center;gap:10px}'
         . $sel . ' .ezbizi-contact-icon{display:inline-flex;align-items:center;justify-content:center;'
             . 'width:40px;height:40px;border-radius:8px;border:1px solid currentColor;flex:none}'

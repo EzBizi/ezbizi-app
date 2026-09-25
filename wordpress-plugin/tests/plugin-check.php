@@ -1223,6 +1223,13 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
                 ],
+                'contact_info' => [
+                    'hours' => ['type' => 'bool'],
+                    'secondary' => ['type' => 'bool'],
+                    'links' => ['type' => 'bool'],
+                    'closed_text' => ['type' => 'text', 'max' => 30],
+                    'order' => ['type' => 'text', 'max' => 60],
+                ],
                 'cta' => [
                     'action' => ['type' => 'choice', 'choices' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp']],
                     'url' => ['type' => 'text', 'max' => 500],
@@ -1873,6 +1880,22 @@ check('the city list draws on a real page', str_contains(ob_get_clean(), 'North 
 ob_start();
 $manager->registered['ezbizi-post-title']->ezbizi_call_render();
 check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
+
+echo PHP_EOL . "Contact details carry A1's sections" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'phone' => '(888) 984-4344', 'phone_secondary' => '(888) 111-2222', 'email' => 'office@a1.test',
+    'hours' => "Mon\u{2013}Fri 8:00 AM \u{2013} 5:00 PM \u{00B7} Sat closed",
+]);
+$contact = fn ($atts) => $GLOBALS['sc']['ezbizi_contact_info']($atts);
+$withHours = $contact(['hours' => 'yes', 'closed_text' => 'Shut']);
+check('hours as a section', str_contains($withHours, 'class="ezbizi-contact-day">Mon'), true);
+check('with the closed wording chosen', str_contains($withHours, '>Shut<'), true);
+$ordered = $contact(['order' => 'email,phone']);
+check('in the order asked for', strpos($ordered, 'office@a1.test') < strpos($ordered, '984-4344'), true);
+check('the second number when asked', str_contains($contact(['secondary' => 'yes']), '111-2222'), true);
+check('and not otherwise', str_contains($contact([]), '111-2222'), false);
+check('links can be switched off', str_contains($contact(['links' => 'no']), 'mailto:'), false);
 
 echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
 reset_site();
