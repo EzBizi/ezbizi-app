@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'The 432 jobs and 500 customers that the Workiz import had created twice are gone, so no A-1 Chimney job shows twice. Revenue never counted them twice.',
+        'Every imported Workiz job is now checked against Workiz again over time, closed ones included, so a job whose status changed there long ago catches up here too.',
       ],
     ),
     VersionRelease(
