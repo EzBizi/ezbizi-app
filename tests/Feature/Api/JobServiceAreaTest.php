@@ -222,6 +222,44 @@ class JobServiceAreaTest extends TestCase
             'The control: unfiltered, all three are listed.');
     }
 
+    /**
+     * DEVELOPMENT-RULES: the Workiz sync must tell "a person decided" from
+     * "nobody has". A person's change marks it, clearing included; a save that
+     * only carries the area along does not, because the panel sends fields
+     * nobody changed, as it does the status.
+     */
+    public function test_a_persons_change_marks_the_area_as_chosen(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $hartford = $this->area($alpha, $ct, 'Hartford', ['06101']);
+        $job = $this->aJob($alpha, $ct, $connecticut->id);   // placed by the machine
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$job}", ['title' => 'Renamed', 'service_area_id' => $connecticut->id])->assertOk();
+        $this->assertNull($this->chosenAt($alpha, $job), 'Carried along unchanged: nobody decided.');
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$job}", ['service_area_id' => $hartford->id])->assertOk();
+        $this->assertNotNull($this->chosenAt($alpha, $job));
+
+        $other = $this->aJob($alpha, $ct, $connecticut->id);
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$other}", ['service_area_id' => null])->assertOk();
+        $this->assertNotNull($this->chosenAt($alpha, $other), 'Clearing a wrong area is a decision too.');
+    }
+
+    public function test_a_job_created_with_an_area_was_chosen_and_one_without_was_not(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $post = fn (array $extra) => $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs', $extra + [
+            'franchise_id' => $ct->id, 'customer_id' => $this->aCustomer($alpha, $ct),
+            'title' => 'Sweep', 'status' => 'scheduled',
+        ])->assertCreated()->json('data.id');
+
+        $this->assertNotNull($this->chosenAt($alpha, $post(['service_area_id' => $connecticut->id])));
+        $this->assertNull($this->chosenAt($alpha, $post([])));
+    }
+
     /** @return array{0: array, 1: Franchise, 2: Franchise} */
     private function world(): array
     {
@@ -293,5 +331,10 @@ class JobServiceAreaTest extends TestCase
     private function areaOf(array $tenant, string $jobId): ?string
     {
         return $this->inTenant($tenant['org'], fn () => Job::query()->findOrFail($jobId)->service_area_id);
+    }
+
+    private function chosenAt(array $tenant, string $jobId): mixed
+    {
+        return $this->inTenant($tenant['org'], fn () => Job::query()->findOrFail($jobId)->service_area_chosen_at);
     }
 }
