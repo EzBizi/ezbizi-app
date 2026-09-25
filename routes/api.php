@@ -754,8 +754,8 @@ Route::prefix('v1')
 
         // Public posting stays in A1 Leads. EzBizi only submits an audited,
         // exact-review request through a separately credentialed live tunnel.
-        // Replying needs what reading needs (Jose, 2026-09-24).
-        Route::middleware('permission:a1leads_gbp.view')->group(function () {
+        // Replying is its own permission (Jose, 2026-09-25).
+        Route::middleware('permission:a1leads_gbp.reply')->group(function () {
             Route::get('a1leads-gbp/reply/preflight', [A1LeadsGbpController::class, 'replyPreflight']);
         });
 

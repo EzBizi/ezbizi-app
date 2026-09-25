@@ -86,8 +86,21 @@ class A1LeadsGbpSourceTest extends TestCase
                     'status' => 'none', 'name' => null, 'phone' => null, 'email' => null,
                     'address' => null, 'info' => null, 'matched_lead_id' => 7,
                 ],
-                'customer_match' => ['status' => 'unmatched', 'matched' => false],
-                'report' => ['dishonest' => false, 'reasons' => []],
+                'customer_match' => [
+                    'status' => 'matched', 'matched' => true,
+                    'candidates' => [['customerName' => 'A guess', 'jobId' => 'G1']],
+                ],
+                // The measured shape of a matched card, 2026-09-25: 8 of 388
+                // carry one, with the evidence beside it.
+                'customer' => [
+                    'matched' => true, 'name' => 'Dana Whitfield', 'phone' => '+15555550101',
+                    'service_address' => '12 Elm St, Warren, MI', 'technician' => null,
+                    'workiz_tenant' => 'nationwide', 'workiz_url' => 'https://app.workiz.com/job/ABC123',
+                    'last_job' => ['id' => 'ABC123', 'number' => 100077846, 'date' => '2026-09-01', 'tech' => 'Amit'],
+                    'evidence' => ['source' => 'workiz', 'jobId' => 'ABC123'],
+                ],
+                'report' => ['dishonest' => false, 'reasons' => ['r'], 'state' => 'queued', 'reason' => 'why'],
+                'updates' => [['id' => 1, 'author' => 'Tiara', 'body' => 'Called, left voicemail.', 'created_at' => '2026-09-22T14:00:00Z']],
             ]],
             'meta' => ['count' => 1, 'has_more' => false, 'next_cursor' => null],
         ];
@@ -440,9 +453,12 @@ class A1LeadsGbpSourceTest extends TestCase
      *
      * Joined on `google_review_name` = the card's `review_ref`. The positive
      * half is the joined card; the negative half is what does NOT travel -
-     * the card's assignee, match evidence and report reasoning are operator
-     * data Rodrigo asked us not to pass around, and the tab shows three
-     * columns, not the card.
+     * match evidence, match candidates and report reasoning are operator data
+     * Rodrigo asked us not to pass around.
+     *
+     * The customer and job context DOES travel since his cutover checklist
+     * (row 5): the matched Workiz customer, their last job and technician,
+     * the assignee, the report state and the updates.
      */
     public function test_the_board_status_and_note_are_joined_onto_the_review(): void
     {
@@ -461,10 +477,41 @@ class A1LeadsGbpSourceTest extends TestCase
         $this->assertSame('Outreach made, waiting on the customer.', $card['note']);
         $this->assertSame(['name' => null, 'phone' => null, 'email' => null], $card['contact']);
 
-        $this->assertArrayNotHasKey('assignee', $card, 'operator data stays on their side');
-        $this->assertArrayNotHasKey('customer_match', $card);
-        $this->assertArrayNotHasKey('report', $card);
+        $this->assertSame([
+            'name' => 'Dana Whitfield', 'phone' => '+15555550101', 'address' => '12 Elm St, Warren, MI',
+            'technician' => 'Amit', 'job_number' => '100077846', 'job_date' => '2026-09-01',
+            'workiz_url' => 'https://app.workiz.com/job/ABC123',
+        ], $card['customer'], 'the technician falls back to the last job');
+        $this->assertSame('Adeline', $card['assignee']);
+        $this->assertSame('queued', $card['report_state']);
+        $this->assertSame([['author' => 'Tiara', 'body' => 'Called, left voicemail.', 'at' => '2026-09-22T14:00:00Z']], $card['updates']);
+
+        $this->assertArrayNotHasKey('customer_match', $card, 'candidates are guesses and stay on their side');
+        $this->assertArrayNotHasKey('evidence', $card['customer']);
+        $this->assertArrayNotHasKey('report', $card, 'report reasoning stays on their side');
         $this->assertArrayNotHasKey('cards', $data['board'], 'the whole board is never sent to the screen');
+    }
+
+    /**
+     * Only a MATCHED customer travels. A1 Leads also sends customers it has
+     * not matched (a name it guessed from the review); drawing one on the card
+     * would present a guess as A-1's customer.
+     */
+    public function test_an_unmatched_customer_is_not_passed_on(): void
+    {
+        $card = new \ReflectionMethod(A1LeadsClient::class, 'card');
+
+        $unmatched = $card->invoke(null, [
+            'status' => 'Working on it',
+            'customer' => ['matched' => false, 'name' => 'A guess', 'phone' => '+15555550199'],
+        ]);
+        $matched = $card->invoke(null, [
+            'status' => 'Working on it',
+            'customer' => ['matched' => true, 'name' => 'Dana Whitfield'],
+        ]);
+
+        $this->assertNull($unmatched['customer']);
+        $this->assertSame('Dana Whitfield', $matched['customer']['name'], 'the control');
     }
 
     /**

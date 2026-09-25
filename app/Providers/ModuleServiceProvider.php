@@ -2346,15 +2346,13 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'a1leads_gbp',
                 label: 'A1Leads GBP',
-                // `view` covers REPLYING too - Jose, 2026-09-24: "anyone with
-                // the view role should be able to." One public reply to one
-                // exact review, through the live A1 Leads writer with its own
-                // key; every attempt audited (`a1leads_gbp.review_replied`,
-                // `a1leads_gbp.review_reply_failed`). A separate `reply` action
-                // existed for one release and was withdrawn by that ruling; its
-                // permission row is left in place, unoffered, because removing
-                // a permission is a migration a person writes.
-                actions: ['view'],
+                // `reply` is its own tick - Jose, 2026-09-25: "Separate Reply
+                // permission". Seeing A-1's reviews does not include answering
+                // them in public. One public reply to one exact review, through
+                // the live A1 Leads writer with its own key; every attempt
+                // audited (`a1leads_gbp.review_replied`,
+                // `a1leads_gbp.review_reply_failed`).
+                actions: ['view', 'reply'],
                 automationExemptBecause: 'This bridge holds no records of its own; the A1 Leads '
                     .'data it shows is a copy, and a rule built on a copy would fire on our '
                     .'import rather than on anything a customer did. Its only write is a '

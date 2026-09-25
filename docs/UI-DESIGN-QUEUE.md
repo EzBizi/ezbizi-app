@@ -2958,6 +2958,33 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 25 · Jobs · a job's service area — **DRAWN, awaiting Jose**
+
+`docs/previews/job-service-area-layouts.html`. Asked by Jobs (API `4f82c62f`), from Jose,
+2026-09-25: *"Service Areas — sub divisions within the franchise"*. Desktop **1** one "Where"
+column and one "Where" picker · **2** an Area column, and a franchise's areas as chips · **3**
+"Not placed" as a queue of its own. Phone **4** the area in the second line · **5** the area on
+top · **6** a banner for the unplaced.
+
+**Measured on the box before drawing:**
+
+- **33 areas across A1-Group's 9 franchises**, 1 to 11 each (Nationwide's eleven are cities).
+  The ORGANIZATION is "A1-Group"; "A-1 Chimney" is its company — a filter on the org name
+  "A-1%" returns nothing, which is how the first count read zero.
+- **Three areas share their franchise's name** — Connecticut, New Jersey, New York. So a
+  combined label draws the area alone when it would repeat ("Connecticut", not "Connecticut ·
+  Connecticut"), by the settled "a second badge must say something the first does not".
+- **Longest name: "Los Angeles / Orange County"**, 27 characters — drawn, because it is the one
+  that decides whether a combined column fits.
+- **No job is placed yet** (0 of 8,550): the backfill rides the next cut. Jobs estimates ~94%
+  placed after it, and ~5.5% left empty on purpose.
+- **Nothing records WHO placed an area** — a zip or a person. So no option draws provenance; it
+  would need a field the API does not have.
+
+**Every picker drawn is the app's own** (`SearchPickerField`: a searching list over the page),
+not a menu hanging off a field — the first render drew one, against the 2026-09-17 ruling,
+and it was redrawn before this went to Jose.
+
 ### 24 · Jobs and Customers · how the lists look — **BUILT: Jose's combination, drawn as 7**
 
 **Picked 2026-09-24**, in his words: *"i like the table view, but it would be nice to also click

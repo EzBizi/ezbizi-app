@@ -252,7 +252,8 @@ class A1LeadsClient
     {
         $generation = (string) ($this->receipt()['installed_generation'] ?? 'unknown');
 
-        return Cache::remember('a1leads:cards:'.$generation, now()->addDay(), function () use ($generation) {
+        // v2: the card carries customer, job, assignee, report state and updates.
+        return Cache::remember('a1leads:cards:v2:'.$generation, now()->addDay(), function () use ($generation) {
             for ($attempt = 0; $attempt < 2; $attempt++) {
                 $cards = [];
                 $after = null;
@@ -285,19 +286,41 @@ class A1LeadsClient
     }
 
     /**
-     * The three facts the tab shows, and nothing else of the card.
+     * What the tab shows of a card, and nothing else of it.
      *
-     * The card carries operator notes, match evidence and report reasoning.
-     * Rodrigo's handoff asks that none of it be logged or passed around, so it
-     * is reduced HERE, before it reaches a cache or a response, to what a
-     * column displays.
+     * The card also carries match evidence and report reasoning. Rodrigo's
+     * handoff asks that none of that be logged or passed around, so it is
+     * reduced HERE, before it reaches a cache or a response.
+     *
+     * The customer and job context was added on his cutover checklist of 24
+     * September (row 5: "a compact expandable customer/job history on the
+     * review card"): the Workiz customer A1 Leads matched, their last job and
+     * technician, who the card is assigned to, the report state, and the
+     * operator updates. Only a MATCHED customer is passed - never the
+     * candidates, which are guesses. The tab itself is the gate: A-1 Chimney
+     * in view, and the A1Leads GBP permission.
      *
      * @param  array<string, mixed>  $card
-     * @return array{status: ?string, note: ?string, contact: array{name: ?string, phone: ?string, email: ?string}}
+     * @return array<string, mixed>
      */
     private static function card(array $card): array
     {
         $contact = is_array($card['contact'] ?? null) ? $card['contact'] : [];
+        $customer = is_array($card['customer'] ?? null) ? $card['customer'] : [];
+        $job = is_array($customer['last_job'] ?? null) ? $customer['last_job'] : [];
+        $report = is_array($card['report'] ?? null) ? $card['report'] : [];
+        $url = self::text($customer['workiz_url'] ?? null);
+
+        $updates = [];
+        foreach (array_slice((array) ($card['updates'] ?? []), 0, 20) as $update) {
+            if (is_array($update) && self::text($update['body'] ?? null) !== null) {
+                $updates[] = [
+                    'author' => self::text($update['author'] ?? null),
+                    'body' => self::text($update['body']),
+                    'at' => self::text($update['created_at'] ?? null),
+                ];
+            }
+        }
 
         return [
             'status' => self::text($card['status'] ?? null),
@@ -307,6 +330,19 @@ class A1LeadsClient
                 'phone' => self::text($contact['phone'] ?? null),
                 'email' => self::text($contact['email'] ?? null),
             ],
+            'customer' => ($customer['matched'] ?? false) === true ? [
+                'name' => self::text($customer['name'] ?? null),
+                'phone' => self::text($customer['phone'] ?? null),
+                'address' => self::text($customer['service_address'] ?? null),
+                'technician' => self::text($customer['technician'] ?? null) ?? self::text($job['tech'] ?? null),
+                'job_number' => self::text(is_scalar($job['number'] ?? null) ? (string) $job['number'] : null),
+                'job_date' => self::text($job['date'] ?? null),
+                // A link out only if it is one: a value that is not https is dropped.
+                'workiz_url' => $url !== null && str_starts_with($url, 'https://') ? $url : null,
+            ] : null,
+            'assignee' => self::text($card['assignee'] ?? null),
+            'report_state' => self::text($report['state'] ?? null),
+            'updates' => $updates,
         ];
     }
 

@@ -33,7 +33,7 @@ class A1LeadsGbpReplyTest extends TestCase
     private function operator(array $tenant)
     {
         return $this->userWithRole($tenant, 'GBP Operator', [
-            'a1leads_gbp.view',
+            'a1leads_gbp.view', 'a1leads_gbp.reply',
         ]);
     }
 
@@ -97,16 +97,16 @@ class A1LeadsGbpReplyTest extends TestCase
 
     /**
      * Without the A1Leads GBP permission there is no reply. Replying needs
-     * exactly what reading needs (Jose, 2026-09-24) - so a user who holds
-     * EzBizi's own Reviews permission and not this one is refused, and Google
+     * its own permission (Jose, 2026-09-25) - so a user who may SEE the tab,
+     * and holds EzBizi's own Reviews edit besides, is refused, and Google
      * hears nothing.
      */
-    public function test_without_the_tab_permission_nothing_is_published(): void
+    public function test_without_the_reply_permission_nothing_is_published(): void
     {
         $tenant = $this->provisionTenant('Charlie');
         $this->setupBridge($tenant);
         Http::fake();
-        $viewer = $this->userWithRole($tenant, 'Reviews', ['reviews.view', 'reviews.edit']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view', 'reviews.view', 'reviews.edit']);
 
         $this->signedInAs($viewer)->postJson('/api/v1/a1leads-gbp/reply', [
             'googleReviewName' => self::REVIEW,
@@ -222,6 +222,14 @@ class A1LeadsGbpReplyTest extends TestCase
             ->assertJsonPath('data.reply_available', false)
             ->assertJsonPath('data.reviews', []);
 
+        // Seeing the tab is not replying: a viewer is told why.
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view']);
+        config()->set('services.a1leads.company_id', $tenant['company']->id);
+        $this->signedInAs($viewer)->getJson('/api/v1/a1leads-gbp')->assertOk()
+            ->assertJsonPath('data.source.configured', true)
+            ->assertJsonPath('data.reply_available', false)
+            ->assertJsonPath('data.reply_unavailable_because', 'no_permission');
+
         // Production today: A-1 Chimney in view, but no live key.
         config()->set('services.a1leads.company_id', $tenant['company']->id);
         config()->set('services.a1leads.live_reply_key', null);
@@ -239,7 +247,7 @@ class A1LeadsGbpReplyTest extends TestCase
         $tenant = $this->provisionTenant('Hotel');
         $this->setupBridge($tenant);
         Http::fake();
-        $viewer = $this->userWithRole($tenant, 'Reviews', ['reviews.view']);
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['a1leads_gbp.view']);
 
         $this->signedInAs($viewer)->postJson('/api/v1/a1leads-gbp/reply', [
             'googleReviewName' => self::REVIEW,
