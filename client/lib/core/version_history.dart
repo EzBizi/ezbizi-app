@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'A zip code belongs to one service area across the whole organization, so a zip search has one answer. Scheduling Settings names the area that already holds a zip when you try to add it to another.',
+        'Scheduling, Availability is redrawn the way A1 Tools shows it. Search by zip code or pick a franchise, and each area shows its first available day and the five after it, every time slot coloured by the spots left - green, yellow, red, or grey when full. Spots left count real bookings; canceled jobs and jobs with a deposit received do not take one.',
       ],
     ),
     VersionRelease(
