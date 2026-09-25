@@ -887,6 +887,9 @@ check('a hidden value sent with it', str_contains($bform, 'type="hidden" name="C
 check('the robot box', str_contains($bform, 'ezbizi-antibot-box'), true);
 check('no consent box when switched off', str_contains($bform, '<input type="checkbox" class="ezbizi-consent-box"'), false);
 check('where it goes after', str_contains($bform, 'location.href="https:\/\/a1.test\/thanks\/"'), true);
+check('consent links are drawn as links', ezbizi_consent_html('See our [Privacy Policy](https://a1.test/privacy/).'), 'See our <a href="https://a1.test/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.');
+check('and nothing else is', ezbizi_consent_html('[x](javascript:alert(1)) <b>hi</b>'), '[x](javascript:alert(1)) &lt;b&gt;hi&lt;/b&gt;');
+check('a link cannot break out of its href', str_contains(ezbizi_consent_html('[y](https://e.test/"onmouseover=x)'), '"onmouseover'), false);
 check('first and last name make the lead\'s name', str_contains($bform, "low==='first name'"), true);
 
 // Back to the standard widget payload for the sections that follow.
@@ -894,6 +897,7 @@ reset_site();
 $GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
 ezbizi_fetch();
 do_action('init');
+check('a select with no placeholder prompts for a choice', str_contains($GLOBALS['sc']['ezbizi_form']([]), '<option value="">Choose…</option><option value="Sweep">'), true);
 
 echo PHP_EOL . "A shortcode argument cannot override EzBizi" . PHP_EOL;
 $forced = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Something,Else', 'button' => 'Override me']);

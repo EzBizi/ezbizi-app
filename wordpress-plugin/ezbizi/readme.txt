@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.0
+Stable tag: 1.20.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.1 =
+* FIX: the contact form's consent words can carry links, written
+  [words](https://…); a dropdown with no placeholder says "Choose…"; the
+  consent and "I'm not a robot" boxes sit beside their words; the required
+  mark takes the accent colour.
 
 = 1.20.0 =
 * NEW: the live chat takes an agent name and photo, an online dot, its own

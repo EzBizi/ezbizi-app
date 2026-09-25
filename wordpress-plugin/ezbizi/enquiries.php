@@ -151,7 +151,9 @@ function ezbizi_widget_style($id, $style) {
         . 'border:0;border-radius:' . $radius . 'px;padding:10px 16px;cursor:pointer;font:inherit}'
         . '#' . esc_attr($id) . ' input,#' . esc_attr($id) . ' textarea,#' . esc_attr($id) . ' select{'
         . 'width:100%;padding:8px;border:1px solid #ccc;border-radius:' . max(0, $radius - 6) . 'px;font:inherit}'
-        . '#' . esc_attr($id) . ' .ezbizi-consent-box{width:auto;margin:0 6px 0 0;padding:0}'
+        . '#' . esc_attr($id) . ' .ezbizi-consent-box,#' . esc_attr($id) . ' .ezbizi-antibot-box{width:auto;margin:.2em 8px 0 0;padding:0;flex:0 0 auto}'
+        . '#' . esc_attr($id) . ' .ezbizi-consent label,#' . esc_attr($id) . ' .ezbizi-antibot label{display:flex;align-items:flex-start;line-height:1.5}'
+        . '#' . esc_attr($id) . ' .ezbizi-consent a{color:var(--ezbizi-accent);text-decoration:underline}'
         . '</style>';
 }
 
@@ -183,6 +185,23 @@ function ezbizi_widget_silent($why) {
 }
 
 /** [ezbizi_form] — the contact form EzBizi describes, landing as a Lead. */
+/** Consent words, escaped, with [words](https://…) drawn as a link. */
+function ezbizi_consent_html($text) {
+    $parts = preg_split('~\[([^\]]+)\]\((https?://[^\s()"\'<>]+)\)~', (string) $text, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $out = '';
+
+    // Every third piece is plain text, then the link's words, then its address.
+    foreach ($parts as $i => $part) {
+        if ($i % 3 === 0) {
+            $out .= esc_html($part);
+        } elseif ($i % 3 === 1) {
+            $out .= '<a href="' . esc_url($parts[$i + 1]) . '" target="_blank" rel="noopener">' . esc_html($part) . '</a>';
+        }
+    }
+
+    return $out;
+}
+
 function ezbizi_form_shortcode($atts) {
     $key = ezbizi_public_key();
 
@@ -267,7 +286,7 @@ function ezbizi_form_shortcode($atts) {
         }
 
         $out .= '<div class="ezbizi-field" style="flex:0 0 calc(' . $width . '% - ' . $gap . 'px);max-width:' . $width . '%">';
-        $mark = $required ? ' <span class="ezbizi-required" aria-hidden="true">*</span>' : '';
+        $mark = $required ? ' <span class="ezbizi-required" style="color:var(--ezbizi-accent)" aria-hidden="true">*</span>' : '';
         $common = 'name="' . esc_attr($label) . '"' . ($required ? ' required' : '');
 
         if ($type === 'checkbox' || $type === 'radio') {
@@ -290,7 +309,7 @@ function ezbizi_form_shortcode($atts) {
             if ($type === 'textarea') {
                 $out .= '<textarea ' . $attrs . ' rows="4"></textarea>';
             } elseif ($type === 'select') {
-                $out .= '<select ' . $attrs . '><option value="">' . esc_html($placeholder) . '</option>';
+                $out .= '<select ' . $attrs . '><option value="">' . esc_html($placeholder !== '' ? $placeholder : __('Choose…', 'ezbizi')) . '</option>';
 
                 foreach ($options as $option) {
                     $option = (string) $option;
@@ -320,7 +339,7 @@ function ezbizi_form_shortcode($atts) {
      */
     if (! isset($config['consent_on']) || ! empty($config['consent_on'])) {
         $out .= '<p class="ezbizi-consent"><label><input type="checkbox" class="ezbizi-consent-box" /> <span>'
-            . esc_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
+            . ezbizi_consent_html(ezbizi_widget_text($config, 'consent', 'Yes, email me news and offers. I can unsubscribe at any time.'))
             . '</span></label></p>';
     }
 

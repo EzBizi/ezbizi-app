@@ -580,7 +580,18 @@ function a1swap_form_config($s) {
         'thanks' => (string) ($s['success_message'] ?? ''), 'error' => (string) ($s['error_message'] ?? ''),
         'antibot' => ($s['antibot_enabled'] ?? '') === 'yes', 'antibot_label' => (string) ($s['antibot_label'] ?? ''),
         'consent_on' => ($s['consent_enabled'] ?? '') === 'yes',
-        'consent' => trim(wp_strip_all_tags((string) ($s['consent_text'] ?? ''))),
+        // Links survive as [words](url): an SMS opt-in without its Privacy
+        // Policy and SMS Terms links is not the opt-in A1 showed.
+        'consent' => trim(wp_strip_all_tags(preg_replace(
+            '~<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>~is',
+            '[$2]($1)',
+            // A1 fills these in as it renders, from its own fallbacks.
+            strtr((string) ($s['consent_text'] ?? ''), array(
+                '{{privacy_url}}' => ! empty($s['consent_privacy_url']['url']) ? $s['consent_privacy_url']['url'] : home_url('/privacy-policy/'),
+                '{{sms_terms_url}}' => ! empty($s['consent_sms_terms_url']['url']) ? $s['consent_sms_terms_url']['url'] : home_url('/terms-and-conditions/'),
+                '{{help_phone}}' => (string) ($s['consent_help_phone'] ?? ''),
+            ))
+        ))),
         'fields' => $fields,
     );
 }

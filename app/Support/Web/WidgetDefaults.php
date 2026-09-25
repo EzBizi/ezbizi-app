@@ -424,7 +424,7 @@ final class WidgetDefaults
                 'antibot' => self::flag($form['antibot'] ?? false, false),
                 'antibot_label' => self::text($form['antibot_label'] ?? '', 80),
                 'consent_on' => self::flag($form['consent_on'] ?? true, true),
-                'consent' => self::text($form['consent'] ?? '', 500),
+                'consent' => self::text($form['consent'] ?? '', 1000),
                 'redirect' => (function () use ($form): string {
                     $url = trim((string) ($form['redirect'] ?? ''));
 
