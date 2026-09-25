@@ -640,6 +640,21 @@ void main() {
     expect(tile(1, '5 in all'), findsOneWidget);
     expect(tile(2, 'Closed'), findsOneWidget);
 
+    // Jose, twice: sibling tiles are the same size. A closed day and a day
+    // with no "in all" line have less in them and used to draw shorter.
+    final tileSizes = {
+      for (var d = 0; d < 7; d++)
+        tester.getSize(find.byKey(ValueKey('daily-total-$d'))),
+    };
+    expect(tileSizes, hasLength(1), reason: '$tileSizes');
+
+    // And the editor's day rows: Tuesday is closed, Monday is open.
+    final rowHeights = {
+      for (var d = 0; d < 7; d++)
+        tester.getSize(find.byKey(ValueKey('day-row-$d'))).height,
+    };
+    expect(rowHeights, hasLength(1), reason: '$rowHeights');
+
     await tester.tap(find.text('Open').first);
     await tester.pumpAndSettle();
     await tester.enterText(
