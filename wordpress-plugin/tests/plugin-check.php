@@ -1222,6 +1222,14 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'icon_color' => ['type' => 'color', 'part' => 'icon', 'prop' => 'color'],
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
+                    'networks' => ['type' => 'text', 'max' => 300],
+                    'colors' => ['type' => 'choice', 'choices' => ['single', 'brand']],
+                    'new_tab' => ['type' => 'bool'],
+                ],
+                'city_list' => [
+                    'search' => ['type' => 'bool'],
+                    'count' => ['type' => 'bool'],
+                    'show_state' => ['type' => 'bool'],
                 ],
                 'contact_info' => [
                     'hours' => ['type' => 'bool'],
@@ -1325,6 +1333,12 @@ check('an override cannot write its own CSS', str_contains($GLOBALS['sc']['ezbiz
 // Compared without the element id, which every call numbers afresh.
 $strip = fn ($html) => preg_replace('/ezbizi-social-\d+/', '', $html);
 check('an option nobody described is ignored', $strip($GLOBALS['sc']['ezbizi_social_links'](['onclick' => 'x'])) === $strip($GLOBALS['sc']['ezbizi_social_links']([])), true);
+
+$picked = $GLOBALS['sc']['ezbizi_social_links'](['networks' => 'tiktok,facebook']);
+check('only the networks asked for', substr_count($picked, '<a class="ezbizi-social-link'), 2);
+check('in the order asked for', strpos($picked, 'tiktok.com') < strpos($picked, 'facebook.com'), true);
+check('brand colours', str_contains($GLOBALS['sc']['ezbizi_social_links'](['colors' => 'brand']), '#1877F2'), true);
+check('a new tab can be switched off', str_contains($GLOBALS['sc']['ezbizi_social_links'](['new_tab' => 'no']), 'target="_blank"'), false);
 
 // Jose, 2026-09-25: "i want all the options, for all the widgets".
 $styled = $GLOBALS['sc']['ezbizi_social_links'](['icon_color' => '#FF0000', 'label_font_family' => 'Oswald', 'box_devices' => 'mobile']);
@@ -1511,7 +1525,11 @@ $folded = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded']);
 // `<details>` because the accordion has to work with JavaScript off, and
 // because the alternative is enqueuing a script for a fold.
 check('the accordion folds with no script', str_contains($folded, '<details'), true);
-check('each group is a panel', str_contains($folded, '<summary>North Jersey</summary>'), true);
+$searchable = $GLOBALS['sc']['ezbizi_city_list'](['search' => 'yes', 'count' => 'yes']);
+check('a search box over the towns', str_contains($searchable, 'class="ezbizi-cities-search"'), true);
+check('a count beside each group', (bool) preg_match('/ezbizi-cities-count">\(\d+\)/', $searchable), true);
+check('the state can be left off', str_contains($GLOBALS['sc']['ezbizi_city_list'](['show_state' => 'no']), ', NJ<'), false);
+check('each group is a panel', str_contains($folded, '<summary class="ezbizi-cities-label">North Jersey</summary>'), true);
 check('and nothing is enqueued to make it work', str_contains($folded, '<script'), false);
 
 check(

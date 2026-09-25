@@ -422,8 +422,19 @@ function ezbizi_social_networks() {
 function ezbizi_social_links_shortcode($atts) {
     $preset = ezbizi_preset('social_links', $atts);
     $links = array();
+    $networks = ezbizi_social_networks();
 
-    foreach (ezbizi_social_networks() as $key => $label) {
+    // Which networks, in which order: "facebook,instagram". Empty is every one.
+    $chosen = array_values(array_filter(array_map('trim', explode(',', strtolower(
+        isset($preset['networks']) ? (string) $preset['networks'] : ''
+    )))));
+
+    if ($chosen !== array()) {
+        $networks = array_intersect_key(array_replace(array_flip($chosen), $networks), $networks);
+        $networks = array_intersect_key($networks, array_flip($chosen));
+    }
+
+    foreach ($networks as $key => $label) {
         /*
          * `esc_url` is the gate AND the filter. A value that is not a web
          * address — `javascript:`, or something somebody pasted into the wrong
@@ -458,7 +469,7 @@ function ezbizi_social_links_shortcode($atts) {
              * handle on this one, and an old browser that ignores the first
              * honours the second.
              */
-            . ' target="_blank" rel="noopener noreferrer"'
+            . (! isset($preset['new_tab']) || ! empty($preset['new_tab']) ? ' target="_blank" rel="noopener noreferrer"' : '')
             // The only name a screen reader gets when `labels` is off.
             . ' aria-label="' . esc_attr($link['label']) . '"'
             . ' title="' . esc_attr($link['label']) . '">'
@@ -467,9 +478,54 @@ function ezbizi_social_links_shortcode($atts) {
             . '</a>';
     }
 
-    return $out . '</div>' . ezbizi_style_css('social_links', $id, $preset, array(
+    return $out . '</div>' . ezbizi_social_extras($id, $preset, $links) . ezbizi_style_css('social_links', $id, $preset, array(
         'box' => '', 'icon' => ' .ezbizi-social-link', 'label' => ' .ezbizi-social-label',
     ));
+}
+
+/**
+ * Brand colours and the hover effect.
+ *
+ * Brand mode paints each network its own colour — filled for `solid`, the
+ * icon itself otherwise — which is the one per-network colour anybody asked
+ * for; a colour per network by hand would be fifteen more options for the
+ * same answer.
+ */
+function ezbizi_social_extras($id, $preset, $links) {
+    $brands = array(
+        'facebook' => '#1877F2', 'instagram' => '#E4405F', 'youtube' => '#FF0000', 'twitter' => '#000000',
+        'linkedin' => '#0A66C2', 'tiktok' => '#000000', 'yelp' => '#D32323', 'google_business' => '#4285F4',
+        'pinterest' => '#E60023', 'bbb' => '#005A78', 'nextdoor' => '#8ED500', 'houzz' => '#4DBC15',
+        'angi' => '#FF6153', 'thumbtack' => '#009FD9', 'homeadvisor' => '#F68315',
+    );
+    $s = '#' . $id;
+    $css = '';
+
+    if (isset($preset['colors']) && $preset['colors'] === 'brand') {
+        $solid = isset($preset['style']) && $preset['style'] === 'solid';
+
+        foreach ($links as $link) {
+            if (isset($brands[$link['key']])) {
+                $css .= $s . ' .ezbizi-social-' . $link['key'] . ($solid
+                    ? '{background:' . $brands[$link['key']] . ';color:#fff;border-color:' . $brands[$link['key']] . '}'
+                    : '{color:' . $brands[$link['key']] . ';border-color:' . $brands[$link['key']] . '}');
+            }
+        }
+    }
+
+    $hover = isset($preset['hover']) ? (string) $preset['hover'] : 'none';
+    $effects = array(
+        'fade' => 'opacity:.7',
+        'grow' => 'transform:scale(1.12)',
+        'lift' => 'transform:translateY(-3px)',
+    );
+
+    if (isset($effects[$hover])) {
+        $css .= $s . ' .ezbizi-social-link{transition:opacity .15s,transform .15s}'
+            . $s . ' .ezbizi-social-link:hover{' . $effects[$hover] . '}';
+    }
+
+    return $css === '' ? '' : '<style>' . $css . '</style>';
 }
 
 /**
@@ -892,6 +948,7 @@ function ezbizi_city_pages() {
             // The state earns its place: a site covering both sides of a line
             // has a Washington in each.
             'label' => $state === '' ? $city : $city . ', ' . $state,
+            'city' => $city,
             'group' => isset($values['group']) ? trim((string) $values['group']) : '',
         );
     }
@@ -950,7 +1007,23 @@ function ezbizi_city_list_shortcode($atts) {
     $columns = $layout === 'columns' ? (int) $preset['columns'] : 1;
 
     $out = ezbizi_city_style($id, $columns);
-    $out .= '<div class="ezbizi-cities" id="' . esc_attr($id) . '">';
+    $state = ! isset($preset['show_state']) || ! empty($preset['show_state']);
+    $new_tab = ! empty($preset['new_tab']);
+    $count = function ($entries) use ($preset) {
+        return ! empty($preset['count']) ? ' <span class="ezbizi-cities-count">(' . count($entries) . ')</span>' : '';
+    };
+    $out .= '<style>#' . $id . ' .ezbizi-cities-list{column-gap:' . max(0, min(80, (int) (isset($preset['column_gap']) ? $preset['column_gap'] : 28))) . 'px'
+        . (! empty($preset['bullets']) ? ';list-style:disc;padding-left:1.2em' : '') . '}</style>';
+    $out .= '<div class="ezbizi-cities" id="' . esc_attr($id) . '"'
+        . (! empty($preset['one_open']) ? ' data-one-open="1"' : '') . '>';
+
+    if (! empty($preset['search'])) {
+        $out .= '<input type="search" class="ezbizi-cities-search" placeholder="'
+            . esc_attr(isset($preset['search_placeholder']) ? (string) $preset['search_placeholder'] : '')
+            . '" aria-label="' . esc_attr__('Search cities', 'ezbizi') . '" />';
+    }
+
+    $first = true;
 
     /*
      * An accordion with nothing to fold is a list behind a button, so an
@@ -961,8 +1034,10 @@ function ezbizi_city_list_shortcode($atts) {
 
     foreach ($grouped as $name => $entries) {
         if ($folding) {
-            $out .= '<details class="ezbizi-cities-group"><summary>' . esc_html($name) . '</summary>'
-                . ezbizi_city_links($entries, $link) . '</details>';
+            $out .= '<details class="ezbizi-cities-group"' . ($first && ! empty($preset['open_first']) ? ' open' : '') . '>'
+                . '<summary class="ezbizi-cities-label">' . esc_html($name) . $count($entries) . '</summary>'
+                . ezbizi_city_links($entries, $link, $state, $new_tab) . '</details>';
+            $first = false;
 
             continue;
         }
@@ -974,17 +1049,41 @@ function ezbizi_city_list_shortcode($atts) {
          * a section of the document.
          */
         $out .= '<div class="ezbizi-cities-group">'
-            . '<strong class="ezbizi-cities-label">' . esc_html($name) . '</strong>'
-            . ezbizi_city_links($entries, $link) . '</div>';
+            . '<strong class="ezbizi-cities-label">' . esc_html($name) . $count($entries) . '</strong>'
+            . ezbizi_city_links($entries, $link, $state, $new_tab) . '</div>';
     }
 
     // Last, and with no label, because there is no honest one to give them.
     if ($loose !== array()) {
-        $out .= ezbizi_city_links($loose, $link);
+        $out .= ezbizi_city_links($loose, $link, $state, $new_tab);
     }
 
-    return $out . '</div>' . ezbizi_style_css('city_list', $id, $preset, array(
-        'box' => '', 'heading' => ' .ezbizi-cities-label', 'link' => ' a',
+    if (! empty($preset['search'])) {
+        $out .= '<p class="ezbizi-cities-empty" hidden>'
+            . esc_html(isset($preset['empty_text']) ? (string) $preset['empty_text'] : '') . '</p>';
+    }
+
+    $out .= '</div>';
+
+    // Search narrows the towns and hides a group with none left; one-open
+    // closes the others when a group is opened.
+    if (! empty($preset['search']) || ! empty($preset['one_open'])) {
+        $out .= "<script>(function(){
+var w=document.getElementById(" . wp_json_encode($id) . ");if(!w)return;
+var q=w.querySelector('.ezbizi-cities-search'),none=w.querySelector('.ezbizi-cities-empty');
+if(q)q.addEventListener('input',function(){var t=q.value.toLowerCase().trim(),n=0;
+  Array.prototype.forEach.call(w.querySelectorAll('li'),function(li){var ok=!t||li.textContent.toLowerCase().indexOf(t)>-1;li.hidden=!ok;if(ok)n++;});
+  Array.prototype.forEach.call(w.querySelectorAll('.ezbizi-cities-group'),function(g){var any=g.querySelector('li:not([hidden])');g.hidden=!any;if(t&&any&&g.tagName==='DETAILS')g.open=true;});
+  if(none)none.hidden=n>0;});
+if(w.getAttribute('data-one-open'))Array.prototype.forEach.call(w.querySelectorAll('details'),function(d){d.addEventListener('toggle',function(){
+  if(d.open)Array.prototype.forEach.call(w.querySelectorAll('details'),function(o){if(o!==d)o.open=false;});});});
+})();</script>";
+    }
+
+    return $out . ezbizi_style_css('city_list', $id, $preset, array(
+        'box' => '', 'heading' => ' .ezbizi-cities-label', 'group' => ' .ezbizi-cities-group',
+        'link' => ' a', 'count' => ' .ezbizi-cities-count', 'search' => ' .ezbizi-cities-search',
+        'arrow' => ' summary::marker', 'bullet' => ' li::marker',
     ));
 }
 
@@ -995,11 +1094,11 @@ function ezbizi_sort_towns(&$towns) {
     });
 }
 
-function ezbizi_city_links($towns, $link) {
+function ezbizi_city_links($towns, $link, $state = true, $new_tab = false) {
     $out = '<ul class="ezbizi-cities-list">';
 
     foreach ($towns as $town) {
-        $label = esc_html($town['label']);
+        $label = esc_html($state || ! isset($town['city']) ? $town['label'] : $town['city']);
 
         /*
          * A path that does not survive `esc_url` is shown as text rather than
@@ -1010,7 +1109,7 @@ function ezbizi_city_links($towns, $link) {
 
         $out .= '<li>' . ($href === ''
             ? $label
-            : '<a href="' . $href . '">' . $label . '</a>') . '</li>';
+            : '<a href="' . $href . '"' . ($new_tab ? ' target="_blank" rel="noopener"' : '') . '>' . $label . '</a>') . '</li>';
     }
 
     return $out . '</ul>';
@@ -1032,6 +1131,7 @@ function ezbizi_city_style($id, $columns) {
         . $s . ' .ezbizi-cities-label{display:block;margin:0 0 6px;font-weight:700}'
         . $s . ' .ezbizi-cities-group{margin:0 0 10px}'
         . $s . ' summary{cursor:pointer;font-weight:700;margin:0 0 6px}'
+        . $s . ' .ezbizi-cities-search{width:100%;box-sizing:border-box;padding:10px;margin:0 0 12px;border:1px solid #ccc;border-radius:6px;font:inherit}'
         . '</style>';
 }
 

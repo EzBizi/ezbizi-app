@@ -141,7 +141,7 @@ final class WidgetPresets
      */
     private const PARTS = [
         'social_links' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text'],
-        'city_list' => ['box' => 'box', 'heading' => 'text', 'link' => 'text'],
+        'city_list' => ['box' => 'box', 'heading' => 'text', 'group' => 'box', 'link' => 'text', 'count' => 'text', 'search' => 'button', 'arrow' => 'icon', 'bullet' => 'icon'],
         'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
         'google_map' => ['box' => 'box'],
         'contact_info' => ['box' => 'box', 'item' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text', 'day' => 'text', 'time' => 'text'],
@@ -287,6 +287,14 @@ final class WidgetPresets
                 'size' => 28,
                 'gap' => 10,
                 'labels' => false,
+                // Toula's Social Links (01a0d8e6-c580): which networks and in
+                // what order (empty is every one this site has, in EzBizi's
+                // order), their brand colours or one colour, a new tab, and a
+                // hover effect.
+                'networks' => '',
+                'colors' => 'single',
+                'new_tab' => true,
+                'hover' => 'none',
             ],
             /*
              * The accordion is A1's most-used arrangement — 17 of them on
@@ -299,6 +307,20 @@ final class WidgetPresets
                 'columns' => 3,
                 'group' => true,
                 'link' => true,
+                // Toula's City List (01a0d8e6-28cc) and A1's live lists: a
+                // search box, the state after each town, bullets, a count per
+                // group, the first group open, one open at a time, links in a
+                // new tab, and what to say when a search finds nothing.
+                'search' => false,
+                'search_placeholder' => 'Search cities...',
+                'show_state' => true,
+                'bullets' => false,
+                'count' => false,
+                'open_first' => false,
+                'one_open' => false,
+                'new_tab' => false,
+                'column_gap' => 28,
+                'empty_text' => 'No cities match that search.',
             ],
             /*
              * `today` earns its default: the reason a visitor reads an hours
@@ -468,12 +490,14 @@ final class WidgetPresets
 
     /** The values each option may take. Anything else becomes the default. */
     private const CHOICES = [
+        'city_list' => [
+            'layout' => ['columns', 'list', 'accordion'],
+        ],
         'social_links' => [
             'style' => ['plain', 'solid', 'outline'],
             'shape' => ['circle', 'square', 'rounded'],
-        ],
-        'city_list' => [
-            'layout' => ['columns', 'list', 'accordion'],
+            'colors' => ['single', 'brand'],
+            'hover' => ['none', 'fade', 'grow', 'lift'],
         ],
         'contact_info' => [
             'layout' => ['stack', 'row', 'compact', 'grid', 'inline'],
@@ -517,6 +541,8 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
+        'city_list' => ['search_placeholder' => 60, 'empty_text' => 80],
+        'social_links' => ['networks' => 300],
         'contact_info' => [
             'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
             'license_title' => 40, 'closed_text' => 30, 'order' => 60,
@@ -532,7 +558,7 @@ final class WidgetPresets
     /** Numbers, with the range a website can survive. */
     private const RANGES = [
         'social_links' => ['size' => [16, 64], 'gap' => [0, 40]],
-        'city_list' => ['columns' => [1, 6]],
+        'city_list' => ['columns' => [1, 6], 'column_gap' => [0, 80]],
         'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
