@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\WorkizJob;
 use App\Support\Tenancy\TenantContext;
@@ -80,6 +82,52 @@ class SchedulingAvailabilityTest extends TestCase
             'payload' => ['Tags' => $tags],
             'synced_at' => now(),
         ]);
+    }
+
+    /**
+     * A job as the Workiz projection leaves it: an EzBizi job placed in an
+     * area, and its mirror row linked to it by `job_id`. The mirror's own area
+     * NAME can say anything — the placement is what counts.
+     */
+    private function placed(
+        array $tenant,
+        ?ServiceArea $area,
+        string $at,
+        string $status = 'Submitted',
+        string $workizName = 'Dallas',
+        array $tags = [],
+    ): Job {
+        app(TenantContext::class)->set($tenant['org']);
+
+        $customer = Customer::create([
+            'owning_franchise_id' => $tenant['franchise']->id,
+            'number' => 'C-'.bin2hex(random_bytes(3)),
+            'name' => 'A Customer',
+        ]);
+
+        $job = Job::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'customer_id' => $customer->id,
+            'service_area_id' => $area?->id,
+            'number' => 'J-'.bin2hex(random_bytes(3)),
+            'title' => 'A job',
+            'status' => $status,
+            'scheduled_for' => $at,
+        ]);
+
+        WorkizJob::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'service_area' => $workizName,
+            'postal_code' => '75201',
+            'status' => $status,
+            'scheduled_for' => $at,
+            'payload' => ['Tags' => $tags],
+            'synced_at' => now(),
+            'job_id' => $job->id,
+        ]);
+
+        return $job;
     }
 
     private function first(array $tenant, string $query): array
@@ -213,6 +261,51 @@ class SchedulingAvailabilityTest extends TestCase
         $first = $this->first($tenant, 'zip=75201')['first'];
 
         $this->assertSame(0, $first['windows'][0]['taken']);
+    }
+
+    /**
+     * THE AREA IS WHERE EZBIZI PLACED THE JOB, not the name Workiz typed. A-1
+     * still has jobs filed under the retired "Fort Worth", and jobs with no
+     * area at all that the zip placed — both hold a seat where they were
+     * placed (measured at the switch: one in DFW, one in Austin).
+     */
+    public function test_a_job_placed_in_the_area_holds_a_seat_whatever_workiz_named_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+
+        $this->placed($tenant, $dallas, '2026-10-05 07:00:00', workizName: 'Fort Worth');
+
+        $this->assertSame(1, $this->first($tenant, 'zip=75201')['first']['windows'][0]['taken']);
+    }
+
+    /** And a job placed ELSEWHERE is not Dallas's just because Workiz says "Dallas" — nor counted twice. */
+    public function test_a_projected_job_counts_once_and_only_where_it_was_placed(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+
+        app(TenantContext::class)->set($tenant['org']);
+        $houston = ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Houston']);
+
+        $this->placed($tenant, $houston, '2026-10-05 07:00:00');
+        $this->placed($tenant, $dallas, '2026-10-05 08:00:00');
+
+        $this->assertSame(1, $this->first($tenant, 'zip=75201')['first']['windows'][0]['taken']);
+    }
+
+    /** Placed jobs obey the same rules: the job's status, the mirror's tags, and a deleted job holds nothing. */
+    public function test_a_placed_job_that_is_cancelled_tagged_deposit_or_deleted_holds_no_seat(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+
+        $this->placed($tenant, $dallas, '2026-10-05 07:00:00', 'Canceled');
+        $this->placed($tenant, $dallas, '2026-10-05 08:00:00', tags: ['DEPOSIT RECEIVED']);
+        $this->placed($tenant, $dallas, '2026-10-05 09:00:00')->delete();
+        $this->placed($tenant, $dallas, '2026-10-05 11:00:00');
+
+        $this->assertSame([0, 1], array_column($this->first($tenant, 'zip=75201')['first']['windows'], 'taken'));
     }
 
     /**

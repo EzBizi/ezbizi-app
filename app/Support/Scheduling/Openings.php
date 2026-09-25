@@ -42,23 +42,27 @@ use Illuminate\Support\Facades\DB;
  * holds no window's seat, and is counted separately as `no_time` so the screen
  * can say so rather than silently dropping it. A1 has 24 such future jobs.
  *
- * ── Where the jobs come from, for now ───────────────────────────
+ * ── Where the jobs come from ───────────────────────────────────
  *
- * ponytail: reads `workiz_jobs` by the area's NAME inside the area's franchise,
- * because every A-1 job arrives from Workiz and Jose ruled the areas mirror
- * Workiz's names. When the Jobs module ships `jobs.service_area_id` (agreed
- * 2026-09-25), this is the one function that switches source. The franchise
- * filter is what keeps a Nationwide call-centre job tagged "New York" off the
- * New York franchise's area.
+ * `jobs.service_area_id`: EzBizi's own record of which area a job is in. The
+ * Workiz projection places every job it creates (Workiz's area name, else the
+ * job's zip) and re-places it when Workiz changes either, unless a person
+ * chose the area. Status and time come from the job; the tags that exclude a
+ * job come from its Workiz payload, joined through `workiz_jobs.job_id`.
  *
- * NOT SWITCHED YET, and the precondition is measured, not assumed. Jobs'
- * backfill wrote 7,645 areas at 2026-09-25 13:58 UTC, and the two sources
- * agree over the next 30 days — 667 by name, 668 by `service_area_id`, three
- * areas off by one where the zip placed a job its name could not. But a job
- * created AFTER the backfill gets no area until the Workiz projection calls
- * `JobServiceArea::resolve()`, so switching now would undercount every new
- * booking: the optimistic direction, the one A1's silent zero taught us nobody
- * notices. Switch when that projection is live, and re-run the comparison.
+ * PLUS mirrored Workiz jobs the projection has not reached yet
+ * (`workiz_jobs.job_id` NULL), matched by Workiz's area name inside the area's
+ * franchise, the way this counted before. The projection runs every five
+ * minutes after the sweep; a booking made in that gap still holds its seat.
+ * Measured at the switch, 2026-09-25: three such rows, all under 15 minutes
+ * old. Dropping them would undercount, which is the optimistic direction, the
+ * one A1's silent zero taught us nobody notices.
+ *
+ * Measured at the switch over the next 30 days: 614 seats by name, 615 by
+ * area. Five areas were off by one: Austin and DFW gained a job the zip placed
+ * (Workiz named no area / the retired "Fort Worth"); Indiana gained one whose
+ * EzBizi status still says Pending while Workiz says Canceled; the New York
+ * and Connecticut rows were two of the unprojected jobs above.
  *
  * ponytail: FREE_STATUSES and EXCLUDED_TAGS are constants, not settings. They
  * hold A-1's vocabulary; the day another organization's words differ, they
@@ -184,13 +188,28 @@ final class Openings
      */
     private function taken(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $jobs = DB::table('workiz_jobs')
+        $start = $from->toDateString().' 00:00:00';
+        $end = $to->toDateString().' 00:00:00';
+
+        $placed = DB::table('jobs')
+            ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
+            ->where('jobs.service_area_id', $area->id)
+            ->whereNull('jobs.deleted_at')
+            ->where('jobs.scheduled_for', '>=', $start)
+            ->where('jobs.scheduled_for', '<', $end)
+            ->get(['jobs.scheduled_for', 'jobs.status', 'workiz_jobs.payload']);
+
+        // Mirrored, not projected yet — see "Where the jobs come from".
+        $pending = DB::table('workiz_jobs')
+            ->whereNull('job_id')
             ->where('organization_id', $area->organization_id)
             ->where('franchise_id', $area->franchise_id)
             ->whereRaw('LOWER(TRIM(service_area)) = ?', [mb_strtolower(trim($area->name))])
-            ->where('scheduled_for', '>=', $from->toDateString().' 00:00:00')
-            ->where('scheduled_for', '<', $to->toDateString().' 00:00:00')
+            ->where('scheduled_for', '>=', $start)
+            ->where('scheduled_for', '<', $end)
             ->get(['scheduled_for', 'status', 'payload']);
+
+        $jobs = $placed->concat($pending);
 
         $byDay = [];
 
