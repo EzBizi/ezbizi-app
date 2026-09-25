@@ -591,7 +591,10 @@ enum Tone {
 
   /// The strongest word on the screen: gone, or about to be. Red at Jose's
   /// word, 2026-09-24: *"the canceled tab should be red, not gray"*.
-  /// Jobs: Canceled. Availability: 1 spot left.
+  /// Jobs: Canceled. Availability: 1 spot left — also his, the same week, of
+  /// the A1 Tools slots his dispatchers know: *"i do like the green yellow red
+  /// gray color tabs for the time slots"*. Both are rulings; neither is a
+  /// misuse of the other.
   bad,
 }
 
