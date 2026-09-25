@@ -203,10 +203,21 @@ final class ReportRunner
 
         $columns = [];
 
+        /** @var array<string, array{0: class-string, 1: string}> $php keyed like a row */
+        $php = [];
+        $phpFilters = [];
+
         foreach ($definition['columns'] ?? [] as $column) {
             $resource = $this->resourceFor($column);
             $declared = $this->columnFor($resource, $column);
             $key = $column['resource'].'.'.$column['column'];
+
+            if (isset($declared['php'])) {
+                $php[$key] = $this->phpOn($root, $column, $declared, $rootResource, $query);
+                $columns[] = ['key' => $key, 'label' => $declared['label'], 'type' => $declared['type']];
+
+                continue;
+            }
 
             /*
              * A DERIVED COLUMN IS A CORRELATED SUBQUERY, not a table column.
@@ -250,6 +261,14 @@ final class ReportRunner
 
             $bound = $operator === 'like' ? '%'.$value.'%' : $value;
 
+            if (isset($declaredFilter['php'])) {
+                $key = $filter['resource'].'.'.$filter['column'];
+                $php[$key] ??= $this->phpOn($root, $filter, $declaredFilter, $rootResource, $query);
+                $phpFilters[] = [$key, $operator, $value];
+
+                continue;
+            }
+
             if (isset($declaredFilter['sql'])) {
                 // The SAME expression as the select, so the rows a filter keeps
                 // are the rows whose printed value satisfies it. Two spellings
@@ -279,7 +298,77 @@ final class ReportRunner
             $rows = array_slice($rows, 0, self::ROW_CAP);
         }
 
+        if ($php !== []) {
+            $rows = $this->withPhpColumns($rows, $php, $phpFilters, array_column($columns, 'key'));
+        }
+
         return new ReportResult($columns, $rows, $capped, count($rows));
+    }
+
+    /**
+     * A `php` column: computed per ROOT row by a class the map names, because
+     * the answer lives in PHP another module owns (ServiceAreaFullness reads
+     * Scheduling's Openings). Root only, since it is handed the root row's id.
+     *
+     * ponytail: filtered after the fetch, so it only sees the first ROW_CAP
+     * rows. Fine for service areas (45 on A-1); a php column on a big table
+     * needs pushing into SQL or paging before it is declared.
+     */
+    private function phpOn(string $root, array $item, array $declared, array $rootResource, $query): array
+    {
+        if (($item['resource'] ?? null) !== $root) {
+            throw new InvalidArgumentException(
+                "'{$declared['label']}' can only be used on a report that starts at {$rootResource['label']}."
+            );
+        }
+
+        $query->addSelect($rootResource['table'].'.id as __root_id');
+
+        return $declared['php'];
+    }
+
+    /**
+     * Fill the php columns and apply their filters with SQL's rules: NULL
+     * matches no comparison, so an unconfigured area is never "booked out".
+     */
+    private function withPhpColumns(array $rows, array $php, array $filters, array $shown): array
+    {
+        $kept = [];
+
+        foreach ($rows as $row) {
+            foreach ($php as $key => [$class, $method]) {
+                $row[$key] = app($class)->{$method}((string) $row['__root_id'], $this->today());
+            }
+
+            foreach ($filters as [$key, $operator, $value]) {
+                if (! self::compare($row[$key], $operator, $value)) {
+                    continue 2;
+                }
+            }
+
+            // Only what was asked for: a php FILTER on an unselected column
+            // and the root id it needed are not columns of the report.
+            $kept[] = array_intersect_key($row, array_flip($shown));
+        }
+
+        return $kept;
+    }
+
+    private static function compare(mixed $left, string $operator, mixed $right): bool
+    {
+        if ($left === null) {
+            return false;
+        }
+
+        return match ($operator) {
+            '=' => $left == $right,
+            '!=' => $left != $right,
+            '<' => $left < $right,
+            '<=' => $left <= $right,
+            '>' => $left > $right,
+            '>=' => $left >= $right,
+            'like' => str_contains(mb_strtolower((string) $left), mb_strtolower((string) $right)),
+        };
     }
 
     /**

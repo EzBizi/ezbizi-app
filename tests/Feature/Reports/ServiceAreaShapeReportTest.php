@@ -5,6 +5,7 @@ namespace Tests\Feature\Reports;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
+use App\Models\WorkizJob;
 use App\Support\Reports\ReportRunner;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
@@ -448,6 +449,116 @@ class ServiceAreaShapeReportTest extends TestCase
             $this->assertSame($oracle, $column, "{$name}: the column and Openings::days() disagree");
             $this->assertSame($days, $column, "{$name}: both agree, on the wrong day");
         }
+    }
+
+    // ── booked out (Scheduling's Openings, 0.0.0270) ───────────────
+
+    /**
+     * DAYS UNTIL A FREE SPOT - full, closed and never-set-up stay apart.
+     *
+     * Jose's ask: warn when an area is booked for the next X days. Filtered
+     * `>= X`, this is that list. The three states Scheduling warned must never
+     * collapse each get a fixture, and the two that are NOT "booked out" must
+     * be NULL so no window can match them.
+     */
+    public function test_it_counts_the_days_until_a_free_spot(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-23')); // a Wednesday
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            // Works Wed and Thu, two seats; both of today's taken.
+            $this->area($tenant, 'Full today', [3, 4]);
+            $this->booked($tenant, 'Full today', '2026-09-23 10:00:00');
+            $this->booked($tenant, 'Full today', '2026-09-23 11:00:00');
+
+            // Cancelled jobs hold no seat - Scheduling's rule, not ours.
+            $this->area($tenant, 'Cancelled today', [3]);
+            $this->booked($tenant, 'Cancelled today', '2026-09-23 10:00:00', 'Canceled');
+            $this->booked($tenant, 'Cancelled today', '2026-09-23 11:00:00', 'Canceled');
+
+            // Works exactly one day in the year, and it is full.
+            $this->area($tenant, 'Full all year', []);
+            $this->override($tenant, 'Full all year', '2026-09-23', window: true);
+            $this->booked($tenant, 'Full all year', '2026-09-23 10:00:00');
+            $this->booked($tenant, 'Full all year', '2026-09-23 11:00:00');
+
+            // Set up, but not taking bookings for over a year: CLOSED.
+            $this->area($tenant, 'Closed all year', [3]);
+            ServiceArea::query()->where('name', 'Closed all year')->update(['available_from' => '2028-01-01']);
+
+            $this->area($tenant, 'Never set up', []);
+        });
+
+        $free = fn (array $filters) => collect($this->fullness($tenant, $filters))
+            ->mapWithKeys(fn (array $row) => [
+                $row['service_areas.name'] => $row['service_areas.days_until_next_free_spot'],
+            ])
+            ->sortKeys() // row order is the database's; the values are the subject
+            ->all();
+
+        $this->assertSame([
+            'Cancelled today' => 0,
+            'Closed all year' => null,
+            'Full all year' => Openings::HORIZON_DAYS,
+            'Full today' => 1,
+            'Never set up' => null,
+        ], $free([]));
+
+        // The warning itself: booked out for at least a day. Closed and
+        // never-set-up are not in it, whatever the window.
+        $this->assertSame(
+            ['Full all year' => Openings::HORIZON_DAYS, 'Full today' => 1],
+            $free([['resource' => 'service_areas', 'column' => 'days_until_next_free_spot', 'op' => 'gte', 'value' => 1]]),
+        );
+
+        $this->assertSame(
+            ['Full all year' => Openings::HORIZON_DAYS],
+            $free([['resource' => 'service_areas', 'column' => 'days_until_next_free_spot', 'op' => 'gte', 'value' => 2]]),
+        );
+    }
+
+    /** Only the report's own columns come back, not the id the php column needed. */
+    public function test_a_php_column_adds_nothing_the_report_did_not_ask_for(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->inTenant($tenant['org'], fn () => $this->area($tenant, 'Free today', [0, 1, 2, 3, 4, 5, 6]));
+
+        $rows = $this->inTenant($tenant['org'], fn () => app(ReportRunner::class)->run([
+            'root' => 'service_areas',
+            'columns' => [['resource' => 'service_areas', 'column' => 'name']],
+            'filters' => [['resource' => 'service_areas', 'column' => 'days_until_next_free_spot', 'op' => 'eq', 'value' => 0]],
+        ], $tenant['admin'], ViewScope::forUser($tenant['admin'])))->rows;
+
+        $this->assertSame([['service_areas.name' => 'Free today']], $rows);
+    }
+
+    private function fullness(array $tenant, array $filters): array
+    {
+        return $this->inTenant($tenant['org'], fn () => app(ReportRunner::class)->run([
+            'root' => 'service_areas',
+            'columns' => [
+                ['resource' => 'service_areas', 'column' => 'name'],
+                ['resource' => 'service_areas', 'column' => 'days_until_next_free_spot'],
+            ],
+            'filters' => $filters,
+        ], $tenant['admin'], ViewScope::forUser($tenant['admin'])))->rows;
+    }
+
+    /** A Workiz job, the way Scheduling's own availability tests book one. */
+    private function booked(array $tenant, string $area, string $at, string $status = 'Submitted'): void
+    {
+        WorkizJob::query()->create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'service_area' => $area,
+            'postal_code' => '75201',
+            'status' => $status,
+            'scheduled_for' => $at,
+            'payload' => ['Tags' => []],
+            'synced_at' => now(),
+        ]);
     }
 
     /** A per-date override: no window closes the day, a window opens one. */
