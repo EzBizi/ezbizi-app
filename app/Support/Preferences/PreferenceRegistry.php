@@ -173,22 +173,6 @@ class PreferenceRegistry
                 'help' => 'Drag the sidebar into the order you want.',
             ],
 
-            // A RINGING PHONE TAKING THE APP AWAY, which the house rule
-            // otherwise forbids — so it is off unless somebody asks for it.
-            //
-            // Jose asked for the pop-up on 2026-09-22. The shell already shows
-            // a strip, deliberately: you answer while staying on the estimate
-            // you were halfway through typing, and the work underneath keeps
-            // its state. A modal is the opposite of that, which is why this is
-            // a choice each person makes rather than a new default for
-            // everybody.
-            'phone.incoming_popup' => [
-                'label' => 'Show a pop-up for incoming calls',
-                'type' => 'bool',
-                'default' => false,
-                'help' => 'A window with the caller and Accept or Ignore, on top of whatever you are doing. The strip at the top of the screen appears either way.',
-            ],
-
             'phone.customer_panel_pinned' => [
                 'label' => 'Keep the customer panel open',
                 'type' => 'bool',

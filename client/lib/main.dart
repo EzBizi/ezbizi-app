@@ -178,7 +178,7 @@ class _EzBiziAppState extends State<EzBiziApp> {
        * Scaffold. This is the one place above all of them.
        *
        * It draws nothing unless a call is actually ringing AND the person has
-       * switched it on — `phone.incoming_popup`, off by default. The strip in
+       * not switched it off — `phone.incoming_popup`, on by default. The strip in
        * the shell is unaffected and appears either way; see IncomingCallPopup
        * for why both exist.
        */

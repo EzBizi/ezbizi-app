@@ -46,10 +46,18 @@ void main() {
     expect(
       find.byKey(const Key('incoming-call-bar')),
       findsOneWidget,
-      reason: 'the phone rang and the only screen that said so was the one '
+      reason:
+          'the phone rang and the only screen that said so was the one '
           'this person was not on',
     );
     expect(find.textContaining('305'), findsWidgets);
+
+    // THE WHOLE WIDTH. It shrank to its contents and sat as a centred box;
+    // Jose, 2026-09-25: *"make it so that top bar Extends 100%"*.
+    expect(
+      tester.getSize(find.byKey(const Key('incoming-call-bar'))).width,
+      1280,
+    );
 
     await tester.tap(find.byKey(const Key('incoming-call-answer')));
     await tester.pumpAndSettle();
@@ -108,7 +116,9 @@ void main() {
       seen: seen,
       device: device,
       handle: (request) => request.url.path.endsWith('/phone/calls/transfer')
-          ? _json({'data': {'ringing': 1}})
+          ? _json({
+              'data': {'ringing': 1},
+            })
           : null,
     );
 
@@ -206,7 +216,10 @@ Future<ApiClient> _pumpShell(
   );
 
   if (device != null) {
-    PhoneCallService.overrideForTest = PhoneCallService.forTest(device, api: api);
+    PhoneCallService.overrideForTest = PhoneCallService.forTest(
+      device,
+      api: api,
+    );
   }
 
   final session = Session(api);

@@ -39,7 +39,7 @@ class DisplaySettings
      * Whether the client can DRAW a new option is the client's problem to
      * declare, and it does — see DisplayFormats in the Flutter app.
      */
-    public const KEYS = ['date_format', 'time_format'];
+    public const KEYS = ['date_format', 'time_format', 'phone.incoming_popup'];
 
     public function __construct(
         private readonly SettingsResolver $resolver,

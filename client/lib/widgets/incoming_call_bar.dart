@@ -48,19 +48,20 @@ class IncomingCallBar extends StatelessWidget {
     );
   }
 
-  Widget _ringing(
-    BuildContext context,
-    PhoneCallService service,
-    String from,
-  ) {
+  Widget _ringing(BuildContext context, PhoneCallService service, String from) {
     final theme = Theme.of(context);
 
+    // THE WHOLE WIDTH. Inside the shell's Column a bare Material shrinks to
+    // its Wrap and sat as a centred box; Jose, 2026-09-25: *"make it so that
+    // top bar Extends 100% not just centered"*.
     return Material(
       key: const Key('incoming-call-bar'),
       color: theme.colorScheme.primaryContainer,
-      child: Padding(
+      child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         child: Wrap(
+          alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 12,
           runSpacing: 8,
@@ -99,12 +100,17 @@ class IncomingCallBar extends StatelessWidget {
   Widget _connected(BuildContext context, PhoneCallService service) {
     final theme = Theme.of(context);
 
+    // THE WHOLE WIDTH. Inside the shell's Column a bare Material shrinks to
+    // its Wrap and sat as a centred box; Jose, 2026-09-25: *"make it so that
+    // top bar Extends 100% not just centered"*.
     return Material(
       key: const Key('on-call-bar'),
       color: theme.colorScheme.secondaryContainer,
-      child: Padding(
+      child: Container(
+        width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
         child: Wrap(
+          alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 12,
           runSpacing: 8,

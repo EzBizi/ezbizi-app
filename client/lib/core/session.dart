@@ -390,6 +390,7 @@ class Me {
     required this.onboardingId,
     this.screenMonitoringExempt = false,
     this.timeClock = TimeClockStatus.absent,
+    this.phoneIncomingPopup = true,
   });
 
   final String id;
@@ -633,6 +634,13 @@ class Me {
   /// does not exist and nobody is exempt.
   final bool screenMonitoringExempt;
 
+  /// Whether a ringing call opens the draggable card as well as the strip.
+  ///
+  /// The COMPANY's setting, `phone.incoming_popup` in the registry, not a
+  /// person's: Jose, 2026-09-25, *"the company should decide"*. Anything but
+  /// an explicit false is on, so a server that predates the key shows it.
+  final bool phoneIncomingPopup;
+
   /// Punch-clock chrome from `/me`.
   ///
   /// The button is session chrome, the same reason two-factor rides here: it
@@ -766,6 +774,7 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
   );
 
@@ -790,6 +799,7 @@ class Me {
     franchises: franchises,
     onboardingId: onboardingId,
     screenMonitoringExempt: screenMonitoringExempt,
+    phoneIncomingPopup: phoneIncomingPopup,
     timeClock: timeClock,
   );
 
@@ -828,15 +838,6 @@ class Me {
       (preferences['navigation.order'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList();
-
-  /// Whether a ringing call opens a window as well as the shell's strip.
-  ///
-  /// Off unless somebody asks for it, and the default is the house rule rather
-  /// than timidity: a ringing phone must not take the app away from somebody
-  /// halfway through writing up a job. Jose asked for the window AND for the
-  /// switch on 2026-09-22, which is what lets both be true — see
-  /// `IncomingCallPopup`.
-  bool get phoneIncomingPopup => preferences['phone.incoming_popup'] == true;
 
   /// Whether the dial pad keeps its customer panel open between calls.
   ///
@@ -908,6 +909,9 @@ class Me {
     // Absent (an older server) reads as not exempt — the safe default, and
     // the same state as a person who simply is not the Lead Developer.
     screenMonitoringExempt: json['screen_monitoring_exempt'] == true,
+    phoneIncomingPopup:
+        (json['display'] as Map<String, dynamic>?)?['phone.incoming_popup'] !=
+        false,
     timeClock: TimeClockStatus.fromJson(json['time_clock']),
   );
 }
