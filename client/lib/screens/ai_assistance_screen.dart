@@ -153,8 +153,8 @@ class _AssistantTabState extends State<AssistantTab> {
   Map<String, dynamic>? _menu;
   String? _error;
   final _query = TextEditingController();
-  List<dynamic>? _sites;
-  String? _siteError;
+  Map<String, dynamic>? _found;
+  String? _askError;
 
   @override
   void initState() {
@@ -177,16 +177,29 @@ class _AssistantTabState extends State<AssistantTab> {
     });
   }
 
-  Future<void> _search() async {
+  /// The same search the WhatsApp line runs on typed words: answers first,
+  /// then the places the words name.
+  Future<void> _ask() async {
     final q = _query.text.trim();
     if (q.length < 2) return;
-    final response = await widget.api.get('/ai-assistance/locations', {'q': q});
+    final response = await widget.api.get('/ai-assistance/ask', {'q': q});
     if (!mounted) return;
     setState(() {
-      _sites = response.ok ? response.data as List<dynamic> : null;
-      _siteError = response.ok ? null : response.reason;
+      _found = response.ok ? response.data as Map<String, dynamic> : null;
+      _askError = response.ok ? null : response.reason;
     });
   }
+
+  Widget _answerTile(dynamic e, {bool open = false}) => ExpansionTile(
+    initiallyExpanded: open,
+    title: Text(e['title'] as String),
+    subtitle: e['description'] == null
+        ? null
+        : Text(e['description'] as String),
+    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+    children: [SelectableText(plainAnswer(e['body'] as String))],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -197,6 +210,8 @@ class _AssistantTabState extends State<AssistantTab> {
     if (menu == null) return const Center(child: CircularProgressIndicator());
 
     final sections = menu['sections'] as List<dynamic>;
+    final answers = (_found?['answers'] as List<dynamic>?) ?? const [];
+    final sites = (_found?['locations'] as List<dynamic>?) ?? const [];
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -205,50 +220,27 @@ class _AssistantTabState extends State<AssistantTab> {
         const SizedBox(height: 4),
         Text(plainAnswer(menu['welcome'] as String)),
         const SizedBox(height: 16),
-        if (sections.isEmpty)
-          const Text('No answers yet. Add them on the Library tab.'),
-        for (final s in sections)
-          Card(
-            child: ExpansionTile(
-              title: Text(s['section'] as String),
-              children: [
-                for (final e in s['entries'] as List<dynamic>)
-                  ExpansionTile(
-                    title: Text(e['title'] as String),
-                    subtitle: e['description'] == null
-                        ? null
-                        : Text(e['description'] as String),
-                    childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SelectableText(plainAnswer(e['body'] as String)),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 16),
-        Text('Find a location', style: theme.textTheme.titleMedium),
-        const SizedBox(height: 8),
         TextField(
           controller: _query,
           decoration: InputDecoration(
-            hintText: 'A city or state, e.g. Chicago or NJ',
+            hintText: 'Ask a question, or type a city or state',
             suffixIcon: IconButton(
               icon: const Icon(Icons.search),
-              tooltip: 'Search',
-              onPressed: _search,
+              tooltip: 'Ask',
+              onPressed: _ask,
             ),
           ),
-          onSubmitted: (_) => _search(),
+          onSubmitted: (_) => _ask(),
         ),
-        if (_siteError != null) Text(_siteError!),
-        if (_sites != null && _sites!.isEmpty)
+        if (_askError != null) Text(_askError!),
+        if (_found != null && answers.isEmpty && sites.isEmpty)
           const Padding(
             padding: EdgeInsets.only(top: 8),
-            child: Text('No location matched.'),
+            child: Text('Nothing matched - no answer and no location.'),
           ),
-        for (final site in _sites ?? const [])
+        for (final e in answers)
+          Card(child: _answerTile(e, open: answers.length == 1)),
+        for (final site in sites)
           ListTile(
             title: Text(site['company_name'] as String? ?? ''),
             subtitle: SelectableText(
@@ -258,6 +250,18 @@ class _AssistantTabState extends State<AssistantTab> {
                 if (site['service_area'] != null)
                   'Serves: ${site['service_area']}',
               ].whereType<String>().where((l) => l.isNotEmpty).join('\n'),
+            ),
+          ),
+        const SizedBox(height: 16),
+        if (sections.isEmpty)
+          const Text('No answers yet. Add them on the Library tab.'),
+        for (final s in sections)
+          Card(
+            child: ExpansionTile(
+              title: Text(s['section'] as String),
+              children: [
+                for (final e in s['entries'] as List<dynamic>) _answerTile(e),
+              ],
             ),
           ),
       ],

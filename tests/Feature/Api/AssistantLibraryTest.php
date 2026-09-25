@@ -84,6 +84,18 @@ class AssistantLibraryTest extends TestCase
         $this->assertSame(['Org answer'], $titles);
     }
 
+    public function test_ask_finds_answers_within_reach_only(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->answers($t);
+
+        $this->signedInAs($this->userWithRole($t, 'Tech', ['ai_assistance.view', 'ai_assistance.ai.view'], onlyAt: $t['franchise']));
+
+        $this->getJson('/api/v1/ai-assistance/ask?q=place')->assertOk()
+            ->assertJsonPath('data.answers.0.title', 'My place')
+            ->assertJsonCount(1, 'data.answers');
+    }
+
     public function test_the_ai_tab_needs_its_grant(): void
     {
         $t = $this->provisionTenant('A1-Group');
@@ -91,6 +103,7 @@ class AssistantLibraryTest extends TestCase
         $this->signedInAs($this->userWithRole($t, 'Library only', ['ai_assistance.view', 'ai_assistance.library.view']));
 
         $this->getJson('/api/v1/ai-assistance/menu')->assertForbidden();
+        $this->getJson('/api/v1/ai-assistance/ask?q=codes')->assertForbidden();
         $this->getJson('/api/v1/ai-assistance/entries')->assertOk();
     }
 

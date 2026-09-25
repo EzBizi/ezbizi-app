@@ -27,6 +27,18 @@ void main() {
     expect(find.text('Flue sizing for a fireplace'), findsOneWidget);
   });
 
+  testWidgets('Ask shows what the server found', (tester) async {
+    await _pump(tester, grants: ['ai_assistance.ai.view']);
+
+    await tester.enterText(find.byType(TextField), 'flue size');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // A single answer arrives open, so it reads without a second tap.
+    expect(find.text('Round flue: 1/12'), findsOneWidget);
+    expect(find.text('A1 Chimney - CHI'), findsOneWidget);
+  });
+
   testWidgets('Library without manage has no Add answer', (tester) async {
     await _pump(tester, grants: ['ai_assistance.library.view']);
 
@@ -81,6 +93,23 @@ Future<void> _pump(WidgetTester tester, {required List<String> grants}) async {
                   },
                 ],
               },
+            ],
+          },
+        });
+      }
+      if (path.endsWith('/ai-assistance/ask')) {
+        return _json({
+          'data': {
+            'answers': [
+              {
+                'id': 'e-1',
+                'title': 'Flue sizing',
+                'description': null,
+                'body': 'Round flue: 1/12',
+              },
+            ],
+            'locations': [
+              {'company_name': 'A1 Chimney - CHI', 'phone': '(312) 555-0100'},
             ],
           },
         });

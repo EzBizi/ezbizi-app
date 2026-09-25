@@ -98,7 +98,7 @@ final class WhatsAppStaffBot
             return;
         }
 
-        $this->searchLocations($number, $to, $viewer, $text);
+        $this->answerText($number, $to, $viewer, $text);
     }
 
     private function answerChoice(WhatsAppNumber $number, string $to, ?User $viewer, string $choice): void
@@ -156,19 +156,25 @@ final class WhatsAppStaffBot
     private function sectionList(WhatsAppNumber $number, string $to, Collection $entries): void
     {
         $section = (string) $entries->first()->section;
-        $body = 'Choose a topic.';
+
+        $this->answerList($number, $to, $section, 'Choose a topic.', $entries);
+    }
+
+    /** @param  Collection<int, AssistantEntry>  $entries */
+    private function answerList(WhatsAppNumber $number, string $to, string $section, string $body, Collection $entries): void
+    {
 
         $this->cloud->replyFreeForm($number, $to, [
             'type' => 'interactive',
             'interactive' => [
                 'type' => 'list',
-                'header' => ['type' => 'text', 'text' => $section],
+                'header' => ['type' => 'text', 'text' => mb_substr($section, 0, 60)],
                 'body' => ['text' => $body],
                 'footer' => ['text' => 'Text MENU to go back'],
                 'action' => [
                     'button' => 'Topics',
                     'sections' => [[
-                        'title' => $section,
+                        'title' => mb_substr($section, 0, 24),
                         // ponytail: WhatsApp shows 10 rows; an 11th answer in one
                         // section is reachable only in the app. The Library says so.
                         'rows' => $entries->take(self::MAX_ROWS)->map(fn (AssistantEntry $e) => $this->row(
@@ -211,7 +217,7 @@ final class WhatsAppStaffBot
                 'type' => 'list',
                 'header' => ['type' => 'text', 'text' => mb_substr($this->brain->name($organization), 0, 60)],
                 'body' => ['text' => $body],
-                'footer' => ['text' => 'Text MENU any time'],
+                'footer' => ['text' => 'Ask a question, or text MENU'],
                 'action' => [
                     'button' => 'Choose',
                     // A section with no rows makes Meta refuse the whole list.
@@ -297,7 +303,14 @@ final class WhatsAppStaffBot
             ->first(fn (User $user) => ThumbtackAssociatePhoneNumbers::e164((string) $user->phone) === $wanted);
     }
 
-    private function searchLocations(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
+    /**
+     * Something typed: an answer from the Library if one fits, else a place.
+     *
+     * The Library goes first because a question is words and a place is a
+     * name. Three characters or fewer is a branch code or a state ("CLE",
+     * "NJ"), which only the location search understands.
+     */
+    private function answerText(WhatsAppNumber $number, string $to, ?User $viewer, string $query): void
     {
         // One or two letters match nearly every site, which reads as the bot
         // dumping its whole list rather than answering.
@@ -307,11 +320,25 @@ final class WhatsAppStaffBot
             return;
         }
 
+        $answers = mb_strlen($query) > 3 ? $this->brain->search($viewer, $query) : collect();
+
+        if ($answers->count() === 1) {
+            $this->answer($number, $to, $answers->first());
+
+            return;
+        }
+
+        if ($answers->isNotEmpty()) {
+            $this->answerList($number, $to, 'Answers', 'These answers match "'.mb_substr($query, 0, 40).'".', $answers);
+
+            return;
+        }
+
         $organization = Organization::findOrFail($number->organization_id);
         $matches = $this->brain->locations($organization, $query);
 
         if ($matches->isEmpty()) {
-            $this->menu($number, $to, $viewer, 'No location matched "'.mb_substr($query, 0, 40).'".');
+            $this->menu($number, $to, $viewer, 'Nothing matched "'.mb_substr($query, 0, 40).'" - no answer and no location.');
 
             return;
         }

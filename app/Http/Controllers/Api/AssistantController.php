@@ -34,13 +34,19 @@ class AssistantController extends Controller
         ]]);
     }
 
-    /** GET /api/v1/ai-assistance/locations?q= */
-    public function locations(Request $request): JsonResponse
+    /**
+     * GET /api/v1/ai-assistance/ask?q= - what the WhatsApp line would find for
+     * the same words: matching answers, and the places the words name.
+     */
+    public function ask(Request $request): JsonResponse
     {
         $q = (string) $request->validate(['q' => ['required', 'string', 'min:2', 'max:60']])['q'];
+        $user = $request->user();
 
-        return response()->json([
-            'data' => $this->brain->locations($request->user()->organization, $q)->take(20),
-        ]);
+        return response()->json(['data' => [
+            'answers' => $this->brain->search($user, $q)->take(10)
+                ->map(fn (AssistantEntry $e) => $e->only(['id', 'title', 'description', 'body']))->values(),
+            'locations' => $this->brain->locations($user->organization, $q)->take(20),
+        ]]);
     }
 }

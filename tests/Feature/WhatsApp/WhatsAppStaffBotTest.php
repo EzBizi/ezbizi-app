@@ -516,7 +516,7 @@ class WhatsAppStaffBotTest extends TestCase
         $this->inbound(self::BOT, $this->text('chi'))->assertOk();
 
         $this->assertSame('interactive', $this->sent[0]['type'], '"chi" matched the brand name, not a branch');
-        $this->assertStringContainsString('No location matched', $this->sent[0]['interactive']['body']['text']);
+        $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
     }
 
     public function test_a_branch_code_finds_exactly_that_branch(): void
@@ -589,7 +589,7 @@ class WhatsAppStaffBotTest extends TestCase
         // Read under the tenant scope, so it finds nothing and says so -
         // rather than reading out a competitor's number.
         $this->assertSame('interactive', $this->sent[0]['type']);
-        $this->assertStringContainsString('No location matched', $this->sent[0]['interactive']['body']['text']);
+        $this->assertStringContainsString('Nothing matched', $this->sent[0]['interactive']['body']['text']);
         $this->assertStringNotContainsString('555-0000', json_encode($this->sent));
     }
 
@@ -604,9 +604,56 @@ class WhatsAppStaffBotTest extends TestCase
         // One message, not two: the explanation rides in the menu's body.
         $this->assertCount(1, $this->sent);
         $body = $this->sent[0]['interactive']['body']['text'];
-        $this->assertStringContainsString('No location matched "Atlantis"', $body);
+        $this->assertStringContainsString('Nothing matched "Atlantis"', $body);
         // No cheerful welcome straight after a failed search.
         $this->assertStringNotContainsString('Welcome', $body);
+    }
+
+    public function test_a_typed_question_gets_the_answer_it_names(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        // Free, no AI (Jose, 2026-09-25): the words are looked up in the
+        // Library. One answer clearly wins, so it is sent, not a list.
+        $this->inbound(self::BOT, $this->text('what flue size do I need'))->assertOk();
+
+        $this->assertCount(1, $this->sent);
+        $this->assertSame('text', $this->sent[0]['type']);
+        $this->assertStringContainsString('1/12 of the opening area', $this->sent[0]['text']['body']);
+    }
+
+    public function test_a_question_several_answers_fit_offers_them(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        $this->inbound(self::BOT, $this->text('level 2'))->assertOk();
+
+        $this->assertSame('list', $this->sent[0]['interactive']['type']);
+        $ids = collect($this->sent[0]['interactive']['action']['sections'])
+            ->flatMap(fn ($s) => $s['rows'])->pluck('id')->all();
+        $this->assertContains($this->entry('When a Level 2 is needed'), $ids);
+        $this->assertContains($this->entry('What a Level 2 covers'), $ids);
+    }
+
+    public function test_typing_the_name_of_a_staff_answer_does_not_reveal_it_to_a_stranger(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        $this->number($t, self::BOT);
+
+        // The search runs over what THIS sender may read, not over the Library.
+        $this->inbound(self::BOT, $this->text('finance options'), 'wamid.F1')->assertOk();
+        $this->assertStringNotContainsString('3.9%', json_encode($this->sent));
+
+        // The control: the same words from staff do find it.
+        $this->staff($t);
+        $this->sent = [];
+        $this->inbound(self::BOT, $this->text('finance options'), 'wamid.F2')->assertOk();
+        $this->assertStringContainsString('3.9%', $this->sent[0]['text']['body']);
     }
 
     public function test_the_replies_are_recorded_as_a_conversation(): void

@@ -34,6 +34,11 @@ use Illuminate\Support\Collection;
  */
 final class AssistantBrain
 {
+    /** Words that carry no meaning in a question. */
+    private const STOPWORDS = ['the', 'and', 'for', 'how', 'what', 'when', 'where', 'which', 'who', 'why',
+        'does', 'need', 'needed', 'with', 'you', 'your', 'our', 'are', 'can', 'this', 'that', 'there', 'about',
+        'have', 'has', 'from', 'into', 'many', 'much', 'should', 'would', 'could', 'tell', 'show', 'please'];
+
     public function __construct(private readonly SettingsResolver $settings) {}
 
     /** @return Collection<int, AssistantEntry> in menu order */
@@ -68,6 +73,60 @@ final class AssistantBrain
     public function entry(?User $viewer, string $id): ?AssistantEntry
     {
         return $this->entries($viewer)->firstWhere('id', $id);
+    }
+
+    /**
+     * The answers a typed question is about, best first. Empty when none is.
+     *
+     * No AI - Jose, 2026-09-25: "build free for now". Words are matched as the
+     * start of a word ("inspect" finds "inspection"), a hit in the title counts
+     * most, and only answers this viewer may read are searched, so a stranger
+     * typing "finance" is not handed what the company pays each lender.
+     *
+     * ponytail: keyword scoring, no synonyms or typos ("flu" misses "flue").
+     * An AI reading the same Library is the upgrade, if this falls short.
+     *
+     * @return Collection<int, AssistantEntry>
+     */
+    public function search(?User $viewer, string $query): Collection
+    {
+        preg_match_all('/[\p{L}\p{N}]+/u', mb_strtolower($query), $m);
+        $words = array_values(array_unique(array_filter(
+            $m[0],
+            fn (string $w) => (ctype_digit($w) || mb_strlen($w) >= 3) && ! in_array($w, self::STOPWORDS, true),
+        )));
+        $entries = $this->entries($viewer);
+
+        if ($words === [] || $entries->isEmpty()) {
+            return collect();
+        }
+
+        $hits = fn (string $word, ?string $text) => (int) preg_match_all('/\b'.preg_quote($word, '/').'/iu', (string) $text);
+
+        // A word in most answers - "chimney" - says nothing about which one is
+        // meant, and would otherwise match every answer a little.
+        if ($entries->count() >= 4) {
+            $words = array_filter($words, fn (string $w) => $entries->filter(
+                fn (AssistantEntry $e) => $hits($w, "{$e->section} {$e->title} {$e->description} {$e->body}") > 0,
+            )->count() <= $entries->count() / 2);
+        }
+
+        $scored = $entries
+            ->map(fn (AssistantEntry $e) => [$e, array_sum(array_map(fn (string $w) => 5 * min(1, $hits($w, $e->title))
+                + 3 * min(1, $hits($w, $e->section))
+                + 3 * min(1, $hits($w, $e->description))
+                + min(3, $hits($w, $e->body)), $words))])
+            ->filter(fn (array $s) => $s[1] > 0)
+            ->sortByDesc(fn (array $s) => $s[1])
+            ->values();
+
+        // One answer when it clearly wins - twice the next one's score - so
+        // "flue size" is answered, and "level 2" offers the Level 2 answers.
+        if ($scored->count() > 1 && $scored[0][1] >= 2 * $scored[1][1]) {
+            $scored = $scored->take(1);
+        }
+
+        return $scored->map(fn (array $s) => $s[0]);
     }
 
     public function name(Organization $organization): string
