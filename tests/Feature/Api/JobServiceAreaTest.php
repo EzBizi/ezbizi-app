@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Customer;
 use App\Models\Franchise;
+use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Jobs\JobServiceArea;
@@ -141,6 +143,85 @@ class JobServiceAreaTest extends TestCase
             'The stale copy says New York, and it must not be believed.');
     }
 
+    // ── The job API: shown, chosen by a person, filtered on ─────────
+
+    public function test_a_job_shows_its_area_and_its_franchises_choices(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $this->area($alpha, $ct, 'Bridgeport', []);
+        $this->area($alpha, $ny, 'New York', ['10001']);
+        $job = $this->aJob($alpha, $ct, $connecticut->id);
+
+        $this->signedInAs($alpha['admin'])->getJson("/api/v1/jobs/{$job}")
+            ->assertOk()
+            ->assertJsonPath('data.service_area', ['id' => $connecticut->id, 'name' => 'Connecticut'])
+            ->assertJsonPath('data.allowed_service_areas.*.name', ['Bridgeport', 'Connecticut']);
+    }
+
+    public function test_a_person_can_choose_the_area_and_clear_it(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $hartford = $this->area($alpha, $ct, 'Hartford', ['06101']);
+        $job = $this->aJob($alpha, $ct);
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$job}", ['service_area_id' => $hartford->id])
+            ->assertOk()->assertJsonPath('data.service_area.name', 'Hartford');
+        $this->assertSame($hartford->id, $this->areaOf($alpha, $job));
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$job}", ['service_area_id' => null])
+            ->assertOk()->assertJsonPath('data.service_area', null);
+        $this->assertNull($this->areaOf($alpha, $job));
+    }
+
+    /** The resolver's rule, applied to a person's choice, on edit and on create. */
+    public function test_an_area_of_another_franchise_is_refused(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();
+        $newYork = $this->area($alpha, $ny, 'New York', ['10001']);
+        $job = $this->aJob($alpha, $ct);
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$job}", ['service_area_id' => $newYork->id])
+            ->assertStatus(422)->assertJsonValidationErrors(['service_area_id' => 'not one of this franchise']);
+        $this->assertNull($this->areaOf($alpha, $job));
+
+        $this->signedInAs($alpha['admin'])->postJson('/api/v1/jobs', [
+            'franchise_id' => $ct->id, 'customer_id' => $this->aCustomer($alpha, $ct),
+            'title' => 'Sweep', 'status' => 'scheduled', 'service_area_id' => $newYork->id,
+        ])->assertStatus(422)->assertJsonValidationErrors(['service_area_id' => 'not one of this franchise']);
+    }
+
+    /** The same sentence as a wrong franchise's, so it cannot tell a caller the id is real elsewhere. */
+    public function test_another_organizations_area_gets_the_same_answer(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $beta = $this->provisionTenant('Beta');
+        $theirs = $this->area($beta, $beta['franchise'], 'Connecticut', ['06457']);
+        $job = $this->aJob($alpha, $ct);
+
+        $this->signedInAs($alpha['admin'])->patchJson("/api/v1/jobs/{$job}", ['service_area_id' => $theirs->id])
+            ->assertStatus(422)->assertJsonValidationErrors(['service_area_id' => 'not one of this franchise']);
+    }
+
+    public function test_the_list_filters_by_area(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $hartford = $this->area($alpha, $ct, 'Hartford', ['06101']);
+        $inConnecticut = $this->aJob($alpha, $ct, $connecticut->id);
+        $this->aJob($alpha, $ct, $hartford->id);
+        $this->aJob($alpha, $ct);
+
+        $rows = $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs?service_area_id={$connecticut->id}")->assertOk()->json('data');
+
+        $this->assertSame([$inConnecticut], array_column($rows, 'id'));
+        $this->assertSame('Connecticut', $rows[0]['service_area']['name']);
+        $this->assertCount(3, $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs')->json('data'),
+            'The control: unfiltered, all three are listed.');
+    }
+
     /** @return array{0: array, 1: Franchise, 2: Franchise} */
     private function world(): array
     {
@@ -184,5 +265,33 @@ class JobServiceAreaTest extends TestCase
     {
         return $this->inTenant($tenant['org'],
             fn () => JobServiceArea::resolve($franchise, $name, $zip));
+    }
+
+    private function aCustomer(array $tenant, Franchise $franchise): string
+    {
+        return $this->inTenant($tenant['org'], fn () => Customer::create([
+            'owning_franchise_id' => $franchise->id,
+            'number'              => 'C-'.bin2hex(random_bytes(3)),
+            'name'                => 'A Customer',
+        ])->id);
+    }
+
+    private function aJob(array $tenant, Franchise $franchise, ?string $areaId = null): string
+    {
+        $customer = $this->aCustomer($tenant, $franchise);
+
+        return $this->inTenant($tenant['org'], fn () => Job::create([
+            'franchise_id'    => $franchise->id,
+            'customer_id'     => $customer,
+            'service_area_id' => $areaId,
+            'number'          => 'J-'.bin2hex(random_bytes(3)),
+            'title'           => 'A job',
+            'status'          => 'scheduled',
+        ])->id);
+    }
+
+    private function areaOf(array $tenant, string $jobId): ?string
+    {
+        return $this->inTenant($tenant['org'], fn () => Job::query()->findOrFail($jobId)->service_area_id);
     }
 }
