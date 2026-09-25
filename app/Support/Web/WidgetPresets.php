@@ -79,6 +79,8 @@ final class WidgetPresets
         'services',
         'reviews',
         'before_after',
+        // The page's own title, as a widget with options (Toula, 01a0d8e6-424e).
+        'post_title',
         'faq',
     ];
 
@@ -159,8 +161,9 @@ final class WidgetPresets
     private const PARTS = [
         'social_links' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text'],
         'city_list' => ['box' => 'box', 'heading' => 'text', 'group' => 'box', 'link' => 'text', 'count' => 'text', 'search' => 'button', 'arrow' => 'icon', 'bullet' => 'icon'],
-        'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
-        'google_map' => ['box' => 'box'],
+        'hours_table' => ['box' => 'box', 'title' => 'text', 'day' => 'text', 'time' => 'text', 'closed' => 'text', 'badge' => 'button'],
+        'google_map' => ['box' => 'box', 'button' => 'button', 'address' => 'text'],
+        'post_title' => ['title' => 'text'],
         'contact_info' => ['box' => 'box', 'item' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text', 'day' => 'text', 'time' => 'text'],
         'cta' => ['box' => 'box', 'button' => 'button', 'icon' => 'icon'],
         'phone_box' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'number' => 'text'],
@@ -358,10 +361,29 @@ final class WidgetPresets
             'hours_table' => [
                 'today' => true,
                 'compact' => false,
+                // Toula's Opening Hours list (01a0d8e6-0598).
+                'layout' => 'table',
+                'title' => '',
+                'show_closed' => true,
+                'closed_text' => 'Closed',
+                'clock' => '12',
+                'days' => 'short',
+                'status' => false,
+                'open_text' => 'Open now',
+                'shut_text' => 'Closed now',
+                'dividers' => false,
+                'divider_color' => '',
             ],
             'google_map' => [
                 'height' => 320,
                 'zoom' => 14,
+                // Toula's Map list (01a0d8e6-e13a).
+                'map_type' => 'roadmap',
+                'grayscale' => false,
+                'height_mobile' => 0,
+                'directions' => false,
+                'directions_text' => 'Get directions',
+                'address' => false,
             ],
             /*
              * The block in every footer on all three A1 sites: an icon, a
@@ -464,6 +486,12 @@ final class WidgetPresets
                 'icon' => true,
                 'link' => true,
                 'label' => '',
+                // Toula's Phone list (01a0d8e6-a9ce): which number, what a tap
+                // does, where the icon sits, and how the number is written.
+                'which' => 'primary',
+                'link_type' => 'call',
+                'icon_position' => 'left',
+                'format' => 'as_entered',
             ],
             /*
              * A1 Tools' smiley widget: a happy face sends somebody to the
@@ -556,6 +584,15 @@ final class WidgetPresets
                 'after_label' => 'After',
                 'handle_color' => '',
             ],
+            'post_title' => [
+                // `none` prints the words alone, as it always has, so a title
+                // sitting inside a heading is not wrapped in a second one.
+                'tag' => 'none',
+                'format' => 'title',
+                'prefix' => '',
+                'suffix' => '',
+                'fallback' => '',
+            ],
             'faq' => [
                 'category' => '',
                 'show_category' => false,
@@ -595,6 +632,22 @@ final class WidgetPresets
         ],
         'phone_box' => [
             'size' => ['small', 'medium', 'large'],
+            'which' => ['primary', 'secondary'],
+            'link_type' => ['call', 'sms', 'whatsapp'],
+            'icon_position' => ['left', 'right', 'top'],
+            'format' => ['as_entered', 'dashes', 'dots', 'parentheses'],
+        ],
+        'hours_table' => [
+            'layout' => ['table', 'stack', 'inline'],
+            'clock' => ['12', '24'],
+            'days' => ['short', 'long'],
+        ],
+        'google_map' => [
+            'map_type' => ['roadmap', 'satellite', 'hybrid', 'terrain'],
+        ],
+        'post_title' => [
+            'tag' => ['none', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'],
+            'format' => ['title', 'city', 'city_state', 'address'],
         ],
         'review_faces' => [
             'tone' => ['light', 'dark'],
@@ -633,6 +686,9 @@ final class WidgetPresets
         'services' => ['category' => 60, 'button_text' => 40],
         'before_after' => ['category' => 60, 'before_label' => 30, 'after_label' => 30],
         'faq' => ['category' => 60],
+        'hours_table' => ['title' => 80, 'closed_text' => 30, 'open_text' => 30, 'shut_text' => 30],
+        'google_map' => ['directions_text' => 40],
+        'post_title' => ['prefix' => 80, 'suffix' => 80, 'fallback' => 120],
         'social_links' => ['networks' => 300],
         'contact_info' => [
             'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
@@ -650,7 +706,7 @@ final class WidgetPresets
     private const RANGES = [
         'social_links' => ['size' => [16, 64], 'gap' => [0, 40]],
         'city_list' => ['columns' => [1, 6], 'column_gap' => [0, 80]],
-        'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
+        'google_map' => ['height' => [120, 900], 'zoom' => [1, 20], 'height_mobile' => [0, 900]],
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
@@ -668,6 +724,7 @@ final class WidgetPresets
         'contact_info' => ['divider_color'],
         'reviews' => ['star_color'],
         'before_after' => ['handle_color'],
+        'hours_table' => ['divider_color'],
     ];
 
     /**

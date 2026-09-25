@@ -338,7 +338,7 @@ class EzBizi_Elementor_City_List extends EzBizi_Elementor_Preset_Widget {
  * that resolved to nothing would be a box somebody fills in and then wonders
  * about, so it gets the notice instead.
  */
-class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
+class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Preset_Widget {
     public function get_name() {
         return 'ezbizi-post-title';
     }
@@ -355,31 +355,9 @@ class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
         return array_merge(parent::get_keywords(), array('title', 'page title', 'heading'));
     }
 
-    protected function register_controls() {
-        $this->start_controls_section('ezbizi_where', array(
-            'label' => esc_html__('EzBizi', 'ezbizi'),
-        ));
-
-        $this->add_control('ezbizi_notice', array(
-            'type' => \Elementor\Controls_Manager::RAW_HTML,
-            'raw' => esc_html__(
-                'Shows the title of the page it is placed on, so one template can head every town page with its own name. There is nothing to configure.',
-                'ezbizi'
-            ),
-            'content_classes' => 'elementor-descriptor',
-        ));
-
-        $this->end_controls_section();
-    }
-
-    protected function render() {
-        if (ezbizi_in_elementor_editor()) {
-            echo ezbizi_elementor_placeholder(esc_html__('EzBizi Page Title', 'ezbizi'));
-
-            return;
-        }
-
-        echo ezbizi_post_title_shortcode(array());
+    /** The page's own title (or its town), with a preset for the tag and look. */
+    protected function ezbizi_draw($atts) {
+        return ezbizi_post_title_shortcode($atts);
     }
 }
 

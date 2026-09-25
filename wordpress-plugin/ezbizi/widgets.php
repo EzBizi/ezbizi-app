@@ -717,19 +717,38 @@ function ezbizi_google_map_shortcode($atts) {
         );
 
     if ($latitude !== '' && $longitude !== '') {
+        $types = array('roadmap' => 'm', 'satellite' => 'k', 'hybrid' => 'h', 'terrain' => 'p');
+        $type = isset($preset['map_type'], $types[$preset['map_type']]) ? $types[$preset['map_type']] : 'm';
         $src = 'https://maps.google.com/maps?q=' . rawurlencode($latitude) . ',' . rawurlencode($longitude)
-            . '&z=' . (int) $preset['zoom'] . '&output=embed';
+            . '&z=' . (int) $preset['zoom'] . '&t=' . $type . '&output=embed';
 
         $id = ezbizi_widget_id('ezbizi-map');
+        $mobile = isset($preset['height_mobile']) ? (int) $preset['height_mobile'] : 0;
+        $extra = '<style>#' . $id . '{display:block;width:100%;height:' . (int) $preset['height'] . 'px;border:0'
+            . (! empty($preset['grayscale']) ? ';filter:grayscale(1)' : '') . '}'
+            . ($mobile > 0 ? '@media (max-width:767px){#' . $id . '{height:' . $mobile . 'px}}' : '') . '</style>';
 
-        return ezbizi_style_css('google_map', $id, $preset, array('box' => ''))
+        $out = ezbizi_style_css('google_map', $id, $preset, array('box' => '')) . $extra
             . '<iframe class="ezbizi-map" id="' . esc_attr($id) . '" src="' . esc_url($src) . '"'
-            // Named, because an unnamed iframe is announced as "frame" and a
-            // visitor using a screen reader has no way to know what it holds.
             . ' title="' . esc_attr($title) . '"'
-            . ' style="display:block;width:100%;height:' . (int) $preset['height'] . 'px;border:0"'
-            // A map below the fold must not cost the page its load time.
             . ' loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>';
+
+        if (! empty($preset['address']) && ezbizi_value('address') !== '') {
+            $out .= '<p class="ezbizi-map-address" id="' . esc_attr($id) . '-a">' . esc_html(ezbizi_value('address')) . '</p>';
+        }
+
+        if (! empty($preset['directions'])) {
+            $to = ezbizi_value('maps_url') !== '' ? ezbizi_value('maps_url') : 'https://www.google.com/maps/dir/?api=1&destination=' . rawurlencode($latitude . ',' . $longitude);
+            $bid = $id . '-d';
+            $palette = ezbizi_widget_palette();
+            $out .= '<style>#' . $bid . '{display:inline-block;margin-top:10px;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:700;background:'
+                . esc_attr(ezbizi_widget_text($palette, 'accent', '#0b5cad')) . ';color:' . esc_attr(ezbizi_widget_text($palette, 'on_accent', '#ffffff')) . '}</style>'
+                . '<a class="ezbizi-map-directions" id="' . esc_attr($bid) . '" href="' . esc_url($to) . '" target="_blank" rel="noopener noreferrer">'
+                . esc_html(isset($preset['directions_text']) && $preset['directions_text'] !== '' ? $preset['directions_text'] : __('Get directions', 'ezbizi')) . '</a>'
+                . ezbizi_style_css('google_map', $bid, $preset, array('button' => ''));
+        }
+
+        return $out;
     }
 
     $listing = esc_url(ezbizi_value('maps_url'));
@@ -739,11 +758,6 @@ function ezbizi_google_map_shortcode($atts) {
             . ' target="_blank" rel="noopener noreferrer">' . esc_html($title) . '</a>';
     }
 
-    /*
-     * Nothing, not a message. A site that has filled in neither the
-     * coordinates nor the listing is mid-setup, and an empty space is a better
-     * thing for a visitor to meet than a box explaining our data model.
-     */
     return '';
 }
 
@@ -758,29 +772,44 @@ function ezbizi_google_map_shortcode($atts) {
  * already knows that EzBizi does not.
  */
 function ezbizi_post_title_shortcode($atts) {
-    /*
-     * A widget area, a footer, a 404 and an archive all render with no post in
-     * scope, and `get_the_title()` with nothing to read answers with the title
-     * of whatever was last set up — which is how a footer ends up captioned
-     * with an unrelated page. Asking for the id first is what makes "there is
-     * no post here" an answer rather than a wrong one.
-     */
+    $p = ezbizi_preset('post_title', $atts);
     $id = function_exists('get_the_ID') ? get_the_ID() : 0;
+    $format = isset($p['format']) ? (string) $p['format'] : 'title';
 
-    if (! $id) {
+    // The page's own title, or the place it is about (Toula's "city/state/
+    // address title formats"), which a location page carries as its values.
+    if ($format === 'city') {
+        $title = ezbizi_value('city');
+    } elseif ($format === 'city_state') {
+        $title = trim(ezbizi_value('city') . (ezbizi_value('state') !== '' ? ', ' . ezbizi_value('state') : ''), ', ');
+    } elseif ($format === 'address') {
+        $title = ezbizi_value('address');
+    } else {
+        $title = $id ? html_entity_decode((string) get_the_title($id), ENT_QUOTES, 'UTF-8') : '';
+    }
+
+    if ($title === '') {
+        $title = isset($p['fallback']) ? (string) $p['fallback'] : '';
+    }
+
+    if ($title === '') {
         return '';
     }
 
-    /*
-     * Decoded, then escaped. A title has already been through `the_title`, so
-     * it arrives as HTML: "Sweeps &amp; Repairs" and a curly apostrophe as
-     * `&#8217;`. Escaping that directly would print the entities on the page,
-     * which is the visible bug; decoding first and escaping after prints the
-     * characters and still leaves nothing a browser will execute.
-     */
-    $title = html_entity_decode((string) get_the_title($id), ENT_QUOTES, 'UTF-8');
+    $text = esc_html((isset($p['prefix']) ? (string) $p['prefix'] : '') . $title . (isset($p['suffix']) ? (string) $p['suffix'] : ''));
+    $tag = isset($p['tag']) && in_array($p['tag'], array('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'), true) ? $p['tag'] : 'none';
+    $wid = ezbizi_widget_id('ezbizi-title');
+    $css = ezbizi_style_css('post_title', $wid, $p, array('title' => ''));
 
-    return esc_html($title);
+    // Bare words unless a tag or a style asks for an element: this sits inside
+    // headings on live pages, and wrapping it would nest one in another.
+    if ($tag === 'none' && $css === '') {
+        return $text;
+    }
+
+    $tag = $tag === 'none' ? 'span' : $tag;
+
+    return $css . '<' . $tag . ' class="ezbizi-title" id="' . esc_attr($wid) . '">' . $text . '</' . $tag . '>';
 }
 
 // ── Hours table ─────────────────────────────────────────────────────
@@ -811,35 +840,83 @@ function ezbizi_hours_table_shortcode($atts) {
 
     $today = ! empty($preset['today']) ? ezbizi_today() : '';
     $compact = ! empty($preset['compact']);
+    $layout = isset($preset['layout']) ? (string) $preset['layout'] : 'table';
+    $long = isset($preset['days']) && $preset['days'] === 'long';
+    $h24 = isset($preset['clock']) && $preset['clock'] === '24';
+    $closed_text = isset($preset['closed_text']) && $preset['closed_text'] !== '' ? (string) $preset['closed_text'] : __('Closed', 'ezbizi');
+    $names = array('Mon' => 'Monday', 'Tue' => 'Tuesday', 'Wed' => 'Wednesday', 'Thu' => 'Thursday', 'Fri' => 'Friday', 'Sat' => 'Saturday', 'Sun' => 'Sunday');
+    $clock = function ($hhmm) use ($h24) {
+        return $h24 && preg_match('/^([0-9]{1,2}):([0-9]{2})$/', $hhmm, $m) ? sprintf('%02d:%s', (int) $m[1], $m[2]) : ezbizi_clock($hhmm);
+    };
     $id = ezbizi_widget_id('ezbizi-hours');
-
     $out = ezbizi_hours_style($id, $compact);
-    $out .= '<table class="ezbizi-hours" id="' . esc_attr($id) . '"><tbody>';
+
+    if (! empty($preset['dividers'])) {
+        $divider = isset($preset['divider_color']) && preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $preset['divider_color']) ? (string) $preset['divider_color'] : 'rgba(127,127,127,.35)';
+        $out .= '<style>#' . $id . ' .ezbizi-hours-row + .ezbizi-hours-row > *{border-top:1px solid ' . $divider . '}</style>';
+    }
+
+    if ($layout !== 'table') {
+        $out .= '<style>#' . $id . '.ezbizi-hours-list{display:flex;flex-direction:' . ($layout === 'inline' ? 'row;flex-wrap:wrap;gap:6px 18px' : 'column;gap:4px') . '}'
+            . '#' . $id . ' .ezbizi-hours-row{display:flex;gap:10px}</style>';
+    }
+
+    $rows = '';
 
     foreach ($week as $day) {
         if (! is_array($day) || ! isset($day['day'])) {
             continue;
         }
 
-        $name = (string) $day['day'];
-        $is_today = $today !== '' && $today === $name;
+        $closed = ! empty($day['closed']);
 
-        $hours = ! empty($day['closed'])
-            ? esc_html__('Closed', 'ezbizi')
-            : esc_html(
-                ezbizi_clock(isset($day['open']) ? (string) $day['open'] : '')
-                . ' – '
-                . ezbizi_clock(isset($day['close']) ? (string) $day['close'] : '')
-            );
+        if ($closed && isset($preset['show_closed']) && empty($preset['show_closed'])) {
+            continue;
+        }
 
-        $out .= '<tr' . ($is_today ? ' class="ezbizi-hours-today" aria-current="true"' : '') . '>'
-            . '<th scope="row">' . esc_html($name) . '</th>'
-            . (! empty($day['closed']) ? '<td class="ezbizi-hours-closed">' : '<td>') . $hours . '</td>'
-            . '</tr>';
+        $short = (string) $day['day'];
+        $name = $long && isset($names[$short]) ? $names[$short] : $short;
+        $class = 'ezbizi-hours-row' . ($today !== '' && $today === $short ? ' ezbizi-hours-today' : '');
+        $hours = $closed ? esc_html($closed_text) : esc_html(
+            $clock(isset($day['open']) ? (string) $day['open'] : '') . ' – ' . $clock(isset($day['close']) ? (string) $day['close'] : '')
+        );
+
+        $rows .= $layout === 'table'
+            ? '<tr class="' . $class . '"' . (strpos($class, 'today') ? ' aria-current="true"' : '') . '><th scope="row">' . esc_html($name) . '</th>'
+                . ($closed ? '<td class="ezbizi-hours-closed">' : '<td>') . $hours . '</td></tr>'
+            : '<div class="' . $class . '"><span class="ezbizi-hours-day">' . esc_html($name) . '</span> '
+                . '<span class="ezbizi-hours-time' . ($closed ? ' ezbizi-hours-closed' : '') . '">' . $hours . '</span></div>';
     }
 
-    return $out . '</tbody></table>' . ezbizi_style_css('hours_table', $id, $preset, array(
-        'box' => '', 'day' => ' th', 'time' => ' td', 'closed' => ' td.ezbizi-hours-closed',
+    $title = isset($preset['title']) ? trim((string) $preset['title']) : '';
+    $badge = '';
+
+    // Open or closed NOW, worked out in the visitor's browser in the site's
+    // own zone — a page cache would freeze an answer worked out here.
+    if (! empty($preset['status'])) {
+        $bid = $id . '-now';
+        $badge = '<span class="ezbizi-hours-badge" id="' . esc_attr($bid) . '" hidden></span>'
+            . "<script>(function(){var b=document.getElementById(" . wp_json_encode($bid) . ");if(!b)return;
+var week=" . wp_json_encode(array_values($week)) . ",zone=" . wp_json_encode(ezbizi_value('timezone')) . ";
+try{var p=new Intl.DateTimeFormat('en-US',{timeZone:zone||undefined,weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()),o={};
+p.forEach(function(x){o[x.type]=x.value;});var now=(+o.hour%24)*60+(+o.minute),open=false;
+week.forEach(function(d){if(d.day===o.weekday&&!d.closed&&d.open&&d.close){var a=d.open.split(':'),c=d.close.split(':');open=now>=(+a[0]*60+ +a[1])&&now<(+c[0]*60+ +c[1]);}});
+b.textContent=open?" . wp_json_encode((string) (isset($preset['open_text']) ? $preset['open_text'] : 'Open now')) . ":" . wp_json_encode((string) (isset($preset['shut_text']) ? $preset['shut_text'] : 'Closed now')) . ";b.hidden=false;}catch(e){}})();</script>";
+    }
+
+    $head = ($title !== '' ? '<p class="ezbizi-hours-title"><strong>' . esc_html($title) . '</strong></p>' : '') . $badge;
+    // The title and badge sit beside the table, so they are styled from a
+    // wrapper of their own rather than from inside it.
+    $head = $head === '' ? '' : '<div class="ezbizi-hours-head" id="' . esc_attr($id) . '-h">' . $head . '</div>'
+        . ezbizi_style_css('hours_table', $id . '-h', $preset, array('title' => ' .ezbizi-hours-title', 'badge' => ' .ezbizi-hours-badge'));
+
+    $out .= $layout === 'table'
+        ? $head . '<table class="ezbizi-hours" id="' . esc_attr($id) . '"><tbody>' . $rows . '</tbody></table>'
+        : $head . '<div class="ezbizi-hours ezbizi-hours-list" id="' . esc_attr($id) . '">' . $rows . '</div>';
+
+    return $out . ezbizi_style_css('hours_table', $id, $preset, array(
+        'box' => '', 'day' => $layout === 'table' ? ' th' : ' .ezbizi-hours-day',
+        'time' => $layout === 'table' ? ' td' : ' .ezbizi-hours-time', 'closed' => ' .ezbizi-hours-closed',
     ));
 }
 
@@ -1568,7 +1645,9 @@ function ezbizi_cta_style($id, $wide) {
  */
 function ezbizi_phone_box_shortcode($atts) {
     $preset = ezbizi_preset('phone_box', $atts);
-    $value = ezbizi_value('phone');
+    $which = isset($preset['which']) && $preset['which'] === 'secondary' ? 'phone_secondary' : 'phone';
+    // The second number when asked for, and the first when there is no second.
+    $value = ezbizi_value($which) !== '' ? ezbizi_value($which) : ezbizi_value('phone');
 
     if ($value === '') {
         return '';
@@ -1578,30 +1657,48 @@ function ezbizi_phone_box_shortcode($atts) {
     $icon = ! empty($preset['icon']);
     $link = ! empty($preset['link']);
     $label = isset($preset['label']) ? (string) $preset['label'] : '';
+    $position = isset($preset['icon_position']) ? (string) $preset['icon_position'] : 'left';
+    $digits = preg_replace('/\D/', '', $value);
+    $format = isset($preset['format']) ? (string) $preset['format'] : 'as_entered';
+
+    // Written the way somebody chose, for a US number; anything else as entered.
+    if ($format !== 'as_entered' && strlen($digits) === 10) {
+        $a = substr($digits, 0, 3);
+        $b = substr($digits, 3, 3);
+        $c = substr($digits, 6);
+        $shown = $format === 'dashes' ? "$a-$b-$c" : ($format === 'dots' ? "$a.$b.$c" : "($a) $b-$c");
+    } else {
+        $shown = $value;
+    }
+
+    $type = isset($preset['link_type']) ? (string) $preset['link_type'] : 'call';
+    $full = strlen($digits) === 10 ? '1' . $digits : $digits;
+    $href = $type === 'sms' ? 'sms:' . ezbizi_dial($value) : ($type === 'whatsapp' ? 'https://wa.me/' . $full : 'tel:' . ezbizi_dial($value));
 
     $id = ezbizi_widget_id('ezbizi-phone');
     $sizes = array('small' => '16px', 'medium' => '22px', 'large' => '30px');
     $font = isset($sizes[$size]) ? $sizes[$size] : $sizes['medium'];
 
-    $out = '<style>#' . $id . '{display:inline-flex;align-items:center;gap:10px}'
+    $out = '<style>#' . $id . '{display:inline-flex;align-items:center;gap:10px'
+        . ($position === 'right' ? ';flex-direction:row-reverse' : ($position === 'top' ? ';flex-direction:column' : '')) . '}'
         . '#' . $id . ' .ezbizi-phone-number{font-size:' . $font . ';font-weight:700;line-height:1.2}'
         . '#' . $id . ' a{color:inherit;text-decoration:none}'
         . '#' . $id . ' .ezbizi-phone-label{display:block;font-size:.8em;font-weight:400;opacity:.8}'
         . '</style>';
 
     $inner = ($label === '' ? '' : '<span class="ezbizi-phone-label">' . esc_html($label) . '</span>')
-        . '<span class="ezbizi-phone-number">' . esc_html($value) . '</span>';
+        . '<span class="ezbizi-phone-number">' . esc_html($shown) . '</span>';
 
     $out .= '<div class="ezbizi-phone-box" id="' . esc_attr($id) . '">';
 
     if ($icon) {
         $out .= '<span class="ezbizi-phone-icon" aria-hidden="true">'
-            . ezbizi_contact_icon('phone') . '</span>';
+            . ezbizi_contact_icon($type === 'whatsapp' ? 'chat' : 'phone') . '</span>';
     }
 
     $out .= '<div>';
     $out .= $link
-        ? '<a href="' . esc_url('tel:' . ezbizi_dial($value)) . '">' . $inner . '</a>'
+        ? '<a href="' . esc_url($href) . '"' . ($type === 'whatsapp' ? ' target="_blank" rel="noopener"' : '') . '>' . $inner . '</a>'
         : $inner;
 
     return $out . '</div></div>' . ezbizi_style_css('phone_box', $id, $preset, array(

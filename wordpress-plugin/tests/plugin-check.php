@@ -118,7 +118,8 @@ function sanitize_text_field($s) { return is_string($s) ? trim(strip_tags($s)) :
 function wp_unslash($s) { return is_string($s) ? stripslashes($s) : $s; }
 function esc_html($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
-function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) ? (string) $s : ''; }
+// WordPress lets tel:, sms: and mailto: through esc_url; so does this.
+function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) || preg_match('/^(tel|sms|mailto):[^\s"<>]+$/i', (string) $s) ? (string) $s : ''; }
 function esc_url_raw($s) { return (string) $s; }
 function register_setting($g, $n, $a = []) { $GLOBALS['settings'][$n] = $a; }
 function add_filter($hook, $cb, $p = 10, $a = 1) { $GLOBALS['filters'][$hook][] = $cb; }
@@ -1273,6 +1274,27 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'count' => ['type' => 'bool'],
                     'show_state' => ['type' => 'bool'],
                 ],
+                'phone_box' => [
+                    'which' => ['type' => 'choice', 'choices' => ['primary', 'secondary']],
+                    'format' => ['type' => 'choice', 'choices' => ['as_entered', 'dashes', 'dots', 'parentheses']],
+                    'link_type' => ['type' => 'choice', 'choices' => ['call', 'sms', 'whatsapp']],
+                    'link' => ['type' => 'bool'],
+                ],
+                'google_map' => [
+                    'map_type' => ['type' => 'choice', 'choices' => ['roadmap', 'satellite', 'hybrid', 'terrain']],
+                    'directions' => ['type' => 'bool'],
+                ],
+                'post_title' => [
+                    'tag' => ['type' => 'choice', 'choices' => ['none', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div']],
+                    'format' => ['type' => 'choice', 'choices' => ['title', 'city', 'city_state', 'address']],
+                ],
+                'hours_table' => [
+                    'layout' => ['type' => 'choice', 'choices' => ['table', 'stack', 'inline']],
+                    'days' => ['type' => 'choice', 'choices' => ['short', 'long']],
+                    'clock' => ['type' => 'choice', 'choices' => ['12', '24']],
+                    'status' => ['type' => 'bool'],
+                    'show_closed' => ['type' => 'bool'],
+                ],
                 'contact_info' => [
                     'hours' => ['type' => 'bool'],
                     'secondary' => ['type' => 'bool'],
@@ -2010,6 +2032,23 @@ $moving = $cta(['animation' => 'pulse']);
 check('an animation runs', str_contains($moving, '@keyframes ezbizi-pulse-'), true);
 check('except for a visitor who asked for less motion', str_contains($moving, 'prefers-reduced-motion'), true);
 check('a bar on phones', str_contains($cta(['mobile' => 'bar']), 'position:fixed'), true);
+
+echo PHP_EOL . "Phone, hours, map and page title take Toula's options" . PHP_EOL;
+reset_site();
+serve_preset_payload(['phone' => '8889844344', 'phone_secondary' => '(888) 111-2222', 'latitude' => '40.7', 'longitude' => '-74.1', 'city' => 'Newark', 'state' => 'NJ', 'timezone' => 'America/New_York']);
+$sc = $GLOBALS['sc'];
+check('the second number when asked', str_contains($sc['ezbizi_phone_box'](['which' => 'secondary']), '111-2222'), true);
+check('written with parentheses', str_contains($sc['ezbizi_phone_box'](['format' => 'parentheses']), '(888) 984-4344'), true);
+check('a tap can text instead', str_contains($sc['ezbizi_phone_box'](['link' => 'yes', 'link_type' => 'sms']), 'href="sms:'), true);
+check('a satellite map', str_contains($sc['ezbizi_google_map'](['map_type' => 'satellite']), '&amp;t=k') || str_contains($sc['ezbizi_google_map'](['map_type' => 'satellite']), '&t=k'), true);
+check('a way there under the map', str_contains($sc['ezbizi_google_map'](['directions' => 'yes']), 'ezbizi-map-directions'), true);
+check('the title as a heading', str_contains($sc['ezbizi_post_title'](['tag' => 'h2', 'format' => 'city_state']), '>Newark, NJ</h2>'), true);
+check('and bare words by default', str_contains($sc['ezbizi_post_title'](['format' => 'city']), '<'), false);
+$week = $sc['ezbizi_hours_table'](['layout' => 'stack', 'days' => 'long', 'clock' => '24', 'status' => 'yes', 'show_closed' => 'no']);
+check('hours as a stack', str_contains($week, 'ezbizi-hours-list'), true);
+check('days in full', str_contains($week, 'Monday'), true);
+check('a 24-hour clock', (bool) preg_match('/\b\d{2}:\d{2} – \d{2}:\d{2}\b/u', $week), true);
+check('an open-now badge worked out in the browser', str_contains($week, 'ezbizi-hours-badge'), true);
 
 echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
 reset_site();

@@ -2356,6 +2356,7 @@ const Map<String, IconData> _renderedIcons = {
   'reviews': Icons.reviews_outlined,
   'before_after': Icons.compare_outlined,
   'faq': Icons.quiz_outlined,
+  'post_title': Icons.title,
 };
 
 /// A widget as a card: what it is, what it is set to, and a way in.
@@ -2512,6 +2513,17 @@ const List<_Rendered> _renderedCatalogue = [
     [
       _Flag('today', 'Mark today’s row', true),
       _Flag('compact', 'Collapse days that share hours', false),
+      _Choice('layout', 'Arrangement', ['table', 'stack', 'inline']),
+      _Text('title', 'Title above', max: 80),
+      _Flag('show_closed', 'Show closed days', true),
+      _Text('closed_text', 'A closed day says', max: 30),
+      _Choice('clock', 'Clock', ['12', '24']),
+      _Choice('days', 'Day names', ['short', 'long']),
+      _Flag('status', 'Say whether it is open right now', false),
+      _Text('open_text', 'When open', max: 30),
+      _Text('shut_text', 'When closed', max: 30),
+      _Flag('dividers', 'Lines between days', false),
+      _Colour('divider_color', 'Line colour'),
     ],
   ),
   /*
@@ -2585,6 +2597,10 @@ const List<_Rendered> _renderedCatalogue = [
       _Text('label', 'Line above it', hint: 'Optional.', max: 60),
       _Flag('icon', 'Show an icon', true),
       _Flag('link', 'Tapping it dials', true),
+      _Choice('which', 'Which number', ['primary', 'secondary']),
+      _Choice('link_type', 'A tap', ['call', 'sms', 'whatsapp']),
+      _Choice('icon_position', 'Icon', ['left', 'right', 'top']),
+      _Choice('format', 'Written as', ['as_entered', 'dashes', 'dots', 'parentheses']),
     ],
   ),
   _Rendered(
@@ -2713,7 +2729,25 @@ const List<_Rendered> _renderedCatalogue = [
     'Where the business is.',
     [
       _Number('height', 'Height', 120, 900, 320, step: 10, suffix: 'px'),
+      _Number('height_mobile', 'Height on phones (0 = same)', 0, 900, 0, step: 10, suffix: 'px'),
       _Number('zoom', 'Zoom', 1, 20, 14),
+      _Choice('map_type', 'Map type', ['roadmap', 'satellite', 'hybrid', 'terrain']),
+      _Flag('grayscale', 'Grey', false),
+      _Flag('address', 'Address under the map', false),
+      _Flag('directions', 'Directions button', false),
+      _Text('directions_text', 'Directions wording', max: 40),
+    ],
+  ),
+  _Rendered(
+    'post_title',
+    'Page title',
+    'The title of the page it sits on, or the town it is about.',
+    [
+      _Choice('tag', 'Drawn as', ['none', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div']),
+      _Choice('format', 'Shows', ['title', 'city', 'city_state', 'address']),
+      _Text('prefix', 'Words before', max: 80),
+      _Text('suffix', 'Words after', max: 80),
+      _Text('fallback', 'When there is nothing to show', max: 120),
     ],
   ),
 ];
