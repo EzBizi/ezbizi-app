@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
@@ -210,7 +211,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _locations = _rows(data['locations']);
       _board = (data['board'] as Map?)?.cast<String, dynamic>() ?? const {};
       _replyAvailable = data['reply_available'] == true &&
-          widget.session.me?.can('a1leads_gbp.view') == true;
+          widget.session.me?.can('a1leads_gbp.reply') == true;
       _replyBecause = data['reply_unavailable_because'] as String?;
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
@@ -446,6 +447,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         'Contact is empty because A1 Leads does not send customer phone or email to EzBizi yet.',
       if (!_replyAvailable && _replyBecause == 'not_switched_on')
         'Replying from EzBizi is not switched on yet.',
+      if (!_replyAvailable && _replyBecause == 'no_permission')
+        'Replying needs the A1Leads GBP Reply permission.',
       if (!_replyAvailable && _replyBecause == 'company_not_in_view')
         'Replying here needs A-1 Chimney as the company in view.',
     ];
@@ -776,6 +779,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                   ),
                 if (_placeOf(review).isNotEmpty)
                   Text(_placeOf(review), style: quiet, overflow: TextOverflow.ellipsis),
+                if (_jobLine(card).isNotEmpty)
+                  Text(_jobLine(card), style: quiet, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -886,6 +891,106 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  /// The customer's last job and who has the card, in one line.
+  static String _jobLine(Map<String, dynamic>? card) {
+    final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
+
+    return [
+      if (customer?['job_number'] != null) 'Job #${customer!['job_number']}',
+      if (customer?['job_date'] != null) '${customer!['job_date']}',
+      if (customer?['technician'] != null) 'Tech: ${customer!['technician']}',
+      if (card?['assignee'] != null) 'Assigned to ${card!['assignee']}',
+    ].join(' · ');
+  }
+
+  /// A-1's customer and job for this review, on the board card.
+  ///
+  /// Rodrigo's cutover checklist, row 5: "a compact expandable customer/job
+  /// history on the review card". Only the customer A1 Leads MATCHED - never
+  /// its candidates - with their last job, a link to it in Workiz, who has the
+  /// card, and the operator updates folded away. Nothing when the card has
+  /// none of it, which is most reviews.
+  Widget _customerContext(ThemeData theme, Map<String, dynamic> review) {
+    final card = (review['board'] as Map?)?.cast<String, dynamic>();
+    final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
+    final updates = ((card?['updates'] as List?) ?? const []).whereType<Map>().toList();
+    final job = _jobLine(card);
+    final url = customer?['workiz_url'] as String?;
+
+    if (customer == null && job.isEmpty && updates.isEmpty) return const SizedBox.shrink();
+
+    final quiet = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final who = [customer?['name'], customer?['phone'], customer?['address']]
+        .whereType<String>()
+        .join(' · ');
+
+    return Padding(
+      key: ValueKey('gbp-customer-${review['google_review_name']}'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (who.isNotEmpty)
+            Row(children: [
+              Icon(Icons.person_outline, size: 14, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 4),
+              Flexible(child: Text(who, style: theme.textTheme.bodySmall)),
+            ]),
+          if (job.isNotEmpty || url != null)
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                if (job.isNotEmpty) Text(job, style: quiet),
+                if (url != null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () =>
+                        unawaited(launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)),
+                    child: const Text('Open in Workiz'),
+                  ),
+              ],
+            ),
+          if (updates.isNotEmpty)
+            Theme(
+              // An ExpansionTile draws dividers above and below by default.
+              data: theme.copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                title: Text(
+                  updates.length == 1 ? '1 update' : '${updates.length} updates',
+                  style: theme.textTheme.labelMedium,
+                ),
+                children: [
+                  for (final u in updates)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text.rich(TextSpan(children: [
+                        TextSpan(
+                          text: [u['author'], if (u['at'] != null) _short(u['at'])]
+                              .whereType<String>()
+                              .join(' · '),
+                          style: quiet,
+                        ),
+                        const TextSpan(text: '\n'),
+                        TextSpan(text: '${u['body'] ?? ''}', style: theme.textTheme.bodySmall),
+                      ])),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -1006,6 +1111,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           ),
           _matchLine(theme, review),
           _boardLine(theme, review),
+          _customerContext(theme, review),
           if (_replyAvailable && reply.isEmpty && review['deleted_at'] == null &&
               _activeReplyName != review['google_review_name']) ...[
             const SizedBox(height: 8),

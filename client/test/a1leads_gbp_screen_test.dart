@@ -301,6 +301,37 @@ void main() {
     expect(find.textContaining('company in view'), findsNothing);
   });
 
+  /// Seeing the tab without the Reply permission says which permission.
+  testWidgets('a viewer without the reply permission is told so', (tester) async {
+    await _pump(tester, _handler(replyBecause: 'no_permission'));
+
+    expect(find.textContaining('needs the A1Leads GBP Reply permission'), findsOneWidget);
+    expect(find.textContaining('not switched on'), findsNothing);
+  });
+
+  /// The customer and job A1 Leads matched, on the card - Rodrigo's cutover
+  /// checklist, row 5. Board: who, the job, a Workiz link, and the updates
+  /// folded until opened. Table: the job line under the name.
+  testWidgets('a matched customer and their job are shown, updates folded', (tester) async {
+    await _pump(tester, _handler(total: 3, withCustomer: true));
+
+    expect(find.textContaining('Job #100077846 · 2026-09-01 · Tech: Amit · Assigned to Adeline'),
+        findsOneWidget, reason: 'the table carries the job line');
+
+    await _board(tester);
+    expect(find.textContaining('+15555550101'), findsOneWidget);
+    expect(find.text('Open in Workiz'), findsOneWidget);
+    expect(find.text('1 update'), findsOneWidget);
+    expect(find.textContaining('Called, left voicemail.'), findsNothing, reason: 'folded until opened');
+
+    await tester.tap(find.text('1 update'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Called, left voicemail.'), findsOneWidget);
+
+    // The control: a card with none of it draws none of it.
+    expect(find.byKey(const ValueKey('gbp-customer-accounts/a/locations/l/reviews/r-2')), findsNothing);
+  });
+
   /// A card that DOES carry a phone brings the Contact column back.
   ///
   /// The discriminating half of the test above: without it, a table that had
@@ -507,6 +538,7 @@ List<Map<String, Object?>> _reviews(
   int pageSize, {
   bool withPhone = false,
   bool boardDown = false,
+  bool withCustomer = false,
 }) {
   final all = <Map<String, Object?>>[
     {
@@ -558,6 +590,19 @@ List<Map<String, Object?>> _reviews(
     ((all[0]['board'] as Map)['contact'] as Map)['phone'] = '(404) 555-0100';
   }
 
+  if (withCustomer) {
+    (all[0]['board'] as Map)
+      ..['customer'] = {
+        'name': 'Dana M. Whitfield', 'phone': '+15555550101', 'address': '12 Elm St, Warren, MI',
+        'technician': 'Amit', 'job_number': '100077846', 'job_date': '2026-09-01',
+        'workiz_url': 'https://app.workiz.com/job/ABC123',
+      }
+      ..['assignee'] = 'Adeline'
+      ..['updates'] = [
+        {'author': 'Tiara', 'body': 'Called, left voicemail.', 'at': '2026-09-22T14:00:00Z'},
+      ];
+  }
+
   if (boardDown) {
     for (final r in all) {
       r['board'] = null;
@@ -582,6 +627,7 @@ MockClientHandler _handler({
   bool replyAvailable = false,
   String? replyBecause = 'company_not_in_view',
   bool replyGranted = false,
+  bool withCustomer = false,
   List<Uri>? seen,
   List<http.Request>? requests,
 }) {
@@ -599,9 +645,8 @@ MockClientHandler _handler({
           'role': {'id': 'role-1', 'name': 'Administrator'},
           'permissions': [
             'a1leads_gbp.view',
-            // Replying needs what reading needs (Jose, 2026-09-24); the
-            // flag now only varies what the SERVER says is available.
-            if (replyGranted) 'a1leads_gbp.view',
+            // Replying is its own permission (Jose, 2026-09-25).
+            if (replyGranted) 'a1leads_gbp.reply',
           ],
           'modules': [
             {
@@ -679,7 +724,7 @@ MockClientHandler _handler({
       return _json({
         'data': {
           'source': source,
-          'reviews': usable ? _reviews(total, offset, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
+          'reviews': usable ? _reviews(total, offset, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer) : <dynamic>[],
           'meta': {'total': total},
           'board': boardDown
               ? {'available': false, 'because': 'A1 Leads refused cards with HTTP 403.'}
@@ -695,7 +740,7 @@ MockClientHandler _handler({
           'reply_available': replyAvailable,
           'reply_unavailable_because': replyAvailable ? null : replyBecause,
           'summary': usable ? {'total': 13169} : null,
-          'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown) : <dynamic>[],
+          'reviews': usable ? _reviews(total, 0, pageSize, withPhone: withPhone, boardDown: boardDown, withCustomer: withCustomer) : <dynamic>[],
           'meta': {'total': total},
           'health': null,
           'locations': usable

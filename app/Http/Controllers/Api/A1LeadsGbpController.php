@@ -213,20 +213,18 @@ class A1LeadsGbpController extends Controller
         $name = trim((string) $request->input('googleReviewName', ''));
 
         /*
-         * WHO MAY REPLY: whoever may see the tab. Jose, 2026-09-24: "this is
-         * depending on roles y permissions, anyone with the view role should
-         * be able to." There is no separate reply grant - reading A-1's
-         * reviews and answering them are one permission, `a1leads_gbp.view`,
-         * given or withheld on the Roles screen - plus A-1 Chimney as the
-         * company in view, checked below.
+         * WHO MAY REPLY: whoever holds `a1leads_gbp.reply`. Seeing A-1's
+         * reviews does not include answering them in public - Jose, 2026-09-25,
+         * on Rodrigo's cutover checklist: "Separate Reply permission". (For one
+         * day, 24-25 September, the view permission covered replying.)
          *
          * Checked HERE rather than by route middleware so that a refusal can
          * be audited: Rodrigo's contract audits reply ATTEMPTS, and a
          * middleware refusal happens before any code of ours runs.
          */
-        if (! $request->user()?->hasPermission('a1leads_gbp.view')) {
+        if (! $request->user()?->hasPermission('a1leads_gbp.reply')) {
             return $this->refusedAttempt($name, $this->replyError(403, 'no_permission',
-                'Replying to A-1 Chimney\'s reviews needs the A1Leads GBP permission.'));
+                'Replying to A-1 Chimney\'s reviews needs the A1Leads GBP Reply permission.'));
         }
 
         if ($refusal = $this->replyScopeRefusal($request)) {
@@ -332,7 +330,7 @@ class A1LeadsGbpController extends Controller
         }
 
         $user = $request->user();
-        if ($user === null || ! $user->hasPermission('a1leads_gbp.view')
+        if ($user === null || ! $user->hasPermission('a1leads_gbp.reply')
             || ! $this->companyInView($user, $companyId)) {
             return $this->replyError(403, 'wrong_company_view', 'Switch to the A1 Chimney company to reply to its reviews.');
         }
@@ -359,7 +357,7 @@ class A1LeadsGbpController extends Controller
         if (! $this->replies->configured() || ! is_string($companyId) || $companyId === '') {
             return 'not_switched_on';
         }
-        if ($user === null || ! $user->hasPermission('a1leads_gbp.view')) {
+        if ($user === null || ! $user->hasPermission('a1leads_gbp.reply')) {
             return 'no_permission';
         }
         if (! $this->companyInView($user, $companyId)) {
