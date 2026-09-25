@@ -182,6 +182,17 @@ class ReportMapTest extends TestCase
             $this->assertNotEmpty($actual, "{$resource['table']} is not migrated; this test cannot speak");
 
             foreach ($resource['columns'] as $column => $declared) {
+                if (isset($declared['php'])) {
+                    // Computed in PHP: no table column, and the method must exist.
+                    $this->assertNotContains($column, $actual, "{$key}.{$column} is php AND a table column");
+                    $this->assertTrue(
+                        method_exists($declared['php'][0], $declared['php'][1]),
+                        "{$key}.{$column} names a method that does not exist",
+                    );
+
+                    continue;
+                }
+
                 if (isset($declared['sql'])) {
                     /*
                      * A DERIVED COLUMN HAS NO TABLE COLUMN, BY DEFINITION — and

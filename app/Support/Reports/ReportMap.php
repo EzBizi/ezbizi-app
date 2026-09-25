@@ -532,6 +532,22 @@ final class ReportMap
                             .'where s.service_area_id = service_areas.id '
                             .'and s.weekday = dayofweek(date_add(:today, interval n.d day)) - 1) end',
                     ],
+
+                    /*
+                     * ── BOOKED OUT: a PHP column, not SQL ──────────────
+                     *
+                     * "Is it full" is Scheduling's answer and changes under
+                     * them (their seat rules, their move off workiz_jobs), so
+                     * it calls their `Openings` rather than copying it. See
+                     * ServiceAreaFullness for the three states, and
+                     * ReportRunner for how a `php` column is selected and
+                     * filtered.
+                     */
+                    'days_until_next_free_spot' => [
+                        'label' => 'Days until next free spot',
+                        'type' => 'integer',
+                        'php' => [ServiceAreaFullness::class, 'daysUntilFreeSpot'],
+                    ],
                 ],
                 'relations' => [
                     'branch' => ['to' => 'franchises', 'local' => 'franchise_id', 'foreign' => 'id'],
