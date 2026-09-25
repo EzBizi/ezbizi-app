@@ -2,27 +2,40 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
+use App\Models\WorkizJob;
 use App\Support\Tenancy\TenantContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * Reading capacity by zip or by area
- * (design docs/previews/scheduling-layouts.html #4).
+ * "When can we come out?" — the first day an area has room, and the next few.
  *
- * The check that carries a promise is `basis`. Nothing subtracts bookings yet,
- * so the response must say the number is CONFIGURED capacity rather than
- * remaining — a cell labelled "remaining" would read full forever and be a
- * confident false statement rather than an empty one.
+ * Laid out like A1 Tools' Availability tab (Jose, 2026-09-25). The checks that
+ * carry a promise are the ones about what holds a SEAT: a remaining-count can
+ * only be wrong in the optimistic direction, so it never announces itself —
+ * A1 shipped with every occupancy figure silently zero and nobody noticed,
+ * because "0 taken" reads as a quiet day. So every test here that asserts a
+ * number of spots left has a booked job in it that must be subtracted.
+ *
+ * The clock is pinned: Wednesday 2026-09-30, 10 AM New York. Tomorrow is
+ * Thursday 1 October, and the first Monday after it is 5 October.
  */
 class SchedulingAvailabilityTest extends TestCase
 {
     use BuildsTenants;
     use RefreshDatabase;
 
-    /** Dallas: 2 jobs in a 7–11 Monday slot, and nothing on Sunday. */
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->travelTo(CarbonImmutable::parse('2026-09-30 10:00:00', 'America/New_York'));
+    }
+
+    /** Dallas works Mondays: 7–11 takes 2, 11–2 takes 1. Nothing else. */
     private function dallas(array $tenant): ServiceArea
     {
         app(TenantContext::class)->set($tenant['org']);
@@ -36,6 +49,7 @@ class SchedulingAvailabilityTest extends TestCase
             ->putJson("/api/v1/scheduling/areas/{$area->id}/slots", [
                 'slots' => [
                     ['weekday' => 1, 'start_time' => '07:00', 'end_time' => '11:00', 'max_jobs' => 2],
+                    ['weekday' => 1, 'start_time' => '11:00', 'end_time' => '14:00', 'max_jobs' => 1],
                 ],
             ])->assertOk();
 
@@ -46,68 +60,208 @@ class SchedulingAvailabilityTest extends TestCase
         return $area;
     }
 
-    public function test_a_zip_resolves_to_its_area_and_the_number_is_named_configured(): void
+    private function booked(
+        array $tenant,
+        string $at,
+        string $status = 'Submitted',
+        array $tags = [],
+        string $area = 'Dallas',
+        ?Franchise $franchise = null,
+    ): void {
+        app(TenantContext::class)->set($tenant['org']);
+
+        WorkizJob::create([
+            'franchise_id' => ($franchise ?? $tenant['franchise'])->id,
+            'remote_id' => strtoupper(bin2hex(random_bytes(4))),
+            'service_area' => $area,
+            'postal_code' => '75201',
+            'status' => $status,
+            'scheduled_for' => $at,
+            'payload' => ['Tags' => $tags],
+            'synced_at' => now(),
+        ]);
+    }
+
+    private function first(array $tenant, string $query): array
+    {
+        return $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/availability?{$query}")
+            ->assertOk()
+            ->json('data.areas.0');
+    }
+
+    /** With nothing booked, the first Monday offers everything, and `basis` says remaining. */
+    public function test_a_zip_finds_its_area_and_the_first_day_with_room(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $this->dallas($tenant);
 
         $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/scheduling/availability?zip=75201&week=2026-09-02')
+            ->getJson('/api/v1/scheduling/availability?zip=75201')
             ->assertOk()
             ->json('data');
 
-        $this->assertSame('Dallas', $body['matched']['area_name']);
-        $this->assertSame('zip', $body['matched']['by']);
+        $this->assertSame('remaining', $body['basis']);
+        $this->assertSame('zip', $body['by']);
+        $this->assertSame('2026-10-01', $body['from'], 'Today is never offered; the search starts tomorrow.');
 
-        // The promise: not "remaining", because nothing subtracts bookings.
-        $this->assertSame('configured', $body['basis']);
-
-        // 2026-09-02 is a Wednesday; its week starts Monday the 31st.
-        $this->assertSame('2026-08-31', $body['week_start']);
-        $this->assertSame('2026-08-24', $body['previous_week']);
-        $this->assertSame('2026-09-07', $body['next_week']);
+        $area = $body['areas'][0];
+        $this->assertSame('Dallas', $area['area_name']);
+        $this->assertTrue($area['configured']);
+        $this->assertSame('2026-10-05', $area['first']['date']);
+        $this->assertSame([2, 1], array_column($area['first']['windows'], 'remaining'));
+        $this->assertCount(5, $area['after']);
+        $this->assertSame('2026-10-12', $area['after'][0]['date']);
     }
 
     /**
-     * A closed day is flagged, not omitted. The client needs to tell "we do not
-     * work Sundays" from "Sunday is full", and it cannot do that from a day
-     * that is simply missing from the payload.
+     * A BOOKED JOB TAKES A SEAT, and the window is half-open. A job at exactly
+     * 11:00 belongs to 11–2, not 7–11 — 11:00 is one of A-1's two most common
+     * start times, so the boundary is where a wrong answer would land.
      */
-    public function test_a_day_with_no_slots_comes_back_closed_rather_than_absent(): void
+    public function test_booked_jobs_take_seats_and_eleven_oclock_is_the_second_window(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $this->dallas($tenant);
 
-        $days = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/scheduling/availability?zip=75201&week=2026-08-31')
-            ->assertOk()
-            ->json('data.days');
+        $this->booked($tenant, '2026-10-05 07:00:00');
+        $this->booked($tenant, '2026-10-05 11:00:00');
 
-        $this->assertCount(7, $days, 'All seven days travel; the client decides what to draw.');
+        $first = $this->first($tenant, 'zip=75201')['first'];
 
-        $monday = collect($days)->firstWhere('date', '2026-08-31');
-        $this->assertFalse($monday['closed']);
-        $this->assertSame(2, $monday['slots'][0]['capacity']);
-        $this->assertSame('07:00', $monday['slots'][0]['start_time']);
-
-        $sunday = collect($days)->firstWhere('date', '2026-09-06');
-        $this->assertTrue($sunday['closed']);
-        $this->assertSame([], $sunday['slots']);
+        $this->assertSame('2026-10-05', $first['date']);
+        $this->assertSame([1, 1], array_column($first['windows'], 'taken'));
+        $this->assertSame([1, 0], array_column($first['windows'], 'remaining'));
     }
 
-    /** A zip nobody covers is an answer, not a 404. */
-    public function test_an_uncovered_zip_answers_with_no_match_rather_than_failing(): void
+    /**
+     * What does NOT hold a seat: a cancelled job, a done job, and a DEPOSIT
+     * RECEIVED job (a different crew does those — New Jersey read 31 of 30
+     * over three of them in A1). A status nobody has classified DOES hold one:
+     * it constrains booking rather than freeing it. Both spellings of the tag
+     * are live, typed by hand, with stray spaces.
+     */
+    public function test_cancelled_done_and_deposit_jobs_hold_no_seat_and_an_unknown_status_does(): void
     {
         $tenant = $this->provisionTenant('Alpha');
         $this->dallas($tenant);
 
+        $this->booked($tenant, '2026-10-05 07:00:00', 'Canceled');
+        $this->booked($tenant, '2026-10-05 08:00:00', 'Done');
+        $this->booked($tenant, '2026-10-05 09:00:00', 'Submitted', ['DONT CHANGE TECH', 'DEPOSIT RECIEVED']);
+        $this->booked($tenant, '2026-10-05 09:30:00', 'Submitted', ['deposit received ']);
+        $this->booked($tenant, '2026-10-05 10:00:00', 'Something new');
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame(1, $first['windows'][0]['taken'], 'Only the unclassified status should count.');
+    }
+
+    /** A full day is skipped; the first Monday that still has room is offered. */
+    public function test_a_full_day_is_skipped(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['07:00', '08:00', '11:30'] as $time) {
+            $this->booked($tenant, "2026-10-05 {$time}:00");
+        }
+
+        $area = $this->first($tenant, 'zip=75201');
+
+        $this->assertSame('2026-10-12', $area['first']['date'], 'Monday the 5th is full and must be skipped.');
+    }
+
+    /**
+     * A job with no time — Workiz writes midnight — holds no window's seat and
+     * is counted separately, so the screen can say so rather than dropping it.
+     * A job the same day in the 2–5 afternoon Dallas does not offer is the same.
+     */
+    public function test_a_job_with_no_time_or_outside_every_window_is_counted_apart(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $this->booked($tenant, '2026-10-05 00:00:00');
+        $this->booked($tenant, '2026-10-05 15:00:00');
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame([0, 0], array_column($first['windows'], 'taken'));
+        $this->assertSame(2, $first['no_time']);
+    }
+
+    /**
+     * A job another franchise's account tagged with this area's NAME is not
+     * this area's booking. It is exactly the Nationwide call centre tagging
+     * out-of-state work "New York".
+     */
+    public function test_a_job_from_another_franchise_under_the_same_name_holds_no_seat(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        app(TenantContext::class)->set($tenant['org']);
+        $nationwide = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Nationwide',
+        ]);
+
+        $this->booked($tenant, '2026-10-05 07:00:00', franchise: $nationwide);
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame(0, $first['windows'][0]['taken']);
+    }
+
+    /**
+     * An area nobody has configured says so — not "closed", not "full", and
+     * never a date. The client turns it into "check Workiz".
+     */
+    public function test_an_unconfigured_area_offers_no_date(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+
+        app(TenantContext::class)->set($tenant['org']);
+        ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Austin']);
+
+        $area = $this->first($tenant, 'area_name=Austin');
+
+        $this->assertFalse($area['configured']);
+        $this->assertNull($area['first']);
+        $this->assertSame([], $area['after']);
+    }
+
+    /** "Search by Area": a franchise answers with every area in it, by name. */
+    public function test_a_franchise_answers_with_every_area_in_it(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        app(TenantContext::class)->set($tenant['org']);
+        ServiceArea::create(['franchise_id' => $tenant['franchise']->id, 'name' => 'Austin']);
+
         $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/scheduling/availability?zip=99999')
+            ->getJson("/api/v1/scheduling/availability?franchise_id={$tenant['franchise']->id}")
             ->assertOk()
             ->json('data');
 
-        $this->assertNull($body['matched']);
-        $this->assertSame([], $body['days']);
+        $this->assertSame('franchise', $body['by']);
+        $this->assertSame(['Austin', 'Dallas'], array_column($body['areas'], 'area_name'));
+        $this->assertSame($tenant['franchise']->name, $body['areas'][0]['franchise_name']);
+    }
+
+    /** A zip nobody covers is an answer — no areas — not a 404. */
+    public function test_an_uncovered_zip_answers_with_no_areas_rather_than_failing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $this->assertSame([], $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?zip=99999')
+            ->assertOk()
+            ->json('data.areas'));
     }
 
     /** Another organization's zip is not findable, even by exact match. */
@@ -118,35 +272,28 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->dallas($beta);
 
-        $body = $this->signedInAs($alpha['admin'])
+        $this->assertSame([], $this->signedInAs($alpha['admin'])
             ->getJson('/api/v1/scheduling/availability?zip=75201')
             ->assertOk()
-            ->json('data');
-
-        $this->assertNull($body['matched'], "Alpha must not see Beta's coverage.");
+            ->json('data.areas'), "Alpha must not see Beta's coverage.");
     }
 
-    /**
-     * The screen has one box and a person types a NAME into it, not a uuid.
-     * This exists because the client was written sending `area_name` against a
-     * server that only took `zip` and `area_id` — the two halves disagreed and
-     * nothing failed until somebody searched.
-     */
-    public function test_an_area_can_be_found_by_the_name_somebody_types(): void
+    /** The name somebody types, and a zip that lost its leading zero. */
+    public function test_an_area_is_found_by_its_name_and_a_four_digit_zip_is_padded(): void
     {
         $tenant = $this->provisionTenant('Alpha');
-        $this->dallas($tenant);
+        $area = $this->dallas($tenant);
 
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/scheduling/availability?area_name=Dallas')
-            ->assertOk()
-            ->json('data');
+        $this->assertSame('Dallas', $this->first($tenant, 'area_name=Dallas')['area_name']);
 
-        $this->assertSame('Dallas', $body['matched']['area_name']);
-        $this->assertSame('name', $body['matched']['by']);
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$area->id}/zips", ['zips' => ['06457']])
+            ->assertOk();
+
+        $this->assertSame('Dallas', $this->first($tenant, 'zip=6457')['area_name']);
     }
 
-    public function test_searching_with_neither_a_zip_nor_an_area_is_refused(): void
+    public function test_searching_with_nothing_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');
 
@@ -167,10 +314,7 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertForbidden();
     }
 
-    /**
-     * A city is a second way to find an area, and the whole reason it exists.
-     * Somebody on the phone knows "Plano", not the zip.
-     */
+    /** Somebody on the phone knows "Plano", not the zip. */
     public function test_an_area_can_be_found_by_a_city_on_one_of_its_zips(): void
     {
         $tenant = $this->provisionTenant('Alpha');
@@ -184,13 +328,7 @@ class SchedulingAvailabilityTest extends TestCase
                 ],
             ])->assertOk();
 
-        $body = $this->signedInAs($tenant['admin'])
-            ->getJson('/api/v1/scheduling/availability?city=Plano')
-            ->assertOk()
-            ->json('data');
-
-        $this->assertSame('Dallas', $body['matched']['area_name']);
-        $this->assertSame('city', $body['matched']['by']);
+        $this->assertSame('Dallas', $this->first($tenant, 'city=Plano')['area_name']);
     }
 
     /** The suggest box offers all three kinds, and says what each one is. */

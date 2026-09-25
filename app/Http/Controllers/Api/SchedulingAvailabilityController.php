@@ -2,39 +2,49 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
-use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
+use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
-use Carbon\CarbonImmutable;
+use App\Support\Settings\SettingsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**
- * "What can we take in Dallas on Tuesday morning?"
- * (design docs/previews/scheduling-layouts.html #4).
+ * "When can we come out?" — the first day a service area has room, and the
+ * next few after it, window by window.
  *
- * ── The noun, which is the whole reason this reads honestly ──────
+ * Laid out the way A1 Tools' Availability tab is, on Jose's instruction of
+ * 2026-09-25 ("this is how it looks on A1Tools and my dispatchers are used to
+ * it"): search by zip, or pick a franchise and see every area in it.
  *
- * Every number here is CONFIGURED capacity, not REMAINING capacity, and the
- * response says which in `basis` rather than leaving the client to name it.
+ * ── The noun changed, and `basis` says so ───────────────────────
  *
- * Nothing yet burns a slot: `Job` has `scheduled_for` and no link to a service
- * area, so there is no booked count to subtract. A cell labelled "remaining"
- * would therefore read 2 of 2 forever, however many jobs were booked — which
- * is not an empty screen but a confident false statement, and worse than an
- * empty one because it looks populated. `ezbizi-ea` made that argument and Jose
- * ruled on it: name the number for what it is.
+ * Until now every number here was CONFIGURED capacity, because nothing counted
+ * bookings, and `basis: configured` travelled in the payload so the label could
+ * not claim more. The count exists now — App\Support\Scheduling\Openings, the
+ * one place "taken" is computed — so `basis` is `remaining`, exactly the switch
+ * this docblock promised when it was first written.
  *
- * `basis` travels in the payload so the WORD changes with the MEANING. The day
- * Scheduled Jobs exists this returns `remaining`, the client's label follows,
- * and nobody who learned the first meaning is quietly shown the second.
+ * ── An honest unknown beats a confident wrong answer ────────────
+ *
+ * A zip nobody covers, and an area nobody has configured, both come back as a
+ * plain absence the client turns into "check availability on Workiz" — never
+ * "we don't cover that" or "fully booked". A1 Tools said both, and Jose's
+ * dispatchers turned away jobs A-1 could have done (A1 d76f4a43).
  */
 class SchedulingAvailabilityController extends Controller
 {
-    /** Nothing counts bookings yet — see the class docblock. */
-    private const BASIS_CONFIGURED = 'configured';
+    /** How many open days are listed under "After that". */
+    private const AFTER = 5;
+
+    /*
+     * No constructor injection. A route keeps its controller instance for the
+     * life of a test, and SettingsResolver caches per request — held here it
+     * would answer a later request from an earlier one's cache.
+     */
 
     /** GET /api/v1/scheduling/availability */
     public function show(Request $request): JsonResponse
@@ -44,134 +54,124 @@ class SchedulingAvailabilityController extends Controller
         $data = $request->validate([
             'zip' => ['nullable', 'string', 'max:16'],
             'area_id' => ['nullable', 'uuid'],
-            // The screen has one search box and a person types a NAME into it,
-            // not a uuid. `area_id` stays for the rail, which already knows the
-            // id of the thing it just drew.
             'area_name' => ['nullable', 'string', 'max:191'],
-            // A city is a set of zips, which may span two areas. When it does,
-            // this returns the FIRST by name rather than pretending the city
-            // has one week — the suggest endpoint is what tells the caller a
-            // city is split before they get here, and it hands back an area_id
-            // when it is not.
             'city' => ['nullable', 'string', 'max:120'],
-            'week' => ['nullable', 'date_format:Y-m-d'],
+            // "Search by Area": a franchise, answered with every area in it.
+            'franchise_id' => ['nullable', 'uuid'],
         ]);
 
         $searched = $data['zip']
             ?? $data['city']
             ?? $data['area_name']
             ?? $data['area_id']
+            ?? $data['franchise_id']
             ?? null;
 
         if ($searched === null) {
             throw ValidationException::withMessages([
-                'zip' => 'Search by a zip code or a service area name.',
+                'zip' => 'Search by a zip code, or pick a franchise.',
             ]);
         }
 
-        $scope = ViewScope::forUser($request->user());
-        $franchiseIds = $scope->franchiseIds();
+        $franchiseIds = ViewScope::forUser($request->user())->franchiseIds();
 
-        $area = match (true) {
-            ($data['area_id'] ?? null) !== null => ServiceArea::whereIn('franchise_id', $franchiseIds)
-                ->find($data['area_id']),
-            ($data['zip'] ?? null) !== null => $this->areaForZip(trim((string) $data['zip']), $franchiseIds),
-            ($data['city'] ?? null) !== null => $this->areaForCity(trim((string) $data['city']), $franchiseIds),
-            default => ServiceArea::whereIn('franchise_id', $franchiseIds)
-                ->where('name', trim((string) $data['area_name']))
-                ->first(),
+        [$areas, $by] = match (true) {
+            ($data['franchise_id'] ?? null) !== null => [
+                in_array($data['franchise_id'], $franchiseIds, true)
+                    ? ServiceArea::where('franchise_id', $data['franchise_id'])->orderBy('name')->get()
+                    : collect(),
+                'franchise',
+            ],
+            ($data['area_id'] ?? null) !== null => [
+                collect([ServiceArea::whereIn('franchise_id', $franchiseIds)->find($data['area_id'])])->filter(),
+                'area',
+            ],
+            ($data['zip'] ?? null) !== null => [
+                collect([$this->areaForZip($this->zip5((string) $data['zip']), $franchiseIds)])->filter(),
+                'zip',
+            ],
+            ($data['city'] ?? null) !== null => [
+                collect([$this->areaForCity(trim((string) $data['city']), $franchiseIds)])->filter(),
+                'city',
+            ],
+            default => [
+                ServiceArea::whereIn('franchise_id', $franchiseIds)
+                    ->where('name', trim((string) $data['area_name']))->get(),
+                'name',
+            ],
         };
 
-        if ($area === null) {
-            // A zip nobody covers is a real answer and not an error: the
-            // caller is on the phone to somebody outside the service area, and
-            // "we don't cover that" is what they need to say.
-            return response()->json([
-                'data' => [
-                    'matched' => null,
-                    'searched' => $searched,
-                    'basis' => self::BASIS_CONFIGURED,
-                    'days' => [],
-                ],
-            ]);
-        }
-
-        $this->authorize('view', $area);
-
-        $monday = $this->weekStart($data['week'] ?? null);
-
-        $slots = ServiceAreaSlot::where('service_area_id', $area->id)
-            ->orderBy('weekday')
-            ->orderBy('start_time')
-            ->get()
-            ->groupBy('weekday');
+        $organization = $request->user()->organization;
+        $from = Openings::tomorrow((string) app(SettingsResolver::class)->get('timezone', $organization));
+        $franchises = Franchise::whereIn('id', $areas->pluck('franchise_id'))->pluck('name', 'id');
 
         return response()->json([
             'data' => [
-                'matched' => [
-                    'area_id' => $area->id,
-                    'area_name' => $area->name,
-                    // How it was found, so the screen can say "75201 is in
-                    // Dallas" rather than silently showing a different place
-                    // than the one that was typed.
-                    'by' => match (true) {
-                        ($data['area_id'] ?? null) !== null => 'area',
-                        ($data['zip'] ?? null) !== null => 'zip',
-                        ($data['city'] ?? null) !== null => 'city',
-                        default => 'name',
-                    },
-                ],
-                'basis' => self::BASIS_CONFIGURED,
-                'week_start' => $monday->toDateString(),
-                'previous_week' => $monday->subWeek()->toDateString(),
-                'next_week' => $monday->addWeek()->toDateString(),
-                'days' => $this->week($monday, $slots),
+                'searched' => $searched,
+                'by' => $by,
+                'basis' => 'remaining',
+                'from' => $from->toDateString(),
+                'areas' => $areas->map(function (ServiceArea $area) use ($from, $franchises) {
+                    $this->authorize('view', $area);
+
+                    $configured = Openings::hasCapacity($area);
+                    $next = $configured ? app(Openings::class)->next($area, $from, self::AFTER) : null;
+
+                    return [
+                        'area_id' => $area->id,
+                        'area_name' => $area->name,
+                        'franchise_name' => $franchises[$area->franchise_id] ?? null,
+                        // FALSE is "nobody has set this area up" — not closed,
+                        // not full. The client says "check Workiz".
+                        'configured' => $configured,
+                        'first' => $next['first'] ?? null,
+                        'after' => $next['after'] ?? [],
+                    ];
+                })->values()->all(),
             ],
         ]);
     }
 
     /**
-     * The seven days, each either closed or carrying its slots.
+     * GET /api/v1/scheduling/availability/franchises
      *
-     * A closed day is present in the list and flagged, rather than omitted:
-     * the client decides whether to draw six columns or seven, and it cannot
-     * make that choice from an absence it cannot distinguish from a gap in the
-     * payload. The distinction the STORAGE keeps — no rows means closed — is
-     * preserved here as `closed: true` with an empty slot list, which is a
-     * different thing from a day whose slots are all full.
-     *
-     * @param  \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, ServiceAreaSlot>>  $byWeekday
-     * @return array<int, array<string, mixed>>
+     * The chips for "Search by Area": franchises in view that have at least one
+     * service area. Drawn from here rather than from the session's franchise
+     * list because A-1 holds empty duplicate franchise rows (Connecticut ×8 on
+     * 2026-09-25), and a chip per row would offer eight Connecticuts, seven of
+     * which answer with nothing.
      */
-    private function week(CarbonImmutable $monday, $byWeekday): array
+    public function franchises(Request $request): JsonResponse
     {
-        $days = [];
+        $this->authorize('viewAny', ServiceArea::class);
 
-        for ($i = 0; $i < 7; $i++) {
-            $date = $monday->addDays($i);
-            $slots = $byWeekday->get($date->dayOfWeek, collect());
+        $ids = ServiceArea::whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->distinct()
+            ->pluck('franchise_id');
 
-            $days[] = [
-                'date' => $date->toDateString(),
-                'weekday' => $date->dayOfWeek,
-                'closed' => $slots->isEmpty(),
-                'slots' => $slots->map(fn (ServiceAreaSlot $s) => [
-                    'start_time' => substr((string) $s->start_time, 0, 5),
-                    'end_time' => substr((string) $s->end_time, 0, 5),
-                    'capacity' => $s->max_jobs,
-                ])->values()->all(),
-            ];
-        }
+        return response()->json([
+            'data' => Franchise::whereIn('id', $ids)->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Franchise $f) => ['id' => $f->id, 'name' => $f->name])->all(),
+        ]);
+    }
 
-        return $days;
+    /**
+     * Five digits, the way the zip map stores them — a four-digit New England
+     * zip that lost its leading zero is padded back, or it matches nothing.
+     */
+    private function zip5(string $raw): string
+    {
+        $digits = preg_replace('/\D+/', '', $raw);
+
+        return strlen($digits) < 4 ? $digits : substr(str_pad($digits, 5, '0', STR_PAD_LEFT), 0, 5);
     }
 
     /**
      * The area covering a zip, within the franchises in view.
      *
      * One row at most by construction — the unique index on
-     * (franchise_id, zip) is what makes this lookup unambiguous, and it is the
-     * reason overlapping zips were refused rather than made configurable.
+     * (organization_id, zip) is what makes this lookup unambiguous, and it is
+     * the reason overlapping zips were refused rather than made configurable.
      *
      * @param  string[]  $franchiseIds
      */
@@ -208,23 +208,5 @@ class SchedulingAvailabilityController extends Controller
         }
 
         return ServiceArea::whereIn('id', $ids)->orderBy('name')->first();
-    }
-
-    /**
-     * The Monday of the week being asked about.
-     *
-     * Monday because the design's week runs Mon–Sun. Weekday numbers stay
-     * Carbon's (0 = Sunday) all the way through to the database, so nothing
-     * translates between two conventions — the week's START is a display
-     * decision, the weekday NUMBER is storage, and conflating them is how
-     * Sunday ends up in the wrong column.
-     */
-    private function weekStart(?string $week): CarbonImmutable
-    {
-        $day = $week === null
-            ? CarbonImmutable::today()
-            : CarbonImmutable::createFromFormat('Y-m-d', $week)->startOfDay();
-
-        return $day->startOfWeek(CarbonImmutable::MONDAY);
     }
 }

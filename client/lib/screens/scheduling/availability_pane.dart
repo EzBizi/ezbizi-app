@@ -3,36 +3,30 @@ import 'package:flutter/material.dart';
 import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
-import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 
-/// Availability — search a zip, a city or an area, read that area's week.
+/// Availability — "When can we come out?"
 ///
-/// design: docs/previews/scheduling-layouts.html #4 (and #6 at 375px)
+/// Laid out the way A1 Tools' Availability tab is, on Jose's instruction of
+/// 2026-09-25: *"this is how it looks on A1Tools and my dispatchers are used to
+/// it as well, obviously with ezbizi colors theme… i do like the green yellow
+/// red gray color tabs for the time slots"*. Search by zip (or a city or area
+/// name, which the box suggests as you type), or pick a franchise and see every
+/// area in it. Each area answers with the first day it has room and the next
+/// few after that, window by window.
 ///
-/// ── The number is not called "remaining" ─────────────────────────
+/// ── The colours are the answer, so they come from the count ─────
 ///
-/// The server sends `basis`, and while it says `configured` this screen says
-/// "can take" rather than "left". Nothing subtracts bookings yet — Job has no
-/// service area — so a cell labelled "remaining" would read full for ever
-/// however many jobs were booked. That is a confident false statement rather
-/// than an empty screen, and worse than one, because it looks populated.
+/// Green, 3 or more left; yellow, 2; red, 1; grey, full. Taken from [Tone], the
+/// theme's status palette, which a test holds to 4.5:1 contrast in both
+/// brightnesses — not literals chosen here.
 ///
-/// The word is taken from the payload rather than compiled in here, so the day
-/// the server starts subtracting, the label changes with it and nobody who
-/// learned the first meaning is quietly shown the second.
+/// ── An honest unknown beats a confident wrong answer ────────────
 ///
-/// ── The box suggests instead of guessing ─────────────────────────
-///
-/// It used to decide what you meant from the SHAPE of what you typed: all
-/// digits was a zip, anything else was an area name. So a city reached nothing,
-/// a half-typed area name reached nothing, and both looked exactly like "we do
-/// not cover that" — a wrong answer in the same words as the right one.
-///
-/// Now it asks the server what the letters so far could mean and offers the
-/// answers, because the three namespaces genuinely overlap: an area called
-/// Dallas and a city called Dallas are different questions with different
-/// answers, and no rule about string shape can tell them apart.
+/// A zip no area covers, an area nobody has set up, and an area with no
+/// opening in a year all say "check availability on Workiz". A1 Tools once
+/// said "we do not cover" and "fully booked" in those cases, and dispatchers
+/// turned away jobs A-1 could have done.
 class AvailabilityPane extends StatefulWidget {
   const AvailabilityPane({
     super.key,
@@ -49,398 +43,514 @@ class AvailabilityPane extends StatefulWidget {
   State<AvailabilityPane> createState() => _AvailabilityPaneState();
 }
 
+enum _Mode { zip, area }
+
 class _AvailabilityPaneState extends State<AvailabilityPane> {
-  static const _dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  static const _unknown =
+      'Information not available, please check availability on Workiz.';
+  static const _weekdays = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+    'Sunday', //
+  ];
+  static const _months = [
+    'January', 'February', 'March', 'April', 'May', 'June', 'July', //
+    'August', 'September', 'October', 'November', 'December',
+  ];
 
   final _search = TextEditingController();
-  final _focus = FocusNode();
 
+  _Mode _mode = _Mode.zip;
   bool _loading = false;
   String? _error;
-  Map<String, dynamic>? _result;
-  String? _week;
 
-  /// What the caller picked, so paging weeks re-asks the same question rather
-  /// than re-running the search box's text.
-  Map<String, dynamic>? _picked;
+  /// null before the first search; an empty list is "nothing covers that".
+  List<Map<String, dynamic>>? _areas;
+
+  List<Map<String, dynamic>> _franchises = [];
+  String? _franchiseId;
 
   List<Map<String, dynamic>> _suggestions = [];
-  bool _suggesting = false;
-
   int _request = 0;
   int _suggestRequest = 0;
 
   @override
+  void initState() {
+    super.initState();
+    _loadFranchises();
+  }
+
+  @override
   void dispose() {
     _search.dispose();
-    _focus.dispose();
     super.dispose();
   }
 
+  Future<void> _loadFranchises() async {
+    final response = await widget.api.get(
+      '/scheduling/availability/franchises',
+      const {},
+    );
+    if (!mounted || !response.ok) return;
+    setState(() {
+      _franchises = (response.body['data'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
+    });
+  }
+
   /// ponytail: one request per keystroke, staleness handled by a counter
-  /// rather than a debounce timer. The server is local and the query is three
-  /// indexed prefix lookups; add a timer when that stops being true.
+  /// rather than a debounce timer. The query is three indexed prefix lookups.
   Future<void> _suggest(String raw) async {
     final q = raw.trim();
-    final request = ++_suggestRequest;
+    final ticket = ++_suggestRequest;
 
-    if (q.isEmpty) {
-      setState(() {
-        _suggestions = [];
-        _suggesting = false;
-      });
+    if (q.length < 2) {
+      setState(() => _suggestions = []);
       return;
     }
 
-    setState(() => _suggesting = true);
-
     final response = await widget.api.get('/scheduling/suggest', {'q': q});
-
-    if (!mounted || request != _suggestRequest) return;
+    if (!mounted || ticket != _suggestRequest) return;
 
     setState(() {
-      _suggesting = false;
       _suggestions = response.ok
           ? (response.body['data'] as List? ?? const [])
                 .cast<Map<String, dynamic>>()
-          : const [];
+          : [];
     });
   }
 
-  Future<void> _pick(Map<String, dynamic> suggestion) async {
-    _search.text = suggestion['label'] as String? ?? '';
-    _focus.unfocus();
+  /// A suggestion is already a precise question: it names the area outright
+  /// when it can (an area, a zip, a city inside one area), and a city split
+  /// across two areas is asked about as a city.
+  Future<void> _pick(Map<String, dynamic> s) async {
+    final label = s['label'] as String? ?? '';
+    _search.text = label;
+    setState(() => _suggestions = []);
 
-    setState(() {
-      _picked = suggestion;
-      _suggestions = [];
-    });
-
-    await _load();
+    final areaId = s['area_id'] as String?;
+    await _run(
+      areaId != null
+          ? {'area_id': areaId}
+          : s['type'] == 'city'
+          ? {'city': label}
+          : {'zip': label},
+    );
   }
 
-  /// Asks about whatever was picked, or — when somebody typed and pressed
-  /// Enter without picking — about the text as all three things at once, and
-  /// lets the server resolve it.
-  Future<void> _load({String? week}) async {
-    final typed = _search.text.trim();
-    if (typed.isEmpty && _picked == null) return;
+  Future<void> _check() async {
+    final q = _search.text.trim();
+    if (q.isEmpty) return;
+    setState(() => _suggestions = []);
 
-    final request = ++_request;
+    // Digits are a zip; anything else is most likely an area name somebody
+    // typed without waiting for the suggestion.
+    await _run(
+      RegExp(r'^[\d\s-]+$').hasMatch(q) ? {'zip': q} : {'area_name': q},
+    );
+  }
 
+  Future<void> _pickFranchise(String id) async {
+    setState(() => _franchiseId = id);
+    await _run({'franchise_id': id});
+  }
+
+  Future<void> _run(Map<String, String> query) async {
+    final ticket = ++_request;
     setState(() {
       _loading = true;
       _error = null;
-      _week = week;
-      _suggestions = [];
     });
 
-    final picked = _picked;
-
-    final query = <String, String>{
-      if (week case final String w) 'week': w,
-      if (picked != null && picked['area_id'] != null)
-        // Exact: the suggestion already resolved to one area.
-        'area_id': picked['area_id'] as String
-      else if (picked != null && picked['type'] == 'city')
-        'city': picked['label'] as String
-      else if (picked != null && picked['type'] == 'zip')
-        'zip': picked['label'] as String
-      else if (RegExp(r'^\d{3,10}$').hasMatch(typed))
-        'zip': typed
-      else
-        'area_name': typed,
-    };
-
     final response = await widget.api.get('/scheduling/availability', query);
-
-    if (!mounted || request != _request) return;
+    if (!mounted || ticket != _request) return;
 
     setState(() {
       _loading = false;
       if (!response.ok) {
         _error = response.message;
-        _result = null;
+        _areas = null;
         return;
       }
-      _result = response.body['data'] as Map<String, dynamic>?;
+      _areas = (response.body['data']?['areas'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
     });
   }
+
+  void _setMode(_Mode mode) => setState(() {
+    _mode = mode;
+    _areas = null;
+    _error = null;
+    _suggestions = [];
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'What this business is set up to take. Search a zip code, a '
-                'city or a service area.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const Key('availability-search'),
-                controller: _search,
-                focusNode: _focus,
-                textInputAction: TextInputAction.search,
-                onChanged: (value) {
-                  // Typing again abandons the previous pick, so paging weeks
-                  // cannot silently answer about the thing you replaced.
-                  _picked = null;
-                  _suggest(value);
-                },
-                onSubmitted: (_) => _load(),
-                decoration: InputDecoration(
-                  isDense: true,
-                  prefixIcon: const Icon(Icons.search, size: 20),
-                  hintText: 'Zip code, city or area name',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: _suggesting
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : IconButton(
-                          icon: const Icon(Icons.arrow_forward, size: 20),
-                          tooltip: 'Search',
-                          onPressed: () => _load(),
-                        ),
-                ),
-              ),
-              if (_suggestions.isNotEmpty) _suggestionList(theme),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: () => _load(week: _week),
-            child: _result == null ? _prompt(theme) : _answer(theme, _result!),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _suggestionList(ThemeData theme) {
-    const icons = {
-      'area': Icons.map_outlined,
-      'city': Icons.location_city_outlined,
-      'zip': Icons.markunread_mailbox_outlined,
-    };
-
-    return Container(
-      margin: const EdgeInsets.only(top: 6),
-      decoration: BoxDecoration(
-        border: Border.all(color: EzBiziTheme.edge(context)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          for (final s in _suggestions)
-            ListTile(
-              dense: true,
-              leading: Icon(icons[s['type']] ?? Icons.search, size: 18),
-              title: Text(s['label'] as String? ?? ''),
-              subtitle: (s['detail'] as String? ?? '').isEmpty
-                  ? null
-                  : Text(s['detail'] as String),
-              onTap: () => _pick(s),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _prompt(ThemeData theme) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Text(
-        'Search a zip code, a city or an area name to see its week.',
-        textAlign: TextAlign.center,
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-      ),
-    ),
-  );
-
-  Widget _answer(ThemeData theme, Map<String, dynamic> data) {
-    final matched = data['matched'] as Map<String, dynamic>?;
-
-    if (matched == null) {
-      // Not an error. Somebody outside the service area is on the phone and
-      // "we do not cover that" is the answer they need.
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No service area covers ${data['searched'] ?? 'that'}.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium,
-          ),
-        ),
-      );
-    }
-
-    final days = (data['days'] as List? ?? const [])
-        .cast<Map<String, dynamic>>()
-        .where((d) => d['closed'] != true)
-        .toList();
-
-    final picked = _picked;
-    final split = picked != null &&
-        picked['type'] == 'city' &&
-        picked['area_id'] == null;
+    final muted = theme.colorScheme.onSurfaceVariant;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      padding: const EdgeInsets.fromLTRB(16, 28, 16, 40),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _heading(matched),
-                style: theme.textTheme.titleSmall,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_left),
-              tooltip: 'Previous week',
-              onPressed: () => _load(week: data['previous_week'] as String?),
-            ),
-            IconButton(
-              icon: const Icon(Icons.chevron_right),
-              tooltip: 'Next week',
-              onPressed: () => _load(week: data['next_week'] as String?),
-            ),
-          ],
-        ),
-        // A city whose zips sit in more than one area cannot have "a" week.
-        // Saying so beats showing one area's week under the city's name.
-        if (split)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: ErrorNote(
-              '${picked['label']} covers more than one service area. This is '
-              '${matched['area_name']} only — open the others from Settings.',
-            ),
-          ),
-        if (data['basis'] == 'configured')
-          Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 4),
-            child: Text(
-              'These are the numbers this area is set up to take. Booked jobs '
-              'are not counted yet.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        const SizedBox(height: 12),
-        if (days.isEmpty)
-          Text(
-            'Nothing is set up for this week.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          )
-        else
-          // Closed days are dropped rather than drawn as empty columns — a
-          // business open Monday to Thursday gets a four-day week, and the
-          // layout does not spend space saying "nothing here" three times.
-          for (final day in days) _dayCard(theme, day),
-      ],
-    );
-  }
-
-  /// Says how it matched, so the screen never shows a different place than the
-  /// one that was asked for without saying why.
-  String _heading(Map<String, dynamic> matched) {
-    final area = matched['area_name'] ?? '';
-    final typed = _search.text.trim();
-
-    return switch (matched['by']) {
-      'zip' => '$typed is in $area',
-      'city' => '$typed is in $area',
-      _ => '$area',
-    };
-  }
-
-  Widget _dayCard(ThemeData theme, Map<String, dynamic> day) {
-    final slots = (day['slots'] as List? ?? const []).cast<Map<String, dynamic>>();
-    final weekday = day['weekday'] as int? ?? 0;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: EzBiziTheme.edge(context)),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${_dayNames[weekday]} ${_shortDate(day['date'] as String?)}',
-              style: theme.textTheme.titleSmall,
-            ),
-            const SizedBox(height: 6),
-            for (final slot in slots)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'When can we come out?',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Search by zip code, or pick an area.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                const SizedBox(height: 20),
+                Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '${slot['start_time']} – ${slot['end_time']}',
-                        style: theme.textTheme.bodyMedium,
+                      child: _modeButton(
+                        _Mode.zip,
+                        Icons.location_on_outlined,
+                        'Search by Zip Code',
                       ),
                     ),
-                    Text(
-                      'can take ${slot['capacity']}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _modeButton(
+                        _Mode.area,
+                        Icons.map_outlined,
+                        'Search by Area',
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                if (_mode == _Mode.zip) _zipSearch(theme) else _areaChips(),
+                const SizedBox(height: 20),
+                if (_error != null) ErrorNote(_error!),
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_areas != null && _areas!.isEmpty)
+                  _note(theme, _unknown)
+                else
+                  for (final area in _areas ?? const <Map<String, dynamic>>[])
+                    _areaCard(theme, area),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _modeButton(_Mode mode, IconData icon, String label) {
+    final selected = _mode == mode;
+    final child = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 8),
+        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+      ],
+    );
+    const padding = EdgeInsets.symmetric(vertical: 14, horizontal: 8);
+
+    return selected
+        ? FilledButton(
+            onPressed: () => _setMode(mode),
+            style: FilledButton.styleFrom(padding: padding),
+            child: child,
+          )
+        : OutlinedButton(
+            onPressed: () => _setMode(mode),
+            style: OutlinedButton.styleFrom(padding: padding),
+            child: child,
+          );
+  }
+
+  Widget _zipSearch(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('availability-search'),
+                controller: _search,
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: 'Zip code, city or area',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: _suggest,
+                onSubmitted: (_) => _check(),
               ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _check,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 18,
+                ),
+              ),
+              child: const Text('Check'),
+            ),
+          ],
+        ),
+        if (_suggestions.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.only(top: 4),
+            child: Column(
+              children: [
+                for (final s in _suggestions)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(switch (s['type']) {
+                      'area' => Icons.map_outlined,
+                      'city' => Icons.location_city_outlined,
+                      _ => Icons.location_on_outlined,
+                    }, size: 18),
+                    title: Text(s['label'] as String? ?? ''),
+                    subtitle: s['detail'] == null
+                        ? null
+                        : Text(s['detail'] as String),
+                    onTap: () => _pick(s),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _areaChips() {
+    if (_franchises.isEmpty) {
+      return _note(Theme.of(context), 'No service areas in this view yet.');
+    }
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final f in _franchises)
+          ChoiceChip(
+            label: Text(f['name'] as String? ?? ''),
+            selected: _franchiseId == f['id'],
+            onSelected: (_) => _pickFranchise(f['id'] as String),
+          ),
+      ],
+    );
+  }
+
+  Widget _areaCard(ThemeData theme, Map<String, dynamic> area) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final first = area['first'] as Map<String, dynamic>?;
+    final after = (area['after'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final heading = [
+      area['franchise_name'],
+      area['area_name'],
+    ].whereType<String>().join(' · ').toUpperCase();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: EzBiziTheme.edge(context)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              heading,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: muted,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (area['configured'] != true || first == null)
+              Text(
+                _unknown,
+                style: theme.textTheme.bodyMedium?.copyWith(color: muted),
+              )
+            else ...[
+              Text(
+                'First available',
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _longDate(first['date'] as String),
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: ToneColours.of(context, Tone.ok).ink,
+                ),
+              ),
+              const SizedBox(height: 10),
+              _windowRow(first),
+              _noTime(theme, first),
+              if (after.isNotEmpty) ...[
+                const Divider(height: 28),
+                Text(
+                  'After that',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+                const SizedBox(height: 8),
+                for (final day in after)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              _shortDate(day['date'] as String),
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(child: _windowRow(day)),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
           ],
         ),
       ),
     );
   }
 
-  /// `2026-08-31` as `31 Aug`, without pulling in a date library for it.
-  String _shortDate(String? iso) {
-    if (iso == null || iso.length < 10) return '';
+  /// One chip per window, filling the row; they wrap on a phone rather than
+  /// shrinking the text past reading.
+  Widget _windowRow(Map<String, dynamic> day) {
+    final windows = (day['windows'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
 
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
+    return LayoutBuilder(
+      builder: (context, box) {
+        final perRow = box.maxWidth < 420 ? 1 : windows.length;
+        final width = perRow <= 1
+            ? box.maxWidth
+            : (box.maxWidth - 6 * (perRow - 1)) / perRow;
 
-    final month = int.tryParse(iso.substring(5, 7));
-    if (month == null || month < 1 || month > 12) return '';
+        return Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final w in windows)
+              SizedBox(width: width, child: _windowChip(w)),
+          ],
+        );
+      },
+    );
+  }
 
-    return '${int.parse(iso.substring(8, 10))} ${months[month - 1]}';
+  Widget _windowChip(Map<String, dynamic> w) {
+    final left = (w['remaining'] as num?)?.toInt() ?? 0;
+    final tone = switch (left) {
+      <= 0 => Tone.neutral,
+      1 => Tone.bad,
+      2 => Tone.caution,
+      _ => Tone.ok,
+    };
+    final colours = ToneColours.of(context, tone);
+    final label = left <= 0
+        ? 'Full'
+        : '$left ${left == 1 ? 'Spot' : 'Spots'} Left';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: colours.fill,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '${_time(w['start_time'] as String)} – '
+        '${_time(w['end_time'] as String)}  ·  $label',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: colours.ink,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  /// Jobs that day in no window — no time set in Workiz, or a time outside
+  /// every window. Said rather than dropped, so nobody reads "2 spots left"
+  /// without knowing two more are booked with no time on them.
+  Widget _noTime(ThemeData theme, Map<String, dynamic> day) {
+    final n = (day['no_time'] as num?)?.toInt() ?? 0;
+    if (n == 0) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        '$n more booked that day with no time slot',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _note(ThemeData theme, String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: theme.textTheme.bodyMedium?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
+  /// "2026-10-05" → "Monday, October 5".
+  static String _longDate(String ymd) {
+    final d = DateTime.parse(ymd);
+    return '${_weekdays[d.weekday - 1]}, ${_months[d.month - 1]} ${d.day}';
+  }
+
+  /// "2026-10-05" → "Mon, Oct 5".
+  static String _shortDate(String ymd) {
+    final d = DateTime.parse(ymd);
+    return '${_weekdays[d.weekday - 1].substring(0, 3)}, '
+        '${_months[d.month - 1].substring(0, 3)} ${d.day}';
+  }
+
+  /// "13:00" → "1 PM", "10:30" → "10:30 AM".
+  static String _time(String hm) {
+    final parts = hm.split(':');
+    final h = int.tryParse(parts.first) ?? 0;
+    final m = parts.length > 1 ? parts[1] : '00';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    final period = h < 12 ? 'AM' : 'PM';
+    return m == '00' ? '$h12 $period' : '$h12:$m $period';
   }
 }
