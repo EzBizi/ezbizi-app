@@ -290,6 +290,11 @@ return [
         // reading the tab as well as replying: Jose, 2026-09-24, "this belongs
         // to a-1chimney" - not to every company in its organization.
         'company_id' => env('A1LEADS_COMPANY_ID'),
+        // Review operations (match, draft, workflow card, report) on the LIVE
+        // A1 Leads, with their own identity `ezbizi:review-ops` - Rodrigo,
+        // 2026-09-25. Neither the read key nor the reply key can call these.
+        'review_ops_url' => env('A1LEADS_REVIEW_OPS_URL'),
+        'review_ops_key' => env('A1LEADS_REVIEW_OPS_KEY'),
 
         // The snapshot is refreshed daily at 05:00 New York. Rodrigo's number:
         // warn after thirty hours without a successful installation, which is

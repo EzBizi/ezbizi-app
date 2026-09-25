@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\AutomationsController;
 use App\Http\Controllers\Api\BlueskyConnectController;
 use App\Http\Controllers\Api\BrandingController;
 use App\Http\Controllers\Api\A1LeadsGbpController;
+use App\Http\Controllers\Api\A1LeadsReviewOpsController;
 use App\Http\Controllers\Api\BusinessProfileController;
 use App\Http\Controllers\Api\CompaniesController;
 use App\Http\Controllers\Api\CustomersController;
@@ -765,6 +766,16 @@ Route::prefix('v1')
         // refused attempt can be audited - Rodrigo's contract audits attempts,
         // and a middleware refusal would leave no trace.
         Route::post('a1leads-gbp/reply', [A1LeadsGbpController::class, 'publishReply']);
+
+        // Review operations moved over from A1 Tools (Rodrigo's routes, 25
+        // Sep). Each checks its own permission inside: draft needs reply, the
+        // writes need manage, the report status needs view.
+        Route::post('a1leads-gbp/reviews/{id}/draft', [A1LeadsReviewOpsController::class, 'draft']);
+        Route::get('a1leads-gbp/reviews/{id}/suggestions', [A1LeadsReviewOpsController::class, 'suggestions']);
+        Route::post('a1leads-gbp/reviews/{id}/match', [A1LeadsReviewOpsController::class, 'match']);
+        Route::post('a1leads-gbp/cards/mark', [A1LeadsReviewOpsController::class, 'markCard']);
+        Route::post('a1leads-gbp/report', [A1LeadsReviewOpsController::class, 'report']);
+        Route::get('a1leads-gbp/report/status', [A1LeadsReviewOpsController::class, 'reportStatus']);
 
         Route::get('business-profile/locations', [BusinessProfileController::class, 'index']);
         Route::get('business-profile/locations/{location}', [BusinessProfileController::class, 'show']);

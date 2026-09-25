@@ -112,6 +112,10 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   bool _replyAvailable = false;
   String? _replyBecause;
 
+  /// Rodrigo's review-ops routes are connected: draft, card, match, report.
+  bool _opsAvailable = false;
+  bool _drafting = false;
+
   /// The review whose reply editor is open, by its Google name.
   String? _activeReplyName;
 
@@ -213,6 +217,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
       _replyAvailable = data['reply_available'] == true &&
           widget.session.me?.can('a1leads_gbp.reply') == true;
       _replyBecause = data['reply_unavailable_because'] as String?;
+      _opsAvailable = data['ops_available'] == true;
       _total = ((data['meta'] as Map?)?['total'] as num?)?.toInt() ?? _reviews.length;
     });
   }
@@ -896,6 +901,187 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     );
   }
 
+  /// A1 Leads' draft for the review being replied to, into the editor.
+  ///
+  /// Rodrigo, 25 September: "Never send a draft just because it was
+  /// generated." It lands in the text box to be read and edited, and goes
+  /// out only through the same Post and confirm as a reply somebody typed.
+  Future<void> _draftWithAi() async {
+    final review = _reviews.firstWhere(
+      (r) => r['google_review_name'] == _activeReplyName,
+      orElse: () => const {},
+    );
+    final id = review['id'];
+    if (id == null) return;
+
+    setState(() {
+      _drafting = true;
+      _replyError = null;
+    });
+    final response = await widget.api.post('/a1leads-gbp/reviews/$id/draft', const {});
+    if (!mounted) return;
+
+    final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final text = (data['text'] ?? data['draft'] ?? data['reply'])?.toString().trim() ?? '';
+    setState(() {
+      _drafting = false;
+      if (!response.ok || text.isEmpty) {
+        _replyError = response.ok ? 'A1 Leads returned no draft.' : response.message;
+        return;
+      }
+      _replyDraft.text = text;
+      _confirmingReply = false;
+    });
+  }
+
+  /// The operations A1 Tools offered on a review, now here: its card status,
+  /// a note on its timeline, its Workiz match, and a report to Google.
+  ///
+  /// Only with the manage permission and the routes connected, and never on a
+  /// review Google has removed. Each change goes to A1 Leads, which owns the
+  /// card, and the page reloads to show what A1 Leads now holds.
+  Widget _opsActions(ThemeData theme, Map<String, dynamic> review) {
+    if (!_opsAvailable ||
+        widget.session.me?.can('a1leads_gbp.manage') != true ||
+        review['deleted_at'] != null ||
+        review['id'] == null) {
+      return const SizedBox.shrink();
+    }
+
+    final name = '${review['google_review_name']}';
+    final dense = TextButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    );
+
+    return Padding(
+      key: ValueKey('gbp-ops-$name'),
+      padding: const EdgeInsets.only(top: 4),
+      child: Wrap(
+        spacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          // A search-bar picker, not a popup menu - Jose's rule for every
+          // choice in the app (2026-09-17).
+          SizedBox(
+            width: 190,
+            child: SearchPickerField<String>(
+              key: ValueKey('gbp-status-$name'),
+              value: const ["Can't locate", 'Working on it', 'Awaiting report', 'Done']
+                      .contains((review['board'] as Map?)?['status'])
+                  ? (review['board'] as Map)['status'] as String
+                  : null,
+              label: 'Status',
+              isDense: true,
+              options: [
+                for (final s in const ["Can't locate", 'Working on it', 'Awaiting report', 'Done'])
+                  SearchOption<String>(value: s, label: s),
+              ],
+              onChanged: (status) {
+                if (status != null) unawaited(_changeCard(name, {'status': status}));
+              },
+            ),
+          ),
+          TextButton.icon(
+            style: dense,
+            onPressed: () => unawaited(_addNote(name)),
+            icon: const Icon(Icons.note_add_outlined, size: 16),
+            label: const Text('Add note'),
+          ),
+          TextButton.icon(
+            style: dense,
+            onPressed: () => unawaited(_matchCustomer(review)),
+            icon: const Icon(Icons.person_search_outlined, size: 16),
+            label: const Text('Customer match'),
+          ),
+          TextButton.icon(
+            style: dense,
+            onPressed: () => unawaited(_reportReview(review)),
+            icon: const Icon(Icons.outlined_flag, size: 16),
+            label: const Text('Report to Google'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _changeCard(String name, Map<String, dynamic> change) async {
+    final response = await widget.api.post('/a1leads-gbp/cards/mark', {'ref': name, ...change});
+    _afterOp(response, change.containsKey('status') ? 'Status set to ${change['status']}.' : 'Note added.');
+  }
+
+  Future<void> _addNote(String name) async {
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add a note'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 2,
+          maxLines: 6,
+          maxLength: 4000,
+          decoration: const InputDecoration(hintText: "What happened - it goes on the card's timeline"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Add note'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (note == null || note.isEmpty) return;
+    await _changeCard(name, {'add_update': note});
+  }
+
+  /// Pin the review to a Workiz job A1 Leads suggests, or clear the pin so it
+  /// can rematch. Only suggestions are offered - nobody types a job number.
+  Future<void> _matchCustomer(Map<String, dynamic> review) async {
+    final id = review['id'];
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => _MatchDialog(api: widget.api, reviewId: '$id'),
+    );
+    if (picked == null) return;
+
+    final response = await widget.api.post('/a1leads-gbp/reviews/$id/match', picked);
+    _afterOp(response, picked['clear'] == true ? 'Match cleared.' : 'Customer matched.');
+  }
+
+  /// Queue a policy report. A1 Leads files it, paces it, and says when Google
+  /// acknowledged it; "reported" is never claimed here before that.
+  Future<void> _reportReview(Map<String, dynamic> review) async {
+    final status = await widget.api.get('/a1leads-gbp/report/status', const {});
+    if (!mounted) return;
+    final data = (status.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final reasons = ((data['reasons'] as List?) ?? const ['fake_or_deceptive']).map((r) => '$r').toList();
+
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => _ReportDialog(reasons: reasons),
+    );
+    if (reason == null) return;
+
+    final response = await widget.api.post('/a1leads-gbp/report', {
+      'reviewIds': [review['id']],
+      'reason': reason,
+      'confirmed': true,
+    });
+    _afterOp(response, 'Report queued. A1 Leads files it and records when Google acknowledges it.');
+  }
+
+  void _afterOp(ApiResponse response, String done) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(response.ok ? done : response.message)),
+    );
+    if (response.ok) unawaited(_load());
+  }
+
   /// The customer's last job and who has the card, in one line.
   static String _jobLine(Map<String, dynamic>? card) {
     final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
@@ -1112,6 +1298,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
           _matchLine(theme, review),
           _boardLine(theme, review),
           _customerContext(theme, review),
+          _opsActions(theme, review),
           if (_replyAvailable && reply.isEmpty && review['deleted_at'] == null &&
               _activeReplyName != review['google_review_name']) ...[
             const SizedBox(height: 8),
@@ -1228,6 +1415,18 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             Text(_replyNotice!, style: TextStyle(color: theme.colorScheme.primary)),
           ],
           if (canSend) ...[
+            if (_opsAvailable) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('gbp-reply-draft'),
+                  onPressed: _drafting || _postingReply ? null : () => unawaited(_draftWithAi()),
+                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                  label: Text(_drafting ? 'Drafting...' : 'Draft with AI'),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               controller: _replyDraft,
@@ -1482,5 +1681,175 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     final min = local.minute.toString().padLeft(2, '0');
 
     return '$d/$m $h:$min';
+  }
+}
+
+
+/// A1 Leads' Workiz suggestions for one review, to pick one or clear the pin.
+class _MatchDialog extends StatefulWidget {
+  const _MatchDialog({required this.api, required this.reviewId});
+
+  final ApiClient api;
+  final String reviewId;
+
+  @override
+  State<_MatchDialog> createState() => _MatchDialogState();
+}
+
+class _MatchDialogState extends State<_MatchDialog> {
+  final _query = TextEditingController();
+  List<Map<String, dynamic>> _suggestions = const [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_search());
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    final response = await widget.api.get(
+      '/a1leads-gbp/reviews/${widget.reviewId}/suggestions',
+      {if (_query.text.trim().isNotEmpty) 'q': _query.text.trim()},
+    );
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      if (!response.ok) {
+        _error = response.message;
+        return;
+      }
+      final data = response.body['data'];
+      final rows = data is List ? data : ((data as Map?)?['suggestions'] as List? ?? const []);
+      _suggestions = rows.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: const Text('Customer match'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _query,
+              decoration: InputDecoration(
+                hintText: 'Search by name, phone or address',
+                suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () => unawaited(_search())),
+              ),
+              onSubmitted: (_) => unawaited(_search()),
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+            else if (_error != null)
+              Text(_error!, style: TextStyle(color: theme.colorScheme.error))
+            else if (_suggestions.isEmpty)
+              const Text('A1 Leads has no Workiz suggestion for this review.')
+            else
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final s in _suggestions)
+                      ListTile(
+                        dense: true,
+                        title: Text('${s['customerName'] ?? s['name'] ?? 'Workiz job ${s['jobId'] ?? ''}'}'),
+                        subtitle: Text([
+                          if (s['serviceDate'] != null) '${s['serviceDate']}',
+                          if (s['technician'] != null) 'Tech: ${s['technician']}',
+                          if (s['tenant'] != null) '${s['tenant']}',
+                        ].join(' · ')),
+                        onTap: s['jobId'] == null || s['tenant'] == null
+                            ? null
+                            : () => Navigator.pop(context, {'tenant': '${s['tenant']}', 'jobId': '${s['jobId']}'}),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, const {'clear': true}),
+          child: const Text('Clear match'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      ],
+    );
+  }
+}
+
+/// A policy reason and an explicit confirmation - A1 Leads refuses either
+/// missing, and so does EzBizi before it asks.
+class _ReportDialog extends StatefulWidget {
+  const _ReportDialog({required this.reasons});
+
+  final List<String> reasons;
+
+  @override
+  State<_ReportDialog> createState() => _ReportDialogState();
+}
+
+class _ReportDialogState extends State<_ReportDialog> {
+  late String _reason = widget.reasons.first;
+  bool _confirmed = false;
+
+  static String _label(String reason) {
+    final words = reason.replaceAll('_', ' ');
+    return words.isEmpty ? reason : words[0].toUpperCase() + words.substring(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Report to Google'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Google removes a review only for a policy reason, not for criticism.'),
+          const SizedBox(height: 12),
+          SearchPickerField<String>(
+            value: _reason,
+            label: 'Policy reason',
+            options: [for (final r in widget.reasons) SearchOption<String>(value: r, label: _label(r))],
+            onChanged: (v) => setState(() => _reason = v ?? _reason),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _confirmed,
+            onChanged: (v) => setState(() => _confirmed = v ?? false),
+            title: const Text('This review breaks that policy'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('gbp-report-confirm'),
+          onPressed: _confirmed ? () => Navigator.pop(context, _reason) : null,
+          child: const Text('Queue report'),
+        ),
+      ],
+    );
   }
 }

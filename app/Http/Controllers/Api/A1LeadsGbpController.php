@@ -8,6 +8,7 @@ use App\Services\A1Leads\A1LeadsClient;
 use App\Services\A1Leads\A1LeadsGbpReplies;
 use App\Services\A1Leads\A1LeadsOwner;
 use App\Services\A1Leads\A1LeadsReplyClient;
+use App\Services\A1Leads\A1LeadsReviewOpsClient;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -105,6 +106,10 @@ class A1LeadsGbpController extends Controller
             // "not switched on" is a deployment waiting on its key, "company
             // not in view" is something the reader can change themselves.
             'reply_unavailable_because' => $replyBecause,
+            // Whether the card, match, report and draft actions are connected
+            // (their own key, Rodrigo's review-ops routes). The screen draws
+            // none of them without it.
+            'ops_available' => app(A1LeadsReviewOpsClient::class)->configured(),
             'summary' => $summary,
             'reviews' => $this->withBoard($this->withReplyReceipts($reviews['data'] ?? []), $board),
             'meta' => $reviews['meta'] ?? null,
