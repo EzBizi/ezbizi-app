@@ -41,6 +41,17 @@ void main() {
       greaterThan(tester.getTopLeft(find.text('Wed')).dx),
     );
 
+    // The bar agrees with the number: 3 of 8 left is 5/8 used, even when 8
+    // were booked (over one slot's limit, leaving another open).
+    final bar = tester.widget<LinearProgressIndicator>(
+      find.descendant(
+        of: find.byKey(const ValueKey('calendar-day-2026-10-09')),
+        matching: find.byType(LinearProgressIndicator),
+      ),
+    );
+    expect(bar.value, closeTo(5 / 8, 0.001));
+    expect(inDay('2026-10-09', '3'), findsOneWidget);
+
     // Every day the same size.
     final sizes = {
       for (final d in ['01', '05', '06', '07', '31'])
@@ -125,6 +136,7 @@ Future<void> _pump(
             5 => _day('$month-05', booked: 14),
             6 => _day('$month-06', closed: true),
             7 => _day('$month-07', booked: 19, remaining: 0, over: 3),
+            9 => _day('$month-09', capacity: 8, booked: 8, remaining: 3),
             _ => _day('$month-${d.toString().padLeft(2, '0')}'),
           },
       ];

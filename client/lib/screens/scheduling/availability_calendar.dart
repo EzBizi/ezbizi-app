@@ -274,7 +274,6 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
     final date = d['date'] as String;
     final closed = d['closed'] == true;
     final capacity = (d['capacity'] as num?)?.toInt() ?? 0;
-    final booked = (d['booked'] as num?)?.toInt() ?? 0;
     final remaining = (d['remaining'] as num?)?.toInt() ?? 0;
     final over = (d['over'] as num?)?.toInt() ?? 0;
     final isToday = date == today;
@@ -367,7 +366,14 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(2),
                 child: LinearProgressIndicator(
-                  value: capacity == 0 ? 1 : (booked / capacity).clamp(0, 1),
+                  // Filled by what is TAKEN of what the day takes, so it agrees
+                  // with the number above it. Not booked / capacity: jobs piled
+                  // into one slot over its limit leave another slot open, and
+                  // "3 of 8" beside a full bar read as a contradiction (Oct 2,
+                  // Connecticut: 8 booked, 3 still offered at 11–2).
+                  value: capacity == 0
+                      ? 1
+                      : (1 - remaining / capacity).clamp(0, 1),
                   minHeight: 4,
                   color: tone.ink,
                   backgroundColor: tone.fill,
