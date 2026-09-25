@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0273',
+      date: '24 Sep 2026',
+      items: [
+        'Reports has a service-area column, Days until next free spot. Filter it at a number of days and an automation can warn when an area is booked out that far ahead; an area that is closed or not set up stays blank.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0272',
       date: '24 Sep 2026',
       items: [
