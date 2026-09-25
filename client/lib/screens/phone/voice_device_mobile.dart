@@ -319,27 +319,6 @@ class MobileVoiceDevice implements VoiceDevice {
       // Nothing to say here that registration will not say better.
     }
 
-    // ANDROID WILL NOT PLACE AN OUTBOUND CALL WITHOUT CALL_PHONE, and says so
-    // only to logcat.
-    //
-    // Found 2026-09-25 by reading the plugin rather than by a device:
-    // `TVConnectionService.onStartCommand` checks `hasCallPhonePermission()`
-    // and, if it is missing, logs "Missing CALL_PHONE permission" and RETURNS
-    // — before `telecomManager.placeCall`. No error reaches Dart. Pressing
-    // Call does nothing at all.
-    //
-    // This app never asked for it. The first Android outbound call that
-    // connected (0.0.0277, on an emulator) worked only because CALL_PHONE had
-    // been granted there by hand with `pm grant`, so it proved the path works
-    // WITH the permission and said nothing about a real phone, which would
-    // never have been asked.
-    //
-    // Asked here for the same reason as the microphone: a prompt arriving at
-    // the moment somebody presses Call is a prompt read while the customer
-    // waits. Its own try, not fatal — inbound needs none of this, so a refusal
-    // must not be reported as the phone failing to register. `connect()` asks
-    // again, because a refusal here is not the end of it.
-    await _askToPlaceCalls();
 
     // BEFORE the token and before Twilio, because neither can help.
     //
@@ -381,6 +360,19 @@ class MobileVoiceDevice implements VoiceDevice {
       }
 
       _needsCallingAccount = false;
+    } on TimeoutException {
+      // A PERMISSION FUTURE THAT NEVER COMPLETED, not the network. Measured on
+      // 0.0.0278: after a denial in the phone group the plugin's request never
+      // resolves, the timeout fires, and this used to print "Android refused
+      // this app a calling account: TimeoutException after 0:00:20.000000:
+      // Future not completed" — a developer string, pointing at the wrong
+      // cause, at the one person who knows exactly what they just refused.
+      _registered = false;
+      _registrationError =
+          'EzBizi needs the phone permission to place and take calls. Allow '
+          'it under Settings › Apps › EzBizi › Permissions › Phone.';
+
+      return;
     } catch (error) {
       _registered = false;
       _registrationError = 'Android refused this app a calling account: $error';
@@ -505,32 +497,87 @@ class MobileVoiceDevice implements VoiceDevice {
 
   /// CALL_PHONE, and the self-managed-calls permission beside it.
   ///
-  /// Android only: iOS has no such permission and places calls through
-  /// CallKit without one. Returns whether an outbound call can now be placed,
-  /// so `connect()` can tell somebody why nothing happened rather than doing
-  /// nothing — which is exactly what the plugin does on its own.
+  /// Android will not place an outbound call without CALL_PHONE, and the
+  /// plugin says so only to logcat: `TVConnectionService.onStartCommand` logs
+  /// "Missing CALL_PHONE permission" and RETURNS before `placeCall`, so
+  /// pressing Call did nothing and said nothing. This app never asked.
+  ///
+  /// ── Why only when somebody presses Call ─────────────────────────
+  ///
+  /// I first asked at start-up beside the microphone, on the microphone's
+  /// reasoning — and that reasoning is about INBOUND, where a prompt arriving
+  /// over a ringing call costs the call. For outbound, pressing Call IS the
+  /// moment of intent and nobody is waiting yet.
+  ///
+  /// And start-up was actively harmful. `_ensureCallingAccount` already asks
+  /// for the phone group there; a second request into the same group is a
+  /// second, IDENTICAL dialog. Somebody who says no twice because they were
+  /// asked twice gets READ_PHONE_STATE marked USER_FIXED — Android never asks
+  /// again, and calling is lost in BOTH directions with no way back from the
+  /// app. Measured on 0.0.0278.
+  ///
+  /// Asked here instead, if the group was granted at start-up this is silent:
+  /// Android auto-grants a permission whose group already holds one.
+  ///
+  /// Android only — iOS has no such permission and places calls through
+  /// CallKit without one.
   Future<bool> _askToPlaceCalls() async {
     if (defaultTargetPlatform != TargetPlatform.android) return true;
 
-    try {
-      final voice = TwilioVoicePlatform.instance;
+    final voice = TwilioVoicePlatform.instance;
 
-      if (!await voice.hasCallPhonePermission()) {
-        await voice.requestCallPhonePermission();
+    return placeCallsAllowed(
+      hasCallPhone: voice.hasCallPhonePermission,
+      requestCallPhone: voice.requestCallPhonePermission,
+      hasManageOwnCalls: voice.hasManageOwnCallsPermission,
+      requestManageOwnCalls: voice.requestManageOwnCallsPermission,
+    );
+  }
+
+  /// Whether an outbound call may be attempted, asking once where needed.
+  ///
+  /// Static and handed the four platform calls, so the FAIL-CLOSED rule below
+  /// can be tested without a device — the rule is the whole point and it is
+  /// exactly the part a real handset reached by a path nobody had written a
+  /// test for.
+  @visibleForTesting
+  static Future<bool> placeCallsAllowed({
+    required Future<bool> Function() hasCallPhone,
+    required Future<bool?> Function() requestCallPhone,
+    required Future<bool> Function() hasManageOwnCalls,
+    required Future<bool?> Function() requestManageOwnCalls,
+  }) async {
+    try {
+      if (!await hasCallPhone()) {
+        await requestCallPhone();
       }
 
       // Normally granted at install on every Android version this app
       // supports, but the plugin refuses without it just as silently, so it is
       // checked rather than assumed.
-      if (!await voice.hasManageOwnCallsPermission()) {
-        await voice.requestManageOwnCallsPermission();
+      if (!await hasManageOwnCalls()) {
+        await requestManageOwnCalls();
       }
 
-      return await voice.hasCallPhonePermission();
+      return await hasCallPhone();
     } catch (_) {
-      // A platform channel that throws is not a refusal. Let the call be
-      // attempted and fail, if it is going to, where the plugin can say so.
-      return true;
+      // FAIL CLOSED. I first wrote "a platform channel that throws is not a
+      // refusal" and returned true, and on an emulator it produced a phantom
+      // call: "On a call · Hang up" for a call that never existed. The plugin
+      // reaches `showPermissionRationaleDialog` — which is what threw — ONLY
+      // after a prior denial, because that is when Android says a rationale
+      // is due. So on this path the throw IS the refusal. Measured by the
+      // Android session on 0.0.0278, 2026-09-25.
+      //
+      // Wrongly refusing costs a sentence telling somebody where to switch it
+      // on. Wrongly proceeding costs a desk marked on a call it is not on,
+      // which takes that person out of their own ring group. Only one of those
+      // is safe to get wrong.
+      try {
+        return await hasCallPhone();
+      } catch (_) {
+        return false;
+      }
     }
   }
 
