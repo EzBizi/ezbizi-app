@@ -2089,6 +2089,11 @@ check('days in full', str_contains($week, 'Monday'), true);
 check('a 24-hour clock', (bool) preg_match('/\b\d{2}:\d{2} – \d{2}:\d{2}\b/u', $week), true);
 check('an open-now badge worked out in the browser', str_contains($week, 'ezbizi-hours-badge'), true);
 
+echo PHP_EOL . "A1's look survives the swap" . PHP_EOL;
+check('hours have a clock, not a pin', str_contains(ezbizi_contact_icon('hours'), 'a10 10 0 100 20'), true);
+check('a network with a mark draws the mark', str_contains(ezbizi_social_icon('tiktok', 'TikTok'), '<path fill="currentColor"'), true);
+check('one without keeps its letters', str_contains(ezbizi_social_icon('bbb', 'BBB'), '>B</text>'), true);
+
 echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
 reset_site();
 serve_preset_payload(['state' => 'NJ', 'state_link' => 'https://www.nj.gov/']);

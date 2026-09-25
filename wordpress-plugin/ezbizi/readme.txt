@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.2
+Stable tag: 1.20.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,10 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.3 =
+* FIX: social links show each network's own logo; opening hours have a
+  clock and a licence a badge; a call button keeps its number on one line.
 
 = 1.20.2 =
 * FIX: a contact icon's box grows around the icon, so a large icon or
