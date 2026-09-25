@@ -44,6 +44,12 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
+	<!-- Field: geolocator links CoreLocation into the Mac build, and Apple's
+	     upload scan (ITMS-90683) flags a linked location API with no purpose
+	     string. The Mac app never asks for location (tracking and SOS positions
+	     are phone-only, field_tracker.dart onPhone), so this is never shown. -->
+	<key>NSLocationUsageDescription</key>
+	<string>Location sharing is available in the EzBizi iPhone and Android apps. The Mac app does not use your location.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>NSMainNibFile</key>
