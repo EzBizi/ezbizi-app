@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.19.0
+Stable tag: 1.20.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,16 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.0 =
+* NEW: the live chat takes an agent name and photo, an online dot, its own
+  icon, size, distance from the corner, colours and shadow, fades or slides
+  in, can wait before showing, show on desktop or phones only, stay off
+  chosen pages, and report opens and starts to analytics.
+* NEW: the phone box shows either number, written as you choose, and can
+  text or WhatsApp; opening hours as a table, list or line, with a 24-hour
+  clock and an open-now badge; the map as satellite or terrain with a way
+  there; the page title as a heading of your choice.
 
 = 1.19.0 =
 * NEW: [ezbizi_services], [ezbizi_reviews], [ezbizi_before_after] and
