@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.18.0
+Stable tag: 1.19.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,12 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.19.0 =
+* NEW: [ezbizi_services], [ezbizi_reviews], [ezbizi_before_after] and
+  [ezbizi_faq], with an Elementor widget each, drawn from lists kept in
+  EzBizi under Web Management > Widgets. Reviews show featured ones, or the
+  Google reviews EzBizi has; the FAQ carries the markup search engines read.
 
 = 1.18.0 =
 * NEW: the contact form takes number, date, time, checkbox, radio and hidden

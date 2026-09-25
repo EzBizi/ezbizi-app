@@ -605,6 +605,31 @@ function a1swap_element(&$e, &$report) {
         'a1tools_store_locator' => array('ezbizi-store-locator', 'a1swap_stores'),
         'a1tools-web-form' => array('ezbizi-form', 'a1swap_form_look'),
         'a1tools_review_funnel' => array('ezbizi-review-faces', function ($s) { return array(); }),
+        // No live page uses these four; mapped so a page that does is not left behind.
+        'a1tools_services' => array('ezbizi-services', function ($s) {
+            $o = new A1Swap_Overrides();
+            return $o->set('layout', ($s['layout'] ?? '') === 'list' ? 'list' : 'grid')->set('columns', is_numeric($s['columns'] ?? null) ? max(1, min(4, (int) $s['columns'])) : null)
+                ->set('description', ($s['show_description'] ?? 'yes') === 'yes')->set('icon', ($s['show_icon'] ?? 'yes') === 'yes')
+                ->set('image', ($s['show_image'] ?? 'yes') === 'yes')->set('phone', ($s['show_phone'] ?? '') === 'yes')
+                ->set('new_tab', ($s['link_target'] ?? '') === '_blank')->out;
+        }),
+        'a1tools_reviews' => array('ezbizi-reviews', function ($s) {
+            $o = new A1Swap_Overrides();
+            return $o->set('columns', is_numeric($s['columns'] ?? null) ? max(1, min(4, (int) $s['columns'])) : null)
+                ->set('stars', ($s['show_stars'] ?? 'yes') === 'yes')->set('show_source', ($s['show_source'] ?? 'yes') === 'yes')
+                ->set('date', ($s['show_date'] ?? 'yes') === 'yes')->set('photo', ($s['show_image'] ?? 'yes') === 'yes')
+                ->set('limit', is_numeric($s['limit'] ?? null) ? (int) $s['limit'] : null)->out;
+        }),
+        'a1tools_before_after' => array('ezbizi-before-after', function ($s) {
+            $o = new A1Swap_Overrides();
+            return $o->set('columns', is_numeric($s['columns'] ?? null) ? max(1, min(4, (int) $s['columns'])) : null)
+                ->set('title', ($s['show_title'] ?? 'yes') === 'yes')->set('description', ($s['show_description'] ?? 'yes') === 'yes')->out;
+        }),
+        'a1tools_faq' => array('ezbizi-faq', function ($s) {
+            $o = new A1Swap_Overrides();
+            return $o->set('category', $s['category'] ?? null)->set('show_category', ($s['show_category'] ?? '') === 'yes')
+                ->set('schema', ($s['enable_schema'] ?? 'yes') === 'yes')->out;
+        }),
         'a1tools_smiley_review' => array('ezbizi-review-faces', function ($s) { return array('ezbizi_preset' => 'reviews'); }),
     );
 
