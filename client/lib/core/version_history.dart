@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0276',
+      date: '24 Sep 2026',
+      items: [
+        'Scheduling Settings, Availability: the week is one compact grid - a row per day, the time slots as columns and the total for the day first - and every row and daily-total tile is the same size.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0275',
       date: '24 Sep 2026',
       items: [
