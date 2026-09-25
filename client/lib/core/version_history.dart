@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0277',
+      date: '24 Sep 2026',
+      items: [
+        'Customer match on A1Leads GBP lists the Workiz jobs A1 Leads finds for your search; before, it showed no suggestion on every review. It asks for a name, phone or address to search by.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0276',
       date: '24 Sep 2026',
       items: [
