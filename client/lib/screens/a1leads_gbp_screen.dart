@@ -1730,9 +1730,14 @@ class _MatchDialogState extends State<_MatchDialog> {
         _error = response.message;
         return;
       }
-      final data = response.body['data'];
-      final rows = data is List ? data : ((data as Map?)?['suggestions'] as List? ?? const []);
-      _suggestions = rows.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
+      // Measured on the live route, 2026-09-25: `data.jobs`, each with name,
+      // date, team (a list), jobNumber, tenant and jobId. Nothing comes back
+      // until something is searched for.
+      final data = (response.body['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      _suggestions = ((data['jobs'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((m) => m.cast<String, dynamic>())
+          .toList();
     });
   }
 
@@ -1762,7 +1767,9 @@ class _MatchDialogState extends State<_MatchDialog> {
             else if (_error != null)
               Text(_error!, style: TextStyle(color: theme.colorScheme.error))
             else if (_suggestions.isEmpty)
-              const Text('A1 Leads has no Workiz suggestion for this review.')
+              Text(_query.text.trim().isEmpty
+                  ? "Search for the customer's name, phone or address."
+                  : 'No Workiz job matches that search.')
             else
               Flexible(
                 child: ListView(
@@ -1771,10 +1778,12 @@ class _MatchDialogState extends State<_MatchDialog> {
                     for (final s in _suggestions)
                       ListTile(
                         dense: true,
-                        title: Text('${s['customerName'] ?? s['name'] ?? 'Workiz job ${s['jobId'] ?? ''}'}'),
+                        title: Text('${s['name'] ?? 'Workiz job ${s['jobNumber'] ?? s['jobId'] ?? ''}'}'),
                         subtitle: Text([
-                          if (s['serviceDate'] != null) '${s['serviceDate']}',
-                          if (s['technician'] != null) 'Tech: ${s['technician']}',
+                          if (s['jobNumber'] != null) 'Job #${s['jobNumber']}',
+                          if (s['date'] != null) '${s['date']}',
+                          if (s['team'] is List && (s['team'] as List).isNotEmpty)
+                            'Tech: ${(s['team'] as List).join(', ')}',
                           if (s['tenant'] != null) '${s['tenant']}',
                         ].join(' · ')),
                         onTap: s['jobId'] == null || s['tenant'] == null
