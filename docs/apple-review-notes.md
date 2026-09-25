@@ -146,9 +146,9 @@ Both paired iPhones run iOS 26.6, which is current, so either works:
 |---|---|
 | Account registration | **Does not exist in the app** — say so aloud |
 | Login | Yes — show it |
-| Account deletion | **Not in the app.** See the risk note below |
+| Account deletion | **In the app** - `DELETE /api/v1/me`, from the account screen. Show it |
 | Paid content, purchase, subscription | None. Nothing is sold in the app |
-| User-generated content, reporting, blocking | No public content, no feed, no user-to-user contact |
+| User-generated content, reporting, blocking | No public content or feed. Users reach only colleagues in their own organization (phone extensions) |
 | Permission prompts | **Microphone** (on the first call) and **notifications**. No location, contacts, camera or ATT — see "Permissions" above, and re-read the binary before trusting this row |
 
 So the recording is: launch, sign in, walk the core features. Nothing to
