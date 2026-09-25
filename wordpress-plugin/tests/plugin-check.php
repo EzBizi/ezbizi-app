@@ -136,6 +136,7 @@ function human_time_diff($from, $to = 0) {
 }
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
+function esc_attr__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 /*
  * Records instead of discarding, because the menu is the thing being asserted.
  * `add_options_page` is gone with the page that used it: a stub for a function
@@ -1618,6 +1619,47 @@ reset_site();
 serve_preset_payload(['review_link' => 'https://g.page/r/a1chimney/review']);
 check('no browser key, no form a visitor cannot send', str_contains($GLOBALS['sc']['ezbizi_review_faces']([]), '<form'), false);
 
+echo PHP_EOL . "Team, branches and the store locator draw EzBizi's lists" . PHP_EOL;
+reset_site();
+serve_preset_payload([], [], [
+    'team' => [
+        ['name' => 'Ana Ruiz', 'role' => 'Technician', 'bio' => 'Twelve years on roofs.', 'photo_url' => 'https://x.test/ana.jpg', 'category' => 'Field'],
+        ['name' => 'Bo Lee', 'role' => 'Dispatcher', 'bio' => '', 'photo_url' => '', 'category' => 'Office'],
+        ['name' => '<script>x</script>', 'role' => '', 'bio' => '', 'photo_url' => '', 'category' => 'Office'],
+    ],
+    'locations' => [
+        'site' => [['name' => 'North Jersey', 'phone' => '(973) 555-0100', 'address_line1' => '1 Main St', 'city' => 'Newark', 'state' => 'NJ', 'postal_code' => '07101', 'latitude' => 40.73, 'longitude' => -74.17, 'maps_url' => '']],
+        'company' => [
+            ['name' => 'Atlanta', 'state' => 'GA', 'city' => 'Atlanta', 'phone' => '404-555-0100', 'image_url' => 'https://x.test/atl.jpg', 'website_url' => 'https://atl.a-1chimney.com/'],
+            ['name' => 'Austin', 'state' => 'TX', 'city' => 'Austin'],
+        ],
+    ],
+]);
+
+$team = $GLOBALS['sc']['ezbizi_team']([]);
+check('everybody on the list', substr_count($team, 'class="ezbizi-team-member"'), 3);
+check('under their headings, since there are two', substr_count($team, 'class="ezbizi-team-heading"'), 2);
+check('a name is text, never markup', str_contains($team, '<script>x'), false);
+check('three columns by default', str_contains($team, 'repeat(3,'), true);
+
+$branches = $GLOBALS['sc']['ezbizi_branches']([]);
+check('the branch this site answers for', str_contains($branches, 'North Jersey'), true);
+check('not the company\'s other stores', str_contains($branches, 'Atlanta'), false);
+check('its phone number', str_contains($branches, '(973) 555-0100'), true);
+check('a map at its coordinates', str_contains($branches, 'q=40.73%2C-74.17') || str_contains($branches, 'q=40.73,-74.17'), true);
+check('and a way there, searched when there is no Maps link', str_contains($branches, 'google.com/maps/dir/'), true);
+
+$stores = $GLOBALS['sc']['ezbizi_store_locator']([]);
+check('every store', substr_count($stores, 'class="ezbizi-store"'), 2);
+check('a state filter, since there are two states', str_contains($stores, '<option value="GA">'), true);
+check('a store\'s picture', str_contains($stores, 'atl.jpg'), true);
+
+reset_site();
+serve_preset_payload();
+check('no team, nothing drawn', $GLOBALS['sc']['ezbizi_team']([]), '');
+check('no branches, nothing drawn', $GLOBALS['sc']['ezbizi_branches']([]), '');
+check('no stores, nothing drawn', $GLOBALS['sc']['ezbizi_store_locator']([]), '');
+
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*
  * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
@@ -1639,7 +1681,7 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('every widget is registered', count($manager->registered), 14);
+check('every widget is registered', count($manager->registered), 17);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
 

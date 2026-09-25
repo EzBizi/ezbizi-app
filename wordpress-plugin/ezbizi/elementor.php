@@ -63,6 +63,9 @@ function ezbizi_register_elementor_widgets($widgets_manager) {
     $widgets_manager->register(new EzBizi_Elementor_Review_Faces());
     $widgets_manager->register(new EzBizi_Elementor_Gallery());
     $widgets_manager->register(new EzBizi_Elementor_Street_View());
+    $widgets_manager->register(new EzBizi_Elementor_Team());
+    $widgets_manager->register(new EzBizi_Elementor_Branches());
+    $widgets_manager->register(new EzBizi_Elementor_Store_Locator());
     $widgets_manager->register(new EzBizi_Elementor_Video_Carousel());
 }
 

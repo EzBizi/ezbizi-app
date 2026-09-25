@@ -130,6 +130,11 @@ function ezbizi_preset_fallback($widget) {
         ),
     );
 
+    // Copied from WidgetPresets::defaults(), like the ones above.
+    $fallbacks['team'] = array('columns' => 3, 'photo' => 'square', 'bio' => true);
+    $fallbacks['branches'] = array('columns' => 3, 'address' => true, 'map' => true, 'directions' => true);
+    $fallbacks['store_locator'] = array('search' => true, 'images' => true, 'maps' => true);
+
     // ponytail: copied from WidgetPresets::defaults(), like the four above.
     $fallbacks['review_faces'] = array(
         'tone' => 'light',

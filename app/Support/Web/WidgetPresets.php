@@ -63,6 +63,12 @@ final class WidgetPresets
         // Jose, 2026-09-24: "we have a widget on a1tools that needs a ezbizi
         // counterpart asap" — the two faces on a-1chimney.com/reviews.
         'review_faces',
+        // Jose, 2026-09-25: "whatever is missing that is being used add it".
+        // A1 Tools' team (39 sites), franchise block (37) and store locator
+        // (10), each drawing a list from web_team_members / web_locations.
+        'team',
+        'branches',
+        'store_locator',
     ];
 
     public const DEFAULT = 'default';
@@ -95,6 +101,9 @@ final class WidgetPresets
         'phone_box',
         'review_faces',
         'street_view',
+        'team',
+        'branches',
+        'store_locator',
     ];
 
     /**
@@ -239,6 +248,27 @@ final class WidgetPresets
                 'public_prompt' => 'If you like, you can also share your experience publicly on Google.',
                 'ask_public' => true,
             ],
+            'team' => [
+                'columns' => 3,
+                'photo' => 'square',
+                'bio' => true,
+            ],
+            /*
+             * The branches one website answers for. A1's live pages hide the
+             * address and show a map, so both are switches; the default shows
+             * everything, since a branch card with no address is the odd one.
+             */
+            'branches' => [
+                'columns' => 3,
+                'address' => true,
+                'map' => true,
+                'directions' => true,
+            ],
+            'store_locator' => [
+                'search' => true,
+                'images' => true,
+                'maps' => true,
+            ],
         ];
     }
 
@@ -265,6 +295,9 @@ final class WidgetPresets
         ],
         'review_faces' => [
             'tone' => ['light', 'dark'],
+        ],
+        'team' => [
+            'photo' => ['square', 'circle'],
         ],
     ];
 
@@ -299,6 +332,8 @@ final class WidgetPresets
         'city_list' => ['columns' => [1, 6]],
         'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
         'review_faces' => ['face_size' => [40, 120]],
+        'team' => ['columns' => [1, 6]],
+        'branches' => ['columns' => [1, 4]],
     ];
 
     /**

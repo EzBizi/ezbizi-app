@@ -9,6 +9,7 @@ import '../../widgets/search_picker.dart';
 import '../../widgets/shortcode_button.dart';
 import 'chat_hours.dart';
 import 'widget_previews.dart';
+import 'web_lists.dart';
 
 /// Web Management → Widgets: how a site's chat bubble and contact form look,
 /// and what the form asks.
@@ -1130,8 +1131,24 @@ class _WidgetEditorState extends State<_WidgetEditor> {
           _saved = null;
         }),
       ),
+      // The list the widget draws, kept here rather than on a tab of its
+      // own: it is only ever looked for by somebody looking at this widget.
+      if (_listKinds[rendered.key] case final kind?)
+        SiteListEditor(
+          key: ValueKey('list-${rendered.key}-${widget.siteId}'),
+          api: widget.api,
+          siteId: widget.siteId,
+          canEdit: widget.canEdit,
+          kind: kind,
+        ),
     ];
   }
+
+  static const Map<String, SiteListKind> _listKinds = {
+    'team': SiteListKind.team,
+    'branches': SiteListKind.branches,
+    'store_locator': SiteListKind.stores,
+  };
 
   /// The widgets as a visitor meets them, drawn from the values being edited.
   ///
@@ -2106,6 +2123,9 @@ const Map<String, IconData> _renderedIcons = {
   'cta': Icons.ads_click_outlined,
   'phone_box': Icons.phone_outlined,
   'review_faces': Icons.sentiment_satisfied_outlined,
+  'team': Icons.groups_outlined,
+  'branches': Icons.storefront_outlined,
+  'store_locator': Icons.travel_explore_outlined,
 };
 
 /// A widget as a card: what it is, what it is set to, and a way in.
@@ -2312,6 +2332,39 @@ const List<_Rendered> _renderedCatalogue = [
       _Flag('ask_public', 'After a complaint, still offer the review link',
           true),
       _Text('public_prompt', 'Wording of that offer', max: 200),
+    ],
+  ),
+  _Rendered(
+    'team',
+    'Team',
+    'The people on your team page, grouped under their headings. The list '
+        'itself is kept below.',
+    [
+      _Number('columns', 'Columns', 1, 6, 3),
+      _Choice('photo', 'Photo shape', ['square', 'circle']),
+      _Flag('bio', 'Show what each person wrote', true),
+    ],
+  ),
+  _Rendered(
+    'branches',
+    'Branches',
+    'The branches this website answers for, each with its phone, a map and '
+        'directions.',
+    [
+      _Number('columns', 'Columns', 1, 4, 3),
+      _Flag('address', 'Show the address', true),
+      _Flag('map', 'Show a map', true),
+      _Flag('directions', 'Show a directions button', true),
+    ],
+  ),
+  _Rendered(
+    'store_locator',
+    'Store locator',
+    'Every location the company has, with a search box and a state filter.',
+    [
+      _Flag('search', 'Show the search box', true),
+      _Flag('images', 'Show each picture', true),
+      _Flag('maps', 'Show a map on each', true),
     ],
   ),
   _Rendered(

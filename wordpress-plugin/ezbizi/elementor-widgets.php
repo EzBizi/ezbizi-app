@@ -433,3 +433,72 @@ class EzBizi_Elementor_Street_View extends EzBizi_Elementor_Widget {
         echo ezbizi_street_view_shortcode(array());
     }
 }
+
+/** The company's people, from EzBizi. */
+class EzBizi_Elementor_Team extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-team';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Team', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-person';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('team', 'staff', 'people', 'about'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_team_shortcode(array('preset' => $preset));
+    }
+}
+
+/** The branches this website answers for. */
+class EzBizi_Elementor_Branches extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-branches';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Branches', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-map-pin';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('franchise', 'branches', 'locations', 'offices'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_branches_shortcode(array('preset' => $preset));
+    }
+}
+
+/** All of the company's locations, searchable. */
+class EzBizi_Elementor_Store_Locator extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-store-locator';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Store Locator', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-google-maps';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('store', 'locator', 'locations', 'map', 'search'));
+    }
+
+    protected function ezbizi_draw($preset) {
+        return ezbizi_store_locator_shortcode(array('preset' => $preset));
+    }
+}

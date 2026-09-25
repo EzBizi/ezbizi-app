@@ -153,6 +153,7 @@ use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
 use App\Http\Controllers\Api\Web\SnippetController as WebSnippetController;
 use App\Http\Controllers\Api\Web\ValuesController as WebValuesController;
 use App\Http\Controllers\Api\Web\WidgetsController as WebWidgetsController;
+use App\Http\Controllers\Api\Web\ListsController as WebListsController;
 use App\Http\Controllers\Api\MetaMessagesWebhookController;
 use App\Http\Controllers\Api\WhatsAppTemplatesController;
 use App\Http\Controllers\Api\WhatsAppWebhookController;
@@ -876,6 +877,11 @@ Route::prefix('v1')
              */
             Route::post('web/sites/{site}/widgets/chat', [WebWidgetsController::class, 'chat']);
             Route::post('web/sites/{site}/widgets/refresh', [WebWidgetsController::class, 'refresh']);
+            // The lists [ezbizi_team], [ezbizi_branches] and [ezbizi_store_locator] draw.
+            Route::get('web/sites/{site}/team', [WebListsController::class, 'team']);
+            Route::put('web/sites/{site}/team', [WebListsController::class, 'saveTeam']);
+            Route::get('web/sites/{site}/locations', [WebListsController::class, 'locations']);
+            Route::put('web/sites/{site}/locations', [WebListsController::class, 'saveLocations']);
         });
         /*
          * The Orders tab owns buying, selling and issuing outright: nothing

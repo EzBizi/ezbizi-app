@@ -95,6 +95,7 @@ require_once __DIR__ . '/enquiries.php';
 // After `enquiries.php`, which owns the helpers the presentation widgets share
 // — the id counter, the palette reader and the string accessor.
 require_once __DIR__ . '/widgets.php';
+require_once __DIR__ . '/lists.php';
 require_once __DIR__ . '/elementor.php';
 
 /**

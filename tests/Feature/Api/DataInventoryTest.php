@@ -329,6 +329,14 @@ class DataInventoryTest extends TestCase
              * different register.
              */
             PlatformStaff::class,
+
+            /*
+             * A SHOP IS NOT A PERSON, for the reason Company is exempt: the
+             * phone, email and street address are the ones a business prints
+             * on its own website for a branch or store, typed in to publish.
+             * The people a website shows are WebTeamMember, which declares.
+             */
+            \App\Models\WebLocation::class,
         ];
 
         $missing = [];

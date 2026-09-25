@@ -58,6 +58,12 @@ Widget renderedPreview({
       return _phoneBox(options, accent, text);
     case 'review_faces':
       return _reviewFaces(options, theme, text);
+    case 'team':
+      return _team(options, accent, text, radius);
+    case 'branches':
+      return _branches(options, accent, onAccent, text);
+    case 'store_locator':
+      return _storeLocator(options, accent, text);
     default:
       return const SizedBox.shrink();
   }
@@ -578,6 +584,159 @@ Widget _cta(
         style: theme.textTheme.bodySmall,
       ),
     ],
+  );
+}
+
+/// Three stand-in people. The real list arrives at render time.
+Widget _team(
+    Map<String, dynamic> options, Color accent, Color text, double radius) {
+  final columns = _int(options['columns'], 3).clamp(1, 6);
+  final round = _pick(options['photo'], 'square') == 'circle';
+  final bio = _flag(options['bio'], true);
+
+  Widget person(String name, String role) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: Container(
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.15),
+                shape: round ? BoxShape.circle : BoxShape.rectangle,
+                borderRadius: round ? null : BorderRadius.circular(radius / 2),
+              ),
+              child: Icon(Icons.person_outline, color: accent),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(name,
+              style: TextStyle(color: text, fontWeight: FontWeight.w700),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          Text(role,
+              style: TextStyle(color: text.withValues(alpha: 0.8), fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          if (bio)
+            Text('A line they wrote.',
+                style: TextStyle(color: text.withValues(alpha: 0.7), fontSize: 11),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+        ],
+      );
+
+  final people = [
+    person('Pat Example', 'Technician'),
+    person('Sam Example', 'Dispatcher'),
+    person('Kim Example', 'Owner'),
+  ];
+
+  // A Wrap of fixed widths rather than a grid with a fixed aspect: the text
+  // under each photo sets the height, so a line more cannot overflow it.
+  const width = 360.0;
+  final each = (width - 12 * (columns - 1)) / columns;
+
+  return SizedBox(
+    width: width,
+    child: Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [for (final p in people) SizedBox(width: each, child: p)],
+    ),
+  );
+}
+
+/// One stand-in branch card, with what the switches leave on it.
+Widget _branches(Map<String, dynamic> options, Color accent, Color onAccent,
+    Color text) {
+  return SizedBox(
+    width: 240,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('North Springfield',
+            style: TextStyle(color: text, fontWeight: FontWeight.w700, fontSize: 16)),
+        const SizedBox(height: 4),
+        if (_flag(options['address'], true))
+          Text('1 Example St, Springfield',
+              style: TextStyle(color: text.withValues(alpha: 0.8), fontSize: 12)),
+        Text('(555) 010-0100', style: TextStyle(color: text)),
+        if (_flag(options['map'], true)) ...[
+          const SizedBox(height: 8),
+          Container(
+            height: 80,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(child: Icon(Icons.map_outlined, color: accent)),
+          ),
+        ],
+        if (_flag(options['directions'], true)) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('Get Directions',
+                style: TextStyle(color: onAccent, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+/// The search bar and one stand-in store.
+Widget _storeLocator(Map<String, dynamic> options, Color accent, Color text) {
+  return SizedBox(
+    width: 300,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_flag(options['search'], true))
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              border: Border.all(color: text.withValues(alpha: 0.3)),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('Search by town, state or ZIP',
+                style: TextStyle(color: text.withValues(alpha: 0.6), fontSize: 12)),
+          ),
+        const SizedBox(height: 8),
+        if (_flag(options['images'], true))
+          Container(
+            height: 60,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(child: Icon(Icons.storefront_outlined, color: accent)),
+          ),
+        const SizedBox(height: 6),
+        Text('Springfield store',
+            style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+        Text('1 Example St, Springfield',
+            style: TextStyle(color: text.withValues(alpha: 0.8), fontSize: 12)),
+        Text('DIRECTIONS',
+            style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12)),
+        if (_flag(options['maps'], true)) ...[
+          const SizedBox(height: 6),
+          Container(
+            height: 50,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Center(child: Icon(Icons.map_outlined, color: accent)),
+          ),
+        ],
+      ],
+    ),
   );
 }
 

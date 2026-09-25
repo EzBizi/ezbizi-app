@@ -9,6 +9,7 @@ use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
+use App\Support\Web\SiteLists;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -107,6 +108,9 @@ class PluginController extends Controller
                  * editing a page or updating a plugin.
                  */
                 'widgets' => WebWidget::publishedFor($site),
+                // The lists the team, branches and store-locator widgets draw.
+                'team' => SiteLists::team($site),
+                'locations' => SiteLists::locations($site),
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

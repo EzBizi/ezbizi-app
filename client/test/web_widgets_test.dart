@@ -209,6 +209,29 @@ void main() {
                 'brand': null,
                 'field_types': const <String>[],
               };
+      } else if (path == '/api/v1/web/sites/site-1/team') {
+        if (request.method == 'PUT') {
+          sent?.add({'path': path, ...jsonDecode(request.body) as Map<String, dynamic>});
+        }
+        body = {
+          'data': [
+            {'name': 'Ana Ruiz', 'role': 'Technician', 'bio': null, 'photo_url': null, 'category': 'Field'},
+          ],
+        };
+      } else if (path == '/api/v1/web/sites/site-1/locations') {
+        if (request.method == 'PUT') {
+          sent?.add({'path': path, ...jsonDecode(request.body) as Map<String, dynamic>});
+        }
+        body = {
+          'data': {
+            'site': [
+              {'name': 'North Jersey', 'city': 'Newark', 'latitude': 40.73},
+            ],
+            'company': [
+              {'name': 'Atlanta store', 'city': 'Atlanta'},
+            ],
+          },
+        };
       } else if (path == '/api/v1/me/preferences') {
         writes.addAll(
           (jsonDecode(request.body) as Map<String, dynamic>)['preferences']
@@ -782,6 +805,80 @@ void main() {
     expect(find.text('How was your experience?'), findsWidgets);
     expect(find.text('Great!'), findsWidgets);
     expect(find.text('Not so great'), findsWidgets);
+  });
+
+  /// Jose, 2026-09-25: "whatever is missing that is being used add it".
+  /// The team, branches and store locator draw lists, kept on their cards.
+  testWidgets('the team card holds the team and saves it whole', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Team',
+      sent: sent,
+    );
+
+    expect(find.text('Ana Ruiz'), findsOneWidget);
+
+    await tester.tap(find.text('Save list'));
+    await tester.pumpAndSettle();
+
+    final put = sent.singleWhere((s) => '${s['path']}'.endsWith('/team'));
+    final members = (put['members'] as List).cast<Map>();
+    expect(members.single['name'], 'Ana Ruiz');
+    // Empty boxes go as null, not as an empty string the server would keep.
+    expect(members.single['bio'], isNull);
+  });
+
+  testWidgets('branches are this website\'s own, not the company\'s stores', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Branches',
+      sent: sent,
+    );
+
+    expect(find.text('North Jersey'), findsOneWidget);
+    expect(find.text('Atlanta store'), findsNothing);
+
+    await tester.tap(find.text('Save list'));
+    await tester.pumpAndSettle();
+
+    final put = sent.singleWhere((s) => '${s['path']}'.endsWith('/locations'));
+    expect(put['scope'], 'site');
+    // A coordinate goes as a number.
+    expect((put['locations'] as List).single['latitude'], 40.73);
+  });
+
+  testWidgets('the store locator edits the company\'s stores', (tester) async {
+    final sent = <Map<String, dynamic>>[];
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'Store locator',
+      sent: sent,
+    );
+
+    expect(find.text('Atlanta store'), findsOneWidget);
+
+    await tester.tap(find.text('Save list'));
+    await tester.pumpAndSettle();
+
+    expect(
+      sent.singleWhere((s) => '${s['path']}'.endsWith('/locations'))['scope'],
+      'company',
+    );
+  });
+
+  testWidgets('view alone can read a list and not change it', (tester) async {
+    await pump(tester, permissions: const ['web_management.view'], open: 'Team');
+
+    expect(find.text('Ana Ruiz'), findsOneWidget);
+    expect(find.text('Save list'), findsNothing);
+    expect(find.text('Add a person'), findsNothing);
   });
 
   testWidgets('the phone button previews at the size set', (tester) async {
