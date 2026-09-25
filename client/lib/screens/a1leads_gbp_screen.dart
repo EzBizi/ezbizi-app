@@ -406,7 +406,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             '${_source['because'] ?? 'The connection to A1 Leads is not available.'}\n\n'
             'Nothing is missing and nothing is broken here — there is simply '
             'nothing to show until the connection is in place. EzBizi\'s own '
-            'Reviews and Business Profile are in Marketing, unchanged.',
+            'Reviews and Business Profile are in Customer Experience, unchanged.',
       );
     }
 

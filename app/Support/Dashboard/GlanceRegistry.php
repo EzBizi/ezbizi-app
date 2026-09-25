@@ -45,7 +45,9 @@ class GlanceRegistry
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads', 'reviews', 'business_profile',
+        'services', 'leads',
+        // The container Reviews and Business Profile moved into (2026-09-25).
+        'customer_experience', 'reviews', 'business_profile',
         // New Google reviews for Automations, beside Reviews (2026-09-25).
         'a1leads_gbp',
         'email', 'training',
@@ -166,6 +168,12 @@ class GlanceRegistry
         'ads_performance' => [
             'label' => 'Google Ads',
             'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
+        ],
+        // A container: Reviews and Business Profile each have a live box of
+        // their own, so a summary here would restate them (2026-09-25).
+        'customer_experience' => [
+            'label' => 'Customer Experience',
+            'sentence' => 'Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.',
         ],
         'newsletter' => [
             'label' => 'Newsletter',

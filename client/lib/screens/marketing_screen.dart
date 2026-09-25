@@ -31,7 +31,7 @@ import 'marketing/social_media_tab.dart';
 ///
 /// THE THREE THAT USED TO BE HERE HAVE ALL LEFT, and the loop stays because
 /// that is the point of it. Leads moved out on 2026-09-03; Reviews and Business
-/// Profile moved into A1Leads GBP on 2026-09-23. Nothing in this file named
+/// Profile moved into Customer Experience on 2026-09-25. Nothing in this file named
 /// them, so nothing in this file changed on either day — which is the property
 /// worth keeping rather than replacing the loop with two hard-coded chips.
 ///

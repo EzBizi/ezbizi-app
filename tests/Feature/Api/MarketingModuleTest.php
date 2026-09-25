@@ -182,7 +182,10 @@ class MarketingModuleTest extends TestCase
      * reading EzBizi's own tables, and they are what a Google reviewer is shown
      * when our own Business Profile API access arrives. Moving them was the
      * mistake and this assertion is what noticed - which is the argument for it
-     * naming all four rather than being loosened to match whatever is there.
+     * naming every child rather than being loosened to match whatever is there.
+     *
+     * On 2026-09-25 Jose moved Reviews and Business Profile into a new
+     * Customer Experience tab (EzBizi's own, not A1Leads GBP), leaving two.
      */
     public function test_the_public_facing_modules_are_drawn_inside_marketing(): void
     {
@@ -193,7 +196,7 @@ class MarketingModuleTest extends TestCase
         // drafting a mailing and putting it in front of twelve hundred
         // customers are different acts, and only a module can express that.
         $this->assertSame(
-            ['newsletter', 'web_management', 'reviews', 'business_profile'],
+            ['newsletter', 'web_management'],
             array_map(fn ($m) => $m->key, $registry->childrenOf(self::MODULE)),
             'Registry order is the tab order, so this is the order of the strip.',
         );
@@ -240,7 +243,7 @@ class MarketingModuleTest extends TestCase
 
         $this->assertTrue($modules['marketing']['reachable']);
 
-        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
+        foreach (['newsletter', 'web_management'] as $key) {
             $this->assertFalse(
                 $modules[$key]['reachable'],
                 "{$key} came with marketing.view, which is a grant nobody made.",
@@ -271,17 +274,13 @@ class MarketingModuleTest extends TestCase
          */
         $both = $this->userWithRole($alpha, 'Both', [
             'marketing.view', 'newsletter.view', 'web_management.view',
-            // Reviews and Business Profile are back in this loop after being
-            // briefly moved out on 2026-09-23, so the control has to hold their
-            // grants too or it asserts true about a permission nobody gave.
-            'reviews.view', 'business_profile.view',
         ], 'both@theta.test');
 
         $granted = collect(
             $this->signedInAs($both)->getJson('/api/v1/me')->assertOk()->json('data.modules')
         )->keyBy('key');
 
-        foreach (['newsletter', 'web_management', 'reviews', 'business_profile'] as $key) {
+        foreach (['newsletter', 'web_management'] as $key) {
             $this->assertTrue(
                 $granted[$key]['reachable'],
                 "{$key} is not reachable even when its own view is granted, so "
@@ -343,8 +342,8 @@ class MarketingModuleTest extends TestCase
         )->keyBy('key');
 
         /*
-         * Reviews still answers this, and its answer changed on 2026-09-23:
-         * it is drawn in A1Leads GBP now, not here. The question the test asks
+         * Reviews still answers this; since 2026-09-25 it is drawn in
+         * Customer Experience, not here. The question the test asks
          * is whether the catalogue reports the nesting AT ALL, so the right
          * repair is the new parent rather than a different module.
          *
@@ -353,7 +352,7 @@ class MarketingModuleTest extends TestCase
          * this caller holds `reviews.view`. It failed with "Undefined array key
          * web_management", which is the catalogue working correctly.
          */
-        $this->assertSame(self::MODULE, $modules['reviews']['parent']);
+        $this->assertSame('customer_experience', $modules['reviews']['parent']);
         $this->assertNull($modules['marketing']['parent']);
     }
 

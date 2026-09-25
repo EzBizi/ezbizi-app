@@ -6,7 +6,7 @@
 | | |
 |---|---|
 | What it is | A module in full — own permission `business_profile.*`, own registry entry, own dashboard glance |
-| Where it is drawn | Inside Marketing, via `ModuleDefinition::$parent`. Not a part of Marketing the way Newsletter and Social Media Management are. **It briefly moved into A1Leads GBP on 2026-09-23 and was put back the same day** — that tab is a read-only window onto Rodrigo's system and is temporary; this module is EzBizi's own and is what a Google reviewer is shown when our API access arrives. |
+| Where it is drawn | Inside Customer Experience (moved out of Marketing 2026-09-25, Jose), via `ModuleDefinition::$parent`. Never inside A1Leads GBP: **it briefly moved there on 2026-09-23 and was put back the same day** — that tab is a read-only window onto Rodrigo's system and is temporary; this module is EzBizi's own and is what a Google reviewer is shown when our API access arrives. |
 | Google product | Google Business Profile APIs |
 | Host | `mybusinessaccountmanagement.googleapis.com/v1` |
 | API status | **Enabled** |
