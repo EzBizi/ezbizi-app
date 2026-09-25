@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Customer match on A1Leads GBP lists the Workiz jobs A1 Leads finds for your search; before, it showed no suggestion on every review. It asks for a name, phone or address to search by.',
         'Scheduling, Schedule: tap a job to assign a technician, unassign one, or move it to another day and time slot. Changes go straight to Workiz, and only technicians who cover the service area of the job in Workiz are offered. Dispatching needs the Scheduling Edit permission.',
+        'Web Management, Widgets: each part of a widget has its own style options - font, colour, background, border, corners, spacing and hover colours - and the Call to action widget has the full set of options. The websites show them once the next EzBizi website plugin update reaches them.',
       ],
     ),
     VersionRelease(
