@@ -1223,6 +1223,16 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
                 ],
+                'cta' => [
+                    'action' => ['type' => 'choice', 'choices' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp']],
+                    'url' => ['type' => 'text', 'max' => 500],
+                    'url_params' => ['type' => 'text', 'max' => 200],
+                    'new_tab' => ['type' => 'bool'],
+                    'icon' => ['type' => 'bool'],
+                    'icon_position' => ['type' => 'choice', 'choices' => ['left', 'right']],
+                    'animation' => ['type' => 'choice', 'choices' => ['none', 'pulse', 'shake', 'bounce', 'glow']],
+                    'mobile' => ['type' => 'choice', 'choices' => ['same', 'bar', 'hide']],
+                ],
             ],
             'style' => [
                 'accent' => '#aa0000', 'on_accent' => '#ffffff', 'text' => '#111111',
@@ -1852,6 +1862,22 @@ check('the city list draws on a real page', str_contains(ob_get_clean(), 'North 
 ob_start();
 $manager->registered['ezbizi-post-title']->ezbizi_call_render();
 check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
+
+echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
+reset_site();
+serve_preset_payload(['phone' => '(888) 984-4344', 'email' => 'office@a1.test', 'review_link' => 'https://g.page/r/a1/review']);
+$cta = fn ($atts) => $GLOBALS['sc']['ezbizi_cta']($atts);
+check('email opens a message', str_contains($cta(['action' => 'email']), 'href="mailto:office@a1.test"'), true);
+check('review goes to the review link', str_contains($cta(['action' => 'review']), 'g.page/r/a1/review'), true);
+check('WhatsApp takes the number with its country code', str_contains($cta(['action' => 'whatsapp']), 'https://wa.me/18889844344'), true);
+check('a custom link, with tracking added', str_contains($cta(['action' => 'url', 'url' => 'https://x.test/deal', 'url_params' => 'utm_source=cta']), 'https://x.test/deal?utm_source=cta'), true);
+check('a custom link that is not a web address draws nothing', $cta(['action' => 'url', 'url' => 'javascript:alert(1)']), '');
+check('and it can open in a new tab', str_contains($cta(['action' => 'url', 'url' => 'https://x.test/', 'new_tab' => 'yes']), 'target="_blank"'), true);
+check('the icon can sit after the words', (bool) preg_match('/ezbizi-cta-text.*ezbizi-cta-icon/s', $cta(['icon' => 'yes', 'icon_position' => 'right'])), true);
+$moving = $cta(['animation' => 'pulse']);
+check('an animation runs', str_contains($moving, '@keyframes ezbizi-pulse-'), true);
+check('except for a visitor who asked for less motion', str_contains($moving, 'prefers-reduced-motion'), true);
+check('a bar on phones', str_contains($cta(['mobile' => 'bar']), 'position:fixed'), true);
 
 echo PHP_EOL . "Street View draws only a Google Maps embed" . PHP_EOL;
 $embed = 'https://www.google.com/maps/embed?pb=!4v1!6m8!1m7!1sAbc';

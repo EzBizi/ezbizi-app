@@ -1145,6 +1145,10 @@ function ezbizi_contact_icon($kind) {
         'phone' => 'M6.6 10.8a15.1 15.1 0 006.6 6.6l2.2-2.2a1 1 0 011-.2 11.4 11.4 0 003.6.6 1 1 0 011 1V20a1 1 0 01-1 1A17 17 0 013 4a1 1 0 011-1h3.5a1 1 0 011 1c0 1.3.2 2.5.6 3.6a1 1 0 01-.3 1z',
         'email' => 'M20 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V6a2 2 0 00-2-2zm0 4l-8 5-8-5V6l8 5 8-5z',
         'address' => 'M12 2a7 7 0 00-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 00-7-7zm0 9.5A2.5 2.5 0 1112 6.5a2.5 2.5 0 010 5z',
+        'calendar' => 'M7 2v2H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-2V2h-2v2H9V2zM5 9h14v11H5z',
+        'star' => 'M12 2l3 6.9 7.5.7-5.7 5 1.7 7.4L12 18l-6.5 4 1.7-7.4-5.7-5 7.5-.7z',
+        'arrow' => 'M4 11h12.2l-5.6-5.6L12 4l8 8-8 8-1.4-1.4 5.6-5.6H4z',
+        'chat' => 'M4 3h16a2 2 0 012 2v11a2 2 0 01-2 2H8l-5 4V5a2 2 0 011-2z',
     );
 
     $d = isset($paths[$kind]) ? $paths[$kind] : $paths['address'];
@@ -1197,16 +1201,44 @@ function ezbizi_cta_shortcode($atts) {
     $icon = ! empty($preset['icon']);
     $wide = ! empty($preset['full_width']);
 
+    $phone = ezbizi_value('phone');
+
     if ($action === 'call') {
-        $value = ezbizi_value('phone');
-        $href = $value === '' ? '' : 'tel:' . ezbizi_dial($value);
+        $href = $phone === '' ? '' : 'tel:' . ezbizi_dial($phone);
         $text = __('Call us today', 'ezbizi');
+    } elseif ($action === 'sms') {
+        $href = $phone === '' ? '' : 'sms:' . ezbizi_dial($phone);
+        $text = __('Text us', 'ezbizi');
+    } elseif ($action === 'whatsapp') {
+        // wa.me takes the number with its country code and nothing else.
+        $digits = preg_replace('/\D/', '', $phone);
+        $digits = strlen($digits) === 10 ? '1' . $digits : $digits;
+        $href = $digits === '' ? '' : 'https://wa.me/' . $digits;
+        $text = __('WhatsApp us', 'ezbizi');
+    } elseif ($action === 'email') {
+        $email = ezbizi_value('email');
+        $href = $email === '' ? '' : 'mailto:' . $email;
+        $text = __('Email us', 'ezbizi');
     } elseif ($action === 'book') {
         $href = ezbizi_value('booking_url');
         $text = __('Book online', 'ezbizi');
+    } elseif ($action === 'review') {
+        $href = ezbizi_value('review_link');
+        $text = __('Leave us a review', 'ezbizi');
+    } elseif ($action === 'url') {
+        $href = isset($preset['url']) ? trim((string) $preset['url']) : '';
+        $href = preg_match('~^https?://~i', $href) ? $href : '';
+        $text = __('Learn more', 'ezbizi');
     } else {
         $href = '#ezbizi-form';
         $text = __('Get a free estimate', 'ezbizi');
+    }
+
+    // Tracking on a web link: `utm_source=footer&utm_medium=cta`, appended.
+    $params = isset($preset['url_params']) ? ltrim(trim((string) $preset['url_params']), '?&') : '';
+
+    if ($params !== '' && preg_match('~^https?://~i', $href)) {
+        $href .= (strpos($href, '?') === false ? '?' : '&') . $params;
     }
 
     // The site's own words win. Empty falls back to the wording that matches
@@ -1226,10 +1258,25 @@ function ezbizi_cta_shortcode($atts) {
     $id = ezbizi_widget_id('ezbizi-cta');
     $out = ezbizi_cta_style($id, $wide);
 
-    $button = '<a class="ezbizi-cta-button" href="' . esc_url($href) . '">'
-        . ($icon ? '<span class="ezbizi-cta-icon" aria-hidden="true">'
-            . ezbizi_contact_icon($action === 'call' ? 'phone' : 'email') . '</span>' : '')
-        . '<span class="ezbizi-cta-text">' . esc_html($text) . '</span></a>';
+    $kinds = array(
+        'call' => 'phone', 'sms' => 'phone', 'whatsapp' => 'chat', 'email' => 'email',
+        'book' => 'calendar', 'review' => 'star', 'url' => 'arrow', 'form' => 'arrow',
+    );
+    $kind = isset($preset['icon_type']) && $preset['icon_type'] !== 'auto'
+        ? (string) $preset['icon_type']
+        : (isset($kinds[$action]) ? $kinds[$action] : 'arrow');
+    $glyph = $icon && $kind !== 'none'
+        ? '<span class="ezbizi-cta-icon" aria-hidden="true">' . ezbizi_contact_icon($kind) . '</span>'
+        : '';
+    $label = '<span class="ezbizi-cta-text">' . esc_html($text) . '</span>';
+    $away = ! empty($preset['new_tab']) && preg_match('~^https?://~i', $href);
+    $animation = isset($preset['animation']) ? (string) $preset['animation'] : 'none';
+
+    $button = '<a class="ezbizi-cta-button' . ($animation !== 'none' ? ' ezbizi-cta-' . esc_attr($animation) : '') . '" href="' . esc_url($href) . '"'
+        . ($away ? ' target="_blank" rel="noopener noreferrer"' : '') . '>'
+        . (isset($preset['icon_position']) && $preset['icon_position'] === 'right' ? $label . $glyph : $glyph . $label)
+        . '</a>';
+    $out .= ezbizi_cta_motion($id, $preset);
 
     if ($placement === 'popup') {
         $out .= '<div class="ezbizi-cta ezbizi-cta-popup" id="' . esc_attr($id)
@@ -1258,6 +1305,50 @@ function ezbizi_cta_shortcode($atts) {
         . esc_attr($id) . '">' . $button . '</div>' . ezbizi_style_css('cta', $id, $preset, array(
         'box' => '', 'button' => ' .ezbizi-cta-button', 'icon' => ' .ezbizi-cta-icon',
     ));
+}
+
+/**
+ * The CTA's animation, icon spacing and phone behaviour, as CSS.
+ *
+ * Animation runs always or only while hovered; it stops for a visitor whose
+ * system asks for reduced motion, whatever the setting, because a shaking
+ * button is the thing that setting exists to stop.
+ */
+function ezbizi_cta_motion($id, $p) {
+    $sel = '#' . $id;
+    $css = $sel . ' .ezbizi-cta-button{gap:' . max(0, min(40, (int) (isset($p['icon_gap']) ? $p['icon_gap'] : 8))) . 'px}';
+    $animation = isset($p['animation']) ? (string) $p['animation'] : 'none';
+    $speed = max(1, min(10, (int) (isset($p['animation_speed']) ? $p['animation_speed'] : 2)));
+    $glow = isset($p['glow_color']) && preg_match('/^#[0-9a-fA-F]{3,8}$/', (string) $p['glow_color'])
+        ? (string) $p['glow_color']
+        : 'var(--ezbizi-accent,#0b5cad)';
+
+    $frames = array(
+        'pulse' => '0%,100%{transform:scale(1)}50%{transform:scale(1.06)}',
+        'shake' => '0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-4px)}40%,80%{transform:translateX(4px)}',
+        'bounce' => '0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}',
+        'glow' => '0%,100%{box-shadow:0 0 0 0 ' . $glow . '}50%{box-shadow:0 0 18px 4px ' . $glow . '}',
+    );
+
+    if (isset($frames[$animation])) {
+        $name = 'ezbizi-' . $animation . '-' . preg_replace('/[^a-z0-9-]/', '', $id);
+        $run = 'animation:' . $name . ' ' . $speed . 's ease-in-out infinite';
+        $trigger = isset($p['animate_on']) && $p['animate_on'] === 'hover' ? ':hover' : '';
+        $css .= '@keyframes ' . $name . '{' . $frames[$animation] . '}'
+            . $sel . ' .ezbizi-cta-button' . $trigger . '{' . $run . '}'
+            . '@media (prefers-reduced-motion:reduce){' . $sel . ' .ezbizi-cta-button{animation:none}}';
+    }
+
+    $mobile = isset($p['mobile']) ? (string) $p['mobile'] : 'same';
+
+    if ($mobile === 'hide') {
+        $css .= '@media (max-width:767px){' . $sel . '{display:none!important}}';
+    } elseif ($mobile === 'bar') {
+        $css .= '@media (max-width:767px){' . $sel . '{position:fixed;left:0;right:0;bottom:0;z-index:9998;margin:0}'
+            . $sel . ' .ezbizi-cta-button{width:100%;justify-content:center;border-radius:0}}';
+    }
+
+    return '<style>' . $css . '</style>';
 }
 
 function ezbizi_cta_style($id, $wide) {

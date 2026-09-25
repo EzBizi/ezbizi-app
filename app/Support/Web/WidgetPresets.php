@@ -253,6 +253,7 @@ final class WidgetPresets
         }
 
         return match (true) {
+            in_array($key, self::COLORS[$widget] ?? [], true) => ['type' => 'color'],
             is_bool($default) => ['type' => 'bool'],
             isset(self::RANGES[$widget][$key]) => [
                 'type' => 'range',
@@ -360,6 +361,20 @@ final class WidgetPresets
                  * nothing still gets a sentence rather than a blank button.
                  */
                 'text' => '',
+                // Toula's CTA list (suggestion 01a0d8e6-8d95): a custom link,
+                // tracking on it, a new tab, the icon, an animation, and what
+                // the button does on a phone.
+                'url' => '',
+                'url_params' => '',
+                'new_tab' => false,
+                'icon_type' => 'auto',
+                'icon_position' => 'left',
+                'icon_gap' => 8,
+                'animation' => 'none',
+                'animation_speed' => 2,
+                'animate_on' => 'always',
+                'glow_color' => '',
+                'mobile' => 'same',
             ],
             /*
              * The phone on its own, which is the most-placed single widget on
@@ -445,7 +460,12 @@ final class WidgetPresets
             // `bar` is fixed to the bottom of the window, `popup` opens over
             // the page once per visit, `inline` sits where it was pasted.
             'placement' => ['inline', 'bar', 'popup'],
-            'action' => ['call', 'book', 'form'],
+            'action' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp'],
+            'icon_type' => ['auto', 'phone', 'email', 'calendar', 'star', 'arrow', 'chat', 'none'],
+            'icon_position' => ['left', 'right'],
+            'animation' => ['none', 'pulse', 'shake', 'bounce', 'glow'],
+            'animate_on' => ['always', 'hover'],
+            'mobile' => ['same', 'bar', 'hide'],
         ],
         'phone_box' => [
             'size' => ['small', 'medium', 'large'],
@@ -473,7 +493,7 @@ final class WidgetPresets
      * size limit rather than a safety one.
      */
     private const TEXT = [
-        'cta' => ['text' => 80],
+        'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
@@ -491,6 +511,12 @@ final class WidgetPresets
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
+        'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
+    ];
+
+    /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
+    private const COLORS = [
+        'cta' => ['glow_color'],
     ];
 
     /**
