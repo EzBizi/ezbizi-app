@@ -33,7 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'franchise_id', 'customer_id', 'number', 'title', 'description',
     'status', 'scheduled_for', 'duration_minutes', 'amount_minor', 'currency',
-    'assigned_role_id', 'performed_by_user_id',
+    'assigned_role_id', 'performed_by_user_id', 'service_area_id',
 ])]
 class Job extends Model implements StatesRetention
 {
@@ -120,6 +120,16 @@ class Job extends Model implements StatesRetention
     public function lines(): HasMany
     {
         return $this->hasMany(JobLine::class)->orderBy('position')->orderBy('created_at');
+    }
+
+    /**
+     * The sub-division of this job's franchise the work is in -- Scheduling's
+     * service area. Null when the job could not be placed without guessing;
+     * see JobServiceArea for the rule.
+     */
+    public function serviceArea(): BelongsTo
+    {
+        return $this->belongsTo(ServiceArea::class);
     }
 
     public function assignedRole(): BelongsTo
