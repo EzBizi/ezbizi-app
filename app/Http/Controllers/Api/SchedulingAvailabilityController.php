@@ -8,6 +8,7 @@ use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use App\Support\Settings\SettingsResolver;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -152,6 +153,97 @@ class SchedulingAvailabilityController extends Controller
         return response()->json([
             'data' => Franchise::whereIn('id', $ids)->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Franchise $f) => ['id' => $f->id, 'name' => $f->name])->all(),
+        ]);
+    }
+
+    /**
+     * GET /api/v1/scheduling/availability/calendar?month=YYYY-MM&franchise_id=[&area_id=]
+     *
+     * A month at a glance, a franchise or one of its areas (Jose, 2026-09-25,
+     * with A1 Tools' calendar: "a sort of Calendar View for each franchise or
+     * service area"). Per day: what it can take, what is booked, what is left.
+     * Every number is Openings', so the calendar and the search cannot
+     * disagree, and the franchise's daily limit applies the same way.
+     *
+     * For the whole franchise, a day with a limit counts the franchise's own
+     * bookings (any area, or none) and never shows more than the limit; one
+     * area shows its own bookings, with what is left capped by the franchise.
+     * A day no area works is `closed` — distinct from full — and `over` is
+     * bookings beyond what the day can take, closed days included.
+     */
+    public function calendar(Request $request): JsonResponse
+    {
+        $this->authorize('viewAny', ServiceArea::class);
+
+        $data = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'franchise_id' => ['required', 'uuid'],
+            'area_id' => ['nullable', 'uuid'],
+        ]);
+
+        $franchise = Franchise::query()
+            ->whereIn('id', ViewScope::forUser($request->user())->franchiseIds())
+            ->findOrFail($data['franchise_id']);
+
+        $areas = ServiceArea::query()->where('franchise_id', $franchise->id)->orderBy('name')->get();
+        $area = ($data['area_id'] ?? null) === null ? null : $areas->firstWhere('id', $data['area_id']);
+        abort_if(($data['area_id'] ?? null) !== null && $area === null, 404);
+
+        $shown = $area === null ? $areas : collect([$area]);
+        $from = CarbonImmutable::createFromFormat('Y-m-d', $data['month'].'-01')->startOfDay();
+        $count = $from->daysInMonth;
+        $openings = app(Openings::class);
+        $perArea = $shown->map(fn (ServiceArea $a) => $openings->days($a, $from, $count))->all();
+
+        $days = [];
+        for ($i = 0; $i < $count; $i++) {
+            $capacity = $booked = $remaining = 0;
+            $open = false;
+            $limit = $franchiseBooked = null;
+
+            foreach ($perArea as $areaDays) {
+                $day = $areaDays[$i];
+                $open = $open || $day['windows'] !== [];
+                $capacity += array_sum(array_column($day['windows'], 'capacity'));
+                $booked += array_sum(array_column($day['windows'], 'taken')) + $day['no_time'];
+                $remaining += array_sum(array_column($day['windows'], 'remaining'));
+                $limit = $day['franchise_limit'];
+                $franchiseBooked = $day['franchise_booked'];
+            }
+
+            if ($limit !== null) {
+                $left = max(0, $limit - $franchiseBooked);
+                $remaining = min($remaining, $left);
+
+                if ($area === null) {
+                    $capacity = min($capacity, $limit);
+                    $booked = $franchiseBooked;
+                }
+            }
+
+            $days[] = [
+                'date' => $from->addDays($i)->toDateString(),
+                'closed' => ! $open,
+                'capacity' => $capacity,
+                'booked' => $booked,
+                'remaining' => $remaining,
+                'over' => max(0, $booked - $capacity),
+                'limit' => $limit,
+            ];
+        }
+
+        return response()->json([
+            'data' => [
+                'month' => $data['month'],
+                'franchise' => ['id' => $franchise->id, 'name' => $franchise->name],
+                'areas' => $areas->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name])->all(),
+                'area_id' => $area?->id,
+                'configured' => $shown->contains(fn (ServiceArea $a) => Openings::hasCapacity($a)),
+                // Today in the organization's own clock, for the highlight.
+                'today' => Openings::tomorrow((string) app(SettingsResolver::class)
+                    ->get('timezone', $request->user()->organization))->subDay()->toDateString(),
+                'days' => $days,
+            ],
         ]);
     }
 

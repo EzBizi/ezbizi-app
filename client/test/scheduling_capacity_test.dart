@@ -741,6 +741,55 @@ void main() {
     },
   );
 
+  /// Jose, 2026-09-25: "make the days sticky, cause once you go down u dont
+  /// know what day ur looking at anymore".
+  testWidgets('the weekday row stays on screen while the areas scroll', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      areas: [
+        for (var i = 0; i < 40; i++)
+          {
+            'id': 'a-$i',
+            'name': 'Area $i',
+            'franchise_id': 'fr-1',
+            'zip_count': 1,
+            'follows_pattern': true,
+            'week': {
+              '1': 2,
+              '2': 2,
+              '3': 2,
+              '4': 2,
+              '5': 2,
+              '6': null,
+              '0': null,
+            },
+          },
+      ],
+    );
+
+    final header = find.byKey(const Key('overview-weekdays'));
+    final before = tester.getTopLeft(header).dy;
+
+    await tester.drag(
+      find.byKey(const ValueKey('overview-area-a-5')),
+      const Offset(0, -1500),
+    );
+    await tester.pumpAndSettle();
+
+    // The areas moved; the weekdays did not leave the screen.
+    expect(find.text('Area 0'), findsOneWidget, reason: 'rail still lists it');
+    expect(header, findsOneWidget);
+    final after = tester.getTopLeft(header).dy;
+    expect(after, lessThan(before), reason: 'it rose to the top');
+    expect(after, greaterThanOrEqualTo(0));
+    expect(
+      find.descendant(of: header, matching: find.text('Mon')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a narrow overview scrolls its table, not the page', (
     tester,
   ) async {

@@ -386,6 +386,66 @@ class SchedulingAvailabilityTest extends TestCase
             ->assertForbidden();
     }
 
+    private function calendarDay(array $tenant, string $query, string $date): array
+    {
+        $days = $this->signedInAs($tenant['admin'])
+            ->getJson("/api/v1/scheduling/availability/calendar?month=2026-10&franchise_id={$tenant['franchise']->id}{$query}")
+            ->assertOk()
+            ->json('data.days');
+
+        return collect($days)->firstWhere('date', $date);
+    }
+
+    /** The calendar (Jose, 2026-09-25): per day what it takes, what is booked, what is left. */
+    public function test_the_calendar_shows_each_day_left_of_capacity_and_closed_days(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->booked($tenant, '2026-10-05 07:00:00');
+
+        $monday = $this->calendarDay($tenant, '', '2026-10-05');
+        $this->assertSame(['closed' => false, 'capacity' => 3, 'booked' => 1, 'remaining' => 2, 'over' => 0], array_intersect_key($monday, array_flip(['closed', 'capacity', 'booked', 'remaining', 'over'])));
+
+        $this->assertTrue($this->calendarDay($tenant, '', '2026-10-06')['closed'], 'Dallas works Mondays only.');
+    }
+
+    /** Booked past what the day takes shows as over — on a closed day too, where nothing should be. */
+    public function test_the_calendar_counts_bookings_over_capacity(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['07:00', '08:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+        $this->booked($tenant, '2026-10-06 09:00:00');
+
+        $this->assertSame(1, $this->calendarDay($tenant, '', '2026-10-05')['over']);
+
+        $tuesday = $this->calendarDay($tenant, '', '2026-10-06');
+        $this->assertTrue($tuesday['closed']);
+        $this->assertSame(1, $tuesday['over']);
+    }
+
+    /**
+     * With a franchise limit, the franchise view never shows more than the
+     * limit and counts the franchise's own bookings; an area's view counts
+     * its own, with what is left capped by the franchise.
+     */
+    public function test_the_calendar_applies_the_franchise_limit(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 2]);
+        $this->booked($tenant, '2026-10-05 08:00:00', area: 'Houston');
+
+        $whole = $this->calendarDay($tenant, '', '2026-10-05');
+        $this->assertSame([2, 1, 1, 2], [$whole['capacity'], $whole['booked'], $whole['remaining'], $whole['limit']]);
+
+        $one = $this->calendarDay($tenant, "&area_id={$dallas->id}", '2026-10-05');
+        $this->assertSame([3, 0, 1], [$one['capacity'], $one['booked'], $one['remaining']]);
+    }
+
     /**
      * An area nobody has configured says so — not "closed", not "full", and
      * never a date. The client turns it into "check Workiz".
