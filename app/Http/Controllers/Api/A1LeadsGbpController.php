@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\A1LeadsReplyReceipt;
-use App\Models\Franchise;
 use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
+use App\Services\A1Leads\A1LeadsGbpReplies;
+use App\Services\A1Leads\A1LeadsOwner;
 use App\Services\A1Leads\A1LeadsReplyClient;
-use App\Support\Audit\AuditLogger;
-use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,8 +38,8 @@ class A1LeadsGbpController extends Controller
     public function __construct(
         private readonly A1LeadsClient $a1leads,
         private readonly A1LeadsReplyClient $replies,
+        private readonly A1LeadsGbpReplies $publisher,
         private readonly TenantContext $tenant,
-        private readonly AuditLogger $audit,
     ) {}
 
     /** GET /api/v1/a1leads-gbp */
@@ -231,61 +230,21 @@ class A1LeadsGbpController extends Controller
             return $this->refusedAttempt($name, $refusal);
         }
 
-        $text = trim((string) $request->input('text', ''));
         $expected = trim((string) $request->input('expectedReviewUpdatedAt', ''));
-        if (! $this->validReviewName($name)) {
-            return $this->refusedAttempt($name, $this->replyError(422, 'invalid_review_name', 'Choose a review from this page.'));
-        }
-        if ($text === '' || mb_strlen($text) > 4000) {
-            return $this->refusedAttempt($name, $this->replyError(422, 'invalid_reply_text', 'Write a reply of up to 4,000 characters.'));
-        }
-        if ($expected === '' || strlen($expected) > 80) {
+        if ($expected === '') {
+            // A person replies to the revision the editor showed them. Only an
+            // automation, which saw nothing, may leave it to be read live.
             return $this->refusedAttempt($name, $this->replyError(422, 'missing_review_revision', 'Check the live review again before sending.'));
         }
 
-        $result = $this->replies->publish(
+        // The one path to Google, shared with Automations: it validates,
+        // posts, writes the receipt and audits every outcome.
+        return $this->replyResult($this->publisher->publish(
             $name,
-            $text,
+            (string) $request->input('text', ''),
             $expected,
-            (string) $request->user()->getKey(),
-        );
-
-        if ($result['status'] >= 200 && $result['status'] < 300 && ($result['body']['data']['ok'] ?? false) === true) {
-            $data = $result['body']['data'];
-
-            try {
-                A1LeadsReplyReceipt::query()->updateOrCreate(
-                    ['organization_id' => $this->tenant->idOrFail(), 'google_review_name' => $name],
-                    [
-                        'reply_text' => (string) ($data['text'] ?? $text),
-                        'sent_at' => isset($data['sentAt']) ? Carbon::parse($data['sentAt'])->utc() : null,
-                        'actor_id' => (string) $request->user()->getKey(),
-                    ],
-                );
-                $result['body']['data']['receiptPersisted'] = true;
-            } catch (\Throwable $error) {
-                report($error);
-                // Google has already accepted the reply. Never turn that fact
-                // into an apparent failed send that invites a duplicate retry.
-                $result['body']['data']['receiptPersisted'] = false;
-            }
-
-            // Outside the receipt's try: a failure to write the receipt must
-            // not also lose the record of who spoke for the business.
-            $this->audit->log(
-                'a1leads_gbp.review_replied',
-                null,
-                ['reply' => (string) ($data['text'] ?? $text)],
-                ['google_review_name' => $name, 'sent_at' => $data['sentAt'] ?? null],
-            );
-
-            return $this->replyResult($result);
-        }
-
-        // Anything short of a confirmed send - refused by A1 Leads, a stale
-        // revision, an already-answered review, or a connection that dropped
-        // mid-POST with the outcome unknown - is an attempt, and is recorded.
-        return $this->refusedAttempt($name, $this->replyResult($result));
+            $request->user(),
+        ));
     }
 
     /**
@@ -301,17 +260,10 @@ class A1LeadsGbpController extends Controller
      */
     private function refusedAttempt(string $name, JsonResponse $response): JsonResponse
     {
-        $body = $response->getData(true);
-
-        $this->audit->log(
-            'a1leads_gbp.review_reply_failed',
-            null,
-            [],
-            [
-                'google_review_name' => $name !== '' ? mb_substr($name, 0, 300) : null,
-                'status' => $response->getStatusCode(),
-                'code' => $body['error']['code'] ?? null,
-            ],
+        $this->publisher->refused(
+            $name,
+            ['status' => $response->getStatusCode(), 'body' => $response->getData(true)],
+            request()->user(),
         );
 
         return $response;
@@ -369,15 +321,7 @@ class A1LeadsGbpController extends Controller
 
     private function companyInView(User $user, string $companyId): bool
     {
-        $view = ViewScope::forUser($user);
-        if ($view->isOrganization()) {
-            return $user->reachableCompanies()->contains(fn ($company) => $company->getKey() === $companyId);
-        }
-        if ($view->type === ViewScope::FRANCHISE) {
-            return Franchise::find($view->id)?->company_id === $companyId;
-        }
-
-        return in_array($companyId, $view->companyIds(), true);
+        return A1LeadsOwner::inView($user, $companyId);
     }
 
     /**

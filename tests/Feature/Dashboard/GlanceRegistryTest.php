@@ -177,63 +177,18 @@ class GlanceRegistryTest extends TestCase
         $this->assertNotSame('', trim((string) $array['data']['sentence']));
     }
 
-    /**
-     * THE EXEMPTION IS NOT AN ESCAPE HATCH, and this is what makes that true.
-     *
-     * Without this, `glanceExemptBecause` is a line any module can add to stop
-     * owing a dashboard box, and the two assertions below it would go quiet for
-     * exactly the modules a customer most wants a number from.
-     *
-     * So it is refused to any module that HAS records: a declared
-     * `AutomationSubject`, or anything in `$emits`. Those are the modules with
-     * something to count. A container has neither, which is the whole of its
-     * case.
-     *
-     * Derived from the registry rather than naming `a1leads_gbp`, so the second
-     * module to claim it is checked by the same rule rather than by whoever
-     * remembers this file exists.
-     */
-    public function test_a_module_with_records_may_not_decline_its_glance(): void
-    {
-        $offenders = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
-            ->filter(fn ($m) => $m->glanceExemptBecause !== null
-                && ($m->subject !== null || $m->emits !== []))
-            ->keys()->values()->all();
-
-        $this->assertSame(
-            [],
-            $offenders,
-            'A module holding records owes a dashboard box; the exemption is for containers.',
-        );
-
-        // The control: the exemption is actually in use, so this is not a rule
-        // passing over an empty set. If nothing claims it any more, the field
-        // and both filters above should go rather than sit there unexercised.
-        $exempt = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
-            ->filter(fn ($m) => $m->glanceExemptBecause !== null)
-            ->keys()->values()->all();
-
-        $this->assertNotEmpty($exempt, 'nothing declares glanceExemptBecause any more');
-    }
-
     public function test_dashboard_is_not_a_glance(): void
     {
         $this->assertNull(app(GlanceRegistry::class)->find('dashboard', $this->alpha['admin']));
     }
 
     /**
-     * A module may decline a glance, and it has to say why.
+     * Every sidebar tab has a box.
      *
-     * `glanceExemptBecause` joined `automationExemptBecause` and
-     * `auditExemptBecause` on 2026-09-23, for the first module that could not
-     * satisfy this assertion honestly: `a1leads_gbp` is a container holding
-     * Reviews and Business Profile, with no records of its own. Its only ways
-     * to go green here were to invent a box or to stop being a sidebar tab, and
-     * both are worse than the exemption.
-     *
-     * The exemption is narrow by construction: `exemptions()` below refuses it
-     * to any module that HAS records, so it cannot become the way a real module
-     * skips building its box.
+     * A `glanceExemptBecause` field existed from 2026-09-23 to 2026-09-25 for
+     * `a1leads_gbp`, then a container with no records of its own. It gained
+     * records - one row per new Google review, for Automations - and with them
+     * a box, and the field went with its only user, as its own test asked.
      */
     public function test_every_sidebar_tab_except_dashboard_has_a_glance(): void
     {
@@ -241,7 +196,6 @@ class GlanceRegistryTest extends TestCase
         $tabs = collect($registry->all())
             ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
                 && $m->sidebar
-                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->sort()->values()->all();
         $glances = collect(app(GlanceRegistry::class)->all())->map(fn ($g) => $g->key())->sort()->values()->all();
@@ -281,7 +235,7 @@ class GlanceRegistryTest extends TestCase
         // through `key.split('.').first` to the parent's icon and so never
         // needs its own entry. The one thing the assertion exists to catch was
         // the one thing it could not see.
-        preg_match_all("/'([a-z_.]+)':\s*Icons\./", $source, $found);
+        preg_match_all("/'([a-z0-9_.]+)':\s*Icons\./", $source, $found);
         $drawn = collect($found[1])->sort()->values()->all();
 
         // The control: a regex that stopped matching would make every diff
@@ -291,7 +245,6 @@ class GlanceRegistryTest extends TestCase
         $tabs = collect(app(\App\Support\Modules\ModuleRegistry::class)->all())
             ->filter(fn ($m) => $m->rolesGroup === \App\Support\Modules\ModuleDefinition::ROLES_TAB
                 && $m->sidebar
-                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->sort()->values()->all();
 

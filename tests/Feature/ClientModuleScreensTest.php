@@ -52,7 +52,7 @@ class ClientModuleScreensTest extends TestCase
         // The map's keys, which are the only quoted strings at the start of a
         // line in that literal. Deliberately narrow: a looser pattern would
         // pick up labels and icon names and turn a real failure into noise.
-        preg_match_all("/^\s*'([a-z_]+)':\s*ModuleScreen\(/m", $source, $matches);
+        preg_match_all("/^\s*'([a-z0-9_]+)':\s*ModuleScreen\(/m", $source, $matches);
 
         return $matches[1];
     }
@@ -143,29 +143,15 @@ class ClientModuleScreensTest extends TestCase
         // `^`-anchored only, with no trailing `$`. A `$` here would pass on a LF
         // checkout and fail on a CRLF one against a byte-identical file --
         // StartUp.md §8 has the whole story.
-        preg_match_all("/^\s*'([a-z_]+)':\s*Icons\./m", $source, $matches);
+        preg_match_all("/^\s*'([a-z0-9_]+)':\s*Icons\./m", $source, $matches);
 
         $withIcons = $matches[1];
 
         $this->assertNotEmpty($withIcons, 'Found no panel icons — has the map moved?');
 
-        /*
-         * A module with NO GLANCE draws no dashboard panel, so it owes no panel
-         * icon - `glanceExemptBecause`, added 2026-09-23 for `a1leads_gbp`.
-         *
-         * This is not the same as a `PANELS_WITHOUT_AN_ICON` entry and must not
-         * be written as one. That list is a deferral: the panel exists, renders
-         * a generic chart, and somebody owes it a glyph. This is the absence of
-         * a panel. Putting a container in the deferral list would leave a name
-         * sitting there forever waiting for an icon nothing will ever draw.
-         *
-         * The exemption itself is kept honest in GlanceRegistryTest, which
-         * refuses it to any module that has records.
-         */
         $tabs = collect(app(ModuleRegistry::class)->all())
             ->filter(fn ($m) => $m->rolesGroup === ModuleDefinition::ROLES_TAB
                 && $m->sidebar
-                && $m->glanceExemptBecause === null
                 && $m->key !== 'dashboard')
             ->keys()->all();
 
@@ -215,7 +201,7 @@ class ClientModuleScreensTest extends TestCase
     public function test_the_icon_gap_list_names_only_modules_that_are_still_missing(): void
     {
         $source = file_get_contents(self::PANELS);
-        preg_match_all("/^\s*'([a-z_]+)':\s*Icons\./m", (string) $source, $matches);
+        preg_match_all("/^\s*'([a-z0-9_]+)':\s*Icons\./m", (string) $source, $matches);
 
         $stale = array_values(array_intersect(self::PANELS_WITHOUT_AN_ICON, $matches[1]));
 

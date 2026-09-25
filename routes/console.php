@@ -266,3 +266,10 @@ Schedule::command('ezbizi:expire-training-passes')->dailyAt('04:10');
 // exits 0 when only some accounts fail. A nightly page over one suspended
 // tenant gets muted, and a muted alarm is worse than none.
 Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30);
+
+// New A-1 Chimney Google reviews, for Bar's automations (Jose, 2026-09-25).
+// A1 Leads installs its snapshot once a day; every fifteen minutes notices a
+// new one within a quarter hour, and a run with no new snapshot is one file
+// read. It only RAISES `a1leads_gbp.review_received`; the outbox sweep above
+// delivers it.
+Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->withoutOverlapping(10);

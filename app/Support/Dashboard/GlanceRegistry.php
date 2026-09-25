@@ -16,6 +16,7 @@ use App\Support\Dashboard\Glances\LeadsGlance;
 use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReportsGlance;
+use App\Support\Dashboard\Glances\A1LeadsGbpGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
@@ -43,7 +44,10 @@ class GlanceRegistry
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads', 'reviews', 'business_profile', 'email', 'training',
+        'services', 'leads', 'reviews', 'business_profile',
+        // New Google reviews for Automations, beside Reviews (2026-09-25).
+        'a1leads_gbp',
+        'email', 'training',
         'automations', 'monitoring', 'newsletter', 'reports', 'ads_performance',
         // Its sidebar entry arrived after the others (2026-09-24).
         'ai_assistance',
@@ -192,6 +196,7 @@ class GlanceRegistry
         LeadsGlance::class,
         BusinessProfileGlance::class,
         ReviewsGlance::class,
+        A1LeadsGbpGlance::class,
         SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,

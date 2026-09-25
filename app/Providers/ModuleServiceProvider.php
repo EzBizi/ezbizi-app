@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Automation;
 use App\Models\BusinessLocation;
+use App\Models\A1LeadsReviewEvent;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -2353,15 +2354,28 @@ class ModuleServiceProvider extends ServiceProvider
                 // audited (`a1leads_gbp.review_replied`,
                 // `a1leads_gbp.review_reply_failed`).
                 actions: ['view', 'reply'],
-                automationExemptBecause: 'This bridge holds no records of its own; the A1 Leads '
-                    .'data it shows is a copy, and a rule built on a copy would fire on our '
-                    .'import rather than on anything a customer did. Its only write is a '
-                    .'public reply a person types and approves after checking the live '
-                    .'review - an automation must not post under a customer review.',
-                glanceExemptBecause: 'It holds no records. A box for this module could only '
-                    .'restate a number owned by another system, on a snapshot '
-                    .'whose freshness the dashboard could not show. Not a gap - there is '
-                    .'nothing here that is ours to count.',
+                // AUTOMATED since 2026-09-25. Jose: "this will be set using EzBizi
+                // Automations that Bar himself will set up for the reply." It was
+                // exempt until then, on the grounds that a rule built on a copy
+                // fires on our import rather than on a customer; the trigger
+                // answers that by firing only for reviews Google stamped after
+                // the previous snapshot (see `ezbizi:a1leads-review-watch`).
+                // The subject is an A1LeadsReviewEvent: one row per new review,
+                // unique per review (so "once" is a key, not a hope), sitting at
+                // A-1 Chimney's company so a company-level rule covers it.
+                subject: new AutomationSubject(A1LeadsReviewEvent::class, 'Google review', key: 'a1leads_gbp'),
+                emits: [A1LeadsReviewEvent::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'a1leads_gbp.review_received',
+                        label: 'New Google review',
+                        description: 'A new Google review of A-1 Chimney arrived in the daily A1 Leads '
+                            .'snapshot. Raised once per review, only for reviews written since the '
+                            .'previous snapshot - never for the backlog. The payload carries the '
+                            .'rating, the name of the reviewer, the location, and whether it already '
+                            .'has a reply.',
+                    ),
+                ],
             ),
 
             /*

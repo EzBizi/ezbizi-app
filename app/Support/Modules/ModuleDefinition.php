@@ -261,32 +261,6 @@ final class ModuleDefinition
          * as settled and never reopens it.
          */
         public readonly ?string $auditExemptBecause = null,
-        /**
-         * Non-null = this module deliberately has no dashboard glance, with a
-         * reason.
-         *
-         * THE THIRD FIELD OF THIS SHAPE, and deliberately the same shape.
-         * `automationExemptBecause` exists because a module that cannot be
-         * automated is usually one nobody finished, and silence let that pass;
-         * `auditExemptBecause` exists because six modules that could write
-         * wrote no audit rows and nothing said so. A glance is the third thing
-         * every module was assumed to have: GlanceRegistryTest asserts exact
-         * equality between the sidebar modules and the glance registry, so the
-         * only previous ways to satisfy it were to build a box or to stop being
-         * a sidebar tab.
-         *
-         * A CONTAINER IS THE CASE THAT NEEDED IT. `a1leads_gbp` holds no
-         * records and raises no events; a glance for it could only be a
-         * restatement of its children's, or a fabricated number. Inventing one
-         * to satisfy a test is the failure the other two fields were added to
-         * prevent, one level up.
-         *
-         * The honest reason is the whole value. "Nothing to count" is a
-         * decision; "not built yet" is a gap and should say so in those words,
-         * because the next reader takes a stated rationale as settled and never
-         * reopens it.
-         */
-        public readonly ?string $glanceExemptBecause = null,
         public readonly ?string $parent = null,
         /**
          * Checkbox wording for an action whose key reads badly, e.g.
