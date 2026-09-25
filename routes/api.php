@@ -1182,6 +1182,7 @@ Route::prefix('v1')
         Route::middleware('permission:field.map.view')->group(function () {
             Route::get('field/map', [FieldController::class, 'map']);
             Route::get('field/map/tiles', [FieldController::class, 'tiles']);
+            Route::get('field/map/attribution', [FieldController::class, 'attribution']);
         });
         Route::middleware('permission:field.route.view')->group(function () {
             Route::get('field/people', [FieldController::class, 'people']);

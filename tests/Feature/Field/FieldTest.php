@@ -316,6 +316,21 @@ class FieldTest extends TestCase
             ->assertJsonPath('data.kept', 0);
     }
 
+    public function test_the_map_carries_googles_copyright_for_the_viewport(): void
+    {
+        config(['services.google_maps.tiles_key' => 't']);
+        Http::fake([
+            'tile.googleapis.com/v1/createSession*' => Http::response(['session' => 's1', 'expiry' => time() + 86400 * 14]),
+            'tile.googleapis.com/tile/v1/viewport*' => Http::response(['copyright' => 'Map data ©2026 Google']),
+        ]);
+
+        $this->signedInAs($this->manager)
+            ->getJson('/api/v1/field/map/attribution?zoom=12&north=40.1&south=39.9&east=-74.9&west=-75.1')
+            ->assertOk()->assertJsonPath('data.copyright', 'Map data ©2026 Google');
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'viewport') && $r['session'] === 's1');
+    }
+
     public function test_the_dashboard_counts_only_people_you_can_see(): void
     {
         $this->mode('always');

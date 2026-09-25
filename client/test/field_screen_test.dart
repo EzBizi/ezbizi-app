@@ -42,6 +42,26 @@ void main() {
 
     expect(find.widgetWithText(FilledButton, 'SOS'), findsOneWidget);
     expect(find.text('Acknowledge'), findsNothing);
+
+    // One tap arms it inline; it never opens a dialog, and Cancel disarms.
+    await tester.tap(find.widgetWithText(FilledButton, 'SOS'));
+    await tester.pump();
+    expect(find.text('Tap again to send SOS'), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(find.widgetWithText(FilledButton, 'SOS'), findsOneWidget);
+  });
+
+  testWidgets('an armed SOS falls back by itself', (tester) async {
+    await _pump(tester, grants: ['field.dashboard.view'], tracked: true);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'SOS'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+
+    expect(find.text('Tap again to send SOS'), findsNothing);
   });
 
   testWidgets('with no tab granted it says what to ask for', (tester) async {

@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/search_picker.dart';
 
 /// Field › Route: a person's jobs for a day in the order Google finds
 /// fastest, with drive times and a warning where they would be late.
@@ -93,22 +94,24 @@ class _FieldRouteTabState extends State<FieldRouteTab> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (choices.length > 1)
-                DropdownMenu<String>(
-                  initialSelection: _userId,
-                  label: const Text('Person'),
-                  enableFilter: true,
-                  requestFocusOnTap: true,
-                  dropdownMenuEntries: [
-                    for (final p in choices)
-                      DropdownMenuEntry(
-                        value: '${p['id']}',
-                        label: '${p['name']}',
-                      ),
-                  ],
-                  onSelected: (id) {
-                    setState(() => _userId = id);
-                    _load();
-                  },
+                SizedBox(
+                  width: 260,
+                  child: SearchPickerField<String>(
+                    label: 'Person',
+                    isDense: true,
+                    value: _userId,
+                    options: [
+                      for (final p in choices)
+                        SearchOption(
+                          value: '${p['id']}',
+                          label: '${p['name']}',
+                        ),
+                    ],
+                    onChanged: (id) {
+                      setState(() => _userId = id);
+                      _load();
+                    },
+                  ),
                 ),
               ActionChip(
                 avatar: const Icon(Icons.event, size: 18),
