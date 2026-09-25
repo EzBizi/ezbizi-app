@@ -110,6 +110,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// window that day does not offer, and never a zero.
   final Map<int, List<Map<String, dynamic>>> _grid = {};
 
+  /// Each weekday's "Day" box. Kept equal to the sum of its windows, so typing
+  /// a window updates it; typing IT splits the number across the windows.
+  final Map<int, TextEditingController> _dayTotal = {};
+
+  /// Bumped when a split rewrites a day's windows. It keys that day's window
+  /// fields, which read their value once, so new numbers draw fresh fields.
+  final Map<int, int> _dayGen = {};
+
   /// The organization's windows, `{id, start_time, end_time}`, earliest first.
   /// Every area books into these; what differs per area is the number.
   List<Map<String, dynamic>> _timeSlots = [];
@@ -149,6 +157,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _cityEntry.dispose();
     _formName.dispose();
     _deleteName.dispose();
+    for (final c in _dayTotal.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -282,6 +293,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           'end_time': slot['end_time'],
           'max_jobs': slot['max_jobs'],
         });
+      }
+      for (var weekday = 0; weekday < 7; weekday++) {
+        _syncDayTotal(weekday);
       }
     });
   }
@@ -568,6 +582,49 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// Deletes the day's rows. Never writes zeros — see the class docblock.
   void _closeDay(int weekday) => setState(() => _grid.remove(weekday));
 
+  int _sumOf(int weekday) => (_grid[weekday] ?? const []).fold(
+    0,
+    (sum, r) => sum + ((r['max_jobs'] as num?)?.toInt() ?? 0),
+  );
+
+  void _syncDayTotal(int weekday) {
+    final sum = _sumOf(weekday);
+    (_dayTotal[weekday] ??= TextEditingController()).text = sum > 0
+        ? '$sum'
+        : '';
+  }
+
+  /// "10 on Monday" becomes 4/3/3 over three windows: A1's
+  /// `capacityForBlock` — equal shares, and the earliest windows take the
+  /// remainder one each. So 4 over three is 2/1/1, and 2 over three is 1/1
+  /// with the last window not offered (never a zero; see the top of the file).
+  /// Spread over the windows the day SHOWS, so the Day box always equals what
+  /// is on screen.
+  void _splitDay(int weekday, String value) {
+    final n = int.tryParse(value.trim());
+    if (n == null || n <= 0) return;
+
+    final windows = _windowsFor(weekday);
+    if (windows.isEmpty) return;
+
+    final base = n ~/ windows.length;
+    final extra = n % windows.length;
+
+    setState(() {
+      _grid[weekday] = [
+        for (var i = 0; i < windows.length; i++)
+          {
+            'start_time': windows[i].$1,
+            'end_time': windows[i].$2,
+            'max_jobs': (base + (i < extra ? 1 : 0)) > 0
+                ? base + (i < extra ? 1 : 0)
+                : null,
+          },
+      ];
+      _dayGen[weekday] = (_dayGen[weekday] ?? 0) + 1;
+    });
+  }
+
   /// Opening a day offers EVERY window at one job each, to be changed.
   ///
   /// It used to write a hard-coded 08:00–12:00, which is why all 108 of A-1's
@@ -583,6 +640,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           'max_jobs': 1,
         },
     ];
+    _syncDayTotal(weekday);
   });
 
   /// The windows a day shows: the organization's, plus any this area already
@@ -1178,7 +1236,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         _dailyTotals(theme, area),
         const SizedBox(height: 18),
         Text(
-          'Jobs ${area['name']} can take per slot, per weekday.',
+          'Jobs ${area['name']} can take per slot, per weekday. Type a '
+          "day's total in Day and it splits across the slots, earliest "
+          'first — or set each slot yourself.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1765,10 +1825,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// says what the whole franchise takes that day: the other areas' SAVED
   /// numbers plus this area's live ones.
   Widget _dailyTotals(ThemeData theme, Map<String, dynamic> area) {
-    int dayTotal(int weekday) => (_grid[weekday] ?? const []).fold(
-      0,
-      (sum, r) => sum + ((r['max_jobs'] as num?)?.toInt() ?? 0),
-    );
+    int dayTotal(int weekday) => _sumOf(weekday);
 
     final siblings = _areas
         .where(
@@ -1919,67 +1976,97 @@ class _CapacitySettingsState extends State<CapacitySettings> {
                         : 'Closed · add time slots in Overview to open it',
                     style: theme.textTheme.bodySmall?.copyWith(color: muted),
                   )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final (start, end) in _windowsFor(weekday))
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '${_label(start)} – ${_label(end)}',
-                                  style: theme.textTheme.bodyMedium,
-                                ),
-                              ),
-                              SizedBox(
-                                width: 56,
-                                child: TextFormField(
-                                  key: ValueKey('slot-$weekday-$start-$end'),
-                                  initialValue:
-                                      '${rowFor(start, end)?['max_jobs'] ?? ''}',
-                                  textAlign: TextAlign.center,
-                                  keyboardType: TextInputType.number,
-                                  style: theme.textTheme.bodyMedium,
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    hintText: '–',
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 6,
-                                    ),
-                                    border: OutlineInputBorder(),
+                : KeyedSubtree(
+                    key: ValueKey('day-$weekday-${_dayGen[weekday] ?? 0}'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final (start, end) in _windowsFor(weekday))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${_label(start)} – ${_label(end)}',
+                                    style: theme.textTheme.bodyMedium,
                                   ),
-                                  onChanged: (value) {
-                                    final n = int.tryParse(value.trim());
-                                    var row = rowFor(start, end);
-                                    if (row == null) {
-                                      row = {
-                                        'start_time': start,
-                                        'end_time': end,
-                                      };
-                                      rows.add(row);
-                                    }
-                                    // Blank, or zero: this window is not
-                                    // offered that day. Stored as absence,
-                                    // never as a zero — the server refuses a
-                                    // zero anyway.
-                                    // setState so the daily totals above
-                                    // follow the typing.
-                                    setState(
-                                      () => row!['max_jobs'] =
-                                          (n != null && n > 0) ? n : null,
-                                    );
-                                  },
                                 ),
-                              ),
-                            ],
+                                SizedBox(
+                                  width: 56,
+                                  child: TextFormField(
+                                    key: ValueKey('slot-$weekday-$start-$end'),
+                                    initialValue:
+                                        '${rowFor(start, end)?['max_jobs'] ?? ''}',
+                                    textAlign: TextAlign.center,
+                                    keyboardType: TextInputType.number,
+                                    style: theme.textTheme.bodyMedium,
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      hintText: '–',
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 6,
+                                      ),
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    onChanged: (value) {
+                                      final n = int.tryParse(value.trim());
+                                      var row = rowFor(start, end);
+                                      if (row == null) {
+                                        row = {
+                                          'start_time': start,
+                                          'end_time': end,
+                                        };
+                                        rows.add(row);
+                                      }
+                                      // Blank, or zero: this window is not
+                                      // offered that day. Stored as absence,
+                                      // never as a zero — the server refuses a
+                                      // zero anyway.
+                                      // setState so the daily totals above
+                                      // follow the typing.
+                                      setState(() {
+                                        row!['max_jobs'] = (n != null && n > 0)
+                                            ? n
+                                            : null;
+                                        _syncDayTotal(weekday);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
           ),
+          if (!closed) ...[
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 64,
+              child: TextField(
+                key: ValueKey('day-total-field-$weekday'),
+                controller: _dayTotal[weekday] ??= TextEditingController(
+                  text: _sumOf(weekday) > 0 ? '${_sumOf(weekday)}' : '',
+                ),
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                style: theme.textTheme.titleSmall,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: 'Day',
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => _splitDay(weekday, value),
+              ),
+            ),
+          ],
           TextButton(
             onPressed: closed
                 ? (canOpen ? () => _openDay(weekday) : null)

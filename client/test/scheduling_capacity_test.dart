@@ -656,6 +656,112 @@ void main() {
     expect(tile(2, '7 in all'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-25: "10 jobs on monday, and that would divide between the
+  /// available time slots". A1's rule: equal shares, the earliest windows take
+  /// the remainder. Dallas's Monday shows three windows (its own 07–11 plus
+  /// the two stated ones), so 10 is 4/3/3 and 2 is 1/1 with the last blank.
+  testWidgets("a day's total splits across its windows, earliest first", (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        final path = request.url.path;
+        if (path.endsWith('/scheduling/time-slots')) {
+          return _json({'data': _twoWindows, 'can_edit': true});
+        }
+        if (request.method == 'PUT' && path.endsWith('/slots')) {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': _dallasDetail});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    String slot(String key) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .controller
+        .text;
+
+    final day = find.byKey(const ValueKey('day-total-field-1'));
+    expect(tester.widget<TextField>(day).controller!.text, '2');
+
+    await tester.enterText(day, '10');
+    await tester.pumpAndSettle();
+
+    expect(slot('slot-1-07:00-11:00'), '4');
+    expect(slot('slot-1-10:00-13:00'), '3');
+    expect(slot('slot-1-13:00-15:00'), '3');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('daily-total-1')),
+        matching: find.text('10'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(day, '2');
+    await tester.pumpAndSettle();
+
+    expect(slot('slot-1-07:00-11:00'), '1');
+    expect(slot('slot-1-10:00-13:00'), '1');
+    expect(slot('slot-1-13:00-15:00'), '');
+
+    // Typing a window puts the Day box back in step.
+    await tester.enterText(
+      find.byKey(const ValueKey('slot-1-13:00-15:00')),
+      '5',
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(day).controller!.text, '7');
+
+    await tester.tap(find.textContaining('Save Dallas'));
+    await tester.pumpAndSettle();
+
+    final monday = (saved!['slots'] as List)
+        .cast<Map<String, dynamic>>()
+        .where((s) => s['weekday'] == 1)
+        .map((s) => s['max_jobs'])
+        .toList();
+    expect(monday, [1, 1, 5]);
+  });
+
+  testWidgets('the Day box fits a phone-width area pane', (tester) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(
+      tester,
+      width: 375,
+      onRequest: (request) =>
+          request.url.path.endsWith('/scheduling/time-slots')
+          ? _json({'data': _twoWindows, 'can_edit': true})
+          : null,
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('day-total-field-1')), findsOneWidget);
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
+
   testWidgets('with no time slots a closed day says why it cannot open', (
     tester,
   ) async {
@@ -798,8 +904,9 @@ Future<void> _pump(
   List<Map<String, dynamic>>? areas,
   Map<String, dynamic>? pattern = _defaultPattern,
   Map<String, dynamic>? me,
+  double width = 1280,
 }) async {
-  tester.view.physicalSize = const Size(1280, 900);
+  tester.view.physicalSize = Size(width, 900);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 
