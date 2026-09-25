@@ -2,6 +2,8 @@
 
 namespace App\Support\Web;
 
+use App\Models\Review;
+use App\Models\WebItem;
 use App\Models\WebLocation;
 use App\Models\WebSite;
 use App\Models\WebTeamMember;
@@ -15,6 +17,11 @@ use App\Models\WebTeamMember;
 final class SiteLists
 {
     public const TEAM_FIELDS = ['name', 'role', 'bio', 'photo_url', 'category'];
+
+    public const ITEM_FIELDS = [
+        'title', 'body', 'subtitle', 'image_url', 'image2_url', 'link_url',
+        'phone', 'icon', 'category', 'rating', 'dated',
+    ];
 
     public const LOCATION_FIELDS = [
         'name', 'phone', 'email', 'website_url', 'maps_url',
@@ -30,6 +37,59 @@ final class SiteLists
             ->orderBy('sort_order')
             ->get()
             ->map(fn (WebTeamMember $m) => $m->only(self::TEAM_FIELDS))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The company's FAQs, services, before-and-after pairs and featured
+     * reviews, by kind, in their order.
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    public static function items(WebSite $site, ?string $only = null): array
+    {
+        $rows = WebItem::query()
+            ->where('company_id', $site->company_id)
+            ->when($only !== null, fn ($q) => $q->where('kind', $only))
+            ->orderBy('sort_order')
+            ->get();
+
+        $out = array_fill_keys($only === null ? WebItem::KINDS : [$only], []);
+
+        foreach ($rows as $item) {
+            $out[$item->kind][] = array_map(
+                fn ($v) => $v instanceof \DateTimeInterface ? $v->format('Y-m-d') : $v,
+                $item->only(self::ITEM_FIELDS),
+            );
+        }
+
+        return $out;
+    }
+
+    /**
+     * The company's Google reviews as EzBizi syncs them, newest first, for
+     * [ezbizi_reviews] when no review is hand-picked. Read, never written:
+     * they belong to Leads.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function reviews(WebSite $site): array
+    {
+        return Review::query()
+            ->where('company_id', $site->company_id)
+            ->whereNotNull('rating')
+            ->orderByDesc('reviewed_at')
+            ->limit(50)
+            ->get(['reviewer_name', 'reviewer_photo_url', 'rating', 'comment', 'reviewed_at', 'location_name'])
+            ->map(fn (Review $r) => [
+                'title' => (string) $r->reviewer_name,
+                'body' => (string) $r->comment,
+                'image_url' => $r->reviewer_photo_url,
+                'rating' => (int) $r->rating,
+                'dated' => $r->reviewed_at?->format('Y-m-d'),
+                'subtitle' => 'Google',
+            ])
             ->values()
             ->all();
     }

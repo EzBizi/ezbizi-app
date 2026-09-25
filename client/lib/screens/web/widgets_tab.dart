@@ -1199,6 +1199,10 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     'team': SiteListKind.team,
     'branches': SiteListKind.branches,
     'store_locator': SiteListKind.stores,
+    'services': SiteListKind.services,
+    'reviews': SiteListKind.reviews,
+    'before_after': SiteListKind.beforeAfter,
+    'faq': SiteListKind.faq,
   };
 
   /// The widgets as a visitor meets them, drawn from the values being edited.
@@ -2348,6 +2352,10 @@ const Map<String, IconData> _renderedIcons = {
   'team': Icons.groups_outlined,
   'branches': Icons.storefront_outlined,
   'store_locator': Icons.travel_explore_outlined,
+  'services': Icons.handyman_outlined,
+  'reviews': Icons.reviews_outlined,
+  'before_after': Icons.compare_outlined,
+  'faq': Icons.quiz_outlined,
 };
 
 /// A widget as a card: what it is, what it is set to, and a way in.
@@ -2634,6 +2642,69 @@ const List<_Rendered> _renderedCatalogue = [
       _Flag('search', 'Show the search box', true),
       _Flag('images', 'Show each picture', true),
       _Flag('maps', 'Show a map on each', true),
+    ],
+  ),
+  _Rendered(
+    'services',
+    'Services',
+    'The services the company offers, as cards or a list.',
+    [
+      _Choice('layout', 'Arrangement', ['grid', 'list']),
+      _Number('columns', 'Columns', 1, 4, 3),
+      _Flag('image', 'Show each picture', true),
+      _Flag('icon', 'Show each icon', true),
+      _Flag('description', 'Show each description', true),
+      _Flag('phone', 'Show each phone number', false),
+      _Text('category', 'Only this group', hint: 'Empty shows every one', max: 60),
+      _Text('button_text', 'Link wording', hint: 'Empty hides the link', max: 40),
+      _Flag('new_tab', 'Open links in a new tab', false),
+    ],
+  ),
+  _Rendered(
+    'reviews',
+    'Reviews',
+    'Featured reviews, or the Google reviews EzBizi already has.',
+    [
+      _Choice('source', 'Which reviews', ['auto', 'featured', 'google']),
+      _Choice('layout', 'Arrangement', ['grid', 'list', 'slider']),
+      _Number('columns', 'Columns', 1, 4, 3),
+      _Number('limit', 'How many', 1, 50, 6),
+      _Number('min_rating', 'Lowest star rating shown', 1, 5, 4),
+      _Flag('stars', 'Show the stars', true),
+      _Flag('show_source', 'Say where each was left', true),
+      _Flag('date', 'Show the date', true),
+      _Flag('photo', 'Show the reviewer\'s photo', true),
+      _Number('excerpt', 'Shorten to (characters, 0 = whole)', 0, 1000, 0, step: 10),
+      _Flag('summary', 'Average rating above them', false),
+      _Colour('star_color', 'Star colour'),
+    ],
+  ),
+  _Rendered(
+    'before_after',
+    'Before & after',
+    'Project photos compared, by dragging or side by side.',
+    [
+      _Choice('layout', 'Arrangement', ['slider', 'side']),
+      _Number('columns', 'Columns', 1, 4, 2),
+      _Flag('title', 'Show each title', true),
+      _Flag('description', 'Show each description', true),
+      _Text('category', 'Only this service', hint: 'Empty shows every one', max: 60),
+      _Text('before_label', 'Before label', max: 30),
+      _Text('after_label', 'After label', max: 30),
+      _Colour('handle_color', 'Divider colour'),
+    ],
+  ),
+  _Rendered(
+    'faq',
+    'FAQ',
+    'Questions that open to their answers, with the FAQ markup search engines read.',
+    [
+      _Text('category', 'Only this group', hint: 'Empty shows every one', max: 60),
+      _Flag('show_category', 'Group headings', false),
+      _Choice('icon', 'Open and close mark', ['plus', 'chevron']),
+      _Flag('schema', 'FAQ markup for search engines', true),
+      _Flag('open_first', 'First answer open', false),
+      _Flag('one_open', 'One answer open at a time', true),
     ],
   ),
   _Rendered(

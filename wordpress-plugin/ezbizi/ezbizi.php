@@ -96,6 +96,7 @@ require_once __DIR__ . '/enquiries.php';
 // — the id counter, the palette reader and the string accessor.
 require_once __DIR__ . '/widgets.php';
 require_once __DIR__ . '/lists.php';
+require_once __DIR__ . '/items.php';
 require_once __DIR__ . '/elementor.php';
 
 /**

@@ -566,3 +566,95 @@ class EzBizi_Elementor_Store_Locator extends EzBizi_Elementor_Preset_Widget {
         return ezbizi_store_locator_shortcode($atts);
     }
 }
+
+/** The services the company lists in EzBizi. */
+class EzBizi_Elementor_Services extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-services';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Services', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-apps';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('services', 'offer', 'cards'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_services_shortcode($atts);
+    }
+}
+
+/** Featured or Google reviews. */
+class EzBizi_Elementor_Reviews extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-reviews';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Reviews', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-review';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('reviews', 'testimonials', 'rating', 'google'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_reviews_shortcode($atts);
+    }
+}
+
+/** Before-and-after pairs, compared. */
+class EzBizi_Elementor_Before_After extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-before-after';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Before & After', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-image-before-after';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('before', 'after', 'compare', 'projects'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_before_after_shortcode($atts);
+    }
+}
+
+/** Questions and answers, with FAQ markup. */
+class EzBizi_Elementor_Faq extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-faq';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi FAQ', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-accordion';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('faq', 'questions', 'answers', 'accordion'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_faq_shortcode($atts);
+    }
+}

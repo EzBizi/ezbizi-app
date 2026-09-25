@@ -235,6 +235,15 @@ void main() {
             {'name': 'Ana Ruiz', 'role': 'Technician', 'bio': null, 'photo_url': null, 'category': 'Field'},
           ],
         };
+      } else if (path == '/api/v1/web/sites/site-1/items/faq') {
+        if (request.method == 'PUT') {
+          sent?.add({'path': path, ...jsonDecode(request.body) as Map<String, dynamic>});
+        }
+        body = {
+          'data': [
+            {'title': 'Do you sweep in winter?', 'body': 'Yes, all year.', 'category': 'General'},
+          ],
+        };
       } else if (path == '/api/v1/web/sites/site-1/locations') {
         if (request.method == 'PUT') {
           sent?.add({'path': path, ...jsonDecode(request.body) as Map<String, dynamic>});
@@ -888,6 +897,27 @@ void main() {
       sent.singleWhere((s) => '${s['path']}'.endsWith('/locations'))['scope'],
       'company',
     );
+  });
+
+  /// Jose, 2026-09-25: "yes all of it" — the FAQ keeps its questions here.
+  testWidgets('the FAQ card holds the questions and saves them to its kind', (
+    tester,
+  ) async {
+    final sent = <Map<String, dynamic>>[];
+    await pump(
+      tester,
+      permissions: const ['web_management.view', 'web_management.edit'],
+      open: 'FAQ',
+      sent: sent,
+    );
+
+    expect(find.text('Do you sweep in winter?'), findsOneWidget);
+
+    await tester.tap(find.text('Save list'));
+    await tester.pumpAndSettle();
+
+    final put = sent.singleWhere((s) => '${s['path']}'.endsWith('/items/faq'));
+    expect((put['items'] as List).single['body'], 'Yes, all year.');
   });
 
   testWidgets('view alone can read a list and not change it', (tester) async {

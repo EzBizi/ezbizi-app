@@ -346,6 +346,10 @@ function ezbizi_preset_fallback($widget) {
 
     // Copied from WidgetPresets::defaults(), like the ones above.
     $fallbacks['team'] = array('columns' => 3, 'photo' => 'square', 'bio' => true);
+    $fallbacks['services'] = array('layout' => 'grid', 'columns' => 3, 'image' => true, 'icon' => true, 'description' => true, 'phone' => false, 'category' => '', 'button_text' => 'Learn more', 'new_tab' => false);
+    $fallbacks['reviews'] = array('layout' => 'grid', 'columns' => 3, 'source' => 'auto', 'limit' => 6, 'min_rating' => 4, 'stars' => true, 'show_source' => true, 'date' => true, 'photo' => true, 'excerpt' => 0, 'summary' => false, 'star_color' => '');
+    $fallbacks['before_after'] = array('layout' => 'slider', 'columns' => 2, 'title' => true, 'description' => true, 'category' => '', 'before_label' => 'Before', 'after_label' => 'After', 'handle_color' => '');
+    $fallbacks['faq'] = array('category' => '', 'show_category' => false, 'icon' => 'plus', 'schema' => true, 'open_first' => false, 'one_open' => true);
     $fallbacks['branches'] = array('columns' => 3, 'address' => true, 'map' => true, 'directions' => true);
     $fallbacks['store_locator'] = array('search' => true, 'images' => true, 'maps' => true);
 

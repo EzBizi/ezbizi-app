@@ -896,6 +896,8 @@ Route::prefix('v1')
             Route::put('web/sites/{site}/team', [WebListsController::class, 'saveTeam']);
             Route::get('web/sites/{site}/locations', [WebListsController::class, 'locations']);
             Route::put('web/sites/{site}/locations', [WebListsController::class, 'saveLocations']);
+            Route::get('web/sites/{site}/items/{kind}', [WebListsController::class, 'items']);
+            Route::put('web/sites/{site}/items/{kind}', [WebListsController::class, 'saveItems']);
         });
         /*
          * The Orders tab owns buying, selling and issuing outright: nothing

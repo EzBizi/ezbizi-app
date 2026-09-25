@@ -73,6 +73,13 @@ final class WidgetPresets
         // config; a preset only styles them, so one form can sit dark on one
         // page and light on another.
         'form',
+        // Jose, 2026-09-25: "yes all of it" — A1's Services, Reviews,
+        // Before & After and FAQ too, drawn from web_items (and, for
+        // reviews, the Google reviews EzBizi syncs).
+        'services',
+        'reviews',
+        'before_after',
+        'faq',
     ];
 
     public const DEFAULT = 'default';
@@ -107,6 +114,10 @@ final class WidgetPresets
         'street_view',
         'state_name',
         'state_anchor',
+        'services',
+        'reviews',
+        'before_after',
+        'faq',
         'team',
         'branches',
         'store_locator',
@@ -158,6 +169,10 @@ final class WidgetPresets
         'branches' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'button' => 'button'],
         'store_locator' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'link' => 'text'],
         'form' => ['box' => 'box', 'title' => 'text', 'subtitle' => 'text', 'label' => 'text', 'input' => 'button', 'submit' => 'button', 'consent' => 'text', 'help' => 'text'],
+        'services' => ['box' => 'box', 'card' => 'box', 'image' => 'box', 'icon' => 'icon', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
+        'reviews' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'text' => 'text', 'date' => 'text', 'summary' => 'text'],
+        'before_after' => ['box' => 'box', 'card' => 'box', 'title' => 'text', 'text' => 'text', 'label' => 'text'],
+        'faq' => ['box' => 'box', 'item' => 'box', 'question' => 'text', 'answer' => 'text', 'icon' => 'icon', 'category' => 'text'],
     ];
 
     /**
@@ -506,6 +521,49 @@ final class WidgetPresets
                 'field_gap' => 12,
                 'button_width' => 'auto',
             ],
+            'services' => [
+                'layout' => 'grid',
+                'columns' => 3,
+                'image' => true,
+                'icon' => true,
+                'description' => true,
+                'phone' => false,
+                'category' => '',
+                'button_text' => 'Learn more',
+                'new_tab' => false,
+            ],
+            'reviews' => [
+                'layout' => 'grid',
+                'columns' => 3,
+                'source' => 'auto',
+                'limit' => 6,
+                'min_rating' => 4,
+                'stars' => true,
+                'show_source' => true,
+                'date' => true,
+                'photo' => true,
+                'excerpt' => 0,
+                'summary' => false,
+                'star_color' => '',
+            ],
+            'before_after' => [
+                'layout' => 'slider',
+                'columns' => 2,
+                'title' => true,
+                'description' => true,
+                'category' => '',
+                'before_label' => 'Before',
+                'after_label' => 'After',
+                'handle_color' => '',
+            ],
+            'faq' => [
+                'category' => '',
+                'show_category' => false,
+                'icon' => 'plus',
+                'schema' => true,
+                'open_first' => false,
+                'one_open' => true,
+            ],
         ];
     }
 
@@ -544,6 +602,11 @@ final class WidgetPresets
         'form' => [
             'button_width' => ['auto', 'full'],
         ],
+        'services' => ['layout' => ['grid', 'list']],
+        // `auto`: the hand-picked reviews when there are any, Google's when not.
+        'reviews' => ['layout' => ['grid', 'list', 'slider'], 'source' => ['auto', 'featured', 'google']],
+        'before_after' => ['layout' => ['slider', 'side']],
+        'faq' => ['icon' => ['plus', 'chevron']],
         'team' => [
             'photo' => ['square', 'circle'],
         ],
@@ -567,6 +630,9 @@ final class WidgetPresets
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
         'city_list' => ['search_placeholder' => 60, 'empty_text' => 80],
+        'services' => ['category' => 60, 'button_text' => 40],
+        'before_after' => ['category' => 60, 'before_label' => 30, 'after_label' => 30],
+        'faq' => ['category' => 60],
         'social_links' => ['networks' => 300],
         'contact_info' => [
             'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
@@ -591,12 +657,17 @@ final class WidgetPresets
         'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
         'contact_info' => ['icon_gap' => [0, 40], 'item_gap' => [0, 80]],
         'form' => ['field_gap' => [0, 40]],
+        'services' => ['columns' => [1, 4]],
+        'reviews' => ['columns' => [1, 4], 'limit' => [1, 50], 'min_rating' => [1, 5], 'excerpt' => [0, 1000]],
+        'before_after' => ['columns' => [1, 4]],
     ];
 
     /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
     private const COLORS = [
         'cta' => ['glow_color'],
         'contact_info' => ['divider_color'],
+        'reviews' => ['star_color'],
+        'before_after' => ['handle_color'],
     ];
 
     /**

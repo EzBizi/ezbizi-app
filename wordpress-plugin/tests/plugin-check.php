@@ -137,6 +137,9 @@ function human_time_diff($from, $to = 0) {
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 function esc_attr__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
+if (! function_exists('date_i18n')) { function date_i18n($f, $ts) { return date($f, $ts); } }
+if (! function_exists('wpautop')) { function wpautop($s) { return '<p>' . $s . '</p>'; } }
+if (! function_exists('_n')) { function _n($one, $many, $n, $d = null) { return $n == 1 ? $one : $many; } }
 /*
  * Records instead of discarding, because the menu is the thing being asserted.
  * `add_options_page` is gone with the page that used it: a stub for a function
@@ -1781,6 +1784,42 @@ check('no team, nothing drawn', $GLOBALS['sc']['ezbizi_team']([]), '');
 check('no branches, nothing drawn', $GLOBALS['sc']['ezbizi_branches']([]), '');
 check('no stores, nothing drawn', $GLOBALS['sc']['ezbizi_store_locator']([]), '');
 
+echo PHP_EOL . "Services, reviews, before-and-after and FAQ draw EzBizi's lists" . PHP_EOL;
+reset_site();
+serve_preset_payload([], [], [
+    'items' => [
+        'service' => [
+            ['title' => 'Chimney Sweep', 'body' => 'Every flue, cleaned.', 'image_url' => 'https://x.test/sweep.jpg', 'icon' => 'chimney', 'link_url' => 'https://x.test/sweep/', 'category' => 'Chimney'],
+            ['title' => 'Door Repair', 'body' => 'Springs and rollers.', 'category' => 'Doors'],
+        ],
+        'review' => [
+            ['title' => 'Pat L.', 'body' => 'Quick and tidy.', 'rating' => 5, 'dated' => '2026-09-01', 'subtitle' => 'Google'],
+            ['title' => 'Sam K.', 'body' => 'Late but fine.', 'rating' => 3],
+        ],
+        'before_after' => [['title' => 'Crown rebuild', 'image_url' => 'https://x.test/b.jpg', 'image2_url' => 'https://x.test/a.jpg']],
+        'faq' => [['title' => 'Do you sweep in winter?', 'body' => 'Yes, all year.', 'category' => 'General']],
+    ],
+    'reviews' => [['title' => 'Google Person', 'body' => 'From Google.', 'rating' => 5]],
+]);
+$services = $GLOBALS['sc']['ezbizi_services']([]);
+check('every service', substr_count($services, 'class="ezbizi-service"'), 2);
+check('its icon is inline markup', str_contains($services, '<svg'), true);
+check('a service links to its page', str_contains($services, 'href="https://x.test/sweep/"'), true);
+$reviews = $GLOBALS['sc']['ezbizi_reviews']([]);
+check('featured reviews first, so not Google\'s', str_contains($reviews, 'From Google.'), false);
+check('below the lowest rating asked for, left out', str_contains($reviews, 'Late but fine.'), false);
+check('five stars as a label a screen reader says', str_contains($reviews, 'aria-label="5 out of 5"'), true);
+$ba = $GLOBALS['sc']['ezbizi_before_after']([]);
+check('a pair to compare', str_contains($ba, 'b.jpg') && str_contains($ba, 'a.jpg'), true);
+check('by dragging, which a keyboard can do too', str_contains($ba, 'type="range"'), true);
+$faq = $GLOBALS['sc']['ezbizi_faq']([]);
+check('a question that opens', str_contains($faq, '<summary class="ezbizi-faq-question">Do you sweep in winter?</summary>'), true);
+check('with the FAQ markup search engines read', str_contains($faq, '"@type":"FAQPage"'), true);
+reset_site();
+serve_preset_payload();
+check('no services, nothing drawn', $GLOBALS['sc']['ezbizi_services']([]), '');
+check('no FAQs, nothing drawn', $GLOBALS['sc']['ezbizi_faq']([]), '');
+
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*
  * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
@@ -1802,7 +1841,7 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('every widget is registered', count($manager->registered), 17);
+check('every widget is registered', count($manager->registered), 21);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
 
