@@ -87,8 +87,8 @@ final class ReportRunner
     /** @var list<string>|null memoised per run; see visiblePeopleIds() */
     private ?array $visiblePeople = null;
 
-    /** Memoised per run; see todayWeekday(). */
-    private ?int $todayWeekday = null;
+    /** Memoised per run, so every row of one report reads the same day. */
+    private ?CarbonImmutable $today = null;
 
     public function __construct(private readonly TenantContext $tenant) {}
 
@@ -450,15 +450,15 @@ final class ReportRunner
      * failure somebody cannot diagnose. A report spanning branches has no
      * single "today" to be correct about anyway.
      */
-    private function todayWeekday(): int
+    private function today(): CarbonImmutable
     {
-        return $this->todayWeekday ??= CarbonImmutable::today()->dayOfWeek;
+        return $this->today ??= CarbonImmutable::today();
     }
 
     /** Fill a derived column's placeholders — ReportMap owns the substitution. */
     private function resolve(string $sql): string
     {
-        return ReportMap::resolve($sql, $this->todayWeekday());
+        return ReportMap::resolve($sql, $this->today());
     }
 
     private function columnFor(array $resource, array $item): array

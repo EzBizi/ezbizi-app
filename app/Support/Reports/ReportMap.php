@@ -13,6 +13,7 @@ use App\Models\ServiceArea;
 use App\Models\TrainingGuide;
 use App\Models\User;
 use App\Models\Vehicle;
+use Carbon\CarbonImmutable;
 
 /**
  * What a report may read, and how tables reach each other (spec 2026-09-10).
@@ -119,12 +120,12 @@ final class ReportMap
      * resolves placeholders differently from the code it guards proves that a
      * DIFFERENT string is valid.
      *
-     * Integers only, and every placeholder is computed by the application. No
-     * caller-supplied value reaches this.
+     * Every placeholder is computed by the application from the clock - a
+     * Y-m-d string, quoted here. No caller-supplied value reaches this.
      */
-    public static function resolve(string $sql, int $todayWeekday): string
+    public static function resolve(string $sql, CarbonImmutable $today): string
     {
-        return str_replace(':today_weekday', (string) $todayWeekday, $sql);
+        return str_replace(':today', "'".$today->toDateString()."'", $sql);
     }
 
     public static function all(): array
@@ -474,52 +475,62 @@ final class ReportMap
                      * and it is why this is a better answer than the one I said
                      * was impossible.
                      *
-                     * ── WHY IT TOPS OUT AT 6, AND WHY THAT IS NOT A LIMIT ──
+                     * ── THE NEXT DATE THE AREA WORKS, counted from today ──
                      *
-                     * Slots are per WEEKDAY, so an area open at all is open
-                     * within seven days by construction - the modulo below can
-                     * only return 0..6. A filter of `>= 14` therefore matches
-                     * exactly the areas that are NEVER open, which is the true
-                     * answer to "nothing in the next fortnight" rather than an
-                     * approximation of it. The distance is honest at every
-                     * value; it simply has nothing above 6 to report because
-                     * the data has no way to express one.
+                     * Read the way Scheduling's `Openings::days()` reads a
+                     * date, and pinned against it in ServiceAreaShapeReportTest
+                     * on shared fixtures, so the two cannot drift:
                      *
-                     * That stops being true the day Scheduling stores a
-                     * date-specific closure, and then this column needs
-                     * rewriting rather than extending - they know to tell me.
+                     *   1. before `available_from` - closed;
+                     *   2. else any `service_area_date_overrides` row for the
+                     *      date REPLACES the weekday pattern: a row with no
+                     *      window closes the day, otherwise it is open;
+                     *   3. else the weekday pattern in `service_area_slots`.
+                     *
+                     * "Works", not "has a free spot": bookings are not read.
+                     * Whether the day is FULL is the booked-out column's job.
+                     *
+                     * The first draft read the weekly pattern alone and could
+                     * only answer 0..6. Overrides and the horizon (b7bb9048)
+                     * made that wrong for any week with a closure, so this
+                     * walks real dates instead - 0..365 from a digits cross
+                     * join, because a correlated subquery cannot own a
+                     * recursive CTE that reads the outer row. An area whose
+                     * next working day is more than a year out reads NULL.
                      *
                      * ── NULL IS THE THIRD STATE AND IS NOT A ZERO ──────
                      *
                      * `min()` over no rows is NULL, which SQL keeps out of every
                      * comparison - so an unconfigured area does NOT match
                      * `>= 3`, and is not quietly reported as "booked out for
-                     * three days". It is caught by `open_days_a_week = 0`,
-                     * which names it as what it is. Scheduling's whole warning
-                     * was that these three must never collapse, and NULL
-                     * refusing to answer is the database enforcing it.
+                     * three days". It is caught by `open_days_a_week = 0`.
                      *
-                     * `:today_weekday` is substituted by the runner with one
-                     * integer for the whole run - see ReportRunner::resolve().
-                     *
-                     * ── + 7 BEFORE THE SUBTRACTION, NOT AFTER ──────────
-                     *
-                     * `weekday` is an unsignedTinyInteger, so MySQL evaluates
-                     * `s.weekday - :today_weekday` in UNSIGNED arithmetic and a
-                     * Monday slot read on a Wednesday underflows:
-                     * "BIGINT UNSIGNED value is out of range". Not a wrong
-                     * number - the query dies. Adding 7 first keeps every
-                     * intermediate positive and the modulo does the wrap.
-                     *
-                     * Caught by the tests rather than by reading: the algebra
-                     * is identical and the type is not.
+                     * `:today` is one quoted date for the whole run - see
+                     * ReportMap::resolve(). MySQL's DAYOFWEEK is 1 = Sunday and
+                     * `weekday` is Carbon's 0 = Sunday, hence the - 1.
                      */
                     'days_until_next_open_day' => [
                         'label' => 'Days until next open day',
                         'type' => 'integer',
-                        'sql' => 'select min((s.weekday + 7 - :today_weekday) % 7) '
-                            .'from service_area_slots s '
-                            .'where s.service_area_id = service_areas.id',
+                        'sql' => 'select min(n.d) from ('
+                            .'select a.i + 10 * b.i + 100 * c.i as d from '
+                            .'(select 0 i union all select 1 union all select 2 union all select 3 union all select 4 '
+                            .'union all select 5 union all select 6 union all select 7 union all select 8 union all select 9) a '
+                            .'cross join (select 0 i union all select 1 union all select 2 union all select 3 union all select 4 '
+                            .'union all select 5 union all select 6 union all select 7 union all select 8 union all select 9) b '
+                            .'cross join (select 0 i union all select 1 union all select 2 union all select 3) c'
+                            .') n '
+                            .'where n.d < 366 '
+                            .'and (service_areas.available_from is null '
+                            .'or date_add(:today, interval n.d day) >= service_areas.available_from) '
+                            .'and case when exists (select 1 from service_area_date_overrides o '
+                            .'where o.service_area_id = service_areas.id and o.date = date_add(:today, interval n.d day)) '
+                            .'then not exists (select 1 from service_area_date_overrides o '
+                            .'where o.service_area_id = service_areas.id and o.date = date_add(:today, interval n.d day) '
+                            .'and o.start_time is null) '
+                            .'else exists (select 1 from service_area_slots s '
+                            .'where s.service_area_id = service_areas.id '
+                            .'and s.weekday = dayofweek(date_add(:today, interval n.d day)) - 1) end',
                     ],
                 ],
                 'relations' => [

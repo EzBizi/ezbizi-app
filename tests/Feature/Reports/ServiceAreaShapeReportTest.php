@@ -3,8 +3,10 @@
 namespace Tests\Feature\Reports;
 
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use App\Support\Reports\ReportRunner;
+use App\Support\Scheduling\Openings;
 use App\Support\Scoping\ViewScope;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -359,6 +361,106 @@ class ServiceAreaShapeReportTest extends TestCase
 
         $this->assertCount(1, $found);
         $this->assertNull($found[0]['service_areas.days_until_next_open_day']);
+    }
+
+    // ── dates, not just weekdays (Scheduling b7bb9048) ─────────────
+
+    /**
+     * THE COLUMN AGREES WITH SCHEDULING'S OWN ANSWER, date by date.
+     *
+     * `Openings::days()` is the one function Scheduling says folds in the
+     * weekday pattern, per-date overrides and `available_from`. This column is
+     * SQL and cannot call it, so it is pinned against it instead: every
+     * fixture below is asked both ways and the two must agree, then the
+     * expected number is asserted too, so an oracle that went wrong in step
+     * with the SQL still fails.
+     *
+     * "Works", not "has room": the oracle is read as `windows != []`, which
+     * Scheduling pointed out - `Openings::next()` would also skip full days.
+     */
+    public function test_it_agrees_with_openings_on_overrides_and_the_horizon(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-23')); // a Wednesday
+
+        $tenant = $this->provisionTenant('Alpha');
+
+        $expected = [
+            // The pattern alone: Friday is two days out.
+            'Pattern only' => 2,
+            // This Friday closed by a no-window row: the next one, 9 days out.
+            'Friday closed' => 9,
+            // A window row on this Friday, alongside the no-window row that
+            // closes it: closed wins, whatever else is there.
+            'Friday closed, with a window too' => 9,
+            // A Monday-only area opened this Thursday by an override.
+            'Thursday opened' => 1,
+            // Open today by pattern, but not taking bookings until Monday the
+            // 28th: the first working day on or after it is Wednesday the 30th.
+            'Closed until Monday' => 7,
+            // Today's pattern REPLACED by an override window - still open.
+            'Today replaced' => 0,
+            // No pattern and no override: the third state, not a number.
+            'Never set up' => null,
+        ];
+
+        $this->inTenant($tenant['org'], function () use ($tenant) {
+            $this->area($tenant, 'Pattern only', [5]);
+
+            $this->area($tenant, 'Friday closed', [5]);
+            $this->override($tenant, 'Friday closed', '2026-09-25');
+
+            $this->area($tenant, 'Friday closed, with a window too', [5]);
+            $this->override($tenant, 'Friday closed, with a window too', '2026-09-25');
+            $this->override($tenant, 'Friday closed, with a window too', '2026-09-25', window: true);
+
+            $this->area($tenant, 'Thursday opened', [1]);
+            $this->override($tenant, 'Thursday opened', '2026-09-24', window: true);
+
+            $this->area($tenant, 'Closed until Monday', [3]);
+            ServiceArea::query()->where('name', 'Closed until Monday')->update(['available_from' => '2026-09-28']);
+
+            $this->area($tenant, 'Today replaced', [3]);
+            $this->override($tenant, 'Today replaced', '2026-09-23', window: true);
+
+            $this->area($tenant, 'Never set up', []);
+        });
+
+        $rows = collect($this->rowsFor($tenant, []))
+            ->keyBy(fn (array $row) => $row['service_areas.name']);
+
+        foreach ($expected as $name => $days) {
+            $column = $rows[$name]['service_areas.days_until_next_open_day'];
+            $column = $column === null ? null : (int) $column;
+
+            $oracle = $this->inTenant($tenant['org'], function () use ($name) {
+                $area = ServiceArea::query()->where('name', $name)->firstOrFail();
+                $calendar = app(Openings::class)->days($area, CarbonImmutable::today(), 366);
+
+                foreach ($calendar as $i => $day) {
+                    if ($day['windows'] !== []) {
+                        return $i;
+                    }
+                }
+
+                return null;
+            });
+
+            $this->assertSame($oracle, $column, "{$name}: the column and Openings::days() disagree");
+            $this->assertSame($days, $column, "{$name}: both agree, on the wrong day");
+        }
+    }
+
+    /** A per-date override: no window closes the day, a window opens one. */
+    private function override(array $tenant, string $area, string $date, bool $window = false): void
+    {
+        ServiceAreaDateOverride::query()->create([
+            'organization_id' => $tenant['org']->id,
+            'service_area_id' => ServiceArea::query()->where('name', $area)->value('id'),
+            'date' => $date,
+            'start_time' => $window ? '09:00' : null,
+            'end_time' => $window ? '12:00' : null,
+            'max_jobs' => $window ? 2 : null,
+        ]);
     }
 
     /** @param  list<int>  $weekdays */

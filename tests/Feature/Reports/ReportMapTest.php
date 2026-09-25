@@ -4,6 +4,7 @@ namespace Tests\Feature\Reports;
 
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Reports\ReportMap;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -240,7 +241,7 @@ class ReportMapTest extends TestCase
                 // of it: a guard that fills placeholders differently from the
                 // runner proves a different string is valid.
                 $value = DB::table($resource['table'])
-                    ->selectRaw('('.ReportMap::resolve($declared['sql'], 3).') as v')
+                    ->selectRaw('('.ReportMap::resolve($declared['sql'], CarbonImmutable::parse('2026-09-23')).') as v')
                     ->limit(1)
                     ->value('v');
 
