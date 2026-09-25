@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0275',
+      date: '24 Sep 2026',
+      items: [
+        'Web Management, Widgets: a widget keeps its company-wide preset but can change any option for itself, in its shortcode or under This widget only in Elementor. It needs version 1.16.0 of the EzBizi website plugin, which rolls out separately.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0274',
       date: '24 Sep 2026',
       items: [
