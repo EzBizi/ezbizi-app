@@ -6,6 +6,8 @@ use App\Console\Commands\ProjectWorkizRecords;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Job;
+use App\Models\ServiceArea;
+use App\Models\ServiceAreaZip;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Settings\SettingsResolver;
@@ -258,6 +260,64 @@ class ProjectWorkizRecordsTest extends TestCase
             $this->inTenant($tenant['org'], fn () => WorkizClient::query()->where('client_id', 777)->exists()),
             'the client of the row behind the first page was never derived',
         );
+    }
+
+    /** A Scheduling service area, with its zips, in the tenant's franchise. */
+    private function area(array $tenant, string $name, array $zips = []): ServiceArea
+    {
+        return $this->inTenant($tenant['org'], function () use ($tenant, $name, $zips) {
+            $area = ServiceArea::create([
+                'organization_id' => $tenant['org']->id,
+                'franchise_id' => $tenant['franchise']->id,
+                'name' => $name,
+            ]);
+
+            foreach ($zips as $zip) {
+                ServiceAreaZip::create([
+                    'organization_id' => $tenant['org']->id,
+                    'franchise_id' => $tenant['franchise']->id,
+                    'service_area_id' => $area->id,
+                    'zip' => $zip,
+                ]);
+            }
+
+            return $area;
+        });
+    }
+
+    /** Workiz's own area name places the job (JobServiceArea's rule 1). */
+    public function test_a_job_takes_its_service_area_from_workiz(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $area = $this->area($tenant, 'Connecticut');
+        $this->mirror($tenant, ['service_area' => 'Connecticut']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($area->id, $this->inTenant($tenant['org'], fn () => Job::query()->value('service_area_id')));
+    }
+
+    /**
+     * With no area named, the JOB's own zip places it -- not the customer's,
+     * which comes from the client's most recent job and can be another address.
+     */
+    public function test_a_job_is_placed_by_its_own_zip_not_the_customers(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $hartford = $this->area($tenant, 'Hartford', ['06457']);
+        $this->area($tenant, 'Stamford', ['06901']);
+
+        $this->mirror($tenant, ['service_area' => null, 'postal_code' => '6457'], ['UUID' => 'OLDJOB', 'CreatedDate' => '2025-01-01 09:00:00']);
+        $this->mirror($tenant, ['service_area' => null, 'postal_code' => '06901'], ['UUID' => 'NEWJOB', 'CreatedDate' => '2026-06-01 09:00:00']);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $placed = $this->inTenant($tenant['org'], fn () => Job::query()
+            ->join('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
+            ->where('workiz_jobs.remote_id', 'OLDJOB')
+            ->value('jobs.service_area_id'));
+
+        $this->assertSame($hartford->id, $placed);
     }
 
     public function test_a_dry_run_writes_nothing(): void

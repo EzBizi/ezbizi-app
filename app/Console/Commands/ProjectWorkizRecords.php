@@ -11,6 +11,7 @@ use App\Models\WorkizJob;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
+use App\Support\Jobs\JobServiceArea;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\PhoneE164;
@@ -400,6 +401,13 @@ class ProjectWorkizRecords extends Command
 
                     'amount_minor' => $this->minor($mirrored->payload['JobTotalPrice'] ?? null),
                     'currency' => strtoupper($franchise->currency ?: 'USD'),
+
+                    // The Jobs session's rule, called rather than copied:
+                    // Workiz's area name if it is one of this franchise's areas,
+                    // else the JOB's own zip (not the customer's, which is the
+                    // client's latest address), else none. Set on creation only:
+                    // following Workiz lands after Jobs' one-off backfill.
+                    'service_area_id' => JobServiceArea::resolve($franchise, $mirrored->service_area, $mirrored->postal_code),
                 ]);
 
                 // Arriving already Done is a move INTO an earned status, and it
