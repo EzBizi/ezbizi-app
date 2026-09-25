@@ -74,12 +74,18 @@ class FieldController extends Controller
     /** POST /field/sos */
     public function sos(Request $request): JsonResponse
     {
+        // Optional: an SOS from a desktop carries no position (the desktop
+        // apps never ask for location), and an SOS without one still goes out.
         $data = $request->validate([
-            'lat' => ['required', 'numeric', 'between:-90,90'],
-            'lng' => ['required', 'numeric', 'between:-180,180'],
+            'lat' => ['nullable', 'numeric', 'between:-90,90', 'required_with:lng'],
+            'lng' => ['nullable', 'numeric', 'between:-180,180', 'required_with:lat'],
         ]);
 
-        $alert = $this->evaluator->sos($request->user(), (float) $data['lat'], (float) $data['lng']);
+        $alert = $this->evaluator->sos(
+            $request->user(),
+            isset($data['lat']) ? (float) $data['lat'] : null,
+            isset($data['lng']) ? (float) $data['lng'] : null,
+        );
 
         return response()->json(['data' => $this->presentAlert($alert->load('user'))], 201);
     }

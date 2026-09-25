@@ -15,10 +15,11 @@ No purchases, subscriptions or paid content. Nothing is sold in the app.
 No user-generated public content, no feed and no public profiles. Everything written is a private business record visible only to that organization. People can reach only colleagues inside their own organization - for example by dialling a coworker's phone extension - and never anyone outside it.
 
 PERMISSIONS
-The app asks for two permissions, each only at the moment it is needed:
+The app asks for three permissions, each only at the moment it is needed:
 - Microphone: the first time someone makes or takes a phone call in the app, and used only during that call.
 - Notifications: so a job assigned to someone reaches their phone.
-It does not use location, contacts, camera, photos or App Tracking Transparency.
+- Location (When In Use only, never Always): the Field feature is off unless an employer turns it on, and applies only to employees whose role the employer marks as tracked. The employer chooses when location is shared: while clocked in, during scheduled hours, or at all times the app is running. It is used for staff safety, SOS, recording arrival at a job, and routing between jobs. Sharing starts only while the app is open; iOS then shows its blue location indicator whenever location is used in the background.
+It does not use contacts, camera, photos or App Tracking Transparency.
 
 ACCOUNT DELETION
 A person deletes their own account from the account screen. It requires their password and typing DELETE, then erases their personal details and signs them out on every device. The sole administrator of an organization is refused and told to make somebody else an administrator first, so a business is never left with nobody able to run it.

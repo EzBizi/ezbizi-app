@@ -109,11 +109,16 @@ for three weeks after that stopped being true:
 
     Microphone     asked the first time somebody makes or takes a call in the app
     Notifications  so a job assigned to somebody reaches their phone
-    Nothing else.  No location, contacts, camera, photos or tracking (ATT).
+    Location       iPhone only, When In Use only (never Always), and only for an
+                   employee whose employer turned Field on and marked their role
+                   tracked; or on SOS from a phone. macOS never requests it.
+    Nothing else.  No contacts, camera, photos or tracking (ATT).
 
-Location is NOT in the binary today. The Field module adds it; when that ships,
-this block must change IN THE SAME COMMIT, or the note is false the moment the
-build is submitted.
+Location arrived with the Field module (0.0.0278). This block,
+apple-review-notes/ios.txt and macos.txt changed in the same commit as the
+code. The App Privacy label must also declare Precise Location, linked to
+the user, for App Functionality, in the portal, before a build carrying
+Field is submitted.
 
 ## 6. Regional differences
 
@@ -149,7 +154,7 @@ Both paired iPhones run iOS 26.6, which is current, so either works:
 | Account deletion | **In the app** - `DELETE /api/v1/me`, from the account screen. Show it |
 | Paid content, purchase, subscription | None. Nothing is sold in the app |
 | User-generated content, reporting, blocking | No public content or feed. Users reach only colleagues in their own organization (phone extensions) |
-| Permission prompts | **Microphone** (on the first call) and **notifications**. No location, contacts, camera or ATT — see "Permissions" above, and re-read the binary before trusting this row |
+| Permission prompts | **Microphone** (on the first call), **notifications**, and on iPhone **location** When In Use, only for an employee their employer tracks (Field). No contacts, camera or ATT — see "Permissions" above, and re-read the binary before trusting this row |
 
 So the recording is: launch, sign in, walk the core features. Nothing to
 demonstrate for the other four categories, but say out loud that they do not

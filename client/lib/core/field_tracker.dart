@@ -26,18 +26,18 @@ class FieldTracker {
     _sync();
   }
 
-  /// Android and iOS only. A desktop or a browser is not in a van.
-  static FieldTracker? startIfPhone(ApiClient api, Session session) {
-    final phone =
-        !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS);
+  /// Android and iOS only. A desktop or a browser is not in a van, and the
+  /// macOS review notes promise that app never asks for location.
+  static bool get onPhone =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
-    return phone ? FieldTracker._(api, session) : null;
-  }
+  static FieldTracker? startIfPhone(ApiClient api, Session session) =>
+      onPhone ? FieldTracker._(api, session) : null;
 
-  /// Where this device is now, asking for permission if need be. Null when
-  /// refused or unavailable. Used by SOS on every platform.
+  /// Where this phone is now, asking for permission if need be. Null when
+  /// refused or unavailable. Phones only: see [onPhone].
   static Future<Position?> currentPosition() async {
     try {
       if (!await _permitted()) return null;

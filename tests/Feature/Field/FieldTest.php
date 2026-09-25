@@ -228,6 +228,29 @@ class FieldTest extends TestCase
             ->assertOk()->assertJsonPath('data.acknowledged_at', now()->toIso8601ZuluString());
     }
 
+    /**
+     * Chosen, not accidental: SOS is a button somebody presses, so the owner
+     * out on a job may press it too. Being TRACKED is what administrators are
+     * spared (the test above); asking for help is not.
+     */
+    public function test_an_administrator_may_press_sos_though_never_tracked(): void
+    {
+        $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/sos', ['lat' => 40.0, 'lng' => -75.0])
+            ->assertCreated();
+
+        $this->inTenant($this->t['org'], fn () => $this->assertSame(0, FieldPresence::query()->count()));
+    }
+
+    public function test_sos_without_a_position_still_goes_out(): void
+    {
+        $this->signedInAs($this->tech)->postJson('/api/v1/field/sos', [])
+            ->assertCreated()->assertJsonPath('data.lat', null);
+
+        $this->inTenant($this->t['org'], fn () => $this->assertSame(
+            1, Notification::query()->where('user_id', $this->manager->id)->count(),
+        ));
+    }
+
     public function test_a_manager_at_one_franchise_does_not_see_a_technician_at_another(): void
     {
         $this->mode('always');
