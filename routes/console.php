@@ -277,3 +277,9 @@ Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->without
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
 Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5);
+
+// A-1 Chimney's Google reviews, in step with A1 Leads' change feed so the
+// A1Leads GBP tab is a minute old rather than a day (Rodrigo, 2026-09-25). It
+// reads A1 Leads' own database - no Google request - and an idle run is one
+// empty page.
+Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlapping(10);

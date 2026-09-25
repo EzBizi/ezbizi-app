@@ -6,6 +6,7 @@ use App\Models\A1LeadsReplyReceipt;
 use App\Models\User;
 use App\Services\A1Leads\A1LeadsClient;
 use App\Services\A1Leads\A1LeadsGbpReplies;
+use App\Services\A1Leads\A1LeadsLiveReviews;
 use App\Services\A1Leads\A1LeadsOwner;
 use App\Services\A1Leads\A1LeadsReplyClient;
 use App\Services\A1Leads\A1LeadsReviewOpsClient;
@@ -40,6 +41,7 @@ class A1LeadsGbpController extends Controller
         private readonly A1LeadsClient $a1leads,
         private readonly A1LeadsReplyClient $replies,
         private readonly A1LeadsGbpReplies $publisher,
+        private readonly A1LeadsLiveReviews $live,
         private readonly TenantContext $tenant,
     ) {}
 
@@ -58,6 +60,11 @@ class A1LeadsGbpController extends Controller
          * reviews", which is the one thing this must never appear to say — the
          * business has thirteen thousand of them.
          */
+        // A-1's organization and company, and the live copy caught up: read it.
+        if ($source['configured'] && $this->live->ready()) {
+            return $this->liveIndex($request);
+        }
+
         if (! $source['configured'] || ! $source['reachable']) {
             return response()->json(['data' => [
                 'source' => $source,
@@ -136,6 +143,18 @@ class A1LeadsGbpController extends Controller
     {
         $source = $this->source($request);
 
+        if ($source['configured'] && $this->live->ready()) {
+            $page = $this->live->page($this->filters($request),
+                (int) $request->integer('limit', 20), (int) $request->integer('offset', 0));
+
+            return response()->json(['data' => [
+                'source' => $this->live->source(),
+                'reviews' => $this->withReplyReceipts($page['data']),
+                'meta' => $page['meta'],
+                'board' => ['available' => true, 'because' => null],
+            ]]);
+        }
+
         if (! $source['configured'] || ! $source['reachable']) {
             return response()->json(['data' => [
                 'source' => $source,
@@ -165,6 +184,42 @@ class A1LeadsGbpController extends Controller
             'reviews' => $this->withBoard($this->withReplyReceipts($reviews['data'] ?? []), $board),
             'meta' => $reviews['meta'] ?? null,
             'board' => ['available' => $board['available'], 'because' => $board['because']],
+        ]]);
+    }
+
+    /**
+     * The tab from the LIVE copy (`a1leads_reviews`, kept in step with A1
+     * Leads' change feed every minute) instead of the daily snapshot. The
+     * listings and their health still come from the snapshot, which is right
+     * for them: a new listing is rare, and neither is in the change feed.
+     */
+    private function liveIndex(Request $request): JsonResponse
+    {
+        $page = $this->live->page($this->filters($request),
+            (int) $request->integer('limit', 20), (int) $request->integer('offset', 0));
+
+        try {
+            $health = $this->a1leads->gbpHealth()['data'] ?? null;
+            $locations = $this->a1leads->locations();
+        } catch (RuntimeException) {
+            // The snapshot being down costs the location filter, not the page.
+            $health = null;
+            $locations = [];
+        }
+
+        $replyBecause = $this->replyUnavailableBecause($request);
+
+        return response()->json(['data' => [
+            'source' => $this->live->source(),
+            'reply_available' => $replyBecause === null,
+            'reply_unavailable_because' => $replyBecause,
+            'ops_available' => app(A1LeadsReviewOpsClient::class)->configured(),
+            'summary' => $this->live->summary(),
+            'reviews' => $this->withReplyReceipts($page['data']),
+            'meta' => $page['meta'],
+            'health' => $health,
+            'locations' => $locations,
+            'board' => ['available' => true, 'because' => null],
         ]]);
     }
 

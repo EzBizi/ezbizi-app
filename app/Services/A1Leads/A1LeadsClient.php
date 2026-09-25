@@ -303,7 +303,7 @@ class A1LeadsClient
      * @param  array<string, mixed>  $card
      * @return array<string, mixed>
      */
-    private static function card(array $card): array
+    public static function card(array $card): array
     {
         $contact = is_array($card['contact'] ?? null) ? $card['contact'] : [];
         $customer = is_array($card['customer'] ?? null) ? $card['customer'] : [];
