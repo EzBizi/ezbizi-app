@@ -1137,6 +1137,7 @@ Route::prefix('v1')
             // belongs to the same grant rather than to settings.
             Route::get('scheduling/suggest', [SchedulingSuggestController::class, 'index']);
             Route::get('scheduling/availability/franchises', [SchedulingAvailabilityController::class, 'franchises']);
+            Route::get('scheduling/availability/calendar', [SchedulingAvailabilityController::class, 'calendar']);
         });
 
         /*

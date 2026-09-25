@@ -1142,9 +1142,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   Widget _overview() {
     final theme = Theme.of(context);
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-      children: [
+    return _withWeekTable(
+      theme,
+      _areas,
+      top: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      [
         _timeSlotsCard(theme),
         const SizedBox(height: 8),
         Text('Capacity', style: theme.textTheme.titleMedium),
@@ -1167,10 +1169,40 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
-          )
-        else
-          _allAreasWeek(theme, _areas),
+          ),
       ],
+    );
+  }
+
+  /// [above], then the week table with its weekday row PINNED: Jose, on a
+  /// long Overview, "once you go down u dont know what day ur looking at
+  /// anymore". Slivers rather than a ListView because only a sliver can stay
+  /// put while the rows under it scroll.
+  Widget _withWeekTable(
+    ThemeData theme,
+    List<Map<String, dynamic>> areas,
+    List<Widget> above, {
+    required EdgeInsets top,
+    Key? key,
+  }) {
+    return LayoutBuilder(
+      builder: (context, box) => CustomScrollView(
+        key: key,
+        slivers: [
+          SliverPadding(
+            padding: top,
+            sliver: SliverList(delegate: SliverChildListDelegate(above)),
+          ),
+          if (areas.isNotEmpty)
+            ..._weekTable(theme, areas, box.maxWidth - 40).map(
+              (sliver) => SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: sliver,
+              ),
+            ),
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        ],
+      ),
     );
   }
 
@@ -1191,10 +1223,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           sum + (((a['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0),
     );
 
-    return ListView(
+    return _withWeekTable(
+      theme,
+      areas,
       key: const Key('scheduling-franchise-overview'),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      children: [
+      top: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      [
         Row(
           children: [
             if (showBack)
@@ -1301,7 +1335,6 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 18),
-        _allAreasWeek(theme, areas),
       ],
     );
   }
@@ -1315,14 +1348,22 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// rather than seven dashes: that is the one row somebody has to act on, and
   /// seven dashes read the same as an area closed all week.
   ///
-  /// Every cell is the same size (Jose: "you always make that mistake"). On a
-  /// phone the TABLE scrolls sideways inside its own viewport; the page does
-  /// not.
-  Widget _allAreasWeek(ThemeData theme, List<Map<String, dynamic>> shownAreas) {
+  /// Every cell is the same size (Jose: "you always make that mistake"), and
+  /// narrows with the pane instead of scrolling sideways — a sideways scroll
+  /// and a pinned header row cannot both hold without two scroll positions to
+  /// keep in step.
+  List<Widget> _weekTable(
+    ThemeData theme,
+    List<Map<String, dynamic>> shownAreas,
+    double width,
+  ) {
     final muted = theme.colorScheme.onSurfaceVariant;
-    const cellWidth = 52.0;
+    // 52 per day where there is room for a readable name beside them;
+    // narrower, down to 28, where there is not.
+    final cellWidth = (width - 24 - 7 * 52 >= 140)
+        ? 52.0
+        : ((width - 24 - 110) / 7).clamp(28.0, 52.0);
     const cellHeight = 30.0;
-    const nameMin = 200.0;
     final ok = ToneColours.of(context, Tone.ok);
     final neutral = ToneColours.of(context, Tone.neutral);
     final caution = ToneColours.of(context, Tone.caution);
@@ -1346,11 +1387,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             color: tone?.fill,
             borderRadius: BorderRadius.circular(6),
           ),
-          child: Text(
-            text,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: tone?.ink ?? muted,
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: tone?.ink ?? muted,
+                fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+              ),
             ),
           ),
         );
@@ -1395,11 +1439,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               color: caution.fill,
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Text(
-              'Not set up · open it to add capacity',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: caution.ink,
-                fontWeight: FontWeight.w600,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Not set up · open it to add capacity',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: caution.ink,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
@@ -1414,25 +1461,26 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       ];
     }
 
-    final rows = <Widget>[
-      row(
-        name: Text(
-          'Area',
-          style: theme.textTheme.labelSmall?.copyWith(color: muted),
-        ),
-        cells: [
-          for (final (_, label) in _week)
-            SizedBox(
-              width: cellWidth,
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.labelSmall?.copyWith(color: muted),
-              ),
-            ),
-        ],
+    final header = row(
+      key: const Key('overview-weekdays'),
+      fill: theme.colorScheme.surface,
+      name: Text(
+        'Area',
+        style: theme.textTheme.labelSmall?.copyWith(color: muted),
       ),
-    ];
+      cells: [
+        for (final (_, label) in _week)
+          SizedBox(
+            width: cellWidth,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.labelSmall?.copyWith(color: muted),
+            ),
+          ),
+      ],
+    );
+    final rows = <Widget>[];
 
     for (final (label, areas) in groups) {
       if (label != null) {
@@ -1484,11 +1532,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (notSetUp > 0)
-          Padding(
+    return [
+      if (notSetUp > 0)
+        SliverToBoxAdapter(
+          child: Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -1502,8 +1549,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  '$notSetUp of ${shownAreas.length} areas have no capacity yet, '
-                  'so Availability cannot offer them.',
+                  '$notSetUp of ${shownAreas.length} areas have no capacity '
+                  'yet, so Availability cannot offer them.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: caution.ink,
                     fontWeight: FontWeight.w600,
@@ -1512,31 +1559,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
               ),
             ),
           ),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: EzBiziTheme.edge(context)),
-          ),
-          child: LayoutBuilder(
-            builder: (context, box) {
-              const least = nameMin + cellWidth * 7 + 24;
-              final width = box.maxWidth < least ? least : box.maxWidth;
-
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: width,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: rows,
-                  ),
-                ),
-              );
-            },
-          ),
         ),
-        Padding(
+      SliverPersistentHeader(pinned: true, delegate: _PinnedRow(header, 43)),
+      SliverList(delegate: SliverChildListDelegate(rows)),
+      SliverToBoxAdapter(
+        child: Padding(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
           child: Text(
             'A dash is a day that area is closed. Franchise rows add up '
@@ -1544,8 +1571,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
         ),
-      ],
-    );
+      ),
+    ];
   }
 
   /// The areas in franchise groups, in the rail's order, each labelled the way
@@ -2829,4 +2856,25 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       ),
     );
   }
+}
+
+/// A row that stays at the top of its scroll view: the Overview's weekdays.
+class _PinnedRow extends SliverPersistentHeaderDelegate {
+  const _PinnedRow(this.child, this.height);
+
+  final Widget child;
+  final double height;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) =>
+      SizedBox.expand(child: child);
+
+  @override
+  bool shouldRebuild(_PinnedRow old) => true;
 }
