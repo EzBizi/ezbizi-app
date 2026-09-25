@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.16.1
+Stable tag: 1.17.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,17 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.17.0 =
+* NEW: style options for every widget: colours and hover colours, font,
+  size, weight, capitals and spacing, borders, corners, padding, shadow,
+  alignment, and showing on desktop or phones only. Set in EzBizi per
+  preset, or per widget.
+* NEW: the call to action can email, open the review link or any link (with
+  tracking added), text, or WhatsApp; choose its icon and side; animate; and
+  become a bar or hide on phones.
+* FIXED: the review faces' happy face uses the Google review link, and never
+  links to the page it is on.
 
 = 1.16.1 =
 * FIXED: the store locator's search box no longer offers to search by

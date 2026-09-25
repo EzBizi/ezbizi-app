@@ -1427,6 +1427,20 @@ function ezbizi_phone_box_shortcode($atts) {
     ));
 }
 
+/** Whether a link points at the page being drawn, on this site. */
+function ezbizi_is_this_page($url) {
+    $host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+    $home = strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST));
+
+    if ($host !== '' && preg_replace('/^www\./', '', $host) !== preg_replace('/^www\./', '', $home)) {
+        return false;
+    }
+
+    $path = '/' . trim((string) wp_parse_url($url, PHP_URL_PATH), '/');
+
+    return ($path === '/' ? '' : strtolower($path)) === ezbizi_path();
+}
+
 // ── Street View ─────────────────────────────────────────────────────
 
 /**
@@ -1494,7 +1508,19 @@ function ezbizi_review_faces_shortcode($atts) {
     $t = function ($k) use ($p) {
         return esc_html(isset($p[$k]) ? (string) $p[$k] : '');
     };
-    $link = ezbizi_value('review_link');
+    // The Google link first. `review_link` is where a "Review us" button goes,
+    // and on 2026-09-25 every A1 site's was set to its own /reviews/ page —
+    // this page — so a happy face that used it sent the customer round in a
+    // circle. A link to the page the faces are on is never drawn.
+    $link = ezbizi_value('google_review_link');
+
+    if ($link === '') {
+        $link = ezbizi_value('review_link');
+    }
+
+    if ($link !== '' && ezbizi_is_this_page($link)) {
+        $link = '';
+    }
     $review = $link === '' ? '' : '<a class="ezbizi-rf-btn" href="' . esc_url($link)
         . '" target="_blank" rel="noopener noreferrer">' . $t('button') . '</a>';
 

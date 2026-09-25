@@ -1658,6 +1658,17 @@ reset_site();
 serve_preset_payload([], [], ['public_key' => 'pk_testkey']);
 $no_link = $GLOBALS['sc']['ezbizi_review_faces']([]);
 check('no review link, no button to nowhere', str_contains($no_link, 'ezbizi-rf-btn" href'), false);
+
+// On the reviews page itself, a review link to that page is not a way out.
+reset_site();
+serve_preset_payload(['review_link' => 'https://a-1chimney.com/reviews/'], [], ['public_key' => 'pk_testkey']);
+$_SERVER['REQUEST_URI'] = '/reviews/';
+check('a review link to this very page is not drawn', str_contains($GLOBALS['sc']['ezbizi_review_faces']([]), 'ezbizi-rf-btn" href'), false);
+reset_site();
+serve_preset_payload(['review_link' => 'https://a-1chimney.com/reviews/', 'google_review_link' => 'https://g.page/r/a1/review'], [], ['public_key' => 'pk_testkey']);
+$_SERVER['REQUEST_URI'] = '/reviews/';
+check('the Google review link is used first', str_contains($GLOBALS['sc']['ezbizi_review_faces']([]), 'href="https://g.page/r/a1/review"'), true);
+$_SERVER['REQUEST_URI'] = '/';
 check('the sad form still works', str_contains($no_link, 'web' . chr(92) . '/form'), true);
 
 reset_site();
