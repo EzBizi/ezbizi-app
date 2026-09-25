@@ -105,6 +105,7 @@ use App\Http\Controllers\Api\ReviewsController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
+use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTimeSlotsController;
@@ -1092,6 +1093,11 @@ Route::prefix('v1')
          * it is not. That is the split, and it is why availability and settings
          * are separate grants rather than one.
          */
+        // The Schedule tab: one day's board, read-only.
+        Route::middleware('permission:scheduling.schedule.view')->group(function () {
+            Route::get('scheduling/board', [SchedulingBoardController::class, 'show']);
+        });
+
         Route::middleware('permission:scheduling.availability.view')->group(function () {
             Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
 
