@@ -220,7 +220,10 @@ void main() {
       await tester.tap(find.text('Dallas').first);
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.byKey(const Key('scheduling-zip-entry')));
+      await _scrollPaneTo(
+        tester,
+        find.byKey(const Key('scheduling-zip-entry')),
+      );
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -262,7 +265,7 @@ void main() {
     await tester.tap(find.text('Dallas').first);
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const ValueKey('zip-75201')));
+    await _scrollPaneTo(tester, find.byKey(const ValueKey('zip-75201')));
     await tester.pumpAndSettle();
 
     // The chip's own delete affordance, so one zip goes without retyping the
@@ -613,6 +616,46 @@ void main() {
 
   /// The empty state is the entry point, and the test that stubs windows in
   /// cannot see it: with none stated there is nothing to open a day ONTO.
+  /// Jose, 2026-09-25: "so i don't need to do math to find out what the end
+  /// result is right now". The tile follows the typing, before Save, and "in
+  /// all" adds the franchise's other areas as saved (Houston: Mon 3, Tue 3).
+  testWidgets('daily totals add up the slots as you type', (tester) async {
+    await _pump(
+      tester,
+      onRequest: (request) =>
+          request.url.path.endsWith('/scheduling/time-slots')
+          ? _json({'data': _twoWindows, 'can_edit': true})
+          : null,
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    Finder tile(int weekday, String text) => find.descendant(
+      of: find.byKey(ValueKey('daily-total-$weekday')),
+      matching: find.text(text),
+    );
+
+    expect(tile(1, '2'), findsOneWidget);
+    expect(tile(1, '5 in all'), findsOneWidget);
+    expect(tile(2, 'Closed'), findsOneWidget);
+
+    await tester.tap(find.text('Open').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('slot-2-10:00-13:00')),
+      '4',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('slot-2-13:00-15:00')),
+      '',
+    );
+    await tester.pumpAndSettle();
+
+    expect(tile(2, '4'), findsOneWidget);
+    expect(tile(2, '7 in all'), findsOneWidget);
+  });
+
   testWidgets('with no time slots a closed day says why it cannot open', (
     tester,
   ) async {
@@ -734,6 +777,20 @@ Future<void> _reveal(WidgetTester tester, Finder what) async {
   );
   await tester.pumpAndSettle();
 }
+
+/// Scrolls the AREA pane, not the rail, until [target] is built. The pane is a
+/// lazy ListView, so a card below the fold does not exist to ensureVisible.
+Future<void> _scrollPaneTo(WidgetTester tester, Finder target) =>
+    tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('scheduling-area-pane')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
 
 Future<void> _pump(
   WidgetTester tester, {

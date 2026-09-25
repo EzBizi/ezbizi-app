@@ -23,7 +23,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable([
     'franchise_id', 'connection_id', 'remote_id', 'name', 'email', 'role',
     'is_field_tech', 'is_active', 'service_areas', 'skills', 'user_id',
-    'auto_matched', 'payload', 'synced_at',
+    'auto_matched', 'link_confirmed_at', 'payload', 'synced_at',
 ])]
 class WorkizTeamMember extends Model implements HoldsPersonalData
 {
@@ -40,6 +40,7 @@ class WorkizTeamMember extends Model implements HoldsPersonalData
             'skills' => 'array',
             'payload' => 'array',
             'synced_at' => 'datetime',
+            'link_confirmed_at' => 'datetime',
         ];
     }
 

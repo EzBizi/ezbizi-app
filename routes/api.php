@@ -108,6 +108,7 @@ use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
+use App\Http\Controllers\Api\SchedulingTechniciansController;
 use App\Http\Controllers\Api\SchedulingTimeSlotsController;
 use App\Http\Controllers\Api\SendingServersController;
 use App\Http\Controllers\Api\ServiceGroupsController;
@@ -1124,6 +1125,9 @@ Route::prefix('v1')
             Route::post('scheduling/time-slots', [SchedulingTimeSlotsController::class, 'store']);
             Route::patch('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'update']);
             Route::delete('scheduling/time-slots/{slot}', [SchedulingTimeSlotsController::class, 'destroy']);
+            // Settings › Schedule: Workiz technicians and their EzBizi users.
+            Route::get('scheduling/technicians', [SchedulingTechniciansController::class, 'index']);
+            Route::put('scheduling/technicians/{member}', [SchedulingTechniciansController::class, 'update']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);

@@ -33,7 +33,9 @@ use Illuminate\Console\Command;
  * every hour would revert a correction the moment somebody made it, which is
  * the defect the Customers session warned about on their side of the import.
  *
- * So: propose into an empty column, never overwrite a decided one.
+ * So: propose into an empty column, never overwrite a decided one. And never
+ * into a column a person emptied on purpose: Scheduling › Settings › Schedule
+ * stamps `link_confirmed_at` on every save, "not linked" included.
  */
 class SyncWorkizTeam extends Command
 {
@@ -111,8 +113,9 @@ class SyncWorkizTeam extends Command
 
                     // PROPOSE ONLY INTO AN EMPTY COLUMN. A row that already
                     // names a user keeps it, whether somebody confirmed it or
-                    // an earlier run guessed it.
-                    if ($row->user_id === null && $attributes['email'] !== null) {
+                    // an earlier run guessed it; a row a person unlinked stays
+                    // unlinked.
+                    if ($row->user_id === null && $row->link_confirmed_at === null && $attributes['email'] !== null) {
                         $user = User::query()
                             ->whereRaw('LOWER(email) = ?', [$attributes['email']])
                             ->first();
