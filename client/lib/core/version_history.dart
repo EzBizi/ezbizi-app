@@ -15,6 +15,7 @@ class VersionHistory {
         'On Android, refusing the permission to make calls now refuses the call and says why, instead of asking again, showing an error or pretending a call is on.',
         'Web Management: the Contact form widget has the appointment form A1 Tools had, saving a form no longer wipes the choices of a pick-one question, the Call to action can show the number, address or link itself, and SEO has a Google review link field that the Review faces happy face uses.',
         'Field: SOS from a computer or the web sends without a location. Only the Android and iPhone apps ask for one.',
+        'Scheduling: each franchise can have a daily limit, set from its Overview under the daily totals. Once that many jobs are booked for the franchise that day, Availability stops offering the day in all its areas, whatever an area has left, and the tiles show the limit as max N.',
       ],
     ),
     VersionRelease(
