@@ -116,6 +116,7 @@ function home_url($path = '') { return ($GLOBALS['home'] ?? 'https://a-1chimney.
 function wp_parse_url($u, $c = -1) { return $c === -1 ? parse_url($u) : parse_url($u, $c); }
 function sanitize_text_field($s) { return is_string($s) ? trim(strip_tags($s)) : ''; }
 function wp_unslash($s) { return is_string($s) ? stripslashes($s) : $s; }
+function untrailingslashit($s) { return rtrim((string) $s, '/'); }
 function esc_html($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 // WordPress lets tel:, sms: and mailto: through esc_url; so does this.
@@ -1030,6 +1031,40 @@ check('and the launcher its own shape', str_contains($chat_html, 'border-radius:
 // It must not be readable as HTML when it comes back from a stranger.
 check('replies are drawn as text', str_contains($chat_html, 'row.textContent=m.text'), true);
 check('and never as markup', str_contains($chat_html, 'row.innerHTML=m.text'), false);
+
+echo PHP_EOL . "The chat takes Toula's options" . PHP_EOL;
+reset_site();
+$toula = json_decode(widget_payload(), true);
+$toula['widgets']['chat'] += [
+    'agent_name' => 'Maria', 'avatar_url' => 'https://example.com/m.jpg', 'show_status' => true,
+    'online_text' => 'Here now', 'bubble_icon' => 'phone', 'bubble_size' => 60, 'offset_x' => 30,
+    'offset_y' => 40, 'animation' => 'fade', 'delay' => 5, 'devices' => 'mobile', 'hide_on' => "/careers
+/jobs/*",
+    'bubble_bg' => '#ff0000', 'header_bg' => '#00ff00', 'shadow' => false, 'analytics' => true,
+];
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($toula)];
+ezbizi_fetch();
+$_SERVER['REQUEST_URI'] = '/about/';
+$c = $GLOBALS['sc']['ezbizi_chat']([]);
+check('the agent is named', str_contains($c, 'ezbizi-chat-agent">Maria'), true);
+check('with a face', str_contains($c, 'src="https://example.com/m.jpg"'), true);
+check('and an online dot', str_contains($c, 'Here now'), true);
+check('where it was put', str_contains($c, 'right:30px;bottom:40px'), true);
+check('hidden until the delay', str_contains($c, 'display:none') && str_contains($c, 'delay=5'), true);
+check('the bubble colour', str_contains($c, 'background:#ff0000'), true);
+check('and size', str_contains($c, 'height:60px'), true);
+check('no shadow when asked', str_contains($c, 'box-shadow:0 6px 20px'), false);
+check('phones only', str_contains($c, '@media (min-width:768px)'), true);
+check('fades rather than slides', str_contains($c, 'ezbizi-chat-fade'), true);
+check('and tells analytics', str_contains($c, "event:'ezbizi_chat_'+e"), true);
+check('the phone icon', str_contains($c, 'M6.6 10.8'), true);
+$_SERVER['REQUEST_URI'] = '/careers/';
+check('never on a hidden page', $GLOBALS['sc']['ezbizi_chat']([]), '');
+$_SERVER['REQUEST_URI'] = '/jobs/roofer/';
+check('or under a hidden path', $GLOBALS['sc']['ezbizi_chat']([]), '');
+$_SERVER['REQUEST_URI'] = '/careersx/';
+check('but a longer name is not the page', $GLOBALS['sc']['ezbizi_chat']([]) !== '', true);
+unset($_SERVER['REQUEST_URI'], $GLOBALS['ezbizi_chat_drawn']);
 
 echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
 /*

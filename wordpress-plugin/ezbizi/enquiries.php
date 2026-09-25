@@ -419,8 +419,26 @@ function ezbizi_chat_shortcode($atts) {
      */
     $GLOBALS['ezbizi_chat_drawn'] = true;
 
+    /*
+     * Pages it never shows on, decided here in PHP. The page cache is keyed by
+     * URL, so a path is the one thing a cached page cannot get wrong. A line
+     * ending in * covers everything under it: "/careers/*".
+     */
+    $path = untrailingslashit((string) wp_parse_url(isset($_SERVER['REQUEST_URI']) ? wp_unslash($_SERVER['REQUEST_URI']) : '/', PHP_URL_PATH));
+    foreach (preg_split('/\R/', ezbizi_widget_text($config, 'hide_on')) as $hide) {
+        $hide = trim($hide);
+        if ($hide === '') {
+            continue;
+        }
+        if (substr($hide, -1) === '*' ? strpos($path . '/', rtrim($hide, '*')) === 0 : $path === untrailingslashit($hide)) {
+            return '';
+        }
+    }
+
     $id = ezbizi_widget_id('ezbizi-chat');
     $position = ezbizi_widget_text($config, 'position', 'bottom-right');
+    $ox = max(0, min(300, (int) ezbizi_widget_text($config, 'offset_x', '20')));
+    $oy = max(0, min(300, (int) ezbizi_widget_text($config, 'offset_y', '88')));
 
     $anchor = '';
 
@@ -435,10 +453,16 @@ function ezbizi_chat_shortcode($atts) {
      * space on sites that have none.
      */
     if ($position === 'bottom-right') {
-        $anchor = 'position:fixed;right:20px;bottom:88px;z-index:2147483000';
+        $anchor = 'position:fixed;right:' . $ox . 'px;bottom:' . $oy . 'px;z-index:2147483000';
     } elseif ($position === 'bottom-left') {
-        $anchor = 'position:fixed;left:20px;bottom:88px;z-index:2147483000';
+        $anchor = 'position:fixed;left:' . $ox . 'px;bottom:' . $oy . 'px;z-index:2147483000';
     }
+    $delay = max(0, min(120, (int) ezbizi_widget_text($config, 'delay', '0')));
+    if ($delay > 0) {
+        $anchor .= ($anchor === '' ? '' : ';') . 'display:none';
+    }
+    $agent = ezbizi_widget_text($config, 'agent_name');
+    $avatar = ezbizi_widget_text($config, 'avatar_url');
 
     $title = ezbizi_widget_text($config, 'title', 'Chat with us');
     $intro = ezbizi_widget_text($config, 'intro');
@@ -448,19 +472,22 @@ function ezbizi_chat_shortcode($atts) {
     $message_label = ezbizi_widget_text($config, 'message_label', 'How can we help?');
 
     $out = ezbizi_widget_style($id, $config['style']);
-    $out .= ezbizi_chat_style($id, $config['style'], $position);
+    $out .= ezbizi_chat_style($id, $config['style'], $position, $config);
 
     $out .= '<div class="ezbizi-chat" id="' . esc_attr($id) . '" style="' . esc_attr($anchor) . '">'
         . '<button type="button" class="ezbizi-chat-open" aria-expanded="false">'
-        . ezbizi_chat_icon()
+        . ezbizi_chat_icon(ezbizi_widget_text($config, 'bubble_icon', 'chat'))
         . '<span>' . esc_html(ezbizi_widget_text($config, 'button', 'Chat')) . '</span>'
         . '</button>'
 
         . '<div class="ezbizi-chat-panel" hidden role="dialog" aria-label="' . esc_attr($title) . '">'
 
         . '<div class="ezbizi-chat-head">'
+        . (preg_match('~^https?://~i', $avatar) ? '<img class="ezbizi-chat-avatar" src="' . esc_url($avatar) . '" alt="" width="36" height="36" />' : '')
         . '<div class="ezbizi-chat-head-text">'
         . '<strong>' . esc_html($title) . '</strong>'
+        . ($agent === '' ? '' : '<span class="ezbizi-chat-agent">' . esc_html($agent) . '</span>')
+        . (empty($config['show_status']) ? '' : '<span class="ezbizi-chat-status"><i></i>' . esc_html(ezbizi_widget_text($config, 'online_text', 'Online now')) . '</span>')
         . ($intro === '' ? '' : '<span>' . esc_html($intro) . '</span>')
         . '</div>'
         . '<button type="button" class="ezbizi-chat-close" aria-label="Close">&times;</button>'
@@ -564,6 +591,9 @@ function ezbizi_open_now(){
   }catch(e){return true;}
 }
 if(!ezbizi_open_now()){if(root.parentNode)root.parentNode.removeChild(root);return;}
+var delay=" . (int) $delay . ";
+if(delay)setTimeout(function(){root.style.display='';},delay*1000);
+var tell=" . (empty($config['analytics']) ? 'function(){}' : "function(e){try{(window.dataLayer=window.dataLayer||[]).push({event:'ezbizi_chat_'+e});if(window.gtag)gtag('event','ezbizi_chat_'+e);}catch(x){}}") . ";
 var api=" . wp_json_encode(ezbizi_api_base()) . ",key=" . wp_json_encode($key) . ";
 var panel=root.querySelector('.ezbizi-chat-panel'),log=root.querySelector('.ezbizi-chat-log');
 var pre=root.querySelector('.ezbizi-chat-pre'),thread=root.querySelector('.ezbizi-chat-thread');
@@ -603,6 +633,7 @@ function ticking(on){
   else if(timer){clearInterval(timer);timer=null;}
 }
 function open(yes){
+  if(yes&&panel.hidden)tell('open');
   panel.hidden=!yes;
   opener.setAttribute('aria-expanded',yes?'true':'false');
   if(yes){poll();ticking(true);var f=pre.hidden?box:pre.querySelector('input');if(f)f.focus();}
@@ -630,7 +661,7 @@ pre.addEventListener('submit',function(e){
     .then(function(r){return r.ok?r.json():null;})
     .then(function(d){
       if(!keep(d)){err.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'error', 'Sorry — that did not send. Please try again.')) . ";err.hidden=false;return;}
-      started();
+      started();tell('start');
       if(d.messages)draw(d.messages);
       ticking(true);
       box.focus();
@@ -653,13 +684,20 @@ form.addEventListener('submit',function(e){
     return $out;
 }
 
-/** A speech bubble, inline so the widget never waits on an icon font. */
-function ezbizi_chat_icon() {
+/** The launcher's icon, inline so the widget never waits on an icon font. */
+function ezbizi_chat_icon($which = 'chat') {
+    $paths = array(
+        'chat' => 'M12 3C6.98 3 3 6.36 3 10.5c0 2.3 1.24 4.35 3.2 5.71-.13 1.2-.6 2.3-1.36 3.2'
+            . '-.22.26-.03.66.31.63 1.94-.15 3.5-.87 4.6-1.66.72.14 1.47.22 2.25.22 5.02 0 9-3.36 '
+            . '9-7.6S17.02 3 12 3z',
+        'message' => 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 3.2V18h16V7.2l-8 5-8-5zM5.2 6 12 10.3 18.8 6H5.2z',
+        'phone' => 'M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z',
+        'help' => 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 17h-2v-2h2v2zm2.1-7.7-.9.9c-.7.8-1.2 1.4-1.2 2.8h-2v-.5c0-1.1.5-2.1 1.2-2.8l1.2-1.3a2 2 0 1 0-3.4-1.4H8a4 4 0 1 1 7.1 2.3z',
+    );
+    $d = isset($paths[$which]) ? $paths[$which] : $paths['chat'];
+
     return '<svg class="ezbizi-chat-icon" width="18" height="18" viewBox="0 0 24 24" '
-        . 'fill="currentColor" aria-hidden="true" focusable="false">'
-        . '<path d="M12 3C6.98 3 3 6.36 3 10.5c0 2.3 1.24 4.35 3.2 5.71-.13 1.2-.6 2.3-1.36 3.2'
-        . '-.22.26-.03.66.31.63 1.94-.15 3.5-.87 4.6-1.66.72.14 1.47.22 2.25.22 5.02 0 9-3.36 '
-        . '9-7.6S17.02 3 12 3z"/></svg>';
+        . 'fill="currentColor" aria-hidden="true" focusable="false"><path d="' . $d . '"/></svg>';
 }
 
 /**
@@ -678,13 +716,30 @@ function ezbizi_chat_icon() {
  * the four a theme almost always sets, so they are the four that move a widget
  * that never asked to be moved.
  */
-function ezbizi_chat_style($id, $style, $position) {
+function ezbizi_chat_style($id, $style, $position, $config = array()) {
     $accent = esc_attr(ezbizi_widget_text($style, 'accent', '#0b5cad'));
     $on_accent = esc_attr(ezbizi_widget_text($style, 'on_accent', '#ffffff'));
     $text = esc_attr(ezbizi_widget_text($style, 'text', '#1b1b1b'));
     $background = esc_attr(ezbizi_widget_text($style, 'background', '#ffffff'));
     $radius = (int) ezbizi_widget_text($style, 'radius', '12');
     $s = '#' . esc_attr($id);
+
+    // Toula's colours, each falling back to the site's accent pair when unset.
+    $hex = function ($key, $fallback) use ($config) {
+        $v = ezbizi_widget_text($config, $key);
+
+        return preg_match('/^#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?$/', $v) ? $v : $fallback;
+    };
+    $bubble_bg = $hex('bubble_bg', $accent);
+    $bubble_color = $hex('bubble_color', $on_accent);
+    $head_bg = $hex('header_bg', $accent);
+    $head_color = $hex('header_color', $on_accent);
+    $you_bg = $hex('visitor_bg', $accent);
+    $them_bg = $hex('business_bg', '#f1f3f5');
+    $shadow = (! isset($config['shadow']) || ! empty($config['shadow']));
+    $size = max(36, min(96, (int) ezbizi_widget_text($config, 'bubble_size', '48')));
+    $devices = ezbizi_widget_text($config, 'devices', 'all');
+    $motion = ezbizi_widget_text($config, 'animation', 'slide');
 
     // Opens from the corner it sits in, so the panel never runs off the screen.
     $side = ($position === 'bottom-left') ? 'left:0' : 'right:0';
@@ -694,24 +749,26 @@ function ezbizi_chat_style($id, $style, $position) {
         . $s . '{line-height:1.45;text-align:left}'
 
         . $s . ' .ezbizi-chat-open{display:inline-flex;align-items:center;gap:8px;'
-        . 'background:' . $accent . ';color:' . $on_accent . ';border:0;border-radius:999px;'
-        . 'padding:12px 18px;font:inherit;font-weight:600;line-height:1;cursor:pointer;'
-        . 'box-shadow:0 6px 20px rgba(0,0,0,.18);margin:0;width:auto;text-transform:none;'
-        . 'letter-spacing:normal;min-height:0;height:auto}'
+        . 'background:' . $bubble_bg . ';color:' . $bubble_color . ';border:0;border-radius:999px;'
+        . 'padding:0 18px;font:inherit;font-weight:600;line-height:1;cursor:pointer;'
+        . 'box-shadow:' . ($shadow ? '0 6px 20px rgba(0,0,0,.18)' : 'none') . ';margin:0;width:auto;text-transform:none;'
+        . 'letter-spacing:normal;min-height:' . $size . 'px;height:' . $size . 'px}'
         . $s . ' .ezbizi-chat-open:hover{filter:brightness(.94)}'
         . $s . ' .ezbizi-chat-icon{flex:0 0 auto}'
 
         . $s . ' .ezbizi-chat-panel{position:absolute;bottom:calc(100% + 10px);' . $side . ';'
         . 'width:340px;max-width:calc(100vw - 40px);background:' . $background . ';color:' . $text . ';'
         . 'border-radius:' . max(8, $radius) . 'px;overflow:hidden;'
-        . 'box-shadow:0 18px 50px rgba(0,0,0,.24);border:1px solid rgba(0,0,0,.08)}'
+        . 'box-shadow:' . ($shadow ? '0 18px 50px rgba(0,0,0,.24)' : 'none') . ';border:1px solid rgba(0,0,0,.08)}'
 
         . $s . ' .ezbizi-chat-head{display:flex;align-items:flex-start;gap:10px;'
-        . 'background:' . $accent . ';color:' . $on_accent . ';padding:14px 16px}'
+        . 'background:' . $head_bg . ';color:' . $head_color . ';padding:14px 16px}'
         . $s . ' .ezbizi-chat-head-text{flex:1 1 auto;min-width:0}'
-        . $s . ' .ezbizi-chat-head strong{display:block;font-size:15px;line-height:1.3;color:' . $on_accent . '}'
-        . $s . ' .ezbizi-chat-head span{display:block;font-size:13px;opacity:.9;color:' . $on_accent . '}'
-        . $s . ' .ezbizi-chat-close{flex:0 0 auto;background:rgba(255,255,255,.22);color:' . $on_accent . ';'
+        . $s . ' .ezbizi-chat-head strong{display:block;font-size:15px;line-height:1.3;color:' . $head_color . '}'
+        . $s . ' .ezbizi-chat-head span{display:block;font-size:13px;opacity:.9;color:' . $head_color . '}'
+        . $s . ' .ezbizi-chat-avatar{flex:0 0 auto;width:36px;height:36px;border-radius:50%;object-fit:cover;margin:0}'
+        . $s . ' .ezbizi-chat-status i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2e9d4f;margin:0 6px 0 0}'
+        . $s . ' .ezbizi-chat-close{flex:0 0 auto;background:rgba(255,255,255,.22);color:' . $head_color . ';'
         . 'border:0;border-radius:999px;width:26px;height:26px;min-height:0;padding:0;margin:0;'
         . 'font:inherit;font-size:17px;line-height:26px;cursor:pointer;box-shadow:none}'
 
@@ -736,12 +793,17 @@ function ezbizi_chat_style($id, $style, $position) {
         . $s . ' .ezbizi-chat-log{max-height:280px;overflow:auto;margin:0 0 10px}'
         . $s . ' .ezbizi-msg{margin:0 0 6px;padding:8px 11px;border-radius:14px;max-width:85%;'
         . 'font-size:14px;word-wrap:break-word}'
-        . $s . ' .ezbizi-msg-you{margin-left:auto;background:' . $accent . ';color:' . $on_accent . '}'
-        . $s . ' .ezbizi-msg-them{margin-right:auto;background:#f1f3f5;color:#1b1b1b}'
+        . $s . ' .ezbizi-msg-you{margin-left:auto;background:' . $you_bg . ';color:' . $on_accent . '}'
+        . $s . ' .ezbizi-msg-them{margin-right:auto;background:' . $them_bg . ';color:#1b1b1b}'
         . $s . ' .ezbizi-chat-form{display:flex;gap:8px;align-items:center}'
         . $s . ' .ezbizi-chat-form button{flex:0 0 auto;background:' . $accent . ';color:' . $on_accent . ';'
         . 'border:0;border-radius:' . max(4, $radius - 4) . 'px;padding:10px 14px;font:inherit;'
         . 'font-weight:600;line-height:1.2;cursor:pointer;margin:0;text-transform:none;min-height:0}'
+        . ($motion === 'none' ? '' : '@keyframes ezbizi-chat-' . $motion . '{from{opacity:0' . ($motion === 'slide' ? ';transform:translateY(12px)' : '') . '}to{opacity:1;transform:none}}'
+            . $s . ' .ezbizi-chat-panel:not([hidden]),' . $s . ' .ezbizi-chat-open{animation:ezbizi-chat-' . $motion . ' .25s ease-out}'
+            . '@media (prefers-reduced-motion:reduce){' . $s . ' .ezbizi-chat-panel,' . $s . ' .ezbizi-chat-open{animation:none}}')
+        . ($devices === 'desktop' ? '@media (max-width:767px){' . $s . '{display:none!important}}' : '')
+        . ($devices === 'mobile' ? '@media (min-width:768px){' . $s . '{display:none!important}}' : '')
         . '</style>';
 }
 

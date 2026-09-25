@@ -817,6 +817,63 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         (v) => _set('chat', 'position', v),
       ),
 
+      // Toula's Live Chat list: who answers, how the bubble looks, and when
+      // and where it shows. Folded away, so the everyday wording stays on top.
+      ExpansionTile(
+        title: Text('More chat options', style: theme.textTheme.titleSmall),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: EdgeInsets.zero,
+        children: [
+          _text(theme, 'Agent name', chat['agent_name'],
+              (v) => _set('chat', 'agent_name', v)),
+          _text(theme, 'Agent photo (https:// link)', chat['avatar_url'],
+              (v) => _set('chat', 'avatar_url', v)),
+          _flag(theme, 'Show an online dot', chat['show_status'] == true,
+              (on) => _set('chat', 'show_status', on)),
+          _text(theme, 'Online wording', chat['online_text'],
+              (v) => _set('chat', 'online_text', v)),
+          _dropdown(theme, 'Bubble icon', '${chat['bubble_icon'] ?? 'chat'}',
+              const ['chat', 'message', 'phone', 'help'],
+              (v) => _set('chat', 'bubble_icon', v)),
+          _number(theme, 'Bubble height (px)', chat['bubble_size'], 48,
+              (v) => _set('chat', 'bubble_size', v)),
+          _number(theme, 'Distance from the side (px)', chat['offset_x'], 20,
+              (v) => _set('chat', 'offset_x', v)),
+          _number(theme, 'Distance from the bottom (px)', chat['offset_y'], 88,
+              (v) => _set('chat', 'offset_y', v)),
+          _dropdown(theme, 'How it appears', '${chat['animation'] ?? 'slide'}',
+              const ['slide', 'fade', 'none'],
+              (v) => _set('chat', 'animation', v)),
+          _number(theme, 'Wait before showing (seconds)', chat['delay'], 0,
+              (v) => _set('chat', 'delay', v)),
+          _dropdown(theme, 'Show on', '${chat['devices'] ?? 'all'}',
+              const ['all', 'desktop', 'mobile'],
+              (v) => _set('chat', 'devices', v)),
+          _text(
+              theme,
+              'Never on these pages (one path per line, /jobs/* for a section)',
+              chat['hide_on'],
+              (v) => _set('chat', 'hide_on', v),
+              lines: 3),
+          _text(theme, 'Bubble colour (#rrggbb, empty = accent)',
+              chat['bubble_bg'], (v) => _set('chat', 'bubble_bg', v)),
+          _text(theme, 'Bubble text colour', chat['bubble_color'],
+              (v) => _set('chat', 'bubble_color', v)),
+          _text(theme, 'Header colour', chat['header_bg'],
+              (v) => _set('chat', 'header_bg', v)),
+          _text(theme, 'Header text colour', chat['header_color'],
+              (v) => _set('chat', 'header_color', v)),
+          _text(theme, 'Visitor message colour', chat['visitor_bg'],
+              (v) => _set('chat', 'visitor_bg', v)),
+          _text(theme, 'Business message colour', chat['business_bg'],
+              (v) => _set('chat', 'business_bg', v)),
+          _flag(theme, 'Shadow', chat['shadow'] != false,
+              (on) => _set('chat', 'shadow', on)),
+          _flag(theme, 'Report opens and starts to analytics',
+              chat['analytics'] == true, (on) => _set('chat', 'analytics', on)),
+        ],
+      ),
+
       const SizedBox(height: 16),
       /*
        * Both keys in one call, because the server drops a schedule with no
@@ -1814,8 +1871,9 @@ class _WidgetEditorState extends State<_WidgetEditor> {
     ThemeData theme,
     String label,
     Object? value,
-    void Function(String) onChanged,
-  ) {
+    void Function(String) onChanged, {
+    int lines = 1,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextFormField(
@@ -1824,12 +1882,29 @@ class _WidgetEditorState extends State<_WidgetEditor> {
         key: ValueKey('$label:${widget.siteId}:$_external'),
         initialValue: '${value ?? ''}',
         enabled: widget.canEdit,
+        minLines: lines,
+        maxLines: lines,
         style: theme.textTheme.bodyMedium,
         decoration: InputDecoration(labelText: label, isDense: true),
         onChanged: onChanged,
       ),
     );
   }
+
+  Widget _number(ThemeData theme, String label, Object? value, int fallback,
+          void Function(int) onChanged) =>
+      _text(theme, label, value ?? fallback,
+          (v) => onChanged(int.tryParse(v.trim()) ?? fallback));
+
+  Widget _flag(ThemeData theme, String label, bool value,
+          void Function(bool) onChanged) =>
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        value: value,
+        onChanged: widget.canEdit ? onChanged : null,
+        title: Text(label, style: theme.textTheme.bodyMedium),
+      );
 
   Widget _dropdown(
     ThemeData theme,

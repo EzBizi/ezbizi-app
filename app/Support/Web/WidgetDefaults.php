@@ -123,6 +123,29 @@ final class WidgetDefaults
             'error' => 'Sorry — that did not send. Please try again.',
             'away' => 'We are not at the desk right now, but leave a message and we will come back to you.',
             'position' => 'bottom-right',
+            // Toula's Live Chat list (01a0d8e5-a6c5): who answers, where the
+            // bubble sits and how it looks, when and where it shows, and
+            // whether its use is reported to the site's analytics.
+            'agent_name' => '',
+            'avatar_url' => '',
+            'show_status' => false,
+            'online_text' => 'Online now',
+            'bubble_icon' => 'chat',
+            'bubble_size' => 48,
+            'offset_x' => 20,
+            'offset_y' => 88,
+            'animation' => 'slide',
+            'delay' => 0,
+            'devices' => 'all',
+            'hide_on' => '',
+            'bubble_bg' => '',
+            'bubble_color' => '',
+            'header_bg' => '',
+            'header_color' => '',
+            'visitor_bg' => '',
+            'business_bg' => '',
+            'shadow' => true,
+            'analytics' => false,
             /*
              * ── When the bubble is on the page at all ──
              *
@@ -335,6 +358,34 @@ final class WidgetDefaults
                 'name_label' => self::text($chat['name_label'] ?? '', 40),
                 'contact_label' => self::text($chat['contact_label'] ?? '', 40),
                 'message_label' => self::text($chat['message_label'] ?? '', 60),
+                'agent_name' => self::text($chat['agent_name'] ?? '', 60),
+                'avatar_url' => (function () use ($chat): string {
+                    $url = trim((string) ($chat['avatar_url'] ?? ''));
+
+                    return preg_match('~^https?://~i', $url) === 1 && filter_var($url, FILTER_VALIDATE_URL) !== false ? mb_substr($url, 0, 1000) : '';
+                })(),
+                'show_status' => self::flag($chat['show_status'] ?? false, false),
+                'online_text' => self::text($chat['online_text'] ?? '', 60),
+                'bubble_icon' => in_array($chat['bubble_icon'] ?? '', ['chat', 'message', 'phone', 'help'], true) ? $chat['bubble_icon'] : 'chat',
+                'bubble_size' => max(36, min(96, (int) ($chat['bubble_size'] ?? 48))),
+                'offset_x' => max(0, min(300, (int) ($chat['offset_x'] ?? 20))),
+                'offset_y' => max(0, min(300, (int) ($chat['offset_y'] ?? 88))),
+                'animation' => in_array($chat['animation'] ?? '', ['none', 'fade', 'slide'], true) ? $chat['animation'] : 'slide',
+                'delay' => max(0, min(120, (int) ($chat['delay'] ?? 0))),
+                'devices' => in_array($chat['devices'] ?? '', ['all', 'desktop', 'mobile'], true) ? $chat['devices'] : 'all',
+                // Paths it never shows on, one per line: "/careers", "/thank-you".
+                'hide_on' => implode("\n", array_slice(array_values(array_filter(array_map(
+                    fn ($line) => self::text($line, 200),
+                    preg_split('/\R/', is_string($chat['hide_on'] ?? null) ? $chat['hide_on'] : '') ?: []
+                ))), 0, 50)),
+                'bubble_bg' => self::colour($chat['bubble_bg'] ?? '', ''),
+                'bubble_color' => self::colour($chat['bubble_color'] ?? '', ''),
+                'header_bg' => self::colour($chat['header_bg'] ?? '', ''),
+                'header_color' => self::colour($chat['header_color'] ?? '', ''),
+                'visitor_bg' => self::colour($chat['visitor_bg'] ?? '', ''),
+                'business_bg' => self::colour($chat['business_bg'] ?? '', ''),
+                'shadow' => self::flag($chat['shadow'] ?? true, true),
+                'analytics' => self::flag($chat['analytics'] ?? false, false),
                 'start' => self::text($chat['start'] ?? '', 40),
                 'auto_reply' => self::text($chat['auto_reply'] ?? '', 500),
                 'error' => self::text($chat['error'] ?? '', 200),
