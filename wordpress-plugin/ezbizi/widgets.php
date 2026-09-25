@@ -159,6 +159,12 @@ function ezbizi_style_css($widget, $id, $p, $parts) {
             case 'padding':
                 $css[$sel][] = 'padding:' . $value . 'px';
                 break;
+            case 'padding_y':
+                $css[$sel][] = 'padding-top:' . $value . 'px;padding-bottom:' . $value . 'px';
+                break;
+            case 'padding_x':
+                $css[$sel][] = 'padding-left:' . $value . 'px;padding-right:' . $value . 'px';
+                break;
             case 'font_family':
                 $family = preg_replace('/[^A-Za-z0-9 ,\'"-]/', '', (string) $value);
                 if ($family !== '') {
@@ -1605,6 +1611,52 @@ function ezbizi_is_this_page($url) {
     return ($path === '/' ? '' : strtolower($path)) === ezbizi_path();
 }
 
+// ── The state, in words ─────────────────────────────────────────────
+
+/**
+ * The state's full name, from the two letters EzBizi stores ("NJ" →
+ * "New Jersey"). A1 Tools printed the name, in headings like "#1 Garage Door
+ * Repair Company in the [state]", and a heading reading "in the NJ" would be
+ * the migration showing. Anything that is not a known code prints as stored.
+ */
+function ezbizi_state_full($code) {
+    $names = array(
+        'AL' => 'Alabama', 'AK' => 'Alaska', 'AZ' => 'Arizona', 'AR' => 'Arkansas', 'CA' => 'California',
+        'CO' => 'Colorado', 'CT' => 'Connecticut', 'DE' => 'Delaware', 'DC' => 'District of Columbia',
+        'FL' => 'Florida', 'GA' => 'Georgia', 'HI' => 'Hawaii', 'ID' => 'Idaho', 'IL' => 'Illinois',
+        'IN' => 'Indiana', 'IA' => 'Iowa', 'KS' => 'Kansas', 'KY' => 'Kentucky', 'LA' => 'Louisiana',
+        'ME' => 'Maine', 'MD' => 'Maryland', 'MA' => 'Massachusetts', 'MI' => 'Michigan', 'MN' => 'Minnesota',
+        'MS' => 'Mississippi', 'MO' => 'Missouri', 'MT' => 'Montana', 'NE' => 'Nebraska', 'NV' => 'Nevada',
+        'NH' => 'New Hampshire', 'NJ' => 'New Jersey', 'NM' => 'New Mexico', 'NY' => 'New York',
+        'NC' => 'North Carolina', 'ND' => 'North Dakota', 'OH' => 'Ohio', 'OK' => 'Oklahoma', 'OR' => 'Oregon',
+        'PA' => 'Pennsylvania', 'RI' => 'Rhode Island', 'SC' => 'South Carolina', 'SD' => 'South Dakota',
+        'TN' => 'Tennessee', 'TX' => 'Texas', 'UT' => 'Utah', 'VT' => 'Vermont', 'VA' => 'Virginia',
+        'WA' => 'Washington', 'WV' => 'West Virginia', 'WI' => 'Wisconsin', 'WY' => 'Wyoming',
+    );
+    $code = trim((string) $code);
+
+    return isset($names[strtoupper($code)]) ? $names[strtoupper($code)] : $code;
+}
+
+/** [ezbizi_state_name] — "New Jersey" on a site whose state is NJ. */
+function ezbizi_state_name_shortcode($atts) {
+    return esc_html(ezbizi_state_full(ezbizi_value('state')));
+}
+
+/** [ezbizi_state_anchor] — the state's name, linked to its own website when EzBizi has one. */
+function ezbizi_state_anchor_shortcode($atts) {
+    $name = ezbizi_state_full(ezbizi_value('state'));
+    $link = ezbizi_value('state_link');
+
+    if ($name === '') {
+        return '';
+    }
+
+    return preg_match('~^https?://~i', $link)
+        ? '<a href="' . esc_url($link) . '" target="_blank" rel="noopener">' . esc_html($name) . '</a>'
+        : esc_html($name);
+}
+
 // ── Street View ─────────────────────────────────────────────────────
 
 /**
@@ -1788,4 +1840,6 @@ add_action('init', function () {
     add_shortcode('ezbizi_phone_box', 'ezbizi_phone_box_shortcode');
     add_shortcode('ezbizi_review_faces', 'ezbizi_review_faces_shortcode');
     add_shortcode('ezbizi_street_view', 'ezbizi_street_view_shortcode');
+    add_shortcode('ezbizi_state_name', 'ezbizi_state_name_shortcode');
+    add_shortcode('ezbizi_state_anchor', 'ezbizi_state_anchor_shortcode');
 });

@@ -3016,6 +3016,8 @@ class _PresetCardState extends State<_PresetCard> {
     'border_width': 'Border width',
     'radius': 'Corner radius',
     'padding': 'Padding',
+    'padding_y': 'Padding top and bottom',
+    'padding_x': 'Padding at the sides',
     'shadow': 'Shadow',
     'align': 'Alignment',
     'devices': 'Show on',

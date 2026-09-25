@@ -105,6 +105,8 @@ final class WidgetPresets
         'phone_box',
         'review_faces',
         'street_view',
+        'state_name',
+        'state_anchor',
         'team',
         'branches',
         'store_locator',
@@ -182,6 +184,10 @@ final class WidgetPresets
             'border_width' => ['range', 0, 20],
             'radius' => ['range', 0, 100],
             'padding' => ['range', 0, 120],
+            // Top and bottom, and the sides, when they differ: A1's buttons are
+            // usually 12 by 24.
+            'padding_y' => ['range', 0, 120],
+            'padding_x' => ['range', 0, 120],
             'shadow' => ['choice', ['', 'none', 'soft', 'strong']],
             'align' => ['choice', ['', 'left', 'center', 'right']],
             'devices' => ['choice', ['', 'desktop', 'mobile']],
@@ -205,6 +211,8 @@ final class WidgetPresets
             'border_width' => ['range', 0, 20],
             'radius' => ['range', 0, 100],
             'padding' => ['range', 0, 60],
+            'padding_y' => ['range', 0, 60],
+            'padding_x' => ['range', 0, 60],
             'font_family' => ['font'],
             'font_size' => ['range', 0, 96],
             'font_weight' => ['choice', ['', '300', '400', '500', '600', '700', '800', '900']],

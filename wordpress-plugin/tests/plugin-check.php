@@ -1970,6 +1970,16 @@ check('an animation runs', str_contains($moving, '@keyframes ezbizi-pulse-'), tr
 check('except for a visitor who asked for less motion', str_contains($moving, 'prefers-reduced-motion'), true);
 check('a bar on phones', str_contains($cta(['mobile' => 'bar']), 'position:fixed'), true);
 
+echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
+reset_site();
+serve_preset_payload(['state' => 'NJ', 'state_link' => 'https://www.nj.gov/']);
+check('the name from the code', $GLOBALS['sc']['ezbizi_state_name']([]), 'New Jersey');
+check('linked to the state website', str_contains($GLOBALS['sc']['ezbizi_state_anchor']([]), '>New Jersey</a>'), true);
+reset_site();
+serve_preset_payload(['state' => 'Ontario']);
+check('a name that is not a code prints as stored', $GLOBALS['sc']['ezbizi_state_name']([]), 'Ontario');
+check('and without a link it is only the name', $GLOBALS['sc']['ezbizi_state_anchor']([]), 'Ontario');
+
 echo PHP_EOL . "Street View draws only a Google Maps embed" . PHP_EOL;
 $embed = 'https://www.google.com/maps/embed?pb=!4v1!6m8!1m7!1sAbc';
 check('a link is used as it is', ezbizi_street_view_src($embed), $embed);
