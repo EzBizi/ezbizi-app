@@ -405,8 +405,8 @@ class ProjectWorkizRecords extends Command
                     // The Jobs session's rule, called rather than copied:
                     // Workiz's area name if it is one of this franchise's areas,
                     // else the JOB's own zip (not the customer's, which is the
-                    // client's latest address), else none. Set on creation only:
-                    // following Workiz lands after Jobs' one-off backfill.
+                    // client's latest address), else none. Set here; a later
+                    // change in Workiz follows through areaInputs() below.
                     'service_area_id' => JobServiceArea::resolve($franchise, $mirrored->service_area, $mirrored->postal_code),
                 ]);
 
@@ -493,7 +493,11 @@ class ProjectWorkizRecords extends Command
             ->where(function ($q) {
                 $q->whereColumn('workiz_jobs.status', '<>', 'jobs.status')
                     ->orWhereRaw('NOT (workiz_jobs.scheduled_for <=> jobs.scheduled_for)')
-                    ->orWhereRaw("NOT (ROUND(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice') * 100) <=> jobs.amount_minor)");
+                    ->orWhereRaw("NOT (ROUND(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice') * 100) <=> jobs.amount_minor)")
+                    // Workiz's area inputs moved since they were recorded, or
+                    // were never recorded: areaInputs() below, in SQL. Measured
+                    // to agree with PHP's strict test, null against '' included.
+                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))");
             })
             ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
@@ -530,13 +534,36 @@ class ProjectWorkizRecords extends Command
                         }
                     }
 
+                    /*
+                     * THE SERVICE AREA FOLLOWS WORKIZ'S INPUTS, not a resolved id:
+                     * re-resolving every row every run would be thousands of
+                     * queries, and an id cannot be compared in SQL. So the inputs
+                     * last seen are kept in `projected`, and only a change in them
+                     * re-resolves, through the Jobs session's rule, called.
+                     *
+                     * Never over a person: `service_area_chosen_at` is set when
+                     * somebody picks the area, and then Workiz no longer moves it.
+                     *
+                     * A row with no inputs recorded ONLY records them. Its area may
+                     * be the Jobs session's backfill, which folded retired names
+                     * (East Connecticut) that resolve() never will; re-resolving it
+                     * would put it back to none.
+                     */
+                    $inputs = $this->areaInputs($row);
+                    $seen = $last['area_inputs'] ?? null;
+                    $moveArea = $seen !== null && $seen !== $inputs && $job->service_area_chosen_at === null;
+
                     if ($dryRun) {
-                        $followed += $changes === [] ? 0 : 1;
+                        $followed += ($changes === [] && ! $moveArea) ? 0 : 1;
 
                         continue;
                     }
 
-                    DB::transaction(function () use ($row, $job, $changes, $last, $now, &$announce) {
+                    DB::transaction(function () use ($row, $job, $changes, $moveArea, $inputs, $last, $now, &$announce) {
+                        if ($moveArea) {
+                            $job->service_area_id = JobServiceArea::resolve($job->franchise, $row->service_area, $row->postal_code);
+                        }
+
                         if ($changes !== []) {
                             $job->forceFill($changes);
 
@@ -557,24 +584,26 @@ class ProjectWorkizRecords extends Command
                             if (array_key_exists('status', $changes)) {
                                 $job->markEarnedIfDue($this->workizMoment($row, $job->franchise?->timezone));
                             }
+                        }
 
-                            $job->save();
+                        // Writes nothing when nothing moved.
+                        $job->save();
 
-                            if (array_key_exists('status', $changes)
-                                && $this->happenedRecently($row, $job->franchise?->timezone)) {
-                                $announce[] = [$job, $now['status'], $changes['status']];
-                            }
+                        if (array_key_exists('status', $changes)
+                            && $this->happenedRecently($row, $job->franchise?->timezone)) {
+                            $announce[] = [$job, $now['status'], $changes['status']];
                         }
 
                         // What we have written, field by field. A field a
                         // person changed is NOT recorded as ours: `last` keeps
                         // our old write, so their value goes on not matching and
-                        // stays theirs.
-                        $row->projected = array_merge($last, array_intersect_key($changes, $last));
+                        // stays theirs. The area inputs are always the latest
+                        // seen: they are what the next change is measured from.
+                        $row->projected = array_merge($last, array_intersect_key($changes, $last), ['area_inputs' => $inputs]);
                         $row->save();
                     });
 
-                    $followed += $changes === [] ? 0 : 1;
+                    $followed += ($changes === [] && ! $moveArea) ? 0 : 1;
                 }
             }, 'workiz_jobs.id', 'id');
 
@@ -713,6 +742,17 @@ class ProjectWorkizRecords extends Command
         }
 
         return Carbon::parse($raw, ($timezone ?? '') !== '' ? $timezone : 'UTC')->utc();
+    }
+
+    /**
+     * What Workiz says that places a job in a service area: its area name and
+     * the job's own zip. Compared strictly, like the SQL in followWorkiz().
+     *
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function areaInputs(WorkizJob $row): array
+    {
+        return [$row->service_area, $row->postal_code];
     }
 
     /**

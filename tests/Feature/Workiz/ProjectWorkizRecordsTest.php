@@ -320,6 +320,102 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertSame($hartford->id, $placed);
     }
 
+    /** Change what Workiz says about the mirrored job, as the next sync would. */
+    private function workizSays(array $tenant, array $columns): void
+    {
+        $this->inTenant($tenant['org'], fn () => WorkizJob::query()->first()->forceFill($columns)->save());
+    }
+
+    private function areaOfTheJob(array $tenant): ?string
+    {
+        return $this->inTenant($tenant['org'], fn () => Job::query()->value('service_area_id'));
+    }
+
+    /** Workiz moves the job to another of the franchise's areas; EzBizi follows, silently. */
+    public function test_a_new_workiz_area_moves_the_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $hartford = $this->area($tenant, 'Hartford');
+        $stamford = $this->area($tenant, 'Stamford');
+        $this->mirror($tenant, ['service_area' => 'Hartford']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame($hartford->id, $this->areaOfTheJob($tenant));
+
+        $this->workizSays($tenant, ['service_area' => 'Stamford']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($stamford->id, $this->areaOfTheJob($tenant));
+        $this->assertSame(0, $this->inTenant($tenant['org'], fn () => AutomationEvent::query()->count()), 'an area move raises no event');
+    }
+
+    /** The zip is an input too: with no area named, a new zip re-places the job. */
+    public function test_a_new_workiz_zip_moves_the_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->area($tenant, 'Hartford', ['06457']);
+        $stamford = $this->area($tenant, 'Stamford', ['06901']);
+        $this->mirror($tenant, ['service_area' => null, 'postal_code' => '06457']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->workizSays($tenant, ['postal_code' => '06901']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($stamford->id, $this->areaOfTheJob($tenant));
+    }
+
+    /**
+     * A PERSON'S CHOICE WINS. `service_area_chosen_at` is set whenever somebody
+     * picks the area through the API, and nothing Workiz says moves it again.
+     */
+    public function test_an_area_a_person_chose_is_never_moved(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $hartford = $this->area($tenant, 'Hartford');
+        $this->area($tenant, 'Stamford');
+        $this->mirror($tenant, ['service_area' => 'Stamford']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => Job::query()->first()
+            ->forceFill(['service_area_id' => $hartford->id, 'service_area_chosen_at' => now()])->save());
+
+        $this->workizSays($tenant, ['service_area' => 'Stamford', 'postal_code' => '06901']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($hartford->id, $this->areaOfTheJob($tenant));
+    }
+
+    /**
+     * THE FIRST PASS ONLY RECORDS. A job projected before this change carries no
+     * record of Workiz's area inputs, and its area may be the Jobs session's
+     * backfill, which folded RETIRED names (East Connecticut) that resolve()
+     * never will. Re-resolving it would put it back to none. So the first pass
+     * records what Workiz says and moves nothing; the next change moves it.
+     */
+    public function test_the_first_pass_records_workizs_area_and_moves_nothing(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $connecticut = $this->area($tenant, 'Connecticut');
+        $stamford = $this->area($tenant, 'Stamford');
+        $this->mirror($tenant, ['service_area' => 'East Connecticut']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        // As it stood before this change: projected without the inputs, and
+        // the backfill's folded area on the job.
+        $this->inTenant($tenant['org'], function () use ($connecticut) {
+            $row = WorkizJob::query()->first();
+            $row->projected = array_diff_key($row->projected, ['area_inputs' => true]);
+            $row->save();
+            Job::query()->first()->forceFill(['service_area_id' => $connecticut->id])->save();
+        });
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame($connecticut->id, $this->areaOfTheJob($tenant), 'the backfill must survive the first pass');
+
+        $this->workizSays($tenant, ['service_area' => 'Stamford']);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame($stamford->id, $this->areaOfTheJob($tenant), 'and a real change after it still moves the job');
+    }
+
     public function test_a_dry_run_writes_nothing(): void
     {
         $tenant = $this->provisionTenant('Alpha');
