@@ -18,21 +18,21 @@ use Illuminate\Support\Facades\DB;
  * This is the same derivation over the Workiz session's `workiz_jobs` landing
  * table — `service_area` is trimmed on write there, so no string work here.
  *
- * ── The tie-break is the whole design ───────────────────────────
+ * ── It ADDS zips. It never moves one. ───────────────────────────
  *
- * `service_area_zips` is UNIQUE on (franchise_id, zip): one area per zip per
- * franchise, which is Jose's rule — "we should not share zip codes". Measured
- * against A-1's history, 420 zips are claimed by two or more areas and 339 of
- * those sit inside ONE Workiz account, so knowing the franchise settles
- * nothing. What settles it is which area has actually done the work there.
+ * `service_area_zips` is UNIQUE on (organization_id, zip) since 2026-09-25: one
+ * area per zip in the whole organization, which is Jose's rule — "we should not
+ * share zip codes". It was per franchise until A-1 turned out to have 66 zips
+ * on two branches' areas at once, most of them New York copies of zips other
+ * areas owned (the Nationwide call centre tags out-of-state jobs "New York").
  *
- * Most jobs wins, and the runner-up is REPORTED rather than dropped in
- * silence: a zip that two areas both work is a real thing about the territory,
- * and the day somebody disputes the map that list is the answer.
- *
- * A zip CAN belong to two areas in two different franchises, and that is not a
- * tie — the unique index permits it and A-1 genuinely has zips either branch
- * may serve. One winner per franchise, not one winner overall.
+ * This command used to settle a contested zip by most jobs, re-decided on every
+ * run. It no longer does, because that rule does not hold on A-1's data — A1
+ * Tools measured it: 136 of 169 contested zips were exact ties, and of the 33 it
+ * could decide it got 7 wrong, all on metro borders. So a zip with no area is
+ * added to the best-evidenced one, and a zip that ALREADY has an area keeps it.
+ * When the evidence disagrees with the map, the zip is listed for a person to
+ * judge and left where it is.
  *
  * ── What it will not do ─────────────────────────────────────────
  *
@@ -41,9 +41,9 @@ use Illuminate\Support\Facades\DB;
  * under-constraining is safe, mis-attributing is not, which is the same rule
  * A1 applies when it refuses to guess an area for an ambiguous zip.
  *
- * It never overwrites a row a person typed. Derived rows carry
- * `source = 'workiz_jobs'` and only those are rewritten; a NULL source means
- * somebody entered it by hand and it wins over the evidence.
+ * It never moves or rewrites an existing row, so a mapping a person typed or
+ * corrected is safe by construction. `source` still records where a row came
+ * from — NULL a person, `workiz_jobs` or `a1tools_jobs` a derivation.
  *
  * ── WHAT THIS CAN SEE, AND WHAT IT CANNOT ──────────────────────
  *
@@ -65,11 +65,10 @@ use Illuminate\Support\Facades\DB;
  * zips, which is what a complete one looks like.
  *
  * So a run against two days of jobs produces a THIN map, and thin is not the
- * same as wrong in an obvious way: a contested zip decided on two days of
- * evidence can hand the zip to the area that happened to work there this week.
- * The next rebuild corrects it — the rows are derived and rewritten — but
- * between the two, availability answers for that zip name the wrong area, and
- * nothing about the output says the evidence was thin.
+ * same as wrong in an obvious way: a zip decided on two days of evidence can go
+ * to the area that happened to work there this week. Since 2026-09-25 a later
+ * run does NOT correct it — existing zips are never moved — so the list of
+ * disputed zips it prints is the only place a thin first decision surfaces.
  *
  * Ask the Workiz session whether the A1 Tools history has been imported before
  * comparing what this produces against 2,717 — not whether "the backfill has
@@ -77,7 +76,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SchedulingBuildZipMap extends Command
 {
-    /** Derived rows carry one of these; a hand-typed row carries NULL and is never touched. */
+    /** Rows this command adds carry one of these; a hand-typed row carries NULL. */
     private const SOURCE = 'workiz_jobs';
 
     /**
@@ -85,8 +84,8 @@ class SchedulingBuildZipMap extends Command
      *
      * A separate word from SOURCE so the two are distinguishable in the table
      * afterwards — one is "our sync saw this", the other is "A-1's old system
-     * saw this over eighteen months". Both are derived and both are
-     * replaceable; only NULL is a person.
+     * saw this over eighteen months". Neither is ever rewritten by a later
+     * run; only NULL is a person.
      */
     private const SOURCE_A1 = 'a1tools_jobs';
 
@@ -163,7 +162,7 @@ class SchedulingBuildZipMap extends Command
             return self::SUCCESS;
         }
 
-        // (franchise, zip) => the best-evidenced claim, plus everyone who lost.
+        // zip => the best-evidenced claim, plus everyone who lost.
         $best = [];
         $unmatched = [];
 
@@ -182,7 +181,10 @@ class SchedulingBuildZipMap extends Command
                 continue;
             }
 
-            $key = $area->franchise_id.'|'.$zip;
+            // One area per zip in the ORGANIZATION (2026-09-25), so the
+            // contest is between every area that names this zip, whichever
+            // branch it belongs to.
+            $key = $zip;
             $claim = [
                 'area' => $area,
                 'zip' => $zip,
@@ -208,50 +210,66 @@ class SchedulingBuildZipMap extends Command
         }
 
         $written = 0;
-        $kept = 0;
-        $contested = 0;
+        $unchanged = 0;
+        $disputed = [];
 
         foreach ($best as $claim) {
-            if ($claim['lost'] !== []) {
-                $contested++;
-            }
+            $existing = ServiceAreaZip::query()->where('zip', $claim['zip'])->first();
 
-            $existing = ServiceAreaZip::query()
-                ->where('franchise_id', $claim['area']->franchise_id)
-                ->where('zip', $claim['zip'])
-                ->first();
-
-            // A person typed this one. Evidence does not outrank a decision.
-            // Both derived sources replace each other; only NULL is protected.
-            if ($existing !== null && $existing->source === null) {
-                $kept++;
-
-                continue;
-            }
-
-            if ($dryRun) {
-                $written++;
-
-                continue;
-            }
-
-            $attributes = [
-                'service_area_id' => $claim['area']->getKey(),
-                'city' => $claim['city'],
-                'source' => $source,
-            ];
-
+            /*
+             * A ZIP THAT ALREADY HAS AN AREA KEEPS IT. New zips are added; an
+             * existing one is never moved, whoever set it and whatever the
+             * evidence now says.
+             *
+             * This used to follow the evidence — most jobs wins, re-decided on
+             * every run. A1 Tools measured that rule on A-1's own history on
+             * 2026-09-25 and it does not hold: of 169 zips two areas contested,
+             * 136 were exact ties, and of the 33 it could decide it got 7
+             * WRONG, every one a metro border that matters (46410/46323/46375
+             * belong to Indiana and it picked Chicago; 20601 belongs to
+             * Maryland and it picked Virginia). A count cannot tell a crew that
+             * works a zip from a call centre that mis-tags it. The map was
+             * cleaned by hand the same day; a rebuild re-deciding it would undo
+             * that cleaning on the next run.
+             *
+             * So disagreements are REPORTED for a person to judge, never applied.
+             */
             if ($existing !== null) {
-                $existing->update($attributes);
-            } else {
-                ServiceAreaZip::create($attributes + [
+                if ($existing->service_area_id === $claim['area']->getKey()) {
+                    $unchanged++;
+                } else {
+                    $disputed[] = sprintf(
+                        '%s  on %s; the evidence says %s (%d jobs)',
+                        $claim['zip'],
+                        $existing->serviceArea?->name ?? '?',
+                        $claim['area']->name,
+                        $claim['jobs'],
+                    );
+                }
+
+                continue;
+            }
+
+            if (! $dryRun) {
+                ServiceAreaZip::create([
                     'organization_id' => $organization->getKey(),
                     'franchise_id' => $claim['area']->franchise_id,
+                    'service_area_id' => $claim['area']->getKey(),
                     'zip' => $claim['zip'],
+                    'city' => $claim['city'],
+                    'source' => $source,
                 ]);
             }
 
             $written++;
+        }
+
+        if ($disputed !== []) {
+            $this->newLine();
+            $this->line('Zips the evidence would put on a different area — LEFT AS THEY ARE, for a person to judge:');
+            foreach ($disputed as $line) {
+                $this->line('  '.$line);
+            }
         }
 
         if ($this->option('report-unmatched') && $unmatched !== []) {
@@ -265,11 +283,11 @@ class SchedulingBuildZipMap extends Command
 
         $this->newLine();
         $this->info(sprintf(
-            '%s %d zip mappings. %d contested and decided on job count, %d left alone as hand-entered.',
-            $dryRun ? 'Would write' : 'Wrote',
+            '%s %d new zips. %d already on the area the evidence names; %d on another area and left there.',
+            $dryRun ? 'Would add' : 'Added',
             $written,
-            $contested,
-            $kept,
+            $unchanged,
+            count($disputed),
         ));
 
         return self::SUCCESS;
