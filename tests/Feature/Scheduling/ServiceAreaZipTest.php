@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Support\Tenancy\TenantContext;
@@ -11,8 +12,10 @@ use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 /**
- * One zip belongs to one service area, per franchise
- * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md §2).
+ * One zip belongs to one service area in the ORGANIZATION
+ * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md §2;
+ * per franchise until 2026-09-25, see the migration
+ * `one_zip_one_area_per_organization`).
  *
  * This is the check worth having, because it is the one carrying a promise made
  * to a person: the Availability tab lets somebody search by zip, and a zip in
@@ -60,7 +63,7 @@ class ServiceAreaZipTest extends TestCase
             $this->fail('A second area took a zip the first one already holds.');
         } catch (QueryException $e) {
             $this->assertStringContainsStringIgnoringCase(
-                'service_area_zips_franchise_id_zip_unique',
+                'service_area_zips_organization_id_zip_unique',
                 $e->getMessage(),
                 'Refused, but not by the uniqueness index this test is about.'
             );
@@ -68,11 +71,54 @@ class ServiceAreaZipTest extends TestCase
     }
 
     /**
-     * The ban is per franchise, not global. Two franchises working the same
-     * metro is ordinary — a shared zip between them is not a conflict, because
-     * neither one's search can return the other's area.
+     * TWO BRANCHES OF ONE ORGANIZATION CANNOT SHARE A ZIP — the case that
+     * separates the new rule from the old one, which allowed exactly this.
+     *
+     * On 2026-09-25 A-1 had 66 zips on two branches' areas at once; 27 were New
+     * York copies of zips New Jersey, Connecticut and others already owned, and
+     * a search for any of them had two answers.
      */
-    public function test_two_franchises_may_each_hold_the_same_zip(): void
+    public function test_two_franchises_in_one_organization_cannot_share_a_zip(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($alpha['org']);
+
+        $second = Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id' => $alpha['company']->id,
+            'name' => 'Nationwide',
+        ]);
+
+        $newJersey = ServiceArea::create(['franchise_id' => $alpha['franchise']->id, 'name' => 'New Jersey']);
+        $newYork = ServiceArea::create(['franchise_id' => $second->id, 'name' => 'New York']);
+
+        ServiceAreaZip::create([
+            'franchise_id' => $alpha['franchise']->id,
+            'service_area_id' => $newJersey->id,
+            'zip' => '08753',
+        ]);
+
+        try {
+            ServiceAreaZip::create([
+                'franchise_id' => $second->id,
+                'service_area_id' => $newYork->id,
+                'zip' => '08753',
+            ]);
+
+            $this->fail('A second branch took a zip another branch already holds.');
+        } catch (QueryException $e) {
+            $this->assertStringContainsStringIgnoringCase(
+                'service_area_zips_organization_id_zip_unique',
+                $e->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * Two ORGANIZATIONS may each hold the same zip. They are two businesses;
+     * neither one's search can see the other's areas.
+     */
+    public function test_two_organizations_may_each_hold_the_same_zip(): void
     {
         $alpha = $this->provisionTenant('Alpha');
         $beta = $this->provisionTenant('Beta', 'beta@example.test');
@@ -104,5 +150,42 @@ class ServiceAreaZipTest extends TestCase
         ]);
 
         $this->assertTrue($betaZip->exists);
+    }
+
+    /**
+     * Settings refuses it BY NAME, before the index does — across branches.
+     *
+     * The index alone would answer with a 500 that tells nobody where the zip
+     * lives. The clash check used to look inside one franchise only, so a zip
+     * on another branch's area went straight through to that 500.
+     */
+    public function test_settings_names_the_other_branchs_area_that_holds_the_zip(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        app(TenantContext::class)->set($alpha['org']);
+
+        $second = Franchise::create([
+            'organization_id' => $alpha['org']->id,
+            'company_id' => $alpha['company']->id,
+            'name' => 'Nationwide',
+        ]);
+
+        $newJersey = ServiceArea::create(['franchise_id' => $alpha['franchise']->id, 'name' => 'New Jersey']);
+        $newYork = ServiceArea::create(['franchise_id' => $second->id, 'name' => 'New York']);
+
+        ServiceAreaZip::create([
+            'franchise_id' => $alpha['franchise']->id,
+            'service_area_id' => $newJersey->id,
+            'zip' => '08753',
+        ]);
+
+        $owner = $this->userWithRole($alpha, 'Owner', ['scheduling.view', 'scheduling.edit', 'scheduling.settings.view']);
+
+        $message = $this->signedInAs($owner)
+            ->putJson("/api/v1/scheduling/areas/{$newYork->id}/zips", ['zips' => ['08753']])
+            ->assertUnprocessable()
+            ->json('errors.zips.0');
+
+        $this->assertStringContainsString('08753 is already in New Jersey', $message);
     }
 }

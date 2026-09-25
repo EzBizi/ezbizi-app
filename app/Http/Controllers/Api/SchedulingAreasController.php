@@ -9,8 +9,10 @@ use App\Models\ServiceAreaZip;
 use App\Support\Scheduling\SlotShape;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -85,7 +87,7 @@ class SchedulingAreasController extends Controller
      * Sundays" from "Sunday takes nothing", and it cannot do that from a key
      * that is simply missing.
      *
-     * @param  \Illuminate\Support\Collection<int, ServiceAreaSlot>  $slots
+     * @param  Collection<int, ServiceAreaSlot>  $slots
      */
     private function week($slots): \stdClass
     {
@@ -239,10 +241,17 @@ class SchedulingAreasController extends Controller
     /**
      * PUT /api/v1/scheduling/areas/{area}/zips
      *
-     * Replaces the set. A zip another area in this franchise already holds is
-     * refused BY NAME rather than silently moved — the unique index would
+     * Replaces the set. A zip another area in this ORGANIZATION already holds
+     * is refused BY NAME rather than silently moved — the unique index would
      * refuse it anyway, but as a 500 that tells nobody which area to go and
      * look at.
+     *
+     * Organization-wide since 2026-09-25, not per franchise: a zip on two
+     * branches' areas gave a search two answers (see the migration
+     * `one_zip_one_area_per_organization`). The clashing area may belong to a
+     * branch this person cannot open, and it is still named — it is the same
+     * company, and a refusal that will not say where the zip lives leaves them
+     * nothing to do but ring round asking.
      */
     public function zips(Request $request, string $area): JsonResponse
     {
@@ -263,7 +272,7 @@ class SchedulingAreasController extends Controller
 
         $wanted = $this->readZips($data['zips']);
 
-        $clash = ServiceAreaZip::where('franchise_id', $row->franchise_id)
+        $clash = ServiceAreaZip::query()
             ->whereIn('zip', $wanted->keys())
             ->where('service_area_id', '!=', $row->id)
             ->with('serviceArea')
@@ -300,9 +309,9 @@ class SchedulingAreasController extends Controller
      * above for why both.
      *
      * @param  array<int, mixed>  $entries
-     * @return \Illuminate\Support\Collection<string, string|null>
+     * @return Collection<string, string|null>
      */
-    private function readZips(array $entries): \Illuminate\Support\Collection
+    private function readZips(array $entries): Collection
     {
         $out = collect();
 
@@ -405,7 +414,7 @@ class SchedulingAreasController extends Controller
      * `franchiseIds()` and not `companyIds()`: it intersects reach in every
      * arm, and Phone shipped a cross-company leak on exactly that difference.
      */
-    private function reachable(Request $request): \Illuminate\Database\Eloquent\Builder
+    private function reachable(Request $request): Builder
     {
         $scope = ViewScope::forUser($request->user());
 

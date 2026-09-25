@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Scheduling;
 
+use App\Models\Franchise;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WorkizJob;
@@ -177,40 +178,75 @@ class BuildZipMapTest extends TestCase
         );
     }
 
-    /** Re-running moves a zip that moved, and does not duplicate one that did not. */
-    public function test_it_is_idempotent_and_follows_a_zip_that_moves(): void
+    /**
+     * A ZIP THAT ALREADY HAS AN AREA KEEPS IT — re-running adds, never moves.
+     *
+     * This test used to assert the opposite ("a derived row must follow the
+     * evidence") and was rewritten on 2026-09-25, deliberately. A1 Tools
+     * measured most-jobs-wins on A-1's history: 136 of 169 contested zips were
+     * ties, and 7 of the 33 it decided were wrong, all metro borders. A map
+     * cleaned by hand that day must not be re-decided by the next run. The
+     * disagreement is printed instead, for a person.
+     */
+    public function test_a_zip_that_already_has_an_area_is_reported_and_not_moved(): void
     {
         [$tenant, $chicago] = $this->tenantWithArea('Chicago');
 
         app(TenantContext::class)->set($tenant['org']);
-        $milwaukee = ServiceArea::create([
+        ServiceArea::create([
             'franchise_id' => $tenant['franchise']->id,
-            'name' => 'Milwaukee',
+            'name' => 'Indiana',
         ]);
 
-        $this->job($tenant, 'Chicago', '60601');
+        $this->job($tenant, 'Chicago', '46410');
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
 
-        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
-        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+        // Now the evidence swings to Indiana, three to one.
+        foreach (range(1, 3) as $ignored) {
+            $this->job($tenant, 'Indiana', '46410');
+        }
+
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])
+            ->expectsOutputToContain('46410  on Chicago; the evidence says Indiana')
+            ->assertSuccessful();
 
         app(TenantContext::class)->set($tenant['org']);
-        $this->assertSame(1, ServiceAreaZip::query()->where('zip', '60601')->count());
-        $this->assertSame($chicago->id, ServiceAreaZip::query()->where('zip', '60601')->first()->service_area_id);
+        $this->assertSame(1, ServiceAreaZip::query()->where('zip', '46410')->count());
+        $this->assertSame(
+            $chicago->id,
+            ServiceAreaZip::query()->where('zip', '46410')->first()->service_area_id,
+            'A rebuild moved a zip that already had an area.',
+        );
+    }
 
-        // Milwaukee takes over the zip.
+    /**
+     * The contest is ORGANIZATION-wide: two areas in two different branches
+     * that both name a new zip produce one row, not one per branch.
+     */
+    public function test_areas_in_two_franchises_naming_one_new_zip_produce_one_row(): void
+    {
+        [$tenant, $newJersey] = $this->tenantWithArea('New Jersey');
+
+        app(TenantContext::class)->set($tenant['org']);
+        $nationwide = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Nationwide',
+        ]);
+        ServiceArea::create(['franchise_id' => $nationwide->id, 'name' => 'New York']);
+
+        $this->job($tenant, 'New York', '08753');
         foreach (range(1, 3) as $ignored) {
-            $this->job($tenant, 'Milwaukee', '60601');
+            $this->job($tenant, 'New Jersey', '08753');
         }
 
         $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
 
         app(TenantContext::class)->set($tenant['org']);
-        $this->assertSame(1, ServiceAreaZip::query()->where('zip', '60601')->count());
-        $this->assertSame(
-            $milwaukee->id,
-            ServiceAreaZip::query()->where('zip', '60601')->first()->service_area_id,
-            'A derived row must follow the evidence when the evidence changes.',
-        );
+        $rows = ServiceAreaZip::query()->where('zip', '08753')->get();
+
+        $this->assertCount(1, $rows, 'One zip, one area, across the whole organization.');
+        $this->assertSame($newJersey->id, $rows->first()->service_area_id);
     }
 
     public function test_dry_run_writes_nothing(): void
