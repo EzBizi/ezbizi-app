@@ -85,10 +85,10 @@ void main() {
   /// Written down because the mistake this screen is a correction of was
   /// exactly this confusion: nobody reading this tab should conclude that
   /// EzBizi's own Reviews and Business Profile moved or went away.
-  testWidgets('it says our own modules are still in Marketing', (tester) async {
+  testWidgets('it says our own modules are in Customer Experience', (tester) async {
     await _pump(tester, _handler(reachable: false));
 
-    expect(find.textContaining('are in Marketing'), findsOneWidget);
+    expect(find.textContaining('are in Customer Experience'), findsOneWidget);
   });
 
   /// And it draws no chips of its own.

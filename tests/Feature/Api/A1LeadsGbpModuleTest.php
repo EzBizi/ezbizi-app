@@ -72,17 +72,17 @@ class A1LeadsGbpModuleTest extends TestCase
     }
 
     /**
-     * And ours are where they have always been.
+     * And ours are in EzBizi's own Customer Experience tab (2026-09-25), never here.
      *
      * The other half, and the half that actually matters to the business: this
      * is the placement a Google reviewer is walked through.
      */
-    public function test_our_own_modules_are_still_inside_marketing(): void
+    public function test_our_own_modules_are_inside_customer_experience(): void
     {
         $registry = app(ModuleRegistry::class);
 
-        $this->assertSame('marketing', $registry->get('reviews')?->parent);
-        $this->assertSame('marketing', $registry->get('business_profile')?->parent);
+        $this->assertSame('customer_experience', $registry->get('reviews')?->parent);
+        $this->assertSame('customer_experience', $registry->get('business_profile')?->parent);
     }
 
     /**
@@ -100,8 +100,8 @@ class A1LeadsGbpModuleTest extends TestCase
         )->keyBy('key');
 
         $this->assertNull($modules['a1leads_gbp']['parent']);
-        $this->assertSame('marketing', $modules['reviews']['parent']);
-        $this->assertSame('marketing', $modules['business_profile']['parent']);
+        $this->assertSame('customer_experience', $modules['reviews']['parent']);
+        $this->assertSame('customer_experience', $modules['business_profile']['parent']);
     }
 
     /**

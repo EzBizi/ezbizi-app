@@ -69,6 +69,7 @@ IconData dashboardPanelIcon(String key) {
     'field': Icons.near_me_outlined,
     'inspection': Icons.fact_check_outlined,
     'marketing': Icons.campaign_outlined,
+    'customer_experience': Icons.sentiment_satisfied_outlined,
     'newsletter': Icons.newspaper_outlined,
     'web_management': Icons.language_outlined,
     'phone': Icons.phone_outlined,
