@@ -152,7 +152,7 @@ final class FieldEvaluator
         $presence->save();
     }
 
-    public function sos(User $user, float $lat, float $lng): FieldAlert
+    public function sos(User $user, ?float $lat, ?float $lng): FieldAlert
     {
         $alert = $this->raise($user, FieldAlert::SOS, 'field.sos', $lat, $lng);
         $this->audit->log('field.sos', $alert, metadata: ['latitude' => $lat, 'longitude' => $lng]);
@@ -161,7 +161,8 @@ final class FieldEvaluator
         foreach ($this->watchers($user) as $manager) {
             $this->notifications->dispatch(
                 title: "SOS from {$user->name}",
-                body: 'Pressed at '.now()->format('g:i A').'. Open Field to see where.',
+                body: 'Pressed at '.now()->format('g:i A').'. '
+                    .($lat === null ? 'Sent from a computer, without a location.' : 'Open Field to see where.'),
                 subject: $alert,
                 onlyTo: $manager,
             );

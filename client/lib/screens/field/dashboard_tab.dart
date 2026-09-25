@@ -93,9 +93,11 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     _disarm?.cancel();
     setState(() => _armed = false);
 
-    final here = await FieldTracker.currentPosition();
+    final here = FieldTracker.onPhone
+        ? await FieldTracker.currentPosition()
+        : null;
     if (!mounted) return;
-    if (here == null) {
+    if (FieldTracker.onPhone && here == null) {
       setState(
         () => _actionError =
             'Could not read your location. Allow location for EzBizi and try '
@@ -105,8 +107,8 @@ class _FieldDashboardTabState extends State<FieldDashboardTab> {
     }
 
     final response = await widget.api.post('/field/sos', {
-      'lat': here.latitude,
-      'lng': here.longitude,
+      'lat': ?here?.latitude,
+      'lng': ?here?.longitude,
     });
     if (!mounted) return;
     setState(
