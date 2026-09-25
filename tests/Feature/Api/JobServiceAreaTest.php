@@ -222,6 +222,48 @@ class JobServiceAreaTest extends TestCase
             'The control: unfiltered, all three are listed.');
     }
 
+    public function test_the_list_filters_to_the_jobs_no_area_holds(): void
+    {
+        [$alpha, $ct] = $this->world();
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $this->aJob($alpha, $ct, $connecticut->id);
+        $unplaced = $this->aJob($alpha, $ct);
+
+        $rows = $this->signedInAs($alpha['admin'])->getJson('/api/v1/jobs?service_area_id=none')->assertOk()->json('data');
+
+        $this->assertSame([$unplaced], array_column($rows, 'id'));
+    }
+
+    /**
+     * The Where picker (Jose's layout 1): every area in reach, by franchise
+     * then name, and how many jobs no area holds -- counted without the Where
+     * pair and with every other filter, the way the status chips are.
+     */
+    public function test_the_first_page_offers_the_areas_in_reach_and_counts_the_unplaced(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();   // franchises "Alpha F1" and "New York"
+        $connecticut = $this->area($alpha, $ct, 'Connecticut', ['06457']);
+        $bridgeport = $this->area($alpha, $ct, 'Bridgeport', []);
+        $albany = $this->area($alpha, $ny, 'Albany', ['12207']);   // first by name, last by franchise
+        $this->aJob($alpha, $ct, $connecticut->id);
+        $this->aJob($alpha, $ct);
+        $this->aJob($alpha, $ct, null, 'completed');
+        $this->aJob($alpha, $ny);
+
+        $meta = $this->signedInAs($alpha['admin'])
+            ->getJson("/api/v1/jobs?service_area_id={$connecticut->id}&status=scheduled")->assertOk()->json('meta');
+
+        $this->assertSame([$bridgeport->id, $connecticut->id, $albany->id], array_column($meta['service_areas'], 'id'));
+        $this->assertSame(['id' => $albany->id, 'name' => 'Albany', 'franchise_id' => $ny->id], $meta['service_areas'][2]);
+        $this->assertSame(2, $meta['unplaced_count'], 'Both scheduled unplaced jobs, whatever area is picked.');
+
+        $tech = $this->userWithRole($alpha, 'Technician', ['jobs.view'], onlyAt: $ct);
+        $meta = $this->signedInAs($tech)->getJson('/api/v1/jobs?status=scheduled')->assertOk()->json('meta');
+
+        $this->assertSame([$bridgeport->id, $connecticut->id], array_column($meta['service_areas'], 'id'), 'Albany is out of reach.');
+        $this->assertSame(1, $meta['unplaced_count']);
+    }
+
     /**
      * DEVELOPMENT-RULES: the Workiz sync must tell "a person decided" from
      * "nobody has". A person's change marks it, clearing included; a save that
@@ -314,7 +356,7 @@ class JobServiceAreaTest extends TestCase
         ])->id);
     }
 
-    private function aJob(array $tenant, Franchise $franchise, ?string $areaId = null): string
+    private function aJob(array $tenant, Franchise $franchise, ?string $areaId = null, string $status = 'scheduled'): string
     {
         $customer = $this->aCustomer($tenant, $franchise);
 
@@ -324,7 +366,7 @@ class JobServiceAreaTest extends TestCase
             'service_area_id' => $areaId,
             'number'          => 'J-'.bin2hex(random_bytes(3)),
             'title'           => 'A job',
-            'status'          => 'scheduled',
+            'status'          => $status,
         ])->id);
     }
 

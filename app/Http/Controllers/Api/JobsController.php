@@ -93,24 +93,29 @@ class JobsController extends Controller
         $midnight = $today === null ? null : $today.' 00:00:00';
 
         /*
-         * Every filter, with the status and the window each OPTIONAL.
+         * Every filter, with the status, the window and the Where pair
+         * (franchise, service area) each OPTIONAL.
          *
          * The chips count "how many of each status would I see", so their
          * counts leave the status filter out and keep everything else — a count
          * that applied its own filter would show zero on every chip but the
-         * lit one. The Upcoming/Past counts do the same for the window.
+         * lit one. The Upcoming/Past counts do the same for the window, and the
+         * Where picker's unplaced count for the Where pair.
          */
-        $filtered = function (?string $status, string $window) use ($request, $reachable, $midnight) {
+        $filtered = function (?string $status, string $window, bool $where = true) use ($request, $reachable, $midnight) {
             return Job::query()
                 // The roll-up, and the boundary. whereIn on an empty list matches
                 // nothing, which is the correct answer for a user with no
                 // assignments — not "everything".
                 ->whereIn('franchise_id', $reachable)
-                ->when($request->query('franchise_id'), fn ($q, $id) => $q->where('franchise_id', $id))
+                ->when($where ? $request->query('franchise_id') : null, fn ($q, $id) => $q->where('franchise_id', $id))
                 ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
                 ->when($status, fn ($q, $s) => $q->where('status', $s))
                 ->when($request->query('assigned_role_id'), fn ($q, $id) => $q->where('assigned_role_id', $id))
-                ->when($request->query('service_area_id'), fn ($q, $id) => $q->where('service_area_id', $id))
+                // `none`: the jobs no area holds, the picker's "Not placed".
+                ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'
+                    ? $q->whereNull('service_area_id')
+                    : $q->where('service_area_id', $id))
                 ->when(filled($request->query('search')), function ($q) use ($request) {
                     $term = trim((string) $request->query('search'));
                     $like = '%'.$term.'%';
@@ -191,6 +196,18 @@ class JobsController extends Controller
                     'past'     => $filtered($status, 'past')->count(),
                 ];
             }
+
+            // The Where picker (Jose's layout 1, 2026-09-25): every area in
+            // reach, by franchise name then area name, and the jobs no area
+            // holds. Areas come from here because Scheduling's list needs
+            // scheduling.view.
+            $franchiseNames = Franchise::query()->whereIn('id', $reachable)->pluck('name', 'id');
+            $meta['service_areas'] = ServiceArea::query()->whereIn('franchise_id', $reachable)
+                ->get(['id', 'name', 'franchise_id'])
+                ->sortBy(fn (ServiceArea $a) => ($franchiseNames[$a->franchise_id] ?? '')."\0".$a->name)
+                ->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name, 'franchise_id' => $a->franchise_id])
+                ->values()->all();
+            $meta['unplaced_count'] = $filtered($status, $when, where: false)->whereNull('service_area_id')->count();
         }
 
         /*
