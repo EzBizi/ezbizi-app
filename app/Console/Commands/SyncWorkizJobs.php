@@ -11,6 +11,7 @@ use App\Support\Tenancy\TenantContext;
 use App\Support\Workiz\WorkizJobAttributes;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Mirror every connected branch's Workiz jobs into `workiz_jobs`.
@@ -69,7 +70,8 @@ class SyncWorkizJobs extends Command
         {--since= : Read from this date (Y-m-d) instead of the rolling window}
         {--window=2 : How many days back to re-read on every run}
         {--connection= : Sync only this connection id}
-        {--reconcile=2 : How many past jobs per branch to re-read from Workiz each run}';
+        {--reconcile=2 : How many past jobs per branch to re-read from Workiz each run}
+        {--verify=1 : How many jobs per branch, of ANY status, to re-read least-recently-read first}';
 
     protected $description = 'Mirror Workiz jobs for every connected branch';
 
@@ -174,6 +176,11 @@ class SyncWorkizJobs extends Command
 
         foreach ($failed as $branch => $why) {
             $this->warn($branch.': '.$why);
+
+            // Logged as well: the scheduler throws console output away, so a
+            // refusal otherwise leaves no trace and the quota cannot be measured.
+            // $why is a status code and a sentence, never the URL with its token.
+            Log::warning('Workiz sync: '.$branch.': '.$why);
         }
 
         return self::SUCCESS;
@@ -256,11 +263,7 @@ class SyncWorkizJobs extends Command
     {
         $budget = max(0, (int) $this->option('reconcile'));
 
-        if ($budget === 0) {
-            return ['refreshed' => 0, 'failed' => null];
-        }
-
-        $stale = WorkizJob::query()
+        $stale = $budget === 0 ? collect() : WorkizJob::query()
             ->where('franchise_id', $connection->scope_id)
             ->where('synced_at', '<', $runStarted)
             ->where(fn ($q) => $q
@@ -271,9 +274,31 @@ class SyncWorkizJobs extends Command
             ->limit($budget)
             ->get(['id', 'remote_id']);
 
+        /*
+         * "SETTLED" HISTORY IS NOT SETTLED. Measured 2026-09-25 against Workiz's
+         * own Done Pending Approval tab for Connecticut: of the first 48 jobs
+         * there that the mirror holds, 6 were Done or Canceled here. A1 Tools'
+         * copy, frozen once its window moved on, and never re-read because the
+         * budget above skips closed jobs older than thirty days.
+         *
+         * So a second, separate slice: the row read least recently, whatever
+         * its status. Every job is checked against Workiz eventually, at a
+         * constant cost of `--verify` calls per branch per run, and the open
+         * jobs above keep their own pace.
+         */
+        $verify = max(0, (int) $this->option('verify'));
+
+        $oldest = $verify === 0 ? collect() : WorkizJob::query()
+            ->where('franchise_id', $connection->scope_id)
+            ->where('synced_at', '<', $runStarted)
+            ->whereNotIn('id', $stale->modelKeys())
+            ->orderBy('synced_at')
+            ->limit($verify)
+            ->get(['id', 'remote_id']);
+
         $refreshed = 0;
 
-        foreach ($stale as $row) {
+        foreach ($stale->concat($oldest) as $row) {
             $result = $workiz->find($connection, (string) $row->remote_id);
 
             if ($result['failed'] !== null) {
