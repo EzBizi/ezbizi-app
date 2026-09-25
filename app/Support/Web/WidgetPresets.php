@@ -94,6 +94,7 @@ final class WidgetPresets
         'cta',
         'phone_box',
         'review_faces',
+        'street_view',
     ];
 
     /**

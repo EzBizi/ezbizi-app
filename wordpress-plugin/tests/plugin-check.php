@@ -1639,7 +1639,7 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('every widget is registered', count($manager->registered), 11);
+check('every widget is registered', count($manager->registered), 14);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
 
@@ -1766,6 +1766,52 @@ check('the city list draws on a real page', str_contains(ob_get_clean(), 'North 
 ob_start();
 $manager->registered['ezbizi-post-title']->ezbizi_call_render();
 check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
+
+echo PHP_EOL . "Street View draws only a Google Maps embed" . PHP_EOL;
+$embed = 'https://www.google.com/maps/embed?pb=!4v1!6m8!1m7!1sAbc';
+check('a link is used as it is', ezbizi_street_view_src($embed), $embed);
+check('a pasted iframe is read for its src', ezbizi_street_view_src('<iframe src="' . $embed . '" width="600"></iframe>'), $embed);
+check('any other site is refused', ezbizi_street_view_src('https://evil.test/maps/embed?x'), '');
+check('a lookalike host is refused', ezbizi_street_view_src('https://google.com.evil.test/maps/embed'), '');
+check('plain http is refused', ezbizi_street_view_src('http://www.google.com/maps/embed?pb=1'), '');
+check('a Maps page that is not an embed is refused', ezbizi_street_view_src('https://www.google.com/maps/place/x'), '');
+
+echo PHP_EOL . "The gallery and the video carousel draw the page's own content" . PHP_EOL;
+// A1 Tools' setting names, so a page moves across by renaming its widget.
+$gallery = ezbizi_gallery_render([
+    'work_gallery' => [['id' => 1, 'url' => 'https://x.test/work1.jpg'], ['id' => 2, 'url' => 'https://x.test/work2.jpg']],
+    'images' => [
+        ['image' => ['url' => 'https://x.test/after.jpg'], 'category' => 'Chimney', 'before_image' => ['url' => 'https://x.test/before.jpg']],
+        ['image' => ['url' => ''], 'category' => 'Skipped'],
+    ],
+    'bulk_groups' => [['category' => 'Dryer vent', 'gallery' => [['url' => 'https://x.test/d1.jpg'], ['url' => 'https://x.test/d2.jpg']]]],
+    'per_page' => '4', 'columns' => '2',
+    'projects_button_label' => 'View Our Projects', 'back_button_label' => 'Back to Our Work',
+]);
+check('our work comes first', strpos($gallery, 'data-view="work"') < strpos($gallery, 'data-view="projects"'), true);
+check('and the projects wait behind a button', str_contains($gallery, 'data-view="projects" hidden'), true);
+check('two work pictures and three projects, the empty row dropped', substr_count($gallery, '<figure class="ezg-item"'), 5);
+check('a before picture sits beside its after', str_contains($gallery, 'before.jpg') && str_contains($gallery, 'ezg-pair'), true);
+check('two categories, so a filter', str_contains($gallery, '<select'), true);
+check('two columns', str_contains($gallery, 'repeat(2,'), true);
+check('nothing at all renders nothing', ezbizi_gallery_render([]), '');
+check('a picture link cannot carry a script', str_contains(ezbizi_gallery_render(['images' => [['image' => ['url' => 'javascript:alert(1)']]]]), 'javascript:'), false);
+
+$videos = ezbizi_video_carousel_render([
+    'videos' => [
+        ['video_url' => 'https://www.youtube.com/shorts/abcdefghijk', 'video_title' => 'Sweep'],
+        ['video_url' => ['url' => 'https://youtu.be/ABCDEFGHIJK']],
+        ['video_url' => 'https://vimeo.com/12345'],
+    ],
+    'slides_per_view' => '4', 'video_loop' => 'yes', 'carousel_autoplay' => 'yes',
+]);
+check('two YouTube videos, the Vimeo link skipped', substr_count($videos, '<figure class="ezv-card"'), 2);
+check('a thumbnail, not a player, until tapped', str_contains($videos, 'i.ytimg.com/vi/abcdefghijk/') && ! str_contains($videos, '<iframe'), true);
+check('the privacy-enhanced player', str_contains($videos, 'youtube-nocookie.com/embed/abcdefghijk'), true);
+check('a looped video names itself as the playlist', str_contains($videos, 'playlist=abcdefghijk'), true);
+check('two videos fit in four, so no arrows', str_contains($videos, 'class="ezv-arrow'), false);
+check('no videos renders nothing', ezbizi_video_carousel_render(['videos' => [['video_url' => 'nope']]]), '');
+check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?feature=x&v=abcdefghijk'), 'abcdefghijk');
 
 echo "\n".($failures === 0
     ? "PASS  {$checks} checks\n\n"

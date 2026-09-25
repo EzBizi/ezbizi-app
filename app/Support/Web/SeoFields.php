@@ -371,6 +371,16 @@ class SeoFields
                 'hint' => "Chosen from this website's categories.",
                 'requirement' => self::OPTIONAL,
             ],
+            /*
+             * A Street View of the place a location page is about, drawn by
+             * [ezbizi_street_view]. A1 Tools' [a1tools_viewpoint] is on 67
+             * pages of 65 sites. `_url` so the plugin escapes it as a link.
+             */
+            'street_view_url' => [
+                'label' => 'Street View link',
+                'hint' => 'From Google Maps: Share, then "Embed a map", then the link inside src="…".',
+                'requirement' => self::OPTIONAL,
+            ],
         ]);
     }
 

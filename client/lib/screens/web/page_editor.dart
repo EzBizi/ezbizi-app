@@ -331,6 +331,7 @@ class _PageEditorState extends State<PageEditor> {
                 _text(theme, 'group'),
                 _choice(theme, 'author', _authors),
                 _choice(theme, 'category', _categories),
+                _text(theme, 'street_view_url'),
                 if (_optionsError != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 12),

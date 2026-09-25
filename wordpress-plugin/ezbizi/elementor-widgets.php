@@ -410,3 +410,26 @@ class EzBizi_Elementor_Review_Faces extends EzBizi_Elementor_Preset_Widget {
         return ezbizi_review_faces_shortcode(array('preset' => $preset));
     }
 }
+
+/** The page's Street View. */
+class EzBizi_Elementor_Street_View extends EzBizi_Elementor_Widget {
+    public function get_name() {
+        return 'ezbizi-street-view';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Street View', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-google-maps';
+    }
+
+    public function get_keywords() {
+        return array('ezbizi', 'street view', 'viewpoint', 'map', 'location');
+    }
+
+    protected function render() {
+        echo ezbizi_street_view_shortcode(array());
+    }
+}

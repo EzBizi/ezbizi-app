@@ -48,6 +48,7 @@ function ezbizi_register_elementor_widgets($widgets_manager) {
     }
 
     require_once __DIR__ . '/elementor-widgets.php';
+    require_once __DIR__ . '/elementor-media.php';
 
     $widgets_manager->register(new EzBizi_Elementor_Form());
     $widgets_manager->register(new EzBizi_Elementor_Chat());
@@ -60,6 +61,9 @@ function ezbizi_register_elementor_widgets($widgets_manager) {
     $widgets_manager->register(new EzBizi_Elementor_Cta());
     $widgets_manager->register(new EzBizi_Elementor_Phone_Box());
     $widgets_manager->register(new EzBizi_Elementor_Review_Faces());
+    $widgets_manager->register(new EzBizi_Elementor_Gallery());
+    $widgets_manager->register(new EzBizi_Elementor_Street_View());
+    $widgets_manager->register(new EzBizi_Elementor_Video_Carousel());
 }
 
 /**

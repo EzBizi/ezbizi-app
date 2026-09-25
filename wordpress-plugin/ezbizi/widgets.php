@@ -1104,6 +1104,48 @@ function ezbizi_phone_box_shortcode($atts) {
     return $out . '</div></div>';
 }
 
+// ── Street View ─────────────────────────────────────────────────────
+
+/**
+ * [ezbizi_street_view] — the page's `street_view_url` as a Street View.
+ *
+ * Only a Google Maps embed is drawn. The value is typed by a person and lands
+ * in an iframe on somebody's live page, and an iframe of any other address is
+ * a way to put a stranger's page inside theirs. A whole `<iframe …>` pasted
+ * where the link should go is read for its src rather than refused, since
+ * that is what Google's "Embed a map" hands over.
+ */
+function ezbizi_street_view_src($raw) {
+    $raw = trim(html_entity_decode((string) $raw, ENT_QUOTES));
+
+    if (stripos($raw, '<iframe') !== false) {
+        $raw = preg_match('/src\s*=\s*["\']([^"\']+)["\']/i', $raw, $m) ? $m[1] : '';
+    }
+
+    $parts = wp_parse_url($raw);
+    $host = isset($parts['host']) ? strtolower($parts['host']) : '';
+
+    if (($parts['scheme'] ?? '') !== 'https'
+        || ! preg_match('/^(www\.|maps\.)?google\.(com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$/', $host)
+        || strpos($parts['path'] ?? '', '/maps/embed') !== 0) {
+        return '';
+    }
+
+    return $raw;
+}
+
+function ezbizi_street_view_shortcode($atts) {
+    $src = ezbizi_street_view_src(ezbizi_value('street_view_url'));
+
+    if ($src === '') {
+        return '';
+    }
+
+    return '<div class="ezbizi-street-view"><iframe src="' . esc_url($src) . '" width="100%" height="450"'
+        . ' style="border:0;display:block" allowfullscreen loading="lazy"'
+        . ' referrerpolicy="no-referrer-when-downgrade" title="Street View"></iframe></div>';
+}
+
 // ── Review faces ────────────────────────────────────────────────────
 
 /**
@@ -1230,4 +1272,5 @@ add_action('init', function () {
     add_shortcode('ezbizi_cta', 'ezbizi_cta_shortcode');
     add_shortcode('ezbizi_phone_box', 'ezbizi_phone_box_shortcode');
     add_shortcode('ezbizi_review_faces', 'ezbizi_review_faces_shortcode');
+    add_shortcode('ezbizi_street_view', 'ezbizi_street_view_shortcode');
 });
