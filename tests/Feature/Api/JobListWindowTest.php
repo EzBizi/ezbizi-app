@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -192,6 +193,16 @@ class JobListWindowTest extends TestCase
      */
     private function fourJobs(): array
     {
+        /*
+         * The clock, pinned to the fixture's own day. The undated job sorts by
+         * its created_at in the no-window order (COALESCE), and the dates
+         * above are fixed — so against the real clock this file was a time
+         * bomb: from 09:00 UTC on 2026-09-25, "now" passed "Tomorrow" and the
+         * undated job moved to the top. It went red on every machine that day,
+         * a release gate after it had first gone green (deploy desk).
+         */
+        $this->travelTo(Carbon::parse(self::TODAY.' 12:00:00'));
+
         $alpha = $this->provisionTenant('Alpha');
         $this->signedInAs($alpha['admin']);
         $this->franchiseId = $alpha['franchise']->id;
