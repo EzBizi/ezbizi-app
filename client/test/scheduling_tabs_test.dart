@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling_screen.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -34,32 +35,41 @@ void main() {
   /// as `_tab == 2` would tell Settings it was off-screen while it was the only
   /// tab drawn — it would render and never load, which looks like an empty
   /// screen rather than a permission.
-  testWidgets('a manager with Settings alone gets Settings, loaded, at index 0', (
-    tester,
-  ) async {
-    var askedForAreas = false;
+  testWidgets(
+    'a manager with Settings alone gets Settings, loaded, at index 0',
+    (tester) async {
+      var askedForAreas = false;
 
-    await _pump(
-      tester,
-      const ['scheduling.view', 'scheduling.settings.view'],
-      onRequest: (request) {
-        if (request.url.path.endsWith('/scheduling/areas')) {
-          askedForAreas = true;
-        }
-        return null;
-      },
-    );
+      await _pump(
+        tester,
+        const ['scheduling.view', 'scheduling.settings.view'],
+        onRequest: (request) {
+          if (request.url.path.endsWith('/scheduling/areas')) {
+            askedForAreas = true;
+          }
+          return null;
+        },
+      );
 
-    expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Availability'), findsNothing);
+      expect(find.text('Settings'), findsOneWidget);
+      // The TOP bar: Settings has its own "Availability" sub-tab (Jose,
+      // 2026-09-25), which is not the Availability tab.
+      expect(
+        find.descendant(
+          of: find.byType(TabBarLike).first,
+          matching: find.text('Availability'),
+        ),
+        findsNothing,
+      );
 
-    // The pane it drew is the one it thinks is visible: it loaded.
-    expect(
-      askedForAreas,
-      isTrue,
-      reason: 'Settings at index 0 must know it is the visible tab.',
-    );
-  });
+      // The pane it drew is the one it thinks is visible: it loaded.
+      expect(
+        askedForAreas,
+        isTrue,
+        reason: 'Settings at index 0 must know it is the visible tab.',
+      );
+    },
+  );
 
   testWidgets('every tab granted draws all three', (tester) async {
     await _pump(tester, const [
@@ -168,7 +178,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Availability'), findsNothing);
+    // The TOP bar: Settings has its own "Availability" sub-tab (Jose,
+    // 2026-09-25), which is not the Availability tab.
+    expect(
+      find.descendant(
+        of: find.byType(TabBarLike).first,
+        matching: find.text('Availability'),
+      ),
+      findsNothing,
+    );
 
     expect(
       askedForAreas,

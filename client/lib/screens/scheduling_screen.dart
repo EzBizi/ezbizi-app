@@ -6,6 +6,7 @@ import '../widgets/tab_bar_like.dart';
 import 'scheduling/availability_pane.dart';
 import 'scheduling/capacity_settings.dart';
 import 'scheduling/schedule_pane.dart';
+import 'scheduling/technician_links.dart';
 
 /// Scheduling: Availability, the Schedule board, and Settings.
 ///
@@ -61,7 +62,7 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
       'settings',
       'Settings',
       Icons.tune,
-      () => CapacitySettings(
+      () => SchedulingSettings(
         api: widget.api,
         session: widget.session,
         visible: _visible('settings'),
@@ -166,6 +167,80 @@ class _SchedulingScreenState extends State<SchedulingScreen> {
                   offstage: i != selected,
                   child: _shown.contains(i)
                       ? tabs[i].$4()
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Settings, in two sub-tabs (Jose, 2026-09-25): Availability is the capacity
+/// screen that was all of Settings until now; Schedule links Workiz
+/// technicians to EzBizi users.
+///
+/// ponytail: both sit under `scheduling.settings.view`. Split the grant when
+/// somebody needs one without the other.
+class SchedulingSettings extends StatefulWidget {
+  const SchedulingSettings({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.visible,
+  });
+
+  final ApiClient api;
+  final Session session;
+  final bool visible;
+
+  @override
+  State<SchedulingSettings> createState() => _SchedulingSettingsState();
+}
+
+class _SchedulingSettingsState extends State<SchedulingSettings> {
+  int _tab = 0;
+  final Set<int> _shown = {0};
+
+  @override
+  Widget build(BuildContext context) {
+    final panes = [
+      () => CapacitySettings(
+        api: widget.api,
+        session: widget.session,
+        visible: widget.visible && _tab == 0,
+      ),
+      () => TechnicianLinks(
+        api: widget.api,
+        visible: widget.visible && _tab == 1,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TabBarLike(
+          labels: const [
+            ('Availability', Icons.event_available_outlined),
+            ('Schedule', Icons.engineering_outlined),
+          ],
+          selected: _tab,
+          onSelected: (i) => setState(() {
+            _tab = i;
+            _shown.add(i);
+          }),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              for (var i = 0; i < panes.length; i++)
+                Offstage(
+                  offstage: i != _tab,
+                  child: _shown.contains(i)
+                      ? panes[i]()
                       : const SizedBox.shrink(),
                 ),
             ],

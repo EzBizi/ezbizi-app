@@ -1175,6 +1175,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ErrorNote(_paneError!),
         ],
         const SizedBox(height: 14),
+        _dailyTotals(theme, area),
+        const SizedBox(height: 18),
         Text(
           'Jobs ${area['name']} can take per slot, per weekday.',
           style: theme.textTheme.bodySmall?.copyWith(
@@ -1757,6 +1759,123 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
+  /// What a weekday adds up to, above the editor, so nobody adds up the slots
+  /// by hand (Jose, 2026-09-25, pointing at A1's "Daily totals"). Follows the
+  /// typing, before Save. When the franchise has other areas, each tile also
+  /// says what the whole franchise takes that day: the other areas' SAVED
+  /// numbers plus this area's live ones.
+  Widget _dailyTotals(ThemeData theme, Map<String, dynamic> area) {
+    int dayTotal(int weekday) => (_grid[weekday] ?? const []).fold(
+      0,
+      (sum, r) => sum + ((r['max_jobs'] as num?)?.toInt() ?? 0),
+    );
+
+    final siblings = _areas
+        .where(
+          (a) =>
+              a['franchise_id'] == area['franchise_id'] &&
+              a['id'] != _openAreaId,
+        )
+        .toList();
+    final franchise = _me?.franchises
+        .where((f) => f.id == area['franchise_id'])
+        .firstOrNull
+        ?.name;
+
+    int franchiseTotal(int weekday, int own) => siblings.fold(
+      own,
+      (sum, a) =>
+          sum + (((a['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'DAILY TOTALS',
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 0.8,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            for (final (weekday, label) in _week) ...[
+              if (weekday != 1) const SizedBox(width: 6),
+              Expanded(
+                child: Builder(
+                  builder: (context) {
+                    final total = dayTotal(weekday);
+                    final tone = ToneColours.of(
+                      context,
+                      total > 0 ? Tone.ok : Tone.neutral,
+                    );
+                    final whole = franchiseTotal(weekday, total);
+
+                    return Container(
+                      key: ValueKey('daily-total-$weekday'),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: tone.fill,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            label,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: tone.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          FittedBox(
+                            child: Text(
+                              total > 0 ? '$total' : 'Closed',
+                              style:
+                                  (total > 0
+                                          ? theme.textTheme.titleLarge
+                                          : theme.textTheme.labelMedium)
+                                      ?.copyWith(
+                                        color: tone.ink,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                            ),
+                          ),
+                          if (siblings.isNotEmpty && whole > 0)
+                            FittedBox(
+                              child: Text(
+                                '$whole in all',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: tone.ink.withValues(alpha: 0.75),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (siblings.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '"In all" is every ${franchise ?? 'franchise'} area together: '
+            '${area['name']} as typed above, the other '
+            '${siblings.length == 1 ? 'area' : '${siblings.length} areas'} '
+            'as saved.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// One ROW per day, not one card.
   ///
   /// Seven cards with their own padding, borders and a full-height button each
@@ -1846,9 +1965,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
                                     // offered that day. Stored as absence,
                                     // never as a zero — the server refuses a
                                     // zero anyway.
-                                    row['max_jobs'] = (n != null && n > 0)
-                                        ? n
-                                        : null;
+                                    // setState so the daily totals above
+                                    // follow the typing.
+                                    setState(
+                                      () => row!['max_jobs'] =
+                                          (n != null && n > 0) ? n : null,
+                                    );
                                   },
                                 ),
                               ),
