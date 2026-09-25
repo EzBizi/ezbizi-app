@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Web Management, SEO: a field that publishes nothing is amber and says Not filled in, labels sit above the boxes so an empty box no longer looks filled, and each website in the list shows how many fields it is missing.',
         'In Reports, Days until next open day counts closed dates and each area\'s date before which it takes no bookings, not only the weekly pattern.',
+        'Replying to A-1 Chimney\'s Google reviews needs the A1Leads GBP Reply permission, ticked in Roles. Seeing the tab no longer includes replying.',
+        'A review\'s card shows the Workiz customer A1 Leads matched, their last job and technician, a link to it in Workiz, who has the card, and its updates.',
       ],
     ),
     VersionRelease(
