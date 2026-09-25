@@ -226,7 +226,7 @@ function ezbizi_store_locator_shortcode($atts) {
     $out .= '<div class="ezbizi-stores" id="' . esc_attr($id) . '">';
 
     if (! empty($p['search'])) {
-        $out .= '<div class="ezbizi-stores-bar"><input type="search" placeholder="' . esc_attr__('Search by town, state or ZIP', 'ezbizi') . '" aria-label="' . esc_attr__('Search locations', 'ezbizi') . '" />';
+        $out .= '<div class="ezbizi-stores-bar"><input type="search" placeholder="' . esc_attr__('Search by town or ZIP', 'ezbizi') . '" aria-label="' . esc_attr__('Search locations', 'ezbizi') . '" />';
 
         if (count($states) > 1) {
             $out .= '<select aria-label="' . esc_attr__('State', 'ezbizi') . '"><option value="">' . esc_html__('All states', 'ezbizi') . '</option>';
