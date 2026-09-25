@@ -12,6 +12,7 @@ class VersionHistory {
       date: '24 Sep 2026',
       items: [
         'Scheduling Settings can close a particular date or change how many jobs it takes, and set a date before which a service area takes no bookings. Availability follows both.',
+        'Scheduling, Schedule shows the day as a board: technicians down the side, time slots across, each job in the cell of the technician on it, and the unassigned jobs beside it. It is read-only; jobs are still assigned in Workiz.',
       ],
     ),
     VersionRelease(
