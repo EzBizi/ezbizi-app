@@ -16,6 +16,7 @@ class VersionHistory {
         'Web Management has Team, Branches and Store locator cards, holding the lists A1 Tools used to keep for the websites. The website plugin that draws them, with the Street View, gallery and video carousel, rolls out to the sites separately.',
         'Every new Google review of A-1 Chimney arrives in Automations as New Google review, once, so a rule can act on it. A new dashboard box counts them, and the ones with 1 to 3 stars.',
         'Jobs shows where each job is: a Where column and one Where picker for franchise and service area, with Not placed for jobs no area holds. A job record has a Service area field, limited to the areas of its own franchise, and phone rows show the area.',
+        'An automation can answer a new A-1 Chimney Google review with a Reply on Google step, and there is a template to start from.',
       ],
     ),
     VersionRelease(
