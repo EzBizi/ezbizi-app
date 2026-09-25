@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Franchise;
+use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
@@ -72,6 +73,15 @@ class SchedulingAreasController extends Controller
                 // rests on that distinction.
                 'week' => $this->week($a->slots),
             ])->all(),
+            // Each franchise's daily limit, weekday => jobs, for the franchise
+            // Overview. A franchise with none is absent; a weekday with none is
+            // absent. Objects, not lists — see week().
+            'franchise_limits' => (object) FranchiseDailyLimit::query()
+                ->whereIn('franchise_id', $areas->pluck('franchise_id')->unique())
+                ->get()
+                ->groupBy('franchise_id')
+                ->map(fn ($rows) => (object) $rows->pluck('max_jobs', 'weekday')->all())
+                ->all(),
             'pattern' => $pattern === null ? null : [
                 'slots' => SlotShape::describe($pattern),
                 'followed_by' => $shapes->filter(fn ($s) => $s === $pattern)->count(),

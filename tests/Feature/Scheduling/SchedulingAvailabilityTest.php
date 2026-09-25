@@ -308,6 +308,84 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([0, 1], array_column($this->first($tenant, 'zip=75201')['first']['windows'], 'taken'));
     }
 
+    private function limit(array $tenant, array $limits): void
+    {
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/franchises/{$tenant['franchise']->id}/limits", ['limits' => $limits])
+            ->assertOk();
+    }
+
+    /**
+     * THE FRANCHISE'S DAILY LIMIT (Jose, 2026-09-25: "when im at 15 bookings
+     * already it should stop offering said day"). A job in ANOTHER area of the
+     * franchise uses the limit up, so Dallas's Monday is full although Dallas
+     * itself has all three seats free.
+     */
+    public function test_a_franchise_at_its_daily_limit_stops_offering_the_day_in_every_area(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 1]);
+
+        $this->booked($tenant, '2026-10-05 08:00:00', area: 'Houston');
+
+        $area = $this->first($tenant, 'zip=75201');
+
+        $this->assertSame('2026-10-12', $area['first']['date'], 'Monday the 5th: DMV-style limit of 1, already 1 booked.');
+    }
+
+    /** Short of the limit, no window offers more than the franchise has left — and the day says why. */
+    public function test_no_window_offers_more_than_the_franchise_has_left(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 2]);
+
+        $this->booked($tenant, '2026-10-05 00:00:00', area: 'Houston');
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame('2026-10-05', $first['date']);
+        $this->assertSame([1, 1], array_column($first['windows'], 'remaining'), 'Dallas has 2 and 1; the franchise has 1 left.');
+        $this->assertSame(2, $first['franchise_limit']);
+        $this->assertSame(1, $first['franchise_booked']);
+    }
+
+    /** A cancelled job is not a booking against the limit either. */
+    public function test_a_free_status_does_not_count_against_the_limit(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 1]);
+
+        $this->booked($tenant, '2026-10-05 08:00:00', 'Canceled', area: 'Houston');
+
+        $this->assertSame('2026-10-05', $this->first($tenant, 'zip=75201')['first']['date']);
+    }
+
+    /** Stored per weekday, blank is none, zero refused, and the areas list carries it. */
+    public function test_limits_are_stored_per_weekday_and_listed_with_the_areas(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/franchises/{$tenant['franchise']->id}/limits", ['limits' => ['1' => 0]])
+            ->assertStatus(422);
+
+        $this->limit($tenant, ['1' => 15, '5' => 10, '6' => null]);
+
+        $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/areas')
+            ->assertOk()
+            ->assertJsonPath("franchise_limits.{$tenant['franchise']->id}", ['1' => 15, '5' => 10]);
+
+        $viewer = $this->userWithRole($tenant, 'Viewer', ['scheduling.view', 'scheduling.settings.view']);
+        $this->signedInAs($viewer)
+            ->putJson("/api/v1/scheduling/franchises/{$tenant['franchise']->id}/limits", ['limits' => ['1' => 3]])
+            ->assertForbidden();
+    }
+
     /**
      * An area nobody has configured says so — not "closed", not "full", and
      * never a date. The client turns it into "check Workiz".

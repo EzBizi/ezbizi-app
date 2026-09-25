@@ -633,6 +633,114 @@ void main() {
     },
   );
 
+  /// Jose, 2026-09-25: "i should be able to set a limit of jobs as well for
+  /// the franchise itself, since the technicians are shared". The limit shows
+  /// under each day's total and saves as weekday => jobs, blank as none.
+  testWidgets(
+    "a franchise's daily limit is shown and saved from its overview",
+    (tester) async {
+      Map<String, dynamic>? saved;
+      const areas = [
+        {
+          'id': 'a-1',
+          'name': 'Maryland',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {'1': 8, '2': 8, '3': 8, '4': 8, '5': 6, '6': null, '0': 8},
+        },
+        {
+          'id': 'a-2',
+          'name': 'Atlanta',
+          'franchise_id': 'fr-2',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {
+            '1': 5,
+            '2': 5,
+            '3': 5,
+            '4': 5,
+            '5': 5,
+            '6': null,
+            '0': null,
+          },
+        },
+      ];
+
+      await _pump(
+        tester,
+        me: const {
+          'franchises': [
+            {'id': 'fr-1', 'name': 'DMV', 'company_id': 'co-1'},
+            {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+          ],
+        },
+        onRequest: (request) {
+          final path = request.url.path;
+          if (request.method == 'GET' && path.endsWith('/scheduling/areas')) {
+            return _json({
+              'data': areas,
+              'pattern': null,
+              'franchise_limits': {
+                'fr-1': {'1': 15},
+              },
+            });
+          }
+          if (request.method == 'PUT' &&
+              path.endsWith('/franchises/fr-1/limits')) {
+            saved = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'data': {'1': 15, '5': 10},
+            });
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('rail-franchise-fr-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('franchise-total-1')),
+          matching: find.text('max 15'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('franchise-limit-1')))
+            .controller!
+            .text,
+        '15',
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('franchise-limit-5')),
+        '10',
+      );
+      await tester.tap(find.text('Save DMV limit'));
+      await tester.pumpAndSettle();
+
+      expect(saved!['limits'], {
+        '0': null,
+        '1': 15,
+        '2': null,
+        '3': null,
+        '4': null,
+        '5': 10,
+        '6': null,
+      });
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('franchise-total-5')),
+          matching: find.text('max 10'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('a narrow overview scrolls its table, not the page', (
     tester,
   ) async {

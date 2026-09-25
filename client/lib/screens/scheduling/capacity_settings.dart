@@ -113,6 +113,17 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// The franchise whose Overview is open; null is the whole view's.
   String? _overviewFranchiseId;
 
+  /// Each franchise's daily limit, weekday => jobs (Jose, 2026-09-25: the
+  /// franchise's technicians are shared, so its areas' sum is not what it can
+  /// do). Absent is no limit. Openings enforces it on the server.
+  Map<String, Map<int, int>> _franchiseLimits = {};
+
+  /// The open franchise's limit fields, weekday => field.
+  final Map<int, TextEditingController> _limitFields = {
+    for (var d = 0; d < 7; d++) d: TextEditingController(),
+  };
+  bool _savingLimits = false;
+
   /// Each weekday's "Day" box. Kept equal to the sum of its windows, so typing
   /// a window updates it; typing IT splits the number across the windows.
   final Map<int, TextEditingController> _dayTotal = {};
@@ -163,6 +174,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     for (final c in _dayTotal.values) {
       c.dispose();
     }
+    for (final c in _limitFields.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -185,6 +199,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       }
       _areas = (response.body['data'] as List? ?? const [])
           .cast<Map<String, dynamic>>();
+      _franchiseLimits = {
+        for (final e
+            in (response.body['franchise_limits'] as Map? ?? const {}).entries)
+          '${e.key}': {
+            for (final d in (e.value as Map).entries)
+              int.parse('${d.key}'): (d.value as num).toInt(),
+          },
+      };
     });
   }
 
@@ -319,6 +341,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _form = _Form.none;
     _paneError = null;
     _overviewFranchiseId = franchiseId;
+    final limits = _franchiseLimits[franchiseId] ?? const {};
+    for (final e in _limitFields.entries) {
+      e.value.text = limits[e.key]?.toString() ?? '';
+    }
   });
 
   /// Open the create form.
@@ -1195,13 +1221,83 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 6),
-        _dayTiles(theme, keyPrefix: 'franchise-total', total: total),
+        _dayTiles(
+          theme,
+          keyPrefix: 'franchise-total',
+          total: total,
+          under: (weekday) {
+            final max = _franchiseLimits[franchiseId]?[weekday];
+
+            return max == null ? null : 'max $max';
+          },
+        ),
         const SizedBox(height: 6),
         Text(
           'Every $name area added up, as saved. A day is closed only when '
           'every area is.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          'DAILY LIMIT FOR $name'.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 0.8,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        // Under the tiles, one field per day, so each limit sits beneath the
+        // total it caps.
+        Row(
+          children: [
+            for (final (weekday, _) in _week) ...[
+              if (weekday != 1) const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  key: ValueKey('franchise-limit-$weekday'),
+                  controller: _limitFields[weekday],
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  enabled: !_savingLimits,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'No limit',
+                    hintStyle: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 10,
+                    ),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'The most jobs $name takes that day across all its areas, since '
+          'they share technicians. Once that many are booked, Availability '
+          "stops offering the day in every $name area, whatever an area has "
+          'left. It never raises an area\'s own numbers. Blank is no limit.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (_paneError != null) ...[
+          const SizedBox(height: 10),
+          ErrorNote(_paneError!),
+        ],
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton(
+            onPressed: _savingLimits ? null : () => _saveLimits(franchiseId),
+            child: Text(_savingLimits ? 'Saving…' : 'Save $name limit'),
           ),
         ),
         const SizedBox(height: 18),
@@ -2174,8 +2270,13 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           total: dayTotal,
           under: (weekday) {
             final whole = franchiseTotal(weekday, dayTotal(weekday));
+            final max = _franchiseLimits[area['franchise_id']]?[weekday];
+            final parts = [
+              if (siblings.isNotEmpty && whole > 0) '$whole in all',
+              if (max != null) 'max $max',
+            ];
 
-            return siblings.isNotEmpty && whole > 0 ? '$whole in all' : null;
+            return parts.isEmpty ? null : parts.join(' · ');
           },
         ),
         if (siblings.isNotEmpty) ...[
@@ -2192,6 +2293,38 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         ],
       ],
     );
+  }
+
+  /// The open franchise's limit fields, as typed. Blank is no limit; the
+  /// server refuses a zero, which is not a limit but a closure.
+  Future<void> _saveLimits(String franchiseId) async {
+    final limits = <String, int?>{
+      for (final e in _limitFields.entries)
+        '${e.key}': int.tryParse(e.value.text.trim()),
+    };
+
+    setState(() {
+      _savingLimits = true;
+      _paneError = null;
+    });
+
+    final response = await widget.api.put(
+      '/scheduling/franchises/$franchiseId/limits',
+      {'limits': limits},
+    );
+    if (!mounted) return;
+
+    setState(() {
+      _savingLimits = false;
+      if (!response.ok) {
+        _paneError = response.message;
+        return;
+      }
+      _franchiseLimits[franchiseId] = {
+        for (final e in limits.entries)
+          if (e.value != null) int.parse(e.key): e.value!,
+      };
+    });
   }
 
   /// Seven day tiles, Monday first: green with the number, grey "Closed" at
