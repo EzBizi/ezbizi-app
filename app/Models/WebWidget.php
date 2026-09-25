@@ -7,6 +7,7 @@ use App\Support\Branding\Branding;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
 use App\Support\Web\WidgetDefaults;
+use App\Support\Web\WidgetPresets;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -135,6 +136,9 @@ class WebWidget extends Model implements StatesRetention
             'config' => self::resolvedFor($site),
             'own' => $own !== null,
             'inherited' => $own === null ? [] : self::inheritedFor($site),
+            // What each preset option is, so the screen can draw the generated
+            // style options without a hand copy of them.
+            'schema' => WidgetPresets::schema(),
         ];
     }
 
