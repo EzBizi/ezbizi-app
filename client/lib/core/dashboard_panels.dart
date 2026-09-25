@@ -65,6 +65,8 @@ IconData dashboardPanelIcon(String key) {
     'customers': Icons.people_outline,
     'jobs': Icons.construction_outlined,
     'scheduling': Icons.calendar_month_outlined,
+    // Same mark as its sidebar entry (module_screens.dart).
+    'field': Icons.near_me_outlined,
     'inspection': Icons.fact_check_outlined,
     'marketing': Icons.campaign_outlined,
     'newsletter': Icons.newspaper_outlined,

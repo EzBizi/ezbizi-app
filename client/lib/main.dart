@@ -12,6 +12,7 @@ import 'core/live_view_service.dart';
 import 'core/mobile_view_window.dart';
 import 'core/module_screens.dart';
 import 'screens/leads_screen.dart';
+import 'core/field_tracker.dart';
 import 'core/monitoring_heartbeat.dart';
 import 'core/permissions.dart';
 import 'core/remote_control_service.dart';
@@ -492,6 +493,10 @@ class _HomeShellState extends State<HomeShell> {
   /// Null when exempt — it then never polls input-pending and applies nothing.
   RemoteControlService? _remoteControl;
 
+  /// Field GPS sharing, on a phone whose role is tracked. It asks the server
+  /// whether to share and starts or stops itself; null off a phone.
+  FieldTracker? _fieldTracker;
+
   @override
   void initState() {
     super.initState();
@@ -526,6 +531,7 @@ class _HomeShellState extends State<HomeShell> {
     // of the afternoon. Anything that must be immediate — a call starting or
     // ending — already notifies in the same frame.
     _heartbeat.onBeat = PhoneCallService.current.presenceMayHaveChanged;
+    _fieldTracker = FieldTracker.startIfPhone(widget.api, widget.session);
     if (!exempt) {
       // The capture service tells the heartbeat how each attempt went, and
       // the beat carries it to the server — otherwise a device that cannot
@@ -645,6 +651,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _stopListening?.call();
     _heartbeat.dispose();
+    _fieldTracker?.dispose();
     // Null for an exempt session, where they were never constructed.
     _screenshots?.dispose();
     _liveView?.dispose();

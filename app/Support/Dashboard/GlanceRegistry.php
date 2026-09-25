@@ -7,6 +7,7 @@ use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
+use App\Support\Dashboard\Glances\FieldGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
 use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
@@ -58,6 +59,8 @@ class GlanceRegistry
         // already click). Dashboard's copy of this line arrived from main with
         // the old order, which was mine before the decision, not theirs.
         'profit_loss',
+        // Field, on the end like its sidebar entry (2026-09-25).
+        'field',
     ];
 
     /**
@@ -203,6 +206,7 @@ class GlanceRegistry
         PhoneGlance::class,
         MarketingGlance::class,
         ReportsGlance::class,
+        FieldGlance::class,
     ];
 
     public function __construct(

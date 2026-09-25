@@ -273,3 +273,7 @@ Schedule::command('ezbizi:phone-usage')->dailyAt('04:20')->withoutOverlapping(30
 // read. It only RAISES `a1leads_gbp.review_received`; the outbox sweep above
 // delivers it.
 Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->withoutOverlapping(10);
+
+// Field: lost-signal alerts (the one fact no incoming point can announce) and
+// geocoding the next days' job addresses, so arrival checks never wait on Google.
+Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5);
