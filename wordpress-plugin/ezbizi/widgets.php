@@ -1416,8 +1416,9 @@ function ezbizi_contact_info_style($id, $layout) {
         . $sel . '.ezbizi-contact-inline{flex-direction:row;flex-wrap:wrap;align-items:center}'
         . $sel . ' .ezbizi-contact-item{display:flex;align-items:center;gap:10px}'
         . $sel . ' .ezbizi-contact-icon{display:inline-flex;align-items:center;justify-content:center;'
-            . 'width:40px;height:40px;border-radius:8px;border:1px solid currentColor;flex:none}'
-        . $sel . '.ezbizi-contact-compact .ezbizi-contact-icon{width:28px;height:28px;border:0}'
+            // Sized around its icon, so a large padding cannot squeeze the icon to nothing.
+            . 'box-sizing:content-box;min-width:20px;min-height:20px;padding:9px;border-radius:8px;border:1px solid currentColor;flex:none}'
+        . $sel . '.ezbizi-contact-compact .ezbizi-contact-icon{padding:4px;border:0}'
         . $sel . ' .ezbizi-contact-text{display:flex;flex-direction:column;min-width:0}'
         . $sel . ' .ezbizi-contact-label{font-weight:700;line-height:1.2}'
         . $sel . ' .ezbizi-contact-value{line-height:1.3;word-break:break-word}'

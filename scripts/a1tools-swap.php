@@ -117,6 +117,20 @@ function a1swap_text($s, &$report) {
         return $m[1] . rawurlencode(wp_json_encode($json)) . $m[3];
     }, $s);
 
+    // Page and site CSS written against A1's class names (46 pages of nj
+    // carry a radius system on them) is pointed at EzBizi's.
+    $s = preg_replace_callback('/\.(a1tools-[a-z0-9_-]+)(?![a-z0-9_-])/i', function ($m) use (&$report) {
+        $to = a1swap_classes()[strtolower($m[1])] ?? null;
+
+        if ($to === null) {
+            return $m[0];
+        }
+
+        $report['css'][$m[1]] = ($report['css'][$m[1]] ?? 0) + 1;
+
+        return '.' . $to;
+    }, $s);
+
     // A link written as `http://[a1tools_seo_city_web]` was broken: that
     // shortcode no longer exists. The city link carries its own scheme.
     $s = preg_replace('~https?://(\[a1tools_(?:seo_city_web|city_web|state_web|website_url)[^\]]*\])~', '$1', $s);
@@ -135,6 +149,35 @@ function a1swap_text($s, &$report) {
 
         return $with;
     }, $s);
+}
+
+/** A1 class → the EzBizi class on the same part. Unlisted ones are left: dead, and harmless. */
+function a1swap_classes() {
+    return array(
+        'a1tools-cta-button' => 'ezbizi-cta-button',
+        'a1tools-web-chat__button' => 'ezbizi-chat-open',
+        'a1tools-web-chat__close' => 'ezbizi-chat-close',
+        'a1tools-web-form__submit' => 'ezbizi-form-submit',
+        'a1tools-info-box' => 'ezbizi-contact',
+        'a1tools-contact-info-widget' => 'ezbizi-contact',
+        'a1tools-contact-info-item' => 'ezbizi-contact-item',
+        'a1tools-info-box-icon' => 'ezbizi-contact-icon',
+        'a1tools-info-box-value' => 'ezbizi-contact-value',
+        'a1tools-hours-row' => 'ezbizi-contact-hours-row',
+        'a1tools-hours-day' => 'ezbizi-contact-day',
+        'a1tools-hours-time' => 'ezbizi-contact-time',
+        'a1tools-franchise-card' => 'ezbizi-branch',
+        'a1tools-city-group' => 'ezbizi-cities-group',
+        'a1tools-social-icon' => 'ezbizi-social-link',
+        'a1tools-vc-arrow' => 'ezv-arrow',
+        'a1tools-vc-play' => 'ezv-play',
+        'a1tools-vc-card' => 'ezv-card',
+        'a1tools-vc-slide' => 'ezv-card',
+        'a1tools-vc-thumb' => 'ezv-frame',
+        'a1tools-vc-poster' => 'ezv-frame',
+        'a1tools-gallery-item' => 'ezg-item',
+        'a1tools-gallery-pagination' => 'ezg-pages',
+    );
 }
 
 // ── Reading A1's settings as they render ────────────────────────────
@@ -245,6 +288,11 @@ final class A1Swap_Overrides {
 
     /** Elementor typography group `<prefix>_typography_*` → `<part>_font_*`. */
     public function type($s, $prefix, $part) {
+        // Callers name the group (`title_typography`); its keys are
+        // `title_typography_font_family`, and its switch
+        // `title_typography_typography`.
+        $prefix = preg_replace('/_typography$/', '', $prefix);
+
         if (($s[$prefix . '_typography_typography'] ?? '') !== 'custom') {
             return $this;
         }
@@ -287,9 +335,10 @@ final class A1Swap_Overrides {
     }
 
     public function radius($v, $part) {
+        // A1 stores a corner as four sides, or as one {size} on icons.
         $d = a1swap_dims($v);
 
-        return $d ? $this->set($part . '_radius', $d[0]) : $this;
+        return $this->set($part . '_radius', $d ? $d[0] : a1swap_px($v));
     }
 }
 
@@ -434,14 +483,11 @@ function a1swap_social($s) {
     $style = (string) ($s['icon_style'] ?? '');
     $o->set('style', $style === 'custom' || $style === 'official' ? 'solid' : (in_array($style, array('plain', 'solid', 'outline'), true) ? $style : null));
     $o->set('colors', $style === 'official' ? 'brand' : null);
-    $o->set('shape', in_array($s['shape'] ?? '', array('circle', 'square', 'rounded'), true) ? $s['shape'] : null);
-    $glyph = a1swap_px($s['icon_size'] ?? null);
-    $box = a1swap_px($s['size'] ?? null);
-    $o->set('size', $glyph !== null ? max(16, min(64, $glyph)) : null);
-
-    if ($glyph !== null && $box !== null && $box > $glyph) {
-        $o->set('icon_padding', (int) floor(($box - $glyph) / 2));
-    }
+    // A1's own default shape is a rounded square; EzBizi's is a circle.
+    $o->set('shape', in_array($s['shape'] ?? '', array('circle', 'square', 'rounded'), true) ? $s['shape'] : 'rounded');
+    // EzBizi's size is the whole button, A1's `size`; the glyph is icon_size.
+    $o->set('size', ($box = a1swap_px($s['size'] ?? null)) !== null ? max(16, min(96, $box)) : null);
+    $o->set('icon_size', a1swap_px($s['icon_size'] ?? null));
 
     $o->set('gap', a1swap_px($s['spacing'] ?? null))
         ->color('icon_bg', $s['custom_color'] ?? null)->color('icon_color', $s['custom_icon_color'] ?? null)
@@ -772,7 +818,15 @@ foreach ($ids as $id) {
             mkdir($a1swap_dir, 0700, true);
         }
 
-        file_put_contents($a1swap_dir . '/' . $id . '.json', wp_json_encode($backup));
+        $file = $a1swap_dir . '/' . $id . '.json';
+
+        // A second pass must not replace the original with the swapped
+        // state: what is already backed up stays, only new fields are added.
+        if (is_file($file) && is_array($first = json_decode(file_get_contents($file), true))) {
+            $backup = array('ID' => (int) $id, 'post_content' => $first['post_content'], 'meta' => (array) $first['meta'] + $backup['meta']);
+        }
+
+        file_put_contents($file, wp_json_encode($backup));
         delete_post_meta($id, '_elementor_css');
         delete_post_meta($id, '_elementor_element_cache');
         clean_post_cache($id);
