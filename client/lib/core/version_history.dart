@@ -14,6 +14,7 @@ class VersionHistory {
         'Scheduling Settings has two sub-tabs. Availability shows the daily totals of each area at the top, updating as you type, with the total of the whole franchise for each day. Schedule lists every Workiz technician, so each can be linked to their EzBizi user.',
         'In Reports, Days until next free spot counts from tomorrow in the organization time zone, as Availability does, since today cannot be booked.',
         'Web Management has Team, Branches and Store locator cards, holding the lists A1 Tools used to keep for the websites. The website plugin that draws them, with the Street View, gallery and video carousel, rolls out to the sites separately.',
+        'Every new Google review of A-1 Chimney arrives in Automations as New Google review, once, so a rule can act on it. A new dashboard box counts them, and the ones with 1 to 3 stars.',
       ],
     ),
     VersionRelease(
