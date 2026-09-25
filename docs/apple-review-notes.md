@@ -90,8 +90,19 @@ Not used, stated explicitly because the question asks:
     No payment processor. Nothing is sold inside the app.
     No AI or machine-learning service of any kind.
     No advertising, analytics, attribution or crash-reporting SDK. The app
-      contains no third-party SDK that collects data — verified in the
-      submitted binary, whose only requested permission is network access.
+      contains no third-party SDK that collects data.
+
+Permissions, read out of the shipped binary (0.0.0275, 2026-09-25) rather than
+remembered — this line said "the only requested permission is network access"
+for three weeks after that stopped being true:
+
+    Microphone     asked the first time somebody makes or takes a call in the app
+    Notifications  so a job assigned to somebody reaches their phone
+    Nothing else.  No location, contacts, camera, photos or tracking (ATT).
+
+Location is NOT in the binary today. The Field module adds it; when that ships,
+this block must change IN THE SAME COMMIT, or the note is false the moment the
+build is submitted.
 
 ## 6. Regional differences
 
@@ -127,7 +138,7 @@ Both paired iPhones run iOS 26.6, which is current, so either works:
 | Account deletion | **Not in the app.** See the risk note below |
 | Paid content, purchase, subscription | None. Nothing is sold in the app |
 | User-generated content, reporting, blocking | No public content, no feed, no user-to-user contact |
-| Permission prompts (location, contacts, camera, ATT) | **None.** The app requests no device permission at all |
+| Permission prompts | **Microphone** (on the first call) and **notifications**. No location, contacts, camera or ATT — see "Permissions" above, and re-read the binary before trusting this row |
 
 So the recording is: launch, sign in, walk the core features. Nothing to
 demonstrate for the other four categories, but say out loud that they do not
@@ -146,8 +157,11 @@ second rejection.
 6. Inspections → open a named inspection.
 7. Inventory → items and stock.
 8. Fleet → a vehicle with its service history.
-9. Say: "No purchases, no subscriptions, no user-generated public content, and
-   the app requests no device permissions."
+9. Say: "No purchases, no subscriptions, and no user-generated public content.
+   The app asks for the microphone only when a call starts, and for
+   notifications." Place or take a call on camera so the microphone prompt is
+   seen in context — a reviewer who meets a prompt the notes did not mention
+   is the rejection this line exists to prevent.
 
 Record with the iPhone's own screen recorder (Control Centre), or QuickTime on
 the Mac with the iPhone as the movie source. Either is a genuine device capture.
