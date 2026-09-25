@@ -1259,6 +1259,8 @@ function city_pages() {
         '/chimney-sweep-montclair' => ['city' => 'Montclair', 'state' => 'NJ', 'group' => 'North Jersey'],
         '/chimney-sweep-caldwell' => ['city' => 'Caldwell', 'state' => 'NJ', 'group' => 'North Jersey', 'phone' => '555-0111'],
         '/chimney-sweep-vineland' => ['city' => 'Vineland', 'state' => 'NJ', 'group' => 'South Jersey'],
+        // A second page about the same town: one town in the list, not two.
+        '/chimney-repair-vineland' => ['city' => 'Vineland', 'state' => 'NJ', 'group' => 'South Jersey'],
         // No group, so it has nowhere to be filed and goes last.
         '/chimney-sweep-dover' => ['city' => 'Dover', 'state' => 'DE'],
         // Not a town page at all: no city, so nothing may list it.
@@ -1309,6 +1311,8 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'new_tab' => ['type' => 'bool'],
                 ],
                 'city_list' => [
+                    'heading_tag' => ['type' => 'choice', 'choices' => ['none', 'h2', 'h3', 'h4', 'h5', 'h6']],
+                    'other_label' => ['type' => 'text', 'max' => 40],
                     'search' => ['type' => 'bool'],
                     'count' => ['type' => 'bool'],
                     'show_state' => ['type' => 'bool'],
@@ -1635,6 +1639,11 @@ check('a count beside each group', (bool) preg_match('/ezbizi-cities-count">\(\d
 check('the state can be left off', str_contains($GLOBALS['sc']['ezbizi_city_list'](['show_state' => 'no']), ', NJ<'), false);
 check('each group is a panel', str_contains($folded, '<summary class="ezbizi-cities-label">North Jersey</summary>'), true);
 check('and nothing is enqueued to make it work', str_contains($folded, '<script'), false);
+check('two pages about one town list it once', substr_count($folded, 'Vineland, NJ'), 1);
+check('a town in no group gets its own panel when groups fold', str_contains($folded, '<summary class="ezbizi-cities-label">Other areas</summary>'), true);
+$a1like = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded', 'heading_tag' => 'h3', 'other_label' => 'Ungrouped']);
+check('a group name can be a heading, as A1 drew it', str_contains($a1like, '<summary class="ezbizi-cities-label"><h3 class="ezbizi-cities-heading">North Jersey</h3></summary>'), true);
+check('and the panel keeps A1 its name', str_contains($a1like, '>Ungrouped</h3></summary>'), true);
 
 check(
     'an unknown name renders the default',

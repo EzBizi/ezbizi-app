@@ -1073,9 +1073,22 @@ function ezbizi_city_list_shortcode($atts) {
     $grouped = array();
     $loose = array();
 
+    $seen = array();
+
     foreach ($towns as $town) {
-        if (! empty($preset['group']) && $town['group'] !== '') {
-            $grouped[$town['group']][] = $town;
+        $in = ! empty($preset['group']) && $town['group'] !== '' ? $town['group'] : '';
+
+        // Several pages about one town (a service each) are one town in a list.
+        $key = $in . "\n" . strtolower($town['label']);
+
+        if (isset($seen[$key])) {
+            continue;
+        }
+
+        $seen[$key] = true;
+
+        if ($in !== '') {
+            $grouped[$in][] = $town;
 
             continue;
         }
@@ -1125,11 +1138,22 @@ function ezbizi_city_list_shortcode($atts) {
      * other axis to fold a flat list of towns along.
      */
     $folding = $layout === 'accordion' && $grouped !== array();
+    $tag = isset($preset['heading_tag']) && in_array($preset['heading_tag'], array('h2', 'h3', 'h4', 'h5', 'h6'), true) ? $preset['heading_tag'] : '';
+    $name_html = function ($name) use ($tag) {
+        return $tag === '' ? esc_html($name) : '<' . $tag . ' class="ezbizi-cities-heading">' . esc_html($name) . '</' . $tag . '>';
+    };
+
+    // Folding, the towns in no group get a panel of their own at the end,
+    // rather than a bare list under the last panel.
+    if ($folding && $loose !== array()) {
+        $grouped[isset($preset['other_label']) && $preset['other_label'] !== '' ? (string) $preset['other_label'] : __('Other areas', 'ezbizi')] = $loose;
+        $loose = array();
+    }
 
     foreach ($grouped as $name => $entries) {
         if ($folding) {
             $out .= '<details class="ezbizi-cities-group"' . ($first && ! empty($preset['open_first']) ? ' open' : '') . '>'
-                . '<summary class="ezbizi-cities-label">' . esc_html($name) . $count($entries) . '</summary>'
+                . '<summary class="ezbizi-cities-label">' . $name_html($name) . $count($entries) . '</summary>'
                 . ezbizi_city_links($entries, $link, $state, $new_tab) . '</details>';
             $first = false;
 
@@ -1143,7 +1167,9 @@ function ezbizi_city_list_shortcode($atts) {
          * a section of the document.
          */
         $out .= '<div class="ezbizi-cities-group">'
-            . '<strong class="ezbizi-cities-label">' . esc_html($name) . $count($entries) . '</strong>'
+            . ($tag === ''
+                ? '<strong class="ezbizi-cities-label">' . esc_html($name) . $count($entries) . '</strong>'
+                : '<div class="ezbizi-cities-label">' . $name_html($name) . $count($entries) . '</div>')
             . ezbizi_city_links($entries, $link, $state, $new_tab) . '</div>';
     }
 
@@ -1223,6 +1249,10 @@ function ezbizi_city_style($id, $columns) {
         . '-webkit-column-break-inside:avoid}'
         . $s . ' .ezbizi-cities-list a{color:inherit;text-decoration:underline}'
         . $s . ' .ezbizi-cities-label{display:block;margin:0 0 6px;font-weight:700}'
+        . $s . ' .ezbizi-cities-heading{display:inline;margin:0;font-size:1.2em}'
+        // Themes often hide a summary's marker; the fold arrow is the only sign it opens.
+        . $s . ' summary.ezbizi-cities-label{display:list-item;list-style:disclosure-closed inside;cursor:pointer}'
+        . $s . ' details[open]>summary.ezbizi-cities-label{list-style-type:disclosure-open}'
         . $s . ' .ezbizi-cities-group{margin:0 0 10px}'
         . $s . ' summary{cursor:pointer;font-weight:700;margin:0 0 6px}'
         . $s . ' .ezbizi-cities-search{width:100%;box-sizing:border-box;padding:10px;margin:0 0 12px;border:1px solid #ccc;border-radius:6px;font:inherit}'

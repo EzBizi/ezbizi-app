@@ -353,6 +353,11 @@ final class WidgetPresets
                 'new_tab' => false,
                 'column_gap' => 28,
                 'empty_text' => 'No cities match that search.',
+                // A group's name as a heading of the page (A1 drew an h3, so
+                // it took the theme's heading font), or `none` for a label.
+                'heading_tag' => 'none',
+                // Towns in no group, as a panel of their own when groups fold.
+                'other_label' => 'Other areas',
             ],
             /*
              * `today` earns its default: the reason a visitor reads an hours
@@ -608,6 +613,7 @@ final class WidgetPresets
     private const CHOICES = [
         'city_list' => [
             'layout' => ['columns', 'list', 'accordion'],
+            'heading_tag' => ['none', 'h2', 'h3', 'h4', 'h5', 'h6'],
         ],
         'social_links' => [
             'style' => ['plain', 'solid', 'outline'],
@@ -682,7 +688,7 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
-        'city_list' => ['search_placeholder' => 60, 'empty_text' => 80],
+        'city_list' => ['search_placeholder' => 60, 'empty_text' => 80, 'other_label' => 40],
         'services' => ['category' => 60, 'button_text' => 40],
         'before_after' => ['category' => 60, 'before_label' => 30, 'after_label' => 30],
         'faq' => ['category' => 60],

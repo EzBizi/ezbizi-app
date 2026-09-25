@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.3
+Stable tag: 1.20.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,13 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.4 =
+* NEW: the city list can show group names as headings, and folds towns in
+  no group into a panel of their own; a town with several pages is listed
+  once; the fold arrows show whatever the theme does to them.
+* NEW: the video carousel reads its gap, arrow position, colours and sizes,
+  and shows page dots.
 
 = 1.20.3 =
 * FIX: social links show each network's own logo; opening hours have a

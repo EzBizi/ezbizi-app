@@ -502,6 +502,8 @@ function a1swap_social($s) {
 
 function a1swap_city_list($s) {
     $o = new A1Swap_Overrides();
+    // A1 drew each group's name as an h3, and called the rest "Ungrouped".
+    $o->set('heading_tag', 'h3')->set('other_label', 'Ungrouped');
     $groups = ($s['show_groups'] ?? 'yes') === 'yes';
     $o->set('group', $groups)
         ->set('layout', $groups && ($s['enable_accordion'] ?? '') === 'yes' ? 'accordion' : (($s['layout'] ?? '') === 'list' ? 'list' : 'columns'))

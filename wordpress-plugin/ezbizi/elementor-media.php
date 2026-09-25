@@ -284,20 +284,40 @@ function ezbizi_video_carousel_render($s) {
     $id = function_exists('ezbizi_widget_id') ? ezbizi_widget_id('ezbizi-videos') : 'ezbizi-videos-' . wp_rand();
     $c = '#' . $id;
 
+    // A1's arrow, dot and gap settings, read under A1's own names.
+    $hex = function ($k, $default) use ($s) {
+        return isset($s[$k]) && is_string($s[$k]) && preg_match('/^#[0-9a-fA-F]{3,8}$/', $s[$k]) ? $s[$k] : $default;
+    };
+    $px = function ($k, $default, $min, $max) use ($s) {
+        $v = isset($s[$k]['size']) && is_numeric($s[$k]['size']) ? (int) $s[$k]['size'] : $default;
+
+        return max($min, min($max, $v));
+    };
+    $gap = $px('gap', 12, 0, 60);
+    $box = $px('arrows_box_size', 40, 20, 80);
+    $glyph = $px('arrows_icon_size', 22, 10, 64);
+    $outside = isset($s['arrows_position']) && $s['arrows_position'] === 'outside';
+    $dots = $on('show_dots', true) && count($videos) > $per_view;
+
     $out = '<style>'
-        . $c . '{position:relative;--n:' . $per_view . '}'
+        . $c . '{position:relative;--n:' . $per_view . ($outside ? ';padding:0 ' . ($box + 8) . 'px' : '') . '}'
         . '@media (max-width:1024px){' . $c . '{--n:' . min(3, $per_view) . '}}'
         . '@media (max-width:767px){' . $c . '{--n:' . min(2, $per_view) . '}}'
-        . $c . ' .ezv-track{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:none;padding:0 2px}'
+        . $c . ' .ezv-track{display:flex;gap:' . $gap . 'px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:none;padding:0 2px}'
         . $c . ' .ezv-track::-webkit-scrollbar{display:none}'
-        . $c . ' .ezv-card{flex:0 0 calc((100% - (var(--n) - 1) * 12px) / var(--n));scroll-snap-align:start;margin:0}'
+        . $c . ' .ezv-card{flex:0 0 calc((100% - (var(--n) - 1) * ' . $gap . 'px) / var(--n));scroll-snap-align:start;margin:0}'
         . $c . ' .ezv-frame{position:relative;aspect-ratio:9/16;border-radius:10px;overflow:hidden;background:#000}'
         . $c . ' .ezv-frame img,' . $c . ' .ezv-frame iframe{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border:0}'
         . $c . ' .ezv-play{position:absolute;inset:0;margin:auto;width:64px;height:64px;border-radius:50%;border:0;background:' . $accent . ';cursor:pointer;display:flex;align-items:center;justify-content:center}'
         . $c . ' .ezv-play:before{content:"";border-style:solid;border-width:11px 0 11px 18px;border-color:transparent transparent transparent #fff;margin-left:4px}'
         . $c . ' figcaption{margin-top:6px;font-size:.95em}'
-        . $c . ' .ezv-arrow{position:absolute;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:40px;cursor:pointer;z-index:2}'
-        . $c . ' .ezv-prev{left:-6px}' . $c . ' .ezv-next{right:-6px}'
+        . $c . ' .ezv-arrow{position:absolute;top:50%;transform:translateY(-50%);width:' . $box . 'px;height:' . $box . 'px;padding:0;border-radius:50%;border:0;'
+        . 'background:' . $hex('arrows_bg', 'rgba(0,0,0,.55)') . ';color:' . $hex('arrows_color', '#fff') . ';font-size:' . $glyph . 'px;line-height:' . $box . 'px;cursor:pointer;z-index:2}'
+        . $c . ' .ezv-arrow:hover{background:' . $hex('arrows_bg_hover', $hex('arrows_bg', 'rgba(0,0,0,.7)')) . ';color:' . $hex('arrows_color_hover', $hex('arrows_color', '#fff')) . '}'
+        . $c . ' .ezv-prev{left:' . ($outside ? '0' : '-6px') . '}' . $c . ' .ezv-next{right:' . ($outside ? '0' : '-6px') . '}'
+        . $c . ' .ezv-dots{display:flex;justify-content:center;gap:6px;margin-top:10px}'
+        . $c . ' .ezv-dots button{width:8px;height:8px;padding:0;border:0;border-radius:50%;cursor:pointer;background:' . $hex('dots_color', '#c8ccd2') . '}'
+        . $c . ' .ezv-dots button[aria-current="true"]{background:' . $hex('dots_active_color', $accent) . '}'
         . '</style>';
 
     $out .= '<div class="ezbizi-videos" id="' . esc_attr($id) . '"><div class="ezv-track">';
@@ -318,17 +338,32 @@ function ezbizi_video_carousel_render($s) {
             . '<button type="button" class="ezv-arrow ezv-next" aria-label="Next">&#8250;</button>';
     }
 
+    if ($dots) {
+        $pages = (int) ceil((count($videos) - $per_view) / $step) + 1;
+        $out .= '<div class="ezv-dots">';
+
+        for ($i = 0; $i < $pages; $i++) {
+            $out .= '<button type="button" aria-label="' . esc_attr(sprintf('Page %d', $i + 1)) . '"' . ($i === 0 ? ' aria-current="true"' : '') . '></button>';
+        }
+
+        $out .= '</div>';
+    }
+
     $out .= '</div>';
 
     $out .= "<script>(function(){
 var c=document.getElementById(" . wp_json_encode($id) . ");if(!c)return;
 var t=c.querySelector('.ezv-track'),step=" . $step . ",timer=null,played=false;
-function card(){var k=t.querySelector('.ezv-card');return k?k.getBoundingClientRect().width+12:t.clientWidth;}
+function card(){var k=t.querySelector('.ezv-card');return k?k.getBoundingClientRect().width+" . $gap . ":t.clientWidth;}
 function go(d){var end=t.scrollWidth-t.clientWidth-2;
   if(d>0&&t.scrollLeft>=end){t.scrollLeft=0;return;}if(d<0&&t.scrollLeft<=0){t.scrollLeft=end;return;}
   t.scrollBy({left:d*step*card(),behavior:'smooth'});}
 var p=c.querySelector('.ezv-prev'),n=c.querySelector('.ezv-next');
 if(p)p.onclick=function(){go(-1);};if(n)n.onclick=function(){go(1);};
+var ds=c.querySelectorAll('.ezv-dots button');
+Array.prototype.forEach.call(ds,function(b,i){b.onclick=function(){t.scrollTo({left:i*step*card(),behavior:'smooth'});};});
+t.addEventListener('scroll',function(){if(!ds.length)return;var i=Math.min(ds.length-1,Math.round(t.scrollLeft/(step*card())));
+  Array.prototype.forEach.call(ds,function(b,j){b.setAttribute('aria-current',j===i?'true':'false');});});
 function stop(){clearInterval(timer);timer=null;}
 function start(){if(" . ($autoplay ? 'true' : 'false') . "&&!played&&!timer&&t.scrollWidth>t.clientWidth)timer=setInterval(function(){go(1);}," . $speed . ");}
 c.addEventListener('mouseenter',stop);c.addEventListener('mouseleave',start);c.addEventListener('focusin',stop);

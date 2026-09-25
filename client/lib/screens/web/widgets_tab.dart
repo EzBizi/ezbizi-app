@@ -2573,6 +2573,8 @@ const List<_Rendered> _renderedCatalogue = [
       _Flag('search', 'A search box above the towns', false),
       _Text('search_placeholder', 'Search box text', max: 60),
       _Text('empty_text', 'When a search finds nothing', max: 80),
+      _Choice('heading_tag', 'Group names as', ['none', 'h2', 'h3', 'h4', 'h5', 'h6']),
+      _Text('other_label', 'Panel for towns in no group', max: 40),
       _Flag('count', 'Show how many towns each group has', false),
       _Flag('bullets', 'Bullets', false),
       _Flag('open_first', 'Folded: open the first group', false),
