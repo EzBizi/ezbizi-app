@@ -8,7 +8,6 @@ use App\Models\WorkizJob;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use App\Support\Tenancy\TenantContext;
-use App\Support\Workiz\WorkizJobAttributes;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -153,7 +152,7 @@ class SyncWorkizJobs extends Command
                 $count = 0;
 
                 foreach ($result['jobs'] as $payload) {
-                    $count += $this->land($connection, $payload) ? 1 : 0;
+                    $count += WorkizJob::land($connection, $payload) ? 1 : 0;
                 }
 
                 return $count;
@@ -184,43 +183,6 @@ class SyncWorkizJobs extends Command
         }
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Write one Workiz payload into the mirror. The sweep and the re-read both
-     * come through here, so there is one key and one set of rules.
-     */
-    private function land(SocialConnection $connection, array $payload): bool
-    {
-        $attributes = WorkizJobAttributes::fromPayload($payload);
-
-        // A row with no id cannot be upserted idempotently; keying on '' would
-        // collapse every such job onto one row.
-        if ($attributes['remote_id'] === '') {
-            return false;
-        }
-
-        WorkizJob::query()->updateOrCreate(
-            [
-                // The FRANCHISE, not the connection. Disconnect deletes the
-                // connection row and reconnect mints a new id, so a
-                // connection-keyed upsert would land every job a second time.
-                // One branch holds one Workiz account, so the franchise is the
-                // stable name for the book a job came from.
-                'franchise_id' => $connection->scope_id,
-                'remote_id' => $attributes['remote_id'],
-            ],
-            $attributes + [
-                // Recorded, but never part of the identity. Placement comes
-                // from the CONNECTION and never from the payload: Workiz cannot
-                // know which EzBizi franchise a job belongs to, and a payload
-                // that claimed to would be a caller-supplied tenant id.
-                'connection_id' => $connection->getKey(),
-                'synced_at' => now(),
-            ],
-        );
-
-        return true;
     }
 
     /**
@@ -313,7 +275,7 @@ class SyncWorkizJobs extends Command
                 continue;
             }
 
-            $refreshed += $this->land($connection, $result['job']) ? 1 : 0;
+            $refreshed += WorkizJob::land($connection, $result['job']) ? 1 : 0;
         }
 
         return ['refreshed' => $refreshed, 'failed' => null];
