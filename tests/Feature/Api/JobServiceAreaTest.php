@@ -222,6 +222,22 @@ class JobServiceAreaTest extends TestCase
             'The control: unfiltered, all three are listed.');
     }
 
+    /**
+     * Checked on a CHANGE, like the status: the panel sends the area with every
+     * save, and an area a data fix has since moved to another franchise must
+     * not refuse an edit to something else.
+     */
+    public function test_an_unchanged_area_is_not_rechecked_on_save(): void
+    {
+        [$alpha, $ct, $ny] = $this->world();
+        $rehomed = $this->area($alpha, $ny, 'Moved', []);
+        $job = $this->aJob($alpha, $ct, $rehomed->id);   // as a data fix leaves it
+
+        $this->signedInAs($alpha['admin'])
+            ->patchJson("/api/v1/jobs/{$job}", ['title' => 'Renamed', 'service_area_id' => $rehomed->id])
+            ->assertOk()->assertJsonPath('data.title', 'Renamed');
+    }
+
     public function test_the_list_filters_to_the_jobs_no_area_holds(): void
     {
         [$alpha, $ct] = $this->world();

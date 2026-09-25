@@ -350,7 +350,10 @@ class JobsController extends Controller
             $this->assertPerformerReach($input['performed_by_user_id'], $job->franchise);
         }
 
-        if (array_key_exists('service_area_id', $input)) {
+        // On a CHANGE, for the status's reason above: the panel sends the area
+        // with every save, and an area re-homed to another franchise since
+        // would otherwise refuse an edit to something else entirely.
+        if (array_key_exists('service_area_id', $input) && $input['service_area_id'] !== $job->service_area_id) {
             $this->assertAreaOfFranchise($input['service_area_id'], $job->franchise);
         }
 
