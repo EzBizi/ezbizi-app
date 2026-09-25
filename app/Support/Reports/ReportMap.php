@@ -544,7 +544,7 @@ final class ReportMap
                      * filtered.
                      */
                     'days_until_next_free_spot' => [
-                        'label' => 'Days until next free spot',
+                        'label' => 'Days until next free spot (from tomorrow)',
                         'type' => 'integer',
                         'php' => [ServiceAreaFullness::class, 'daysUntilFreeSpot'],
                     ],

@@ -337,7 +337,7 @@ final class ReportRunner
 
         foreach ($rows as $row) {
             foreach ($php as $key => [$class, $method]) {
-                $row[$key] = app($class)->{$method}((string) $row['__root_id'], $this->today());
+                $row[$key] = app($class)->{$method}((string) $row['__root_id']);
             }
 
             foreach ($filters as [$key, $operator, $value]) {

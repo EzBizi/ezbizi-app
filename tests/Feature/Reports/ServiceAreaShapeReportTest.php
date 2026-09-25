@@ -463,29 +463,37 @@ class ServiceAreaShapeReportTest extends TestCase
      */
     public function test_it_counts_the_days_until_a_free_spot(): void
     {
-        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-23')); // a Wednesday
+        // 02:00 UTC on Thursday is 22:00 WEDNESDAY in New York, the
+        // organization's zone - so tomorrow is Thursday the 24th there and
+        // Friday the 25th in UTC. Chosen so the dates below only hold if the
+        // column reads the organization's clock, not the server's.
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-09-24 02:00:00', 'UTC'));
 
         $tenant = $this->provisionTenant('Alpha');
 
         $this->inTenant($tenant['org'], function () use ($tenant) {
-            // Works Wed and Thu, two seats; both of today's taken.
-            $this->area($tenant, 'Full today', [3, 4]);
-            $this->booked($tenant, 'Full today', '2026-09-23 10:00:00');
-            $this->booked($tenant, 'Full today', '2026-09-23 11:00:00');
+            // Works Thu and Fri, two seats; both of tomorrow's taken.
+            $this->area($tenant, 'Full tomorrow', [4, 5]);
+            $this->booked($tenant, 'Full tomorrow', '2026-09-24 10:00:00');
+            $this->booked($tenant, 'Full tomorrow', '2026-09-24 11:00:00');
 
             // Cancelled jobs hold no seat - Scheduling's rule, not ours.
-            $this->area($tenant, 'Cancelled today', [3]);
-            $this->booked($tenant, 'Cancelled today', '2026-09-23 10:00:00', 'Canceled');
-            $this->booked($tenant, 'Cancelled today', '2026-09-23 11:00:00', 'Canceled');
+            $this->area($tenant, 'Cancelled tomorrow', [4]);
+            $this->booked($tenant, 'Cancelled tomorrow', '2026-09-24 10:00:00', 'Canceled');
+            $this->booked($tenant, 'Cancelled tomorrow', '2026-09-24 11:00:00', 'Canceled');
+
+            // Scheduling's case: room TODAY, which dispatch cannot book. The
+            // next bookable Wednesday is the 30th, six days after tomorrow.
+            $this->area($tenant, 'Free today only', [3]);
 
             // Works exactly one day in the year, and it is full.
             $this->area($tenant, 'Full all year', []);
-            $this->override($tenant, 'Full all year', '2026-09-23', window: true);
-            $this->booked($tenant, 'Full all year', '2026-09-23 10:00:00');
-            $this->booked($tenant, 'Full all year', '2026-09-23 11:00:00');
+            $this->override($tenant, 'Full all year', '2026-09-24', window: true);
+            $this->booked($tenant, 'Full all year', '2026-09-24 10:00:00');
+            $this->booked($tenant, 'Full all year', '2026-09-24 11:00:00');
 
             // Set up, but not taking bookings for over a year: CLOSED.
-            $this->area($tenant, 'Closed all year', [3]);
+            $this->area($tenant, 'Closed all year', [4]);
             ServiceArea::query()->where('name', 'Closed all year')->update(['available_from' => '2028-01-01']);
 
             $this->area($tenant, 'Never set up', []);
@@ -499,22 +507,23 @@ class ServiceAreaShapeReportTest extends TestCase
             ->all();
 
         $this->assertSame([
-            'Cancelled today' => 0,
+            'Cancelled tomorrow' => 0,
             'Closed all year' => null,
+            'Free today only' => 6,
             'Full all year' => Openings::HORIZON_DAYS,
-            'Full today' => 1,
+            'Full tomorrow' => 1,
             'Never set up' => null,
         ], $free([]));
 
-        // The warning itself: booked out for at least a day. Closed and
+        // The warning itself: no bookable spot for at least a day. Closed and
         // never-set-up are not in it, whatever the window.
         $this->assertSame(
-            ['Full all year' => Openings::HORIZON_DAYS, 'Full today' => 1],
+            ['Free today only' => 6, 'Full all year' => Openings::HORIZON_DAYS, 'Full tomorrow' => 1],
             $free([['resource' => 'service_areas', 'column' => 'days_until_next_free_spot', 'op' => 'gte', 'value' => 1]]),
         );
 
         $this->assertSame(
-            ['Full all year' => Openings::HORIZON_DAYS],
+            ['Free today only' => 6, 'Full all year' => Openings::HORIZON_DAYS],
             $free([['resource' => 'service_areas', 'column' => 'days_until_next_free_spot', 'op' => 'gte', 'value' => 2]]),
         );
     }
