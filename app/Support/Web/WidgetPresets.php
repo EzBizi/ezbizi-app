@@ -213,6 +213,7 @@ final class WidgetPresets
             'padding' => ['range', 0, 60],
             'padding_y' => ['range', 0, 60],
             'padding_x' => ['range', 0, 60],
+            'shadow' => ['choice', ['', 'none', 'soft', 'strong']],
             'font_family' => ['font'],
             'font_size' => ['range', 0, 96],
             'font_weight' => ['choice', ['', '300', '400', '500', '600', '700', '800', '900']],
