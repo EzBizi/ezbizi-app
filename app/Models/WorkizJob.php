@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToTenant;
 use App\Support\Privacy\RetentionPolicy;
 use App\Support\Privacy\StatesRetention;
+use App\Support\Workiz\WorkizJobAttributes;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -57,6 +58,44 @@ class WorkizJob extends Model implements StatesRetention
     public function connection(): BelongsTo
     {
         return $this->belongsTo(SocialConnection::class, 'connection_id');
+    }
+
+    /**
+     * Write one Workiz payload into the mirror. The sweep, the re-read and the
+     * writer's read-back all come through here, so there is one key and one
+     * set of rules.
+     */
+    public static function land(SocialConnection $connection, array $payload): bool
+    {
+        $attributes = WorkizJobAttributes::fromPayload($payload);
+
+        // A row with no id cannot be upserted idempotently; keying on '' would
+        // collapse every such job onto one row.
+        if ($attributes['remote_id'] === '') {
+            return false;
+        }
+
+        static::query()->updateOrCreate(
+            [
+                // The FRANCHISE, not the connection. Disconnect deletes the
+                // connection row and reconnect mints a new id, so a
+                // connection-keyed upsert would land every job a second time.
+                // One branch holds one Workiz account, so the franchise is the
+                // stable name for the book a job came from.
+                'franchise_id' => $connection->scope_id,
+                'remote_id' => $attributes['remote_id'],
+            ],
+            $attributes + [
+                // Recorded, but never part of the identity. Placement comes
+                // from the CONNECTION and never from the payload: Workiz cannot
+                // know which EzBizi franchise a job belongs to, and a payload
+                // that claimed to would be a caller-supplied tenant id.
+                'connection_id' => $connection->getKey(),
+                'synced_at' => now(),
+            ],
+        );
+
+        return true;
     }
 
     public static function retention(): RetentionPolicy
