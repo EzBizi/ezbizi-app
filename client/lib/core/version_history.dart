@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0270',
+      date: '24 Sep 2026',
+      items: [
+        'A zip code belongs to one service area across the whole organization, so a zip search has one answer. Scheduling Settings names the area that already holds a zip when you try to add it to another.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0269',
       date: '24 Sep 2026',
       items: [
