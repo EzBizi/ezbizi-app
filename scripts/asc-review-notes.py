@@ -81,7 +81,19 @@ def main():
     jwt = asc.token(asc.DEFAULT_CRED_DIR)
     failed = False
     for platform, fname in PLATFORMS.items():
-        want = io.open(NOTES / fname, encoding='utf-8', newline='').read()
+        # Normalise to LF on read. This working tree is CRLF on Windows (git's
+        # autocrlf), so newline='' handed back 36 carriage returns per file,
+        # the comparison below said DIFFERS against a live note that was fine,
+        # and --push would have sent the CRs to Apple.
+        #
+        # The read-back could NOT have caught it: it compares what Apple stored
+        # against what was sent, and what was sent was the CRLF text - so it
+        # would have printed MATCHES over corrupted notes. The Field session
+        # found it by pushing from a normalised copy and noticing the two
+        # disagreed. The assert makes the read-back honest again: nothing with
+        # a CR in it can be sent, so "matches what was sent" means "is clean".
+        want = io.open(NOTES / fname, encoding='utf-8', newline='').read().replace('\r\n', '\n')
+        assert '\r' not in want, '%s still carries a carriage return after normalising' % fname
         if len(want) > LIMIT:
             sys.exit('%s is %d chars; App Store Connect allows %d' % (fname, len(want), LIMIT))
 
