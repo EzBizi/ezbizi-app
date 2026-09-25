@@ -110,6 +110,9 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   /// window that day does not offer, and never a zero.
   final Map<int, List<Map<String, dynamic>>> _grid = {};
 
+  /// The franchise whose Overview is open; null is the whole view's.
+  String? _overviewFranchiseId;
+
   /// Each weekday's "Day" box. Kept equal to the sum of its windows, so typing
   /// a window updates it; typing IT splits the number across the windows.
   final Map<int, TextEditingController> _dayTotal = {};
@@ -305,6 +308,17 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _openArea = null;
     _form = _Form.none;
     _paneError = null;
+    _overviewFranchiseId = null;
+  });
+
+  /// One franchise's Overview: its daily totals and its areas (Jose,
+  /// 2026-09-25: "i want to be able to have overview for each franchise too").
+  void _showFranchise(String? franchiseId) => setState(() {
+    _openAreaId = null;
+    _openArea = null;
+    _form = _Form.none;
+    _paneError = null;
+    _overviewFranchiseId = franchiseId;
   });
 
   /// Open the create form.
@@ -703,7 +717,10 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= CapacitySettings.splitAbove;
-        final hasPane = _openAreaId != null || _form != _Form.none;
+        final hasPane =
+            _openAreaId != null ||
+            _form != _Form.none ||
+            _overviewFranchiseId != null;
         final paneOnly = !wide && hasPane;
 
         return AsyncBody(
@@ -769,9 +786,12 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: ListTile(
             dense: true,
-            selected: _openAreaId == null && _form == _Form.none,
+            selected:
+                _openAreaId == null &&
+                _form == _Form.none &&
+                _overviewFranchiseId == null,
             title: const Text('Overview'),
-            subtitle: const Text('Pattern & exceptions'),
+            subtitle: const Text('Every area, and the time slots'),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
@@ -858,6 +878,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           _railHeader(
             theme,
             _railGroupLabel(me, entry.key, ambiguous: ambiguous),
+            entry.key,
           ),
         );
       }
@@ -890,21 +911,54 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     return ambiguous ? franchisePath(me, franchise) : franchise.name;
   }
 
-  Widget _railHeader(ThemeData theme, String label) {
+  /// A franchise's heading, which opens that franchise's Overview.
+  Widget _railHeader(ThemeData theme, String label, String? franchiseId) {
+    final selected =
+        franchiseId != null &&
+        _overviewFranchiseId == franchiseId &&
+        _openAreaId == null &&
+        _form == _Form.none;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 14, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            label.toUpperCase(),
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              letterSpacing: 0.6,
-              fontWeight: FontWeight.w700,
+          InkWell(
+            key: ValueKey('rail-franchise-$franchiseId'),
+            borderRadius: BorderRadius.circular(6),
+            onTap: franchiseId == null
+                ? null
+                : () => _showFranchise(franchiseId),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label.toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: selected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurfaceVariant,
+                        letterSpacing: 0.6,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  if (franchiseId != null)
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: selected
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Divider(height: 1, color: EzBiziTheme.edge(context)),
         ],
       ),
@@ -932,7 +986,11 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   Widget _pane({required bool showBack}) {
     if (_form != _Form.none) return _formPane(showBack: showBack);
 
-    return _openAreaId == null ? _overview() : _areaPane(showBack: showBack);
+    if (_openAreaId != null) return _areaPane(showBack: showBack);
+
+    return _overviewFranchiseId == null
+        ? _overview()
+        : _franchiseOverview(_overviewFranchiseId!, showBack: showBack);
   }
 
   /// Add or rename, in the pane.
@@ -1066,8 +1124,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         Text('Capacity', style: theme.textTheme.titleMedium),
         const SizedBox(height: 2),
         Text(
-          'Jobs each service area can take per day. Open one on the left to '
-          'change its hours.',
+          'Jobs each service area can take per day.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -1086,86 +1143,339 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             ),
           )
         else
-          _allAreasWeek(theme),
+          _allAreasWeek(theme, _areas),
       ],
     );
   }
 
-  /// Areas down, weekdays across — scrolling sideways rather than wrapping.
-  ///
-  /// Seven columns plus a name does not fit a phone, and the module's own rule
-  /// is that a week grid must never force a horizontal drag on the page. Here
-  /// it is the TABLE that scrolls, inside its own viewport, so the page itself
-  /// still does not — the compromise the 375px layouts already make elsewhere.
-  Widget _allAreasWeek(ThemeData theme) {
-    final muted = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
+  /// One franchise: its week added up across its areas, then its areas.
+  Widget _franchiseOverview(String franchiseId, {required bool showBack}) {
+    final theme = Theme.of(context);
+    final areas = [
+      for (final a in _areas)
+        if (a['franchise_id'] == franchiseId) a,
+    ];
+    final name =
+        _me?.franchises.where((f) => f.id == franchiseId).firstOrNull?.name ??
+        'Franchise';
+
+    int total(int weekday) => areas.fold(
+      0,
+      (sum, a) =>
+          sum + (((a['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0),
     );
 
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: EzBiziTheme.edge(context)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              columnSpacing: 22,
-              horizontalMargin: 16,
-              headingRowHeight: 38,
-              dataRowMinHeight: 38,
-              dataRowMaxHeight: 44,
-              columns: [
-                const DataColumn(label: Text('Area')),
-                for (final (_, label) in _week)
-                  DataColumn(label: Text(label), numeric: true),
-              ],
-              rows: [
-                for (final area in _areas)
-                  DataRow(
-                    // The row is the way in, so the table does the rail's job
-                    // for somebody already reading it.
-                    onSelectChanged: (_) => _openArea_(area['id'] as String),
-                    cells: [
-                      DataCell(Text(area['name'] as String? ?? '')),
-                      for (final (weekday, _) in _week)
-                        DataCell(_weekCell(theme, area, weekday)),
-                    ],
-                  ),
-              ],
+    return ListView(
+      key: const Key('scheduling-franchise-overview'),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      children: [
+        Row(
+          children: [
+            if (showBack)
+              IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Areas',
+                onPressed: _showOverview,
+              ),
+            Expanded(child: Text(name, style: theme.textTheme.titleMedium)),
+            Text(
+              '${areas.length} ${areas.length == 1 ? 'area' : 'areas'}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'DAILY TOTALS',
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 0.8,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: Text('A dash is a day that area is closed.', style: muted),
+        ),
+        const SizedBox(height: 6),
+        _dayTiles(theme, keyPrefix: 'franchise-total', total: total),
+        const SizedBox(height: 6),
+        Text(
+          'Every $name area added up, as saved. A day is closed only when '
+          'every area is.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 18),
+        _allAreasWeek(theme, areas),
+      ],
     );
   }
 
-  Widget _weekCell(ThemeData theme, Map<String, dynamic> area, int weekday) {
-    final week = area['week'] as Map<String, dynamic>?;
+  /// Areas down, weekdays across, grouped by franchise the way the rail is,
+  /// each franchise headed by its own daily totals — A1's "Daily totals — NY",
+  /// so nobody adds a franchise's areas up by hand (Jose, 2026-09-25: "i don't
+  /// need to do math").
+  ///
+  /// An area with no capacity on any day says "Not set up" across its week
+  /// rather than seven dashes: that is the one row somebody has to act on, and
+  /// seven dashes read the same as an area closed all week.
+  ///
+  /// Every cell is the same size (Jose: "you always make that mistake"). On a
+  /// phone the TABLE scrolls sideways inside its own viewport; the page does
+  /// not.
+  Widget _allAreasWeek(ThemeData theme, List<Map<String, dynamic>> shownAreas) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    const cellWidth = 52.0;
+    const cellHeight = 30.0;
+    const nameMin = 200.0;
+    final ok = ToneColours.of(context, Tone.ok);
+    final neutral = ToneColours.of(context, Tone.neutral);
+    final caution = ToneColours.of(context, Tone.caution);
 
-    // String keys: PHP's int-keyed array arrives as a JSON object, and JSON
-    // object keys are always strings.
-    final jobs = week?['$weekday'];
+    int? jobs(Map<String, dynamic> area, int weekday) =>
+        ((area['week'] as Map?)?['$weekday'] as num?)?.toInt();
 
-    if (jobs == null) {
-      return Text(
-        '—',
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+    bool setUp(Map<String, dynamic> area) =>
+        _week.any((d) => jobs(area, d.$1) != null);
+
+    final groups = _groupedAreas(shownAreas);
+    final notSetUp = shownAreas.where((a) => !setUp(a)).length;
+
+    Widget tile(String text, {ToneColours? tone, bool bold = false}) =>
+        Container(
+          width: cellWidth - 6,
+          height: cellHeight,
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: tone?.fill,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: tone?.ink ?? muted,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        );
+
+    Widget row({
+      required Widget name,
+      required List<Widget> cells,
+      VoidCallback? onTap,
+      Color? fill,
+      Key? key,
+    }) => Material(
+      key: key,
+      color: fill ?? Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: EzBiziTheme.edge(context)),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: name),
+              ...cells,
+            ],
+          ),
         ),
-      );
+      ),
+    );
+
+    List<Widget> week(Map<String, dynamic> area) {
+      if (!setUp(area)) {
+        return [
+          Container(
+            width: cellWidth * 7,
+            height: cellHeight,
+            alignment: Alignment.center,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            decoration: BoxDecoration(
+              color: caution.fill,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              'Not set up · open it to add capacity',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: caution.ink,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ];
+      }
+
+      return [
+        for (final (weekday, _) in _week)
+          jobs(area, weekday) == null
+              ? tile('—')
+              : tile('${jobs(area, weekday)}', tone: ok),
+      ];
     }
 
-    return Text('$jobs', style: theme.textTheme.bodyMedium);
+    final rows = <Widget>[
+      row(
+        name: Text(
+          'Area',
+          style: theme.textTheme.labelSmall?.copyWith(color: muted),
+        ),
+        cells: [
+          for (final (_, label) in _week)
+            SizedBox(
+              width: cellWidth,
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.labelSmall?.copyWith(color: muted),
+              ),
+            ),
+        ],
+      ),
+    ];
+
+    for (final (label, areas) in groups) {
+      if (label != null) {
+        rows.add(
+          row(
+            key: ValueKey('overview-franchise-$label'),
+            fill: neutral.fill.withValues(alpha: 0.5),
+            name: Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            cells: [
+              for (final (weekday, _) in _week)
+                Builder(
+                  builder: (context) {
+                    final open = areas.where((a) => jobs(a, weekday) != null);
+                    final total = open.fold(
+                      0,
+                      (sum, a) => sum + jobs(a, weekday)!,
+                    );
+
+                    return open.isEmpty
+                        ? tile('—')
+                        : tile('$total', tone: neutral, bold: true);
+                  },
+                ),
+            ],
+          ),
+        );
+      }
+
+      for (final area in areas) {
+        rows.add(
+          row(
+            key: ValueKey('overview-area-${area['id']}'),
+            // The row is the way in, so the table does the rail's job for
+            // somebody already reading it.
+            onTap: () => _openArea_(area['id'] as String),
+            name: Text(
+              area['name'] as String? ?? '',
+              style: theme.textTheme.bodyMedium,
+              overflow: TextOverflow.ellipsis,
+            ),
+            cells: week(area),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (notSetUp > 0)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: caution.fill,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '$notSetUp of ${shownAreas.length} areas have no capacity yet, '
+                  'so Availability cannot offer them.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: caution.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: EzBiziTheme.edge(context)),
+          ),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              const least = nameMin + cellWidth * 7 + 24;
+              final width = box.maxWidth < least ? least : box.maxWidth;
+
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: width,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: rows,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+          child: Text(
+            'A dash is a day that area is closed. Franchise rows add up '
+            'their areas. Tap an area to change it.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The areas in franchise groups, in the rail's order, each labelled the way
+  /// the rail labels it. One group comes back with a null label: at franchise
+  /// scope a header would only name the whole screen.
+  List<(String?, List<Map<String, dynamic>>)> _groupedAreas(
+    List<Map<String, dynamic>> areas,
+  ) {
+    final me = _me;
+    final groups = <String?, List<Map<String, dynamic>>>{};
+
+    for (final area in areas) {
+      (groups[area['franchise_id'] as String?] ??= []).add(area);
+    }
+
+    if (me == null || groups.length < 2) {
+      return [for (final g in groups.values) (null, g)];
+    }
+
+    final shown = me.franchises.where((f) => groups.containsKey(f.id));
+    final ambiguous = shown.map((f) => f.companyId).toSet().length > 1;
+
+    return [
+      for (final e in groups.entries)
+        (_railGroupLabel(me, e.key, ambiguous: ambiguous), e.value),
+    ]..sort((a, b) => a.$1!.compareTo(b.$1!));
   }
 
   Widget _areaPane({required bool showBack}) {
@@ -1858,73 +2168,15 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ),
         const SizedBox(height: 6),
-        // IntrinsicHeight + stretch: every tile as tall as the tallest. A
-        // closed day and a day without an "in all" line have less in them,
-        // and were drawing shorter than their neighbours.
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final (weekday, label) in _week) ...[
-                if (weekday != 1) const SizedBox(width: 6),
-                Expanded(
-                  child: Builder(
-                    builder: (context) {
-                      final total = dayTotal(weekday);
-                      final tone = ToneColours.of(
-                        context,
-                        total > 0 ? Tone.ok : Tone.neutral,
-                      );
-                      final whole = franchiseTotal(weekday, total);
+        _dayTiles(
+          theme,
+          keyPrefix: 'daily-total',
+          total: dayTotal,
+          under: (weekday) {
+            final whole = franchiseTotal(weekday, dayTotal(weekday));
 
-                      return Container(
-                        key: ValueKey('daily-total-$weekday'),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: tone.fill,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              label,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: tone.ink,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            FittedBox(
-                              child: Text(
-                                total > 0 ? '$total' : 'Closed',
-                                style:
-                                    (total > 0
-                                            ? theme.textTheme.titleLarge
-                                            : theme.textTheme.labelMedium)
-                                        ?.copyWith(
-                                          color: tone.ink,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                              ),
-                            ),
-                            if (siblings.isNotEmpty && whole > 0)
-                              FittedBox(
-                                child: Text(
-                                  '$whole in all',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: tone.ink.withValues(alpha: 0.75),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ],
-          ),
+            return siblings.isNotEmpty && whole > 0 ? '$whole in all' : null;
+          },
         ),
         if (siblings.isNotEmpty) ...[
           const SizedBox(height: 6),
@@ -1939,6 +2191,85 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           ),
         ],
       ],
+    );
+  }
+
+  /// Seven day tiles, Monday first: green with the number, grey "Closed" at
+  /// zero, and an optional line under the number.
+  ///
+  /// IntrinsicHeight + stretch: every tile as tall as the tallest. A closed day
+  /// and a day without the line under it have less in them, and were drawing
+  /// shorter than their neighbours (Jose: "you always make that mistake").
+  Widget _dayTiles(
+    ThemeData theme, {
+    required String keyPrefix,
+    required int Function(int weekday) total,
+    String? Function(int weekday)? under,
+  }) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (weekday, label) in _week) ...[
+            if (weekday != 1) const SizedBox(width: 6),
+            Expanded(
+              child: Builder(
+                builder: (context) {
+                  final n = total(weekday);
+                  final tone = ToneColours.of(
+                    context,
+                    n > 0 ? Tone.ok : Tone.neutral,
+                  );
+                  final line = under?.call(weekday);
+
+                  return Container(
+                    key: ValueKey('$keyPrefix-$weekday'),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: tone.fill,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          label,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: tone.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        FittedBox(
+                          child: Text(
+                            n > 0 ? '$n' : 'Closed',
+                            style:
+                                (n > 0
+                                        ? theme.textTheme.titleLarge
+                                        : theme.textTheme.labelMedium)
+                                    ?.copyWith(
+                                      color: tone.ink,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                          ),
+                        ),
+                        if (line != null)
+                          FittedBox(
+                            child: Text(
+                              line,
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: tone.ink.withValues(alpha: 0.75),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 

@@ -456,6 +456,206 @@ void main() {
     expect(find.text('Atlanta North'), findsNWidgets(2));
   });
 
+  /// Jose, 2026-09-25, asking for the Overview to look like the area editor:
+  /// each franchise heads its areas with the day's total across them, and an
+  /// area with no capacity at all says so instead of seven dashes.
+  testWidgets('the overview totals each franchise and flags areas not set up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      me: const {
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+        ],
+      },
+      areas: const [
+        {
+          'id': 'a-1',
+          'name': 'East',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {
+            '1': 4,
+            '2': 4,
+            '3': 4,
+            '4': 4,
+            '5': 2,
+            '6': null,
+            '0': null,
+          },
+        },
+        {
+          'id': 'a-2',
+          'name': 'West',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {'1': 3, '2': 3, '3': 3, '4': 3, '5': 3, '6': 1, '0': null},
+        },
+        {
+          'id': 'a-3',
+          'name': 'Atlanta North',
+          'franchise_id': 'fr-2',
+          'zip_count': 4,
+          'follows_pattern': false,
+          'week': {
+            '1': null,
+            '2': null,
+            '3': null,
+            '4': null,
+            '5': null,
+            '6': null,
+            '0': null,
+          },
+        },
+      ],
+      pattern: null,
+    );
+
+    Finder inRow(String key, String text) => find.descendant(
+      of: find.byKey(ValueKey(key)),
+      matching: find.text(text),
+    );
+
+    // Connecticut: Monday 4 + 3, Friday 2 + 3, Saturday West alone, Sunday
+    // closed in both.
+    expect(inRow('overview-franchise-Connecticut', '7'), findsNWidgets(4));
+    expect(inRow('overview-franchise-Connecticut', '5'), findsOneWidget);
+    expect(inRow('overview-franchise-Connecticut', '1'), findsOneWidget);
+    expect(inRow('overview-franchise-Connecticut', '—'), findsOneWidget);
+
+    expect(
+      inRow('overview-area-a-3', 'Not set up · open it to add capacity'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('1 of 3 areas have no capacity yet'),
+      findsOneWidget,
+    );
+  });
+
+  /// Jose, 2026-09-25: "i want to be able to have overview for each franchise
+  /// too ... so i can see the daily totals for the whole franchise".
+  testWidgets(
+    'a franchise heading opens that franchise with its daily totals',
+    (tester) async {
+      await _pump(
+        tester,
+        me: const {
+          'franchises': [
+            {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+            {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+          ],
+        },
+        areas: const [
+          {
+            'id': 'a-1',
+            'name': 'East',
+            'franchise_id': 'fr-1',
+            'zip_count': 3,
+            'follows_pattern': true,
+            'week': {
+              '1': 4,
+              '2': 4,
+              '3': 4,
+              '4': 4,
+              '5': 2,
+              '6': null,
+              '0': null,
+            },
+          },
+          {
+            'id': 'a-2',
+            'name': 'West',
+            'franchise_id': 'fr-1',
+            'zip_count': 3,
+            'follows_pattern': true,
+            'week': {'1': 3, '2': 3, '3': 3, '4': 3, '5': 3, '6': 1, '0': null},
+          },
+          {
+            'id': 'a-3',
+            'name': 'Atlanta North',
+            'franchise_id': 'fr-2',
+            'zip_count': 4,
+            'follows_pattern': true,
+            'week': {
+              '1': 9,
+              '2': 9,
+              '3': 9,
+              '4': 9,
+              '5': 9,
+              '6': null,
+              '0': null,
+            },
+          },
+        ],
+        pattern: null,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('rail-franchise-fr-1')));
+      await tester.pumpAndSettle();
+
+      Finder tile(int weekday, String text) => find.descendant(
+        of: find.byKey(ValueKey('franchise-total-$weekday')),
+        matching: find.text(text),
+      );
+
+      expect(tile(1, '7'), findsOneWidget);
+      expect(tile(5, '5'), findsOneWidget);
+      expect(tile(6, '1'), findsOneWidget);
+      expect(tile(0, 'Closed'), findsOneWidget);
+
+      // Its own areas only: Georgia's is not in this table.
+      final pane = find.byKey(const Key('scheduling-franchise-overview'));
+      expect(
+        find.descendant(of: pane, matching: find.text('East')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: pane, matching: find.text('Atlanta North')),
+        findsNothing,
+      );
+
+      // Seven tiles, one size.
+      final sizes = {
+        for (var d = 0; d < 7; d++)
+          tester.getSize(find.byKey(ValueKey('franchise-total-$d'))),
+      };
+      expect(sizes, hasLength(1), reason: '$sizes');
+
+      // Overview goes back to the whole view.
+      await tester.tap(find.text('Overview'));
+      await tester.pumpAndSettle();
+      expect(pane, findsNothing);
+    },
+  );
+
+  testWidgets('a narrow overview scrolls its table, not the page', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    // The narrowest screen that draws the Overview beside the rail: the table
+    // is wider than its pane here, so it must scroll inside itself.
+    await _pump(tester, width: 600);
+    expect(
+      find.byKey(const ValueKey('overview-area-a-dallas')),
+      findsOneWidget,
+    );
+
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
+
   /// One franchise means nothing to disambiguate, so a header would be a
   /// label on the whole screen.
   testWidgets('a single franchise gets no group header', (tester) async {
