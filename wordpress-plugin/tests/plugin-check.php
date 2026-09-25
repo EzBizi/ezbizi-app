@@ -1282,6 +1282,7 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'url' => ['type' => 'text', 'max' => 500],
                     'url_params' => ['type' => 'text', 'max' => 200],
                     'new_tab' => ['type' => 'bool'],
+                    'label' => ['type' => 'choice', 'choices' => ['words', 'value']],
                     'icon' => ['type' => 'bool'],
                     'icon_position' => ['type' => 'choice', 'choices' => ['left', 'right']],
                     'animation' => ['type' => 'choice', 'choices' => ['none', 'pulse', 'shake', 'bounce', 'glow']],
@@ -1958,6 +1959,7 @@ echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
 reset_site();
 serve_preset_payload(['phone' => '(888) 984-4344', 'email' => 'office@a1.test', 'review_link' => 'https://g.page/r/a1/review']);
 $cta = fn ($atts) => $GLOBALS['sc']['ezbizi_cta']($atts);
+check('the number itself, as A1 showed it', str_contains($cta(['label' => 'value']), '>(888) 984-4344<'), true);
 check('email opens a message', str_contains($cta(['action' => 'email']), 'href="mailto:office@a1.test"'), true);
 check('review goes to the review link', str_contains($cta(['action' => 'review']), 'g.page/r/a1/review'), true);
 check('WhatsApp takes the number with its country code', str_contains($cta(['action' => 'whatsapp']), 'https://wa.me/18889844344'), true);

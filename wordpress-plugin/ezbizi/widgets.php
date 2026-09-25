@@ -1404,6 +1404,15 @@ function ezbizi_cta_shortcode($atts) {
         $text = __('Get a free estimate', 'ezbizi');
     }
 
+    // The number, address or link itself, when that is what the button says.
+    if (isset($preset['label']) && $preset['label'] === 'value' && $href !== '') {
+        $shown = array(
+            'call' => $phone, 'sms' => $phone, 'whatsapp' => $phone,
+            'email' => ezbizi_value('email'),
+        );
+        $text = isset($shown[$action]) ? $shown[$action] : $href;
+    }
+
     // Tracking on a web link: `utm_source=footer&utm_medium=cta`, appended.
     $params = isset($preset['url_params']) ? ltrim(trim((string) $preset['url_params']), '?&') : '';
 

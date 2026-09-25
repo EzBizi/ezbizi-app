@@ -2549,6 +2549,7 @@ const List<_Rendered> _renderedCatalogue = [
       _Choice('placement', 'Where it sits', ['inline', 'bar', 'popup']),
       _Choice('action', 'What it does',
           ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp']),
+      _Choice('label', 'Button shows', ['words', 'value']),
       _Text('text', 'Wording', hint: 'Leave empty to match what it does.'),
       _Text('url', 'Link, when it opens a link', hint: 'https://…', max: 500),
       _Text('url_params', 'Tracking added to the link',

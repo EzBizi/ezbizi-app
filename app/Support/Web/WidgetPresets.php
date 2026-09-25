@@ -421,6 +421,9 @@ final class WidgetPresets
                 // Toula's CTA list (suggestion 01a0d8e6-8d95): a custom link,
                 // tracking on it, a new tab, the icon, an animation, and what
                 // the button does on a phone.
+                // `value` shows the number, address or link itself, as A1's
+                // button did whenever nobody had typed its words.
+                'label' => 'words',
                 'url' => '',
                 'url_params' => '',
                 'new_tab' => false,
@@ -525,6 +528,7 @@ final class WidgetPresets
             'placement' => ['inline', 'bar', 'popup'],
             'action' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp'],
             'icon_type' => ['auto', 'phone', 'email', 'calendar', 'star', 'arrow', 'chat', 'none'],
+            'label' => ['words', 'value'],
             'icon_position' => ['left', 'right'],
             'animation' => ['none', 'pulse', 'shake', 'bounce', 'glow'],
             'animate_on' => ['always', 'hover'],
