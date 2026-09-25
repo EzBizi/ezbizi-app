@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0271',
+      date: '24 Sep 2026',
+      items: [
+        'Scheduling Settings can close a particular date or change how many jobs it takes, and set a date before which a service area takes no bookings. Availability follows both.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0270',
       date: '24 Sep 2026',
       items: [
