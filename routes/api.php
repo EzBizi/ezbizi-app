@@ -1100,6 +1100,7 @@ Route::prefix('v1')
             // names and zips — the same facts the week grid shows — so it
             // belongs to the same grant rather than to settings.
             Route::get('scheduling/suggest', [SchedulingSuggestController::class, 'index']);
+            Route::get('scheduling/availability/franchises', [SchedulingAvailabilityController::class, 'franchises']);
         });
 
         /*
