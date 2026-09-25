@@ -109,6 +109,7 @@ use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
 use App\Http\Controllers\Api\SchedulingDispatchController;
+use App\Http\Controllers\Api\SchedulingFranchiseLimitsController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
@@ -1154,6 +1155,7 @@ Route::prefix('v1')
             // Settings › Schedule: Workiz technicians and their EzBizi users.
             Route::get('scheduling/technicians', [SchedulingTechniciansController::class, 'index']);
             Route::put('scheduling/technicians/{member}', [SchedulingTechniciansController::class, 'update']);
+            Route::put('scheduling/franchises/{franchise}/limits', [SchedulingFranchiseLimitsController::class, 'update']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
