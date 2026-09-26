@@ -2164,3 +2164,26 @@ widget options (not in the directory).
 Still owed, unchanged: lead counts by source with `is_test = 0`, the resolved
 ring-group fraction, the Training row counts — and now the Scheduling question in
 its row.
+
+## 2026-09-26: nothing shipped, and yesterday's privacy fix is still not live
+
+**Production is still `0.0.0283` at `ef7e7b0f`** (`/download/windows.json`); no
+commit has landed on `main` since `fcf9e96a` (inbox `0065`), so nothing new
+could make a claim false. No desk asked: a scheduled run cannot `send_message`.
+
+**`/privacy/` and `sitemap.xml` are live at `0509dfe5`, byte for byte** — a
+stale deploy, not a hand edit (it matches a historical commit exactly). So
+`6c4b354a`'s two corrections (Android microphone + phone permission; one current
+position sent to Google as a route start) and the Google Maps Platform bullet
+have been unpublished ~24h, and `0065` has no reply. The other six pages and
+`robots.txt` match `www/`. Not re-filed: `0065` already says what to publish and
+how to verify; a second file would only be noise.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+
+Stores: Play `200`; Apple `resultCount` 1, version 0.0.0222; WordPress
+directory 1.10.0, so the five-widgets row stands.
+
+Still owed, unchanged: lead counts by source with `is_test = 0`, the resolved
+ring-group fraction, the Training row counts, the Scheduling question.
