@@ -2187,3 +2187,21 @@ directory 1.10.0, so the five-widgets row stands.
 
 Still owed, unchanged: lead counts by source with `is_test = 0`, the resolved
 ring-group fraction, the Training row counts, the Scheduling question.
+
+## 2026-09-27: nothing shipped, and the privacy fix is ~48h unpublished
+
+**Production is still `0.0.0283` at `ef7e7b0f`** (`/download/windows.json`); no
+commit on `main` since `9a8e0048`, so nothing new could make a claim false. No
+desk asked: `send_message` is unavailable to a scheduled run.
+
+**`/privacy/` still matches `0509dfe5` and `sitemap.xml` matches `1cf017c8`
+(same bytes as `0509dfe5`'s)**, both exactly: a stale deploy, not a hand edit.
+Live `/privacy/` `Last-Modified` is 2026-09-25 19:36 GMT. `6c4b354a`'s
+corrections are unpublished for a second day and inbox `0065` has no reply. Not
+re-filed. The other six pages and `robots.txt` match `www/`.
+
+Gate: `check-site.py` ok - 7 pages, 7 sitemap entries; forbidden-terms
+(LINE-split) ok - 4 terms, none present; `index-landmines.sh` 0 stale, 0 live.
+
+Stores: Play `200`; Apple `resultCount` 1, version now **0.0.0277** (was
+0.0.0222 yesterday).
