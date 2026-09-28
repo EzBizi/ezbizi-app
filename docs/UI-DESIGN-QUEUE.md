@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **BUILT**
+### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **SHIPPED** (`24bb6dce`, 0.0.0303, the desk verified all five platforms)
 
 **Built (client):** `lib/screens/web/seo_helper_pane.dart`, the last section of the SEO strip. The
 health card (good / could be better / need work bar, five equal tiles that filter the list, site
@@ -2994,7 +2994,7 @@ open them. The "UPDATED 2024" warning is the site's own SEO setting, not EzBizi'
 `PUT /web/sites/{site}/seo-helper/site {page_title_template?, post_title_template?}` applies it
 (edit access) and returns the refreshed overview, so the button is **Fix it**, sent as is.
 
-### 28 · Leads · Status, Manage and Mark all read — **Jose: "as u recommend" — 1 and 4** — **BUILT**
+### 28 · Leads · Status, Manage and Mark all read — **Jose: "as u recommend" — 1 and 4** — **SHIPPED** (`6bd2db9b` on the web in 0.0.0304, per the desk)
 
 **Built (client):** `02bbfe60` the thread header: the status a pill after the name, Archive and
 Not a lead beside Book on a New lead, Back to New on any other, sharing the name's line when there
