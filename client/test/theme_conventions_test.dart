@@ -102,6 +102,30 @@ void main() {
     });
   }
 
+  // An avatar's initials sit on its fill: 4.5:1 at least, in both
+  // brightnesses, for every person colour.
+  test('every person colour reads, and a person keeps theirs', () {
+    for (final brightness in Brightness.values) {
+      for (final pair in PersonColours.table(brightness)) {
+        expect(
+          contrast(pair.ink, pair.fill),
+          greaterThanOrEqualTo(4.5),
+          reason: '$brightness ${pair.ink} on ${pair.fill}',
+        );
+      }
+    }
+
+    expect(
+      PersonColours.forSeed('u-42', Brightness.light),
+      same(PersonColours.forSeed('u-42', Brightness.light)),
+    );
+    final spread = {
+      for (var i = 0; i < 40; i++)
+        PersonColours.forSeed('user-$i', Brightness.light),
+    };
+    expect(spread.length, greaterThan(5), reason: 'The seeds bunch up.');
+  });
+
   // "No modal dialogs: screens or side panels" (DEVELOPMENT-RULES) had no
   // check, and the AI Library's Add answer shipped as an AlertDialog. These
   // files still open one, with the session that owns each; the list may only

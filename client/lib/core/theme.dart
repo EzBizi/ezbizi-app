@@ -666,3 +666,52 @@ class ToneColours {
   static Map<Tone, ToneColours> table(Brightness brightness) =>
       brightness == Brightness.dark ? _dark : _light;
 }
+
+/// A person's colour, for the avatar beside what they wrote (Leads' replies,
+/// Jose's A1 Tools reference): the same person keeps the same colour, on every
+/// device. Eight hues and no purple (see the ruling at the top of this file);
+/// the initials read at least 4.5:1 on the fill in both brightnesses, measured
+/// by `theme_conventions_test`.
+abstract final class PersonColours {
+  static const _light = [
+    ToneColours(Color(0xFFDCEAFB), Color(0xFF0B4A8F)), // blue
+    ToneColours(Color(0xFFD8F1F0), Color(0xFF0B5957)), // teal
+    ToneColours(Color(0xFFDFF2E3), Color(0xFF1C5E2E)), // green
+    ToneColours(Color(0xFFEAF0D2), Color(0xFF4A5A12)), // olive
+    ToneColours(Color(0xFFF8EDC6), Color(0xFF6A4F00)), // gold
+    ToneColours(Color(0xFFFFE6D2), Color(0xFF8A3A00)), // orange
+    ToneColours(Color(0xFFFDE2DE), Color(0xFF8E2418)), // coral
+    ToneColours(Color(0xFFEFE3D8), Color(0xFF5E3B22)), // brown
+  ];
+
+  static const _dark = [
+    ToneColours(Color(0xFF16304F), Color(0xFFA9CCFF)),
+    ToneColours(Color(0xFF0F3B3A), Color(0xFF8FE0DC)),
+    ToneColours(Color(0xFF163A22), Color(0xFF9ADBAA)),
+    ToneColours(Color(0xFF2E3710), Color(0xFFCFDE8E)),
+    ToneColours(Color(0xFF3A2F08), Color(0xFFF1D27A)),
+    ToneColours(Color(0xFF44250C), Color(0xFFFFBE8C)),
+    ToneColours(Color(0xFF4A1A15), Color(0xFFFFAA9E)),
+    ToneColours(Color(0xFF3A2819), Color(0xFFE3C2A6)),
+  ];
+
+  /// [seed] is the person's id. A bot is not a person: give it Tone.neutral.
+  static ToneColours of(BuildContext context, Object seed) =>
+      forSeed(seed, Theme.of(context).brightness);
+
+  static ToneColours forSeed(Object seed, Brightness brightness) {
+    // Not hashCode, which promises nothing across runs; and small enough
+    // arithmetic that the web's doubles and the VM's ints agree.
+    var hash = 0;
+    for (final unit in '$seed'.codeUnits) {
+      hash = (hash * 31 + unit) & 0x7fffffff;
+    }
+    final table = brightness == Brightness.dark ? _dark : _light;
+
+    return table[hash % table.length];
+  }
+
+  /// Both tables, for the contrast test.
+  static List<ToneColours> table(Brightness brightness) =>
+      brightness == Brightness.dark ? _dark : _light;
+}
