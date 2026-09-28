@@ -11,6 +11,7 @@ use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Leads\LeadInsights;
 use App\Services\Leads\LocalServicesLeads;
+use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Leads\LeadReplies;
@@ -683,8 +684,12 @@ class LeadsController extends Controller
             'duration_ms' => $row->duration_ms,
         ], actor: $request->user());
 
-        return response($audio->body(), Response::HTTP_OK, [
-            'Content-Type' => $audio->header('Content-Type') ?: 'audio/mpeg',
+        // Google sends MPEG-2.5, which the Windows app cannot decode; it gets
+        // a WAV every player opens. See PlayableAudio.
+        [$body, $type] = PlayableAudio::forEveryPlayer($audio->body(), $audio->header('Content-Type') ?: 'audio/mpeg');
+
+        return response($body, Response::HTTP_OK, [
+            'Content-Type' => $type,
             'Cache-Control' => 'private, no-store',
         ]);
     }
