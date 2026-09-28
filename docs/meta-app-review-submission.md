@@ -20,16 +20,17 @@ Messenger, Instagram messages and WhatsApp, and told you to remove them).
 | `instagram_business_manage_messages` | Instagram DMs into Leads, replies, webhook subscription | none required |
 | `threads_basic` | `ThreadsOAuth::identify()`, `ThreadsPublisher::permalink()` | **needed** |
 | `threads_content_publish` | `ThreadsPublisher` | **needed** |
+| `business_management` | `FacebookOAuth::identify()` — Pages owned by the person's Business portfolios | complete |
+| `instagram_basic` | `InstagramComments` — the Instagram account linked to a Page, its recent posts | **add to the submission** |
+| `instagram_manage_comments` | `InstagramComments` — read, reply to and hide comments | **needed** |
 | `whatsapp_business_messaging` | `WhatsAppCloud` — templates, replies, staff assistant | complete |
 | `whatsapp_business_management` | `WhatsAppCloud::templates()` — template picker in Automations | complete |
 | `public_profile` | default | — |
 
-**Remove from the submission** (the app never requests or calls them; a
-permission the screencast cannot show is the usual rejection):
-
-- `instagram_manage_comments` — Facebook-Login Instagram API; EzBizi uses
-  Instagram Login, and it also requires `instagram_basic`, which is not requested.
-- `business_management` — no call in the code needs it.
+Jose kept `instagram_manage_comments` and `business_management` (2026-09-28),
+so both were built into the product: Social Media › Accounts › *Instagram
+comments* on a connected Page, and Business-portfolio Pages offered at connect.
+`instagram_manage_comments` requires `instagram_basic` in the same submission.
 
 "Test call" = Meta's *Testing* page. A call counts when EzBizi itself makes it
 with a connected account; it can take 24 hours to show and lasts 30 days.
@@ -131,6 +132,34 @@ Recording the screencasts below makes every one of them.
 > publishes it. Their own profile, their own words, one deliberate action per
 > post.
 
+### business_management
+
+> When a business owner connects Facebook, EzBizi also lists the Pages owned by
+> the Business portfolios they work in (GET /me/businesses, then
+> /{business-id}/owned_pages). Franchise groups and agencies commonly hold their
+> Pages in Business Manager rather than as the person's own Pages, and those
+> Pages do not appear in /me/accounts; without this permission such an owner is
+> told they have no Pages to connect. EzBizi reads only the portfolio's Pages -
+> no ad accounts, people or billing.
+
+### instagram_basic
+
+> For a connected Facebook Page, EzBizi reads the Instagram professional account
+> linked to it (instagram_business_account) and that account's recent posts
+> (caption, link, comment count), so the Instagram comments panel can show
+> which post each comment is on.
+
+### instagram_manage_comments
+
+> In EzBizi's Social Media › Accounts, a connected Page has an "Instagram
+> comments" panel: the comments customers left on the business's recent
+> Instagram posts, read live. Staff with marketing edit rights can reply as the
+> business (POST /{comment-id}/replies) or hide an abusive or spam comment
+> (POST /{comment-id}?hide=true) and show it again. Nothing is stored; replies
+> and hides are recorded in EzBizi's audit log. Home service businesses get
+> questions like "do you serve my area?" in comments, and this lets the office
+> answer them from the same place they answer every other enquiry.
+
 ### whatsapp_business_messaging
 
 > EzBizi sends WhatsApp messages for businesses using EzBizi: approved template
@@ -187,8 +216,9 @@ Recording the screencasts below makes every one of them.
 Each starts at EzBizi sign-in and shows the Meta login/consent screen (Meta
 rejects recordings that cut it). Six videos cover every permission:
 
-1. **Facebook** — connect (consent shows the five Page permissions), pick the
-   Page, publish a post, "View post" opens it on Facebook.
+1. **Facebook** — connect (consent shows the Page, business and Instagram
+   permissions), pick the Page, publish a post, "View post" opens it on
+   Facebook; then Accounts › Instagram comments: read, reply, hide.
 2. **Messenger** — message the Page from another account, it appears in Leads,
    reply from EzBizi, reply shows in Messenger.
 3. **Instagram** — connect, publish a photo, "View post" opens it.

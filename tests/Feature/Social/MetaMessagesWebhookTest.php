@@ -219,6 +219,22 @@ class MetaMessagesWebhookTest extends TestCase
         $this->assertSame(Lead::SOURCE_INSTAGRAM, $lead->source);
     }
 
+    public function test_an_instagram_delivery_signed_with_the_instagram_secret_is_accepted(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $this->configured();
+        config(['services.meta.instagram_secret' => 'instagram-app-secret']);
+        $this->pageBelongsTo($t, SocialProvider::InstagramProfessional->value);
+
+        // Instagram Login signs with the Instagram app's secret, not Facebook's.
+        $json = $this->body(['mid' => 'm_IG2', 'text' => 'price?'], 'instagram');
+        $this->deliver($json, 'sha256='.hash_hmac('sha256', $json, 'instagram-app-secret'))
+            ->assertOk()->assertJsonPath('data.handled', 1);
+
+        // The control: a third secret is still nobody's.
+        $this->deliver($json, 'sha256='.hash_hmac('sha256', $json, 'somebody-else'))->assertUnauthorized();
+    }
+
     public function test_a_page_we_do_not_hold_is_acknowledged_and_dropped(): void
     {
         $this->provisionTenant('A1-Group');

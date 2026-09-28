@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
+import 'instagram_comments_panel.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
@@ -217,9 +218,28 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   error: _loadError,
                   onConnect: () => _openConnect(context),
                   onDisconnect: _disconnect,
+                  onComments: _openComments,
                 ),
         ),
       ],
+    );
+  }
+
+  /// Comments on the Instagram account linked to a Facebook Page.
+  Future<void> _openComments(_SocialConnection page) {
+    return showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Instagram comments',
+        subtitle: page.displayName,
+        child: InstagramCommentsPanel(
+          api: widget.api,
+          connectionId: page.id,
+          canAnswer:
+              widget.session.me?.permissions.contains('marketing.edit') ??
+              false,
+        ),
+      ),
     );
   }
 
@@ -1458,6 +1478,7 @@ class _AccountsPane extends StatelessWidget {
     required this.connections,
     required this.onConnect,
     required this.onDisconnect,
+    required this.onComments,
     this.error,
   });
 
@@ -1466,6 +1487,7 @@ class _AccountsPane extends StatelessWidget {
   final List<_SocialConnection> connections;
   final VoidCallback onConnect;
   final void Function(_SocialConnection) onDisconnect;
+  final void Function(_SocialConnection) onComments;
   final String? error;
 
   @override
@@ -1504,9 +1526,21 @@ class _AccountsPane extends StatelessWidget {
                           ? '${page.providerLabel} · @${page.handle}'
                           : page.providerLabel,
                     ),
-                    trailing: TextButton(
-                      onPressed: () => onDisconnect(page),
-                      child: const Text('Disconnect'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Instagram comments are moderated through the Page
+                        // the Instagram account is linked to.
+                        if (page.provider == 'facebook_page')
+                          TextButton(
+                            onPressed: () => onComments(page),
+                            child: const Text('Instagram comments'),
+                          ),
+                        TextButton(
+                          onPressed: () => onDisconnect(page),
+                          child: const Text('Disconnect'),
+                        ),
+                      ],
                     ),
                   ),
               const SizedBox(height: 12),

@@ -26,6 +26,12 @@ final class FacebookOAuth implements SocialOAuth
         // (MetaMessages, SubscribeMetaMessages).
         'pages_messaging',
         'pages_manage_metadata',
+        // Pages a person manages through a Business portfolio rather than
+        // directly (identify()), and the comments on the Instagram account
+        // linked to a Page (InstagramComments).
+        'business_management',
+        'instagram_basic',
+        'instagram_manage_comments',
     ];
 
     private const TIMEOUT = 10;
@@ -137,9 +143,34 @@ final class FacebookOAuth implements SocialOAuth
             'access_token' => $grant->accessToken,
         ], 'Facebook');
 
-        $pages = $body['data'] ?? [];
+        $pages = is_array($body['data'] ?? null) ? $body['data'] : [];
 
-        if (! is_array($pages) || $pages === []) {
+        /*
+         * Pages owned by a Business portfolio the person works in. A Page
+         * managed only through Business Manager - how franchise groups and
+         * agencies hold them - is not in /me/accounts, so without this the
+         * owner is told they have no Pages. business_management is what
+         * lets EzBizi read the portfolio's Pages; nothing else is read.
+         */
+        // Optional: somebody may untick business_management on Meta's screen,
+        // and that must cost them only the portfolio Pages, not the connect.
+        $portfolio = fn (string $path, string $fields) => (array) (Http::timeout(self::TIMEOUT)
+            ->get('https://graph.facebook.com/'.self::GRAPH_VERSION.$path, [
+                'fields' => $fields,
+                'access_token' => $grant->accessToken,
+            ])->json('data') ?? []);
+
+        try {
+            foreach ($portfolio('/me/businesses', 'id') as $business) {
+                if (is_array($business) && isset($business['id'])) {
+                    $pages = [...$pages, ...$portfolio('/'.$business['id'].'/owned_pages', 'id,name,access_token')];
+                }
+            }
+        } catch (ConnectionException) {
+            // The directly managed Pages above still connect.
+        }
+
+        if ($pages === []) {
             throw SocialOAuthRefused::unidentified(
                 'Facebook',
                 'That Facebook login has no Pages EzBizi can post as, so nothing has been '
@@ -151,7 +182,8 @@ final class FacebookOAuth implements SocialOAuth
         $accounts = [];
 
         foreach ($pages as $page) {
-            if (! is_array($page)) {
+            // Once each: a Page can be both directly managed and portfolio-owned.
+            if (! is_array($page) || isset($accounts[(string) ($page['id'] ?? '')])) {
                 continue;
             }
 
@@ -165,14 +197,14 @@ final class FacebookOAuth implements SocialOAuth
                 continue;
             }
 
-            $accounts[] = new SocialAccount($id, $name, null, $token);
+            $accounts[$id] = new SocialAccount($id, $name, null, $token);
         }
 
         if ($accounts === []) {
             throw SocialOAuthRefused::unidentified('Facebook');
         }
 
-        return $accounts;
+        return array_values($accounts);
     }
 
     /**

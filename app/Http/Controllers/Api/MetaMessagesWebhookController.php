@@ -72,7 +72,14 @@ class MetaMessagesWebhookController extends Controller
      */
     public function __invoke(Request $request, TenantContext $tenant): JsonResponse
     {
-        if (! WhatsAppCloud::signed($request->getContent(), $request->header('X-Hub-Signature-256'))) {
+        // Instagram Login deliveries are signed with the INSTAGRAM app's secret,
+        // not the Facebook app's (Meta's two app ids, one app). Either of ours
+        // proves the sender; before 2026-09-28 every Instagram message was 401.
+        $signature = $request->header('X-Hub-Signature-256');
+        $instagramSecret = (string) config('services.meta.instagram_secret');
+
+        if (! WhatsAppCloud::signed($request->getContent(), $signature)
+            && ! ($instagramSecret !== '' && WhatsAppCloud::signed($request->getContent(), $signature, $instagramSecret))) {
             return response()->json(['data' => ['handled' => false]], Status::HTTP_UNAUTHORIZED);
         }
 
