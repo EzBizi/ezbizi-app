@@ -55,6 +55,44 @@ void main() {
     });
   }
 
+  // "No modal dialogs: screens or side panels" (DEVELOPMENT-RULES) had no
+  // check, and the AI Library's Add answer shipped as an AlertDialog. These
+  // files still open one, with the session that owns each; the list may only
+  // shrink.
+  test('no new screen opens a modal dialog', () {
+    const stillOpenOne = {
+      'lib/widgets/search_picker.dart': 'the picker is the settled chooser',
+      // Stays. Jose's spec (2026-09-08) is a modal at shift end; unanswered,
+      // the sweep clocks the person out and the lock screen follows.
+      'lib/widgets/shift_reminder.dart': 'Clock In, must interrupt',
+      'lib/screens/hr/work_hours_tab.dart': 'Clock In',
+      'lib/screens/a1leads_gbp_screen.dart': 'Google API',
+      'lib/screens/organization_screen.dart': 'Settings',
+      'lib/screens/settings/integration_provider_screen.dart': 'Settings',
+      'lib/screens/phone/call_flow_chart_pane.dart': 'Phone',
+      'lib/screens/web/widgets_tab.dart': 'Web Management',
+    };
+    final opening = {
+      for (final file in Directory('lib').listSync(recursive: true))
+        if (file is File &&
+            file.path.endsWith('.dart') &&
+            RegExp(
+              r'showDialog\s*[<(]|AlertDialog\(',
+            ).hasMatch(file.readAsStringSync()))
+          file.path.replaceAll(r'\', '/'),
+    };
+    expect(
+      opening.difference(stillOpenOne.keys.toSet()),
+      isEmpty,
+      reason: 'A new modal dialog: use a SidePanel or a screen.',
+    );
+    expect(
+      stillOpenOne.keys.toSet().difference(opening),
+      isEmpty,
+      reason: 'Converted: take it off the list.',
+    );
+  });
+
   // Nine create panes scrolled with Clip.none, so their fields slid under the
   // Cancel / Save bar below them, which has no background: on a phone "Save"
   // sat on top of the Body type field.

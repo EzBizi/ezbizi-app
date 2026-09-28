@@ -53,8 +53,9 @@ class CameraMonitoringTab extends StatefulWidget {
 
   static const String noCamerasNote = 'No cameras connected yet.';
 
+  // The empty state draws its button UNDER this sentence, which said above.
   static const String noCamerasManageHint =
-      'Use "Add camera" above to connect one.';
+      'Use "Add camera" below to connect one.';
 
   /// The four protocols the backend accepts, in the order the "Add camera"
   /// form offers them.

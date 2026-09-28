@@ -301,6 +301,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     for (final (key, label) in _periods)
                       ChoiceChip(
+                        // The fill says which is chosen. The tick made the
+                        // four too wide to share a phone's line with Refresh.
+                        showCheckmark: false,
                         label: Text(label),
                         selected: _period == key,
                         onSelected: (on) {
