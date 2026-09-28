@@ -164,4 +164,43 @@ final class HoursWeek
 
         return sprintf('%02d:%02d', $h, $m);
     }
+
+    /**
+     * Seven days back into the string, exactly as `formatWeek` in `hours.dart`
+     * writes it: consecutive days with the same hours collapse into a span.
+     * The bulk editor writes through this, so its output must be something
+     * `parse` (and the Dart) read back as the same week.
+     *
+     * @param  array<int, array{closed: bool, open: string, close: string}>  $week  Monday first
+     */
+    public static function format(array $week): string
+    {
+        $signature = fn (array $d) => $d['closed'] ? 'closed' : $d['open'].'-'.$d['close'];
+        $parts = [];
+        $start = 0;
+
+        for ($i = 1; $i <= 7; $i++) {
+            if ($i < 7 && $signature($week[$i]) === $signature($week[$start])) {
+                continue;
+            }
+
+            $span = $start === $i - 1 ? self::DAYS[$start] : self::DAYS[$start]."\u{2013}".self::DAYS[$i - 1];
+            $day = $week[$start];
+            $parts[] = $day['closed']
+                ? $span.' closed'
+                : $span.' '.self::twelve($day['open'])." \u{2013} ".self::twelve($day['close']);
+            $start = $i;
+        }
+
+        return implode(' · ', $parts);
+    }
+
+    /** `HH:MM` on a 24-hour clock as Dart's `formatTime` writes it: `8:05 AM`. */
+    private static function twelve(string $hhmm): string
+    {
+        [$h, $m] = array_map('intval', explode(':', $hhmm));
+        $hour = $h % 12 === 0 ? 12 : $h % 12;
+
+        return $hour.':'.sprintf('%02d', $m).' '.($h >= 12 ? 'PM' : 'AM');
+    }
 }

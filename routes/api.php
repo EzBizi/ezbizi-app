@@ -151,6 +151,7 @@ use App\Http\Controllers\Api\VehiclesController;
 use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
+use App\Http\Controllers\Api\Web\HoursBatchController as WebHoursBatchController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
@@ -854,6 +855,11 @@ Route::prefix('v1')
             Route::post('web/sites/{site}/primary', [WebSitesController::class, 'makePrimary']);
             Route::get('web/sites/{site}/values', [WebValuesController::class, 'index']);
             Route::put('web/sites/{site}/values', [WebValuesController::class, 'update']);
+            // Rodrigo's bulk hours editor: review a week edit across websites,
+            // then apply exactly what was reviewed. Each site is authorised
+            // as `update`, like the values PUT above.
+            Route::post('web/hours/review', [WebHoursBatchController::class, 'review']);
+            Route::post('web/hours/apply', [WebHoursBatchController::class, 'apply']);
             // The pages and posts on the site itself, read live through the account
             // it handed us at pairing. Nothing stored, so nothing to keep in step.
             Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);
