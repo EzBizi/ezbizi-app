@@ -150,9 +150,12 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
     );
   }
 
+  /// [_all] is "All areas" (Jose, 2026-09-28): every area in view.
+  static const _all = '*';
+
   Future<void> _pickFranchise(String id) async {
     setState(() => _franchiseId = id);
-    await _run({'franchise_id': id});
+    await _run(id == _all ? {'all': '1'} : {'franchise_id': id});
   }
 
   Future<void> _run(Map<String, String> query) async {
@@ -366,6 +369,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       spacing: 8,
       runSpacing: 8,
       children: [
+        ChoiceChip(
+          label: const Text('All areas'),
+          selected: _franchiseId == _all,
+          onSelected: (_) => _pickFranchise(_all),
+        ),
         for (final f in _franchises)
           ChoiceChip(
             label: Text(f['name'] as String? ?? ''),

@@ -169,6 +169,39 @@ void main() {
     },
   );
 
+  /// "All areas" (Jose, 2026-09-28) asks for every area in view.
+  testWidgets('all areas asks for every area rather than a franchise', (
+    tester,
+  ) async {
+    Map<String, String>? asked;
+
+    await _pump(
+      tester,
+      onRequest: (r) {
+        if (r.url.path.endsWith('/availability/franchises')) {
+          return _json({
+            'data': [
+              {'id': 'fr-tx', 'name': 'Texas'},
+            ],
+          });
+        }
+        if (r.url.path.endsWith('/scheduling/availability')) {
+          asked = r.url.queryParameters;
+          return _json({'data': _dallas});
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Search by Area'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'All areas'));
+    await tester.pumpAndSettle();
+
+    expect(asked, {'all': '1'});
+    expect(find.text('Monday, October 5'), findsOneWidget);
+  });
+
   /// At phone width the chips stack instead of squeezing. An overflow paints
   /// stripes and still passes a test, so the errors are caught and counted.
   testWidgets('a phone-width screen draws the answer without overflowing', (

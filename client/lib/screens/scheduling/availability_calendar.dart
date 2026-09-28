@@ -39,7 +39,10 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
   static const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   static const double cellHeight = 92;
 
+  /// Null before a pick; [_all] is "All areas" — every franchise in view,
+  /// added up (Jose, 2026-09-28).
   String? _franchiseId;
+  static const _all = '*';
   String? _areaId;
   late DateTime _month = DateTime(
     (widget.month ?? DateTime.now()).year,
@@ -64,7 +67,7 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
       'month':
           '${_month.year.toString().padLeft(4, '0')}-'
           '${_month.month.toString().padLeft(2, '0')}',
-      'franchise_id': franchise,
+      if (franchise != _all) 'franchise_id': franchise,
       'area_id': ?_areaId,
     });
     if (!mounted || ticket != _request) return;
@@ -108,6 +111,17 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
           spacing: 8,
           runSpacing: 8,
           children: [
+            ChoiceChip(
+              label: const Text('All areas'),
+              selected: _franchiseId == _all,
+              onSelected: (_) {
+                setState(() {
+                  _franchiseId = _all;
+                  _areaId = null;
+                });
+                _load();
+              },
+            ),
             for (final f in widget.franchises)
               ChoiceChip(
                 label: Text(f['name'] as String? ?? ''),
@@ -126,7 +140,7 @@ class _AvailabilityCalendarState extends State<AvailabilityCalendar> {
           Padding(
             padding: const EdgeInsets.only(top: 20),
             child: Text(
-              'Pick a franchise to see its month.',
+              'Pick All areas, or a franchise, to see its month.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
             ),
