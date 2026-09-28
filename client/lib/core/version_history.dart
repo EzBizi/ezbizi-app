@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Jobs and customers imported from Workiz update every minute instead of every five.',
         'Workiz leads are imported every minute instead of every hour.',
+        'Scheduling, Availability: an All areas button in Search by Area lists every area, and in the Calendar View shows the availability of all franchises added together.',
       ],
     ),
     VersionRelease(
