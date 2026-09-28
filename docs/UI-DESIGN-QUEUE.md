@@ -2958,6 +2958,33 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 29 · Web Management · SEO Helper — **DRAWN, with Jose**
+
+`docs/previews/web-seo-helper-layouts.html`. Asked by Web Management (session 8db30bbf), from Jose,
+2026-09-28: *"add it, see if you can improve it as well … a SEO Helper basically"*, never naming the
+plugin it replaces the editor of. Server contract at `2c4bc148` (GET `/web/sites/{site}/seo-helper`
+[?fresh=1], GET `…/{id}` with analysis, POST `…/{id}/analyze` for a draft, PUT `…/{id}` with only
+the changed fields; titles stored raw with `%%title%% %%sep%% %%sitename%% %%currentyear%%`, the
+preview shows `final.title`). Desktop **1** health on top, the list under it, the editor in its
+place (recommended) · **2** the list and the editor side by side · **3** a list of things to fix,
+fixed where they are listed. Phone **4** three screens, the editor in folds (recommended) · **5**
+the editor in tabs · **6** one thing to fix at a time. In every option: a section in the SEO strip,
+everything inside the pane (containment), the Google preview cut by pixel width and length, insert
+chips in words, SEO and Readability checks re-run on a draft, the live-page reading and the
+site-wide duplicates made visible, Save drawn only with edit access.
+
+### 28 · Leads · Status, Manage and Mark all read — **DRAWN, with Jose**
+
+`docs/previews/leads-status-controls-layouts.html`. Asked by Leads (Google API session), from Jose,
+2026-09-28: *"the manage, mark all leads, it all feels like it's not part of the ui and its like
+floating in the air. the status specially needs to be improved"*. Found while drawing: the search,
+sources and chips header spans the full width above BOTH panes, so Manage and Mark all read sit at
+the far right above the conversation, which is why they float. Status is EzBizi's own pipeline;
+43,184 of 43,190 Google leads are New. Desktop **1** beside what they act on: Manage after the
+sources in their box, Mark all read after the chips, status a pill and the verbs Archive / Not a
+lead beside Book (recommended) · **2** a toolbar box, status as four buttons · **3** status is the
+inbox: Inbox / Booked / Archived / Not a lead tabs. Phones **4 · 5 · 6** follow them.
+
 ### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILT**
 
 **Built (client, social_media_tab.dart):** desktop 1 — Publish turns the composer into the

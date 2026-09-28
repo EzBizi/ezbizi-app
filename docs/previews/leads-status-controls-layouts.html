@@ -1,0 +1,293 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Leads · Status, Manage and Mark all read</title>
+<style>
+/* Palette from client/lib/core/theme.dart; one 10px corner on every control. Names, numbers and
+   messages are invented. Status is EzBizi's own pipeline (new, booked, archived, not a lead). */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.12);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--ok:#16662d;--okc:#e1f2e5;
+ --warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;--neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:960px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+h2 .was{font-size:11px;font-weight:700;color:var(--bad);border:1px solid var(--bad);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:960px}
+.note{background:var(--paper);border:1px solid #c9d4d9;border-radius:12px;padding:14px 18px;font-size:13px;max-width:1120px;margin:14px 0}
+.note ul{margin:6px 0 0 18px;padding:0}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1120px;max-width:100%;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex}
+.side{width:56px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0;flex:0 0 auto}
+.side i{width:22px;height:22px;border-radius:6px;background:#dfe6ea;display:block}
+.side i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.chrome{display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.chrome .t{font-size:20px;font-weight:800}
+.body{display:grid;grid-template-columns:1fr 1fr;min-height:430px}
+.hdr{background:var(--paper);border-bottom:1px solid var(--line)}
+.lh{display:flex;align-items:center;gap:8px;padding:6px 14px;background:#f7f9fa;border-bottom:1px solid var(--line2)}
+.lcol{border-right:1px solid var(--line);background:var(--paper);display:flex;flex-direction:column;min-width:0}
+.tcol{display:flex;flex-direction:column;min-width:0;background:var(--paper)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;padding:7px 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.tn{background:var(--pric);border-color:var(--pric);color:#00485c}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{padding:4px 10px;font-size:12px}
+.fld{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;color:var(--muted);background:var(--paper);font-size:12.5px}
+.fld.g{flex:1}
+.row{display:flex;align-items:center;gap:8px}
+.pad{padding:10px 14px}
+.strip{display:flex;gap:6px;padding:0 14px 10px;overflow:hidden}
+.tabx{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12px;background:var(--paper);white-space:nowrap}
+.tabx.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.chip .c{font-weight:700;color:var(--pri)}
+.vr{width:1px;align-self:stretch;background:var(--line);margin:2px 4px}
+.muted{color:var(--muted)} .tiny{font-size:11.5px;color:var(--muted)} .sp{flex:1}
+.src{display:flex;align-items:center;gap:10px;padding:8px 14px;margin:0 14px 10px;border:1px solid var(--line);border-radius:12px;background:#fbfdfe}
+.src .ic{font-size:15px;color:var(--muted)}
+.lead{display:flex;gap:10px;padding:10px 14px;border-top:1px solid var(--line2);align-items:flex-start}
+.lead.sel{background:#eef7fa}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--pri);flex:none;margin-top:6px}
+.dot.off{background:transparent}
+.lead .g{flex:1;min-width:0}
+.nm{font-weight:700;display:flex;gap:6px;align-items:center}
+.pv{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tm{font-size:11px;color:var(--muted);white-space:nowrap}
+.mark{width:16px;height:16px;border-radius:4px;display:inline-block;flex:0 0 auto}
+.m-g{background:conic-gradient(#ea4335 0 25%,#fbbc05 0 50%,#34a853 0 75%,#4285f4 0)}
+.m-t{background:#009fd9}.m-w{background:#7b8791}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.p-new{background:var(--pric);color:#00485c}
+.p-ok{background:var(--okc);color:var(--ok)}
+.p-neu{background:var(--neuc);color:var(--neu)}
+.p-warn{background:var(--warnc);color:var(--warn)}
+.th{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:flex-start}
+.th .who{flex:1;min-width:0}
+.th .n{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.convo{flex:1;background:#f0f4f7;padding:14px 18px;display:flex;flex-direction:column;gap:8px}
+.bub{max-width:70%;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:8px 11px;font-size:12.5px}
+.bub.me{align-self:flex-end;background:#e3f2f7;border-color:#bfe0ea}
+.cmp{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line);background:var(--paper)}
+.seg{display:inline-flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden}
+.seg span{padding:5px 11px;font-size:12px;font-weight:600;color:#33404a;border-right:1px solid #93aab3;background:var(--paper);white-space:nowrap}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--pric);color:#00485c}
+.old{border:1px dashed #d3222a;border-radius:8px}
+.lbl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.tb{margin:10px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfdfe}
+.tb .pad{padding:9px 12px}
+.tb .hr{height:1px;background:var(--line2)}
+/* phone */
+.pair{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.ph{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;position:relative;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:26px;display:flex;justify-content:space-between;padding:6px 20px 0;font-size:11px;font-weight:700;flex:0 0 auto;background:var(--paper)}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 16px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line)}
+.ab .t{font-size:17px;font-weight:800} .ab .i{font-size:18px}
+.scr{flex:1;overflow:hidden;position:relative;background:var(--paper)}
+.pbar{padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto}
+.pbar .btn{flex:1;padding:10px}
+.hscroll{display:flex;gap:6px;overflow:hidden;padding:0 14px 10px}
+</style>
+<div class="wrap">
+<h1>Leads · Status, Manage and Mark all read</h1>
+<p class="sub">From Jose, 2026-09-28, via the Leads session: <i>"i'd like to improve this section of leads a bit, the manage, mark all leads, it all feels like it's not part of the ui and its like floating in the air. the status specially needs to be improved"</i>.</p>
+<div class="note"><b>What is true today, measured:</b>
+<ul>
+<li><b>Manage</b> and <b>Mark all read</b> are bare text links pushed to the far right of their rows, a long empty gap away from the words and chips they act on.</li>
+<li><b>Status</b> in the conversation header is a borderless search field ("New" and a magnifier) alone in the corner; it opens a search list of four words. It reads as a search box.</li>
+<li>Status is EzBizi's own pipeline on every source (Google, Thumbtack, chat, forms, Workiz, Messenger); nothing writes it to Google. On production <b>43,184 of 43,190</b> Google leads are still New: 3 Booked, 1 Archived, 1 Not a lead. <b>Book</b> already moves a lead to Booked.</li>
+</ul>
+<b>In every option:</b>
+<ul>
+<li>Nothing floats: each control sits beside the thing it acts on, inside the same box.</li>
+<li>Status is never a search field. It is a coloured pill that says what it is, and changing it is one click: no pop-up, no dialog, no list to search.</li>
+<li>Book stays the main action. The rest are quieter.</li>
+</ul></div>
+
+<div class="lbl">Today, for reference: the three things he named, dashed in red</div>
+<div class="win">
+ <div class="side"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Leads</span></div>
+  <div class="hdr">
+   <div class="pad row"><div class="fld g">🔍 Search a name or phone number</div><div class="fld" style="width:150px">All statuses 🔍</div><span class="btn tn sm">⟳ Fetch new</span></div>
+   <div class="strip"><span class="tabx on">All</span><span class="tabx">Google</span><span class="tabx">Thumbtack</span><span class="tabx">Website</span></div>
+   <div class="row pad" style="padding-top:0"><span class="muted">🔗</span><div><div>Connected sources</div><div class="tiny">Google Ads · 3 accounts · Thumbtack · 1 · Website · chat and forms</div></div><span class="sp"></span><span class="old" style="padding:2px 6px;color:var(--pri);font-weight:600">Manage</span></div>
+   <div class="row pad" style="padding-top:0"><span class="chip on">All</span><span class="chip">Unread</span><span class="chip">Unreplied</span><span class="chip">Starred</span><span class="sp"></span><span class="old" style="padding:2px 6px;color:var(--pri);font-weight:600">Mark all read</span></div>
+  </div>
+  <div class="body">
+   <div class="lcol">
+<div class="lead sel"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney this week?</div></div><span class="tm">2:14 PM</span></div>
+    <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142</div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+   </div>
+   <div class="tcol">
+    <div class="th"><div class="who"><div class="n">Maria Lopez</div><div class="tiny">(312) 555-0187 · Google · Oak Park, IL · today 2:14 PM</div></div><span class="btn sm">Book</span><span class="old" style="padding:6px 10px;width:150px;display:flex;justify-content:space-between">New <span>🔍</span></span></div>
+    <div class="convo"><div class="bub">Hi, can someone look at our chimney this week? It smells when it rains.</div></div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────── Desktop 1 ───────────────────────── -->
+<h2><span class="n">1</span>Beside what they act on <span class="rec">recommended</span></h2>
+<p class="cap">The smallest change that fixes all three. <b>Manage</b> becomes a button right after the sources it manages, in a box with them. <b>Mark all read</b> joins the filter chips it belongs to, after a hairline. <b>Status</b> becomes a pill beside the name, and changing it becomes the verbs people actually use: <b>Archive</b> and <b>Not a lead</b> beside <b>Book</b>. On a lead that is not New, one quiet <b>Back to New</b> undoes it.</p>
+<div class="win">
+ <div class="side"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Leads</span></div>
+  <div class="hdr">
+   <div class="pad row"><div class="fld g">🔍 Search a name or phone number</div><div class="fld" style="width:150px">All statuses 🔍</div><span class="btn tn sm">⟳ Fetch new</span></div>
+   <div class="strip"><span class="tabx on">All</span><span class="tabx">Google</span><span class="tabx">Thumbtack</span><span class="tabx">Website</span></div>
+   <div class="row" style="padding:0 14px 10px;gap:14px;align-items:stretch">
+    <div class="src" style="margin:0"><span class="ic">🔗</span><div style="min-width:0"><div style="font-weight:600">Connected sources</div><div class="tiny">Google Ads · 3 accounts · Thumbtack · 1 · Website</div></div><span class="btn sm">Manage</span></div>
+   </div>
+   <div class="row pad" style="padding-top:0;gap:6px"><span class="chip on">All</span><span class="chip">Unread <span class="c">12</span></span><span class="chip">Unreplied</span><span class="chip">Starred</span><span class="vr"></span><span class="btn sm">✓ Mark all read</span></div>
+  </div>
+  <div class="body">
+   <div class="lcol">
+<div class="lead sel"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney this week?</div></div><span class="tm">2:14 PM</span></div>
+    <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142 <span class="pill p-neu">Archived</span></div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+    <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-w"></span>Dan Whitfield <span class="pill p-ok">Booked</span></div><div class="pv">Booked · Tue Oct 6, 9:00 AM</div></div><span class="tm">11:40 AM</span></div>
+   </div>
+   <div class="tcol">
+    <div class="th"><div class="who"><div class="n">Maria Lopez <span class="pill p-new">● New</span></div><div class="tiny">(312) 555-0187 · Google · Oak Park, IL · today 2:14 PM</div></div>
+     <div class="row"><span class="btn sm">Archive</span><span class="btn sm">Not a lead</span><span class="btn f sm">Book</span></div></div>
+    <div class="convo"><div class="bub">Hi, can someone look at our chimney this week? It smells when it rains.</div><div class="bub me">Hi Maria, we can come Tuesday morning. Does 9 work?</div></div>
+    <div class="cmp"><div class="fld g">Write a reply…</div><span class="btn f sm">Send</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+<div class="lbl">The same header on a lead that was archived</div>
+<div class="win" style="width:720px"><div class="main"><div class="th"><div class="who"><div class="n">(312) 555-0142 <span class="pill p-neu">Archived</span></div><div class="tiny">Thumbtack · missed call · today 1:02 PM · archived by Rosa</div></div><div class="row"><span class="btn t sm">↩ Back to New</span><span class="btn f sm">Book</span></div></div></div></div>
+
+<!-- ───────────────────────── Desktop 2 ───────────────────────── -->
+<h2><span class="n">2</span>A toolbar that holds them, and the status as four buttons</h2>
+<p class="cap">The list's controls go into one toolbar box, so Mark all read can stay on the right and still belong to something: it is the end of the filter row <i>inside</i> the box. Manage becomes the last item of the source strip (<b>⚙ Sources</b>), where the sources already are. The status is a row of four buttons under the name, the current one filled: every state visible, one click to change, no list.</p>
+<div class="win">
+ <div class="side"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Leads</span></div>
+  <div class="hdr" style="border-bottom:0;padding-bottom:2px">
+   <div class="tb">
+    <div class="pad row"><div class="fld g">🔍 Search a name or phone number</div><div class="fld" style="width:150px">All statuses 🔍</div><span class="btn tn sm">⟳ Fetch new</span></div>
+    <div class="hr"></div>
+    <div class="pad row" style="gap:6px"><span class="tabx on">All</span><span class="tabx">Google</span><span class="tabx">Thumbtack</span><span class="tabx">Website</span><span class="sp"></span><span class="tiny">Google Ads · 3 accounts · Thumbtack · 1 · Website</span><span class="tabx">⚙ Sources</span></div>
+    <div class="hr"></div>
+    <div class="pad row" style="gap:6px"><span class="chip on">All</span><span class="chip">Unread <span class="c">12</span></span><span class="chip">Unreplied</span><span class="chip">Starred</span><span class="sp"></span><span class="btn t sm">✓ Mark all read</span></div>
+   </div>
+  </div>
+  <div class="body">
+   <div class="lcol">
+<div class="lead sel"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney this week?</div></div><span class="tm">2:14 PM</span></div>
+    <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142 <span class="pill p-neu">Archived</span></div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+    <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-w"></span>Dan Whitfield <span class="pill p-ok">Booked</span></div><div class="pv">Booked · Tue Oct 6, 9:00 AM</div></div><span class="tm">11:40 AM</span></div>
+   </div>
+   <div class="tcol">
+    <div class="th"><div class="who"><div class="n">Maria Lopez</div><div class="tiny">(312) 555-0187 · Google · Oak Park, IL · today 2:14 PM</div>
+      <div class="row" style="margin-top:10px"><span class="tiny" style="font-weight:700">Status</span><span class="seg"><span class="on">New</span><span>Booked</span><span>Archived</span><span>Not a lead</span></span></div></div>
+     <span class="btn f sm">Book</span></div>
+    <div class="convo"><div class="bub">Hi, can someone look at our chimney this week? It smells when it rains.</div><div class="bub me">Hi Maria, we can come Tuesday morning. Does 9 work?</div></div>
+    <div class="cmp"><div class="fld g">Write a reply…</div><span class="btn f sm">Send</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="cap" style="margin-top:8px">Clicking <b>Booked</b> here opens Book, since a booked lead has a job; the button is the same act as Book, said as a state.</p>
+
+<!-- ───────────────────────── Desktop 3 ───────────────────────── -->
+<h2><span class="n">3</span>Status is the inbox</h2>
+<p class="cap">Treat the list like mail, because that is how it is used: almost everything is New, so New is the <b>Inbox</b>, and the other three are places a lead is moved to. The status picker in the search row becomes four tabs with counts. <b>Archive</b> and <b>Not a lead</b> are icon-and-word buttons in the conversation's header, like moving a message. Sources move to a button beside Fetch new, and Mark all read sits at the head of the list it reads.</p>
+<div class="win">
+ <div class="side"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Leads</span></div>
+  <div class="hdr">
+   <div class="pad row"><div class="fld g">🔍 Search a name or phone number</div><span class="btn sm">⚙ Sources</span><span class="btn tn sm">⟳ Fetch new</span></div>
+   <div class="strip"><span class="tabx on">Inbox <span class="muted">43,184</span></span><span class="tabx">Booked <span class="muted">3</span></span><span class="tabx">Archived <span class="muted">1</span></span><span class="tabx">Not a lead <span class="muted">1</span></span><span class="vr"></span><span class="chip">All sources ▾</span><span class="chip">Unread <span class="c">12</span></span><span class="chip">Unreplied</span><span class="chip">★ Starred</span></div>
+  </div>
+  <div class="body">
+   <div class="lcol">
+<div class="lh"><span class="tiny"><b style="color:var(--ink)">12 unread</b> in the Inbox</span><span class="btn t sm">✓ Mark all read</span></div>
+    <div class="lead sel"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney this week?</div></div><span class="tm">2:14 PM</span></div>
+    <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142</div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+    <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-w"></span>Hannah Cole</div><div class="pv">Form · Chimney inspection, 2-storey house</div></div><span class="tm">10:05 AM</span></div>
+   </div>
+   <div class="tcol">
+    <div class="th"><div class="who"><div class="n">Maria Lopez</div><div class="tiny">(312) 555-0187 · Google · Oak Park, IL · today 2:14 PM</div></div>
+     <div class="row"><span class="btn t sm">🗄 Archive</span><span class="btn t sm">⊘ Not a lead</span><span class="btn f sm">Book</span></div></div>
+    <div class="convo"><div class="bub">Hi, can someone look at our chimney this week? It smells when it rains.</div><div class="bub me">Hi Maria, we can come Tuesday morning. Does 9 work?</div></div>
+    <div class="cmp"><div class="fld g">Write a reply…</div><span class="btn f sm">Send</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+<p class="cap" style="margin-top:8px">The source strip folds into one chip (<b>All sources ▾</b> opens the same searchable list the app uses everywhere) to make room for the four tabs. A lead in Archived shows <b>Move to Inbox</b> where Archive was.</p>
+
+<!-- ───────────────────────── Phones ───────────────────────── -->
+<h2 style="margin-top:56px">On a phone — pick one of 4, 5 or 6</h2>
+<p class="cap">Each follows the desktop option with the same number minus three. The list is on the left of each pair and the conversation on the right.</p>
+
+<h2 style="margin-top:14px"><span class="n">4</span>Beside what they act on <span class="rec">recommended</span></h2>
+<p class="cap">Mark all read (said <b>Read all</b> for the room) is the last item in the scrolling chip row. The sources line keeps its row and says Manage in words. In the conversation, the pill sits under the name; Book fills the width, and Archive and Not a lead share the row under it.</p>
+<div class="pair">
+ <div><div class="pl">The list</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">☰</span><span class="t">Leads</span></div><div class="scr">
+  <div class="pad"><div class="fld">🔍 Search a name or phone number</div></div>
+  <div class="hscroll"><span class="tabx on">All</span><span class="tabx">Google</span><span class="tabx">Thumbtack</span><span class="tabx">Website</span></div>
+  <div class="src"><span class="ic">🔗</span><div style="min-width:0;flex:1"><div style="font-weight:600">Connected sources</div><div class="tiny">Google Ads · 3 · Thumbtack · 1 · Website</div></div><span class="btn sm">Manage</span></div>
+  <div class="hscroll"><span class="chip on">All</span><span class="chip">Unread <span class="c">12</span></span><span class="chip">Unreplied</span><span class="vr"></span><span class="btn sm">✓ Read all</span></div>
+  <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney…</div></div><span class="tm">2:14 PM</span></div>
+  <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142 <span class="pill p-neu">Archived</span></div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+  <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-w"></span>Dan Whitfield <span class="pill p-ok">Booked</span></div><div class="pv">Booked · Tue Oct 6, 9:00 AM</div></div><span class="tm">11:40 AM</span></div>
+ </div></div></div>
+ <div><div class="pl">A conversation</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><span class="t">Maria Lopez</span></div><div class="scr" style="display:flex;flex-direction:column">
+  <div style="padding:12px 14px;border-bottom:1px solid var(--line)"><div class="row"><span class="pill p-new">● New</span><span class="tiny">Google · Oak Park, IL · 2:14 PM</span></div>
+   <div style="margin-top:10px"><span class="btn f" style="width:100%">Book</span></div>
+   <div class="row" style="margin-top:8px"><span class="btn sm" style="flex:1">Archive</span><span class="btn sm" style="flex:1">Not a lead</span></div></div>
+  <div class="convo"><div class="bub">Hi, can someone look at our chimney this week?</div><div class="bub me">We can come Tuesday. Does 9 work?</div></div>
+ </div><div class="pbar"><div class="fld g">Write a reply…</div><span class="btn f" style="flex:0 0 auto">Send</span></div></div></div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">5</span>A toolbar box, and the status as four buttons</h2>
+<p class="cap">The list's controls in one box, Sources at the end of the strip, Mark all read at the end of the chips. In the conversation the four states are one row of short buttons under the name.</p>
+<div class="pair">
+ <div><div class="pl">The list</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">☰</span><span class="t">Leads</span></div><div class="scr">
+  <div class="tb"><div class="pad"><div class="fld">🔍 Search a name or phone number</div></div><div class="hr"></div>
+   <div class="pad row" style="gap:6px;overflow:hidden"><span class="tabx on">All</span><span class="tabx">Google</span><span class="tabx">Thumbtack</span><span class="tabx">⚙</span></div><div class="hr"></div>
+   <div class="pad row" style="gap:6px"><span class="chip on">All</span><span class="chip">Unread <span class="c">12</span></span><span class="sp"></span><span class="btn t sm">✓ Read all</span></div></div>
+  <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney…</div></div><span class="tm">2:14 PM</span></div>
+  <div class="lead"><span class="dot off"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142 <span class="pill p-neu">Archived</span></div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+ </div></div></div>
+ <div><div class="pl">A conversation</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><span class="t">Maria Lopez</span></div><div class="scr" style="display:flex;flex-direction:column">
+  <div style="padding:12px 14px;border-bottom:1px solid var(--line)"><div class="tiny">Google · Oak Park, IL · 2:14 PM</div>
+   <div style="margin-top:8px;display:flex"><span class="seg" style="width:100%;display:flex"><span class="on" style="flex:1;text-align:center">New</span><span style="flex:1;text-align:center">Booked</span><span style="flex:1;text-align:center">Archived</span><span style="flex:1;text-align:center">Not lead</span></span></div>
+   <div style="margin-top:8px"><span class="btn f" style="width:100%">Book</span></div></div>
+  <div class="convo"><div class="bub">Hi, can someone look at our chimney this week?</div><div class="bub me">We can come Tuesday. Does 9 work?</div></div>
+ </div><div class="pbar"><div class="fld g">Write a reply…</div><span class="btn f" style="flex:0 0 auto">Send</span></div></div></div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">6</span>Status is the inbox</h2>
+<p class="cap">Inbox, Booked, Archived and Not a lead are the tabs at the top of the list. In a conversation, the moves live in a bar at the bottom, where a thumb is: Archive, Not a lead, Book.</p>
+<div class="pair">
+ <div><div class="pl">The list</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">☰</span><span class="t">Leads</span><span class="sp"></span><span class="i">⚙</span><span class="i">⟳</span></div><div class="scr">
+  <div class="hscroll" style="padding-top:10px"><span class="tabx on">Inbox <span class="muted">43,184</span></span><span class="tabx">Booked 3</span><span class="tabx">Archived 1</span></div>
+  <div class="pad" style="padding-top:0"><div class="fld">🔍 Search a name or phone number</div></div>
+  <div class="row" style="padding:6px 14px;background:#f7f9fa;border-top:1px solid var(--line2)"><span class="tiny"><b style="color:var(--ink)">12 unread</b></span><span class="sp"></span><span class="btn t sm">✓ Mark all read</span></div>
+  <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-g"></span>Maria Lopez</div><div class="pv">Hi, can someone look at our chimney…</div></div><span class="tm">2:14 PM</span></div>
+  <div class="lead"><span class="dot"></span><div class="g"><div class="nm"><span class="mark m-t"></span>(312) 555-0142</div><div class="pv">Missed call · 0:42</div></div><span class="tm">1:02 PM</span></div>
+ </div></div></div>
+ <div><div class="pl">A conversation</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><span class="t">Maria Lopez</span></div><div class="scr" style="display:flex;flex-direction:column">
+  <div style="padding:10px 14px;border-bottom:1px solid var(--line)"><div class="tiny">Google · Oak Park, IL · 2:14 PM · in the Inbox</div></div>
+  <div class="convo"><div class="bub">Hi, can someone look at our chimney this week?</div><div class="bub me">We can come Tuesday. Does 9 work?</div></div>
+  <div class="cmp"><div class="fld g">Write a reply…</div><span class="btn f sm">Send</span></div>
+ </div><div class="pbar"><span class="btn sm">🗄 Archive</span><span class="btn sm">⊘ Not a lead</span><span class="btn f sm">Book</span></div></div></div>
+</div>
+
+<div class="note" style="margin-top:40px"><b>Recommendation: 1 on a desktop, 4 on a phone.</b> It moves nothing people already know: the sources line, the chips and Book stay where they are. It fixes the three things by the rule that says why they felt loose: a control belongs beside what it acts on, in the same box. And it turns a four-word list almost nobody opens (5 changes in 43,190 leads) into the two verbs that are actually used, next to the one that already is. <b>2</b> is the most explicit about status; <b>3</b> is the biggest change, and the right one if Leads should work like an inbox.</div>
+</div>

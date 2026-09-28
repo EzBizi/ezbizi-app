@@ -1,0 +1,376 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Web Management · SEO Helper</title>
+<style>
+/* Palette from client/lib/core/theme.dart; one 10px corner on every control. The site, its pages
+   and every number are invented; the shapes are Web Management's contract (2c4bc148):
+   GET /web/sites/{site}/seo-helper, GET …/{id}, POST …/{id}/analyze (a draft, not saved), PUT …/{id}. */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.12);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--ok:#16662d;--okc:#e1f2e5;
+ --warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;--neu:#33404a;--neuc:#e8ecf0;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:960px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:960px}
+.note{background:var(--paper);border:1px solid #c9d4d9;border-radius:12px;padding:14px 18px;font-size:13px;max-width:1120px;margin:14px 0}
+.note ul{margin:6px 0 0 18px;padding:0}
+.lbl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1120px;max-width:100%;box-shadow:0 6px 22px rgba(6,8,8,.07);display:flex}
+.side{width:56px;background:var(--paper);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px 0;flex:0 0 auto}
+.side i{width:22px;height:22px;border-radius:6px;background:#dfe6ea;display:block}
+.side i.on{background:var(--pric);outline:2px solid #a9d3e1}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.chrome{display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.chrome .t{font-size:20px;font-weight:800}
+.mtabs{display:flex;gap:6px;padding:8px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.strip{display:flex;gap:6px;padding:8px 18px;background:var(--paper);border-bottom:1px solid var(--line);overflow:hidden}
+.tabx{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12px;background:var(--paper);white-space:nowrap}
+.tabx.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.split{display:grid;grid-template-columns:210px 1fr;min-height:560px}
+.rail{background:var(--paper);border-right:1px solid var(--line);padding:10px}
+.site{padding:8px 10px;border-radius:var(--r);margin-bottom:4px}
+.site.on{background:#eef7fa;outline:1px solid #a9d3e1}
+.site b{display:block;font-size:12.5px}
+.site span{font-size:11px;color:var(--muted)}
+.pane{min-width:0;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.ch{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line2);font-weight:700;font-size:13px}
+.ch .s{font-weight:500;color:var(--muted);font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 12.5px Inter,sans-serif;padding:7px 13px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{padding:4px 10px;font-size:12px}
+.fld{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:var(--r);padding:7px 10px;background:var(--paper);font-size:12.5px;flex-wrap:wrap}
+.fld.q{color:var(--muted)}
+.row{display:flex;align-items:center;gap:8px}
+.sp{flex:1} .muted{color:var(--muted)} .tiny{font-size:11.5px;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper);white-space:nowrap}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.chip .c{font-weight:700;color:var(--pri)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.good{background:#2f9e55}.okd{background:#e0a100}.badd{background:#d64545}
+.tok{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;background:var(--pric);color:#00485c;font-weight:700;font-size:11.5px}
+.ins{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px dashed #93aab3;border-radius:var(--r);font-size:11.5px;font-weight:600;color:var(--pri)}
+.meter{height:6px;border-radius:3px;background:#e3edf1;overflow:hidden;margin-top:6px}
+.meter span{display:block;height:100%}
+.mg{background:#2f9e55}.mo{background:#e0a100}.mb{background:#d64545}
+.flabel{font-size:11.5px;font-weight:700;color:#33404a;margin-bottom:4px}
+.serp{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.serp .u{display:flex;align-items:center;gap:8px;font-size:12px;color:#202124}
+.serp .fav{width:26px;height:26px;border-radius:50%;background:#f1f3f4;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.serp .u small{display:block;color:#4d5156;font-size:11px}
+.serp .h{color:#1a0dab;font-size:18px;line-height:1.3;margin:6px 0 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.serp .d{color:#4d5156;font-size:12.5px;line-height:1.5}
+.seg{display:inline-flex;border:1px solid #93aab3;border-radius:var(--r);overflow:hidden}
+.seg span{padding:4px 11px;font-size:12px;font-weight:600;color:#33404a;border-right:1px solid #93aab3;background:var(--paper)}
+.seg span:last-child{border-right:0}
+.seg span.on{background:var(--pric);color:#00485c}
+.chk{display:flex;gap:9px;padding:7px 14px;border-top:1px solid var(--line2);align-items:flex-start;font-size:12.5px}
+.chk .dot{margin-top:4px}
+.chk b{font-weight:700}
+.stat{flex:1;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--paper);min-width:0}
+.stat .v{font-size:20px;font-weight:800}
+.stat .k{font-size:11.5px;color:var(--muted)}
+.stat.w{border-color:#f0d49a;background:#fffaf0}
+.stat.b{border-color:#f1c0c0;background:#fff7f7}
+.bar3{display:flex;height:10px;border-radius:5px;overflow:hidden}
+.pg{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line2)}
+.pg .g{flex:1;min-width:0}
+.pg .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg .l{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pg.sel{background:#eef7fa}
+.pill{display:inline-flex;align-items:center;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.p-warn{background:var(--warnc);color:var(--warn)}.p-bad{background:var(--badc);color:var(--bad)}.p-neu{background:var(--neuc);color:var(--neu)}.p-ok{background:var(--okc);color:var(--ok)}
+.live{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:#eef7fa;border:1px solid #bfe0ea;font-size:12px;color:#00485c}
+.soc{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper)}
+.soc .img{height:120px;background:linear-gradient(135deg,#b9d6e0,#e9d8c6)}
+.soc .x{padding:8px 12px;background:#f2f3f5}
+.soc .x small{color:#606770;font-size:11px;text-transform:uppercase}
+.soc .x b{display:block;font-size:13px;margin:2px 0}
+.fold{display:flex;align-items:center;gap:8px;padding:10px 14px;font-weight:700;white-space:nowrap;overflow:hidden}
+.fold .tiny{overflow:hidden;text-overflow:ellipsis}
+.sw{width:32px;height:18px;border-radius:9px;background:#c9d4d9;position:relative;flex:0 0 auto}
+.sw:after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+.foot{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--paper);border-top:1px solid var(--line)}
+.grp{border-top:1px solid var(--line2)}
+.grp .gh{display:flex;align-items:center;gap:8px;padding:9px 14px;font-weight:700}
+.qf{margin:0 14px 10px 32px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fbfdfe}
+/* phone */
+.pair{display:flex;gap:26px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.ph{width:340px;height:720px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;position:relative;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sbar{height:26px;display:flex;justify-content:space-between;padding:6px 20px 0;font-size:11px;font-weight:700;flex:0 0 auto;background:var(--paper)}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 14px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line)}
+.ab .t{font-size:16px;font-weight:800} .ab .i{font-size:18px} .ab small{display:block;font-size:11px;color:var(--muted);font-weight:500}
+.scr{flex:1;overflow:hidden;position:relative;padding:12px;display:flex;flex-direction:column;gap:10px}
+.pbar{padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);display:flex;gap:8px;flex:0 0 auto;align-items:center}
+.pbar .btn{padding:9px 14px}
+.acc{background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.acc .ah{display:flex;align-items:center;gap:8px;padding:10px 12px;font-weight:700}
+.acc .ab2{padding:0 12px 12px}
+</style>
+<div class="wrap">
+<h1>Web Management · SEO Helper</h1>
+<p class="sub">Asked by Web Management, from Jose, 2026-09-28: <i>"add it, see if you can improve it as well … a SEO Helper basically"</i>. It replaces A1's per-page editor for each page's Google title and description. The websites keep their current SEO plugin as the renderer; the Helper edits and analyses and stores nothing of its own. The plugin is never named on screen.</p>
+<div class="note"><b>What is fixed in every option</b>
+<ul>
+<li><b>Where:</b> its own section in the SEO strip, <b>General · Social links · Pages · Cities · Posts · Templates · SEO Helper</b>, for the website chosen in the rail. Everything opens inside that pane: nothing goes full screen (Jose's containment rule).</li>
+<li><b>Three levels:</b> the site's health (counts that each open the pages behind them, plus site-wide warnings such as a title template still saying "UPDATED 2024"), the page list with one traffic light per page, and the page editor.</li>
+<li><b>The editor:</b> a Google result preview (desktop and phone; the title cut by pixel width at about 600 px, the description at about 155 characters, as Google does), the focus keyphrase, the SEO title and meta description each with a live length meter, and insert chips in words (<b>Page title · Separator · Site name · Year</b>) for the variables; the preview shows the result. Analysis in two groups, <b>SEO</b> and <b>Readability</b>, each check good / ok / bad with one sentence saying what to do, re-checked as you type (a draft is analysed without saving). A social preview, an <b>Advanced</b> fold (hide from Google, canonical URL), and <b>Save</b>.</li>
+<li><b>Two things it does better, made visible:</b> the analysis reads the <b>live page</b>, what Google sees, so page-builder pages are judged on their real words; and the <b>site-wide duplicates</b>: two pages chasing one keyphrase are named on both.</li>
+<li>Viewing needs SEO access; saving needs edit access, and without it the fields are read-only and Save is not drawn.</li>
+</ul></div>
+
+<!-- ───────────────────────── Desktop 1 ───────────────────────── -->
+<h2><span class="n">1</span>Health on top, the list under it, the editor in its place <span class="rec">recommended</span></h2>
+<p class="cap">One column that reads top to bottom. The health card is first because it is the reason to open the section: what is wrong across the site, in counts that each filter the list below. Choosing a page replaces the list with its editor, with a back arrow, inside the same pane. The editor is two columns: what you type on the left, what Google shows and what the checks say on the right.</p>
+<div class="lbl">The section: health and the pages</div>
+<div class="win">
+ <div class="side"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Web Management</span></div>
+  <div class="mtabs"><span class="tabx on">SEO</span><span class="tabx">Widgets</span></div>
+  <div class="strip"><span class="tabx">General</span><span class="tabx">Social links</span><span class="tabx">Pages</span><span class="tabx">Cities</span><span class="tabx">Posts</span><span class="tabx">Templates</span><span class="tabx on">SEO Helper</span></div>
+  <div class="split">
+   <div class="rail"><div class="site on"><b>ridgelinechimney.com</b><span>Connected · primary</span></div><div class="site"><b>nj.ridgelinechimney.com</b><span>Connected</span></div><div class="site"><b>pa.ridgelinechimney.com</b><span>Connected</span></div></div>
+   <div class="pane">
+    <div class="card">
+     <div class="ch">Site health <span class="s">· 214 pages and posts · read 2 minutes ago</span><span class="sp"></span><span class="btn t sm">⟳ Read again</span></div>
+     <div style="padding:12px 14px">
+      <div class="bar3"><span style="width:45%;background:#2f9e55"></span><span style="width:33%;background:#e0a100"></span><span style="width:22%;background:#d64545"></span></div>
+      <div class="row tiny" style="margin-top:6px"><span><span class="dot good"></span> 96 good</span><span><span class="dot okd"></span> 71 could be better</span><span><span class="dot badd"></span> 47 need work</span></div>
+      <div class="row" style="margin-top:12px;gap:8px;align-items:stretch">
+       <div class="stat b"><div class="v">12</div><div class="k">no description</div></div>
+       <div class="stat w"><div class="v">31</div><div class="k">no focus keyphrase</div></div>
+       <div class="stat b"><div class="v">5</div><div class="k">keyphrases chased by 2+ pages</div></div>
+       <div class="stat w"><div class="v">4</div><div class="k">titles used twice</div></div>
+       <div class="stat"><div class="v">6</div><div class="k">hidden from Google</div></div>
+      </div>
+     </div>
+     <div class="chk" style="background:#fffaf0"><span class="dot okd"></span><div><b>38 posts say "UPDATED 2024" in Google.</b> The title template for posts has the year typed in. Change it to the <span class="tok">Year</span> chip and it keeps itself current. <span class="btn t sm">Show the template</span></div></div>
+    </div>
+    <div class="card">
+     <div class="ch"><div class="fld q" style="flex:1;border:1px solid var(--line)">🔍 Find a page</div><span class="chip on">All 214</span><span class="chip">Need work 47</span><span class="chip">No description 12</span><span class="chip">Shared keyphrase 13</span></div>
+     <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Repair in Oak Park</div><div class="l">/chimney-repair-oak-park · "chimney repair" is also the keyphrase of 2 other pages</div></div><span class="pill p-bad">Shared keyphrase</span></div>
+     <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Cap Installation</div><div class="l">/chimney-caps · no description</div></div><span class="pill p-bad">No description</span></div>
+     <div class="pg"><span class="dot okd"></span><div class="g"><div class="t">Chimney Sweep</div><div class="l">/chimney-sweep · title 71 px too wide</div></div><span class="pill p-warn">Title too long</span></div>
+     <div class="pg"><span class="dot good"></span><div class="g"><div class="t">5 signs your chimney liner is failing</div><div class="l">/blog/liner-failing · post</div></div></div>
+     <div class="pg"><span class="dot good"></span><div class="g"><div class="t">About Ridgeline Chimney</div><div class="l">/about</div></div><span class="pill p-neu">Hidden from Google</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<div class="lbl">A page opened: the editor takes the pane</div>
+<div class="win">
+ <div class="side"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Web Management</span></div>
+  <div class="mtabs"><span class="tabx on">SEO</span><span class="tabx">Widgets</span></div>
+  <div class="strip"><span class="tabx">General</span><span class="tabx">Social links</span><span class="tabx">Pages</span><span class="tabx">Cities</span><span class="tabx">Posts</span><span class="tabx">Templates</span><span class="tabx on">SEO Helper</span></div>
+  <div class="split">
+   <div class="rail"><div class="site on"><b>ridgelinechimney.com</b><span>Connected · primary</span></div><div class="site"><b>nj.ridgelinechimney.com</b><span>Connected</span></div></div>
+   <div style="display:flex;flex-direction:column;min-width:0">
+    <div class="row" style="padding:10px 16px 0"><span style="font-size:18px">←</span><b style="font-size:15px">Chimney Repair in Oak Park</b><span class="tiny">/chimney-repair-oak-park</span><span class="sp"></span><span class="dot badd"></span><span class="tiny">needs work</span></div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;padding:12px 16px">
+     <div style="display:flex;flex-direction:column;gap:12px">
+      <div><div class="flabel">Focus keyphrase</div><div class="fld">chimney repair oak park</div><div class="tiny" style="margin-top:4px">What somebody types into Google to find this page.</div></div>
+      <div><div class="flabel">SEO title</div><div class="fld"><span>Chimney Repair in Oak Park</span><span class="tok">Separator</span><span class="tok">Site name</span></div>
+       <div class="meter"><span class="mg" style="width:88%"></span></div><div class="tiny" style="margin-top:3px">~528 of 600 px</div><div class="row" style="margin-top:6px;gap:6px"><span class="tiny">Insert</span><span class="ins">+ Page title</span><span class="ins">+ Separator</span><span class="ins">+ Site name</span><span class="ins">+ Year</span></div></div>
+      <div><div class="flabel">Meta description</div><div class="fld" style="min-height:62px;align-items:flex-start">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park the same week, with a written quote before we start.</div>
+       <div class="meter"><span class="mg" style="width:92%"></span></div><div class="tiny" style="margin-top:3px">143 of about 155 characters</div></div>
+      <div class="card"><div class="fold">▸ Social preview <span class="tiny" style="font-weight:500">title, description and image when the page is shared</span></div></div>
+      <div class="card"><div class="fold">▸ Advanced <span class="tiny" style="font-weight:500">hide from Google · canonical URL</span></div></div>
+     </div>
+     <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="row"><span class="flabel" style="margin:0">Google preview</span><span class="sp"></span><span class="seg"><span class="on">Desktop</span><span>Phone</span></span></div>
+      <div class="serp"><div class="u"><span class="fav">R</span><div>Ridgeline Chimney<small>https://ridgelinechimney.com › chimney-repair-oak-park</small></div></div>
+       <div class="h">Chimney Repair in Oak Park | Ridgeline Chimney</div>
+       <div class="d">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park the same week, with a written quote before we start.</div></div>
+      <div class="live">● Checked against the live page, 3:12 PM: 812 words. <span class="sp"></span><span class="btn t sm">Check again</span></div>
+      <div class="card"><div class="ch">SEO <span class="s">· 2 to fix</span><span class="sp"></span><span class="tabx on" style="font-size:11px">SEO</span><span class="tabx" style="font-size:11px">Readability</span></div>
+       <div class="chk"><span class="dot badd"></span><div><b>Two other pages chase this keyphrase.</b> Chimney Repair and Chimney Services also target "chimney repair". Give each page its own. <span class="btn t sm">Show them</span></div></div>
+       <div class="chk"><span class="dot badd"></span><div><b>The keyphrase is not in the first paragraph.</b> Say "chimney repair" in the opening lines of the live page.</div></div>
+       <div class="chk"><span class="dot okd"></span><div><b>One internal link.</b> Link to two or three related pages, like Chimney Caps.</div></div>
+       <div class="chk"><span class="dot good"></span><div><b>Keyphrase in the title, near the start.</b> Good.</div></div>
+       <div class="chk"><span class="dot good"></span><div><b>Description is a good length.</b> Good.</div></div>
+      </div>
+     </div>
+    </div>
+    <div class="foot" style="margin-top:auto"><span class="tiny">Changed: title, description · checked as you type, nothing saved yet</span><span class="sp"></span><span class="btn t">Discard</span><span class="btn f">Save</span></div>
+   </div>
+  </div>
+ </div>
+</div>
+<div class="lbl">The two folds opened</div>
+<div class="row" style="gap:14px;align-items:flex-start;max-width:1120px">
+ <div class="card" style="flex:1"><div class="fold">▾ Social preview</div><div style="padding:0 14px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <div style="display:flex;flex-direction:column;gap:8px"><div><div class="flabel">Title when shared</div><div class="fld q">Uses the SEO title</div></div><div><div class="flabel">Description when shared</div><div class="fld q">Uses the meta description</div></div><div><div class="flabel">Image</div><div class="fld">oak-park-crown-repair.jpg <span class="sp"></span><span class="btn t sm">Change</span></div></div></div>
+  <div class="soc"><div class="img"></div><div class="x"><small>ridgelinechimney.com</small><b>Chimney Repair in Oak Park | Ridgeline Chimney</b><span class="tiny">Cracked crown, leaning stack or a leak after rain?…</span></div></div></div></div>
+ <div class="card" style="flex:1"><div class="fold">▾ Advanced</div><div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:10px">
+  <div class="row"><span class="sw"></span><div><b>Hide this page from Google</b><div class="tiny">Google stops showing it in results. Use it for thank-you pages and duplicates, not for pages that bring customers.</div></div></div>
+  <div><div class="flabel">Canonical URL</div><div class="fld q">Leave empty: the page is its own original</div></div></div></div>
+</div>
+
+<!-- ───────────────────────── Desktop 2 ───────────────────────── -->
+<h2><span class="n">2</span>The list and the editor side by side</h2>
+<p class="cap">For going through many pages in a row: the list stays on the left, the chosen page's editor fills the right, and moving to the next page is one click with the list still in view. Health becomes one line of counts over the list, each a filter. The editor puts the preview first and the checks in tabs so it fits a narrower column.</p>
+<div class="win">
+ <div class="side"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Web Management</span></div>
+  <div class="mtabs"><span class="tabx on">SEO</span><span class="tabx">Widgets</span></div>
+  <div class="strip"><span class="tabx">General</span><span class="tabx">Social links</span><span class="tabx">Pages</span><span class="tabx">Cities</span><span class="tabx">Posts</span><span class="tabx">Templates</span><span class="tabx on">SEO Helper</span></div>
+  <div class="split">
+   <div class="rail"><div class="site on"><b>ridgelinechimney.com</b><span>Connected · primary</span></div><div class="site"><b>nj.ridgelinechimney.com</b><span>Connected</span></div></div>
+   <div style="display:grid;grid-template-columns:330px minmax(0,1fr);min-width:0">
+    <div style="border-right:1px solid var(--line);background:var(--paper)">
+     <div style="padding:10px 12px"><div class="bar3"><span style="width:45%;background:#2f9e55"></span><span style="width:33%;background:#e0a100"></span><span style="width:22%;background:#d64545"></span></div><div class="tiny" style="margin-top:4px">96 good · 71 could be better · 47 need work</div></div>
+     <div class="row" style="padding:0 12px 8px;flex-wrap:wrap;gap:6px"><span class="chip on">Need work 47</span><span class="chip">No description 12</span><span class="chip">Shared keyphrase 13</span><span class="chip">Titles twice 4</span><span class="chip">Hidden 6</span></div>
+     <div class="chk" style="background:#fffaf0;padding:7px 12px"><span class="dot okd"></span><div class="tiny" style="color:#33404a"><b>38 posts say "UPDATED 2024".</b> Fix the template</div></div>
+     <div style="padding:6px 12px"><div class="fld q">🔍 Find a page</div></div>
+     <div class="pg sel"><span class="dot badd"></span><div class="g"><div class="t">Chimney Repair in Oak Park</div><div class="l">Shared keyphrase</div></div></div>
+     <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Cap Installation</div><div class="l">No description</div></div></div>
+     <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Services</div><div class="l">Shared keyphrase</div></div></div>
+     <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Emergency Chimney Repair</div><div class="l">No keyphrase · title too long</div></div></div>
+    </div>
+    <div style="display:flex;flex-direction:column;min-width:0">
+     <div style="padding:12px 14px;display:flex;flex-direction:column;gap:10px">
+      <div class="row"><b style="font-size:15px">Chimney Repair in Oak Park</b><span class="sp"></span><span class="seg"><span class="on">Desktop</span><span>Phone</span></span></div>
+      <div class="serp"><div class="u"><span class="fav">R</span><div>Ridgeline Chimney<small>https://ridgelinechimney.com › chimney-repair-oak-park</small></div></div><div class="h">Chimney Repair in Oak Park | Ridgeline Chimney</div><div class="d">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park the same week…</div></div>
+      <div><div class="flabel">Focus keyphrase</div><div class="fld">chimney repair oak park</div></div>
+      <div><div class="flabel">SEO title</div><div class="fld"><span>Chimney Repair in Oak Park</span><span class="tok">Separator</span><span class="tok">Site name</span></div><div class="meter"><span class="mg" style="width:88%"></span></div><div class="tiny" style="margin-top:3px">~528 of 600 px</div><div class="row" style="margin-top:6px;gap:6px"><span class="tiny">Insert</span><span class="ins">+ Page title</span><span class="ins">+ Separator</span><span class="ins">+ Site name</span><span class="ins">+ Year</span></div></div>
+      <div><div class="flabel">Meta description</div><div class="fld" style="min-height:50px;align-items:flex-start">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park the same week, with a written quote before we start.</div><div class="meter"><span class="mg" style="width:92%"></span></div></div>
+      <div class="row" style="gap:6px"><span class="tabx on">SEO · 2 to fix</span><span class="tabx">Readability · 1</span><span class="tabx">Social</span><span class="tabx">Advanced</span></div>
+      <div class="card"><div class="chk" style="border-top:0"><span class="dot badd"></span><div><b>Two other pages chase this keyphrase.</b> Give each page its own.</div></div><div class="chk"><span class="dot badd"></span><div><b>Not in the first paragraph</b> of the live page.</div></div></div>
+     </div>
+     <div class="foot" style="margin-top:auto"><span class="btn t sm">‹ Previous</span><span class="btn t sm">Next ›</span><span class="sp"></span><span class="btn f">Save</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────── Desktop 3 ───────────────────────── -->
+<h2><span class="n">3</span>A list of things to fix, fixed where they are listed</h2>
+<p class="cap">Built around the improvements rather than around pages. The section opens on the problems, grouped: pages with no description, keyphrases chased by several pages, titles used twice. Each problem opens in place and is fixed in place: type the missing description under the page, with its meter and preview, and Save moves to the next one. The full editor is still one click away for a page that needs more.</p>
+<div class="win">
+ <div class="side"><i></i><i></i><i class="on"></i><i></i><i></i></div>
+ <div class="main">
+  <div class="chrome"><span class="t">Web Management</span></div>
+  <div class="mtabs"><span class="tabx on">SEO</span><span class="tabx">Widgets</span></div>
+  <div class="strip"><span class="tabx">General</span><span class="tabx">Social links</span><span class="tabx">Pages</span><span class="tabx">Cities</span><span class="tabx">Posts</span><span class="tabx">Templates</span><span class="tabx on">SEO Helper</span></div>
+  <div class="split">
+   <div class="rail"><div class="site on"><b>ridgelinechimney.com</b><span>Connected · primary</span></div><div class="site"><b>nj.ridgelinechimney.com</b><span>Connected</span></div></div>
+   <div class="pane">
+    <div class="row"><div class="bar3" style="flex:1"><span style="width:45%;background:#2f9e55"></span><span style="width:33%;background:#e0a100"></span><span style="width:22%;background:#d64545"></span></div><span class="tiny">96 good · 71 better · 47 need work</span><span class="btn t sm">All pages ›</span></div>
+    <div class="card">
+     <div class="ch">To fix on ridgelinechimney.com <span class="s">· most customers lost first</span></div>
+     <div class="grp"><div class="gh"><span class="dot okd"></span>38 posts say "UPDATED 2024" in Google <span class="sp"></span><span class="btn sm">Fix the template</span></div></div>
+     <div class="grp"><div class="gh"><span class="dot badd"></span>5 keyphrases are chased by 2 or more pages <span class="sp"></span><span class="tiny">▾</span></div>
+      <div class="qf"><div class="row"><b>"chimney repair"</b><span class="tiny">3 pages compete for it; Google shows one</span></div>
+       <div class="pg" style="padding:6px 0;border-top:0"><span class="dot badd"></span><div class="g"><div class="t">Chimney Repair in Oak Park</div></div><div class="fld" style="width:220px;padding:4px 8px">chimney repair oak park</div></div>
+       <div class="pg" style="padding:6px 0"><span class="dot badd"></span><div class="g"><div class="t">Chimney Services</div></div><div class="fld" style="width:220px;padding:4px 8px">chimney repair</div></div>
+       <div class="pg" style="padding:6px 0"><span class="dot badd"></span><div class="g"><div class="t">Emergency Chimney Repair</div></div><div class="fld" style="width:220px;padding:4px 8px;color:var(--muted)">emergency chimney repair</div></div>
+       <div class="row" style="margin-top:6px"><span class="tiny">Give each page its own words; the checks run as you type.</span><span class="sp"></span><span class="btn f sm">Save 2 keyphrases</span></div></div>
+      <div class="gh tiny" style="font-weight:500;padding-top:0">+ 4 more keyphrases: "chimney sweep" · "chimney cap" · "liner" · "masonry"</div>
+     </div>
+     <div class="grp"><div class="gh"><span class="dot badd"></span>12 pages have no description <span class="sp"></span><span class="tiny">▾</span></div>
+      <div class="qf"><div class="row"><b>Chimney Cap Installation</b><span class="tiny">/chimney-caps</span><span class="sp"></span><span class="btn t sm">Open the page ›</span></div>
+       <div class="fld" style="margin-top:6px;min-height:44px;align-items:flex-start">Keep rain, birds and raccoons out. We fit stainless chimney caps across the Chicago suburbs, usually in under an hour|</div>
+       <div class="meter"><span class="mg" style="width:78%"></span></div>
+       <div class="row" style="margin-top:6px"><span class="tiny">121 of about 155 characters</span><span class="sp"></span><span class="btn t sm">Skip</span><span class="btn f sm">Save and next</span></div></div>
+     </div>
+     <div class="grp"><div class="gh"><span class="dot okd"></span>4 titles are used twice<span class="sp"></span><span class="tiny">▸</span></div></div>
+     <div class="grp"><div class="gh"><span class="dot okd"></span>31 pages have no focus keyphrase<span class="sp"></span><span class="tiny">▸</span></div></div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ───────────────────────── Phones ───────────────────────── -->
+<h2 style="margin-top:56px">On a phone — pick one of 4, 5 or 6</h2>
+<p class="cap">The website is chosen first (the SEO tab's list is the screen on a phone), then SEO Helper in the strip. Each set is left to right: the health, the list, the editor.</p>
+
+<h2 style="margin-top:14px"><span class="n">4</span>Three screens, the editor in folds <span class="rec">recommended</span></h2>
+<p class="cap">Health, then the list, then the page. The editor is one scrolling page of folds, the preview open at the top; Save stays on a bar at the bottom.</p>
+<div class="pair">
+ <div><div class="pl">Health</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">SEO Helper<small>ridgelinechimney.com</small></div></div><div class="scr">
+  <div class="card" style="padding:12px"><div class="bar3"><span style="width:45%;background:#2f9e55"></span><span style="width:33%;background:#e0a100"></span><span style="width:22%;background:#d64545"></span></div><div class="tiny" style="margin-top:6px">96 good · 71 could be better · 47 need work</div></div>
+  <div class="row" style="gap:8px;align-items:stretch"><div class="stat b"><div class="v">12</div><div class="k">no description</div></div><div class="stat w"><div class="v">31</div><div class="k">no keyphrase</div></div></div>
+  <div class="row" style="gap:8px;align-items:stretch"><div class="stat b"><div class="v">5</div><div class="k">shared keyphrases</div></div><div class="stat w"><div class="v">4</div><div class="k">titles twice</div></div></div>
+  <div class="card chk" style="border-top:1px solid var(--line);background:#fffaf0"><span class="dot okd"></span><div><b>38 posts say "UPDATED 2024".</b> Use the Year chip in the template.</div></div>
+  <span class="btn" style="width:100%">See all 214 pages</span>
+ </div></div></div>
+ <div><div class="pl">The list</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">Need work · 47</div></div><div class="scr" style="padding:0;gap:0">
+  <div style="padding:10px 12px"><div class="fld q">🔍 Find a page</div></div>
+  <div class="row" style="padding:0 12px 8px;gap:6px;overflow:hidden"><span class="chip on">Need work</span><span class="chip">No description</span><span class="chip">Shared</span></div>
+  <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Repair in Oak Park</div><div class="l">Shared keyphrase</div></div>›</div>
+  <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Cap Installation</div><div class="l">No description</div></div>›</div>
+  <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Chimney Services</div><div class="l">Shared keyphrase</div></div>›</div>
+  <div class="pg"><span class="dot badd"></span><div class="g"><div class="t">Emergency Chimney Repair</div><div class="l">No keyphrase · title too long</div></div>›</div>
+ </div></div></div>
+ <div><div class="pl">A page</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">Chimney Repair in Oak Park</div></div><div class="scr">
+  <div class="serp" style="padding:10px"><div class="u"><span class="fav">R</span><div>Ridgeline Chimney<small>ridgelinechimney.com › chimney-repair…</small></div></div><div class="h" style="font-size:16px;white-space:normal">Chimney Repair in Oak Park | Ridgeline Chimney</div><div class="d">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park…</div></div>
+  <div class="acc"><div class="ah">▾ Words <span class="sp"></span><span class="dot badd"></span></div><div class="ab2" style="display:flex;flex-direction:column;gap:8px">
+   <div><div class="flabel">Focus keyphrase</div><div class="fld">chimney repair oak park</div></div>
+   <div><div class="flabel">SEO title</div><div class="fld"><span>Chimney Repair in Oak Park</span><span class="tok">Separator</span><span class="tok">Site name</span></div><div class="meter"><span class="mg" style="width:88%"></span></div></div>
+   <div class="row" style="gap:4px;flex-wrap:wrap"><span class="ins">+ Page title</span><span class="ins">+ Separator</span><span class="ins">+ Site name</span><span class="ins">+ Year</span></div></div></div>
+  <div class="acc"><div class="ah">▸ SEO checks <span class="sp"></span><span class="pill p-bad">2 to fix</span></div></div>
+  <div class="acc"><div class="ah">▸ Readability <span class="sp"></span><span class="pill p-warn">1</span></div></div>
+  <div class="acc"><div class="ah">▸ Social · Advanced</div></div>
+ </div><div class="pbar"><span class="tiny">2 changes</span><span class="sp"></span><span class="btn f">Save</span></div></div></div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">5</span>The editor in tabs</h2>
+<p class="cap">The same three screens; the editor is split into Edit, Preview and Checks tabs so each is short, with the score always in the tab row.</p>
+<div class="pair">
+ <div><div class="pl">A page · Edit</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">Chimney Repair in Oak Park</div></div>
+  <div class="row" style="padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line)"><span class="seg" style="display:flex;width:100%"><span class="on" style="flex:1;text-align:center">Edit</span><span style="flex:1;text-align:center">Preview</span><span style="flex:1;text-align:center">Checks · 3</span></span></div>
+  <div class="scr">
+   <div><div class="flabel">Focus keyphrase</div><div class="fld">chimney repair oak park</div></div>
+   <div><div class="flabel">SEO title</div><div class="fld"><span>Chimney Repair in Oak Park</span><span class="tok">Separator</span><span class="tok">Site name</span></div><div class="meter"><span class="mg" style="width:88%"></span></div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:6px"><span class="ins">+ Page title</span><span class="ins">+ Separator</span><span class="ins">+ Site name</span><span class="ins">+ Year</span></div></div>
+   <div><div class="flabel">Meta description</div><div class="fld" style="min-height:80px;align-items:flex-start">Cracked crown, leaning stack or a leak after rain? Ridgeline repairs chimneys across Oak Park the same week, with a written quote before we start.</div><div class="meter"><span class="mg" style="width:92%"></span></div><div class="tiny" style="margin-top:3px">143 of about 155 characters</div></div>
+  </div><div class="pbar"><span class="sp"></span><span class="btn f">Save</span></div></div></div>
+ <div><div class="pl">A page · Checks</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">Chimney Repair in Oak Park</div></div>
+  <div class="row" style="padding:8px 12px;background:var(--paper);border-bottom:1px solid var(--line)"><span class="seg" style="display:flex;width:100%"><span style="flex:1;text-align:center">Edit</span><span style="flex:1;text-align:center">Preview</span><span class="on" style="flex:1;text-align:center">Checks · 3</span></span></div>
+  <div class="scr" style="padding:0;gap:0">
+   <div class="live" style="margin:10px 12px;border-radius:12px">● Checked against the live page: 812 words</div>
+   <div class="tiny" style="padding:4px 12px;font-weight:800;letter-spacing:.06em">SEO</div>
+   <div class="chk"><span class="dot badd"></span><div><b>Two other pages chase this keyphrase.</b> Give each page its own.</div></div>
+   <div class="chk"><span class="dot badd"></span><div><b>Not in the first paragraph.</b> Say it in the opening lines.</div></div>
+   <div class="chk"><span class="dot good"></span><div><b>Keyphrase in the title.</b> Good.</div></div>
+   <div class="tiny" style="padding:10px 12px 4px;font-weight:800;letter-spacing:.06em">READABILITY</div>
+   <div class="chk"><span class="dot okd"></span><div><b>Two long paragraphs.</b> Break them in two.</div></div>
+   <div class="chk"><span class="dot good"></span><div><b>Sentences are short.</b> Good.</div></div>
+  </div><div class="pbar"><span class="sp"></span><span class="btn f">Save</span></div></div></div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">6</span>One thing to fix at a time</h2>
+<p class="cap">The phone version of 3: the Helper hands over one problem at a time, with the field to fix it, and Save and next. Good for ten minutes on a phone; the full editor is still there for one page.</p>
+<div class="pair">
+ <div><div class="pl">The queue</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">To fix · 60<small>ridgelinechimney.com</small></div></div><div class="scr" style="padding:0;gap:0">
+  <div class="grp"><div class="gh"><span class="dot okd"></span>"UPDATED 2024" in 38 posts<span class="sp"></span>›</div></div>
+  <div class="grp"><div class="gh"><span class="dot badd"></span>12 pages with no description<span class="sp"></span>›</div></div>
+  <div class="grp"><div class="gh"><span class="dot badd"></span>5 keyphrases shared<span class="sp"></span>›</div></div>
+  <div class="grp"><div class="gh"><span class="dot okd"></span>4 titles used twice<span class="sp"></span>›</div></div>
+  <div class="grp"><div class="gh"><span class="dot okd"></span>31 pages with no keyphrase<span class="sp"></span>›</div></div>
+ </div></div></div>
+ <div><div class="pl">Fixing one</div><div class="ph"><div class="sbar"><span>3:14</span><span>▾▴▮</span></div><div class="ab"><span class="i">←</span><div class="t">No description · 1 of 12</div></div><div class="scr">
+  <div><b style="font-size:15px">Chimney Cap Installation</b><div class="tiny">/chimney-caps</div></div>
+  <div class="fld" style="min-height:110px;align-items:flex-start">Keep rain, birds and raccoons out. We fit stainless chimney caps across the Chicago suburbs, usually in under an hour|</div>
+  <div class="meter"><span class="mg" style="width:78%"></span></div><div class="tiny">121 of about 155 characters</div>
+  <div class="serp" style="padding:10px"><div class="h" style="font-size:15px;white-space:normal">Chimney Cap Installation | Ridgeline Chimney</div><div class="d">Keep rain, birds and raccoons out. We fit stainless chimney caps across the Chicago suburbs, usually in under an hour</div></div>
+  <span class="btn t sm" style="align-self:flex-start">Open the whole page ›</span>
+ </div><div class="pbar"><span class="btn t">Skip</span><span class="sp"></span><span class="btn f">Save and next</span></div></div></div>
+</div>
+
+<div class="note" style="margin-top:40px"><b>Recommendation: 1 on a desktop, 4 on a phone.</b> It is the shape the SEO tab already has (a section in the strip, working inside the pane, a back arrow to return), so it teaches nothing new; the health card makes the site-wide duplicates, the part that is better than what they use today, the first thing seen; and the editor keeps what you type and what Google will show side by side, which is the whole job of the screen. <b>2</b> is better for working through dozens of pages in one sitting; <b>3</b> is the most direct route to fixing the site, and could be added later as a "To fix" filter on 1.</div>
+</div>
