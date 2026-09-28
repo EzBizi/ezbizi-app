@@ -8,6 +8,7 @@ import 'package:ezbizi_client/screens/monitoring/camera_monitoring_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/ownership_tab.dart';
 import 'package:ezbizi_client/screens/monitoring/monitoring_screen.dart';
 import 'package:ezbizi_client/screens/monitoring/pc_specs_tab.dart';
+import 'package:ezbizi_client/widgets/tab_bar_like.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -226,27 +227,64 @@ void main() {
   );
 
   testWidgets(
-    'the sub-tab strip shows PC Specs active, and Camera Monitoring plus '
-    'Desktop Monitoring LOCKED — neither grant is in the default fixture',
+    'an ungranted tab is not on the strip — the default fixture holds only '
+    'the module grant and PC Specs, so PC Specs is all there is',
     (tester) async {
+      // Jose, 2026-09-28, via the UI/UX Android audit: "app needs to be
+      // cohesive." Every other module leaves an ungranted tab off its strip;
+      // Monitoring alone drew it with a padlock. The padlock is gone, and this
+      // pins the replacement rather than just the removal: the four tabs this
+      // fixture does not grant are ABSENT, and the one it does is present.
       await _pumpScreen(tester, devices: [_agentDevice, _webDevice]);
 
-      expect(find.text('PC Specs'), findsOneWidget);
-      expect(find.text('Camera Monitoring'), findsOneWidget);
-      expect(find.text('Desktop Monitoring'), findsOneWidget);
-      // Named and locked, never "Soon": both of those tabs shipped long ago,
-      // and the only reason they do not open is the reader's role. Telling
-      // somebody a built feature is coming sends them to wait instead of to
-      // the person who can tick the box.
-      expect(find.text('Soon'), findsNothing);
+      expect(find.text('PC Specs'), findsOneWidget,
+          reason: 'Control: the strip is drawn, so the absences below are '
+              'the filter and not an empty strip.');
+      for (final ungranted in [
+        'General',
+        'Map',
+        'Camera Monitoring',
+        'Desktop Monitoring',
+      ]) {
+        expect(find.text(ungranted), findsNothing,
+            reason: '$ungranted is not granted by this fixture.');
+      }
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
+    },
+  );
 
-      // FOUR locked: General, Map, Camera and Desktop. The default fixture
-      // holds `monitoring.view` and `monitoring.specs.view` and nothing else,
-      // and both General and Map mint their own keys. In production nobody
-      // meets this state — the two backfill migrations hand those keys to
-      // every role that already held what they replaced. This fixture is what
-      // those migrations exist to prevent, written down.
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+  testWidgets(
+    'on a phone every tab sits on ONE scrolling row, like every other module',
+    (tester) async {
+      // The audit's first finding: a Wrap of chips went to two rows at phone
+      // width. Asserted with ALL five tabs granted, because the widest strip
+      // is the one that wrapped — a fixture with one tab would pass anything.
+      await _pumpScreen(
+        tester,
+        devices: [_agentDevice, _webDevice],
+        size: const Size(375, 812),
+        permissions: [
+          'monitoring.view',
+          'monitoring.specs.view',
+          'monitoring.general.view',
+          'monitoring.map.view',
+          'monitoring.cameras.view',
+          'monitoring.screenshots.view',
+        ],
+      );
+
+      expect(find.byType(TabBarLike), findsOneWidget,
+          reason: 'The shared strip, not a Monitoring-only one.');
+
+      // Built lazily off-screen or not, a scroll row lays every child out on
+      // the same line, so their vertical centres agree. A Wrap would put the
+      // later ones on a second run, lower down.
+      final firstY = tester.getCenter(find.text('General')).dy;
+      for (final label in ['Map', 'PC Specs', 'Camera Monitoring', 'Desktop Monitoring']) {
+        expect(tester.getCenter(find.text(label, skipOffstage: false)).dy,
+            closeTo(firstY, 0.5),
+            reason: '$label wrapped onto another row.');
+      }
     },
   );
 
@@ -310,9 +348,11 @@ void main() {
       );
 
       expect(find.text('Camera Monitoring'), findsOneWidget);
-      // Desktop stays locked, and so do General and Map — all three keys are
-      // absent from this fixture.
-      expect(find.byIcon(Icons.lock_outline), findsNWidgets(3));
+      // Desktop, General and Map are not granted by this fixture, so they are
+      // not on the strip at all.
+      expect(find.text('Desktop Monitoring'), findsNothing);
+      expect(find.text('General'), findsNothing);
+      expect(find.text('Map'), findsNothing);
 
       await tester.tap(find.text('Camera Monitoring'));
       await tester.pumpAndSettle();
