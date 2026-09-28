@@ -2994,6 +2994,9 @@ sources in their box, Mark all read after the chips, status a pill and the verbs
 lead beside Book (recommended) · **2** a toolbar box, status as four buttons · **3** status is the
 inbox: Inbox / Booked / Archived / Not a lead tabs. Phones **4 · 5 · 6** follow them.
 
+**For the build:** start from `e3b5a623` (Leads' customer card in the thread header, the latest
+commit on `lead_thread.dart` and `leads_screen.dart`); keep that card as Leads drew it.
+
 ### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILT**
 
 **Built (client, social_media_tab.dart):** desktop 1 — Publish turns the composer into the
