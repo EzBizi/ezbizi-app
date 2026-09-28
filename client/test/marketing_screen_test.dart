@@ -14,6 +14,7 @@ import 'package:ezbizi_client/widgets/refused.dart';
 import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:ezbizi_client/widgets/social_network_mark.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -228,6 +229,47 @@ void main() {
         reason: 'A network with a page connected cannot also be a network '
             'nothing can be connected on, and the catalogue was saying both '
             'about the same one.',
+      );
+    });
+
+    /*
+     * The reason a network cannot be connected is shown WHOLE on a phone.
+     *
+     * UI/UX, Android audit 2026-09-28: the subtitle was cut at two lines
+     * beside "Not ready", and the server's sentence puts what to DO at the end
+     * — so the half that was lost was exactly the half that helps.
+     *
+     * Asserted on the painted paragraph, not the widget's text. `find.text`
+     * matches the string a Text was GIVEN, which is the full sentence whether
+     * or not it was ellipsised on screen, so it passes against the bug. What
+     * distinguishes is whether the paragraph ran out of lines.
+     */
+    testWidgets('a reason not to connect is shown whole on a phone', (tester) async {
+      await _pumpScreen(tester, _handler(), size: const Size(375, 1600));
+
+      // At phone width the chip strips scroll sideways, so a chip can be off
+      // screen and a bare tap() misses it with only a warning.
+      for (final chip in ['Social Media Management', 'Accounts']) {
+        final target = find.widgetWithText(ChoiceChip, chip);
+        await tester.ensureVisible(target);
+        await tester.pumpAndSettle();
+        await tester.tap(target);
+        await tester.pumpAndSettle();
+      }
+
+      final reason = find.descendant(
+        of: find.widgetWithText(DashboardCard, 'Catalogue'),
+        matching: find.textContaining('no Meta app'),
+      );
+      expect(reason, findsOneWidget);
+
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: reason, matching: find.byType(RichText)),
+      );
+      expect(
+        paragraph.didExceedMaxLines,
+        isFalse,
+        reason: 'The reason was cut short again; the end of it says what to do.',
       );
     });
 
@@ -1109,6 +1151,35 @@ void main() {
      * tall. The stub still paints nothing — that is not what is being
      * measured.
      */
+    /*
+     * "Saved" describes the OPEN newsletter, so with none open it says nothing.
+     *
+     * UI/UX, Android audit 2026-09-28: an empty composer read "No newsletters
+     * in … yet.  Saved  [+ New]" — a status with no noun. Both sides asserted,
+     * because the absence alone passes for a toolbar that has stopped showing
+     * the save state at all.
+     *
+     * Two tests rather than one with two pumps: a second pump in the same test
+     * reuses the State, so the "open" half inherited the empty half's null
+     * selection and failed for a reason that had nothing to do with the toolbar.
+     */
+    testWidgets('the save state is absent when nothing is open', (tester) async {
+      await _pumpComposer(tester, _handler(canEdit: true));
+
+      expect(find.text('Saved'), findsNothing,
+          reason: 'Nothing is open, so there is nothing to have saved.');
+    });
+
+    testWidgets('the save state shows once a newsletter is open', (tester) async {
+      await _pumpComposer(
+        tester,
+        _handler(canEdit: true, newsletters: const [_draft]),
+      );
+
+      expect(find.text('Saved'), findsOneWidget,
+          reason: 'A newsletter is open and saved; the state must show.');
+    });
+
     testWidgets('the preview is given the height its viewer needs', (
       tester,
     ) async {
@@ -1824,8 +1895,13 @@ MockClientHandler _handler({
             'value': 'facebook_page',
             'label': 'Facebook',
             'usable': false,
+            // The length of the real server sentence, which ends in what to
+            // do. A short stand-in would fit in two lines at phone width and
+            // let a clipping subtitle pass the wrap test.
             'unusable_because':
-                'EzBizi has no Meta app set up on this installation yet.',
+                'EzBizi has no Meta app set up on this installation yet, so '
+                'Facebook, Instagram and Messenger cannot be connected until '
+                'somebody at EzBizi registers one and adds its keys.',
             'connects_by': 'sign_in',
             'start_path': '/social/facebook/start',
           },

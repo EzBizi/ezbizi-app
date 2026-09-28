@@ -1596,12 +1596,15 @@ class _AccountsPane extends StatelessWidget {
                       contentPadding: EdgeInsets.zero,
                       leading: SocialNetworkMark(network: network.value),
                       title: Text(network.label),
+                      // No `maxLines`. The reason is the server's sentence and
+                      // it ends in what to DO ("…so Facebook, Instagram and
+                      // Messenger cannot be connected until …"). Cut at two
+                      // lines beside "Not ready" on a phone, the half that was
+                      // lost was exactly the half that helps. It wraps.
                       subtitle: Text(
                         network.usable
                             ? 'Ready to connect'
                             : network.unusableBecause ?? 'Not ready',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: Text(
                         network.usable ? 'Ready' : 'Not ready',
