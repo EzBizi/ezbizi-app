@@ -15,9 +15,10 @@ use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\SocialConnectionAccess;
 use App\Support\Social\SocialMediaKind;
 use App\Support\Time\ViewTimezone;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response as Status;
@@ -107,15 +108,15 @@ class SocialPostsController extends Controller
 
         return response()->json([
             'data' => $posts->map(fn (SocialPost $post) => [
-                'id'         => $post->getKey(),
-                'body'       => $post->body,
-                'title'      => $post->title,
-                'has_media'  => $post->media_path !== null,
-                'scheduled_for'      => $post->scheduled_for,
+                'id' => $post->getKey(),
+                'body' => $post->body,
+                'title' => $post->title,
+                'has_media' => $post->media_path !== null,
+                'scheduled_for' => $post->scheduled_for,
                 'scheduled_timezone' => $post->scheduled_timezone,
-                'author'     => $post->author?->name,
+                'author' => $post->author?->name,
                 'created_at' => $post->created_at?->toIso8601String(),
-                'targets'    => $post->targets
+                'targets' => $post->targets
                     ->filter(fn (SocialPostTarget $t) => $visible->has($t->social_connection_id))
                     ->map(fn (SocialPostTarget $t) => $this->presentTarget($t, $visible->get($t->social_connection_id)))
                     ->values()->all(),
@@ -144,30 +145,30 @@ class SocialPostsController extends Controller
         $this->limits->assertUploadArrived($request, 'media');
 
         $data = $request->validate([
-            'connections'   => ['required', 'array', 'min:1'],
+            'connections' => ['required', 'array', 'min:1'],
             'connections.*' => ['string'],
-            'body'          => ['nullable', 'string', 'max:'.self::MAX_BODY],
-            'title'         => ['nullable', 'string', 'max:255'],
+            'body' => ['nullable', 'string', 'max:'.self::MAX_BODY],
+            'title' => ['nullable', 'string', 'max:255'],
             // Wall clock in the view's own timezone, as the composer typed it.
             // No timezone on the wire: the server decides which clock the view
             // is on, because a client that sent one could send a different one
             // than the screen was showing.
             'scheduled_for' => ['nullable', 'string', 'date_format:Y-m-d H:i'],
-            'media'         => [
+            'media' => [
                 'nullable', 'file',
                 'mimes:'.implode(',', SocialMediaKind::extensions()),
                 'max:'.$this->limits->maxKilobytes(),
             ],
         ], [
             'connections.required' => 'Tick at least one account to post to.',
-            'media.mimes'          => 'Social networks take pictures and video: '
+            'media.mimes' => 'Social networks take pictures and video: '
                 .implode(', ', SocialMediaKind::extensions()).'.',
-            'media.max'            => $this->limits->tooLargeMessage(),
+            'media.max' => $this->limits->tooLargeMessage(),
             'scheduled_for.date_format' => 'That is not a time this can read. '
                 .'Pick the day and time again.',
         ]);
 
-        $file     = $request->file('media');
+        $file = $request->file('media');
         $schedule = $this->schedule($request, $data['scheduled_for'] ?? null);
 
         if ($file === null && trim((string) ($data['body'] ?? '')) === '') {
@@ -199,10 +200,10 @@ class SocialPostsController extends Controller
 
         $post = DB::transaction(function () use ($connections, $data, $file, $user, $schedule) {
             $post = new SocialPost([
-                'body'               => $data['body'] ?? null,
-                'title'              => $data['title'] ?? null,
-                'created_by'         => $user->getKey(),
-                'scheduled_for'      => $schedule['for'],
+                'body' => $data['body'] ?? null,
+                'title' => $data['title'] ?? null,
+                'created_by' => $user->getKey(),
+                'scheduled_for' => $schedule['for'],
                 'scheduled_timezone' => $schedule['timezone'],
             ]);
 
@@ -219,7 +220,7 @@ class SocialPostsController extends Controller
             foreach ($connections as $connection) {
                 $post->targets()->create([
                     'social_connection_id' => $connection->getKey(),
-                    'status'               => $schedule['for'] === null
+                    'status' => $schedule['for'] === null
                         ? SocialPostTarget::STATUS_QUEUED
                         : SocialPostTarget::STATUS_SCHEDULED,
                 ]);
@@ -259,15 +260,15 @@ class SocialPostsController extends Controller
         $post->load('targets');
 
         $this->audit->log('social.post_queued', $post, [
-            'accounts'      => $connections->map(fn (SocialConnection $c) => $c->display_name)->all(),
-            'kind'          => $kind->value,
+            'accounts' => $connections->map(fn (SocialConnection $c) => $c->display_name)->all(),
+            'kind' => $kind->value,
             'scheduled_for' => $schedule['for'],
-            'timezone'      => $schedule['timezone'],
+            'timezone' => $schedule['timezone'],
         ], actor: $user);
 
         return response()->json([
             'data' => [
-                'id'      => $post->getKey(),
+                'id' => $post->getKey(),
                 'targets' => $post->targets->map(
                     fn (SocialPostTarget $t) => $this->presentTarget($t, $connections->firstWhere('id', $t->social_connection_id))
                 )->all(),
@@ -300,7 +301,7 @@ class SocialPostsController extends Controller
         }
 
         $timezone = ViewTimezone::forUser($request->user());
-        $moment   = Carbon::parse($wall, $timezone);
+        $moment = Carbon::parse($wall, $timezone);
 
         // A minute of slack: the composer's clock and the server's are not the
         // same clock, and refusing "now" as past would be right and useless.
@@ -323,9 +324,9 @@ class SocialPostsController extends Controller
      * somewhere else on the platform.
      *
      * @param  string[]  $ids
-     * @return \Illuminate\Support\Collection<int, SocialConnection>
+     * @return Collection<int, SocialConnection>
      */
-    private function resolve(Request $request, array $ids): \Illuminate\Support\Collection
+    private function resolve(Request $request, array $ids): Collection
     {
         $user = $request->user();
 
@@ -346,9 +347,9 @@ class SocialPostsController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, SocialConnection>  $connections
+     * @param  Collection<int, SocialConnection>  $connections
      */
-    private function assertEveryNetworkTakesThis(\Illuminate\Support\Collection $connections, SocialMediaKind $kind): void
+    private function assertEveryNetworkTakesThis(Collection $connections, SocialMediaKind $kind): void
     {
         foreach ($connections as $connection) {
             $provider = $connection->providerEnum();
@@ -395,14 +396,15 @@ class SocialPostsController extends Controller
     private function presentTarget(SocialPostTarget $target, ?SocialConnection $connection): array
     {
         return [
-            'id'             => $target->getKey(),
-            'connection_id'  => $target->social_connection_id,
-            'account'        => $connection?->display_name,
-            'provider'       => $connection?->provider,
+            'id' => $target->getKey(),
+            'connection_id' => $target->social_connection_id,
+            'account' => $connection?->display_name,
+            'provider' => $connection?->provider,
             'provider_label' => $connection?->providerLabel(),
-            'status'         => $target->status,
-            'failure'        => $target->failure,
-            'sent_at'        => $target->sent_at?->toIso8601String(),
+            'status' => $target->status,
+            'failure' => $target->failure,
+            'sent_at' => $target->sent_at?->toIso8601String(),
+            'url' => $target->url,
         ];
     }
 }

@@ -5,6 +5,7 @@ namespace App\Support\Social\Publishing;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialMediaKind;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -40,9 +41,10 @@ use Illuminate\Support\Facades\Http;
  * briefly, to save nothing. Video gets a MediaHandoff and gets it released in
  * a `finally`, so the window is the length of one fetch.
  */
-final class FacebookPublisher implements SocialPublisher
+final class FacebookPublisher implements LinksToPosts, SocialPublisher
 {
     private const API = 'https://graph.facebook.com/v21.0';
+
     private const TIMEOUT = 60;
 
     public function publish(SocialConnection $connection, PostPayload $post): string
@@ -52,12 +54,12 @@ final class FacebookPublisher implements SocialPublisher
         }
 
         $token = $this->token($connection);
-        $page  = $connection->remote_id;
+        $page = $connection->remote_id;
 
         return match ($post->kind()) {
             SocialMediaKind::Image => $this->photo($page, $token, $post),
             SocialMediaKind::Video => $this->video($page, $token, $post),
-            SocialMediaKind::Text  => $this->text($page, $token, $post),
+            SocialMediaKind::Text => $this->text($page, $token, $post),
         };
     }
 
@@ -102,7 +104,7 @@ final class FacebookPublisher implements SocialPublisher
             fn () => Http::timeout(self::TIMEOUT)
                 ->attach('source', $post->bytes(), 'upload'.$this->extension($post))
                 ->post(self::API.'/'.$page.'/photos', [
-                    'caption'      => $post->body,
+                    'caption' => $post->body,
                     'access_token' => $token,
                 ]),
         ));
@@ -119,8 +121,8 @@ final class FacebookPublisher implements SocialPublisher
             // succeeds and is missing half of itself.
             return $this->idFrom($this->call(
                 fn () => Http::timeout(self::TIMEOUT)->asForm()->post(self::API.'/'.$page.'/videos', [
-                    'file_url'     => $handoff->url,
-                    'description'  => $post->body,
+                    'file_url' => $handoff->url,
+                    'description' => $post->body,
                     'access_token' => $token,
                 ]),
             ));
@@ -129,7 +131,7 @@ final class FacebookPublisher implements SocialPublisher
         }
     }
 
-    /** @param  callable(): \Illuminate\Http\Client\Response  $send */
+    /** @param  callable(): Response  $send */
     private function call(callable $send): array
     {
         try {
@@ -166,12 +168,12 @@ final class FacebookPublisher implements SocialPublisher
     private function extension(PostPayload $post): string
     {
         return match ($post->mime()) {
-            'image/png'  => '.png',
+            'image/png' => '.png',
             'image/webp' => '.webp',
-            'image/gif'  => '.gif',
+            'image/gif' => '.gif',
             'image/heic' => '.heic',
             'image/heif' => '.heif',
-            default      => '.jpg',
+            default => '.jpg',
         };
     }
 
@@ -188,5 +190,20 @@ final class FacebookPublisher implements SocialPublisher
         }
 
         return $token;
+    }
+
+    /**
+     * Read back from the network rather than built from the id: a Page post's
+     * address is not derivable from its id, and a guessed link that 404s is
+     * worse than none.
+     */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
+            'fields' => 'permalink_url',
+            'access_token' => $this->token($connection),
+        ])->json('permalink_url');
+
+        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }

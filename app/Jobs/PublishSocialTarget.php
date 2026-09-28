@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Organization;
 use App\Models\SocialPostTarget;
 use App\Support\Automations\EventEmitter;
+use App\Support\Social\Publishing\LinksToPosts;
 use App\Support\Social\Publishing\Publishers;
 use App\Support\Social\Publishing\SocialPublishFailed;
 use App\Support\Tenancy\TenantContext;
@@ -69,7 +70,7 @@ final class PublishSocialTarget implements ShouldQueue
     private function send(SocialPostTarget $target, EventEmitter $events): void
     {
         $connection = $target->connection;
-        $post       = $target->post;
+        $post = $target->post;
 
         if ($connection === null || $post === null) {
             return;
@@ -117,11 +118,21 @@ final class PublishSocialTarget implements ShouldQueue
 
         $target->markSent($remoteId);
 
+        // Where it can be seen. Best effort: the post IS out, and a network
+        // that will not say where must not turn a sent post into a failure.
+        if ($publisher instanceof LinksToPosts) {
+            try {
+                $target->forceFill(['url' => $publisher->permalink($connection, $remoteId)])->save();
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+
         $events->emit('social.published', $target, [
-            'provider'     => $connection->provider,
-            'account'      => $connection->display_name,
-            'remote_id'    => $remoteId,
-            'has_media'    => $post->media_path !== null,
+            'provider' => $connection->provider,
+            'account' => $connection->display_name,
+            'remote_id' => $remoteId,
+            'has_media' => $post->media_path !== null,
         ]);
     }
 
@@ -131,8 +142,8 @@ final class PublishSocialTarget implements ShouldQueue
 
         $events->emit('social.publish_failed', $target, [
             'provider' => $target->connection?->provider,
-            'account'  => $target->connection?->display_name,
-            'because'  => $because,
+            'account' => $target->connection?->display_name,
+            'because' => $because,
         ]);
     }
 }

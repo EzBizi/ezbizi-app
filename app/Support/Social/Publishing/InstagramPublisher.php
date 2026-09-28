@@ -43,9 +43,10 @@ use Illuminate\Support\Facades\Http;
  * before a row is ever written; this repeats it only so publish() cannot be
  * called into a bad state from somewhere else.
  */
-final class InstagramPublisher implements SocialPublisher
+final class InstagramPublisher implements LinksToPosts, SocialPublisher
 {
     private const API = 'https://graph.instagram.com/v21.0';
+
     private const TIMEOUT = 30;
 
     /** Instagram truncates past this; better to cut it ourselves than be surprised. */
@@ -70,7 +71,7 @@ final class InstagramPublisher implements SocialPublisher
      * bounded by nothing and no worker is held open. That is a change to
      * PublishSocialTarget, which is why it is not being made here in passing.
      *
-     * @param  int  $pollSeconds   Zero in tests.
+     * @param  int  $pollSeconds  Zero in tests.
      * @param  int  $pollAttempts  12 x 3s.
      */
     public function __construct(
@@ -85,7 +86,7 @@ final class InstagramPublisher implements SocialPublisher
         }
 
         $token = $this->token($connection);
-        $user  = $connection->remote_id;
+        $user = $connection->remote_id;
 
         $handoff = MediaHandoff::hold($post);
 
@@ -94,7 +95,7 @@ final class InstagramPublisher implements SocialPublisher
             $this->waitFor($container, $token);
 
             $published = $this->call('/'.$user.'/media_publish', $token, ['creation_id' => $container]);
-            $id        = $published['id'] ?? null;
+            $id = $published['id'] ?? null;
 
             if (! is_string($id) || $id === '') {
                 throw SocialPublishFailed::network(
@@ -128,9 +129,9 @@ final class InstagramPublisher implements SocialPublisher
             // media_type=VIDEO is refused with a message about the media rather
             // than about the parameter, which sends you inspecting the file.
             'media_type' => $video ? 'REELS' : null,
-            'image_url'  => $video ? null : $url,
-            'video_url'  => $video ? $url : null,
-            'caption'    => mb_substr($post->body, 0, self::CAPTION),
+            'image_url' => $video ? null : $url,
+            'video_url' => $video ? $url : null,
+            'caption' => mb_substr($post->body, 0, self::CAPTION),
         ], fn ($value) => $value !== null));
 
         $id = $response['id'] ?? null;
@@ -181,7 +182,7 @@ final class InstagramPublisher implements SocialPublisher
     {
         try {
             $response = Http::timeout(self::TIMEOUT)->get(self::API.'/'.$container, [
-                'fields'       => 'status_code,status',
+                'fields' => 'status_code,status',
                 'access_token' => $token,
             ]);
         } catch (ConnectionException) {
@@ -241,5 +242,20 @@ final class InstagramPublisher implements SocialPublisher
         }
 
         return $token;
+    }
+
+    /**
+     * Read back from the network rather than built from the id: a Page post's
+     * address is not derivable from its id, and a guessed link that 404s is
+     * worse than none.
+     */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
+            'fields' => 'permalink',
+            'access_token' => $this->token($connection),
+        ])->json('permalink');
+
+        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }

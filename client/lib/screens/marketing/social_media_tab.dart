@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import 'clock_label.dart';
@@ -1001,14 +1002,34 @@ class _RecentPosts extends StatelessWidget {
                 for (final target in post.targets)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      // The failure sentence is the server's, shown whole. A
-                      // status word on its own ("failed") tells somebody that
-                      // something is wrong and nothing about what to do.
-                      target.failure != null
-                          ? '${target.account} · ${target.failure}'
-                          : '${target.account} · ${_statusWord(target.status)}',
-                      style: theme.textTheme.bodySmall,
+                    child: Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      children: [
+                        Text(
+                          // The failure sentence is the server's, shown whole.
+                          // A status word on its own ("failed") tells somebody
+                          // that something is wrong and nothing about what to do.
+                          target.failure != null
+                              ? '${target.account} · ${target.failure}'
+                              : '${target.account} · ${_statusWord(target.status)}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        if (target.url != null)
+                          InkWell(
+                            onTap: () => launchUrl(
+                              Uri.parse(target.url!),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                            child: Text(
+                              'View post',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
               ],
@@ -1686,6 +1707,7 @@ class _SentTarget {
     required this.providerLabel,
     required this.status,
     this.failure,
+    this.url,
   });
 
   final String account;
@@ -1693,12 +1715,17 @@ class _SentTarget {
   final String status;
   final String? failure;
 
+  /// Where the post can be seen, as the network reported it; null when it
+  /// gave none.
+  final String? url;
+
   factory _SentTarget.fromJson(Map<String, dynamic> json) {
     return _SentTarget(
       account: json['account'] as String? ?? '',
       providerLabel: json['provider_label'] as String? ?? '',
       status: json['status'] as String? ?? 'queued',
       failure: json['failure'] as String?,
+      url: json['url'] as String?,
     );
   }
 }

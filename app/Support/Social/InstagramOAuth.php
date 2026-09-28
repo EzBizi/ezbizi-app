@@ -18,6 +18,8 @@ final class InstagramOAuth implements SocialOAuth
     public const SCOPES = [
         'instagram_business_basic',
         'instagram_business_content_publish',
+        // Instagram direct messages into Leads, and replying to them.
+        'instagram_business_manage_messages',
     ];
 
     private const TIMEOUT = 10;
@@ -69,11 +71,11 @@ final class InstagramOAuth implements SocialOAuth
     public function authorizeUrl(string $state, ?string $verifier = null): string
     {
         return 'https://www.instagram.com/oauth/authorize?'.http_build_query([
-            'client_id'     => MetaApp::instagramId(),
-            'redirect_uri'  => $this->redirectUri(),
+            'client_id' => MetaApp::instagramId(),
+            'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(',', self::SCOPES),
-            'state'         => $state,
+            'scope' => implode(',', self::SCOPES),
+            'state' => $state,
         ]);
     }
 
@@ -83,11 +85,11 @@ final class InstagramOAuth implements SocialOAuth
             $short = Http::asForm()->timeout(self::TIMEOUT)->post(
                 'https://api.instagram.com/oauth/access_token',
                 [
-                    'client_id'     => MetaApp::instagramId(),
+                    'client_id' => MetaApp::instagramId(),
                     'client_secret' => MetaApp::instagramSecret(),
-                    'grant_type'    => 'authorization_code',
-                    'redirect_uri'  => $this->redirectUri(),
-                    'code'          => $code,
+                    'grant_type' => 'authorization_code',
+                    'redirect_uri' => $this->redirectUri(),
+                    'code' => $code,
                 ],
             );
         } catch (ConnectionException) {
@@ -112,9 +114,9 @@ final class InstagramOAuth implements SocialOAuth
 
         try {
             $long = Http::timeout(self::TIMEOUT)->get('https://graph.instagram.com/access_token', [
-                'grant_type'    => 'ig_exchange_token',
+                'grant_type' => 'ig_exchange_token',
                 'client_secret' => MetaApp::instagramSecret(),
-                'access_token'  => $shortToken,
+                'access_token' => $shortToken,
             ]);
         } catch (ConnectionException) {
             return new SocialOAuthGrant(
@@ -138,7 +140,7 @@ final class InstagramOAuth implements SocialOAuth
             $response = Http::withToken($grant->accessToken)
                 ->timeout(self::TIMEOUT)
                 ->get('https://graph.instagram.com/v21.0/me', [
-                    'fields' => 'id,username,name',
+                    'fields' => 'user_id,id,username,name',
                 ]);
         } catch (ConnectionException) {
             throw SocialOAuthRefused::unidentified('Instagram');
@@ -148,7 +150,14 @@ final class InstagramOAuth implements SocialOAuth
             throw SocialOAuthRefused::unidentified('Instagram');
         }
 
-        $id = trim((string) $response->json('id'));
+        /*
+         * `user_id`, not `id`. Under Instagram Login `id` is the app-scoped
+         * id of the person; `user_id` is the professional ACCOUNT - the id
+         * Meta's message webhooks carry and /{id}/media and /{id}/messages
+         * expect (Meta's get-started page, checked 2026-09-28). Stored as
+         * `id`, no Instagram message could ever find its connection.
+         */
+        $id = trim((string) ($response->json('user_id') ?? $response->json('id')));
         $username = trim((string) $response->json('username'));
         $name = trim((string) $response->json('name'));
 

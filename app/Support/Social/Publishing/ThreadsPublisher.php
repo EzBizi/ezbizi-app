@@ -35,9 +35,10 @@ use Illuminate\Support\Facades\Http;
  * graph.facebook.com. Signing a Threads call with the Facebook pair fails, which
  * is the bug ThreadsOAuth carried until 2026-08-28.
  */
-final class ThreadsPublisher implements SocialPublisher
+final class ThreadsPublisher implements LinksToPosts, SocialPublisher
 {
     private const API = 'https://graph.threads.net/v1.0';
+
     private const TIMEOUT = 30;
 
     /**
@@ -46,7 +47,7 @@ final class ThreadsPublisher implements SocialPublisher
      * takes the same target and posts it twice. InstagramPublisher carries the
      * whole reasoning and the upgrade path; they share it.
      *
-     * @param  int  $pollSeconds   Zero in tests.
+     * @param  int  $pollSeconds  Zero in tests.
      * @param  int  $pollAttempts  Video only; 10 x 3s.
      */
     public function __construct(
@@ -67,8 +68,8 @@ final class ThreadsPublisher implements SocialPublisher
             throw new SocialPublishFailed('A thread with no words would be an empty post. Write something.');
         }
 
-        $token   = $this->token($connection);
-        $user    = $connection->remote_id;
+        $token = $this->token($connection);
+        $user = $connection->remote_id;
         $handoff = $kind === SocialMediaKind::Text ? null : MediaHandoff::hold($post);
 
         try {
@@ -109,7 +110,7 @@ final class ThreadsPublisher implements SocialPublisher
     {
         $container = $this->call('/'.$user.'/threads', $token, array_filter([
             'media_type' => match ($kind) {
-                SocialMediaKind::Text  => 'TEXT',
+                SocialMediaKind::Text => 'TEXT',
                 SocialMediaKind::Image => 'IMAGE',
                 SocialMediaKind::Video => 'VIDEO',
             },
@@ -134,7 +135,7 @@ final class ThreadsPublisher implements SocialPublisher
         for ($attempt = 0; $attempt < $this->pollAttempts; $attempt++) {
             try {
                 $response = Http::timeout(self::TIMEOUT)->get(self::API.'/'.$container, [
-                    'fields'       => 'status,error_message',
+                    'fields' => 'status,error_message',
                     'access_token' => $token,
                 ]);
             } catch (ConnectionException) {
@@ -201,5 +202,20 @@ final class ThreadsPublisher implements SocialPublisher
         }
 
         return $token;
+    }
+
+    /**
+     * Read back from the network rather than built from the id: a Page post's
+     * address is not derivable from its id, and a guessed link that 404s is
+     * worse than none.
+     */
+    public function permalink(SocialConnection $connection, string $remoteId): ?string
+    {
+        $url = Http::timeout(10)->get(self::API.'/'.$remoteId, [
+            'fields' => 'permalink',
+            'access_token' => $this->token($connection),
+        ])->json('permalink');
+
+        return is_string($url) && str_starts_with($url, 'https://') ? $url : null;
     }
 }

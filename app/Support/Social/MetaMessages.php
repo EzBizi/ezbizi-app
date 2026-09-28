@@ -216,7 +216,11 @@ final class MetaMessages
             $response = Http::withToken($token)
                 ->timeout(self::TIMEOUT)
                 ->post(
-                    WhatsAppCloud::endpoint().'/'.$connection->remote_id.'/messages',
+                    // Instagram Login tokens are only accepted on Instagram's
+                    // own host; a Page token only on Facebook's.
+                    ($connection->provider === SocialProvider::InstagramProfessional->value
+                        ? 'https://graph.instagram.com/v21.0'
+                        : WhatsAppCloud::endpoint()).'/'.$connection->remote_id.'/messages',
                     [
                         'recipient' => ['id' => $recipientId],
                         'message' => ['text' => $text],

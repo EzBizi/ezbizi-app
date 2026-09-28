@@ -22,6 +22,10 @@ final class FacebookOAuth implements SocialOAuth
         'pages_show_list',
         'pages_read_engagement',
         'pages_manage_posts',
+        // Messenger enquiries into Leads, and replying to them
+        // (MetaMessages, SubscribeMetaMessages).
+        'pages_messaging',
+        'pages_manage_metadata',
     ];
 
     private const TIMEOUT = 10;
@@ -73,21 +77,21 @@ final class FacebookOAuth implements SocialOAuth
     public function authorizeUrl(string $state, ?string $verifier = null): string
     {
         return 'https://www.facebook.com/'.self::GRAPH_VERSION.'/dialog/oauth?'.http_build_query([
-            'client_id'     => MetaApp::id(),
-            'redirect_uri'  => $this->redirectUri(),
+            'client_id' => MetaApp::id(),
+            'redirect_uri' => $this->redirectUri(),
             'response_type' => 'code',
-            'scope'         => implode(',', self::SCOPES),
-            'state'         => $state,
+            'scope' => implode(',', self::SCOPES),
+            'state' => $state,
         ]);
     }
 
     public function exchange(string $code, ?string $verifier = null): SocialOAuthGrant
     {
         $short = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/oauth/access_token', [
-            'client_id'     => MetaApp::id(),
+            'client_id' => MetaApp::id(),
             'client_secret' => MetaApp::secret(),
-            'redirect_uri'  => $this->redirectUri(),
-            'code'          => $code,
+            'redirect_uri' => $this->redirectUri(),
+            'code' => $code,
         ], 'Facebook');
 
         $shortToken = $short['access_token'] ?? null;
@@ -97,9 +101,9 @@ final class FacebookOAuth implements SocialOAuth
         }
 
         $long = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/oauth/access_token', [
-            'grant_type'        => 'fb_exchange_token',
-            'client_id'         => MetaApp::id(),
-            'client_secret'     => MetaApp::secret(),
+            'grant_type' => 'fb_exchange_token',
+            'client_id' => MetaApp::id(),
+            'client_secret' => MetaApp::secret(),
             'fb_exchange_token' => $shortToken,
         ], 'Facebook');
 
@@ -113,7 +117,7 @@ final class FacebookOAuth implements SocialOAuth
         // without it there is no way to tell which connections belong to the
         // person who removed the app.
         $me = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/me', [
-            'fields'       => 'id',
+            'fields' => 'id',
             'access_token' => $access,
         ], 'Facebook');
 
@@ -129,7 +133,7 @@ final class FacebookOAuth implements SocialOAuth
     public function identify(SocialOAuthGrant $grant): array
     {
         $body = $this->get('https://graph.facebook.com/'.self::GRAPH_VERSION.'/me/accounts', [
-            'fields'       => 'id,name,access_token',
+            'fields' => 'id,name,access_token',
             'access_token' => $grant->accessToken,
         ], 'Facebook');
 
@@ -151,7 +155,7 @@ final class FacebookOAuth implements SocialOAuth
                 continue;
             }
 
-            $id   = isset($page['id']) ? trim((string) $page['id']) : '';
+            $id = isset($page['id']) ? trim((string) $page['id']) : '';
             $name = isset($page['name']) ? trim((string) $page['name']) : '';
             $token = isset($page['access_token']) && is_string($page['access_token'])
                 ? $page['access_token']

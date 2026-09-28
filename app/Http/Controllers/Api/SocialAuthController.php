@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SubscriptionLapsedException;
 use App\Jobs\RegisterThumbtackWebhook;
+use App\Jobs\SubscribeMetaMessages;
 use App\Models\SocialConnection;
 use App\Models\SocialSignIn;
 use App\Models\User;
@@ -275,6 +276,12 @@ class SocialAuthController extends Controller
                      */
                     if ($provider === SocialProvider::Thumbtack) {
                         RegisterThumbtackWebhook::dispatch((string) $connection->getKey());
+                    }
+
+                    // Meta the same way: a Page or Instagram account sends its
+                    // messages only once it has subscribed the app.
+                    if (in_array($provider, [SocialProvider::FacebookPage, SocialProvider::InstagramProfessional], true)) {
+                        SubscribeMetaMessages::dispatch((string) $connection->getKey());
                     }
 
                     $this->audit->log('social.connected', $connection, [
