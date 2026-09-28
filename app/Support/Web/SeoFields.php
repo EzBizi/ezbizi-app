@@ -283,6 +283,17 @@ class SeoFields
                 'hint' => 'The g.page/r/…/review link from your Google profile. Where the happy face sends a happy customer.',
                 'requirement' => self::OPTIONAL,
             ],
+            /*
+             * This site's own reviews page, the one with the review faces.
+             * Jose, 2026-09-28: it is the link sent to a customer once a job
+             * is completed, "so they can review us" — so it names the page a
+             * customer lands on, not Google's form behind it.
+             */
+            'customer_review_link' => [
+                'label' => 'Customer review link',
+                'hint' => 'This site\'s reviews page, e.g. https://example.com/reviews/. The link a customer is sent after a job.',
+                'requirement' => self::OPTIONAL,
+            ],
             'review_link' => [
                 'label' => 'Leave-a-review link',
                 'hint' => 'Where a "Review us" button should send somebody.',
