@@ -192,4 +192,36 @@ class WorkizRawReadTest extends TestCase
         $this->assertSame([], $out['jobs']);
         $this->assertNotNull($out['failed']);
     }
+
+    /**
+     * Every request asks for a FULL page, and the result is trimmed. If Workiz
+     * starts page N at N x records, a smaller `records` on the last request
+     * would move where it starts -- the Reports session's point, fixing the
+     * same loop in all().
+     */
+    public function test_a_limit_between_pages_still_asks_for_full_pages(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $payload = require base_path('tests/Fixtures/workiz/job_payload.php');
+        $page = fn (string $prefix) => array_map(fn ($i) => array_merge($payload, ['UUID' => $prefix.$i]), range(1, WorkizJobs::PAGE));
+
+        Http::fake(function (Request $request) use ($page) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return Http::response(['flag' => true, 'data' => match ((string) ($query['offset'] ?? '')) {
+                '0' => $page('A'),
+                '1' => $page('B'),
+                default => [],
+            }]);
+        });
+
+        $out = app(WorkizJobs::class)->raw($this->connect($tenant, $tenant['franchise'], 'api_good'), 150);
+
+        $this->assertCount(150, $out['jobs']);
+        Http::assertNotSent(function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return (string) ($query['records'] ?? '') !== (string) WorkizJobs::PAGE;
+        });
+    }
 }

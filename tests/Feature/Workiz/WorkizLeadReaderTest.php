@@ -4,10 +4,12 @@ namespace Tests\Feature\Workiz;
 
 use App\Models\Franchise;
 use App\Models\SocialConnection;
+use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use App\Support\Workiz\WorkizLeadAttributes;
 use App\Support\Workiz\WorkizLeads;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -221,5 +223,31 @@ class WorkizLeadReaderTest extends TestCase
         ]));
 
         $this->assertSame('2026-10-05 12:00:00', $out['received_at']);
+    }
+
+    /**
+     * `offset` is a PAGE NUMBER, as measured on /job/all/: the second page of
+     * leads is page 1, not "row 100". A-1 has too few leads to fill a page
+     * today, which is why the old loop never showed its defect here.
+     */
+    public function test_the_second_page_of_leads_is_asked_for_by_page_number(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $first = array_map(fn ($i) => $this->lead(['UUID' => 'L'.$i]), range(1, WorkizJobs::PAGE));
+
+        Http::fake(function (Request $request) use ($first) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return Http::response(['flag' => true, 'data' => match ((string) ($query['offset'] ?? '')) {
+                '0' => $first,
+                '1' => [$this->lead(['UUID' => 'NEXT'])],
+                default => [],
+            }]);
+        });
+
+        $out = app(WorkizLeads::class)->raw($this->connect($tenant, $tenant['franchise']));
+
+        $this->assertCount(WorkizJobs::PAGE + 1, $out['leads']);
+        $this->assertSame('NEXT', end($out['leads'])['UUID']);
     }
 }

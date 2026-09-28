@@ -381,7 +381,9 @@ final class WorkizJobs
                     [
                         'start_date' => $since ?? now()->subYears(5)->toDateString(),
                         'offset' => $page,
-                        'records' => min(self::PAGE, $limit - count($jobs)),
+                        // Always a full page: if Workiz starts page N at
+                        // N x records, a smaller last one would move it.
+                        'records' => self::PAGE,
                         'only_open' => 'false',
                     ],
                 );
@@ -410,7 +412,7 @@ final class WorkizJobs
             }
         }
 
-        return ['jobs' => $jobs, 'failed' => null];
+        return ['jobs' => array_slice($jobs, 0, $limit), 'failed' => null];
     }
 
     /**

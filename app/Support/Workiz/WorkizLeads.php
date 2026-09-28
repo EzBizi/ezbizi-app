@@ -53,14 +53,19 @@ final class WorkizLeads
 
         $leads = [];
 
-        for ($offset = 0; $offset < $limit; $offset += WorkizJobs::PAGE) {
+        // `offset` is a PAGE NUMBER and every request asks for a full page:
+        // measured on /job/all/ 2026-09-28 (see WorkizJobs::raw), where the
+        // old `offset += 100` read one page and stopped. Leads come from the
+        // same API; at A-1's volume (10 since January) no branch fills a page
+        // today, which is why it never showed.
+        for ($page = 0; count($leads) < $limit; $page++) {
             try {
                 $response = Http::acceptJson()->get(
                     'https://api.workiz.com/api/v1/'.$token.'/lead/all/',
                     [
                         'start_date' => $since ?? now()->subYears(5)->toDateString(),
-                        'offset' => $offset,
-                        'records' => min(WorkizJobs::PAGE, $limit - $offset),
+                        'offset' => $page,
+                        'records' => WorkizJobs::PAGE,
                         'only_open' => 'false',
                     ],
                 );
@@ -72,19 +77,19 @@ final class WorkizLeads
                 return ['leads' => $leads, 'failed' => 'Workiz refused the lead list ('.$response->status().').'];
             }
 
-            $page = $response->json('data') ?? [];
+            $rows = $response->json('data') ?? [];
 
-            foreach ($page as $lead) {
+            foreach ($rows as $lead) {
                 if (is_array($lead)) {
                     $leads[] = $lead;
                 }
             }
 
-            if (count($page) < WorkizJobs::PAGE) {
+            if (count($rows) < WorkizJobs::PAGE) {
                 break;
             }
         }
 
-        return ['leads' => $leads, 'failed' => null];
+        return ['leads' => array_slice($leads, 0, $limit), 'failed' => null];
     }
 }
