@@ -1775,7 +1775,13 @@ class AutomationsController extends Controller
                 // nothing silently change meaning. `actions` is a record of what
                 // a rule does, not only an instruction, so it should say what
                 // was chosen. Notifications' argument, 2026-09-15.
-                $parameter('in_app_only', 'In-app only, do not email', 'boolean', false),
+                //
+                // SUPERSEDED 2026-09-28 by Jose: "it should be disabled by
+                // default ... emails should only send if the toggle for send an
+                // email is activated". The negative switch read as "email: off"
+                // while it emailed. Positive, off by default, and a rule that
+                // never ticked it sends no email (ActionRunner::notify).
+                $parameter('send_email', 'Also send an email', 'boolean', false),
 
                 /*
                  * WHICH ROLES, rather than everybody who can see the record.

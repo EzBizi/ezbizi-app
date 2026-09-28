@@ -592,11 +592,10 @@ void main() {
         ],
       },
       'actions': [
-        // `in_app_only` rides on every notify action now: the switch is a
-        // DECLARED parameter, and the generic payload branch sends every declared
-        // parameter. false means "follow the organization", which is what these
-        // rules always did, so the behaviour is unchanged - the wire is not.
-        {'type': 'notify', 'message': 'It is done', 'in_app_only': false, 'role_ids': []},
+        // `send_email` rides on every notify action: the switch is a DECLARED
+        // parameter, and the generic payload branch sends every declared
+        // parameter. false means "no email" (Jose, 2026-09-28: off by default).
+        {'type': 'notify', 'message': 'It is done', 'send_email': false, 'role_ids': []},
       ],
     });
   });
@@ -607,7 +606,7 @@ void main() {
   /// switch is `required: false`, so an untouched one must NOT count as a
   /// missing parameter. A boolean that blocks the save when off makes the step
   /// unusable by everybody who does not want the option.
-  testWidgets('the notify step can decline the email, and is saveable without it', (
+  testWidgets('the notify step can ask for an email, and is saveable without it', (
     tester,
   ) async {
     Map<String, dynamic>? sent;
@@ -618,18 +617,18 @@ void main() {
     await _tap(tester, find.text('Created'));
     await _tap(tester, find.text('Add a step'));
     await _tap(tester, find.text('Send a notification'));
-    await _type(tester, 'Message', 'No email please');
+    await _type(tester, 'Message', 'Email me too');
 
     // Untouched: the step is complete, because the switch is optional.
     expect(_saveButton(tester).onPressed, isNotNull);
 
-    await _tap(tester, find.text('In-app only, do not email'));
+    await _tap(tester, find.text('Also send an email'));
     await _tap(tester, find.text('Create automation'));
 
     expect((sent!['actions'] as List).single, {
       'type': 'notify',
-      'message': 'No email please',
-      'in_app_only': true,
+      'message': 'Email me too',
+      'send_email': true,
       'role_ids': [],
     });
   });
@@ -846,7 +845,7 @@ void main() {
     expect((sent!['actions'] as List).single, {
       'type': 'notify',
       'message': 'A chat came in',
-      'in_app_only': false,
+      'send_email': false,
       'role_ids': ['role-office'],
     });
   });
@@ -1607,7 +1606,7 @@ void main() {
         ],
       },
       'actions': [
-        {'type': 'notify', 'message': 'Everyone should know.', 'in_app_only': false, 'role_ids': []},
+        {'type': 'notify', 'message': 'Everyone should know.', 'send_email': false, 'role_ids': []},
       ],
     });
 
@@ -2723,8 +2722,8 @@ const _catalogue = {
           'nullable': false,
         },
         {
-          'key': 'in_app_only',
-          'label': 'In-app only, do not email',
+          'key': 'send_email',
+          'label': 'Also send an email',
           'kind': 'boolean',
           'required': false,
           'nullable': false,

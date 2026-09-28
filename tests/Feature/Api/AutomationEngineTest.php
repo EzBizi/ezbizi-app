@@ -2398,10 +2398,46 @@ class AutomationEngineTest extends TestCase
      * only artefact that differs between wiring one call and wiring both.
      * Notifications named the case rather than leaving it in a diff.
      */
+    /**
+     * A notify step emails ONLY when its author ticked "Also send an email".
+     *
+     * Jose, 2026-09-28: "it should be disabled by default ... emails should
+     * only send if the toggle for send an email is activated as well". The
+     * first case is the exact shape of every rule saved before today —
+     * `in_app_only: false` — which emailed nine people ~370 times an hour. The
+     * ticked case is the control that email still works when asked for.
+     */
+    public function test_a_notify_step_emails_only_when_its_toggle_is_on(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+        $runner = app(ActionRunner::class);
+        $admin = $this->org['admin'];
+
+        $event = $this->inTenant(function () {
+            app(SettingsResolver::class)->set('notifications.email_enabled', $this->org['organization'], true);
+
+            return AutomationEvent::create(['organization_id' => $this->org['organization']->id,
+                'event_key' => 'lead.received', 'payload' => ['after' => ['source' => 'local_services']],
+                'occurred_at' => now(), 'available_at' => now()]);
+        });
+        $notify = fn (array $extra) => $this->inTenant(fn () => $runner->run(
+            ['type' => 'notify', 'message' => 'A new lead', 'user_ids' => [$admin->id]] + $extra,
+            $event, $this->org['organization'],
+        ));
+
+        $notify(['in_app_only' => false]);
+        $notify([]);
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
+
+        $notify(['send_email' => 'true']);
+        \Illuminate\Support\Facades\Notification::assertSentTo($admin, \App\Notifications\NotificationNotice::class);
+    }
+
     public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
     {
+        // No send_email: since 2026-09-28 that IS declining the email.
         $automation = $this->automation('job.created', null,
-            [['type' => 'notify', 'message' => 'New job', 'in_app_only' => true]]);
+            [['type' => 'notify', 'message' => 'New job']]);
 
         // The company rings no bells and does send mail. Without the flag
         // reaching allows(), the live email channel makes it answer "true".
@@ -2425,12 +2461,12 @@ class AutomationEngineTest extends TestCase
         $this->assertStringContainsString('switched off', $detail);
 
         // THE CONTROL. Same company, same settings, same message - only the
-        // decline removed. Without this the test above could pass against an
+        // email asked for. Without this the test above could pass against an
         // allows() that had simply started answering false for everything, and
         // the assertion would look like proof of the flag when it was proof of
         // nothing. This one must come back with the OTHER sentence.
         $control = $this->automation('job.created', null,
-            [['type' => 'notify', 'message' => 'New job']]);
+            [['type' => 'notify', 'message' => 'New job', 'send_email' => true]]);
 
         $this->makeJob();
         $this->drain();

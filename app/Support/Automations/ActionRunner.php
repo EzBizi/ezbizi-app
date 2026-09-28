@@ -2844,7 +2844,15 @@ class ActionRunner
          * would be able to overrule a company setting from a screen the company
          * cannot see.
          */
-        $inAppOnly = (bool) ($action['in_app_only'] ?? false);
+        // OPT-IN, and that supersedes everything above about a negative key.
+        // Jose, 2026-09-28: "it should be disabled by default ... emails should
+        // only send if the toggle for send an email is activated as well".
+        // The old "In-app only, do not email" switch read as "email: off" when
+        // it was off, and a lead rule emailed nine people ~370 times an hour.
+        // So a rule emails only when it carries send_email = true; every rule
+        // saved before this carries none and sends no email. `in_app_only` is
+        // no longer read. The organization setting is still the ceiling.
+        $inAppOnly = ! filter_var($action['send_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
         // Strings, filtered, re-indexed: an empty box in the builder must mean
         // "narrow nothing" rather than "a role whose id is the empty string",
