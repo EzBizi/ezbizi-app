@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0302',
       date: '28 Sep 2026',
       items: [
-        'Customers: click a column heading to sort the whole list, and click again to reverse it. A new Created column shows when each customer was added; the letter headings show only in name order.',
+        'Customers: click a column heading to sort the whole list, and click again to reverse it. A new Created column shows when each customer was added to EzBizi; customers brought in from Workiz show the day of the import. The letter headings show only in name order.',
       ],
     ),
     VersionRelease(
