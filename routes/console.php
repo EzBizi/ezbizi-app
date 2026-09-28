@@ -291,9 +291,11 @@ Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->without
 
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
-// In the background: a lost-signal alert must not wait behind mail and
-// lead imports, and this sweep's Google calls must not delay what follows.
-Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5)->runInBackground();
+// NOT in the background: ezbizi-scheduler.service is Type=oneshot, so systemd
+// kills schedule:run's whole cgroup when it exits, background children with it.
+// fd1520a0 tried runInBackground and Workiz measured its own two commands dying
+// mid-run the same way (2026-09-28). In line, it waits behind the commands above.
+Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5);
 
 // A-1 Chimney's Google reviews, in step with A1 Leads' change feed so the
 // A1Leads GBP tab is a minute old rather than a day (Rodrigo, 2026-09-25). It
