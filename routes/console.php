@@ -292,9 +292,10 @@ Schedule::command('ezbizi:a1leads-review-watch')->everyFifteenMinutes()->without
 
 // Field: lost-signal alerts (the one fact no incoming point can announce) and
 // geocoding the next days' job addresses, so arrival checks never wait on Google.
-// In the background: a lost-signal alert must not wait behind mail and
-// lead imports, and this sweep's Google calls must not delay what follows.
-Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5)->runInBackground();
+// NOT runInBackground(): the scheduler is a systemd oneshot unit with
+// KillMode=control-group, so a background child is killed the moment
+// schedule:run exits, and a lost-signal alert could die mid-sweep (2026-09-28).
+Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5);
 
 // A-1 Chimney's Google reviews, in step with A1 Leads' change feed so the
 // A1Leads GBP tab is a minute old rather than a day (Rodrigo, 2026-09-25). It

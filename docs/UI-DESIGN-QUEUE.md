@@ -2958,6 +2958,24 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 26 · Web Management · Hours for several websites at once — **DRAWN, awaiting Jose**
+
+`docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
+0.0.0290, `c77a7873`: `POST /web/hours/review` and `/apply`), from Rodrigo's brief via Jose,
+2026-09-28 (the brief is on Jose's desktop, `ezbizi-hours-editor-feature-brief.md`). Desktop
+**1** one page, review docked beside the week (recommended) · **2** numbered steps, review as a
+tab per website · **3** a grid, days down and websites across, final hours live. Phone **4** a
+page per step, a day from the bottom · **5** one scrolling form, day cards, Review on a bar that
+stays (recommended) · **6** by days: pick days, then what they do.
+
+**Fixed in every option, from the brief and the contract:** one control per day (Keep existing ·
+Set hours · Closed all day), no switch; under Set hours each edge is Keep or a time; a closed day
+needs both. Websites are the only live destination — Google Business Profile drawn greyed with
+the server's reason. Convert hours from (IANA, friendly label) and Don't open before (after
+converting, opening only). The main button is Review changes; Update N websites applies that
+review's token, and a review over 30 minutes old is refused (409). Results: Changed · Unchanged ·
+Blocked · Failed · Not confirmed.
+
 ### 25 · Jobs · a job's service area — **BUILT: Jose picked 1 and 4** ("as you recommend")
 
 **Built (client):** the table's Franchise column became **Where** (`WhereLabel`: "Illinois ·
