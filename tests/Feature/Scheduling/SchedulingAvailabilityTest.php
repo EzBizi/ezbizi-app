@@ -516,6 +516,37 @@ class SchedulingAvailabilityTest extends TestCase
     }
 
     /**
+     * THE AREA'S OWN DAILY LIMIT (Jose, 2026-09-28). Dallas's windows add up
+     * to 3 on a Monday; a limit of 1 with one job booked fills the day.
+     */
+    public function test_an_area_daily_limit_lowers_the_day_below_its_windows(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $dallas = $this->dallas($tenant);
+
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$dallas->id}/limits", ['limits' => ['1' => 0]])
+            ->assertStatus(422);
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$dallas->id}/limits", ['limits' => ['1' => 2, '5' => null]])
+            ->assertOk()
+            ->assertJsonPath('data.daily_limits', ['1' => 2]);
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+        $this->assertSame('2026-10-05', $first['date']);
+        $this->assertSame([2, 0], array_column($first['windows'], 'remaining'), 'Limit 2: both go to the earliest window.');
+        $this->assertSame(2, $first['area_limit']);
+
+        $this->booked($tenant, '2026-10-05 11:00:00');
+        $this->booked($tenant, '2026-10-05 12:00:00');
+
+        $this->assertSame('2026-10-12', $this->first($tenant, 'zip=75201')['first']['date'], 'Two booked of a limit of 2.');
+
+        $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/areas')
+            ->assertJsonPath('data.0.daily_limits', ['1' => 2]);
+    }
+
+    /**
      * An area nobody has configured says so — not "closed", not "full", and
      * never a date. The client turns it into "check Workiz".
      */

@@ -4,6 +4,7 @@ namespace App\Support\Scheduling;
 
 use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use Carbon\CarbonImmutable;
@@ -128,6 +129,11 @@ final class Openings
         $limits = FranchiseDailyLimit::query()
             ->where('franchise_id', $area->franchise_id)
             ->pluck('max_jobs', 'weekday');
+        // The area's own daily limit: lowers its day below what its windows
+        // add up to, never raises it.
+        $areaLimits = ServiceAreaDailyLimit::query()
+            ->where('service_area_id', $area->id)
+            ->pluck('max_jobs', 'weekday');
         $franchiseBooked = $limits->isEmpty()
             ? []
             : $this->franchiseBooked($area, $from, $from->addDays($days));
@@ -182,8 +188,11 @@ final class Openings
             // limit — is handed to the windows EARLIEST FIRST, so no two
             // windows advertise the same last spot. A1 distributes its day
             // headroom the same way.
-            $left = max(0, array_sum(array_column($windows, 'capacity'))
-                - count($booked['times']) - $booked['no_time']);
+            $dayCap = array_sum(array_column($windows, 'capacity'));
+            if (isset($areaLimits[$date->dayOfWeek])) {
+                $dayCap = min($dayCap, (int) $areaLimits[$date->dayOfWeek]);
+            }
+            $left = max(0, $dayCap - count($booked['times']) - $booked['no_time']);
             if ($franchiseLeft !== null) {
                 $left = min($left, $franchiseLeft);
             }
@@ -202,6 +211,7 @@ final class Openings
                 // The franchise's cap that day and how much of it is spoken
                 // for; both null without a limit.
                 'franchise_limit' => $limit,
+                'area_limit' => isset($areaLimits[$date->dayOfWeek]) ? (int) $areaLimits[$date->dayOfWeek] : null,
                 'franchise_booked' => $limit === null ? null : ($franchiseBooked[$key] ?? 0),
             ];
         }

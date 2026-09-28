@@ -124,6 +124,13 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   };
   bool _savingLimits = false;
 
+  /// The open area's own daily limit fields, weekday => field (Jose,
+  /// 2026-09-28: "we do not have daily limit for service area").
+  final Map<int, TextEditingController> _areaLimitFields = {
+    for (var d = 0; d < 7; d++) d: TextEditingController(),
+  };
+  bool _savingAreaLimits = false;
+
   /// Each weekday's "Day" box. Kept equal to the sum of its windows, so typing
   /// a window updates it; typing IT splits the number across the windows.
   final Map<int, TextEditingController> _dayTotal = {};
@@ -149,6 +156,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   String? _editingSlotId;
   String? _removingSlotId;
 
+  /// The time slots card is read-only until "Edit time slots".
+  bool _slotsUnlocked = false;
+  bool _addingSlot = false;
+
+  /// A change of hours that moves areas' capacity waits on this.
+  bool _confirmMove = false;
+  final _removeTyped = TextEditingController();
+
   Me? get _me => widget.session.me;
 
   @override
@@ -171,10 +186,14 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     _cityEntry.dispose();
     _formName.dispose();
     _deleteName.dispose();
+    _removeTyped.dispose();
     for (final c in _dayTotal.values) {
       c.dispose();
     }
     for (final c in _limitFields.values) {
+      c.dispose();
+    }
+    for (final c in _areaLimitFields.values) {
       c.dispose();
     }
     super.dispose();
@@ -250,12 +269,21 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       return;
     }
 
-    setState(() => _editingSlotId = null);
+    setState(() {
+      _editingSlotId = null;
+      _addingSlot = false;
+      _confirmMove = false;
+    });
     await _afterWindowsChanged();
   }
 
-  Future<void> _removeTimeSlot(String id) async {
-    final response = await widget.api.delete('/scheduling/time-slots/$id');
+  /// The server refuses a removal that does not name the window's own hours,
+  /// so a stray request cannot delete one.
+  Future<void> _removeTimeSlot(Map<String, dynamic> w) async {
+    final response = await widget.api.delete(
+      '/scheduling/time-slots/${w['id']}',
+      {'confirm': '${w['start_time']}-${w['end_time']}'},
+    );
 
     if (!mounted) return;
 
@@ -322,7 +350,100 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       for (var weekday = 0; weekday < 7; weekday++) {
         _syncDayTotal(weekday);
       }
+      final limits = (_openArea?['daily_limits'] as Map?) ?? const {};
+      for (final e in _areaLimitFields.entries) {
+        e.value.text = limits['${e.key}']?.toString() ?? '';
+      }
     });
+  }
+
+  /// What an area takes on a weekday as saved: its windows' sum, lowered by
+  /// its own daily limit. Zero is closed.
+  int _areaDay(Map<String, dynamic> area, int weekday) {
+    final week = ((area['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0;
+    final max = ((area['daily_limits'] as Map?)?['$weekday'] as num?)?.toInt();
+
+    return max == null ? week : (week < max ? week : max);
+  }
+
+  /// A franchise's weekday as saved: its areas added up, lowered by its own
+  /// daily limit.
+  int _franchiseDay(String? franchiseId, int weekday) {
+    final sum = _areas
+        .where((a) => a['franchise_id'] == franchiseId)
+        .fold(0, (t, a) => t + _areaDay(a, weekday));
+    final max = _franchiseLimits[franchiseId]?[weekday];
+
+    return max == null ? sum : (sum < max ? sum : max);
+  }
+
+  Future<void> _saveAreaLimits(String areaId) async {
+    final limits = <String, int?>{
+      for (final e in _areaLimitFields.entries)
+        '${e.key}': int.tryParse(e.value.text.trim()),
+    };
+
+    setState(() {
+      _savingAreaLimits = true;
+      _paneError = null;
+    });
+
+    final response = await widget.api.put('/scheduling/areas/$areaId/limits', {
+      'limits': limits,
+    });
+    if (!mounted) return;
+
+    setState(() {
+      _savingAreaLimits = false;
+      if (!response.ok) {
+        _paneError = response.message;
+        return;
+      }
+      final saved = {
+        for (final e in limits.entries)
+          if (e.value != null) e.key: e.value,
+      };
+      _openArea = {...?_openArea, 'daily_limits': saved};
+      final i = _areas.indexWhere((a) => a['id'] == areaId);
+      if (i >= 0) _areas[i] = {..._areas[i], 'daily_limits': saved};
+    });
+  }
+
+  /// Seven small fields under seven tiles, blank for no limit.
+  Widget _limitRow(
+    ThemeData theme,
+    Map<int, TextEditingController> fields, {
+    required String keyPrefix,
+    required bool enabled,
+  }) {
+    return Row(
+      children: [
+        for (final (weekday, _) in _week) ...[
+          if (weekday != 1) const SizedBox(width: 6),
+          Expanded(
+            child: TextField(
+              key: ValueKey('$keyPrefix-$weekday'),
+              controller: fields[weekday],
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              enabled: enabled,
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'No limit',
+                hintStyle: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 10,
+                ),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   void _showOverview() => setState(() {
@@ -1148,7 +1269,36 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       top: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       [
         _timeSlotsCard(theme),
-        const SizedBox(height: 8),
+        if (_areas.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'DAILY TOTALS',
+            style: theme.textTheme.labelSmall?.copyWith(
+              letterSpacing: 0.8,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Every franchise's day, each already lowered by its own limit and
+          // its areas' limits, added up (Jose, 2026-09-28).
+          _dayTiles(
+            theme,
+            keyPrefix: 'overview-total',
+            total: (weekday) => {
+              for (final a in _areas) a['franchise_id'] as String?,
+            }.fold(0, (sum, f) => sum + _franchiseDay(f, weekday)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Every area in view added up, as saved, after each area\'s and '
+            'each franchise\'s daily limit.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 18),
+        ] else
+          const SizedBox(height: 8),
         Text('Capacity', style: theme.textTheme.titleMedium),
         const SizedBox(height: 2),
         Text(
@@ -1217,11 +1367,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         _me?.franchises.where((f) => f.id == franchiseId).firstOrNull?.name ??
         'Franchise';
 
-    int total(int weekday) => areas.fold(
-      0,
-      (sum, a) =>
-          sum + (((a['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0),
-    );
+    int total(int weekday) =>
+        areas.fold(0, (sum, a) => sum + _areaDay(a, weekday));
 
     return _withWeekTable(
       theme,
@@ -1671,6 +1818,43 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         ],
         const SizedBox(height: 14),
         _dailyTotals(theme, area),
+        const SizedBox(height: 14),
+        Text(
+          'DAILY LIMIT FOR ${area['name']}'.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            letterSpacing: 0.8,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        _limitRow(
+          theme,
+          _areaLimitFields,
+          keyPrefix: 'area-limit',
+          enabled: !_savingAreaLimits,
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'The most jobs ${area['name']} takes that day, whatever its '
+                'time slots add up to. It only ever lowers a day. Blank is no '
+                'limit.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: _savingAreaLimits
+                  ? null
+                  : () => _saveAreaLimits(area['id'] as String),
+              child: Text(_savingAreaLimits ? 'Saving…' : 'Save limit'),
+            ),
+          ],
+        ),
         const SizedBox(height: 18),
         Text(
           "Type a day's total and it splits across the time slots, earliest "
@@ -2274,11 +2458,8 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         .firstOrNull
         ?.name;
 
-    int franchiseTotal(int weekday, int own) => siblings.fold(
-      own,
-      (sum, a) =>
-          sum + (((a['week'] as Map?)?['$weekday'] as num?)?.toInt() ?? 0),
-    );
+    int franchiseTotal(int weekday, int own) =>
+        siblings.fold(own, (sum, a) => sum + _areaDay(a, weekday));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2297,13 +2478,19 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           total: dayTotal,
           under: (weekday) {
             final whole = franchiseTotal(weekday, dayTotal(weekday));
+            final own = ((area['daily_limits'] as Map?)?['$weekday'] as num?)
+                ?.toInt();
             final max = _franchiseLimits[area['franchise_id']]?[weekday];
-            final parts = [
+            final franchiseLine = [
               if (siblings.isNotEmpty && whole > 0) '$whole in all',
-              if (max != null) 'max $max',
+              if (max != null) '${franchise ?? 'franchise'} max $max',
+            ].join(' · ');
+            final lines = [
+              if (own != null) 'max $own',
+              if (franchiseLine.isNotEmpty) franchiseLine,
             ];
 
-            return parts.isEmpty ? null : parts.join(' · ');
+            return lines.isEmpty ? null : lines.join('\n');
           },
         ),
         if (siblings.isNotEmpty) ...[
@@ -2682,12 +2869,30 @@ class _CapacitySettingsState extends State<CapacitySettings> {
   }
 
   /// The organization's windows, stated once for every area.
+  ///
+  /// LOCKED UNTIL ASKED (Jose, 2026-09-28: "anyone could click by accident
+  /// and delete a full time slot"). The windows read as tiles; changing them
+  /// takes "Edit time slots" first. A removal says what it deletes (every
+  /// area's capacity on that window) and needs REMOVE typed, and the server
+  /// refuses one that does not name the window's hours. A change of hours
+  /// says how many areas it moves before it does.
   Widget _timeSlotsCard(ThemeData theme) {
     final muted = theme.colorScheme.onSurfaceVariant;
+    final bad = ToneColours.of(context, Tone.bad);
 
-    Widget editor(String saveLabel) => Wrap(
+    String span(Map<String, dynamic> w) =>
+        '${_label(w['start_time'] as String)} – ${_label(w['end_time'] as String)}';
+    String used(Map<String, dynamic> w) {
+      final n = (w['areas'] as num?)?.toInt() ?? 0;
+
+      return n == 0
+          ? 'No area uses it yet'
+          : 'Used by $n ${n == 1 ? 'area' : 'areas'}';
+    }
+
+    Widget editor(String saveLabel, VoidCallback onSave) => Wrap(
       spacing: 8,
-      runSpacing: 4,
+      runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         _timeField(
@@ -2702,14 +2907,92 @@ class _CapacitySettingsState extends State<CapacitySettings> {
           'slot-draft-end',
           'To',
         ),
-        FilledButton.tonal(onPressed: _saveTimeSlot, child: Text(saveLabel)),
-        if (_editingSlotId != null)
-          TextButton(
-            onPressed: () => setState(() => _editingSlotId = null),
-            child: const Text('Cancel'),
-          ),
+        FilledButton(onPressed: onSave, child: Text(saveLabel)),
+        TextButton(
+          onPressed: () => setState(() {
+            _editingSlotId = null;
+            _addingSlot = false;
+            _confirmMove = false;
+          }),
+          child: const Text('Cancel'),
+        ),
       ],
     );
+
+    Widget tile(Map<String, dynamic> w) {
+      final id = w['id'] as String;
+      final selected = _editingSlotId == id || _removingSlotId == id;
+
+      return Container(
+        key: ValueKey('slot-tile-$id'),
+        width: 190,
+        padding: const EdgeInsets.fromLTRB(14, 10, 6, 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.4,
+          ),
+          border: Border.all(
+            color: selected
+                ? theme.colorScheme.primary
+                : EzBiziTheme.edge(context),
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.schedule, size: 18, color: muted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    span(w),
+                    style: theme.textTheme.titleSmall,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    used(w),
+                    style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                  ),
+                ],
+              ),
+            ),
+            if (_slotsUnlocked) ...[
+              IconButton(
+                tooltip: 'Change hours',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () => setState(() {
+                  _editingSlotId = id;
+                  _removingSlotId = null;
+                  _addingSlot = false;
+                  _confirmMove = false;
+                  _draftStart = w['start_time'] as String;
+                  _draftEnd = w['end_time'] as String;
+                  _slotError = null;
+                }),
+              ),
+              IconButton(
+                tooltip: 'Remove',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.delete_outline, size: 18, color: bad.ink),
+                onPressed: () => setState(() {
+                  _removingSlotId = id;
+                  _editingSlotId = null;
+                  _addingSlot = false;
+                  _removeTyped.clear();
+                  _slotError = null;
+                }),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    final editing = _timeSlots.where((w) => w['id'] == _editingSlotId);
+    final removing = _timeSlots.where((w) => w['id'] == _removingSlotId);
 
     return _card(
       theme,
@@ -2717,6 +3000,25 @@ class _CapacitySettingsState extends State<CapacitySettings> {
       // Never a bare "0": this screen's rule is that a zero on the Overview
       // means an area is full, and a test holds it to that.
       badge: _timeSlots.isEmpty ? 'None' : '${_timeSlots.length}',
+      action: !_canEditSlots
+          ? null
+          : _slotsUnlocked
+          ? FilledButton.tonalIcon(
+              onPressed: () => setState(() {
+                _slotsUnlocked = false;
+                _editingSlotId = null;
+                _removingSlotId = null;
+                _addingSlot = false;
+                _confirmMove = false;
+              }),
+              icon: const Icon(Icons.lock_outline, size: 18),
+              label: const Text('Done'),
+            )
+          : OutlinedButton.icon(
+              onPressed: () => setState(() => _slotsUnlocked = true),
+              icon: const Icon(Icons.lock_open_outlined, size: 18),
+              label: const Text('Edit time slots'),
+            ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2725,7 +3027,7 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             'many jobs a window takes on each day.',
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           if (_slotError != null) ...[
             ErrorNote(_slotError!),
             const SizedBox(height: 8),
@@ -2734,79 +3036,86 @@ class _CapacitySettingsState extends State<CapacitySettings> {
             Text(
               'None yet. Until there is one, no day can be opened.',
               style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            )
+          else
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [for (final w in _timeSlots) tile(w)],
             ),
-          for (final w in _timeSlots)
-            if (_editingSlotId == w['id'])
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: editor('Save hours'),
-              )
-            else if (_removingSlotId == w['id'])
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      "Remove ${_label(w['start_time'] as String)} – "
-                      "${_label(w['end_time'] as String)} and every area's "
-                      'capacity on it?',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    TextButton(
-                      onPressed: () => _removeTimeSlot(w['id'] as String),
-                      style: TextButton.styleFrom(
-                        foregroundColor: theme.colorScheme.error,
-                      ),
-                      child: const Text('Remove'),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => _removingSlotId = null),
-                      child: const Text('Keep'),
-                    ),
-                  ],
-                ),
+          if (editing.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              'New hours for ${span(editing.first)}',
+              style: theme.textTheme.labelMedium,
+            ),
+            const SizedBox(height: 6),
+            if (_confirmMove)
+              _warning(
+                theme,
+                'Every area\'s capacity on ${span(editing.first)} moves to '
+                '${_label(_draftStart)} – ${_label(_draftEnd)}: '
+                '${used(editing.first).toLowerCase()}. Jobs already booked '
+                'keep their own times.',
+                confirmLabel: 'Move to the new hours',
+                onConfirm: _saveTimeSlot,
+                onCancel: () => setState(() => _confirmMove = false),
               )
             else
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_label(w['start_time'] as String)} – '
-                      '${_label(w['end_time'] as String)}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  if (_canEditSlots) ...[
-                    IconButton(
-                      tooltip: 'Change hours',
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      onPressed: () => setState(() {
-                        _editingSlotId = w['id'] as String;
-                        _removingSlotId = null;
-                        _draftStart = w['start_time'] as String;
-                        _draftEnd = w['end_time'] as String;
-                        _slotError = null;
-                      }),
-                    ),
-                    IconButton(
-                      tooltip: 'Remove',
-                      icon: const Icon(Icons.close, size: 18),
-                      onPressed: () => setState(() {
-                        _removingSlotId = w['id'] as String;
-                        _editingSlotId = null;
-                      }),
-                    ),
-                  ],
-                ],
+              editor('Save hours', () {
+                final w = editing.first;
+                final changed =
+                    w['start_time'] != _draftStart ||
+                    w['end_time'] != _draftEnd;
+                if (!changed) {
+                  setState(() => _editingSlotId = null);
+                } else if (((w['areas'] as num?) ?? 0) > 0) {
+                  setState(() => _confirmMove = true);
+                } else {
+                  _saveTimeSlot();
+                }
+              }),
+          ],
+          if (removing.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _warning(
+              theme,
+              'Remove ${span(removing.first)}? It deletes every area\'s '
+              'capacity on it (${used(removing.first).toLowerCase()}), and it '
+              'cannot be undone. Type REMOVE to confirm.',
+              field: TextField(
+                key: const ValueKey('slot-remove-confirm'),
+                controller: _removeTyped,
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  hintText: 'REMOVE',
+                  border: OutlineInputBorder(),
+                ),
               ),
-          if (_canEditSlots && _editingSlotId == null) ...[
-            const SizedBox(height: 8),
-            editor('Add time slot'),
-          ] else if (!_canEditSlots && _timeSlots.isNotEmpty) ...[
-            const SizedBox(height: 6),
+              confirmLabel: 'Remove time slot',
+              onConfirm: _removeTyped.text.trim().toUpperCase() == 'REMOVE'
+                  ? () => _removeTimeSlot(removing.first)
+                  : null,
+              onCancel: () => setState(() => _removingSlotId = null),
+            ),
+          ],
+          if (_slotsUnlocked && editing.isEmpty && removing.isEmpty) ...[
+            const SizedBox(height: 14),
+            if (_addingSlot)
+              editor('Add time slot', _saveTimeSlot)
+            else
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  _addingSlot = true;
+                  _slotError = null;
+                }),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add a time slot'),
+              ),
+          ],
+          if (!_canEditSlots && _timeSlots.isNotEmpty) ...[
+            const SizedBox(height: 10),
             Text(
               'These apply to every branch, so they are changed at '
               'organization level.',
@@ -2818,11 +3127,61 @@ class _CapacitySettingsState extends State<CapacitySettings> {
     );
   }
 
+  /// A tinted box that says what an action will do, with its confirm and
+  /// cancel side by side — used where one click would change every area.
+  Widget _warning(
+    ThemeData theme,
+    String text, {
+    Widget? field,
+    required String confirmLabel,
+    required VoidCallback? onConfirm,
+    required VoidCallback onCancel,
+  }) {
+    final tone = ToneColours.of(context, Tone.bad);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tone.fill,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(color: tone.ink),
+          ),
+          if (field != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(width: 200, child: field),
+          ],
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              FilledButton(
+                onPressed: onConfirm,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.colorScheme.error,
+                  foregroundColor: theme.colorScheme.onError,
+                ),
+                child: Text(confirmLabel),
+              ),
+              TextButton(onPressed: onCancel, child: const Text('Keep it')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _card(
     ThemeData theme, {
     required String title,
     required String badge,
     required Widget child,
+    Widget? action,
   }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -2836,17 +3195,24 @@ class _CapacitySettingsState extends State<CapacitySettings> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              crossAxisAlignment: WrapCrossAlignment.center,
+            Row(
               children: [
-                Text(title, style: theme.textTheme.titleSmall),
-                Chip(
-                  label: Text(badge),
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(title, style: theme.textTheme.titleSmall),
+                      Chip(
+                        label: Text(badge),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                    ],
+                  ),
                 ),
+                ?action,
               ],
             ),
             const SizedBox(height: 8),

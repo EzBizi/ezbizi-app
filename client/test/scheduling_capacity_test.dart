@@ -790,6 +790,143 @@ void main() {
     );
   });
 
+  /// Jose, 2026-09-28: "we do not have daily limit for service area". It
+  /// saves as weekday => jobs, blank as none, and its tile says "max N".
+  testWidgets("an area's daily limit is saved and shown on its day", (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (request.method == 'PUT' &&
+            request.url.path.endsWith('/a-dallas/limits')) {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({
+            'data': {
+              ..._dallasDetail,
+              'daily_limits': {'1': 1},
+            },
+          });
+        }
+        return null;
+      },
+    );
+
+    await tester.tap(find.text('Dallas').first);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('area-limit-1')), '1');
+    await tester.tap(find.text('Save limit'));
+    await tester.pumpAndSettle();
+
+    expect(saved!['limits'], {
+      '0': null,
+      '1': 1,
+      '2': null,
+      '3': null,
+      '4': null,
+      '5': null,
+      '6': null,
+    });
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('daily-total-1')),
+        matching: find.textContaining('max 1'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  /// Jose, 2026-09-28: "i also want to see the daily totals in the full
+  /// overview". Each area lowered by its own limit, each franchise by its own.
+  testWidgets('the full overview totals every area after the limits', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      me: const {
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'DMV', 'company_id': 'co-1'},
+        ],
+      },
+      onRequest: (request) =>
+          request.method == 'GET' &&
+              request.url.path.endsWith('/scheduling/areas')
+          ? _json({
+              'data': [
+                {
+                  'id': 'a-1',
+                  'name': 'Connecticut',
+                  'franchise_id': 'fr-1',
+                  'zip_count': 1,
+                  'follows_pattern': true,
+                  'week': {
+                    '1': 16,
+                    '2': 16,
+                    '3': 16,
+                    '4': 16,
+                    '5': 8,
+                    '6': null,
+                    '0': null,
+                  },
+                  'daily_limits': {'1': 12},
+                },
+                {
+                  'id': 'a-2',
+                  'name': 'Maryland',
+                  'franchise_id': 'fr-2',
+                  'zip_count': 1,
+                  'follows_pattern': true,
+                  'week': {
+                    '1': 8,
+                    '2': 8,
+                    '3': 8,
+                    '4': 8,
+                    '5': 6,
+                    '6': null,
+                    '0': null,
+                  },
+                },
+                {
+                  'id': 'a-3',
+                  'name': 'Virginia',
+                  'franchise_id': 'fr-2',
+                  'zip_count': 1,
+                  'follows_pattern': true,
+                  'week': {
+                    '1': 6,
+                    '2': 6,
+                    '3': 6,
+                    '4': 6,
+                    '5': null,
+                    '6': null,
+                    '0': null,
+                  },
+                },
+              ],
+              'pattern': null,
+              'franchise_limits': {
+                'fr-2': {'1': 10},
+              },
+            })
+          : null,
+    );
+
+    Finder tile(int weekday, String text) => find.descendant(
+      of: find.byKey(ValueKey('overview-total-$weekday')),
+      matching: find.text(text),
+    );
+
+    // Monday: Connecticut 16 lowered to 12, DMV 8 + 6 lowered to 10.
+    expect(tile(1, '22'), findsOneWidget);
+    // Tuesday: no limits, 16 + 8 + 6.
+    expect(tile(2, '30'), findsOneWidget);
+    expect(tile(6, 'Closed'), findsOneWidget);
+  });
+
   testWidgets('a narrow overview scrolls its table, not the page', (
     tester,
   ) async {
@@ -887,6 +1024,12 @@ void main() {
 
     expect(find.text('10 AM – 1 PM'), findsOneWidget);
 
+    // Locked until asked (Jose, 2026-09-28).
+    await tester.tap(find.text('Edit time slots'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add a time slot'));
+    await tester.pumpAndSettle();
+
     // A search picker, not a dropdown: type to narrow, then pick.
     await tester.tap(find.byKey(const ValueKey('slot-draft-start')));
     await tester.pumpAndSettle();
@@ -907,6 +1050,113 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(posted, {'start_time': '13:00', 'end_time': '15:00'});
+  });
+
+  /// Jose, 2026-09-28: "anyone could click by accident and delete a full time
+  /// slot". Nothing can change until Edit time slots; a removal says what it
+  /// deletes, needs REMOVE typed, and names the window to the server.
+  testWidgets('a time slot is removed only when unlocked and REMOVE is typed', (
+    tester,
+  ) async {
+    Uri? deleted;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.contains('/scheduling/time-slots')) return null;
+        if (request.method == 'DELETE') {
+          deleted = request.url;
+          return _json({'data': const []});
+        }
+        return _json({
+          'data': [
+            {
+              'id': 't-1',
+              'start_time': '10:00',
+              'end_time': '13:00',
+              'areas': 12,
+            },
+          ],
+          'can_edit': true,
+        });
+      },
+    );
+
+    expect(find.byTooltip('Remove'), findsNothing, reason: 'locked by default');
+    expect(find.text('Used by 12 areas'), findsOneWidget);
+
+    await tester.tap(find.text('Edit time slots'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('used by 12 areas'), findsOneWidget);
+    final button = find.widgetWithText(FilledButton, 'Remove time slot');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('slot-remove-confirm')),
+      'remove',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(deleted?.path, endsWith('/scheduling/time-slots/t-1'));
+    expect(deleted?.queryParameters['confirm'], '10:00-13:00');
+  });
+
+  testWidgets('new hours for a slot in use say what they move first', (
+    tester,
+  ) async {
+    Map<String, dynamic>? patched;
+
+    await _pump(
+      tester,
+      onRequest: (request) {
+        if (!request.url.path.contains('/scheduling/time-slots')) return null;
+        if (request.method == 'PATCH') {
+          patched = jsonDecode(request.body) as Map<String, dynamic>;
+          return _json({'data': const []});
+        }
+        return _json({
+          'data': [
+            {
+              'id': 't-1',
+              'start_time': '10:00',
+              'end_time': '13:00',
+              'areas': 3,
+            },
+          ],
+          'can_edit': true,
+        });
+      },
+    );
+
+    await tester.tap(find.text('Edit time slots'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Change hours'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('slot-draft-end')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '2 PM');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2 PM').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save hours'));
+    await tester.pumpAndSettle();
+    expect(
+      patched,
+      isNull,
+      reason: 'Nothing moves before the warning is confirmed.',
+    );
+    expect(find.textContaining('used by 3 areas'), findsOneWidget);
+
+    await tester.tap(find.text('Move to the new hours'));
+    await tester.pumpAndSettle();
+    expect(patched, {'start_time': '10:00', 'end_time': '14:00'});
   });
 
   /// THE CASE THAT MATTERS. Opening a day used to write a hard-coded 08:00–12:00;
@@ -1171,6 +1421,7 @@ void main() {
 
       expect(find.text('10 AM – 1 PM'), findsOneWidget);
       expect(find.text('Add time slot'), findsNothing);
+      expect(find.text('Edit time slots'), findsNothing);
       expect(find.byTooltip('Change hours'), findsNothing);
       expect(
         find.textContaining('changed at organization level'),
