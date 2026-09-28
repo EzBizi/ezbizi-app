@@ -158,14 +158,21 @@ class MarketingGlanceTest extends TestCase
      *
      * `SocialConnectionAccess` asks `ViewScope::forUser`, and a user with no
      * stored `navigation.scope` is in the ORGANIZATION view no matter which
-     * franchise they are assigned to — an organization view sees everything
-     * below it, correctly. Written without this the test passed three where it
-     * expected one, and the tempting reading was that the glance leaked.
+     * franchise they are assigned to.
      *
-     * It is worth knowing which of the two rules a box obeys: Fleet's glance
-     * filters on ASSIGNMENT, so its equivalent test needs no view; this one
-     * filters on VIEW, which is §3's "file on the view, not the reach". A
-     * fixture copied between them silently tests the wrong rule.
+     * **This docblock used to call that correct, and it was the hole.** It
+     * said an organization view "sees everything below it, correctly", and
+     * that a test reporting three where it wanted one only LOOKED like a leak.
+     * It was one: the fallback meant a branch-only user who had never touched
+     * the switcher could see and post to a sibling branch's accounts. Fixed at
+     * 8d7c3fc8 — the organization view now answers from REACH — and the
+     * assertions below guard it from the side this comment used to explain
+     * away. The tempting reading was right.
+     *
+     * So the view still matters (a franchise view narrows to one branch), but
+     * the organization view is no longer a way AROUND reach. "File on the
+     * view, not the reach" is about where records are written; what somebody
+     * may SEE is bounded by reach whatever view they stand in.
      */
     public function test_a_branch_view_counts_only_posts_on_accounts_it_reaches(): void
     {
@@ -184,14 +191,37 @@ class MarketingGlanceTest extends TestCase
         $this->assertFalse($data['empty']);
         $this->assertSame('1 published this month.', $data['sentences'][2]);
 
-        // The positive control, and it is not decoration: the same person
-        // standing in the organization must see all three. Without it, a
-        // fixture that quietly failed to create the head-office targets would
-        // produce exactly the 1 above and read as proof of scoping.
+        /*
+         * THIS USED TO ASSERT THE LEAK, and it is worth reading why.
+         *
+         * It stood the branch user in the organization and expected THREE —
+         * "an organization view sees everything below it, correctly". That was
+         * the belief, and it was a hole: ViewScope falls back to an organization
+         * view for anybody who never touched the switcher, so a branch-only
+         * user who had simply never opened it could see, and POST TO, a sibling
+         * branch's accounts. 8d7c3fc8 made the organization view answer from
+         * REACH, and this line went red defending the old answer.
+         *
+         * So the same person standing in the organization now sees what they
+         * can reach — their own branch's one — and that is the assertion that
+         * guards the fix. A test that only checked the franchise view above
+         * would stay green if the fallback ever reopened.
+         */
         $inOrg = $this->standIn($branch, null);
         $this->assertSame(
-            '3 published this month.',
+            '1 published this month.',
             $this->payloadFor($inOrg)['data']['sentences'][2],
+            'A branch-only user in the organization view is seeing a sibling branch again.',
+        );
+
+        // The positive control moves to somebody who genuinely reaches the
+        // whole organization. Without it, a fixture that quietly failed to
+        // create the head-office targets would produce exactly the 1s above
+        // and read as proof of scoping.
+        $admin = $this->standIn($this->alpha['admin'], null);
+        $this->assertSame(
+            '3 published this month.',
+            $this->payloadFor($admin)['data']['sentences'][2],
         );
     }
 
@@ -275,9 +305,19 @@ class MarketingGlanceTest extends TestCase
         $this->assertSame('Nothing in this view failed this month.', $inBranch['sentences'][0]);
         $this->assertSame('Nothing in this view is waiting to go out.', $inBranch['sentences'][1]);
 
-        // The other side of the same fixture. Without this the two assertions
-        // above pass for a glance that has stopped counting failures at all.
-        $inOrg = $this->payloadFor($this->standIn($branch, null))['data'];
+        // The same person in the ORGANIZATION view is still reassured: their
+        // reach is one branch, and the fallback to an organization view must
+        // not hand them head office's refusal (8d7c3fc8). This is the all-clear
+        // being right for the right reason rather than because of the switcher.
+        $branchInOrg = $this->payloadFor($this->standIn($branch, null))['data'];
+
+        $this->assertSame('Nothing in this view failed this month.', $branchInOrg['sentences'][0]);
+        $this->assertSame('Nothing in this view is waiting to go out.', $branchInOrg['sentences'][1]);
+
+        // The other side of the same fixture, as somebody who reaches head
+        // office. Without it the assertions above pass for a glance that has
+        // stopped counting failures at all.
+        $inOrg = $this->payloadFor($this->standIn($this->alpha['admin'], null))['data'];
 
         $this->assertSame('1 post did not reach its account.', $inOrg['sentences'][0]);
         $this->assertSame('1 post is waiting to go out.', $inOrg['sentences'][1]);
