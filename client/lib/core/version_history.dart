@@ -15,6 +15,7 @@ class VersionHistory {
         'Leads: Google leads are split into LS Call and LS Text, and Leads opens on All.',
         'Leads: a customer who has waited 10 minutes for a reply gets a red warning in the list, and Customer waiting for a reply, a new automation trigger with a template, can alert the dispatchers.',
         'Leads: the conversation shows a line where the day changes, reactions on the message they answer, who sent each reply, the Google Ads account, the Google status, and the address and ZIP the customer gave, with Check availability for that ZIP.',
+        'Leads: Manage sits right after the connected sources, Mark all read is the last item of the filter chips, and a lead that is not New shows its status pill on its row.',
       ],
     ),
     VersionRelease(
