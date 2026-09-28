@@ -300,3 +300,8 @@ Schedule::command('ezbizi:field-sweep')->everyMinute()->withoutOverlapping(5)->r
 // reads A1 Leads' own database - no Google request - and an idle run is one
 // empty page.
 Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlapping(10);
+
+// Every Google Ads account's Local Services certification (licence, insurance,
+// background check), once a morning before the day's calls - an account that
+// lapses stops showing ads and nobody is told.
+Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('America/New_York')->withoutOverlapping(30);

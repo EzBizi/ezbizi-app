@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Automation;
 use App\Models\BusinessLocation;
 use App\Models\A1LeadsReviewEvent;
+use App\Models\AdsAccountState;
 use App\Models\Company;
 use App\Models\Customer;
 use App\Models\FieldAlert;
@@ -3584,15 +3585,24 @@ class ModuleServiceProvider extends ServiceProvider
                 label: 'Google Ads',
                 parent: 'reports',
                 actions: ['view', 'manage'],
-                automationExemptBecause: 'Nothing here is a record, so there is no moment for a '
-                    .'trigger to fire on: the figures are read from Google when somebody opens '
-                    .'the screen and are never stored, so no row is created, changed or removed. '
-                    .'Pausing a campaign IS possible, but only as a person pressing a button '
-                    .'under their own grant: a rule that paused advertising unattended would '
-                    .'switch a branch\'s phone off with nobody deciding it, and that is not '
-                    .'offered. This stops being true the day spend is stored or watched: an '
-                    .'alert on a campaign passing a threshold is a real trigger, and it needs '
-                    .'this line removed rather than reworded.',
+                // AUTOMATED since 2026-09-28, as the exemption this replaced
+                // said it would be "the day spend is stored or watched": each
+                // account's Local Services certification is now watched daily
+                // (`ezbizi:ads-certifications`). The subject is the account's
+                // AdsAccountState, which sits where its connection sits.
+                // Pausing a campaign stays a person's button, not an action.
+                subject: new AutomationSubject(AdsAccountState::class, 'Google Ads account', key: 'ads'),
+                emits: [AdsAccountState::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'ads.certification_problem',
+                        label: 'Certification problem',
+                        description: 'A Local Services account has a licence, insurance or background '
+                            .'check problem - lapsed, failed, never submitted, or expiring within 30 '
+                            .'days - and Google may stop showing its ads. Raised when the problems '
+                            .'change, not every day they last.',
+                    ),
+                ],
             ),
 
             /*

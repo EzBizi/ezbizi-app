@@ -207,6 +207,49 @@ void main() {
     );
   });
 
+  /// Google stops showing a Local Services account whose licence or
+  /// insurance lapses, and tells nobody. The row says so, and names the fix.
+  testWidgets('a certification problem is shown with its reason; a clean '
+      'account says Certified; an unchecked one says nothing', (tester) async {
+    await _pump(
+      tester,
+      connections: [
+        {
+          ..._account('111-111-1111', leads: 3),
+          'id': 'lapsed',
+          'certification': {
+            'state': 'attention',
+            'problems': ['Insurance expires on Oct 12, 2026.'],
+            'soonest_expiry': '2026-10-12T00:00:00+00:00',
+            'checked_at': '2026-09-28T11:45:00+00:00',
+            'failed': null,
+          },
+        },
+        {
+          ..._account('222-222-2222', leads: 2),
+          'id': 'clean',
+          'certification': {
+            'state': 'ok',
+            'problems': <String>[],
+            'soonest_expiry': null,
+            'checked_at': '2026-09-28T11:45:00+00:00',
+            'failed': null,
+          },
+        },
+        {..._account('333-333-3333', leads: 1), 'id': 'unchecked'},
+      ],
+    );
+
+    expect(find.text('Certification needs attention'), findsOneWidget);
+    expect(find.text('Insurance expires on Oct 12, 2026.'), findsOneWidget);
+    expect(find.text('Certified'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('lsa-certification')),
+      findsNWidgets(2),
+      reason: 'an account never checked must not read as either verdict',
+    );
+  });
+
   testWidgets('an unnamed account offers a name; a named one keeps its number', (
     tester,
   ) async {

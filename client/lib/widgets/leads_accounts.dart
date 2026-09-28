@@ -501,6 +501,10 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
     final placement = placementOf(c);
     final leads = leadsOf(c);
     final named = isNamed(c);
+    final cert = (c['certification'] as Map?)?.cast<String, dynamic>();
+    final problems = [
+      for (final p in (cert?['problems'] as List? ?? const [])) '$p',
+    ];
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -577,6 +581,7 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
                   ),
                 ),
               ),
+              if (cert != null) _certificationBadge(theme, cert),
               if (_busy)
                 const SizedBox(
                   width: 16,
@@ -695,6 +700,18 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
               ),
             ),
 
+          // What Google holds against this account, one line each, so the
+          // fix is named rather than guessed at.
+          for (final problem in problems)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                problem,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -709,6 +726,36 @@ class _LeadsAccountRowState extends State<LeadsAccountRow> {
       ),
     );
   }
+}
+
+/// Can Google still show this account's Local Services ads - from the daily
+/// check. Red when anything is lapsed, failed, missing or expiring within 30
+/// days; the problems themselves are listed under the row.
+Widget _certificationBadge(ThemeData theme, Map<String, dynamic> cert) {
+  final attention = cert['state'] == 'attention';
+  final failed = cert['failed'] != null;
+  final color = attention ? theme.colorScheme.error : theme.colorScheme.primary;
+  return Tooltip(
+    message: failed
+        ? 'The last check could not reach Google: ${cert['failed']}'
+        : 'Licence, insurance and background check, as Google holds them.',
+    child: Row(
+      key: const ValueKey('lsa-certification'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          attention ? Icons.gpp_bad_outlined : Icons.verified_outlined,
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          attention ? 'Certification needs attention' : 'Certified',
+          style: theme.textTheme.bodySmall?.copyWith(color: color),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Desktop layout 1: one band, whatever the number of accounts.

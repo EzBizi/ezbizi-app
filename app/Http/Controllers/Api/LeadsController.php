@@ -6,6 +6,7 @@ use App\Console\Commands\SyncLeads;
 use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
+use App\Models\AdsAccountState;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
@@ -978,6 +979,12 @@ class LeadsController extends Controller
          */
         $reachable = $user?->reachableFranchises()->pluck('name', 'id') ?? collect();
 
+        // Each Google Ads account's last certification check, in one query.
+        $certifications = AdsAccountState::query()
+            ->whereIn('connection_id', $connections->map(fn (SocialConnection $c) => $c->getKey()))
+            ->get()
+            ->keyBy('connection_id');
+
         return $connections
             ->map(fn (SocialConnection $c) => [
                 // The id is what lets the tab that owns this connection
@@ -1002,9 +1009,32 @@ class LeadsController extends Controller
                     ? null
                     : $reachable->get($c->leads_franchise_id),
                 'leads_count' => (int) ($counts[$c->getKey()] ?? 0),
+                'certification' => self::certification($certifications->get($c->getKey())),
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Can Google still show this Local Services account's ads? Null until the
+     * daily check (`ezbizi:ads-certifications`) has read it once.
+     *
+     * @return array{state: string, problems: list<string>, soonest_expiry: ?string, checked_at: ?string, failed: ?string}|null
+     */
+    private static function certification(?AdsAccountState $state): ?array
+    {
+        if ($state === null || $state->certification_checked_at === null) {
+            return null;
+        }
+
+        return [
+            'state' => $state->certification_problem_count > 0 ? 'attention' : 'ok',
+            'problems' => array_column((array) $state->certification_problems, 'text'),
+            'soonest_expiry' => $state->certification_soonest_expiry?->toIso8601String(),
+            'checked_at' => $state->certification_checked_at->toIso8601String(),
+            // The last check could not read Google; the verdict above is older.
+            'failed' => $state->certification_failed,
+        ];
     }
 
     /** @return array<string, mixed> */
