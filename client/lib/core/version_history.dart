@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Jobs and customers imported from Workiz update every minute instead of every five.',
+        'Workiz leads are imported every minute instead of every hour.',
       ],
     ),
     VersionRelease(
