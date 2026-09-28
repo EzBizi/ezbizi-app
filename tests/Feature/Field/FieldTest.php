@@ -358,6 +358,40 @@ class FieldTest extends TestCase
         Http::assertSent(fn ($r) => str_contains($r->url(), 'viewport') && $r['session'] === 's1');
     }
 
+    public function test_each_theme_gets_its_own_quiet_map_style(): void
+    {
+        config(['services.google_maps.tiles_key' => 't']);
+        Http::fake(['tile.googleapis.com/v1/createSession*' => Http::sequence()
+            ->push(['session' => 'light-s', 'expiry' => time() + 86400 * 14])
+            ->push(['session' => 'dark-s', 'expiry' => time() + 86400 * 14])]);
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/map/tiles')
+            ->assertOk()->assertJsonPath('data.url', fn ($u) => str_contains($u, 'session=light-s'));
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/map/tiles?theme=dark')
+            ->assertOk()->assertJsonPath('data.url', fn ($u) => str_contains($u, 'session=dark-s'));
+
+        $sent = Http::recorded()->map(fn ($pair) => $pair[0]['styles']);
+        $this->assertCount(2, $sent);
+        $this->assertNotEquals($sent[0], $sent[1], 'light and dark are different styles');
+        $this->assertContains(['featureType' => 'poi', 'stylers' => [['visibility' => 'off']]], $sent[0]);
+    }
+
+    public function test_the_map_list_says_since_when_how_far_and_how_fast(): void
+    {
+        $this->mode('always');
+        $this->send(
+            ['lat' => 40.0, 'lng' => -75.0, 'recorded_at' => '2026-09-25T12:00:00Z', 'speed_mps' => 0],
+            ['lat' => 40.1, 'lng' => -75.0, 'recorded_at' => '2026-09-25T13:00:00Z', 'speed_mps' => 13.4],
+        );
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')
+            ->assertOk()
+            ->assertJsonPath('data.0.since', '2026-09-25T12:00:00Z')
+            // 0.1 degree of latitude is 11.1 km, 6.9 miles.
+            ->assertJsonPath('data.0.distance_mi', 6.9)
+            ->assertJsonPath('data.0.speed_mph', 30);
+    }
+
     public function test_the_dashboard_counts_only_people_you_can_see(): void
     {
         $this->mode('always');

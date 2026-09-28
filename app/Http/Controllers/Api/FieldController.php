@@ -176,13 +176,49 @@ class FieldController extends Controller
             'stopped' => $p->stopped_alerted,
             'silent' => $p->signal_lost_alerted,
             'at_job' => $p->atJob ? ['id' => $p->atJob->id, 'number' => $p->atJob->number, 'title' => $p->atJob->title] : null,
-        ])->values()]);
+        ] + $this->today($people[$p->user_id]))->sortBy('user.name')->values()]);
+    }
+
+    /**
+     * Today, where the person works: when tracking started, how far they have
+     * gone, and how fast they were last moving. Miles, like the business.
+     *
+     * ponytail: reads the day's points per person; a column on field_presences
+     * if a team ever outgrows one query each.
+     *
+     * @return array{since: ?string, distance_mi: float, speed_mph: ?float}
+     */
+    private function today(User $person): array
+    {
+        $tz = (string) $this->tracking->setting('timezone', $person);
+        $from = now()->timezone($tz)->startOfDay()->utc();
+
+        $points = FieldLocation::query()
+            ->where('user_id', $person->getKey())
+            ->where('recorded_at', '>=', $from)
+            ->orderBy('recorded_at')
+            ->get(['latitude', 'longitude', 'recorded_at', 'speed_mps']);
+
+        $metres = 0.0;
+        for ($i = 1; $i < $points->count(); $i++) {
+            $metres += FieldMaps::metres(
+                $points[$i - 1]->latitude, $points[$i - 1]->longitude, $points[$i]->latitude, $points[$i]->longitude,
+            );
+        }
+
+        $last = $points->last();
+
+        return [
+            'since' => $points->first()?->recorded_at->toIso8601ZuluString(),
+            'distance_mi' => round($metres / 1609.344, 1),
+            'speed_mph' => $last?->speed_mps === null ? null : round($last->speed_mps * 2.23694),
+        ];
     }
 
     /** GET /field/map/tiles */
-    public function tiles(): JsonResponse
+    public function tiles(Request $request): JsonResponse
     {
-        return response()->json(['data' => ['url' => $this->maps->tileUrl()]]);
+        return response()->json(['data' => ['url' => $this->maps->tileUrl((string) $request->query('theme', 'light'))]]);
     }
 
     /** GET /field/map/attribution — Google's copyright line for what is on screen. */
