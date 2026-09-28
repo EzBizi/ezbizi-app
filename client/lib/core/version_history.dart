@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Web Management, SEO: the SEO Helper. For each page of a website, edit its search title, description, focus keyphrase and what shows when it is shared, and see checks on the live page, including pages that share a keyphrase, title or description with another. It replaces the page SEO editor of A1 Tools.',
+        'Customers: on a phone, a Sort picker above the list sorts it the way the column headings do on a wider screen, for example Name, A to Z or Created, newest first.',
       ],
     ),
     VersionRelease(
