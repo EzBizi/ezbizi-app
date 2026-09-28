@@ -334,6 +334,38 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame('2026-10-12', $area['first']['date'], 'Monday the 5th: DMV-style limit of 1, already 1 booked.');
     }
 
+    /**
+     * THE DAY IS A CEILING (A1 Tools' B3). Cincinnati, 2026-09-30: 6 of 6
+     * booked with one window over by one, and another window still offered a
+     * spot. Dallas takes 2 + 1; three jobs in the first window fill the day.
+     */
+    public function test_jobs_over_one_window_fill_the_day_for_the_others(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['07:00', '08:00', '09:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+
+        $this->assertSame('2026-10-12', $this->first($tenant, 'zip=75201')['first']['date'], 'Monday is 3 of 3.');
+    }
+
+    /** A job with no time holds no window's seat, but it takes the day's. */
+    public function test_a_job_with_no_time_counts_against_the_day(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $this->booked($tenant, '2026-10-05 00:00:00');
+        $this->booked($tenant, '2026-10-05 00:00:00');
+
+        $first = $this->first($tenant, 'zip=75201')['first'];
+
+        $this->assertSame('2026-10-05', $first['date']);
+        $this->assertSame([1, 0], array_column($first['windows'], 'remaining'), '3 a day, 2 booked with no time: 1 left, earliest first.');
+    }
+
     /** Short of the limit, no window offers more than the franchise has left — and the day says why. */
     public function test_no_window_offers_more_than_the_franchise_has_left(): void
     {
@@ -346,7 +378,9 @@ class SchedulingAvailabilityTest extends TestCase
         $first = $this->first($tenant, 'zip=75201')['first'];
 
         $this->assertSame('2026-10-05', $first['date']);
-        $this->assertSame([1, 1], array_column($first['windows'], 'remaining'), 'Dallas has 2 and 1; the franchise has 1 left.');
+        // One spot, handed to the earliest window. It used to be offered in
+        // both — two windows advertising the same last spot (A1's B3).
+        $this->assertSame([1, 0], array_column($first['windows'], 'remaining'), 'Dallas has 2 and 1; the franchise has 1 left.');
         $this->assertSame(2, $first['franchise_limit']);
         $this->assertSame(1, $first['franchise_booked']);
     }
