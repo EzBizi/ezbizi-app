@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Recordings: with no speakers or headphones connected, a recording waits and starts playing as soon as some are connected.',
         'Web Management, SEO: Edit hours on several websites opens inside the SEO tab instead of a separate page, and has Select all.',
+        'Social Media: when a post fails on one account, Try again sends it to that account again.',
       ],
     ),
     VersionRelease(
