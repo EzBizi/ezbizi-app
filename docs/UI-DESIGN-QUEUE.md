@@ -2973,6 +2973,15 @@ everything inside the pane (containment), the Google preview cut by pixel width 
 chips in words, SEO and Readability checks re-run on a draft, the live-page reading and the
 site-wide duplicates made visible, Save drawn only with edit access.
 
+**For the build (Web Management, `a90958e4`):** GET `…/seo-helper` adds `groups` =
+`{keyphrase|title|description: [{value, ids}]}`, one entry per value shared by 2+ pages; a page's
+`keyphrase_unique` / `title_unique` / `description_unique` issue carries `with: [ids]`; GET `…/{id}`
+(and analyze, PUT) adds `shared_with: {keyphrase|title|description: [{id, name}]}` to name and
+open them. The "UPDATED 2024" warning is the site's own SEO setting, not EzBizi's Templates: a
+`stale_year_*` / `fixed_year_*` site issue carries `fix: {field, value}` and
+`PUT /web/sites/{site}/seo-helper/site {page_title_template?, post_title_template?}` applies it
+(edit access) and returns the refreshed overview, so the button is **Fix it**, sent as is.
+
 ### 28 · Leads · Status, Manage and Mark all read — **DRAWN, with Jose**
 
 `docs/previews/leads-status-controls-layouts.html`. Asked by Leads (Google API session), from Jose,
