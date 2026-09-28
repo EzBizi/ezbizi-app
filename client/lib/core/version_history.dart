@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Web Management: the SEO Helper server side also groups pages that share a keyphrase, title or description, names the other pages behind a shared problem, and can fix a site title template stuck on an old year. Its screen follows.',
         'Leads: when the number of a lead already belongs to a customer, the list shows the customer name with a Customer badge, and the lead shows their address, their jobs and what those came to, with Open customer.',
+        'Communication, Call flows: each menu has If nobody presses a key: wait 3 to 30 seconds, play the menu up to 6 times, then end the call or ring the line. The default is unchanged (5 seconds, once, then ring), and the call-flow chart shows the branch.',
       ],
     ),
     VersionRelease(
