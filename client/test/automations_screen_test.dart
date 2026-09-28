@@ -592,44 +592,9 @@ void main() {
         ],
       },
       'actions': [
-        // `send_email` rides on every notify action: the switch is a DECLARED
-        // parameter, and the generic payload branch sends every declared
-        // parameter. false means "no email" (Jose, 2026-09-28: off by default).
-        {'type': 'notify', 'message': 'It is done', 'send_email': false, 'role_ids': []},
+        // No email switch: a notification never emails (Jose, 2026-09-28).
+        {'type': 'notify', 'message': 'It is done', 'role_ids': []},
       ],
-    });
-  });
-
-  /// The switch reaches the wire, and the step is still saveable without it.
-  ///
-  /// Two halves, and the second is the one that would have shipped broken: the
-  /// switch is `required: false`, so an untouched one must NOT count as a
-  /// missing parameter. A boolean that blocks the save when off makes the step
-  /// unusable by everybody who does not want the option.
-  testWidgets('the notify step can ask for an email, and is saveable without it', (
-    tester,
-  ) async {
-    Map<String, dynamic>? sent;
-
-    await _pump(tester, _handler(onCreate: (body) => sent = body));
-    await _tap(tester, find.text('Build'));
-    await _type(tester, 'Name', 'Quietly');
-    await _tap(tester, find.text('Created'));
-    await _tap(tester, find.text('Add a step'));
-    await _tap(tester, find.text('Send a notification'));
-    await _type(tester, 'Message', 'Email me too');
-
-    // Untouched: the step is complete, because the switch is optional.
-    expect(_saveButton(tester).onPressed, isNotNull);
-
-    await _tap(tester, find.text('Also send an email'));
-    await _tap(tester, find.text('Create automation'));
-
-    expect((sent!['actions'] as List).single, {
-      'type': 'notify',
-      'message': 'Email me too',
-      'send_email': true,
-      'role_ids': [],
     });
   });
 
@@ -845,7 +810,6 @@ void main() {
     expect((sent!['actions'] as List).single, {
       'type': 'notify',
       'message': 'A chat came in',
-      'send_email': false,
       'role_ids': ['role-office'],
     });
   });
@@ -1606,7 +1570,7 @@ void main() {
         ],
       },
       'actions': [
-        {'type': 'notify', 'message': 'Everyone should know.', 'send_email': false, 'role_ids': []},
+        {'type': 'notify', 'message': 'Everyone should know.', 'role_ids': []},
       ],
     });
 
@@ -2719,13 +2683,6 @@ const _catalogue = {
           'label': 'Message',
           'kind': 'rich_text',
           'required': true,
-          'nullable': false,
-        },
-        {
-          'key': 'send_email',
-          'label': 'Also send an email',
-          'kind': 'boolean',
-          'required': false,
           'nullable': false,
         },
         {

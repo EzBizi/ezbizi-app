@@ -2399,15 +2399,16 @@ class AutomationEngineTest extends TestCase
      * Notifications named the case rather than leaving it in a diff.
      */
     /**
-     * A notify step emails ONLY when its author ticked "Also send an email".
+     * A notification never emails. Email from a rule is the "Send an email" step.
      *
-     * Jose, 2026-09-28: "it should be disabled by default ... emails should
-     * only send if the toggle for send an email is activated as well". The
-     * first case is the exact shape of every rule saved before today —
-     * `in_app_only: false` — which emailed nine people ~370 times an hour. The
-     * ticked case is the control that email still works when asked for.
+     * Jose, 2026-09-28: "the toggle should not exist at all, there is an
+     * automation for sending an email, so why is it a toggle at all". Both
+     * stored shapes are tried: the old `in_app_only: false` that emailed nine
+     * people ~370 times an hour, and the short-lived `send_email: true`. The
+     * organization's email is ON, so nothing but the rule could be stopping
+     * it. The bell ringing each time is the control that the step ran at all.
      */
-    public function test_a_notify_step_emails_only_when_its_toggle_is_on(): void
+    public function test_a_notification_never_emails(): void
     {
         \Illuminate\Support\Facades\Notification::fake();
         $runner = app(ActionRunner::class);
@@ -2425,17 +2426,25 @@ class AutomationEngineTest extends TestCase
             $event, $this->org['organization'],
         ));
 
-        $notify(['in_app_only' => false]);
-        $notify([]);
-        \Illuminate\Support\Facades\Notification::assertNothingSent();
+        foreach ([['in_app_only' => false], ['send_email' => 'true'], []] as $stored) {
+            $result = $notify($stored);
+            $this->assertTrue($result['ok'], $result['detail'] ?? '');
+        }
 
-        $notify(['send_email' => 'true']);
-        \Illuminate\Support\Facades\Notification::assertSentTo($admin, \App\Notifications\NotificationNotice::class);
+        \Illuminate\Support\Facades\Notification::assertNothingSent();
+        $this->assertSame(3, $this->inTenant(fn () => Notification::query()->count()), 'the bell rang each time');
+
+        // And the builder is not offered a switch that would promise otherwise.
+        $step = collect($this->as()->getJson('/api/v1/automations/catalogue')->json('data.action_types'))
+            ->firstWhere('key', 'notify');
+        $this->assertSame([], array_values(array_intersect(['in_app_only', 'send_email'],
+            array_column($step['parameters'], 'key'))));
     }
 
     public function test_a_rule_that_declines_email_does_not_then_blame_permissions(): void
     {
-        // No send_email: since 2026-09-28 that IS declining the email.
+        // A notification never emails (2026-09-28), so with the bell off it
+        // tells nobody, and the reason given must be the bell, not permissions.
         $automation = $this->automation('job.created', null,
             [['type' => 'notify', 'message' => 'New job']]);
 
@@ -2460,13 +2469,13 @@ class AutomationEngineTest extends TestCase
             'the rule declined the email itself - blaming reach sends the author to audit permissions');
         $this->assertStringContainsString('switched off', $detail);
 
-        // THE CONTROL. Same company, same settings, same message - only the
-        // email asked for. Without this the test above could pass against an
-        // allows() that had simply started answering false for everything, and
-        // the assertion would look like proof of the flag when it was proof of
-        // nothing. This one must come back with the OTHER sentence.
+        // THE CONTROL. Same rule shape with the bell switched back on: it must
+        // come back with a DIFFERENT sentence, or the one above could be an
+        // allows() that answers "switched off" for everything.
+        $this->inTenant(fn () => app(SettingsResolver::class)
+            ->set('notifications.in_app_enabled', $this->org['organization'], true));
         $control = $this->automation('job.created', null,
-            [['type' => 'notify', 'message' => 'New job', 'send_email' => true]]);
+            [['type' => 'notify', 'message' => 'New job']]);
 
         $this->makeJob();
         $this->drain();
@@ -2478,7 +2487,7 @@ class AutomationEngineTest extends TestCase
             ->action_results[0]['detail'] ?? '');
 
         $this->assertNotSame($detail, $controlDetail,
-            'both rules produced the same sentence, so the flag is not what decided it');
+            'the bell on and off produced the same sentence, so the bell is not what decided it');
     }
 
     /**

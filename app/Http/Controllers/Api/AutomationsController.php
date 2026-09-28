@@ -1755,33 +1755,11 @@ class AutomationsController extends Controller
             $type('notify', 'Send a notification', false, [
                 $parameter('message', 'Message', 'rich_text', variables: true),
 
-                // Phrased as a DECLINE, and required: false so an untouched
-                // switch is simply absent. A positive key - "send an email" -
-                // would read as false on every rule saved before today and
-                // silence all of them on deploy. Unchecked means follow the
-                // organization; the organization setting stays the ceiling, so
-                // this can only ever narrow. Semantics agreed with Notifications
-                // and Settings; the dispatcher honours it at 27527d2f.
-                //
-                // AND IT IS SAVED EXPLICITLY, even when untouched. Every notify
-                // action carries `in_app_only: false` rather than omitting the
-                // key, and that is deliberate - do not trim it to narrow the
-                // payload. An omitted key is an absence with two causes nothing
-                // can tell apart: "authored before this parameter existed" and
-                // "authored after, and left alone". Those are the same thing
-                // only while the default never moves. The day unchecked is
-                // decided to mean something else, rules carrying an explicit
-                // false keep doing what their author chose and rules carrying
-                // nothing silently change meaning. `actions` is a record of what
-                // a rule does, not only an instruction, so it should say what
-                // was chosen. Notifications' argument, 2026-09-15.
-                //
-                // SUPERSEDED 2026-09-28 by Jose: "it should be disabled by
-                // default ... emails should only send if the toggle for send an
-                // email is activated". The negative switch read as "email: off"
-                // while it emailed. Positive, off by default, and a rule that
-                // never ticked it sends no email (ActionRunner::notify).
-                $parameter('send_email', 'Also send an email', 'boolean', false),
+                // NO EMAIL SWITCH. Jose, 2026-09-28: "the toggle should not
+                // exist at all, there is an automation for sending an email, so
+                // why is it a toggle at all. if i wanted an automation to send
+                // an email i would use send an email step". A notification is
+                // the bell and nothing else; email is the "Send an email" step.
 
                 /*
                  * WHICH ROLES, rather than everybody who can see the record.
@@ -1789,8 +1767,7 @@ class AutomationsController extends Controller
                  * Empty means today's behaviour exactly - everybody with reach -
                  * so every rule saved before this keeps its audience. It NARROWS
                  * and can never widen: reach still decides who could be told and
-                 * the role decides who should be, the same ceiling rule as
-                 * in_app_only.
+                 * the role decides who should be.
                  *
                  * IDs, not names. A Role has no key column and its name is
                  * editable, so storing names would re-point every rule the day

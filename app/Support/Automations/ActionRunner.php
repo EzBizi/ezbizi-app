@@ -2829,30 +2829,16 @@ class ActionRunner
 
         $title = $this->interpolate($message, $event, $subject);
 
-        /*
-         * NEGATIVE KEY, AND THAT IS NOT A STYLE CHOICE.
-         *
-         * An untouched switch posts a real `false`, so a positively-phrased key
-         * - `send_email` - would have read as "no email" on every rule that
-         * exists today and silenced all of them the moment it shipped. Unchecked
-         * here means FOLLOW THE ORGANIZATION, which is what `false` already
-         * means to the dispatcher.
-         *
-         * It only ever NARROWS. The company setting stays the ceiling: a rule
-         * may decline the email, never demand one the company has switched off.
-         * That direction matters more than it looks - inverted, a rule author
-         * would be able to overrule a company setting from a screen the company
-         * cannot see.
-         */
-        // OPT-IN, and that supersedes everything above about a negative key.
-        // Jose, 2026-09-28: "it should be disabled by default ... emails should
-        // only send if the toggle for send an email is activated as well".
-        // The old "In-app only, do not email" switch read as "email: off" when
-        // it was off, and a lead rule emailed nine people ~370 times an hour.
-        // So a rule emails only when it carries send_email = true; every rule
-        // saved before this carries none and sends no email. `in_app_only` is
-        // no longer read. The organization setting is still the ceiling.
-        $inAppOnly = ! filter_var($action['send_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        // A NOTIFICATION NEVER EMAILS. Jose, 2026-09-28: "the toggle should
+        // not exist at all ... if i wanted an automation to send an email i
+        // would use send an email step". The old negative switch (in_app_only,
+        // off = email) had a lead rule emailing nine people ~370 times an hour.
+        //
+        // The dispatcher refuses email for source 'automation' itself
+        // (NotificationDispatcher::mayEmail). NOT by passing inAppOnly here:
+        // that flag also silences PUSH, and would stop every rule's alert
+        // reaching a phone. Stored in_app_only / send_email values are ignored.
+        $inAppOnly = false;
 
         // Strings, filtered, re-indexed: an empty box in the builder must mean
         // "narrow nothing" rather than "a role whose id is the empty string",
