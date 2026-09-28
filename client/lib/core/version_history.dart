@@ -25,6 +25,7 @@ class VersionHistory {
         'The menu rows no longer scroll up under the clock.',
         'Work Hours: with Clock in switched off, the screen says where it is switched on, instead of an error with Try again. Three sentences that still pointed at Settings, Human Resources now point at Work Hours, Settings.',
         'Automations: rule cards side by side are the same height, even when one name takes two lines.',
+        'Scheduling, Availability: a day never offers more spots than it has left. Jobs booked past a time slot limit, and jobs with no time set, use up the spots of the day, and its last spots are offered in the earliest time slots.',
       ],
     ),
     VersionRelease(
