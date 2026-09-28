@@ -125,6 +125,30 @@ function a1swap_text($s, &$report) {
         return $m[1] . rawurlencode(wp_json_encode($json)) . $m[3];
     }, $s);
 
+    // A rule on an A1 widget's Elementor wrapper follows the widget, through
+    // the class the swap leaves on it (see a1swap_from_class): three A1
+    // widgets became one EzBizi widget, so the wrapper class alone cannot
+    // tell a rule for the phone box from one for the contact block.
+    $s = preg_replace_callback('/\.elementor-widget-(a1tools[a-z0-9_-]*)(?![a-z0-9_-])/i', function ($m) use (&$report) {
+        $report['css']['elementor-widget-' . $m[1]] = ($report['css']['elementor-widget-' . $m[1]] ?? 0) + 1;
+
+        return '.' . a1swap_from_class($m[1]);
+    }, $s);
+
+    // A shortcode URL-encoded into an attribute, as in `tel:%5Ba1tools_location_phone%5D`
+    // in a template's fallback HTML.
+    $s = preg_replace_callback('/%5B(a1tools_[a-z0-9_]+)%5D/i', function ($m) use (&$report) {
+        $with = a1swap_shortcode(substr(strtolower($m[1]), 8), '');
+
+        if ($with === null || $with === '') {
+            return $m[0];
+        }
+
+        $report['shortcodes'][$m[1]] = ($report['shortcodes'][$m[1]] ?? 0) + 1;
+
+        return '%5B' . substr($with, 1, -1) . '%5D';
+    }, $s);
+
     // Page and site CSS written against A1's class names (46 pages of nj
     // carry a radius system on them) is pointed at EzBizi's.
     $s = preg_replace_callback('/\.(a1tools-[a-z0-9_-]+)(?![a-z0-9_-])/i', function ($m) use (&$report) {
@@ -159,6 +183,11 @@ function a1swap_text($s, &$report) {
     }, $s);
 }
 
+/** The class a swapped widget keeps naming what it was: a1tools_phone → ez-from-phone. */
+function a1swap_from_class($type) {
+    return 'ez-from-' . trim(str_replace('_', '-', strtolower(preg_replace('/^a1tools[_-]?/i', '', $type))), '-');
+}
+
 /** A1 class → the EzBizi class on the same part. Unlisted ones are left: dead, and harmless. */
 function a1swap_classes() {
     return array(
@@ -171,6 +200,8 @@ function a1swap_classes() {
         'a1tools-contact-info-item' => 'ezbizi-contact-item',
         'a1tools-info-box-icon' => 'ezbizi-contact-icon',
         'a1tools-info-box-value' => 'ezbizi-contact-value',
+        'a1tools-info-box-title' => 'ezbizi-contact-label',
+        'a1tools-info-box-content' => 'ezbizi-contact-text',
         'a1tools-hours-row' => 'ezbizi-contact-hours-row',
         'a1tools-hours-day' => 'ezbizi-contact-day',
         'a1tools-hours-time' => 'ezbizi-contact-time',
@@ -185,6 +216,9 @@ function a1swap_classes() {
         'a1tools-vc-poster' => 'ezv-frame',
         'a1tools-gallery-item' => 'ezg-item',
         'a1tools-gallery-pagination' => 'ezg-pages',
+        'a1tools-gallery-button' => 'ezg-switch',
+        'a1tools-gallery-view-button' => 'ezg-switch',
+        'a1tools-gallery-filter' => 'ezg-bar',
     );
 }
 
@@ -699,6 +733,11 @@ function a1swap_element(&$e, &$report) {
         }),
         'a1tools_smiley_review' => array('ezbizi-review-faces', function ($s) { return array('ezbizi_preset' => 'reviews'); }),
     );
+
+    if (isset($keep_all[$type]) || isset($mapped[$type])) {
+        $classes = trim((string) ($e['settings']['_css_classes'] ?? ''));
+        $e['settings']['_css_classes'] = trim($classes . ' ' . a1swap_from_class($type));
+    }
 
     if (isset($keep_all[$type])) {
         // Same settings, but a colour held as a kit global is written out, so
