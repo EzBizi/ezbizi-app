@@ -25,6 +25,9 @@ class VersionHistory {
         'Communication, Calling out: No numbers yet reads as a next step, not an error.',
         'Web Management, SEO: its sections sit in one scrolling row, without a second headline.',
         'Your account: Password, Two-factor, Text me my codes and Theme no longer say Not given; they show the arrow that opens them.',
+        'Workiz: every account syncs again. From 16:06 UTC today the sync stopped after three of the nine accounts, and jobs, customers and statuses from the other six did not arrive; they catch up with this release.',
+        'Social Media, Accounts: on a phone, the reason a network is not ready shows in full.',
+        'Newsletter: with no newsletter open, the composer no longer shows a stray Saved.',
       ],
     ),
     VersionRelease(
