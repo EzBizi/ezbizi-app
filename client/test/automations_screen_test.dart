@@ -1550,6 +1550,54 @@ void main() {
     );
   });
 
+  /// A SCHEDULED RULE CAN BE EDITED AND SAVED, and keeps its schedule.
+  ///
+  /// Jose, 2026-09-28, on the weekly hours rule: "can't save for some reason".
+  /// The detail carried no schedule, so the form opened with no timezone,
+  /// refused to save, and hid the control that could fix it. Saving is the
+  /// half that proves it, and the schedule sent back unchanged is the half
+  /// that proves the form did not quietly reset it to its defaults.
+  testWidgets('a scheduled rule can be edited and keeps its schedule', (
+    tester,
+  ) async {
+    Map<String, dynamic>? sent;
+
+    await _pump(
+      tester,
+      _handler(
+        catalogue: _catalogueWithTheClock(),
+        onUpdate: (body) => sent = body,
+        detail: {
+          ..._detail,
+          'trigger_key': 'automation.schedule_reached',
+          'conditions': null,
+          'schedule': {
+            'kind': 'weekly',
+            'days': ['sunday'],
+            'time': '20:00',
+            'timezone': 'America/New_York',
+          },
+        },
+      ),
+    );
+
+    await _tap(tester, find.byType(PopupMenuButton<String>));
+    await _tap(tester, find.text('Open and edit'));
+
+    expect(
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Save changes')).onPressed,
+      isNotNull,
+    );
+    await _tap(tester, find.text('Save changes'));
+
+    expect(sent!['schedule'], {
+      'kind': 'weekly',
+      'time': '20:00',
+      'timezone': 'America/New_York',
+      'days': ['sunday'],
+    });
+  });
+
   testWidgets('a saved rule can be read back, and its trigger cannot move', (
     tester,
   ) async {

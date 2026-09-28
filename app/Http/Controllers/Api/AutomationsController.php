@@ -2191,6 +2191,12 @@ class AutomationsController extends Controller
             'disabled_reason' => $automation->disabled_reason,
             'runs_count' => $automation->runs_count ?? $automation->runs()->count(),
             'version' => $automation->activeVersion?->version,
+            // A clock rule's WHEN. Missing from this payload, the builder opened
+            // a scheduled rule with no timezone, refused to save it ("Choose the
+            // timezone") and hid the control that could fix it (Jose, 2026-09-28:
+            // "can't save for some reason").
+            'schedule' => $automation->schedule,
+            'next_run_at' => $automation->next_run_at?->toIso8601String(),
         ];
 
         if (! $detailed) {

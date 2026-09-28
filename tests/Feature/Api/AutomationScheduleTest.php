@@ -238,6 +238,27 @@ class AutomationScheduleTest extends TestCase
         );
     }
 
+    /**
+     * A saved clock rule reads back WITH its schedule. Without it the builder
+     * opened the rule with no timezone and would not save it (Jose, 2026-09-28:
+     * "can't save for some reason").
+     */
+    public function test_a_scheduled_rule_reads_back_with_its_schedule(): void
+    {
+        $schedule = ['kind' => 'weekly', 'days' => ['sunday'], 'time' => '20:00', 'timezone' => 'America/New_York'];
+
+        $id = $this->as()->postJson('/api/v1/automations', [
+            'name' => 'Weekly hours',
+            'trigger_key' => 'automation.schedule_reached',
+            'schedule' => $schedule,
+            'actions' => [['type' => 'notify', 'message' => 'hi']],
+        ])->assertCreated()->json('data.id');
+
+        $read = $this->as()->getJson("/api/v1/automations/{$id}")->assertOk()->json('data.schedule');
+
+        $this->assertEqualsCanonicalizing($schedule, $read);
+    }
+
     public function test_a_schedule_on_an_event_trigger_is_refused_at_save(): void
     {
         $this->as()->postJson('/api/v1/automations', [

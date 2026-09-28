@@ -1780,18 +1780,27 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         'Fixed for the life of the rule — a rule that changed what it reacts to '
             'would make every run already recorded describe something it no '
             'longer does. Build a new one instead.',
-        Row(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.bolt_outlined, size: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                chosen == null
-                    ? 'Unknown'
-                    : widget.catalogue.describeTrigger(chosen),
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+            Row(
+              children: [
+                const Icon(Icons.bolt_outlined, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    chosen == null
+                        ? 'Unknown'
+                        : widget.catalogue.describeTrigger(chosen),
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+              ],
             ),
+            // THE WHEN STAYS EDITABLE. What a rule reacts to is fixed; when a
+            // clock rule runs is not, and the save sends it on every edit.
+            // Hidden here, a scheduled rule could not be saved at all.
+            if (_isScheduled) _scheduleEditor(context),
           ],
         ),
       );
