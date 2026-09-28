@@ -12,6 +12,18 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Leads: a lead from Workiz is dated when it came in, not by the date of its appointment.',
+        'Notifications: the email copy of a notification is sent. From 16 Sep, 7,705 of them failed before sending; the bell in the app was not affected.',
+        'On a phone, Settings and every Settings tab put each control under its label, instead of squeezing the label to one letter a line.',
+        'Communication, Reports: a report by day, the default, loads instead of spinning forever.',
+        'Customer Experience, Reviews: on a phone the filter bar wraps instead of running off the screen.',
+        'Every kind of button and chip, and the Clock In button, now has the same rounded corner.',
+        'On a phone, the top of Jobs, Customers, Fleet, every Inventory list, both Services lists and the Training dashboard scrolls away with the list, leaving more room for it.',
+        'Customers: the two pickers above the list share the line, instead of cutting their text short.',
+        'Scheduling: the three mode buttons show their icon above the words, all at one height.',
+        'Dashboards: Refresh sits on the same line as the period chips, and a card title can take two lines.',
+        'Automations: a rule name can take two lines.',
+        'The menu rows no longer scroll up under the clock.',
+        'Work Hours: with Clock in switched off, the screen says where it is switched on, instead of an error with Try again. Three sentences that still pointed at Settings, Human Resources now point at Work Hours, Settings.',
       ],
     ),
     VersionRelease(
