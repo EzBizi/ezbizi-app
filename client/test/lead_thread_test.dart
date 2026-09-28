@@ -22,6 +22,7 @@ import 'package:http/testing.dart';
 /// are the ones people most want to hear. The fetching state is not decoration.
 void main() {
   _wordTests();
+  _statusTests();
   _autoRefreshTests();
 
   /// The call row carries the same play bar Voicemail and Records use:
@@ -806,5 +807,117 @@ void _autoRefreshTests() {
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Is Saturday ok?'), findsOneWidget);
+  });
+}
+
+/// Design 28 (Jose, "as u recommend"): the status is a pill beside the name,
+/// and changing it is a verb: Archive or Not a lead on a New lead, Back to New
+/// on any other. It was a search field alone in the corner that read as one.
+void _statusTests() {
+  Future<List<String>> pump(
+    WidgetTester tester, {
+    String status = 'new',
+    bool canChange = true,
+    Size size = const Size(1200, 800),
+  }) async {
+    final asked = <String>[];
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = ApiClient(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'data': {'id': 'lead-9', 'can_reply': false, 'conversations': []},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: Scaffold(
+          body: LeadThread(
+            api: api,
+            player: FakeRecordingPlayer(),
+            lead: {
+              'id': 'lead-9',
+              'contact_name': 'Maria Lopez',
+              'phone': '+1 (312) 555-0187',
+              'status': status,
+            },
+            onStatusChanged: canChange ? (to) async => asked.add(to) : null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    return asked;
+  }
+
+  testWidgets('a New lead shows a pill and offers Archive and Not a lead', (
+    tester,
+  ) async {
+    final asked = await pump(tester);
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('thread-status')),
+        matching: find.text('New'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('status-back-to-new')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('status-archive')));
+    await tester.tap(find.byKey(const ValueKey('status-not-a-lead')));
+    expect(asked, ['archived', 'not_a_lead']);
+  });
+
+  testWidgets('any other lead offers Back to New instead', (tester) async {
+    final asked = await pump(tester, status: 'archived');
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('thread-status')),
+        matching: find.text('Archived'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('status-archive')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('status-back-to-new')));
+    expect(asked, ['new']);
+  });
+
+  testWidgets('somebody who may only read sees the status, and no moves', (
+    tester,
+  ) async {
+    await pump(tester, canChange: false);
+
+    expect(find.byKey(const ValueKey('thread-status')), findsOneWidget);
+    expect(find.byKey(const ValueKey('status-archive')), findsNothing);
+    expect(find.byKey(const ValueKey('status-back-to-new')), findsNothing);
+  });
+
+  testWidgets('on a phone the two moves share one row, the same size', (
+    tester,
+  ) async {
+    await pump(tester, size: const Size(390, 844));
+
+    final archive = tester.getRect(
+      find.byKey(const ValueKey('status-archive')),
+    );
+    final notALead = tester.getRect(
+      find.byKey(const ValueKey('status-not-a-lead')),
+    );
+    expect(archive.top, notALead.top);
+    expect(archive.size, notALead.size);
+    expect(tester.takeException(), isNull);
   });
 }

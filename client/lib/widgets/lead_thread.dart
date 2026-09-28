@@ -7,14 +7,15 @@ import '../core/api_client.dart';
 import '../core/money.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
+import '../core/theme.dart';
 import '../screens/customers/customer_detail_panel.dart';
 import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
-import 'search_picker.dart';
 import 'side_panel.dart';
+import 'status_pill.dart';
 
 /// What was said on one enquiry: every call and message, oldest first.
 ///
@@ -311,6 +312,76 @@ class _LeadThreadState extends State<LeadThread> {
     });
   }
 
+  /// A New lead's two moves, Archive and Not a lead; any other lead's way
+  /// back. Book is the third move and has its own button. Almost every lead
+  /// is New (43,184 of 43,190 on Google), so these are verbs rather than a
+  /// four-word list nobody opened.
+  Widget _moves(Map<String, dynamic> lead, {bool fill = false}) {
+    void to(String status) => widget.onStatusChanged!(status);
+
+    if ((lead['status'] ?? 'new') != 'new') {
+      return Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: TextButton.icon(
+          key: const ValueKey('status-back-to-new'),
+          onPressed: () => to('new'),
+          icon: const Icon(Icons.undo, size: 18),
+          label: const Text('Back to New'),
+        ),
+      );
+    }
+
+    final archive = OutlinedButton(
+      key: const ValueKey('status-archive'),
+      onPressed: () => to('archived'),
+      child: const Text('Archive'),
+    );
+    final notALead = OutlinedButton(
+      key: const ValueKey('status-not-a-lead'),
+      onPressed: () => to('not_a_lead'),
+      child: const Text('Not a lead'),
+    );
+
+    return fill
+        ? Row(
+            children: [
+              Expanded(child: archive),
+              const SizedBox(width: 8),
+              Expanded(child: notALead),
+            ],
+          )
+        : Wrap(spacing: 8, children: [archive, notALead]);
+  }
+
+  /// Below this a header's name line cannot hold the buttons as well, so
+  /// they go under the lines instead.
+  static const double _besideNameFrom = 640;
+
+  /// Desktop: the moves, then Book, the one that matters most, last. On a
+  /// phone Book is full width and the moves share a row under it.
+  Widget _actions(Map<String, dynamic> lead) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    alignment: WrapAlignment.end,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      if (widget.onStatusChanged != null) _moves(lead),
+      if (_canBook)
+        FilledButton(
+          key: const ValueKey('book-open'),
+          onPressed: _openBooking,
+          child: const Text('Book'),
+        ),
+    ],
+  );
+
+  static Tone _statusTone(Object? status) => switch (status) {
+    'booked' => Tone.ok,
+    'archived' => Tone.neutral,
+    'not_a_lead' => Tone.caution,
+    _ => Tone.info,
+  };
+
   bool get _canBook =>
       widget.session != null &&
       widget.onBooked != null &&
@@ -389,123 +460,125 @@ class _LeadThreadState extends State<LeadThread> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            leadTitle(lead),
-                            style: theme.textTheme.titleMedium,
-                          ),
-                        ),
-                        if (widget.onStar != null)
-                          IconButton(
-                            key: const ValueKey('thread-star'),
-                            tooltip: starred ? 'Unstar' : 'Star',
-                            iconSize: 18,
-                            onPressed: _star,
-                            icon: Icon(
-                              starred ? Icons.star : Icons.star_border,
-                              color: starred
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outline,
+          child: LayoutBuilder(
+            builder: (context, box) => Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              leadTitle(lead),
+                              style: theme.textTheme.titleMedium,
                             ),
                           ),
-                        // Desktop: Book beside the star. On a phone it is a
-                        // full-width button under the header instead, a
-                        // control you can hit without aiming.
-                        if (_canBook && !narrow) ...[
-                          const SizedBox(width: 4),
-                          OutlinedButton(
-                            key: const ValueKey('book-open'),
-                            onPressed: _openBooking,
-                            child: const Text('Book'),
+                          const SizedBox(width: 8),
+                          // What it is, said as a pill: the corner field that
+                          // read as a search box is gone (design 28).
+                          StatusPill(
+                            _statuses[lead['status']] ?? 'New',
+                            key: const ValueKey('thread-status'),
+                            tone: _statusTone(lead['status']),
                           ),
+                          if (widget.onStar != null)
+                            IconButton(
+                              key: const ValueKey('thread-star'),
+                              tooltip: starred ? 'Unstar' : 'Star',
+                              iconSize: 18,
+                              onPressed: _star,
+                              icon: Icon(
+                                starred ? Icons.star : Icons.star_border,
+                                color: starred
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.outline,
+                              ),
+                            ),
+                          // Beside the name, sharing only its line: set beside
+                          // the whole header they squeezed the lines under it.
+                          if (!narrow && box.maxWidth >= _besideNameFrom) ...[
+                            const Spacer(),
+                            const SizedBox(width: 12),
+                            _actions(lead),
+                          ],
                         ],
-                      ],
-                    ),
-                    // The number on its own line only when the title is a
-                    // name; when the title IS the number, saying it twice
-                    // adds nothing.
-                    if ((lead['contact_name'] as String?)?.trim().isNotEmpty ==
-                            true &&
-                        (lead['phone'] as String?)?.isNotEmpty == true)
-                      Text(
-                        formatPhoneNumber(lead['phone'] as String?),
-                        style: theme.textTheme.bodySmall,
                       ),
-                    Text(
-                      leadHeaderLine(lead),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    // What it looks like, read by a model, beside what
-                    // somebody decided. Only when a reading exists.
-                    if (lead['classification'] is String)
+                      // The number on its own line only when the title is a
+                      // name; when the title IS the number, saying it twice
+                      // adds nothing.
+                      if ((lead['contact_name'] as String?)
+                                  ?.trim()
+                                  .isNotEmpty ==
+                              true &&
+                          (lead['phone'] as String?)?.isNotEmpty == true)
+                        Text(
+                          formatPhoneNumber(lead['phone'] as String?),
+                          style: theme.textTheme.bodySmall,
+                        ),
                       Text(
-                        [
-                          'Looks like ${classificationWord(lead['classification'] as String)}',
-                          if ((lead['summary'] as String?)?.isNotEmpty == true)
-                            lead['summary'] as String,
-                        ].join(' · '),
-                        key: const ValueKey('classification-line'),
+                        leadHeaderLine(lead),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
                         ),
                       ),
-                    _noteBlock(theme, lead),
-                    if (_customer != null) _customerCard(theme, _customer!),
-                    if (lead['job'] is Map)
-                      _bookedLine(
-                        theme,
-                        lead['job'] as Map,
-                        matched: lead['job_matched_by'] == 'phone',
-                      ),
-                    if (_canBook && narrow)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: FilledButton.icon(
-                          key: const ValueKey('book-open'),
-                          onPressed: _openBooking,
-                          icon: const Icon(
-                            Icons.event_available_outlined,
-                            size: 18,
+                      // What it looks like, read by a model, beside what
+                      // somebody decided. Only when a reading exists.
+                      if (lead['classification'] is String)
+                        Text(
+                          [
+                            'Looks like ${classificationWord(lead['classification'] as String)}',
+                            if ((lead['summary'] as String?)?.isNotEmpty ==
+                                true)
+                              lead['summary'] as String,
+                          ].join(' · '),
+                          key: const ValueKey('classification-line'),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
                           ),
-                          label: const Text('Book'),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              if (widget.onStatusChanged != null)
-                SizedBox(
-                  width: 170,
-                  child: SearchPickerField<String>(
-                    value: _statuses.containsKey(lead['status'])
-                        ? lead['status'] as String
-                        : 'new',
-                    border: InputBorder.none,
-                    isDense: true,
-                    options: [
-                      for (final e in _statuses.entries)
-                        SearchOption(value: e.key, label: e.value),
+                      _noteBlock(theme, lead),
+                      if (_customer != null) _customerCard(theme, _customer!),
+                      if (lead['job'] is Map)
+                        _bookedLine(
+                          theme,
+                          lead['job'] as Map,
+                          matched: lead['job_matched_by'] == 'phone',
+                        ),
+                      if (_canBook && narrow)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: FilledButton.icon(
+                            key: const ValueKey('book-open'),
+                            onPressed: _openBooking,
+                            icon: const Icon(
+                              Icons.event_available_outlined,
+                              size: 18,
+                            ),
+                            label: const Text('Book'),
+                          ),
+                        ),
+                      if (narrow && widget.onStatusChanged != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: _moves(lead, fill: true),
+                        ),
+                      if (!narrow && box.maxWidth < _besideNameFrom)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: _actions(lead),
+                          ),
+                        ),
                     ],
-                    onChanged: (v) {
-                      if (v != null && v != lead['status']) {
-                        widget.onStatusChanged!(v);
-                      }
-                    },
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
         const Divider(height: 1),
