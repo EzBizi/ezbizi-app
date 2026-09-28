@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Google call recordings on Leads now play in the Windows app.',
+        'A1Leads GBP: click any review to open it in a side panel with its history and actions, and change the status of a review straight from the table.',
       ],
     ),
     VersionRelease(
