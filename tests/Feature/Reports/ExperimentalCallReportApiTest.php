@@ -299,13 +299,21 @@ class ExperimentalCallReportApiTest extends TestCase
             '*/oauth/token' => Http::response(['access_token' => 'tok', 'expires_in' => 3600]),
             '*/call-log*' => Http::response(['paging' => ['totalPages' => 1], 'records' => []]),
 
-            'api.workiz.com/api/v1/nat/*' => Http::sequence()
-                ->push(['flag' => true, 'data' => $full])
-                ->push(['flag' => true, 'data' => [[
+            /*
+             * ANSWERED BY THE OFFSET ASKED FOR, not in sequence. A sequence
+             * answered page two whatever was asked, so this test stayed green
+             * while the loop asked Workiz for page 100 (Workiz session,
+             * 2026-09-28). `offset` is a page number: 0, then 1.
+             */
+            'api.workiz.com/api/v1/nat/*' => fn ($request) => Http::response(match ((string) ($request->data()['offset'] ?? '')) {
+                '0' => ['flag' => true, 'data' => $full],
+                '1' => ['flag' => true, 'data' => [[
                     'Phone' => '2125559999',
                     'CreatedBy' => 'Trey Brannan',
                     'CreatedDate' => '2026-09-14 10:00:00',
-                ]]]),
+                ]]],
+                default => ['flag' => true, 'data' => []],
+            }),
 
             'api.workiz.com/api/v1/nj/*' => Http::response(['flag' => true, 'data' => []]),
         ]);
