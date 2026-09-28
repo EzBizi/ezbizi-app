@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0285',
+      date: '28 Sep 2026',
+      items: [
+        'New Google Local Services leads and messages arrive within a minute, from every account.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0284',
       date: '28 Sep 2026',
       items: [
