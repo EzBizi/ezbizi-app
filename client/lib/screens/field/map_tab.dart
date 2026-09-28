@@ -46,6 +46,12 @@ class _FieldMapTabState extends State<FieldMapTab> {
   bool _wide = true;
   bool _firstFit = true;
 
+  /// Camera moves wait for this. Moved before the map has its real size, the
+  /// camera lands but the tile layer loads nothing until somebody pans: the
+  /// Android session saw a grey map for over a minute on 0.0.0290.
+  bool _mapReady = false;
+  List<LatLng>? _pendingFit;
+
   Timer? _refresh;
   String _copyright = '';
   Timer? _attributionDebounce;
@@ -155,6 +161,10 @@ class _FieldMapTabState extends State<FieldMapTab> {
   /// Fits any set of points without ever asking for infinite zoom.
   void _fit(List<LatLng> points) {
     if (points.isEmpty) return;
+    if (!_mapReady) {
+      _pendingFit = points;
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final bounds = LatLngBounds.fromPoints(points);
@@ -177,7 +187,7 @@ class _FieldMapTabState extends State<FieldMapTab> {
   }
 
   void _viewportChanged() {
-    if (_tiles.values.every((u) => u == null)) return;
+    if (!_mapReady || _tiles.values.every((u) => u == null)) return;
     _attributionDebounce?.cancel();
     _attributionDebounce = Timer(const Duration(milliseconds: 600), () async {
       final camera = _map.camera;
@@ -232,7 +242,13 @@ class _FieldMapTabState extends State<FieldMapTab> {
               minZoom: 3,
               maxZoom: 19,
               backgroundColor: scheme.surfaceContainerHighest,
-              onMapReady: _viewportChanged,
+              onMapReady: () {
+                _mapReady = true;
+                final pending = _pendingFit;
+                _pendingFit = null;
+                if (pending != null) _fit(pending);
+                _viewportChanged();
+              },
               onPositionChanged: (_, _) => _viewportChanged(),
             ),
             children: [
