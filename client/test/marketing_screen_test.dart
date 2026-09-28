@@ -1002,7 +1002,17 @@ void main() {
           postsFor: () => switch (reads++) {
             0 => const [],
             1 => [_landed('queued')],
-            _ => [_landed('sent')],
+            // Earlier posts too: a Sent list long enough to push the agenda
+            // below what a lazy list builds, as on a real account.
+            _ => [
+              _landed('sent'),
+              for (var i = 0; i < 8; i++)
+                {
+                  ..._landed('sent'),
+                  'id': 'old-$i',
+                  'created_at': '2026-01-0${i + 1}T12:00:00Z',
+                },
+            ],
           },
         ),
         size: const Size(375, 900),
@@ -1026,6 +1036,10 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Done'));
       await tester.pumpAndSettle();
 
+      // Landed ON the agenda, not merely somewhere below: built lazily, it
+      // had no context to scroll to, and Done left the page at the top.
+      final agenda = tester.getRect(find.text('Your posts'));
+      expect(agenda.top, inInclusiveRange(0, 900 - agenda.height));
       expect(find.text('Today'), findsOneWidget);
       final row = tester.widget<Material>(
         find.byKey(const ValueKey('agenda-post-1')),
