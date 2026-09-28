@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0295',
+      date: '28 Sep 2026',
+      items: [
+        'Workiz: accounts with more than 100 upcoming jobs (Connecticut, Illinois, Ohio and New Jersey) now pick up changes and new bookings for the next days every minute; before, the sweep only read their farthest 100 jobs.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0294',
       date: '28 Sep 2026',
       items: [
