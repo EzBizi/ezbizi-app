@@ -126,7 +126,12 @@ class CertificationsTest extends TestCase
         $this->assertSame(['Insurance expired on Sep 1, 2026.'], array_column($gone['problems'], 'text'));
 
         $failed = LsaCertifications::assess([], [$doc('FAILED', null)], $now);
-        $this->assertSame(['Insurance check failed.'], array_column($failed['problems'], 'text'));
+        $this->assertSame(['Insurance: failed.'], array_column($failed['problems'], 'text'));
+
+        // A type whose name already says "check" is not doubled (it read
+        // "Background check check no submission." on the first live run).
+        $background = LsaCertifications::assess([], [['type' => 'BACKGROUND_CHECK', 'status' => 'NO_SUBMISSION', 'submitted_at' => null, 'expires_at' => null]], $now);
+        $this->assertSame(['Background check: no submission.'], array_column($background['problems'], 'text'));
     }
 
     public function test_only_the_newest_document_of_a_type_counts(): void

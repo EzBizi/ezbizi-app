@@ -112,7 +112,7 @@ class LsaCertifications
             if (! in_array($d['status'], ['PASSED', ...self::PENDING], true)) {
                 $problems[] = [
                     'code' => "document:{$d['type']}:{$d['status']}",
-                    'text' => ucfirst($type).' check '.self::words($d['status']).'.',
+                    'text' => ucfirst($type).': '.self::words($d['status']).'.',
                 ];
 
                 continue;
