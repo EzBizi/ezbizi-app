@@ -608,9 +608,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
         // band-to-panel shape Google's accounts shipped with, costing one row
         // at one provider or four. The panel holds every provider's section.
         LayoutBuilder(
-          builder: (context, constraints) => constraints.maxWidth < 600
-              ? _sourcesTile(theme)
-              : _sourcesBand(theme),
+          builder: (context, constraints) =>
+              _sourcesBox(theme, pushed: constraints.maxWidth < 600),
         ),
         if (_notice != null)
           Padding(
@@ -629,49 +628,52 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(
+          // One run, and Mark all read is its last item: pinned to the far
+          // right it sat a screen away from the chips it reads (Jose,
+          // 2026-09-28: "like floating in the air"; design 28).
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: [
-                    ChoiceChip(
-                      key: const ValueKey('filter-all'),
-                      label: const Text('All'),
-                      selected:
-                          !_unreplied &&
-                          !_unread &&
-                          !_starred &&
-                          _source == null,
-                      onSelected: (_) => _clearFilters(),
-                    ),
-                    FilterChip(
-                      key: const ValueKey('filter-unread'),
-                      label: const Text('Unread'),
-                      selected: _unread,
-                      onSelected: (on) => _setFilters(unread: on),
-                    ),
-                    FilterChip(
-                      key: const ValueKey('filter-unreplied'),
-                      label: const Text('Unreplied'),
-                      selected: _unreplied,
-                      onSelected: (on) => _setFilters(unreplied: on),
-                    ),
-                    FilterChip(
-                      key: const ValueKey('filter-starred'),
-                      label: const Text('Starred'),
-                      selected: _starred,
-                      onSelected: (on) => _setFilters(starred: on),
-                    ),
-                  ],
-                ),
+              ChoiceChip(
+                key: const ValueKey('filter-all'),
+                label: const Text('All'),
+                selected:
+                    !_unreplied &&
+                    !_unread &&
+                    !_starred &&
+                    _source == null,
+                onSelected: (_) => _clearFilters(),
               ),
-              // Where a1tools puts it: the top of the list.
-              TextButton(
+              FilterChip(
+                key: const ValueKey('filter-unread'),
+                label: const Text('Unread'),
+                selected: _unread,
+                onSelected: (on) => _setFilters(unread: on),
+              ),
+              FilterChip(
+                key: const ValueKey('filter-unreplied'),
+                label: const Text('Unreplied'),
+                selected: _unreplied,
+                onSelected: (on) => _setFilters(unreplied: on),
+              ),
+              FilterChip(
+                key: const ValueKey('filter-starred'),
+                label: const Text('Starred'),
+                selected: _starred,
+                onSelected: (on) => _setFilters(starred: on),
+              ),
+              const SizedBox(height: 24, child: VerticalDivider(width: 9)),
+              OutlinedButton.icon(
                 key: const ValueKey('mark-all-read'),
                 onPressed: _leads.isEmpty ? null : _readAll,
-                child: const Text('Mark all read'),
+                icon: const Icon(Icons.done_all, size: 18),
+                label: Text(
+                  MediaQuery.sizeOf(context).width < 600
+                      ? 'Read all'
+                      : 'Mark all read',
+                ),
               ),
             ],
           ),
@@ -1012,62 +1014,69 @@ class _LeadsScreenState extends State<LeadsScreen> {
     ].join(' · ');
   }
 
-  Widget _sourcesBand(ThemeData theme) => Padding(
+  /// Where enquiries come from, and the button that manages them, in one box
+  /// that hugs its words. Manage used to sit at the far right of the screen,
+  /// a long way from the sources it opens (design 28).
+  Widget _sourcesBox(ThemeData theme, {required bool pushed}) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-    child: Row(
-      children: [
-        Icon(Icons.link, size: 20, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Connected sources', style: theme.textTheme.bodyMedium),
-              // Said HERE rather than as a banner: this is the line a person
-              // already reads to learn where enquiries come from, so it is
-              // where "they are not coming right now" belongs. A dismissible
-              // banner would be dismissed once and never seen again on the
-              // day it mattered.
-              if (_delayedSince != null)
-                Text(
-                  'Google is refusing our requests, so new enquiries are '
-                  'delayed. Nothing is lost — they arrive when it clears.',
-                  key: const ValueKey('sync-delayed'),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
+    child: Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.link,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Connected sources', style: theme.textTheme.bodyMedium),
+                  // Said HERE rather than as a banner: this is the line a
+                  // person already reads to learn where enquiries come from,
+                  // so it is where "they are not coming right now" belongs. A
+                  // dismissible banner would be dismissed once and never seen
+                  // again on the day it mattered.
+                  if (_delayedSince != null)
+                    Text(
+                      'Google is refusing our requests, so new enquiries are '
+                      'delayed. Nothing is lost — they arrive when it clears.',
+                      key: const ValueKey('sync-delayed'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                    ),
+                  Text(
+                    _sourcesSummary(),
+                    key: const ValueKey('sources-summary'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              Text(
-                _sourcesSummary(),
-                key: const ValueKey('sources-summary'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton(
+              key: const ValueKey('sources-manage'),
+              onPressed: () => _openSources(pushed: pushed),
+              child: const Text('Manage'),
+            ),
+          ],
         ),
-        TextButton(
-          key: const ValueKey('sources-manage'),
-          onPressed: () => _openSources(pushed: false),
-          child: const Text('Manage'),
-        ),
-      ],
+      ),
     ),
-  );
-
-  Widget _sourcesTile(ThemeData theme) => ListTile(
-    key: const ValueKey('sources-manage'),
-    leading: Icon(
-      Icons.link,
-      size: 20,
-      color: theme.colorScheme.onSurfaceVariant,
-    ),
-    title: Text('Connected sources', style: theme.textTheme.bodyMedium),
-    subtitle: Text(_sourcesSummary(), style: theme.textTheme.bodySmall),
-    trailing: const Icon(Icons.chevron_right, size: 18),
-    onTap: () => _openSources(pushed: true),
   );
 
   /// Every provider's section on one surface: a side panel on a desktop, a
@@ -1362,6 +1371,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           if (lead['is_test'] == true) ...[
                             _Badge('Test', key: ValueKey('test-badge-$id')),
                           ],
+                          // Only when it is not New: 43,184 of 43,190 are,
+                          // and a pill on every row would say nothing.
+                          if ((lead['status'] ?? 'new') != 'new')
+                            leadStatusPill(
+                              lead['status'],
+                              key: ValueKey('status-pill-$id'),
+                            ),
                           // This number is already a customer.
                           if (lead['customer'] is Map) ...[
                             _Badge(

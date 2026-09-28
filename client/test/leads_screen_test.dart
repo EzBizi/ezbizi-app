@@ -1053,6 +1053,52 @@ Map<String, dynamic> _lead(
 /// the third mark, the three filters narrow together, Mark all read is at
 /// the top of the list.
 void _triageTests() {
+  // Design 28 (Jose: "the manage, mark all leads ... like floating in the
+  // air"): each control sits beside what it acts on, not at the far right.
+  testWidgets('Manage sits after the sources, Mark all read after the chips', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      size: const Size(1600, 900),
+    );
+
+    final summary = tester.getRect(
+      find.byKey(const ValueKey('sources-summary')),
+    );
+    final manage = tester.getRect(find.byKey(const ValueKey('sources-manage')));
+    expect(manage.left - summary.right, lessThan(60));
+
+    final starred = tester.getRect(
+      find.byKey(const ValueKey('filter-starred')),
+    );
+    final markAll = tester.getRect(find.byKey(const ValueKey('mark-all-read')));
+    expect((markAll.center.dy - starred.center.dy).abs(), lessThan(8));
+    expect(markAll.left - starred.right, lessThan(40));
+  });
+
+  testWidgets('a lead that is not New says which on its row', (tester) async {
+    await _pump(
+      tester,
+      leads: [
+        _lead('lead-1', 'Marcus Bell'),
+        {..._lead('lead-2', 'Dana Whitfield'), 'status': 'archived'},
+      ],
+      connections: _connected,
+    );
+
+    expect(find.byKey(const ValueKey('status-pill-lead-1')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('status-pill-lead-2')),
+        matching: find.text('Archived'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('an unread row is bold and a read one is not; opening a lead '
       'marks it read', (tester) async {
     await _pump(

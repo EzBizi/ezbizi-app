@@ -140,13 +140,6 @@ class _LeadThreadState extends State<LeadThread> {
   bool _canSuggest = false;
   bool _suggesting = false;
 
-  static const _statuses = <String, String>{
-    'new': 'New',
-    'booked': 'Booked',
-    'archived': 'Archived',
-    'not_a_lead': 'Not a lead',
-  };
-
   /// How often an OPEN conversation re-reads itself.
   ///
   /// Faster than the list beside it, because this is somebody mid-conversation
@@ -381,13 +374,6 @@ class _LeadThreadState extends State<LeadThread> {
     ],
   );
 
-  static Tone _statusTone(Object? status) => switch (status) {
-    'booked' => Tone.ok,
-    'archived' => Tone.neutral,
-    'not_a_lead' => Tone.caution,
-    _ => Tone.info,
-  };
-
   bool get _canBook =>
       widget.session != null &&
       widget.onBooked != null &&
@@ -485,10 +471,9 @@ class _LeadThreadState extends State<LeadThread> {
                           const SizedBox(width: 8),
                           // What it is, said as a pill: the corner field that
                           // read as a search box is gone (design 28).
-                          StatusPill(
-                            _statuses[lead['status']] ?? 'New',
+                          leadStatusPill(
+                            lead['status'],
                             key: const ValueKey('thread-status'),
-                            tone: _statusTone(lead['status']),
                           ),
                           if (widget.onStar != null)
                             IconButton(
@@ -1577,3 +1562,21 @@ String? threadDay(String? iso, {DateTime? now}) {
   final label = '${week[at.weekday - 1]}, ${month[at.month - 1]} ${at.day}';
   return at.year == today.year ? label : '$label, ${at.year}';
 }
+
+/// A lead's status as a pill, the same in the thread's header and on the
+/// list's rows (design 28).
+StatusPill leadStatusPill(Object? status, {Key? key}) => StatusPill(
+  switch (status) {
+    'booked' => 'Booked',
+    'archived' => 'Archived',
+    'not_a_lead' => 'Not a lead',
+    _ => 'New',
+  },
+  key: key,
+  tone: switch (status) {
+    'booked' => Tone.ok,
+    'archived' => Tone.neutral,
+    'not_a_lead' => Tone.caution,
+    _ => Tone.info,
+  },
+);

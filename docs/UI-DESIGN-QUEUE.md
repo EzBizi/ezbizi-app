@@ -2994,7 +2994,15 @@ open them. The "UPDATED 2024" warning is the site's own SEO setting, not EzBizi'
 `PUT /web/sites/{site}/seo-helper/site {page_title_template?, post_title_template?}` applies it
 (edit access) and returns the refreshed overview, so the button is **Fix it**, sent as is.
 
-### 28 · Leads · Status, Manage and Mark all read — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
+### 28 · Leads · Status, Manage and Mark all read — **Jose: "as u recommend" — 1 and 4** — **BUILT**
+
+**Built (client):** `02bbfe60` the thread header: the status a pill after the name, Archive and
+Not a lead beside Book on a New lead, Back to New on any other, sharing the name's line when there
+is room and under the lines when not; on a phone Book full width with the two moves in one row
+under it. Then the list: Connected sources is a box that hugs its words with **Manage** right after
+them (the same box on a phone), **Mark all read** is the last item of the chip row after a hairline
+("Read all" on a phone), and a row whose lead is not New carries the same pill
+(`leadStatusPill`, shared). Built on Leads' `2cbfe4a4`.
 
 `docs/previews/leads-status-controls-layouts.html`. Asked by Leads (Google API session), from Jose,
 2026-09-28: *"the manage, mark all leads, it all feels like it's not part of the ui and its like
