@@ -236,6 +236,65 @@ void main() {
   });
   _triageTests();
 
+  // Jose, 2026-09-28: "there is some overflow issues when u put the app on 50%
+  // of the screen". Half of a 1920 desktop, less the sidebar, and the widths
+  // either side of the two-pane breakpoint.
+  for (final width in [700.0, 740.0, 880.0, 960.0, 1040.0]) {
+    testWidgets('nothing overflows at ${width.toInt()} wide', (tester) async {
+      final errors = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = errors.add;
+
+      await _pump(
+        tester,
+        size: Size(width, 900),
+        leads: [
+          {
+            ..._lead('lead-1', 'Dave Malkowski with a long surname'),
+            'phone': '+12196692720',
+            'can_reply': true,
+            'reply_overdue': true,
+            'customer': {'id': 'cu-1', 'number': 'C-0042', 'name': 'Dave'},
+          },
+          {..._lead('lead-2', ''), 'phone': '+12155550199'},
+        ],
+        connections: const [
+          {
+            'id': 'g-1',
+            'provider': 'google_ads',
+            'display_name': 'A1 Chimney - Cleveland',
+            'status': 'connected',
+            'leads_count': 3,
+          },
+        ],
+      );
+
+      FlutterError.onError = previous;
+      final overflows = errors
+          .where((e) => '${e.exception}'.contains('overflowed'))
+          .map((e) => '${e.exception}'.split('\n').first)
+          .toList();
+      expect(overflows, isEmpty);
+    });
+  }
+
+  // Jose, 2026-09-28: a customer left waiting is marked red on the list.
+  testWidgets('a lead waiting too long for a reply wears a red warning', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        {..._lead('lead-1', 'Waiting'), 'can_reply': true, 'reply_overdue': true},
+        {..._lead('lead-2', 'Answered'), 'can_reply': true, 'reply_overdue': false},
+      ],
+      connections: const [],
+    );
+
+    expect(find.byKey(const ValueKey('overdue-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('overdue-lead-2')), findsNothing);
+  });
+
   // Jose, 2026-09-28: a number already in Customers is shown as the customer.
   testWidgets('a lead from a known customer is named and badged as one', (
     tester,
@@ -531,7 +590,7 @@ void main() {
 
     // And the four that were already there still are - a list built by index
     // from two const lists is exactly where an insertion goes wrong silently.
-    for (final word in ['Google', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
       expect(find.widgetWithText(ChoiceChip, word), findsOneWidget);
     }
   });
@@ -564,7 +623,7 @@ void main() {
 
     // Every source reachable, Thumbtack included. The drawn mobile option had
     // it pushed off the end; the strip scrolls, so it is here.
-    for (final word in ['Google', 'Thumbtack', 'Chat', 'Forms']) {
+    for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
         findsOneWidget,

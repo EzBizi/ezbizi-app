@@ -2249,14 +2249,16 @@ class ModuleServiceProvider extends ServiceProvider
                             .'carries the contact details as the enquirer gave them, which source '
                             .'and location it came through, and when it arrived — not yet what it '
                             .'is about. Narrow it with a condition on "source": local_services, '
-                            .'thumbtack, website_chat or website_form.',
+                            .'thumbtack, website_chat or website_form - or on "kind", which also '
+                            .'splits Google into ls_call, ls_text and ls_booking.',
                     ),
                     new TriggerDefinition(
                         key: 'lead.contact_received',
                         label: 'Enquirer called or messaged',
                         description: 'The person behind a lead reached out again — a call, or a '
-                            .'message — and Google recorded it. It carries the channel, when, and '
-                            .'the first line of what they wrote. The business\'s own replies do '
+                            .'message — and Google recorded it. It carries the channel, the kind '
+                            .'of lead (ls_call, ls_text, thumbtack...), when, and the first line of '
+                            .'what they wrote. The business\'s own replies do '
                             .'not raise it.',
                     ),
                     /*
@@ -2268,13 +2270,26 @@ class ModuleServiceProvider extends ServiceProvider
                      * would ring for every new lead too. This one is only a
                      * customer message on a lead that already had one.
                      */
+                    // Jose, 2026-09-28: a warning for dispatchers when a
+                    // customer is left waiting. Raised once per unanswered
+                    // customer message, by ezbizi:leads-reply-overdue.
+                    new TriggerDefinition(
+                        key: 'lead.reply_overdue',
+                        label: 'Customer waiting for a reply',
+                        description: 'A customer wrote and nobody has answered for 10 minutes, on a '
+                            .'lead that is still New and can be replied to. Raised once per message '
+                            .'left waiting; a booked or archived lead never raises it. It carries the '
+                            .'source, the kind of lead, who it is, how many minutes they have waited '
+                            .'and what they said.',
+                    ),
                     new TriggerDefinition(
                         key: 'lead.customer_replied',
                         label: 'Customer replied',
                         description: 'The customer wrote or called again on a lead that already '
                             .'had a conversation, on any source. Their first message is "Lead '
                             .'received", not this, and replies from the business never raise it. '
-                            .'It carries the source, the channel and the first line of what they said.',
+                            .'It carries the source, the kind of lead (ls_call, ls_text, thumbtack...), '
+                            .'the channel and the first line of what they said.',
                     ),
                     /*
                      * Separate from "received" because the gap between them is

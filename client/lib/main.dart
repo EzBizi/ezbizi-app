@@ -774,15 +774,13 @@ class _HomeShellState extends State<HomeShell> {
   /// usual outcome here is success.
   String? _confirmationNotice;
 
-  /// What a notification asked the destination to narrow to, if anything.
-  ///
-  /// Cleared by nothing on purpose: it is set when a notification navigates and
-  /// replaced the next time one does. Leaving it set means going back to Leads
-  /// by hand shows the same filter it last opened with, which matches the chip
-  /// the person can see selected.
-  String? _leadsFilter;
-
   /// The lead a notification was about, opened rather than the newest one.
+  ///
+  /// A notification no longer narrows Leads to its source: a Google one used
+  /// to leave the Google chip selected for the rest of the session, so Leads
+  /// opened on Google instead of All (Jose, 2026-09-28). The lead is opened
+  /// and pinned whatever filter the list shows. Cleared when Leads is opened
+  /// any other way.
   String? _leadsOpen;
 
   /// One module screen, with the one destination that accepts a filter.
@@ -801,12 +799,11 @@ class _HomeShellState extends State<HomeShell> {
   /// notification and then from a form one would leave the first filter in
   /// place. Changing the key rebuilds the screen, which re-runs initState.
   Widget _screenFor(String key, ModuleScreen screen) {
-    if (key == 'leads' && (_leadsFilter != null || _leadsOpen != null)) {
+    if (key == 'leads' && _leadsOpen != null) {
       return LeadsScreen(
-        key: ValueKey('$_leadsFilter|$_leadsOpen'),
+        key: ValueKey('open|$_leadsOpen'),
         api: widget.api,
         session: widget.session,
-        initialSource: _leadsFilter,
         initialLeadId: _leadsOpen,
       );
     }
@@ -814,7 +811,8 @@ class _HomeShellState extends State<HomeShell> {
     return screen.build(widget.api, widget.session);
   }
 
-  void _show(_Rail rail, String id) => setState(() {
+  void _show(_Rail rail, String id, {String? openLead}) => setState(() {
+    _leadsOpen = openLead;
     _rail = rail;
     _selected = id;
     widget.address?.push(_pathFor(rail, id));
@@ -1364,13 +1362,8 @@ class _HomeShellState extends State<HomeShell> {
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
                 // only needs to name one.
-                onOpenModule: (key, filter, record) {
-                  setState(() {
-                    _leadsFilter = filter;
-                    _leadsOpen = record;
-                  });
-                  _show(_Rail.modules, key);
-                },
+                onOpenModule: (key, filter, record) =>
+                    _show(_Rail.modules, key, openLead: record),
               ),
               // The organization requires a second factor and this person has
               // not set one up (§6). Every screen except their own account is

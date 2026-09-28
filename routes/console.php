@@ -319,3 +319,7 @@ Schedule::command('ezbizi:transcribe-lead-calls')->everyFiveMinutes()->withoutOv
 // Is every Local Services campaign still showing? Hourly and read-only; a stop
 // raises ads.campaign_stopped with who paused it.
 Schedule::command('ezbizi:ads-campaign-watch')->hourlyAt(20)->withoutOverlapping(30);
+
+// A customer left waiting 10 minutes for an answer raises lead.reply_overdue,
+// once per message, so a rule can warn the dispatchers.
+Schedule::command('ezbizi:leads-reply-overdue')->everyMinute()->withoutOverlapping(5);

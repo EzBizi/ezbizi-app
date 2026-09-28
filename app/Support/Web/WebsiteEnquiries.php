@@ -291,6 +291,7 @@ final class WebsiteEnquiries
             'after' => $lead->only([
                 'source', 'contact_name', 'phone', 'category', 'received_at',
             ]) + [
+                'kind' => $lead->kind(),
                 // A yes/no a rule can test, so "only if they agreed to email"
                 // can be written as a condition as well as enforced by the step.
                 'marketing_consent' => $consented,

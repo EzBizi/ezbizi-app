@@ -410,6 +410,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
             'received_at' => 'datetime',
             'synced_at' => 'datetime',
             'last_contact_at' => 'datetime',
+            'reply_overdue_raised_at' => 'datetime',
             'starred_at' => 'datetime',
             'note_updated_at' => 'datetime',
             'classified_at' => 'datetime',
@@ -460,6 +461,52 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
      * occurred_at now carries fractions too; the tiebreak stays for rows that
      * predate that and for two stamps that are genuinely equal.
      */
+    /**
+     * How long a customer's message may wait for an answer before the lead is
+     * flagged and `lead.reply_overdue` raised (Jose, 2026-09-28: "they have
+     * not replied to x customer in 10 mins").
+     */
+    public const REPLY_OVERDUE_AFTER_MINUTES = 10;
+
+    /**
+     * The customer spoke last, a reply is possible, nobody has answered for
+     * REPLY_OVERDUE_AFTER_MINUTES, and the lead is still New - a booked,
+     * archived or not-a-lead lead owes nothing ("not every response needs a
+     * reply").
+     */
+    public function replyOverdue(bool $canReply): bool
+    {
+        return $canReply
+            && $this->status === self::STATUS_NEW
+            && $this->last_contact_from === LeadConversation::FROM_CONSUMER
+            && $this->last_contact_at !== null
+            && $this->last_contact_at->lte(now()->subMinutes(self::REPLY_OVERDUE_AFTER_MINUTES));
+    }
+
+    /** A Local Services call lead, and a text lead - A1 Leads' "LS Call" / "LS Text". */
+    public const KIND_LS_CALL = 'ls_call';
+
+    public const KIND_LS_TEXT = 'ls_text';
+
+    /**
+     * What kind of lead this is, as a rule narrows it: `ls_call`, `ls_text`
+     * or `ls_booking` for Google Local Services (by lead_type), otherwise the
+     * source itself - thumbtack, website_chat, website_form, facebook...
+     */
+    public function kind(): string
+    {
+        if ($this->source !== self::SOURCE_LOCAL_SERVICES) {
+            return (string) $this->source;
+        }
+
+        return match ($this->lead_type) {
+            'PHONE_CALL' => self::KIND_LS_CALL,
+            'MESSAGE' => self::KIND_LS_TEXT,
+            'BOOKING' => 'ls_booking',
+            default => (string) $this->source,
+        };
+    }
+
     public function conversations(): HasMany
     {
         return $this->hasMany(LeadConversation::class)

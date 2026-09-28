@@ -5,8 +5,10 @@ namespace Tests\Feature\Api;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\Organization;
 use App\Models\SocialConnection;
+use App\Support\Audit\AuditLogger;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
@@ -153,6 +155,39 @@ class LeadsApiTest extends TestCase
         $viewer = $this->userWithRole($t, 'Leads only', ['leads.view', 'leads.local_services.view']);
         $this->assertNull($this->signedInAs($viewer)->getJson(self::ENDPOINT)->assertOk()->json('data.0.customer'));
         $this->assertNull($this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data.customer'));
+    }
+
+    /**
+     * The thread's extras (Jose, 2026-09-28): who sent each of our replies,
+     * an iPhone reaction recognised as one, and the address, ZIP and name read
+     * out of what the customer wrote, with the Google Ads account and status.
+     */
+    public function test_the_thread_names_senders_reads_reactions_and_details(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $lead = $this->lead($t, ['source_status' => 'ACTIVE']);
+        $this->inTenant($t['org'], function () use ($t, $lead) {
+            $say = fn (string $who, string $text, int $ago) => LeadConversation::create([
+                'organization_id' => $t['org']->id, 'lead_id' => $lead->id, 'remote_id' => 'c-'.$ago,
+                'channel' => 'MESSAGE', 'participant' => $who, 'occurred_at' => now()->subMinutes($ago), 'text' => $text,
+            ]);
+            $say('CONSUMER', '44 Elm Street Bethel CT 06801', 30);
+            $reply = $say('ADVERTISER', 'We can come Saturday at 8.', 20);
+            $say('CONSUMER', "Liked \u{201C}We can come Saturday at 8.\u{201D}", 10);
+            app(AuditLogger::class)->log('lead.replied', $lead, ['conversation_id' => $reply->id], actor: $t['admin']);
+        });
+
+        $data = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data');
+
+        $this->assertSame('44 Elm Street Bethel CT 06801', $data['details']['address']);
+        $this->assertSame('06801', $data['details']['zip']);
+        $this->assertSame('Active', $data['details']['google_status']);
+        $this->assertNotNull($data['details']['account']);
+        [$first, $reply, $reaction] = $data['conversations'];
+        $this->assertSame($t['admin']->name, $reply['sent_by']);
+        $this->assertNull($first['sent_by']);
+        $this->assertSame(['emoji' => "\u{1F44D}", 'quote' => 'We can come Saturday at 8'], $reaction['reaction']);
+        $this->assertNull($first['reaction']);
     }
 
     public function test_a_lead_is_listed_for_somebody_who_may_see_it(): void

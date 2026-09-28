@@ -186,6 +186,64 @@ void main() {
     expect(find.textContaining('only accepts replies to text'), findsOneWidget);
   });
 
+  // Jose, 2026-09-28: a date line where the day changes, and an iPhone
+  // reaction hung on the message it quotes instead of drawn as a message.
+  test('the thread is split by day, and a reaction joins its message', () {
+    final items = threadItems([
+      {'id': 'a', 'from': 'CONSUMER', 'text': 'Is Saturday ok?', 'occurred_at': '2026-09-26T15:00:00Z'},
+      {'id': 'b', 'from': 'ADVERTISER', 'text': 'Yes, 10am works.', 'occurred_at': '2026-09-28T13:00:00Z'},
+      {
+        'id': 'c',
+        'from': 'CONSUMER',
+        'text': 'Liked \u201cYes, 10am works.\u201d',
+        'occurred_at': '2026-09-28T13:05:00Z',
+        'reaction': {'emoji': '👍', 'quote': 'Yes, 10am works'},
+      },
+    ]);
+
+    expect(items.whereType<String>(), hasLength(2), reason: 'two days, two lines');
+    final messages = items.whereType<Map<String, dynamic>>().toList();
+    expect(messages.map((m) => m['id']), ['a', 'b'], reason: 'the reaction is not a message');
+    expect(messages[1]['_reactions'], ['👍']);
+
+    // Rebuilding must not stack the same reaction twice.
+    final source = [
+      {'id': 'b', 'from': 'ADVERTISER', 'text': 'Yes', 'occurred_at': '2026-09-28T13:00:00Z'},
+      {'id': 'c', 'from': 'CONSUMER', 'text': 'Liked', 'occurred_at': '2026-09-28T13:05:00Z', 'reaction': {'emoji': '👍', 'quote': 'Yes'}},
+    ];
+    threadItems(source);
+    final again = threadItems(source).whereType<Map<String, dynamic>>().single;
+    expect(again['_reactions'], ['👍']);
+  });
+
+  test('day labels read as people say them', () {
+    final now = DateTime(2026, 9, 28, 12);
+    expect(threadDay(DateTime(2026, 9, 28, 9).toIso8601String(), now: now), 'Today');
+    expect(threadDay(DateTime(2026, 9, 27, 9).toIso8601String(), now: now), 'Yesterday');
+    expect(threadDay(DateTime(2026, 2, 14, 9).toIso8601String(), now: now), 'Sat, Feb 14');
+    expect(threadDay(DateTime(2025, 2, 14, 9).toIso8601String(), now: now), 'Fri, Feb 14, 2025');
+  });
+
+  testWidgets('the account, Google status and the address the customer gave', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      details: {
+        'account': 'A1 Chimney - Cleveland',
+        'google_status': 'Active',
+        'name': 'Dave Malkowski',
+        'address': '215 Lakeview Dr Michigan City Indiana',
+        'zip': '46360',
+      },
+    );
+
+    expect(find.text('Account: A1 Chimney - Cleveland · Google: Active'), findsOneWidget);
+    expect(find.text('215 Lakeview Dr Michigan City Indiana · ZIP 46360'), findsOneWidget);
+  });
+
   // Jose, 2026-09-28: a number that is already a customer shows who they are
   // and what they have had done.
   testWidgets('a known customer is shown with their jobs, newest first', (
@@ -394,6 +452,7 @@ Future<void> _pump(
   String? refuseSend,
   String? suggestion,
   Map<String, dynamic>? customer,
+  Map<String, dynamic>? details,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -461,6 +520,7 @@ Future<void> _pump(
               'cannot_reply_because': cannotReplyBecause,
               'can_suggest': suggestion != null,
               'customer': customer,
+              'details': details,
               'conversations': [
                 {
                   'id': 'c-call',

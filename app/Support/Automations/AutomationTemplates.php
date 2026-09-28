@@ -154,6 +154,17 @@ final class AutomationTemplates
                 ],
             ],
             [
+                'key' => 'customer-waiting',
+                'name' => 'Warn dispatchers when a customer is left waiting',
+                'description' => 'When a customer has written and nobody has answered for 10 '
+                    .'minutes, the dispatchers hear about it. Not for leads already booked.',
+                'trigger_key' => 'lead.reply_overdue',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => '{{contact_name}} has waited {{minutes_waiting}} minutes for a reply: {{preview}}'],
+                ],
+            ],
+            [
                 'key' => 'lead-won',
                 'name' => 'Celebrate a lead that became a customer',
                 'description' => 'When an enquiry is turned into a customer and a job, the '

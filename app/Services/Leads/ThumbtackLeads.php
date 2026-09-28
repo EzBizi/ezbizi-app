@@ -197,7 +197,7 @@ class ThumbtackLeads implements ExplainsRefusal, LeadReplyChannel
             $this->events->emitAfterCommit('lead.received', $result['lead'], [
                 'after' => $result['lead']->only([
                     'source', 'contact_name', 'phone', 'category', 'received_at',
-                ]),
+                ]) + ['kind' => $result['lead']->kind()],
             ]);
         }
 

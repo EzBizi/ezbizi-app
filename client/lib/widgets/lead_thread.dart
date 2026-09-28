@@ -12,6 +12,7 @@ import '../screens/customers/customer_detail_panel.dart';
 import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
+import '../screens/scheduling/availability_pane.dart';
 import 'async_body.dart';
 import 'book_lead_panel.dart';
 import 'side_panel.dart';
@@ -106,6 +107,10 @@ class _LeadThreadState extends State<LeadThread> {
   /// The customer this number already is, with their jobs - from the lead's
   /// own read, not the list row.
   Map<String, dynamic>? _customer;
+
+  /// Account, Google status, and a name/address/ZIP read out of what the
+  /// customer wrote (LeadDetails on the server) - A1 Tools' side facts.
+  Map<String, dynamic>? _details;
 
   bool _editingNote = false;
   bool _savingNote = false;
@@ -305,6 +310,7 @@ class _LeadThreadState extends State<LeadThread> {
       _cannotReplyBecause = data['cannot_reply_because'] as String?;
       _canSuggest = data['can_suggest'] == true;
       _customer = data['customer'] as Map<String, dynamic>?;
+      _details = data['details'] as Map<String, dynamic>?;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
@@ -540,6 +546,7 @@ class _LeadThreadState extends State<LeadThread> {
                             fontStyle: FontStyle.italic,
                           ),
                         ),
+                      if (_details != null) _detailsBlock(theme, lead),
                       _noteBlock(theme, lead),
                       if (_customer != null) _customerCard(theme, _customer!),
                       if (lead['job'] is Map)
@@ -951,11 +958,16 @@ class _LeadThreadState extends State<LeadThread> {
     ),
   );
 
-  Widget _thread(ThemeData theme) => ListView.builder(
+  Widget _thread(ThemeData theme) {
+    final items = threadItems(_conversations);
+
+    return ListView.builder(
     padding: const EdgeInsets.all(14),
-    itemCount: _conversations.length,
+    itemCount: items.length,
     itemBuilder: (context, i) {
-      final c = _conversations[i];
+      final item = items[i];
+      if (item is String) return _dayDivider(theme, item);
+      final c = item as Map<String, dynamic>;
       final mine = c['from'] == 'ADVERTISER';
       final who = mine ? 'You' : 'They';
       final when = _when(c['occurred_at'] as String?);
@@ -969,18 +981,188 @@ class _LeadThreadState extends State<LeadThread> {
         body = _message(theme, c, mine: mine, who: who, when: when);
       }
 
+      final reactions = (c['_reactions'] as List? ?? const []).cast<String>();
+      final sender = c['automatic'] == true
+          ? _sender(theme, null, automatic: true)
+          : mine && c['sent_by'] is String
+          ? _sender(theme, c['sent_by'] as String)
+          : null;
+
       return Align(
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: body,
+            padding: EdgeInsets.only(bottom: reactions.isEmpty ? 8 : 18),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(right: sender == null ? 0 : 10),
+                  child: body,
+                ),
+                // Who sent it, bottom right of the bubble, as A1 Tools does.
+                if (sender != null) Positioned(right: 0, bottom: -6, child: sender),
+                // A reaction hangs on the message it answers (WhatsApp).
+                if (reactions.isNotEmpty)
+                  Positioned(
+                    left: mine ? null : 10,
+                    right: mine ? 16 : null,
+                    bottom: -14,
+                    child: _reactionChip(theme, reactions),
+                  ),
+              ],
+            ),
           ),
         ),
       );
     },
   );
+  }
+
+  /// "── Today ──" where the day changes (Jose, 2026-09-28).
+  Widget _dayDivider(ThemeData theme, String day) => Padding(
+    key: ValueKey('day-$day'),
+    padding: const EdgeInsets.symmetric(vertical: 10),
+    child: Row(
+      children: [
+        const Expanded(child: Divider()),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(day, style: theme.textTheme.labelSmall),
+        ),
+        const Expanded(child: Divider()),
+      ],
+    ),
+  );
+
+  Widget _reactionChip(ThemeData theme, List<String> emojis) => Container(
+    key: const ValueKey('reaction'),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+    decoration: BoxDecoration(
+      color: theme.colorScheme.surface,
+      border: Border.all(color: theme.colorScheme.outlineVariant),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(emojis.join(' '), style: const TextStyle(fontSize: 14)),
+  );
+
+  /// Initials in the person's own colour; a bot for a rule.
+  Widget _sender(ThemeData theme, String? name, {bool automatic = false}) {
+    final color = automatic
+        ? theme.colorScheme.tertiary
+        : Colors.primaries[name.hashCode.abs() % Colors.primaries.length];
+    final initials = automatic
+        ? ''
+        : name!
+              .split(RegExp(r'\s+'))
+              .where((w) => w.isNotEmpty)
+              .take(2)
+              .map((w) => w[0].toUpperCase())
+              .join();
+
+    return Tooltip(
+      message: automatic ? 'Sent by an automation' : '$name · via EzBizi',
+      child: CircleAvatar(
+        key: ValueKey(automatic ? 'sender-bot' : 'sender-$initials'),
+        radius: 10,
+        backgroundColor: color,
+        child: automatic
+            ? const Icon(Icons.smart_toy_outlined, size: 12, color: Colors.white)
+            : Text(
+                initials,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+      ),
+    );
+  }
+
+  /// The account it came through, Google's own status, and what the customer
+  /// told us about themselves - with a way to check availability for the ZIP
+  /// without leaving Leads (Jose, 2026-09-28).
+  Widget _detailsBlock(ThemeData theme, Map<String, dynamic> lead) {
+    final d = _details!;
+    final quiet = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final named = (lead['contact_name'] as String?)?.trim().isNotEmpty == true;
+    final zip = d['zip'] as String?;
+    final address = d['address'] as String?;
+    final facts = [
+      if (d['account'] is String) 'Account: ${d['account']}',
+      if (d['google_status'] is String) 'Google: ${d['google_status']}',
+    ];
+    final mayCheck =
+        widget.session?.me?.can('scheduling.availability.view') == true;
+
+    return Column(
+      key: const ValueKey('lead-details'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (facts.isNotEmpty) Text(facts.join(' · '), style: quiet),
+        if (!named && d['name'] is String)
+          Text('Name, from the conversation: ${d['name']}', style: quiet),
+        if (address != null || zip != null)
+          Text(
+            [
+              ?address,
+              if (zip != null && !(address ?? '').contains(zip)) 'ZIP $zip',
+            ].join(' · '),
+            key: const ValueKey('lead-address'),
+            style: theme.textTheme.bodySmall,
+          ),
+        if (mayCheck)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('check-availability'),
+              onPressed: () => _openAvailability(zip),
+              icon: const Icon(Icons.event_available_outlined, size: 18),
+              label: Text(zip == null ? 'Check availability' : 'Check availability for $zip'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _openAvailability(String? zip) async {
+    final pane = AvailabilityPane(
+      api: widget.api,
+      session: widget.session!,
+      visible: true,
+      initialZip: zip,
+    );
+
+    if (MediaQuery.sizeOf(context).width < 600) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Availability')),
+            body: pane,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await showSidePanel<void>(
+      context,
+      builder: (_) => SidePanel(
+        title: 'Availability',
+        scrollable: false,
+        child: pane,
+      ),
+    );
+  }
 
   /// A booking, and where the details are.
   ///
@@ -1329,4 +1511,67 @@ String leadWhen(String? iso) {
 
   return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
       '${at.day.toString().padLeft(2, '0')}';
+}
+
+/// The thread as drawn: a day label (String) where the date changes, then the
+/// conversations - with each reaction taken out of the list and hung on the
+/// message it quotes, under `_reactions`. A reaction whose message cannot be
+/// found stays in the list as a message of its own, as it came.
+List<Object> threadItems(List<Map<String, dynamic>> conversations) {
+  String norm(String? s) => (s ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+  final shown = <Map<String, dynamic>>[];
+  final items = <Object>[];
+  String? lastDay;
+
+  for (final c in conversations) {
+    final reaction = c['reaction'] as Map?;
+    if (reaction != null) {
+      final quote = norm(reaction['quote'] as String?);
+      Map<String, dynamic>? target;
+      for (final m in shown.reversed) {
+        final text = norm(m['text'] as String?);
+        if (quote.isNotEmpty &&
+            text.isNotEmpty &&
+            (text.startsWith(quote) || quote.startsWith(text))) {
+          target = m;
+          break;
+        }
+      }
+      if (target != null) {
+        target['_reactions'] = [
+          ...(target['_reactions'] as List? ?? const []),
+          '${reaction['emoji']}',
+        ];
+        continue;
+      }
+    }
+
+    final day = threadDay(c['occurred_at'] as String?);
+    if (day != null && day != lastDay) {
+      items.add(day);
+      lastDay = day;
+    }
+    // A copy: reactions are hung on it, and the list is rebuilt every frame.
+    final copy = Map<String, dynamic>.of(c);
+    items.add(copy);
+    shown.add(copy);
+  }
+
+  return items;
+}
+
+/// "Today", "Yesterday", or "Sat, Sep 26" - with the year when it is not this one.
+String? threadDay(String? iso, {DateTime? now}) {
+  final at = iso == null ? null : DateTime.tryParse(iso)?.toLocal();
+  if (at == null) return null;
+  final today = now ?? DateTime.now();
+  final d = DateTime(at.year, at.month, at.day);
+  final t = DateTime(today.year, today.month, today.day);
+  final days = t.difference(d).inDays;
+  if (days == 0) return 'Today';
+  if (days == 1) return 'Yesterday';
+  const week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final label = '${week[at.weekday - 1]}, ${month[at.month - 1]} ${at.day}';
+  return at.year == today.year ? label : '$label, ${at.year}';
 }

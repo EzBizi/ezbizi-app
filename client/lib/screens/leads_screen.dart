@@ -118,7 +118,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   String? _source;
 
   static const _sourceChips = <(String, String)>[
-    ('local_services', 'Google'),
+    // Google, split the way A1 Leads splits it (Jose, 2026-09-28). The API
+    // takes these as a source and narrows Local Services by lead type.
+    ('ls_call', 'LS Call'),
+    ('ls_text', 'LS Text'),
     ('thumbtack', 'Thumbtack'),
     ('website_chat', 'Chat'),
     ('website_form', 'Forms'),
@@ -133,7 +136,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// added -- the strip is built from `_sourceChips`, so a source added there
   /// and not here would land with the wrong icon rather than none.
   static const _sourceIcons = <IconData>[
-    Icons.campaign, // Google Local Services: an ad placement
+    Icons.call_outlined, // Google Local Services calls
+    Icons.sms_outlined, // Google Local Services texts
     Icons.push_pin, // Thumbtack, which is what a thumbtack is
     Icons.chat_bubble_outline,
     Icons.description,
@@ -170,7 +174,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
   ];
 
   bool _maySee(String source) =>
-      widget.session.me?.can('leads.$source.view') ?? false;
+      widget.session.me?.can(
+        'leads.${source.startsWith('ls_') ? 'local_services' : source}.view',
+      ) ??
+      false;
 
   void _setSource(String? source) {
     if (source == _source) return;
@@ -1338,56 +1345,80 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      // A specimen, not a customer. First on the row because
-                      // it changes how everything after it should be read.
-                      if (lead['is_test'] == true) ...[
-                        const SizedBox(width: 8),
-                        _Badge('Test', key: ValueKey('test-badge-$id')),
-                      ],
-                      // This number is already a customer.
-                      if (lead['customer'] is Map) ...[
-                        const SizedBox(width: 8),
-                        _Badge(
-                          'Customer',
-                          key: ValueKey('customer-badge-$id'),
+                      // The badges wrap under each other rather than push the
+                      // row past its edge: at half a desktop screen the list
+                      // pane is ~300px and a Customer + Text + Awaiting reply +
+                      // warning + Google row overflowed by 118px (Jose,
+                      // 2026-09-28).
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                          // A specimen, not a customer. First on the row because
+                          // it changes how everything after it should be read.
+                          if (lead['is_test'] == true) ...[
+                            _Badge('Test', key: ValueKey('test-badge-$id')),
+                          ],
+                          // This number is already a customer.
+                          if (lead['customer'] is Map) ...[
+                            _Badge(
+                              'Customer',
+                              key: ValueKey('customer-badge-$id'),
+                            ),
+                          ],
+                          // The channel badge is drawn only when it says something
+                          // the source badge does not. "Call · Google" is two
+                          // facts; a chat row read "Chat · Chat" and a form row
+                          // "Form · Form", one fact twice (UI/UX, 2026-09-08). The
+                          // rule needs no list of sources: a fifth source with
+                          // one channel gets the right answer for free.
+                          if (channel != null &&
+                              channelWord(channel) != sourceBadgeWord(source)) ...[
+                            _Badge(
+                              channelWord(channel),
+                              call: channel == 'PHONE_CALL',
+                            ),
+                          ],
+                          // Replied or not, and ONLY where a reply is possible.
+                          //
+                          // `can_reply` is the channel's own answer, not a guess
+                          // from lead_type here: a call cannot be replied to, a
+                          // Thumbtack specimen cannot, and a lead whose account was
+                          // disconnected cannot. On all of those the badge is
+                          // absent entirely rather than reading "Replied", because
+                          // "no reply is owed" and "a reply was sent" are different
+                          // things and one must not be dressed as the other.
+                          if (lead['can_reply'] == true) ...[
+                            _Badge(
+                              mine ? 'Replied' : 'Awaiting reply',
+                              key: ValueKey('reply-badge-$id'),
+                            ),
+                          ],
+                          // Waited too long: the customer spoke last over ten
+                          // minutes ago and the lead is still New (Jose,
+                          // 2026-09-28). The server decides; the row only shows it.
+                          if (lead['reply_overdue'] == true) ...[
+                            Tooltip(
+                              message: 'Waiting more than 10 minutes for a reply',
+                              child: Icon(
+                                Icons.warning_rounded,
+                                key: ValueKey('overdue-$id'),
+                                size: 18,
+                                color: theme.colorScheme.error,
+                              ),
+                            ),
+                          ],
+                          // The source, the last mark on the row, in the neutral
+                          // container so it never competes with Call and Text.
+                          _SourceBadge(
+                            sourceBadgeWord(source),
+                            key: ValueKey('source-badge-$id'),
+                          ),
+                          ],
                         ),
-                      ],
-                      // The channel badge is drawn only when it says something
-                      // the source badge does not. "Call · Google" is two
-                      // facts; a chat row read "Chat · Chat" and a form row
-                      // "Form · Form", one fact twice (UI/UX, 2026-09-08). The
-                      // rule needs no list of sources: a fifth source with
-                      // one channel gets the right answer for free.
-                      if (channel != null &&
-                          channelWord(channel) != sourceBadgeWord(source)) ...[
-                        const SizedBox(width: 8),
-                        _Badge(
-                          channelWord(channel),
-                          call: channel == 'PHONE_CALL',
-                        ),
-                      ],
-                      // Replied or not, and ONLY where a reply is possible.
-                      //
-                      // `can_reply` is the channel's own answer, not a guess
-                      // from lead_type here: a call cannot be replied to, a
-                      // Thumbtack specimen cannot, and a lead whose account was
-                      // disconnected cannot. On all of those the badge is
-                      // absent entirely rather than reading "Replied", because
-                      // "no reply is owed" and "a reply was sent" are different
-                      // things and one must not be dressed as the other.
-                      if (lead['can_reply'] == true) ...[
-                        const SizedBox(width: 8),
-                        _Badge(
-                          mine ? 'Replied' : 'Awaiting reply',
-                          key: ValueKey('reply-badge-$id'),
-                        ),
-                      ],
-                      // The source, the last mark on the row, in the neutral
-                      // container so it never competes with Call and Text.
-                      const SizedBox(width: 6),
-                      _SourceBadge(
-                        sourceBadgeWord(source),
-                        key: ValueKey('source-badge-$id'),
                       ),
                     ],
                   ),

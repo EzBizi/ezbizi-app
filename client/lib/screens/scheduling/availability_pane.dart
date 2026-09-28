@@ -34,11 +34,16 @@ class AvailabilityPane extends StatefulWidget {
     required this.api,
     required this.session,
     required this.visible,
+    this.initialZip,
   });
 
   final ApiClient api;
   final Session session;
   final bool visible;
+
+  /// A zip to check straight away - Leads opens this in a side panel with the
+  /// lead's zip (Jose, 2026-09-28: check availability without leaving Leads).
+  final String? initialZip;
 
   @override
   State<AvailabilityPane> createState() => _AvailabilityPaneState();
@@ -78,6 +83,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
   void initState() {
     super.initState();
     _loadFranchises();
+    final zip = widget.initialZip?.trim() ?? '';
+    if (zip.isNotEmpty) {
+      _search.text = zip;
+      _check();
+    }
   }
 
   @override

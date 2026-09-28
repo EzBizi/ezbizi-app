@@ -67,6 +67,7 @@ final class LeadThread
         if ($row->participant === LeadConversation::FROM_CONSUMER) {
             $this->events->emitAfterCommit('lead.contact_received', $lead, [
                 'after' => [
+                    'kind'         => $lead->kind(),
                     'channel'      => $row->channel,
                     'occurred_at'  => $row->occurred_at,
                     'preview'      => self::preview($row),
@@ -79,6 +80,7 @@ final class LeadThread
                 $this->events->emitAfterCommit('lead.customer_replied', $lead, [
                     'after' => [
                         'source'       => $lead->source,
+                        'kind'         => $lead->kind(),
                         'channel'      => $row->channel,
                         'occurred_at'  => $row->occurred_at,
                         'preview'      => self::preview($row),

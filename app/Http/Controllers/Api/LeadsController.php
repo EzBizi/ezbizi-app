@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\AdsAccountState;
+use App\Models\AuditEvent;
 use App\Models\Lead;
 use App\Models\LeadConversation;
 use App\Models\SocialConnection;
@@ -15,6 +16,7 @@ use App\Services\Leads\LocalServicesLeads;
 use App\Support\Audio\PlayableAudio;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
+use App\Support\Leads\LeadDetails;
 use App\Support\Leads\LeadReplies;
 use App\Support\Numbering\RecordNumberGenerator;
 use App\Support\Scoping\ViewScope;
@@ -254,7 +256,13 @@ class LeadsController extends Controller
         // sources layout 1, 2026-09-08): one list answers "who is waiting on
         // me" across Google, Thumbtack and the website at once.
         if (is_string($source = $request->query('source')) && $source !== '') {
-            $query->where('leads.source', $source);
+            // Google, split the way A1 Leads splits it (Jose, 2026-09-28):
+            // "LS Call" and "LS Text" are Local Services leads by lead_type.
+            match ($source) {
+                Lead::KIND_LS_CALL => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)->where('leads.lead_type', 'PHONE_CALL'),
+                Lead::KIND_LS_TEXT => $query->where('leads.source', Lead::SOURCE_LOCAL_SERVICES)->where('leads.lead_type', 'MESSAGE'),
+                default => $query->where('leads.source', $source),
+            };
         }
 
         /*
@@ -332,10 +340,33 @@ class LeadsController extends Controller
 
         // The thread. Every call and message, oldest first, so the screen reads
         // top to bottom the way the conversation happened.
-        $data['conversations'] = $lead->conversations
-            ->map(fn (LeadConversation $c) => $this->presentConversation($c))
+        // Who sent each of our replies, from the audit every reply writes -
+        // shown as initials on the bubble, as A1 Tools does (Jose,
+        // 2026-09-28). Replies sent elsewhere (A1 Tools, Google) have no name.
+        $senders = AuditEvent::query()
+            ->where('action', 'lead.replied')
+            ->where('target_id', $lead->getKey())
+            ->get(['changes', 'actor_label'])
+            ->mapWithKeys(fn (AuditEvent $e) => [
+                (string) ($e->changes['conversation_id'] ?? '') => trim((string) preg_replace('/\s*<[^>]*>$/', '', (string) $e->actor_label)),
+            ]);
+
+        $conversations = $lead->conversations;
+        $data['conversations'] = $conversations
+            ->map(fn (LeadConversation $c) => $this->presentConversation($c, $senders[$c->id] ?? null))
             ->values()
             ->all();
+
+        // What A1 Tools shows beside a lead: which Google Ads account, Google's
+        // own status, and a name, address and ZIP read out of what the customer
+        // wrote - by pattern, not a model (LeadDetails).
+        $data['details'] = [
+            ...LeadDetails::from($conversations
+                ->where('participant', LeadConversation::FROM_CONSUMER)
+                ->pluck('text')->filter()->values()->all()),
+            'account' => $lead->connection === null ? null : ($lead->connection->label ?: $lead->connection->display_name),
+            'google_status' => $lead->source_status === null ? null : ucfirst(strtolower(str_replace('_', ' ', $lead->source_status))),
+        ];
 
         // Whether a reply can go anywhere, and when it cannot, WHY — in the
         // refusing channel's own words. The screen used to carry one sentence
@@ -641,10 +672,15 @@ class LeadsController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function presentConversation(LeadConversation $c): array
+    private function presentConversation(LeadConversation $c, ?string $sentBy = null): array
     {
         return [
             'id' => $c->id,
+            // The person who sent it from EzBizi, or null. And whether a rule
+            // sent it rather than a person, for the bot mark.
+            'sent_by' => $sentBy !== '' ? $sentBy : null,
+            'automatic' => (bool) $c->is_automatic,
+            'reaction' => self::reaction($c->text),
             'channel' => $c->channel,
             'from' => $c->participant,
             'occurred_at' => $c->occurred_at?->toIso8601String(),
@@ -657,6 +693,32 @@ class LeadsController extends Controller
             // token through the recording endpoint.
             'has_recording' => $c->recording_url !== null,
         ];
+    }
+
+    /**
+     * An iPhone reaction, which reaches Google as a text of its own: `Liked
+     * "..."`, `Loved "..."`. 42 on production by 2026-09-28. The screen hangs
+     * it on the message it quotes, WhatsApp-style, instead of a bubble.
+     *
+     * @return array{emoji: string, quote: string}|null
+     */
+    private static function reaction(?string $text): ?array
+    {
+        if ($text === null || ! preg_match('/^(Liked|Loved|Laughed at|Emphasized|Disliked|Questioned|Reacted (\S+) to)\s+[\x{201C}"](.*)[\x{201D}"]\s*$/us', trim($text), $m)) {
+            return null;
+        }
+
+        $emoji = match ($m[1]) {
+            'Liked' => "\u{1F44D}",
+            'Loved' => "\u{2764}\u{FE0F}",
+            'Laughed at' => "\u{1F602}",
+            'Emphasized' => "\u{203C}\u{FE0F}",
+            'Disliked' => "\u{1F44E}",
+            'Questioned' => "\u{2753}",
+            default => $m[2],
+        };
+
+        return ['emoji' => $emoji, 'quote' => rtrim($m[3], " \u{2026}.")];
     }
 
     /**
@@ -1201,7 +1263,10 @@ class LeadsController extends Controller
              *
              * No N+1: every rule reads columns already on the row.
              */
-            'can_reply' => $this->replies->canReply($lead),
+            'can_reply' => $canReply = $this->replies->canReply($lead),
+            // The customer has waited longer than the business should let
+            // them - the list's red mark (Jose, 2026-09-28).
+            'reply_overdue' => $lead->replyOverdue($canReply),
             'company' => $lead->company?->only(['id', 'name']),
             'franchise' => $lead->franchise?->only(['id', 'name']),
 
