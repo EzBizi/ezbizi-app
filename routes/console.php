@@ -184,6 +184,15 @@ Schedule::command('ezbizi:import-workiz-leads')->hourly()->withoutOverlapping(30
  */
 Schedule::command('ezbizi:project-workiz')->everyFiveMinutes()->withoutOverlapping(10);
 
+/*
+ * New zips from new bookings (Jose, 2026-09-28): a job booked in Workiz for
+ * Tampa at a zip Tampa has never had puts that zip on Tampa, as A1 Tools' sync
+ * does. Reads only our own tables, so it spends no Workiz quota. It adds zips
+ * and never moves one a person set, and it never creates a service area --
+ * A1 did, and Jose called that a flaw. See SchedulingBuildZipMap.
+ */
+Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

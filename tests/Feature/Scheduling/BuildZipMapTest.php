@@ -7,6 +7,7 @@ use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
 use App\Models\WorkizJob;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -275,6 +276,41 @@ class BuildZipMapTest extends TestCase
         app(TenantContext::class)->set($tenant['org']);
         $this->assertSame($texasAustin->id, ServiceAreaZip::query()->where('zip', '78701')->value('service_area_id'));
         $this->assertSame($nationwideAustin->id, ServiceAreaZip::query()->where('zip', '78613')->value('service_area_id'));
+    }
+
+    /**
+     * Jose, 2026-09-28: a booking in a zip Tampa has never had puts the zip on
+     * Tampa, by itself. The scheduled run names no organization, so it must
+     * cover each one — and still never create an area for a name it lacks.
+     */
+    public function test_the_scheduled_run_maps_every_organization_and_creates_no_area(): void
+    {
+        [$alpha] = $this->tenantWithArea('Tampa');
+        $this->job($alpha, 'Tampa', '33602');
+        $this->job($alpha, 'Orlando', '32801');
+
+        $beta = $this->provisionTenant('Beta', 'beta@example.test');
+        app(TenantContext::class)->set($beta['org']);
+        $chicago = ServiceArea::create(['franchise_id' => $beta['franchise']->id, 'name' => 'Chicago']);
+        $this->job($beta, 'Chicago', '60601');
+
+        $this->artisan('scheduling:build-zip-map')->assertSuccessful();
+
+        app(TenantContext::class)->set($alpha['org']);
+        $this->assertSame(['33602'], ServiceAreaZip::query()->pluck('zip')->all());
+        $this->assertFalse(ServiceArea::query()->where('name', 'Orlando')->exists(), 'A name with no area must not become one.');
+
+        app(TenantContext::class)->set($beta['org']);
+        $this->assertSame($chicago->id, ServiceAreaZip::query()->where('zip', '60601')->value('service_area_id'));
+    }
+
+    public function test_it_is_scheduled(): void
+    {
+        $events = collect(app(Schedule::class)->events())
+            ->filter(fn ($e) => str_contains((string) $e->command, 'scheduling:build-zip-map'));
+
+        $this->assertCount(1, $events, 'New bookings would never add their zips.');
+        $this->assertSame('*/5 * * * *', $events->first()->expression);
     }
 
     public function test_dry_run_writes_nothing(): void

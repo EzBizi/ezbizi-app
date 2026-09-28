@@ -35,6 +35,16 @@ use Illuminate\Support\Facades\DB;
  * When the evidence disagrees with the map, the zip is listed for a person to
  * judge and left where it is.
  *
+ * ── It runs by itself ────────────────────────────────────────────
+ *
+ * Every five minutes, after the Workiz projection, for every organization with
+ * Workiz jobs (routes/console.php). Jose, 2026-09-28: a customer booked in
+ * Workiz for Tampa at a zip Tampa has never had should put that zip on Tampa,
+ * the way A1 Tools' sync does on every tick. A1 also CREATES an area for any
+ * name it has not seen, which Jose called a flaw; this never does. And A1
+ * matches the name across the whole company, which is the collision fixed
+ * below; this matches it within the job's own branch.
+ *
  * ── What it will not do ─────────────────────────────────────────
  *
  * It never invents an area. A job whose `service_area` matches nothing here
@@ -91,7 +101,7 @@ class SchedulingBuildZipMap extends Command
     private const SOURCE_A1 = 'a1tools_jobs';
 
     protected $signature = 'scheduling:build-zip-map
-        {--organization= : Organization name, e.g. A1-Group}
+        {--organization= : Organization name, e.g. A1-Group; every organization with Workiz jobs when omitted}
         {--file= : JSON array of {service_area, zip, city, jobs} exported from A1 Tools, instead of the live table}
         {--dry-run : Report what would be written and write nothing}
         {--report-unmatched : List the service-area names no area here matches}';
@@ -100,6 +110,24 @@ class SchedulingBuildZipMap extends Command
 
     public function handle(TenantContext $tenant): int
     {
+        if ($this->option('organization') === null) {
+            if ($this->option('file') !== null) {
+                $this->error('An A1 Tools export belongs to one organization: pass --organization.');
+
+                return self::FAILURE;
+            }
+
+            // The scheduled run: every organization that has Workiz jobs.
+            $ids = DB::table('workiz_jobs')->distinct()->pluck('organization_id');
+
+            foreach (Organization::query()->whereIn('id', $ids)->orderBy('name')->get() as $organization) {
+                $this->line("— {$organization->name}");
+                $this->build($organization, $tenant);
+            }
+
+            return self::SUCCESS;
+        }
+
         $organization = Organization::query()
             ->where('name', $this->option('organization'))
             ->first();
@@ -110,6 +138,11 @@ class SchedulingBuildZipMap extends Command
             return self::FAILURE;
         }
 
+        return $this->build($organization, $tenant);
+    }
+
+    private function build(Organization $organization, TenantContext $tenant): int
+    {
         $tenant->set($organization);
         $dryRun = (bool) $this->option('dry-run');
 
