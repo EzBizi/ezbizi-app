@@ -289,6 +289,20 @@ final class AutomationTemplates
                 ],
             ],
 
+            [
+                'key' => 'weekly-work-hours',
+                'name' => 'Weekly work hours report',
+                'description' => 'Every Sunday at 8 PM, emails each person\'s hours for the week '
+                    .'that just finished. Choose which report, made under Work Hours, Reports.',
+                'trigger_key' => 'automation.schedule_reached',
+                'schedule' => ['kind' => 'weekly', 'days' => ['sunday'], 'time' => '20:00',
+                    'timezone' => 'America/New_York'],
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'send_report', 'report_id' => ''],
+                ],
+            ],
+
             // Team
             [
                 'key' => 'training-failed',

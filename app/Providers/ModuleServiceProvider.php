@@ -715,12 +715,21 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('reports', 'Reports'),
                 ],
                 auditActionPrefixes: ['time_clock'],
-                automationExemptBecause: 'Its automations are the clock\'s, and they stay on the '
-                    .'`time_clock` module: clocked in, clocked out and extended as triggers, clock in '
-                    .'and clock out as actions. This module is the screen where hours are read and '
-                    .'corrected, and a correction is an administrator amending the record afterwards '
-                    .'rather than something that happened to the business — a rule firing on it would '
-                    .'act on a shift that ended yesterday.',
+                /*
+                 * The weekly hours email as a rule step (Jose, 2026-09-28: every
+                 * Sunday 8 PM Miami time to the dispatch manager). The report
+                 * definitions and TimeClockReports::send are this module's; the
+                 * clock's own triggers and clock in/out stay on `time_clock`.
+                 */
+                automationActions: [
+                    new ActionDefinition(
+                        key: 'work_hours.send_report',
+                        label: 'Send the work hours report',
+                        description: 'Emails the hours each person worked in the week to the '
+                            .'addresses you name. Those can be outside the business, so this is HR '
+                            .'data leaving it: every send is recorded with who it went to.',
+                    ),
+                ],
             ),
 
             /*

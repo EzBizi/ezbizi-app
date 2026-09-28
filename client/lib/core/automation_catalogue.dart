@@ -349,6 +349,7 @@ class AutomationCatalogue {
     this.roles = const [],
     this.people = const [],
     this.reports = const [],
+    this.workHoursReports = const [],
     this.places = const [],
     this.templates = const [],
     this.trainings = const [],
@@ -375,6 +376,7 @@ class AutomationCatalogue {
       // already carries the `user:` prefix the runner reads, so the client never
       // constructs it and cannot construct it wrongly.
       reports: _list(json['reports'], CatalogueChoice.tryFromIdLabel),
+      workHoursReports: _list(json['work_hours_reports'], CatalogueChoice.tryFromIdLabel),
       places: _list(json['places'], CatalogueChoice.tryFromIdLabel),
       trainings: _list(json['trainings'], CatalogueChoice.tryFromIdLabel),
       contracts: _list(json['contracts'], CatalogueChoice.tryFromIdLabel),
@@ -414,6 +416,9 @@ class AutomationCatalogue {
   /// columns and filters a business uses, which is more than a permission about
   /// writing rules should carry.
   final List<CatalogueChoice> reports;
+
+  /// Work Hours report definitions a rule can email. Name only.
+  final List<CatalogueChoice> workHoursReports;
 
   /// Where a rule can be pointed, in this person's own reach.
   ///

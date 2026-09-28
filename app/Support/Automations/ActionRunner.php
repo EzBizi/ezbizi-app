@@ -6,6 +6,8 @@ use App\Mail\InspectionReportMail;
 use App\Models\Automation;
 use App\Models\A1LeadsReviewEvent;
 use App\Services\A1Leads\A1LeadsGbpReplies;
+use App\Models\TimeClockReport;
+use App\Support\TimeClock\TimeClockReports;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -392,6 +394,7 @@ class ActionRunner
             'onboarding.start' => $this->startOnboarding($action, $subject),
             'add_to_audience' => $this->addToAudience($action, $subject),
             'review_reply' => $this->replyOnGoogle($action, $event, $subject, $automation),
+            'send_report' => $this->sendWorkHoursReport($action, $event, $automation),
 
             // ActionDefinition::type() keeps everything after the first dot, so
             // phone.voicemail.mark_dealt arrives here as voicemail.mark_dealt.
@@ -2303,6 +2306,66 @@ class ActionRunner
      * record they are not allowed to read is a leak dressed up as a feature: the
      * title alone usually gives the record away.
      */
+    /**
+     * Email a Work Hours report (Jose, 2026-09-28: the week's hours every
+     * Sunday 8 PM Miami time to the dispatch manager).
+     *
+     * The author is the actor: rows are bounded by what THEY may see, so a
+     * rule never widens anybody's reach. No hours is still a report and still
+     * ok; only nobody-to-send-to and the sending allowance fail.
+     */
+    private function sendWorkHoursReport(array $action, AutomationEvent $event, ?Automation $automation): array
+    {
+        $type = 'send_report';
+
+        if ($automation === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'This step can only run as part of a saved rule.'];
+        }
+
+        $report = TimeClockReport::find((string) ($action['report_id'] ?? ''));
+
+        if ($report === null) {
+            return ['type' => $type, 'ok' => false, 'detail' => 'The work hours report this step names no longer exists.'];
+        }
+
+        $author = $automation->activeVersion?->created_by !== null
+            ? User::query()->where('is_active', true)->find($automation->activeVersion->created_by)
+            : null;
+
+        if ($author === null) {
+            return ['type' => $type, 'ok' => false,
+                'detail' => 'The person who built this rule no longer works here, so the report was not '
+                    .'sent. Open the rule and save it again to take it over.'];
+        }
+
+        if (($refusal = $this->ruleAllowanceRefusal($automation)) !== null) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refusal];
+        }
+
+        $to = [];
+        foreach ((array) ($action['to'] ?? []) as $stored) {
+            $one = $this->contactFromStored(trim((string) $stored), $event, 'email');
+            if (is_string($one) && filter_var($one, FILTER_VALIDATE_EMAIL) !== false) {
+                $to[] = $one;
+            }
+        }
+
+        try {
+            $sent = app(TimeClockReports::class)->send(
+                $report,
+                $author,
+                filter_var($action['this_week'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 'current' : 'last',
+                $to === [] ? null : array_values(array_unique($to)),
+                fromAutomation: true,
+            );
+        } catch (CannotSendMail|InvalidArgumentException $refused) {
+            return ['type' => $type, 'ok' => false, 'detail' => $refused->getMessage()];
+        }
+
+        return ['type' => $type, 'ok' => true,
+            'detail' => 'Sent "'.$report->name.'" for '.$sent['range'].' to '.implode(', ', $sent['to']).'.'];
+    }
+
     /**
      * Post a public reply under a new A-1 Chimney Google review.
      *

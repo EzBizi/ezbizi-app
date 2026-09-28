@@ -141,7 +141,7 @@ class AutomationsApiTest extends TestCase
         $data = $this->as()->getJson('/api/v1/automations/catalogue')->assertOk()->json('data');
 
         $this->assertSame(
-            ['modules', 'people', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
+            ['modules', 'people', 'work_hours_reports', 'reports', 'places', 'templates', 'trainings', 'contracts', 'audiences', 'roles', 'operators', 'action_types', 'timezones', 'schedule_kinds', 'limits'],
             array_keys($data)
         );
 
@@ -1110,6 +1110,12 @@ class AutomationsApiTest extends TestCase
                 "Template {$template['key']} fires on {$template['trigger_key']}, which nothing ever raises, "
                 .'so applying it would produce a rule that can never run.',
             );
+
+            // A template that runs on a clock must carry a schedule the save
+            // would accept, or applying it fills a form that then refuses.
+            if ($template['trigger_key'] === 'automation.schedule_reached') {
+                \App\Support\Automations\AutomationSchedule::assertValid($template['schedule'] ?? null);
+            }
 
             foreach ($template['actions'] as $action) {
                 // Asked of the CATALOGUE rather than of a private constant:

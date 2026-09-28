@@ -292,6 +292,7 @@ class _ActionRow {
     'rich_text',
     'audience',
     'boolean',
+    'work_hours_report',
     'contract',
     'date',
     'field',
@@ -1706,6 +1707,7 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
     // of them gained.
     _adoptConditions(template['conditions']);
     _adoptActions(template['actions']);
+    _adoptSchedule(template['schedule']);
 
     if (mounted) setState(() {});
 
@@ -2737,6 +2739,29 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
                   ),
               ],
               onChanged: _busy || widget.catalogue.trainings.isEmpty
+                  ? null
+                  : (chosen) => setState(
+                      () => row.parameter(definition.parameters[i].key).text =
+                          chosen ?? '',
+                    ),
+            )
+          // A WORK HOURS REPORT: who is in it and its default recipients
+          // live on the definition, under Work Hours > Reports.
+          else if (definition.parameters[i].kind == 'work_hours_report')
+            SearchPickerField<String>(
+              value: row.parameter(definition.parameters[i].key).text.isEmpty
+                  ? null
+                  : row.parameter(definition.parameters[i].key).text,
+              label: definition.parameters[i].label,
+              isDense: true,
+              helperText: widget.catalogue.workHoursReports.isEmpty
+                  ? 'No work hours report yet. Make one in Work Hours, Reports.'
+                  : null,
+              options: [
+                for (final report in widget.catalogue.workHoursReports)
+                  SearchOption<String>(value: report.key, label: report.label),
+              ],
+              onChanged: _busy || widget.catalogue.workHoursReports.isEmpty
                   ? null
                   : (chosen) => setState(
                       () => row.parameter(definition.parameters[i].key).text =

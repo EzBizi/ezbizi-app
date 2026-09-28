@@ -15,6 +15,7 @@ use App\Support\Automations\EventScope;
 use App\Support\Scoping\ViewScope;
 use App\Models\NewsletterAudience;
 use App\Models\Role;
+use App\Models\TimeClockReport;
 use App\Models\SavedReport;
 use App\Models\AutomationEvent;
 use App\Models\AutomationRun;
@@ -89,6 +90,7 @@ class AutomationsController extends Controller
         'onboarding.start',
         'add_to_audience',
         'review_reply',
+        'send_report',
         // Nested Phone keys: ActionDefinition::type() keeps everything after the
         // first dot (voicemail.mark_dealt, missed.create_job).
         'voicemail.mark_dealt',
@@ -450,6 +452,15 @@ class AutomationsController extends Controller
                  * time against the rule's scope, and it refuses rather than
                  * rendering something the rule could not otherwise read.
                  */
+                // Work Hours report definitions. From the catalogue rather than
+                // the Work Hours endpoint, so building a rule does not need that
+                // tab's permission; the send is bounded by the author's reach.
+                'work_hours_reports' => TimeClockReport::query()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                    ->map(fn (TimeClockReport $r) => ['id' => $r->id, 'label' => $r->name])
+                    ->all(),
+
                 'reports' => SavedReport::query()
                     ->orderBy('name')
                     ->get(['id', 'name'])
@@ -1887,6 +1898,14 @@ class AutomationsController extends Controller
             ]),
             $type('add_to_audience', 'Add to a mailing list', true, [
                 $parameter('audience_id', 'Which list', 'audience'),
+            ]),
+            $type('send_report', 'Send the work hours report', true, [
+                $parameter('report_id', 'Which report', 'work_hours_report'),
+                // Optional: empty sends to the recipients saved on the report.
+                $parameter('to', 'Send to (empty uses the list saved on the report)', 'recipient_list', false),
+                // Off = the week that just finished, which is right for a rule
+                // at the end of the week. On = the week still running.
+                $parameter('this_week', 'This week so far, not the last full week', 'boolean', false),
             ]),
             $type('review_reply', 'Reply on Google', true, [
                 $parameter('message', 'The reply', 'rich_text', variables: true),
