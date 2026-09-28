@@ -102,6 +102,12 @@ class ProjectWorkizRecords extends Command
      */
     private const LOCK_SECONDS = 3600;
 
+    /**
+     * When the last completed pass BEGAN. The next pass derives clients only
+     * from mirror rows written since then: see deriveClients().
+     */
+    private const DERIVED_SINCE = 'ezbizi:project-workiz:clients-derived-since';
+
     public function handle(TenantContext $tenant, RecordNumberGenerator $numbers, AuditLogger $audit, EventEmitter $events): int
     {
         $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
@@ -139,9 +145,16 @@ class ProjectWorkizRecords extends Command
         $customers = 0;
         $jobs = 0;
 
+        // The watermark is the moment this pass BEGAN, stored only once the
+        // whole pass is done: a row written while it runs is read again next
+        // time, and a pass that dies advances nothing. None read means a full
+        // pass, as after a cache flush -- slower once, never wrong.
+        $since = Cache::get(self::DERIVED_SINCE);
+        $began = now()->toDateTimeString();
+
         foreach ($organizations as $organization) {
-            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $events, $limit, $dryRun) {
-                $clients = $this->deriveClients($dryRun);
+            [$c, $cu, $j] = $tenant->run($organization, function () use ($numbers, $audit, $events, $limit, $dryRun, $since) {
+                $clients = $this->deriveClients($dryRun, $since);
                 $customers = $this->projectCustomers($numbers, $audit, $limit, $dryRun);
                 $jobs = $this->projectJobs($numbers, $limit, $dryRun);
                 $this->followWorkiz($events, $dryRun);
@@ -152,6 +165,10 @@ class ProjectWorkizRecords extends Command
             $clients += $c;
             $customers += $cu;
             $jobs += $j;
+        }
+
+        if (! $dryRun) {
+            Cache::forever(self::DERIVED_SINCE, $began);
         }
 
         $this->info(($dryRun ? '[dry run] ' : '')
@@ -170,19 +187,27 @@ class ProjectWorkizRecords extends Command
      * which one it was — "latest wins" is otherwise an assertion nobody can
      * check.
      *
-     * The contact fields refresh every run. That is correct: this table is a
+     * The contact fields refresh whenever a job lands. That is correct: this table is a
      * mirror. Nothing a person edits lives here — their edits live on the
      * `customers` row, which this never touches after creating it.
      */
-    private function deriveClients(bool $dryRun): int
+    private function deriveClients(bool $dryRun, ?string $since): int
     {
         $touched = 0;
 
         // No orderBy here, ever: chunkById pages on `id > last id`, so ordering
         // by anything else skips rows. orderBy('booked_at') did, on production:
         // 828 of 8,054 rows were never read, and 148 jobs never got a client.
+        //
+        // And only rows LANDED since the last pass began: nothing else can have
+        // changed a client. `synced_at`, because both writers of a payload stamp
+        // it (WorkizJob::land and the history import) and this command never
+        // does -- `updated_at` moves on every link and follow here, and would
+        // re-read what this pass just wrote. Every minute needs it: the full
+        // walk of ~8,000 rows took most of an 80-second pass.
         WorkizJob::query()
             ->whereNotNull('client_id')
+            ->when($since !== null, fn ($q) => $q->where('synced_at', '>=', $since))
             ->chunkById(500, function ($mirrored) use (&$touched, $dryRun) {
                 foreach ($mirrored as $job) {
                     $payload = $job->payload ?? [];

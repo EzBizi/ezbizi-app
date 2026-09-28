@@ -173,16 +173,16 @@ Schedule::command('ezbizi:import-workiz-leads')->hourly()->withoutOverlapping(30
  * because Workiz has no client endpoint. So the cost here is a walk of our own
  * tables and nothing else.
  *
- * Five minutes rather than one anyway: it walks the whole mirror, and there is
- * no reason to do that sixty times an hour when the sweep it follows cannot
- * produce more than a hundred new jobs a run.
+ * EVERY MINUTE, Jose, 2026-09-28: "make jobs and customer update every 1 min
+ * as well". Affordable because a pass reads only the mirror rows written since
+ * the last one; walking all of them took most of an 80-second pass.
  *
  * It only ever INSERTS. Re-running is safe by construction - a client that
  * already names a customer and a job that already names a job are skipped - so
  * the link is the record of what has been projected, and nothing a person
  * corrected in EzBizi is ever reverted.
  */
-Schedule::command('ezbizi:project-workiz')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10);
 
 /*
  * New zips from new bookings (Jose, 2026-09-28): a job booked in Workiz for

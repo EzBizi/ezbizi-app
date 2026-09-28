@@ -571,6 +571,62 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->assertNull($this->performerOfTheJob($tenant));
     }
 
+    /**
+     * EVERY MINUTE (Jose, 2026-09-28) needs a pass well under a minute, and
+     * rebuilding all ~8,000 clients took most of the 80 seconds one took. Only a
+     * mirror row landed since the last pass can change a client, so only
+     * those are read. The clock is pinned: the rule is about seconds.
+     */
+    public function test_a_pass_reads_only_mirror_rows_written_since_the_last_one(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->travelTo(Carbon::parse('2026-09-28 10:00:00', 'UTC'));
+        $row = $this->mirror($tenant, [], ['Email' => 'first@example.test']);
+
+        $this->travelTo(Carbon::parse('2026-09-28 10:01:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        // Changed behind the pass's back: synced_at still says 10:00.
+        DB::table('workiz_jobs')->where('id', $row->id)->update([
+            'payload' => json_encode(['Email' => 'second@example.test'] + $row->payload),
+        ]);
+
+        $this->travelTo(Carbon::parse('2026-09-28 10:02:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $email = fn () => $this->inTenant($tenant['org'], fn () => WorkizClient::query()->value('email'));
+        $this->assertSame('first@example.test', $email(), 'a row untouched since the last pass is not read again');
+
+        // Landed after that pass began: read.
+        DB::table('workiz_jobs')->where('id', $row->id)->update(['synced_at' => '2026-09-28 10:02:30']);
+        $this->travelTo(Carbon::parse('2026-09-28 10:03:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertSame('second@example.test', $email());
+
+        $this->travelBack();
+    }
+
+    /** A dry run writes nothing -- including the watermark, or the next real pass would skip rows. */
+    public function test_a_dry_run_does_not_move_the_watermark(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->travelTo(Carbon::parse('2026-09-28 10:00:00', 'UTC'));
+        $row = $this->mirror($tenant, [], ['Email' => 'first@example.test']);
+        $this->travelTo(Carbon::parse('2026-09-28 10:01:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        DB::table('workiz_jobs')->where('id', $row->id)->update([
+            'payload' => json_encode(['Email' => 'second@example.test'] + $row->payload),
+            'synced_at' => '2026-09-28 10:01:30',
+        ]);
+        $this->travelTo(Carbon::parse('2026-09-28 10:02:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz', ['--dry-run' => true])->assertSuccessful();
+        $this->travelTo(Carbon::parse('2026-09-28 10:03:00', 'UTC'));
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame('second@example.test', $this->inTenant($tenant['org'], fn () => WorkizClient::query()->value('email')));
+        $this->travelBack();
+    }
+
     public function test_a_dry_run_writes_nothing(): void
     {
         $tenant = $this->provisionTenant('Alpha');
