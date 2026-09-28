@@ -8,11 +8,34 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0295',
+      date: '28 Sep 2026',
+      items: [
+        'Workiz: accounts with more than 100 upcoming jobs (Connecticut, Illinois, Ohio and New Jersey) now pick up changes and new bookings for the next days every minute; before, the sweep only read their farthest 100 jobs.',
+        'Reports, Experimental: Jobs booked and the jobs of each person count every job for Workiz accounts with more than 100 jobs in the period; before, only the farthest 100 were read.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0294',
       date: '28 Sep 2026',
       items: [
         'Leads, Accounts: a certification problem reads plainly, for example Background check: no submission.',
         'Leads: on a phone, the note under a conversation no longer sits under the gesture bar.',
+        'On a phone, the steps of the automation builder and the contract designer put their buttons under the sentence, and Name and What it is for stack instead of cutting the label short.',
+        'Leads: on a phone, the search, the sources and the filters scroll away with the list.',
+        'Suggestions: the back arrow sits at the start of the line, and only shows when there is a list to go back to.',
+        'Customers: the State and ZIP boxes line up.',
+        'Automations: replacing your work with a template asks in place, with Keep mine and Use the template, instead of in a pop-up.',
+        'AI Assistance: adding or editing an answer opens in a side panel instead of a pop-up.',
+        'Dashboards: on a phone, the period chips fit on one line; the chosen one is shown by its fill.',
+        'Monitoring: with no camera yet, the empty screen points to the Add camera button below it.',
+        'Monitoring: its tabs are the same single scrolling row as every other module, and tabs a role does not grant are hidden instead of shown with a padlock. On a phone, the General ownership chart is a list instead of a table cut off at the edge.',
+        'Communication, Calling out: No numbers yet reads as a next step, not an error.',
+        'Web Management, SEO: its sections sit in one scrolling row, without a second headline.',
+        'Your account: Password, Two-factor, Text me my codes and Theme no longer say Not given; they show the arrow that opens them.',
+        'Workiz: every account syncs again. From 16:06 UTC today the sync stopped after three of the nine accounts, and jobs, customers and statuses from the other six did not arrive; they catch up with this release.',
+        'Social Media, Accounts: on a phone, the reason a network is not ready shows in full.',
+        'Newsletter: with no newsletter open, the composer no longer shows a stray Saved.',
       ],
     ),
     VersionRelease(

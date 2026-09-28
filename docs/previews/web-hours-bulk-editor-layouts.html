@@ -1,0 +1,441 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Web Management · Hours for several websites at once</title>
+<style>
+/* Palette from client/lib/core/theme.dart: primary #00708F, ink #060808, muted #5B6672,
+   ground #F5F8FA. Every control has the one 10px corner (2026-09-28, "app needs to be
+   cohesive"). Websites, hours and time zones are invented; the fields are the real
+   contract of POST /web/hours/review and /apply (c77a7873). */
+:root{--ground:#f5f8fa;--paper:#fff;--ink:#060808;--muted:#5b6672;--line:rgba(6,8,8,.12);
+ --line2:rgba(6,8,8,.06);--pri:#00708f;--pric:#d6edf5;--ok:#16662d;--okc:#e1f2e5;
+ --warn:#734600;--warnc:#fff0d2;--bad:#9f1d1d;--badc:#fdecec;--r:10px}
+*{box-sizing:border-box}
+body{margin:0;background:#e4eaee;color:var(--ink);font:13px/1.45 Inter,-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;padding:28px}
+.wrap{max-width:1180px;margin:0 auto}
+h1{font-size:22px;margin:0 0 6px}
+.sub{color:#2b3a41;margin:0 0 6px;font-size:13.5px;max-width:960px}
+h2{font-size:17px;margin:46px 0 4px;display:flex;align-items:center;gap:10px}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:0 0 auto}
+h2 .rec{font-size:11px;font-weight:700;color:var(--pri);border:1px solid var(--pri);border-radius:var(--r);padding:2px 8px}
+.cap{color:var(--muted);margin:0 0 12px;font-size:12.5px;max-width:960px}
+.note{background:var(--paper);border:1px solid #c9d4d9;border-radius:12px;padding:14px 18px;font-size:13px;max-width:1120px;margin:14px 0}
+.note b{font-weight:700}
+.note ul{margin:6px 0 0 18px;padding:0}
+.lbl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+
+/* window */
+.win{background:var(--ground);border:1px solid #c9d4d9;border-radius:12px;overflow:hidden;width:1120px;max-width:100%;box-shadow:0 6px 22px rgba(6,8,8,.07)}
+.chrome{display:flex;align-items:center;gap:10px;padding:10px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.chrome .t{font-size:20px;font-weight:800}
+.strip{display:flex;gap:6px;padding:8px 18px;background:var(--paper);border-bottom:1px solid var(--line)}
+.tabx{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--line);border-radius:var(--r);font-weight:600;font-size:12px;background:var(--paper)}
+.tabx.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.btn{display:inline-flex;align-items:center;gap:6px;font:600 12.5px Inter,sans-serif;padding:7px 14px;border-radius:var(--r);border:1px solid #93aab3;color:var(--pri);background:var(--paper);white-space:nowrap}
+.btn.f{background:var(--pri);border-color:var(--pri);color:#fff}
+.btn.t{border-color:transparent;background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px}
+.btn.dis{background:#e9eef1;border-color:#e9eef1;color:#97a3aa}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.ch{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line2);font-weight:700;font-size:13.5px}
+.ch .s{font-weight:500;color:var(--muted);font-size:12px}
+.muted{color:var(--muted)}
+.tiny{font-size:11.5px;color:var(--muted)}
+.pk{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:3px 30px 4px 12px;position:relative;min-width:150px}
+.pk .k{font-size:10px;color:var(--muted)} .pk .v{font-size:12.5px}
+.pk::after{content:"⌕";position:absolute;right:11px;top:9px;color:var(--muted)}
+.tm{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:var(--r);padding:5px 10px;font-variant-numeric:tabular-nums;font-size:12.5px;background:var(--paper);min-width:86px}
+.tm.keep{color:var(--muted);border-style:dashed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--paper)}
+.seg span{padding:6px 11px;font-size:12px;font-weight:600;border-left:1px solid var(--line);white-space:nowrap;color:#26323a}
+.seg span:first-child{border-left:0}
+.seg span.on{background:var(--pric);color:#00485c}
+.chk{display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper);font-size:12.5px}
+.chk .b{width:15px;height:15px;border-radius:4px;border:1.5px solid #8a979e;display:inline-flex;align-items:center;justify-content:center;font-size:10px}
+.chk.on{border-color:#a9d3e1;background:#f2fafc}
+.chk.on .b{background:var(--pri);border-color:var(--pri);color:#fff}
+.chk.off{color:#97a3aa;background:#f3f5f6}
+.chk.off .b{border-color:#c5ccd0}
+.tz{font-size:11px;color:var(--muted)}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.p-ch{background:var(--pric);color:#00566e}.p-un{background:#e8ecf0;color:#33404a}
+.p-bl{background:var(--warnc);color:var(--warn)}.p-fa{background:var(--badc);color:var(--bad)}
+.p-ok{background:var(--okc);color:var(--ok)}.p-na{background:#f0f2f4;color:#7b8791}
+.adj{font-size:11px;color:var(--warn);white-space:normal}
+.err{font-size:11.5px;color:var(--bad)}
+.foot{display:flex;align-items:center;gap:10px;padding:12px 18px;background:var(--paper);border-top:1px solid var(--line)}
+.sp{flex:1}
+table{border-collapse:collapse;width:100%}
+th{font-size:10.5px;font-weight:700;color:var(--muted);text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line2);font-variant-numeric:tabular-nums;vertical-align:top;white-space:nowrap}
+tr.same td{color:#97a3aa}
+tr:last-child td{border-bottom:0}
+.new{font-weight:700}
+.x{text-decoration:line-through;color:#97a3aa}
+
+/* week rows */
+.day{display:grid;grid-template-columns:96px 300px 1fr 170px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--line2)}
+.day:last-child{border-bottom:0}
+.day .d{font-weight:700}
+.day .now{font-size:11.5px;color:var(--muted);text-align:right}
+.edges{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.edge{display:flex;align-items:center;gap:6px;font-size:12px}
+.edge .k{color:var(--muted);width:52px}
+
+/* phones */
+.pair{display:flex;gap:30px;flex-wrap:wrap}
+.pl{font:800 10px Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px 4px}
+.ph{width:360px;height:740px;background:var(--ground);border:9px solid #111;border-radius:40px;overflow:hidden;position:relative;box-shadow:0 8px 26px rgba(6,8,8,.15);display:flex;flex-direction:column}
+.sb{height:26px;display:flex;justify-content:space-between;padding:6px 20px 0;font-size:11px;font-weight:700;flex:0 0 auto}
+.ab{display:flex;align-items:center;gap:12px;padding:8px 16px 8px;flex:0 0 auto;background:var(--paper);border-bottom:1px solid var(--line)}
+.ab .t{font-size:17px;font-weight:800}
+.ab .i{font-size:18px;color:#26323a}
+.ab .s{font-size:11.5px;color:var(--muted);font-weight:500}
+.scr{flex:1;overflow:hidden;position:relative}
+.pad{padding:12px 14px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line2);background:var(--paper)}
+.row .g{flex:1;min-width:0}
+.row .n{font-weight:600;font-size:14px}
+.row .l{font-size:12px;color:var(--muted)}
+.row .chev{color:#9aa6ad}
+.sec{padding:14px 14px 6px;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.pbar{padding:10px 14px;background:var(--paper);border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.pbar .btn{flex:1;justify-content:center;padding:11px}
+.stp{display:flex;gap:6px;padding:8px 14px;background:var(--paper);border-bottom:1px solid var(--line2);font-size:11px;font-weight:700;color:var(--muted)}
+.stp span{flex:1;text-align:center;padding:5px 0;border-radius:8px}
+.stp span.on{background:var(--pric);color:#00485c}
+.stp span.done{color:var(--pri)}
+.dc{background:var(--paper);border:1px solid var(--line);border-radius:12px;margin:8px 14px;padding:10px 12px}
+.dc .top{display:flex;justify-content:space-between;align-items:center}
+.dc .d{font-weight:700}
+.chip{display:inline-flex;align-items:center;padding:5px 11px;border:1px solid var(--line);border-radius:var(--r);font-size:12px;font-weight:600;background:var(--paper)}
+.chip.on{background:var(--pric);border-color:#a9d3e1;color:#00485c}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--paper);border-radius:18px 18px 0 0;box-shadow:0 -8px 24px rgba(6,8,8,.18);padding:14px}
+.scrim{position:absolute;inset:0;background:rgba(6,8,8,.3)}
+.grab{width:40px;height:4px;border-radius:2px;background:#cfd6da;margin:0 auto 10px}
+</style>
+<div class="wrap">
+
+<h1>Web Management · Hours for several websites at once</h1>
+<p class="sub">Asked by Web Management (server live in 0.0.0290, <code>c77a7873</code>), from Rodrigo's brief via Jose, 2026-09-28. One way to change the hours of any number of the company's websites, with a review that shows every site's old, requested, converted and final hours before anything is written.</p>
+
+<div class="note">
+<b>Fixed by the brief and the contract, in every option below:</b>
+<ul>
+<li><b>One control per day, no switch:</b> <i>Keep existing</i> · <i>Set hours</i> · <i>Closed all day</i>. Under <i>Set hours</i>, opening and closing each say <i>Keep</i> or a time. A day that is closed now needs both times; a day left alone is not sent at all.</li>
+<li><b>Websites are the destination.</b> Google Business Profile is drawn but greyed with the server's own reason, "not switched on yet": built, not active, as Jose asked.</li>
+<li><b>Optional:</b> <i>Convert hours from</i> (a time zone; each site converts into its own), and <i>Don't open before</i> (applied after converting, moves only the opening).</li>
+<li><b>The main button is <i>Review changes</i>, never Save.</b> The review is the server's answer (<code>POST /web/hours/review</code>): per site, per day, existing → requested → converted → final, what <i>Don't open before</i> moved, and what is blocked and why. <i>Update N websites</i> applies that exact review (its token); if it is over 30 minutes old the server refuses and the screen says to review again.</li>
+<li><b>Results per website:</b> Changed · Unchanged · Blocked · Failed · Not confirmed (a timeout is never a success).</li>
+<li>No popup menus and no dialogs: pickers are the app's search picker, anything that opens is a side panel or a page.</li>
+</ul>
+</div>
+
+<!-- ============================ 1 ============================ -->
+<h2><span class="n">1</span>One page: websites, the week, and the review docked beside it <span class="rec">recommended</span></h2>
+<p class="cap">Opened from SEO › General with "Edit hours on several websites". Everything on one screen: tick the websites, the two options under them, then the week. <b>Review changes</b> docks the review beside the week (which locks while you read it); <b>Update 3 websites</b> turns the review into the results. The week stays in view the whole time, so going back to change Friday is one click.</p>
+<div class="lbl">Editing</div>
+<div class="win">
+ <div class="chrome"><span class="t">Web Management</span><span class="sp"></span><span class="tiny">Everdoors</span></div>
+ <div class="strip"><span class="tabx on">⌕ SEO</span><span class="tabx">▣ Widgets</span></div>
+ <div style="padding:16px 18px">
+   <div class="card" style="margin-bottom:14px">
+    <div class="ch">Websites <span class="s">— the hours below go to each one you tick</span><span class="sp"></span><span class="btn t sm">Select all</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 16px">
+     <span class="chk on"><span class="b">✓</span>everdoors.com <span class="tz">· Eastern</span></span>
+     <span class="chk on"><span class="b">✓</span>dallas.everdoors.com <span class="tz">· Central</span></span>
+     <span class="chk on"><span class="b">✓</span>la.everdoors.com <span class="tz">· Pacific</span></span>
+     <span class="chk"><span class="b"></span>phoenix.everdoors.com <span class="tz">· Arizona</span></span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px;align-items:center">
+     <span class="tiny" style="width:84px">Send to</span>
+     <span class="chk on"><span class="b">✓</span>Website</span>
+     <span class="chk off"><span class="b"></span>Google Business Profile <span class="tz">· not switched on yet</span></span>
+    </div>
+   </div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+   <div class="card" style="padding:14px 16px">
+    <div style="font-weight:700;margin-bottom:6px">Convert hours from</div>
+    <div class="seg" style="margin-bottom:8px"><span>No</span><span class="on">A time zone</span></div>
+    <div class="pk"><div class="k">The hours above are in</div><div class="v">Eastern Time (ET)</div></div>
+    <div class="tiny" style="margin-top:6px">America/New_York. Each website converts into its own zone: 8:00 AM Eastern is 7:00 AM in Dallas and 5:00 AM in Los Angeles.</div>
+   </div>
+   <div class="card" style="padding:14px 16px">
+    <div style="font-weight:700;margin-bottom:6px">Don't open before</div>
+    <div class="seg" style="margin-bottom:8px"><span>No</span><span class="on">A time</span></div>
+    <span class="tm">6:00 AM</span> <span class="tiny">in each website's own time</span>
+    <div class="tiny" style="margin-top:6px">Applied after converting. Moves only the opening, never the closing.</div>
+   </div>
+   </div>
+   <div class="card">
+    <div class="ch">The week <span class="s">— a day left on Keep existing is not touched</span></div>
+    <div class="day"><span class="d">Monday</span><span class="seg"><span>Keep existing</span><span class="on">Set hours</span><span>Closed all day</span></span>
+     <div class="edges"><span class="edge"><span class="k">Opens</span><span class="tm">8:00 AM</span></span><span class="edge"><span class="k">Closes</span><span class="tm">5:00 PM</span></span></div><span class="now">Now: varies — 3 websites</span></div>
+    <div class="day"><span class="d">Tuesday</span><span class="seg"><span>Keep existing</span><span class="on">Set hours</span><span>Closed all day</span></span>
+     <div class="edges"><span class="edge"><span class="k">Opens</span><span class="tm">8:00 AM</span></span><span class="edge"><span class="k">Closes</span><span class="tm">5:00 PM</span></span></div><span class="now">Now: varies</span></div>
+    <div class="day"><span class="d">Wednesday</span><span class="seg"><span class="on">Keep existing</span><span>Set hours</span><span>Closed all day</span></span><span></span><span class="now">Now: varies</span></div>
+    <div class="day"><span class="d">Thursday</span><span class="seg"><span class="on">Keep existing</span><span>Set hours</span><span>Closed all day</span></span><span></span><span class="now">Now: varies</span></div>
+    <div class="day"><span class="d">Friday</span><span class="seg"><span>Keep existing</span><span class="on">Set hours</span><span>Closed all day</span></span>
+     <div class="edges"><span class="edge"><span class="k">Opens</span><span class="tm keep">Keep</span></span><span class="edge"><span class="k">Closes</span><span class="tm">4:00 PM</span></span></div><span class="now">Now: varies</span></div>
+    <div class="day"><span class="d">Saturday</span><span class="seg"><span>Keep existing</span><span>Set hours</span><span class="on">Closed all day</span></span><span></span><span class="now">Now: varies</span></div>
+    <div class="day"><span class="d">Sunday</span><span class="seg"><span class="on">Keep existing</span><span>Set hours</span><span>Closed all day</span></span><span></span><span class="now">Now: closed on all 3</span></div>
+   </div>
+ </div>
+ <div class="foot"><span class="muted">4 days set on 3 websites · converted from Eastern · not before 6:00 AM</span><span class="sp"></span><span class="btn f">Review changes</span></div>
+</div>
+
+<div class="lbl" style="margin-top:22px">After Review changes — the review docks beside the week</div>
+<div class="win">
+ <div class="chrome"><span class="t">Web Management</span></div>
+ <div style="display:grid;grid-template-columns:280px minmax(0,1fr);gap:16px;padding:16px 18px">
+  <div class="card" style="opacity:.55">
+   <div class="ch">The week <span class="s">— locked while you review</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Monday</span><span>8:00 AM – 5:00 PM</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Tuesday</span><span>8:00 AM – 5:00 PM</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Wed – Thu</span><span class="muted">Keep existing</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Friday</span><span>closes 4:00 PM</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Saturday</span><span>Closed all day</span></div>
+   <div class="day" style="grid-template-columns:90px 1fr"><span class="d">Sunday</span><span class="muted">Keep existing</span></div>
+  </div>
+  <div>
+   <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center"><b>Review</b><span class="pill p-ch">2 will change</span><span class="pill p-bl">1 blocked day</span><span class="sp"></span><span class="btn sm">Edit again</span></div>
+   <div class="card" style="margin-bottom:10px">
+    <div class="ch">la.everdoors.com <span class="s">Pacific · America/Los_Angeles</span><span class="sp"></span><span class="pill p-ch">Will change</span></div>
+    <table>
+     <tr><th>Day</th><th>Now</th><th>Asked (Eastern)</th><th>In its time</th><th>Final</th></tr>
+     <tr><td>Mon</td><td>9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM</td><td>5:00 AM – 2:00 PM</td><td class="new">6:00 AM – 2:00 PM <div class="adj">opening moved up to 6:00 AM</div></td></tr>
+     <tr><td>Tue</td><td>9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM</td><td>5:00 AM – 2:00 PM</td><td class="new">6:00 AM – 2:00 PM <div class="adj">opening moved</div></td></tr>
+     <tr class="same"><td>Wed – Thu</td><td colspan="4">9:00 AM – 6:00 PM · no change</td></tr>
+     <tr><td>Fri</td><td>9:00 AM – 6:00 PM</td><td>closes 4:00 PM</td><td>closes 1:00 PM</td><td class="new">9:00 AM – 1:00 PM</td></tr>
+     <tr><td>Sat</td><td>10:00 AM – 2:00 PM</td><td>Closed all day</td><td>—</td><td class="new">Closed</td></tr>
+     <tr class="same"><td>Sun</td><td colspan="4">Closed · no change</td></tr>
+    </table>
+   </div>
+   <div class="card" style="margin-bottom:10px">
+    <div class="ch">dallas.everdoors.com <span class="s">Central</span><span class="sp"></span><span class="pill p-ch">Will change</span><span class="tiny">4 days</span><span class="btn t sm">Show</span></div>
+   </div>
+   <div class="card">
+    <div class="ch">everdoors.com <span class="s">Eastern</span><span class="sp"></span><span class="pill p-bl">1 day blocked</span><span class="btn t sm">Show</span></div>
+    <div style="padding:8px 16px 12px" class="err">Friday: this site opens at 5:00 PM on Fridays today, and you kept its opening, so closing at 4:00 PM would come first. Nothing is written for Friday here; its other days still go.</div>
+   </div>
+  </div>
+ </div>
+ <div class="foot"><span class="muted">Reviewed 2:41 PM · good for 30 minutes</span><span class="sp"></span><span class="btn">Edit again</span><span class="btn f">Update 3 websites</span></div>
+</div>
+
+<div class="lbl" style="margin-top:22px">After Update — the review becomes the result</div>
+<div class="win" style="width:700px">
+ <div style="padding:16px 18px">
+  <div class="card">
+   <div class="ch">Done <span class="s">— each website read back after writing</span></div>
+   <table>
+    <tr><th>Website</th><th>Result</th><th></th></tr>
+    <tr><td>la.everdoors.com</td><td><span class="pill p-ok">Changed</span></td><td class="muted">5 days</td></tr>
+    <tr><td>dallas.everdoors.com</td><td><span class="pill p-ok">Changed</span></td><td class="muted">4 days</td></tr>
+    <tr><td>everdoors.com</td><td><span class="pill p-ok">Changed</span></td><td class="muted">3 days · Friday blocked, unchanged</td></tr>
+   </table>
+  </div>
+  <div class="tiny" style="margin-top:8px">A site that timed out reads <span class="pill p-fa">Not confirmed</span> "EzBizi could not read it back — open it and check", never Changed. One that changed since the review reads <span class="pill p-bl">Out of date</span> and is not written.</div>
+ </div>
+</div>
+
+<!-- ============================ 2 ============================ -->
+<h2><span class="n">2</span>Numbered steps, like the automation builder</h2>
+<p class="cap">The shape the app already uses for a form that is several decisions deep: 1 Websites · 2 The week · 3 Time zone and earliest opening. Review replaces the form with a full-width comparison, one tab per website; Update shows the results in the same place.</p>
+<div class="win">
+ <div class="chrome"><span class="t">Web Management</span></div>
+ <div style="padding:18px 22px;max-width:820px">
+  <div style="display:flex;gap:12px;margin-bottom:18px"><span class="n" style="width:26px;height:26px;border-radius:50%;background:var(--pric);color:#00485c;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">1</span><div style="flex:1"><div style="font-weight:700;font-size:15px">Which websites</div><div class="muted">Each keeps its own time zone. Google Business Profile is not switched on yet.</div>
+   <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"><span class="chk on"><span class="b">✓</span>everdoors.com</span><span class="chk on"><span class="b">✓</span>dallas.everdoors.com</span><span class="chk on"><span class="b">✓</span>la.everdoors.com</span><span class="chk"><span class="b"></span>phoenix.everdoors.com</span></div></div></div>
+  <div style="display:flex;gap:12px;margin-bottom:18px"><span style="width:26px;height:26px;border-radius:50%;background:var(--pric);color:#00485c;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">2</span><div style="flex:1"><div style="font-weight:700;font-size:15px">The week</div><div class="muted">Pick a day's action, then its times.</div>
+   <div class="card" style="margin-top:10px">
+    <div class="day" style="grid-template-columns:90px 290px 1fr"><span class="d">Mon – Tue</span><span class="seg"><span>Keep existing</span><span class="on">Set hours</span><span>Closed all day</span></span><div class="edges"><span class="tm">8:00 AM</span>–<span class="tm">5:00 PM</span></div></div>
+    <div class="day" style="grid-template-columns:90px 290px 1fr"><span class="d">Wed – Thu</span><span class="seg"><span class="on">Keep existing</span><span>Set hours</span><span>Closed all day</span></span><span></span></div>
+    <div class="day" style="grid-template-columns:90px 290px 1fr"><span class="d">Friday</span><span class="seg"><span>Keep existing</span><span class="on">Set hours</span><span>Closed all day</span></span><div class="edges"><span class="tm keep">Keep</span>–<span class="tm">4:00 PM</span></div></div>
+    <div class="day" style="grid-template-columns:90px 290px 1fr"><span class="d">Saturday</span><span class="seg"><span>Keep existing</span><span>Set hours</span><span class="on">Closed all day</span></span><span></span></div>
+    <div class="day" style="grid-template-columns:90px 290px 1fr"><span class="d">Sunday</span><span class="seg"><span class="on">Keep existing</span><span>Set hours</span><span>Closed all day</span></span><span></span></div>
+   </div>
+   <div class="tiny" style="margin-top:6px">Days that match are drawn together (Mon – Tue); change one and it splits back out.</div></div></div>
+  <div style="display:flex;gap:12px"><span style="width:26px;height:26px;border-radius:50%;background:var(--pric);color:#00485c;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">3</span><div style="flex:1"><div style="font-weight:700;font-size:15px">Time zone and earliest opening</div><div class="muted">Both optional.</div>
+   <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap"><div class="pk" style="min-width:250px"><div class="k">Convert hours from</div><div class="v">Eastern Time (ET)</div></div><div class="pk" style="min-width:180px"><div class="k">Don't open before</div><div class="v">6:00 AM, each site's time</div></div></div></div></div>
+ </div>
+ <div class="foot"><span class="muted">3 websites · 4 days</span><span class="sp"></span><span class="btn t">Cancel</span><span class="btn f">Review changes</span></div>
+</div>
+<div class="lbl" style="margin-top:22px">Review — full width, a tab per website</div>
+<div class="win">
+ <div style="padding:14px 22px">
+  <div style="display:flex;gap:6px;margin-bottom:10px"><span class="tabx on">la.everdoors.com <span class="pill p-ch">5</span></span><span class="tabx">dallas.everdoors.com <span class="pill p-ch">4</span></span><span class="tabx">everdoors.com <span class="pill p-bl">1 blocked</span></span></div>
+  <div class="card">
+   <table>
+    <tr><th>Day</th><th>Now</th><th>Requested</th><th>Converted</th><th>Final</th><th></th></tr>
+    <tr><td>Mon</td><td class="x">9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM ET</td><td>5:00 AM – 2:00 PM</td><td class="new">6:00 AM – 2:00 PM</td><td class="adj">not before 6:00 AM</td></tr>
+    <tr><td>Tue</td><td class="x">9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM ET</td><td>5:00 AM – 2:00 PM</td><td class="new">6:00 AM – 2:00 PM</td><td class="adj">not before 6:00 AM</td></tr>
+    <tr class="same"><td>Wed</td><td>9:00 AM – 6:00 PM</td><td>—</td><td>—</td><td>9:00 AM – 6:00 PM</td><td>no change</td></tr>
+    <tr class="same"><td>Thu</td><td>9:00 AM – 6:00 PM</td><td>—</td><td>—</td><td>9:00 AM – 6:00 PM</td><td>no change</td></tr>
+    <tr><td>Fri</td><td class="x">9:00 AM – 6:00 PM</td><td>closes 4:00 PM ET</td><td>closes 1:00 PM</td><td class="new">9:00 AM – 1:00 PM</td><td></td></tr>
+    <tr><td>Sat</td><td class="x">10:00 AM – 2:00 PM</td><td>Closed all day</td><td>—</td><td class="new">Closed</td><td></td></tr>
+    <tr class="same"><td>Sun</td><td>Closed</td><td>—</td><td>—</td><td>Closed</td><td>no change</td></tr>
+   </table>
+  </div>
+ </div>
+ <div class="foot"><span class="muted">Reviewed 2:41 PM</span><span class="sp"></span><span class="btn">Back to the form</span><span class="btn f">Update 3 websites</span></div>
+</div>
+
+<!-- ============================ 3 ============================ -->
+<h2><span class="n">3</span>A grid: days down, websites across, the final hours live</h2>
+<p class="cap">For the person managing many sites. The left column is what you ask for; every website column shows what it will end up as, recomputed as you type, with conversions and moved openings marked in place. <b>Review changes</b> still asks the server and freezes the answer; nothing is written from the live grid.</p>
+<div class="win">
+ <div class="chrome"><span class="t">Web Management</span><span class="sp"></span><div class="pk" style="min-width:210px"><div class="k">Convert hours from</div><div class="v">Eastern Time (ET)</div></div><div class="pk" style="min-width:160px"><div class="k">Don't open before</div><div class="v">6:00 AM</div></div></div>
+ <div style="padding:14px 18px">
+  <div class="card" style="overflow:hidden">
+   <table>
+    <tr><th style="width:270px">You ask for</th><th>everdoors.com<div class="tz" style="text-transform:none;letter-spacing:0;font-weight:500">Eastern</div></th><th>dallas.everdoors.com<div class="tz" style="text-transform:none;letter-spacing:0;font-weight:500">Central</div></th><th>la.everdoors.com<div class="tz" style="text-transform:none;letter-spacing:0;font-weight:500">Pacific</div></th><th style="color:#b9c2c7">+ add a website</th></tr>
+    <tr><td><b>Mon</b> <span class="tm" style="min-width:0">8:00 AM</span> – <span class="tm" style="min-width:0">5:00 PM</span></td><td class="new">8:00 AM – 5:00 PM</td><td class="new">7:00 AM – 4:00 PM</td><td class="new">6:00 AM – 2:00 PM <div class="adj">▲ from 5:00 AM</div></td><td></td></tr>
+    <tr><td><b>Tue</b> <span class="tm" style="min-width:0">8:00 AM</span> – <span class="tm" style="min-width:0">5:00 PM</span></td><td class="new">8:00 AM – 5:00 PM</td><td class="new">7:00 AM – 4:00 PM</td><td class="new">6:00 AM – 2:00 PM <div class="adj">▲ from 5:00 AM</div></td><td></td></tr>
+    <tr class="same"><td><b>Wed</b> Keep existing</td><td>9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM</td><td>9:00 AM – 6:00 PM</td><td></td></tr>
+    <tr class="same"><td><b>Thu</b> Keep existing</td><td>9:00 AM – 6:00 PM</td><td>8:00 AM – 5:00 PM</td><td>9:00 AM – 6:00 PM</td><td></td></tr>
+    <tr><td><b>Fri</b> <span class="tm keep" style="min-width:0">Keep</span> – <span class="tm" style="min-width:0">4:00 PM</span></td><td class="err">blocked — opens 5:00 PM today, would close 4:00 PM</td><td class="new">8:00 AM – 3:00 PM</td><td class="new">9:00 AM – 1:00 PM</td><td></td></tr>
+    <tr><td><b>Sat</b> Closed all day</td><td class="new">Closed</td><td class="new">Closed</td><td class="new">Closed</td><td></td></tr>
+    <tr class="same"><td><b>Sun</b> Keep existing</td><td>Closed</td><td>Closed</td><td>Closed</td><td></td></tr>
+   </table>
+  </div>
+  <div class="tiny" style="margin-top:8px">Clicking a day's cell on the left opens its three actions in place (Keep existing · Set hours · Closed all day). Bold is what will be written; grey is untouched.</div>
+ </div>
+ <div class="foot"><span class="muted">1 blocked cell · 12 changes on 3 websites</span><span class="sp"></span><span class="btn f">Review changes</span></div>
+</div>
+
+<!-- ============================ PHONES ============================ -->
+<h2 style="margin-top:56px">On a phone — pick one of 4, 5 or 6</h2>
+<p class="cap">Designed for a phone rather than narrowed: the same contract, the same rules, but one decision per screen where it helps.</p>
+
+<div class="pair">
+<div>
+ <h2 style="margin-top:14px"><span class="n">4</span>One page at a time: websites → week → options → review</h2>
+ <p class="cap" style="max-width:760px">Four short pages with a step bar. The week is seven rows that say what each day will do; tapping one opens its panel from the bottom. Review is one card per website; Update is on the last page only.</p>
+ <div class="pair">
+  <div><div class="pl">The week</div><div class="ph"><div class="sb"><span>2:40</span><span>▾▴▮</span></div>
+   <div class="ab"><span class="i">←</span><div><div class="t">Hours</div><div class="s">3 websites</div></div></div>
+   <div class="stp"><span class="done">Websites</span><span class="on">Week</span><span>Options</span><span>Review</span></div>
+   <div class="scr">
+    <div class="row"><div class="g"><div class="n">Monday</div><div class="l">Set: 8:00 AM – 5:00 PM</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Tuesday</div><div class="l">Set: 8:00 AM – 5:00 PM</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Wednesday</div><div class="l">Keep existing</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Thursday</div><div class="l">Keep existing</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Friday</div><div class="l">Keep opening · closes 4:00 PM</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Saturday</div><div class="l">Closed all day</div></div><span class="chev">›</span></div>
+    <div class="row"><div class="g"><div class="n">Sunday</div><div class="l">Keep existing</div></div><span class="chev">›</span></div>
+   </div>
+   <div class="pbar"><span class="btn">Back</span><span class="btn f">Next</span></div></div></div>
+  <div><div class="pl">A day, from the bottom</div><div class="ph"><div class="sb"><span>2:40</span><span>▾▴▮</span></div>
+   <div class="ab"><span class="i">←</span><div class="t">Hours</div></div>
+   <div class="scr"><div class="row"><div class="g"><div class="n">Monday</div></div></div><div class="row"><div class="g"><div class="n">Tuesday</div></div></div><div class="row"><div class="g"><div class="n">Wednesday</div></div></div>
+    <div class="scrim"></div>
+    <div class="sheet"><div class="grab"></div>
+     <div style="font-weight:800;font-size:16px;margin-bottom:10px">Friday</div>
+     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+      <span class="chk" style="padding:10px 12px"><span class="b" style="border-radius:50%"></span>Keep existing</span>
+      <span class="chk on" style="padding:10px 12px"><span class="b" style="border-radius:50%">●</span>Set hours</span>
+      <span class="chk" style="padding:10px 12px"><span class="b" style="border-radius:50%"></span>Closed all day</span>
+     </div>
+     <div class="lbl" style="margin-top:4px">Opens</div><div class="seg" style="width:100%"><span class="on" style="flex:1;text-align:center">Keep</span><span style="flex:1;text-align:center">A time</span></div>
+     <div class="lbl">Closes</div><div class="seg" style="width:100%"><span style="flex:1;text-align:center">Keep</span><span class="on" style="flex:1;text-align:center">4:00 PM</span></div>
+     <div style="display:flex;gap:10px;margin-top:14px"><span class="btn" style="flex:1;justify-content:center">Cancel</span><span class="btn f" style="flex:1;justify-content:center">Done</span></div>
+    </div></div></div></div>
+  <div><div class="pl">Review</div><div class="ph"><div class="sb"><span>2:41</span><span>▾▴▮</span></div>
+   <div class="ab"><span class="i">←</span><div><div class="t">Review</div><div class="s">2 will change · 1 has a blocked day</div></div></div>
+   <div class="stp"><span class="done">Websites</span><span class="done">Week</span><span class="done">Options</span><span class="on">Review</span></div>
+   <div class="scr">
+    <div class="dc"><div class="top"><span class="d">la.everdoors.com</span><span class="pill p-ch">5 days</span></div><div class="tz">Pacific · from Eastern · not before 6:00 AM</div>
+     <table style="margin-top:6px"><tr><td>Mon</td><td class="x">9–6</td><td class="new">6:00 AM – 2:00 PM</td></tr><tr><td></td><td colspan="2" class="adj">opening moved from 5:00 AM</td></tr><tr><td>Fri</td><td class="x">9–6</td><td class="new">9:00 AM – 1:00 PM</td></tr><tr><td>Sat</td><td class="x">10–2</td><td class="new">Closed</td></tr></table>
+     <div class="tiny">+ Tue · Wed, Thu, Sun unchanged</div></div>
+    <div class="dc"><div class="top"><span class="d">dallas.everdoors.com</span><span class="pill p-ch">4 days</span></div><div class="tz">Central</div></div>
+    <div class="dc"><div class="top"><span class="d">everdoors.com</span><span class="pill p-bl">Friday blocked</span></div><div class="err" style="margin-top:4px">Opens 5:00 PM on Fridays today; closing at 4:00 PM would come first. Friday is left as it is.</div></div>
+   </div>
+   <div class="pbar"><span class="btn f">Update 3 websites</span></div></div></div>
+ </div>
+</div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">5</span>One scrolling form, the week as cards, Review on a bar that stays <span class="rec">recommended</span></h2>
+<p class="cap" style="max-width:760px">Everything on one page, in the order of option 1: websites, the week, the two options. Each day is a small card: the action as three short buttons, and the times only when Set hours is chosen. The Review bar stays at the bottom with the count. Review and results are their own page with Back.</p>
+<div class="pair">
+ <div><div class="pl">Editing</div><div class="ph"><div class="sb"><span>2:40</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div class="t">Hours on several websites</div></div>
+  <div class="scr">
+   <div class="sec">Websites</div>
+   <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px"><span class="chip on">everdoors.com</span><span class="chip on">dallas…</span><span class="chip on">la.everdoors.com</span><span class="chip">phoenix…</span></div>
+   <div class="sec">The week</div>
+   <div class="dc"><div class="top"><span class="d">Monday</span><span class="tiny">now varies</span></div><div class="seg" style="margin:8px 0 6px;width:100%"><span style="flex:1;text-align:center">Keep</span><span class="on" style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div><div class="edges"><span class="tm">8:00 AM</span>–<span class="tm">5:00 PM</span></div></div>
+   <div class="dc"><div class="top"><span class="d">Tuesday</span><span class="tiny">now varies</span></div><div class="seg" style="margin:8px 0 6px;width:100%"><span style="flex:1;text-align:center">Keep</span><span class="on" style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div><div class="edges"><span class="tm">8:00 AM</span>–<span class="tm">5:00 PM</span></div></div>
+   <div class="dc"><div class="top"><span class="d">Wednesday</span></div><div class="seg" style="margin-top:8px;width:100%"><span class="on" style="flex:1;text-align:center">Keep</span><span style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div></div>
+   <div class="dc"><div class="top"><span class="d">Thursday</span></div><div class="seg" style="margin-top:8px;width:100%"><span class="on" style="flex:1;text-align:center">Keep</span><span style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div></div>
+  </div>
+  <div class="pbar"><span class="tiny" style="flex:0 0 auto">4 days · 3 sites</span><span class="btn f">Review changes</span></div></div></div>
+ <div><div class="pl">Further down</div><div class="ph"><div class="sb"><span>2:40</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div class="t">Hours on several websites</div></div>
+  <div class="scr">
+   <div class="dc"><div class="top"><span class="d">Friday</span></div><div class="seg" style="margin:8px 0 6px;width:100%"><span style="flex:1;text-align:center">Keep</span><span class="on" style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div><div class="edges"><span class="edge"><span class="k" style="width:auto">Opens</span><span class="tm keep">Keep</span></span><span class="edge"><span class="k" style="width:auto">Closes</span><span class="tm">4:00 PM</span></span></div></div>
+   <div class="dc"><div class="top"><span class="d">Saturday</span></div><div class="seg" style="margin-top:8px;width:100%"><span style="flex:1;text-align:center">Keep</span><span style="flex:1;text-align:center">Hours</span><span class="on" style="flex:1;text-align:center">Closed</span></div></div>
+   <div class="dc"><div class="top"><span class="d">Sunday</span><span class="tiny">closed now</span></div><div class="seg" style="margin-top:8px;width:100%"><span class="on" style="flex:1;text-align:center">Keep</span><span style="flex:1;text-align:center">Hours</span><span style="flex:1;text-align:center">Closed</span></div></div>
+   <div class="sec">Time zone and earliest opening</div>
+   <div style="padding:0 14px"><div class="pk" style="margin-bottom:8px"><div class="k">Convert hours from</div><div class="v">Eastern Time (ET)</div></div><div class="pk"><div class="k">Don't open before</div><div class="v">6:00 AM</div></div>
+   <div class="tiny" style="margin-top:6px">Converted into each site's own zone, then no opening earlier than 6:00 AM there. Closing never moves.</div></div>
+  </div>
+  <div class="pbar"><span class="tiny" style="flex:0 0 auto">4 days · 3 sites</span><span class="btn f">Review changes</span></div></div></div>
+ <div><div class="pl">Results</div><div class="ph"><div class="sb"><span>2:42</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div><div class="t">Done</div><div class="s">each website read back after writing</div></div></div>
+  <div class="scr">
+   <div class="row"><div class="g"><div class="n">la.everdoors.com</div><div class="l">5 days changed</div></div><span class="pill p-ok">Changed</span></div>
+   <div class="row"><div class="g"><div class="n">dallas.everdoors.com</div><div class="l">4 days changed</div></div><span class="pill p-ok">Changed</span></div>
+   <div class="row"><div class="g"><div class="n">everdoors.com</div><div class="l">3 days changed · Friday left as it was</div></div><span class="pill p-ok">Changed</span></div>
+   <div class="pad tiny">If a site could not be read back it says <span class="pill p-fa">Not confirmed</span> with what to check, never Changed.</div>
+  </div>
+  <div class="pbar"><span class="btn">Back to General</span></div></div></div>
+</div>
+
+<h2 style="margin-top:40px"><span class="n">6</span>By days: pick the days, then what they do</h2>
+<p class="cap" style="max-width:760px">How people say it: "weekdays 8 to 5, Saturday closed". Tick days (with Weekdays / Weekend shortcuts), choose one action for them, and it becomes a line in the list. Fewer taps than seven rows; the same request goes to the server.</p>
+<div class="pair">
+ <div><div class="pl">Choosing days</div><div class="ph"><div class="sb"><span>2:40</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div><div class="t">Hours</div><div class="s">3 websites</div></div></div>
+  <div class="scr">
+   <div class="sec">Days</div>
+   <div style="display:flex;flex-wrap:wrap;gap:6px;padding:0 14px"><span class="chip on">Mon</span><span class="chip on">Tue</span><span class="chip">Wed</span><span class="chip">Thu</span><span class="chip">Fri</span><span class="chip">Sat</span><span class="chip">Sun</span></div>
+   <div style="display:flex;gap:8px;padding:8px 14px"><span class="btn t sm">Weekdays</span><span class="btn t sm">Weekend</span><span class="btn t sm">Every day</span></div>
+   <div class="sec">They should be</div>
+   <div style="padding:0 14px;display:flex;flex-direction:column;gap:8px">
+    <span class="chk on" style="padding:10px 12px"><span class="b" style="border-radius:50%">●</span>Open these hours</span>
+    <div class="edges" style="padding-left:6px"><span class="edge"><span class="k" style="width:auto">Opens</span><span class="tm">8:00 AM</span></span><span class="edge"><span class="k" style="width:auto">Closes</span><span class="tm">5:00 PM</span></span></div>
+    <span class="chk" style="padding:10px 12px"><span class="b" style="border-radius:50%"></span>Closed all day</span>
+   </div>
+   <div class="pad"><span class="btn" style="width:100%;justify-content:center">Add to the plan</span></div>
+  </div>
+  <div class="pbar"><span class="btn f">Review changes</span></div></div></div>
+ <div><div class="pl">The plan so far</div><div class="ph"><div class="sb"><span>2:41</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div><div class="t">Hours</div><div class="s">3 websites · from Eastern · not before 6:00 AM</div></div></div>
+  <div class="scr">
+   <div class="sec">The plan</div>
+   <div class="row"><div class="g"><div class="n">Mon, Tue</div><div class="l">8:00 AM – 5:00 PM</div></div><span class="btn t sm">Edit</span></div>
+   <div class="row"><div class="g"><div class="n">Fri</div><div class="l">Closing 4:00 PM · opening kept</div></div><span class="btn t sm">Edit</span></div>
+   <div class="row"><div class="g"><div class="n">Sat</div><div class="l">Closed all day</div></div><span class="btn t sm">Edit</span></div>
+   <div class="row" style="background:var(--ground)"><div class="g"><div class="l">Wed, Thu, Sun — kept as they are on each site</div></div></div>
+   <div class="pad"><span class="btn" style="width:100%;justify-content:center">+ Days</span></div>
+   <div class="sec">Options</div>
+   <div class="row"><div class="g"><div class="n">Convert hours from</div><div class="l">Eastern Time (ET)</div></div><span class="chev">›</span></div>
+   <div class="row"><div class="g"><div class="n">Don't open before</div><div class="l">6:00 AM</div></div><span class="chev">›</span></div>
+  </div>
+  <div class="pbar"><span class="btn f">Review changes</span></div></div></div>
+ <div><div class="pl">Review, then Update</div><div class="ph"><div class="sb"><span>2:41</span><span>▾▴▮</span></div>
+  <div class="ab"><span class="i">←</span><div><div class="t">Review</div><div class="s">good for 30 minutes</div></div></div>
+  <div class="scr">
+   <div class="dc"><div class="top"><span class="d">la.everdoors.com</span><span class="pill p-ch">Will change</span></div>
+    <table style="margin-top:6px"><tr><td>Mon, Tue</td><td class="new">6:00 AM – 2:00 PM</td></tr><tr><td></td><td class="adj">converted 5:00 AM, moved to 6:00 AM</td></tr><tr><td>Fri</td><td class="new">9:00 AM – 1:00 PM</td></tr><tr><td>Sat</td><td class="new">Closed</td></tr></table></div>
+   <div class="dc"><div class="top"><span class="d">dallas.everdoors.com</span><span class="pill p-ch">Will change</span></div><div class="tiny">Mon, Tue 7:00 AM – 4:00 PM · Fri 8:00 AM – 3:00 PM · Sat closed</div></div>
+   <div class="dc"><div class="top"><span class="d">everdoors.com</span><span class="pill p-bl">Friday blocked</span></div><div class="err">Opens 5:00 PM on Fridays today; closing at 4:00 PM would come first. Friday stays as it is.</div></div>
+   <div class="dc" style="opacity:.6"><div class="top"><span class="d">Google Business Profile</span><span class="pill p-na">Not switched on</span></div></div>
+  </div>
+  <div class="pbar"><span class="btn">Edit</span><span class="btn f">Update 3 websites</span></div></div></div>
+</div>
+
+<div class="note" style="margin-top:40px"><b>Recommendation: 1 on a desktop, 5 on a phone.</b> Both keep the week as seven rows, the way the current hours card already reads, so nothing has to be relearned; the review sits where the choices were made, and nothing is written from a screen that has not been reviewed. 3 is stronger for someone running a dozen sites and can be added later on the same endpoints. 6 is the quickest on a phone, but it is a different way of thinking about the week from the desktop.</div>
+
+</div>

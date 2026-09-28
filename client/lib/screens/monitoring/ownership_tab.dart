@@ -49,6 +49,9 @@ class OwnershipTab extends StatefulWidget {
   static const String noFreeDesks =
       'Every desk is taken. Add one on the Map tab.';
 
+  /// Narrower than this the chart is a list rather than a table.
+  static const double narrowBelow = 600;
+
   static const String emptyNote =
       'Nobody to show yet. People appear here once they can be seen from your '
       'level of the business.';
@@ -136,7 +139,15 @@ class _OwnershipTabState extends State<OwnershipTab> {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
             )
-          : _table(context),
+          // Below ~600 a table of eight columns is cut off at the right edge
+          // of a phone — the UI/UX Android audit, 2026-09-28. There it is a
+          // list: a name line and a detail line, the shape a phone reads.
+          : LayoutBuilder(
+              builder: (context, constraints) =>
+                  constraints.maxWidth < OwnershipTab.narrowBelow
+                  ? _list(context)
+                  : _table(context),
+            ),
     );
   }
 
@@ -174,20 +185,7 @@ class _OwnershipTabState extends State<OwnershipTab> {
                   cells: [
                     DataCell(Text(_name(row))),
                     DataCell(_orDash(context, row['role'])),
-                    DataCell(_DeskCell(
-                      // Keyed by the node so a rename rebuilds the right cell
-                      // and an edit in progress does not hop rows on refresh.
-                      key: ValueKey('desk-${row['node_id'] ?? row['user']?['id']}'),
-                      label: row['desk'] as String?,
-                      planId: row['plan_id'] as String?,
-                      nodeId: row['node_id'] as String?,
-                      canRename: canRename,
-                      api: widget.api,
-                      userId: row['user']?['id'] as String?,
-                      freeDesks: _freeDesks,
-                      onRenamed: (name) => setState(() => row['desk'] = name),
-                      onSeated: _load,
-                    )),
+                    DataCell(_deskCell(row, canRename)),
                     if (showPc) DataCell(_orDash(context, row['computer_name'])),
                     DataCell(_StatusCell(online: row['online'] == true)),
                     if (showHours) DataCell(_orDash(context, row['work_days'])),
@@ -200,6 +198,77 @@ class _OwnershipTabState extends State<OwnershipTab> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Shared by the table and the list, so the phone keeps the same rename and
+  /// seat picker rather than a read-only copy of the desk.
+  Widget _deskCell(Map<String, dynamic> row, bool canRename) {
+    return _DeskCell(
+      // Keyed by the node so a rename rebuilds the right cell and an edit in
+      // progress does not hop rows on refresh.
+      key: ValueKey('desk-${row['node_id'] ?? row['user']?['id']}'),
+      label: row['desk'] as String?,
+      planId: row['plan_id'] as String?,
+      nodeId: row['node_id'] as String?,
+      canRename: canRename,
+      api: widget.api,
+      userId: row['user']?['id'] as String?,
+      freeDesks: _freeDesks,
+      onRenamed: (name) => setState(() => row['desk'] = name),
+      onSeated: _load,
+    );
+  }
+
+  /// The phone layout: one row per person — name and status on the first
+  /// line, the desk and everything else on the second.
+  ///
+  /// The columns the table withholds are withheld here by the same question
+  /// (is the key in the payload?), and a value with nothing recorded is simply
+  /// left out of the detail line: on a table an empty cell needs a dash to not
+  /// look broken, in a sentence it only adds " · — · ".
+  Widget _list(BuildContext context) {
+    final showPc = _rows.any((r) => r.containsKey('computer_name'));
+    final showHours = _rows.any((r) => r.containsKey('work_days'));
+    final canRename =
+        widget.session.me?.can('monitoring.map.manage') ?? false;
+
+    String? text(Object? value) {
+      final t = value?.toString().trim();
+      return t == null || t.isEmpty ? null : t;
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _rows.length,
+      separatorBuilder: (_, _) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final row = _rows[i];
+        final hours = showHours
+            ? [text(row['work_days']), text(row['shift'])].nonNulls.join(', ')
+            : '';
+        final details = [
+          text(row['role']),
+          if (showPc) text(row['computer_name']),
+          text(hours),
+          text(row['assignment']),
+          text(row['office']),
+        ].nonNulls.join(' · ');
+
+        return ListTile(
+          key: ValueKey('ownership-row-${row['user']?['id']}'),
+          title: Text(_name(row)),
+          trailing: _StatusCell(online: row['online'] == true),
+          subtitle: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              _deskCell(row, canRename),
+              if (details.isNotEmpty) Text(details),
+            ],
+          ),
+        );
+      },
     );
   }
 

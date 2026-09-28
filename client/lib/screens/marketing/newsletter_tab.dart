@@ -373,15 +373,21 @@ class _NewsletterTabState extends State<NewsletterTab> {
                     ),
                   ),
           ),
-          const SizedBox(width: 12),
-          Text(
-            _dirty
-                ? 'Unsaved'
-                : _saving
-                    ? 'Saving…'
-                    : 'Saved',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          // The save state describes THE OPEN NEWSLETTER, so with none open it
+          // has nothing to describe. It used to read "Saved" beside "No
+          // newsletters in … yet", which UI/UX found on a phone as a stray word:
+          // a status without its noun is a claim about nothing.
+          if (_selectedId != null) ...[
+            const SizedBox(width: 12),
+            Text(
+              _dirty
+                  ? 'Unsaved'
+                  : _saving
+                      ? 'Saving…'
+                      : 'Saved',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
           const SizedBox(width: 12),
           Refused(
             reason: widget.session.me?.refusal(

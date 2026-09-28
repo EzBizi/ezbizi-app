@@ -30,7 +30,9 @@ void main() {
     await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
 
     expect(find.text('SEO'), findsOneWidget);
-    expect(find.text('Websites'), findsOneWidget);
+    // No second headline under the module's own title (UI/UX, 2026-09-28).
+    expect(find.text('Websites'), findsNothing);
+    expect(find.byKey(const ValueKey('seo-sections')), findsOneWidget);
     // The selected host appears twice by design — once in the rail, once as
     // the detail heading. That is the split working, not a duplicate.
     expect(find.text('a-1chimney.com'), findsWidgets);

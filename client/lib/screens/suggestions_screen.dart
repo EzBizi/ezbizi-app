@@ -600,11 +600,17 @@ class _SuggestionsScreenState extends State<SuggestionsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (showBack)
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            tooltip: 'Back to the list',
-            onPressed: () => setState(() => _openNarrow = false),
+        // At the start of the line, and only when there is a list to go back
+        // to: stretched by the column it sat alone in the middle of the page,
+        // and with nothing sent yet it led to an empty list.
+        if (showBack && canCancel)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back to the list',
+              onPressed: () => setState(() => _openNarrow = false),
+            ),
           ),
         Expanded(
           child: SingleChildScrollView(

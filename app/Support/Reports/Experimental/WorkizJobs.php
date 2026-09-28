@@ -255,15 +255,26 @@ final class WorkizJobs
             $pending[$account] = $token;
         }
 
-        for ($offset = 0; $offset < $limit && $pending !== []; $offset += self::PAGE) {
-            $responses = Http::pool(function (Pool $pool) use ($pending, $offset, $limit, $since) {
+        /*
+         * `offset` IS A PAGE NUMBER, not a row count - measured by the Workiz
+         * session on production 2026-09-28 (Connecticut): offset=1 returned the
+         * next 99 jobs and offset=100 returned none. This loop used to add
+         * PAGE to it, so its second request asked for page 100, got nothing,
+         * and every account over 100 jobs lost all but its first page. Page 0
+         * is the FARTHEST-dated jobs, so what went missing was the near dates.
+         *
+         * `records` stays PAGE on every request: a smaller last page would
+         * change the page size and move where page N starts.
+         */
+        for ($pageNumber = 0; $pageNumber * self::PAGE < $limit && $pending !== []; $pageNumber++) {
+            $responses = Http::pool(function (Pool $pool) use ($pending, $pageNumber, $since) {
                 foreach ($pending as $account => $token) {
                     $pool->as($account)->acceptJson()->get(
                         'https://api.workiz.com/api/v1/'.$token.'/job/all/',
                         [
                             'start_date' => $since ?? now()->subYear()->toDateString(),
-                            'offset' => $offset,
-                            'records' => min(self::PAGE, $limit - $offset),
+                            'offset' => $pageNumber,
+                            'records' => self::PAGE,
                             'only_open' => 'false',
                         ],
                     );
@@ -357,14 +368,20 @@ final class WorkizJobs
 
         $jobs = [];
 
-        for ($offset = 0; $offset < $limit; $offset += self::PAGE) {
+        // `offset` is a PAGE NUMBER, not a row count. Measured 2026-09-28 on
+        // Connecticut (192 upcoming): offset=1 returned the next 99 jobs and
+        // offset=100 returned none -- which is what this loop used to send, so
+        // it read one page and stopped. Page 0 is the FARTHEST 100 by date:
+        // every account with more than 100 upcoming jobs had its next days
+        // unswept, and a booking for them was never seen at all.
+        for ($page = 0; count($jobs) < $limit; $page++) {
             try {
                 $response = Http::acceptJson()->get(
                     'https://api.workiz.com/api/v1/'.$token.'/job/all/',
                     [
                         'start_date' => $since ?? now()->subYears(5)->toDateString(),
-                        'offset' => $offset,
-                        'records' => min(self::PAGE, $limit - $offset),
+                        'offset' => $page,
+                        'records' => min(self::PAGE, $limit - count($jobs)),
                         'only_open' => 'false',
                     ],
                 );
@@ -378,17 +395,17 @@ final class WorkizJobs
                 return ['jobs' => $jobs, 'failed' => 'Workiz refused the job list ('.$response->status().').'];
             }
 
-            $page = $response->json('data') ?? [];
+            $rows = $response->json('data') ?? [];
 
-            foreach ($page as $job) {
+            foreach ($rows as $job) {
                 if (is_array($job)) {
                     $jobs[] = $job;
                 }
             }
 
-            // A short page is the last page. Stopping on count alone would loop
-            // for ever against an API that ignored the offset.
-            if (count($page) < self::PAGE) {
+            // A short page is the last page. `$limit` bounds the loop against an
+            // API that ignored the offset and answered the same page for ever.
+            if (count($rows) < self::PAGE) {
                 break;
             }
         }

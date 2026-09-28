@@ -2958,6 +2958,52 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
+
+`docs/previews/social-poster-layouts.html`. From Jose, verbatim, via the Meta session,
+2026-09-28: *"there was no hint that the post had been successful … we need to add flare, loading
+screens, success screens … i didn't see anything appear on the calendar even though you posted it
+and it succeeded … the user needs to feel like he's accomplished what he set out to do"*. Desktop
+**1** the composer becomes the result and the post lands on the calendar (recommended) · **2** a
+page of its own: posting ring, then a finish screen · **3** the calendar is the page, composing is
+a panel over it. Phone **4** a finish screen, then an agenda (recommended) · **5** progress from
+the bottom, the week as a strip · **6** a running feed, newest first.
+
+**In every option:** a per-account posting line that resolves (posted with the network's link,
+failed with its sentence and Try again, TikTok to drafts); a success moment that names what
+happened ("Posted to 3 accounts", "Scheduled for Tuesday 9:00 AM"); every post on the calendar,
+sent green, scheduled blue, failed red, the new one outlined once. Found while drawing: the
+calendars are built with no posts passed in (`const _CalendarsColumn()` in social_media_tab.dart),
+though `GET /social/posts` already carries the times and per-target status.
+
+**For the build (Meta, 2026-09-28):** POST /social/posts answers at once with every target still
+`queued` — production queues one PublishSocialTarget job per target (SocialPostsController.php
+246-250); only the sync test queue sees them resolved in the response. So: draw the "sending"
+lines from the POST answer, then re-read GET /social/posts about every 2s until no target is
+queued, giving up after about 60s (then say which accounts are still pending, not failed). Each
+target ends with its status and `url` (filled when the permalink read-back succeeds). No
+single-post GET exists; the list is enough, and Meta will add GET /social/posts/{post} if asked.
+Scheduled posts dispatch nothing until `ezbizi:publish-due-social-posts` runs: no poll, straight
+onto the calendar from `scheduled_for`.
+
+### 26 · Web Management · Hours for several websites at once — **Jose picked 2** ("the numbered steps one"); phone **5**, the same form stacked (he named the desktop only) — **BUILDING**
+
+`docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
+0.0.0290, `c77a7873`: `POST /web/hours/review` and `/apply`), from Rodrigo's brief via Jose,
+2026-09-28 (the brief is on Jose's desktop, `ezbizi-hours-editor-feature-brief.md`). Desktop
+**1** one page, review docked beside the week (recommended) · **2** numbered steps, review as a
+tab per website · **3** a grid, days down and websites across, final hours live. Phone **4** a
+page per step, a day from the bottom · **5** one scrolling form, day cards, Review on a bar that
+stays (recommended) · **6** by days: pick days, then what they do.
+
+**Fixed in every option, from the brief and the contract:** one control per day (Keep existing ·
+Set hours · Closed all day), no switch; under Set hours each edge is Keep or a time; a closed day
+needs both. Websites are the only live destination — Google Business Profile drawn greyed with
+the server's reason. Convert hours from (IANA, friendly label) and Don't open before (after
+converting, opening only). The main button is Review changes; Update N websites applies that
+review's token, and a review over 30 minutes old is refused (409). Results: Changed · Unchanged ·
+Blocked · Failed · Not confirmed.
+
 ### 25 · Jobs · a job's service area — **BUILT: Jose picked 1 and 4** ("as you recommend")
 
 **Built (client):** the table's Franchise column became **Where** (`WhereLabel`: "Illinois ·

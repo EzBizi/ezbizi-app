@@ -15,6 +15,7 @@ import 'templates_pane.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/shortcode_button.dart';
 import '../../widgets/side_panel.dart';
+import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
@@ -249,22 +250,23 @@ class _SeoTabState extends State<SeoTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // The app's one strip (UI/UX, 2026-09-28): a single scrolling row,
+        // the chosen section filled. The underline row wrapped Templates onto
+        // a second line on a phone.
         if (_sections.isNotEmpty) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Wrap(
-              spacing: 4,
-              runSpacing: 4,
-              children: [
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            child: TabBarLike(
+              key: const ValueKey('seo-sections'),
+              labels: [
                 for (final section in _sections)
-                  _SectionTab(
-                    label: section['label'] as String,
-                    selected: section['key'] == _sectionKey,
-                    onTap: () => setState(
-                      () => _sectionKey = section['key'] as String,
-                    ),
-                  ),
+                  (section['label'] as String, _sectionIcon(section['key'] as String)),
               ],
+              // The key is re-found on every load, so it is always in the list.
+              selected: _sections.indexWhere((s) => s['key'] == _sectionKey).clamp(0, _sections.length - 1),
+              onSelected: (i) => setState(
+                () => _sectionKey = _sections[i]['key'] as String,
+              ),
             ),
           ),
           const Divider(height: 1),
@@ -354,8 +356,9 @@ class _SeoTabState extends State<SeoTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // No headline: the module title above already says where this is
+        // (UI/UX, 2026-09-28), and no other module draws a second one.
         PanelHeader(
-          title: 'Websites',
           note:
               'Every website and subdomain this company runs. Each one keeps '
               'its own details, so a branch site can answer its own phone '
@@ -478,52 +481,16 @@ class _SeoTabState extends State<SeoTab> {
       );
 }
 
-/// A section tab inside SEO — underlined when chosen, quiet when not.
-///
-/// Deliberately not a Material `TabBar`: that wants a TabController and a
-/// PageView, which is machinery for swiping between pages this screen does not
-/// do. A row of buttons is the whole behaviour.
-class _SectionTab extends StatelessWidget {
-  const _SectionTab({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              width: 2,
-              color: selected ? theme.colorScheme.primary : Colors.transparent,
-            ),
-          ),
-        ),
-        child: Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            color: selected
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline,
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// Each SEO section's icon, by key; a section the server adds later gets a plain one.
+IconData _sectionIcon(String key) => switch (key) {
+      'general' => Icons.tune,
+      'social' => Icons.share_outlined,
+      'pages' => Icons.article_outlined,
+      'cities' => Icons.location_city_outlined,
+      'posts' => Icons.edit_note,
+      'templates' => Icons.content_copy_outlined,
+      _ => Icons.label_outline,
+    };
 
 /// One row in the rail: host, whether a plugin has ever read it, and nothing
 /// else. The detail pane is where everything about a site lives, so a tile that

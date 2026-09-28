@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
 import '../core/session.dart';
+import '../widgets/side_panel.dart';
 import '../widgets/tab_bar_like.dart';
 import 'settings_screen.dart';
 
@@ -324,8 +325,10 @@ class _LibraryTabState extends State<LibraryTab> {
   }
 
   Future<void> _edit([Map<String, dynamic>? entry]) async {
-    final saved = await showDialog<bool>(
-      context: context,
+    // A side panel, as every other form: this was the one AlertDialog left
+    // on a create path, a box over the list it was adding to.
+    final saved = await showSidePanel<bool>(
+      context,
       builder: (_) =>
           _EntryDialog(api: widget.api, session: widget.session, entry: entry),
     );
@@ -502,59 +505,9 @@ class _EntryDialogState extends State<_EntryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.entry == null ? 'Add answer' : 'Edit answer'),
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _field(
-                _section,
-                'Section',
-                max: 24,
-                help: 'Answers with the same section are grouped in the menu.',
-              ),
-              _field(_title, 'Title', max: 24),
-              _field(_description, 'Description (optional)', max: 72),
-              _field(
-                _body,
-                'Answer',
-                max: 4096,
-                lines: 8,
-                help: 'WhatsApp shows *bold* and _italic_.',
-              ),
-              // Two choices, both shown: no popup (no_popup_dropdown_test).
-              Align(
-                alignment: Alignment.centerLeft,
-                child: SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'public', label: Text('Everyone')),
-                    ButtonSegment(value: 'staff', label: Text('Staff only')),
-                  ],
-                  selected: {_audience},
-                  onSelectionChanged: (v) =>
-                      setState(() => _audience = v.first),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Text(
-                  'On WhatsApp, staff are active users whose phone is on file.',
-                ),
-              ),
-              const SizedBox(height: 12),
-              _field(_position, 'Order', help: 'Lower numbers come first.'),
-              if (_error != null)
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-            ],
-          ),
-        ),
-      ),
+    return SidePanel(
+      title: widget.entry == null ? 'Add answer' : 'Edit answer',
+      width: 560,
       actions: [
         if (widget.entry != null)
           TextButton(
@@ -570,6 +523,51 @@ class _EntryDialogState extends State<_EntryDialog> {
           child: const Text('Save'),
         ),
       ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _field(
+            _section,
+            'Section',
+            max: 24,
+            help: 'Answers with the same section are grouped in the menu.',
+          ),
+          _field(_title, 'Title', max: 24),
+          _field(_description, 'Description (optional)', max: 72),
+          _field(
+            _body,
+            'Answer',
+            max: 4096,
+            lines: 8,
+            help: 'WhatsApp shows *bold* and _italic_.',
+          ),
+          // Two choices, both shown: no popup (no_popup_dropdown_test).
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'public', label: Text('Everyone')),
+                ButtonSegment(value: 'staff', label: Text('Staff only')),
+              ],
+              selected: {_audience},
+              onSelectionChanged: (v) => setState(() => _audience = v.first),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'On WhatsApp, staff are active users whose phone is on file.',
+            ),
+          ),
+          const SizedBox(height: 12),
+          _field(_position, 'Order', help: 'Lower numbers come first.'),
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+        ],
+      ),
     );
   }
 }

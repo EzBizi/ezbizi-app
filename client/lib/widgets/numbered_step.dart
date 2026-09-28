@@ -38,45 +38,90 @@ class NumberedStep extends StatelessWidget {
   /// "Add a question".
   final Widget? action;
 
+  /// Below this the action goes under the sentence rather than beside it.
+  static const double _besideAbove = 520;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Beside the heading on a phone, "Add a condition" left the sentence
+        // a third of the width, five words a line.
+        final beside = constraints.maxWidth >= _besideAbove;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            CircleAvatar(
-              radius: 13,
-              backgroundColor: theme.colorScheme.primaryContainer,
-              child: Text(
-                '$number',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.onPrimaryContainer,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                CircleAvatar(
+                  radius: 13,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Text(
+                    '$number',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 2),
-                  Text(note, style: theme.textTheme.bodyMedium),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(note, style: theme.textTheme.bodyMedium),
+                      if (action != null && !beside) ...[
+                        const SizedBox(height: 8),
+                        action!,
+                      ],
+                    ],
+                  ),
+                ),
+                if (action != null && beside) ...[
+                  const SizedBox(width: 12),
+                  action!,
                 ],
-              ),
+              ],
             ),
-            if (action != null) ...[const SizedBox(width: 12), action!],
+            const SizedBox(height: 12),
+            Padding(padding: const EdgeInsets.only(left: 38), child: child),
           ],
-        ),
-        const SizedBox(height: 12),
-        Padding(padding: const EdgeInsets.only(left: 38), child: child),
-      ],
+        );
+      },
     );
   }
+}
+
+/// A step's name and its "what it is for", side by side where there is room
+/// and one above the other where there is not. Side by side on a phone, the
+/// second label read "What it is for (opti…".
+class FieldPair extends StatelessWidget {
+  const FieldPair({super.key, required this.first, required this.second});
+
+  final Widget first;
+  final Widget second;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => constraints.maxWidth < 440
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [first, const SizedBox(height: 12), second],
+          )
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 2, child: first),
+              const SizedBox(width: 12),
+              Expanded(flex: 3, child: second),
+            ],
+          ),
+  );
 }

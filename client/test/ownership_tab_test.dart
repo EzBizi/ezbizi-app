@@ -397,4 +397,88 @@ void main() {
     expect(find.byKey(const Key('desk-seat-picker')), findsNothing);
     expect(find.byIcon(Icons.info_outline), findsOneWidget);
   });
+
+  testWidgets(
+      'on a phone the chart is a list — a name line and a detail line — and '
+      'nothing runs off the right edge', (tester) async {
+    // The UI/UX Android audit, 2026-09-28: "General's ownership table is a
+    // desktop table on a phone: User / Role / Desk… cut off at the right
+    // edge." A DataTable in a sideways scroll LOOKS cut off, because it is.
+    tester.view.physicalSize = const Size(375, 812);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    // An overflow paints stripes and passes — it never fails a test on its
+    // own — so it is caught here and asserted on.
+    final overflows = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      final text = details.exceptionAsString();
+      if (text.contains('overflowed')) overflows.add(text);
+      previous?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    // The widest row the chart can have: every withheld column sent, and a
+    // real seat, so the desk is the editable control and not a dash.
+    final api = apiReturning(
+      [
+        person(
+          computerName: 'A1DISPATCHER1',
+          workDays: 'Mon – Fri',
+          shift: '8:00 AM – 5:00 PM',
+          planId: 'plan-1',
+          nodeId: 'node-1',
+        ),
+      ],
+      permissions: const [
+        'monitoring.view',
+        'monitoring.general.view',
+        'monitoring.map.manage',
+      ],
+    );
+    await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DataTable), findsNothing,
+        reason: 'Below ${OwnershipTab.narrowBelow.toInt()} the chart is a list.');
+
+    // The name line.
+    expect(find.text('Marco Reyes'), findsOneWidget);
+    expect(find.text('Online'), findsOneWidget,
+        reason: 'Status stays a word beside the name, not only a colour.');
+
+    // The detail line carries what the columns carried.
+    final detail = find.text(
+      'Dispatcher · A1DISPATCHER1 · Mon – Fri, 8:00 AM – 5:00 PM · Boston · Main Office',
+    );
+    expect(detail, findsOneWidget);
+
+    // The desk is the SAME control as on the desktop, not a read-only copy —
+    // a phone that could see a desk but not rename or fill it would be a
+    // quieter version of the gap Jose already reported once.
+    expect(find.byKey(const ValueKey('desk-node-1')), findsOneWidget);
+    expect(find.text('Front desk'), findsOneWidget);
+
+    for (final text in [find.text('Marco Reyes'), detail, find.text('Online')]) {
+      expect(tester.getRect(text).right, lessThanOrEqualTo(375),
+          reason: 'Something on the row still runs past the phone edge.');
+    }
+    expect(overflows, isEmpty, reason: overflows.join(' | '));
+  });
+
+  testWidgets('control: a wide screen still gets the table', (tester) async {
+    // Without this, the test above passes just as well for a chart that
+    // became a list at EVERY width.
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final api = apiReturning([person()]);
+    await tester.pumpWidget(wrap(api, await sessionWith(api, const [])));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DataTable), findsOneWidget);
+    expect(find.text('Role'), findsOneWidget);
+  });
 }

@@ -1201,6 +1201,35 @@ void main() {
     expect(find.text('Filler number 0'), findsNothing);
   });
 
+  /// REPLACING WORK ASKS IN PLACE, not in a dialog, and Keep mine keeps it.
+  ///
+  /// The house has no modal dialogs (theme_conventions_test). Both answers are
+  /// exercised: Keep mine must leave the typed name alone, which is the half
+  /// a confirm that always applied would fail.
+  testWidgets('a template over typed work asks inline before replacing it', (
+    tester,
+  ) async {
+    await _pump(tester, _handler(catalogue: _catalogueWithTemplates()));
+
+    await _tap(tester, find.text('Build'));
+    await _type(tester, 'Name', 'My own rule');
+
+    Future<void> choose() async {
+      await _tap(tester, find.widgetWithText(SearchPickerField<String>, 'Start from a template'));
+      await _tap(tester, find.text('Tell the office about website chats only').last);
+    }
+
+    await choose();
+    expect(find.byType(AlertDialog), findsNothing);
+    await _tap(tester, find.text('Keep mine'));
+    expect(find.widgetWithText(TextField, 'My own rule'), findsOneWidget);
+
+    await choose();
+    await _tap(tester, find.text('Use the template'));
+    expect(find.widgetWithText(TextField, 'Tell the office about website chats only'), findsOneWidget);
+    expect(find.text('Use the template'), findsNothing);
+  });
+
   /// CARDS SIT SIDE BY SIDE, and still fit when there is no room for two.
   ///
   /// Jose, 2026-09-22: *"i would also like to see the current automations in

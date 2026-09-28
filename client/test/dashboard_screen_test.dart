@@ -58,6 +58,12 @@ void main() {
     final chip = tester.getRect(find.widgetWithText(ChoiceChip, 'Week'));
     final refresh = tester.getCenter(find.byTooltip('Refresh'));
     expect(refresh.dy, inInclusiveRange(chip.top, chip.bottom));
+
+    // And the four chips stay one line beside it: with a tick on the chosen
+    // one, Year wrapped under the others on a phone.
+    for (final chip in find.byType(ChoiceChip).evaluate()) {
+      expect((chip.widget as ChoiceChip).showCheckmark, isFalse);
+    }
   });
 
   testWidgets('an empty glance is the sentence, coming soon is tagged', (

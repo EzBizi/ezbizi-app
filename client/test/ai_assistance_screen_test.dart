@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/ai_assistance_screen.dart';
+import 'package:ezbizi_client/widgets/side_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -55,6 +56,12 @@ void main() {
     );
 
     expect(find.text('Add answer'), findsOneWidget);
+
+    // A side panel like every other form, not a dialog over the list.
+    await tester.tap(find.text('Add answer'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SidePanel), findsOneWidget);
   });
 
   test('WhatsApp markers go, a link keeps its underscores', () {

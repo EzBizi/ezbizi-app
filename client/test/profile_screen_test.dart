@@ -82,6 +82,16 @@ void main() {
     // An empty value says so. A blank is indistinguishable from a row that
     // failed to load, and this list is mostly read rather than tapped.
     expect(find.text('Not given'), findsWidgets);
+
+    // But a row that opens something holds no value to be missing: Password
+    // said "Not given" to somebody who had just signed in with one.
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'Password'),
+        matching: find.text('Not given'),
+      ),
+      findsNothing,
+    );
   });
   /// Every control on this screen has to exist at BOTH widths.
   ///

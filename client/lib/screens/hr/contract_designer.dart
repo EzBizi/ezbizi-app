@@ -903,35 +903,25 @@ class _ContractDesignerState extends State<ContractDesigner> {
       note:
           'What whoever runs an onboarding picks from, so it should say who '
           'it is for rather than what it is.',
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: _name,
-              enabled: widget.canEdit && !_busy,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'Technician, full time',
-              ),
-            ),
+      child: FieldPair(
+        first: TextField(
+          controller: _name,
+          enabled: widget.canEdit && !_busy,
+          decoration: const InputDecoration(
+            labelText: 'Name',
+            hintText: 'Technician, full time',
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: TextField(
-              controller: _description,
-              enabled: widget.canEdit && !_busy,
-              decoration: const InputDecoration(
-                labelText: 'What it is for (optional)',
-                hintText:
-                    'Who this contract is used for, for whoever reads it '
-                    'next',
-              ),
-            ),
+        ),
+        second: TextField(
+          controller: _description,
+          enabled: widget.canEdit && !_busy,
+          decoration: const InputDecoration(
+            labelText: 'What it is for (optional)',
+            hintText:
+                'Who this contract is used for, for whoever reads it '
+                'next',
           ),
-        ],
+        ),
       ),
     );
   }

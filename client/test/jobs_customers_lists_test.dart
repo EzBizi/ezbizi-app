@@ -325,6 +325,16 @@ void main() {
         find.text('1 more, in a franchise you cannot open.'),
         findsOneWidget,
       );
+
+      // State's helper line used to push ZIP lower than the box beside it.
+      Finder box(String label) => find.ancestor(
+        of: find.text(label),
+        matching: find.byType(TextField),
+      );
+      expect(
+        tester.getTopLeft(box('ZIP')).dy,
+        tester.getTopLeft(box('State')).dy,
+      );
     });
   });
 

@@ -218,8 +218,9 @@ class _TeamTabState extends State<TeamTab> {
               Text(
                 'No numbers on this phone account yet. Buy or import one on '
                 'Settings › Numbers first.',
+                // Muted, not red: a next step, not a failure (UI/UX).
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

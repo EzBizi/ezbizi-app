@@ -445,6 +445,8 @@ void main() {
               'A brand-new phone visitor must open on the compose box, not '
               'the empty rail list behind it.',
         );
+        // Nothing sent yet: an arrow here led back to an empty list.
+        expect(find.byTooltip('Back to the list'), findsNothing);
       },
     );
 

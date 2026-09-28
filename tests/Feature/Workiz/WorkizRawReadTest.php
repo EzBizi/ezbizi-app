@@ -7,6 +7,7 @@ use App\Models\SocialConnection;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -128,6 +129,43 @@ class WorkizRawReadTest extends TestCase
 
         $this->assertCount(WorkizJobs::PAGE + 1, $out['jobs']);
         $this->assertSame('LAST', end($out['jobs'])['UUID']);
+    }
+
+    /**
+     * `offset` is Workiz's PAGE NUMBER, not a row count. Measured 2026-09-28 on
+     * Connecticut (192 upcoming jobs): offset=1 returned the next 99, offset=100
+     * returned none. And page 0 is the FARTHEST 100 by date, so a sweep that
+     * asked for "row 100" read one page and never saw the next nine days.
+     *
+     * The test above could not catch it: its fake answered in sequence,
+     * whatever the request asked for. This one answers by the offset.
+     */
+    public function test_the_second_page_is_asked_for_by_page_number(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $payload = require base_path('tests/Fixtures/workiz/job_payload.php');
+
+        $farthest = [];
+        for ($i = 0; $i < WorkizJobs::PAGE; $i++) {
+            $farthest[] = array_merge($payload, ['UUID' => 'FAR'.$i]);
+        }
+
+        Http::fake(function (Request $request) use ($farthest, $payload) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            return Http::response(['flag' => true, 'data' => match ((string) ($query['offset'] ?? '')) {
+                '0' => $farthest,
+                '1' => [array_merge($payload, ['UUID' => 'TOMORROW'])],
+                default => [],
+            }]);
+        });
+
+        $connection = $this->connect($tenant, $tenant['franchise'], 'api_good');
+
+        $out = app(WorkizJobs::class)->raw($connection);
+
+        $this->assertCount(WorkizJobs::PAGE + 1, $out['jobs']);
+        $this->assertSame('TOMORROW', end($out['jobs'])['UUID']);
     }
 
     public function test_a_connection_with_no_token_is_named_rather_than_skipped(): void
