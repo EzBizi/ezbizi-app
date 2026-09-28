@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0284',
+      date: '28 Sep 2026',
+      items: [
+        'Field: administrators of an organization are tracked like any tracked role, within the same window - while clocked in, during scheduled hours, or always.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0283',
       date: '25 Sep 2026',
       items: [
