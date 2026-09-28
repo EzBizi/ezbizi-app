@@ -191,4 +191,35 @@ class WorkizLeadReaderTest extends TestCase
 
         $this->assertStringNotContainsString('Example Street', (string) $out['summary']);
     }
+
+    /**
+     * `LeadDateTime` is the APPOINTMENT, not the arrival. Measured 2026-09-28
+     * across the 10 live Workiz leads since January, all branches: it is never
+     * before `CreatedDate`, later in 9 of 10, and always a round hour, while
+     * `CreatedDate` carries seconds. The Leads session found it on Illinois --
+     * created 09-24, booked for 10-05 -- when received_at said 10-05 and held
+     * that branch's import watermark in the future.
+     *
+     * The fixture above could not have caught it: it set both to one value.
+     */
+    public function test_a_lead_is_received_when_it_was_created_not_when_it_is_booked(): void
+    {
+        $out = WorkizLeadAttributes::fromPayload($this->lead([
+            'CreatedDate' => '2026-09-24 10:31:07',
+            'LeadDateTime' => '2026-10-05 12:00:00',
+        ]));
+
+        $this->assertSame('2026-09-24 10:31:07', $out['received_at']);
+    }
+
+    /** A payload with no CreatedDate still says when, from the only date it has. */
+    public function test_a_lead_with_no_created_date_falls_back_to_its_booking(): void
+    {
+        $out = WorkizLeadAttributes::fromPayload($this->lead([
+            'CreatedDate' => '',
+            'LeadDateTime' => '2026-10-05 12:00:00',
+        ]));
+
+        $this->assertSame('2026-10-05 12:00:00', $out['received_at']);
+    }
 }

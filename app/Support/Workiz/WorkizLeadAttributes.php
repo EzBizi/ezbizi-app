@@ -57,12 +57,19 @@ final class WorkizLeadAttributes
             // Workiz's state, verbatim and joined, never mapped.
             'source_status' => self::sourceStatus($payload),
 
+            // WHEN THE LEAD ARRIVED: `CreatedDate`. `LeadDateTime` is the
+            // appointment -- measured across every live lead since January, it
+            // is never earlier and always a round hour -- and reading it here
+            // dated an Illinois lead ten days into the future and held that
+            // branch's import watermark there. It is only the fallback, for a
+            // payload with no CreatedDate at all.
+            //
             // The naive 'Y-m-d H:i:s' string, UNCONVERTED. `Timezone` is absent
             // from every real Workiz payload, so there is no zone here to
             // convert with — the branch's is the only one that exists, and it
             // lives on the connection. Converting inside this class would hide
             // an assumption nobody could see afterwards.
-            'received_at' => self::moment($payload['LeadDateTime'] ?? null),
+            'received_at' => self::moment($payload['CreatedDate'] ?? null) ?? self::moment($payload['LeadDateTime'] ?? null),
 
             'is_test' => false,
         ];
