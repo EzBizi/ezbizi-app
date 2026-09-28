@@ -1193,6 +1193,29 @@ void _conversationRowTests() {
     expect(find.textContaining('No service'), findsNothing);
   });
 
+  // The search, source strip, Connected sources and filters stood over the
+  // leads and took 340 of a phone's 800 pixels.
+  testWidgets('on a phone the header scrolls away with the leads', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [for (var i = 0; i < 30; i++) _lead('lead-$i', 'Caller $i')],
+      connections: _connected,
+      size: const Size(375, 812),
+    );
+
+    final search = find.byType(TextField);
+    expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(0));
+
+    await tester.drag(find.text('Caller 3'), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
+    // Above the top of the screen. (Still found: it is within the scroll
+    // cache, so a finder counts it.)
+    expect(tester.getBottomLeft(search).dy, lessThan(0));
+  });
+
   /// Mobile layout 4: the row states its value, tapping opens the thread
   /// full screen with a back bar.
   testWidgets('on a phone, tapping a row opens the thread with a back bar', (

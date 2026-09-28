@@ -419,7 +419,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
   }
 
   Widget _googleTab(ThemeData theme) {
-    return Column(
+    // On a phone the search, the source strip, Connected sources and the
+    // filter chips scroll away with the leads: standing, they took 340 of the
+    // screen's 800 pixels.
+    return HeaderAboveList(
+      header: Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
@@ -619,26 +624,25 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            // Desktop layout 1 above 900: the list left, the whole thread
-            // beside it, so reading a conversation never costs anybody their
-            // place in the list. Mobile layout 4 below: the row states its
-            // value and tapping opens the thread full screen with a back bar.
-            child: _leads.isEmpty
-                ? _empty(theme)
-                : LayoutBuilder(
-                    builder: (context, constraints) =>
-                        constraints.maxWidth >= 900
-                        ? _twoPane(theme)
-                        : _list(theme, onTap: _openThread),
-                  ),
-          ),
-        ),
       ],
+      ),
+      list: AsyncBody(
+        loading: _loading,
+        error: _error,
+        onRetry: _load,
+        // Desktop layout 1 above 900: the list left, the whole thread
+        // beside it, so reading a conversation never costs anybody their
+        // place in the list. Mobile layout 4 below: the row states its
+        // value and tapping opens the thread full screen with a back bar.
+        child: _leads.isEmpty
+            ? _empty(theme)
+            : LayoutBuilder(
+                builder: (context, constraints) =>
+                    constraints.maxWidth >= 900
+                    ? _twoPane(theme)
+                    : _list(theme, onTap: _openThread),
+              ),
+      ),
     );
   }
 

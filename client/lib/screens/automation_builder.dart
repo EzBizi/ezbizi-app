@@ -1684,33 +1684,23 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: _name,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    hintText: 'Tell the office when a job is completed',
-                  ),
-                ),
+          FieldPair(
+            first: TextField(
+              controller: _name,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: 'Name',
+                hintText: 'Tell the office when a job is completed',
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: _description,
-                  enabled: !_busy,
-                  decoration: const InputDecoration(
-                    labelText: 'What it is for (optional)',
-                    hintText: 'Why this rule exists, for whoever reads it next',
-                  ),
-                ),
+            ),
+            second: TextField(
+              controller: _description,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                labelText: 'What it is for (optional)',
+                hintText: 'Why this rule exists, for whoever reads it next',
               ),
-            ],
+            ),
           ),
           if (widget.catalogue.places.isNotEmpty) ...[
             const SizedBox(height: 12),

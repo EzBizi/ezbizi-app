@@ -351,7 +351,10 @@ class _CustomerDetailPanelState extends State<CustomerDetailPanel> {
                   enabled: editable,
                 ),
                 const SizedBox(height: 12),
+                // Tops aligned: State's helper line made the row taller, and centred
+                // ZIP sat lower than the box beside it.
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: TextField(
