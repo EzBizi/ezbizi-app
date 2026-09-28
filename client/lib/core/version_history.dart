@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0298',
+      date: '28 Sep 2026',
+      items: [
+        'Recordings: when a computer has no speakers or headphones connected, the player says so instead of showing an error code.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0297',
       date: '28 Sep 2026',
       items: [
