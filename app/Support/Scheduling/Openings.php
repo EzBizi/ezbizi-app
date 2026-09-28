@@ -42,7 +42,9 @@ use Illuminate\Support\Facades\DB;
  *
  * A job whose time falls in NO window — 00:00 means "no time set" in Workiz —
  * holds no window's seat, and is counted separately as `no_time` so the screen
- * can say so rather than silently dropping it. A1 has 24 such future jobs.
+ * can say so rather than silently dropping it. A1 has 24 such future jobs. It
+ * DOES count against the day: the area takes what its windows add up to, and
+ * every job booked that day spends it (see the day ceiling in days()).
  *
  * ── Where the jobs come from ───────────────────────────────────
  *
@@ -164,12 +166,32 @@ final class Openings
                     'taken' => $in,
                     // Never negative: an over-booked window reports 0 left,
                     // and taken > capacity is what shows it is over.
-                    'remaining' => min(
-                        max(0, (int) $slot->max_jobs - $in),
-                        $franchiseLeft ?? PHP_INT_MAX,
-                    ),
+                    'remaining' => max(0, (int) $slot->max_jobs - $in),
                 ];
             }
+
+            // THE DAY IS A CEILING TOO (A1 Tools' B3, the lesson it rates
+            // most important). The area takes what its windows add up to, and
+            // every job booked that day counts against it: one piled into a
+            // window past its limit, and one with no time, which holds no
+            // window's seat but still takes a crew. Cincinnati, 2026-09-30:
+            // 6 of 6 booked, one window over by one, and a window still offered
+            // a spot the day did not have.
+            //
+            // What is left — the area's day, and the franchise's when it has a
+            // limit — is handed to the windows EARLIEST FIRST, so no two
+            // windows advertise the same last spot. A1 distributes its day
+            // headroom the same way.
+            $left = max(0, array_sum(array_column($windows, 'capacity'))
+                - count($booked['times']) - $booked['no_time']);
+            if ($franchiseLeft !== null) {
+                $left = min($left, $franchiseLeft);
+            }
+            foreach ($windows as &$window) {
+                $window['remaining'] = min($window['remaining'], $left);
+                $left -= $window['remaining'];
+            }
+            unset($window);
 
             $out[] = [
                 'date' => $key,
