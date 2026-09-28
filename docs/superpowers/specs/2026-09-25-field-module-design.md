@@ -23,9 +23,10 @@ for their scheduled jobs."*
   - **`field.tracked` is "this role is GPS-tracked".** It is how "a specific set of users set on
     roles" is expressed: grant it to Technician, not to Office.
   - `field.manage` acknowledges alerts and edits Field settings.
-  - **Administrator is never tracked by implication.** The Administrator role holds every permission
-    without being given it, which is right for what someone may do and wrong for something done to
-    them. `FieldTracking::isTracked` needs the grant to be explicit.
+  - **Administrators are tracked like any tracked role** (Jose, 2026-09-28: *"Always, like any
+    tracked role."*). Administrator holds every permission implicitly, so it holds `field.tracked`, and
+    it follows the organization's window like everyone else. The first version excluded
+    administrators; Jose overturned that.
 - **Who you can see** is reach AND current view: `ScopeReach::constrainToVisiblePeople` grouped,
   then `MonitoringView::people` (the top-bar view). This is the same pair Monitoring uses, so a company
   view never shows a sibling company's techs. You always see yourself.

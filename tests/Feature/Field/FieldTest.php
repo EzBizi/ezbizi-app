@@ -229,11 +229,10 @@ class FieldTest extends TestCase
     }
 
     /**
-     * Chosen, not accidental: SOS is a button somebody presses, so the owner
-     * out on a job may press it too. Being TRACKED is what administrators are
-     * spared (the test above); asking for help is not.
+     * SOS is a button: the owner out on a job may press it, and pressing it
+     * makes no position row of its own.
      */
-    public function test_an_administrator_may_press_sos_though_never_tracked(): void
+    public function test_an_administrator_may_press_sos(): void
     {
         $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/sos', ['lat' => 40.0, 'lng' => -75.0])
             ->assertCreated();
@@ -329,14 +328,19 @@ class FieldTest extends TestCase
         Http::assertSent(fn ($r) => $r->hasHeader('X-Goog-Api-Key', 'k') && $r['optimizeWaypointOrder'] === true);
     }
 
-    public function test_the_administrator_is_never_tracked_by_implication(): void
+    /** Jose, 2026-09-28: "Always, like any tracked role." Within the window, never outside it. */
+    public function test_the_administrator_is_tracked_like_any_tracked_role(): void
     {
+        // Default window, not clocked in: refused like anybody else.
+        $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/locations', ['points' => [$this->point(40, -75)]])
+            ->assertJsonPath('data.kept', 0);
+
         $this->mode('always');
 
         $this->signedInAs($this->t['admin'])->getJson('/api/v1/field/me')
-            ->assertOk()->assertJsonPath('data.tracked', false);
+            ->assertOk()->assertJsonPath('data.tracked', true)->assertJsonPath('data.should_track', true);
         $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/locations', ['points' => [$this->point(40, -75)]])
-            ->assertJsonPath('data.kept', 0);
+            ->assertJsonPath('data.kept', 1);
     }
 
     public function test_the_map_carries_googles_copyright_for_the_viewport(): void
@@ -361,7 +365,8 @@ class FieldTest extends TestCase
 
         $this->signedInAs($this->manager)->getJson('/api/v1/field/dashboard')
             ->assertOk()
-            ->assertJsonPath('data.counts.tracked', 1)
+            // The technician and the administrator.
+            ->assertJsonPath('data.counts.tracked', 2)
             ->assertJsonPath('data.counts.reporting', 1);
     }
 
@@ -373,7 +378,8 @@ class FieldTest extends TestCase
         $payload = app(\App\Support\Dashboard\Glances\FieldGlance::class)
             ->resolve($this->manager->fresh(), \App\Support\Dashboard\DashboardPeriod::for($this->manager), []);
 
-        $this->assertSame(['1 of 1 tracked person is reporting now.'], $payload->data['sentences']);
+        // The technician reports; the administrator is tracked but silent.
+        $this->assertSame(['1 of 2 tracked people are reporting now.'], $payload->data['sentences']);
     }
 
     public function test_erasing_a_person_drops_their_trail(): void
