@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0287',
+      date: '28 Sep 2026',
+      items: [
+        'Scheduling: when a job is booked in Workiz at a zip code its service area does not have yet, EzBizi adds the zip to that area within five minutes. It never moves a zip that is already on another area and never creates a new area.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0286',
       date: '28 Sep 2026',
       items: [
