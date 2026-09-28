@@ -22,7 +22,8 @@ if [ ! -s /tmp/a1swap-installs.txt ] || [ -n "$(find /tmp/a1swap-installs.txt -m
   sudo -n find /var/www/vhosts -maxdepth 6 -type f -path '*/wp-content/plugins/ezbizi/ezbizi.php' 2>/dev/null | while read -r f; do
     D=${f%/wp-content/plugins/ezbizi/ezbizi.php}
     O=$(sudo -n stat -c %U "$D")
-    H=$(sudo -n -u "$O" $PHP --path="$D" eval 'echo preg_replace("/^www\./", "", parse_url(home_url(), PHP_URL_HOST));' </dev/null 2>/dev/null | tail -1)
+    # Marked, because a plugin's warning printed on the same run was once read as the host.
+    H=$(sudo -n -u "$O" $PHP --path="$D" eval 'echo "HOST=" . preg_replace("/^www\./", "", parse_url(home_url(), PHP_URL_HOST)), PHP_EOL;' </dev/null 2>/dev/null | grep '^HOST=' | tail -1 | cut -c6-)
     echo "$H $D $O"
   done > /tmp/a1swap-installs.txt
 fi
