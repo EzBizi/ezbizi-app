@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Web Management: the server side of the SEO Helper, which reads and writes the search title, description, keyphrase and social fields of each page through the site plugin (1.22.0) and checks the live page. Its screen follows.',
         'Social Media: Publish shows each account answering, then what happened to the post (posted, in drafts, scheduled, or failed with the network reason), with a link per network, See it on the calendar and Write another. Every post appears on the calendar on its day, and on a phone the calendar is an agenda.',
+        'Every kind of button is the same height, so a main button lines up with the buttons beside it.',
       ],
     ),
     VersionRelease(
