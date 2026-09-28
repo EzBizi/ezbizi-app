@@ -216,12 +216,51 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   Future<void> _openPost(_SentPost post) {
     return showSidePanel<void>(
       context,
-      builder: (context) => SidePanel(
+      builder: (panel) => SidePanel(
         title: 'Post',
         subtitle: _stamp(post, _formats),
-        child: _PostDetail(post: post, connections: _connections),
+        child: _PostDetail(
+          post: post,
+          connections: _connections,
+          // The panel closes and the composer follows the account, the same
+          // moment a new post gets.
+          onRetry: _canPost
+              ? (target) {
+                  Navigator.of(panel).pop();
+                  _retry(post, target);
+                }
+              : null,
+        ),
       ),
     );
+  }
+
+  bool get _canPost =>
+      widget.session.me?.permissions.contains('marketing.edit') ?? false;
+
+  /// Try again, for one account that failed: sent back to the queue, then
+  /// followed like a post just published.
+  Future<void> _retry(_SentPost post, _SentTarget target) async {
+    final response = await widget.api.post(
+      '/social/posts/${post.id}/targets/${target.id}/retry',
+      const {},
+    );
+    if (!mounted) return;
+
+    // A 422 says it is no longer failed, and why; the list read below shows
+    // what it is now, so the sentence is enough.
+    if (!response.ok) {
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(response.reason)));
+    }
+
+    setState(() {
+      _justPosted = post.id;
+      _gaveUpWaiting = false;
+    });
+
+    await _load();
   }
 
   /// Follow a post until the queue has actually dealt with it.
@@ -303,6 +342,7 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   onSeeCalendar: _toCalendar,
                   onDone: () => _toCalendar(leave: true),
                   onOpen: _openPost,
+                  onRetry: _canPost ? _retry : null,
                   onConnect: () => _openConnect(context),
                 )
               : _AccountsPane(
@@ -418,6 +458,7 @@ class _PostsPane extends StatelessWidget {
     required this.onDone,
     required this.onOpen,
     required this.onConnect,
+    this.onRetry,
   });
 
   final ApiClient api;
@@ -428,6 +469,9 @@ class _PostsPane extends StatelessWidget {
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
   final _SentPost? landing;
+
+  /// Try again on a failed account; null without the right to post.
+  final void Function(_SentPost, _SentTarget)? onRetry;
   final String? outlined;
   final DateTime? focusDay;
   final GlobalKey calendarKey;
@@ -465,6 +509,9 @@ class _PostsPane extends StatelessWidget {
                 large: true,
                 onWriteAnother: onWriteAnother,
                 onDone: onDone,
+                onRetry: onRetry == null
+                    ? null
+                    : (target) => onRetry!(landing, target),
               ),
             ],
           );
@@ -488,6 +535,7 @@ class _PostsPane extends StatelessWidget {
           onSent: onSent,
           onWriteAnother: onWriteAnother,
           onSeeCalendar: onSeeCalendar,
+          onRetry: onRetry,
         );
         final Widget calendar = phone
             ? _Agenda(
@@ -635,6 +683,7 @@ class _ComposeColumn extends StatefulWidget {
     required this.onSent,
     required this.onWriteAnother,
     required this.onSeeCalendar,
+    this.onRetry,
   });
 
   final ApiClient api;
@@ -644,6 +693,7 @@ class _ComposeColumn extends StatefulWidget {
   final List<_SentPost> posts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
+  final void Function(_SentPost, _SentTarget)? onRetry;
 
   /// The post just published. While set, the composer IS the result
   /// (design 27, pick 1): its accounts resolving, then what happened.
@@ -917,6 +967,9 @@ class _ComposeColumnState extends State<_ComposeColumn> {
           large: false,
           onWriteAnother: widget.onWriteAnother,
           onSeeCalendar: widget.onSeeCalendar,
+          onRetry: widget.onRetry == null
+              ? null
+              : (target) => widget.onRetry!(landing, target),
         ),
       );
     }
@@ -2064,7 +2117,11 @@ class _SentTarget {
     this.url,
     this.connectionId,
     this.provider,
+    this.id,
   });
+
+  /// For Try again, which names the target in its path.
+  final String? id;
 
   final String account;
   final String providerLabel;
@@ -2090,6 +2147,7 @@ class _SentTarget {
       url: json['url'] as String?,
       connectionId: json['connection_id'] as String?,
       provider: json['provider'] as String?,
+      id: json['id'] as String?,
     );
   }
 }
@@ -2432,10 +2490,12 @@ class _PostOutcome extends StatelessWidget {
     required this.onWriteAnother,
     this.onSeeCalendar,
     this.onDone,
+    this.onRetry,
   });
 
   final _SentPost post;
   final List<_SocialConnection> connections;
+  final void Function(_SentTarget)? onRetry;
 
   /// The poll gave up with accounts still queued: said as still sending,
   /// never as failed.
@@ -2474,7 +2534,11 @@ class _PostOutcome extends StatelessWidget {
         const SizedBox(height: 16),
         if (!sending) ...[_Quote(post: post), const SizedBox(height: 8)],
         for (final target in post.targets)
-          _TargetLine(target: target, drafts: _draftsFor(target, connections)),
+          _TargetLine(
+            target: target,
+            drafts: _draftsFor(target, connections),
+            onRetry: onRetry == null ? null : () => onRetry!(target),
+          ),
         if (!sending) ...[
           const SizedBox(height: 16),
           Wrap(
@@ -2708,10 +2772,15 @@ class _PostOutcome extends StatelessWidget {
 
 /// A post opened from the calendar: what went out, then every account.
 class _PostDetail extends StatelessWidget {
-  const _PostDetail({required this.post, required this.connections});
+  const _PostDetail({
+    required this.post,
+    required this.connections,
+    this.onRetry,
+  });
 
   final _SentPost post;
   final List<_SocialConnection> connections;
+  final void Function(_SentTarget)? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -2727,7 +2796,11 @@ class _PostDetail extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         for (final target in post.targets)
-          _TargetLine(target: target, drafts: _draftsFor(target, connections)),
+          _TargetLine(
+            target: target,
+            drafts: _draftsFor(target, connections),
+            onRetry: onRetry == null ? null : () => onRetry!(target),
+          ),
       ],
     );
   }
@@ -2786,12 +2859,16 @@ class _Quote extends StatelessWidget {
 /// One account's answer: posted with its link, in drafts, failed with the
 /// network's own sentence, or still going.
 class _TargetLine extends StatelessWidget {
-  const _TargetLine({required this.target, required this.drafts});
+  const _TargetLine({required this.target, required this.drafts, this.onRetry});
 
   final _SentTarget target;
 
   /// The account's posting note, when what "sent" means is its drafts.
   final String? drafts;
+
+  /// Send it again; drawn on a failed account only, and null without the
+  /// right to post.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -2855,6 +2932,19 @@ class _TargetLine extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.open_in_new, size: 16),
                     label: Text('View on $network'),
+                  ),
+                if (target.status == 'failed' &&
+                    target.id != null &&
+                    onRetry != null)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Try again'),
                   ),
               ],
             ),

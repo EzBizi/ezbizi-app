@@ -1078,6 +1078,77 @@ void main() {
       );
     });
 
+    testWidgets('a failed account can be tried again, and is followed', (
+      tester,
+    ) async {
+      var retried = false;
+      var after = 0;
+
+      await _pumpSocial(
+        tester,
+        _retrying(
+          _handler(
+            canEdit: true,
+            connections: const [_pinterestBoard],
+            postsFor: () => [
+              !retried
+                  ? _landed('failed', failure: 'Pinterest did not answer.')
+                  : _landed(after++ == 0 ? 'queued' : 'sent'),
+            ],
+          ),
+          onRetry: () => retried = true,
+        ),
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Try again'));
+      await tester.pumpAndSettle();
+
+      // The panel closed and the composer follows it, like a new post.
+      expect(retried, isTrue);
+      expect(find.byType(SidePanel), findsNothing);
+      expect(find.text('Posting… 0 of 1 done'), findsOneWidget);
+
+      await _tick(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Posted to 1 account'), findsOneWidget);
+    });
+
+    testWidgets('without the right to post, a failure offers no Try again', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          connections: const [_pinterestBoard],
+          posts: [_landed('failed', failure: 'Pinterest did not answer.')],
+        ),
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byType(SidePanel),
+          matching: find.text('Pinterest did not answer.'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Try again'), findsNothing);
+    });
+
     // The composer column did not scroll: twenty posts in its Sent list are
     // taller than a laptop screen, and the card ran off the bottom.
     testWidgets('a long Sent list scrolls instead of running off the screen', (
@@ -2300,6 +2371,29 @@ MockClientHandler _scheduling(MockClientHandler inner) => (request) async {
         ],
       },
     }, 201);
+  }
+
+  return inner(request);
+};
+
+/// The server's Try again: the target goes back to the queue.
+MockClientHandler _retrying(
+  MockClientHandler inner, {
+  required void Function() onRetry,
+}) => (request) async {
+  if (request.method == 'POST' &&
+      request.url.path.endsWith('/social/posts/post-1/targets/target-1/retry')) {
+    onRetry();
+    return _json({
+      'data': {
+        'id': 'target-1',
+        'connection_id': 'conn-2',
+        'status': 'queued',
+        'account': 'Everdoors Boards',
+        'provider': 'pinterest',
+        'provider_label': 'Pinterest',
+      },
+    });
   }
 
   return inner(request);
