@@ -270,14 +270,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ]),
 
         _group(context, 'Signing in', [
-          _row(context, Icons.password_outlined, 'Password', '', () {
+          _row(context, Icons.password_outlined, 'Password', null, () {
             _open(
               context,
               'Password',
               PasswordCard(api: widget.api, session: widget.session),
             );
           }),
-          _row(context, Icons.shield_outlined, 'Two-factor', '', () {
+          _row(context, Icons.shield_outlined, 'Two-factor', null, () {
             _open(
               context,
               'Two-factor',
@@ -288,7 +288,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Beside the authenticator because it answers the same question -
           // how do we know it is you - and not under Communication, which is
           // the tenant's phone system. This is EzBizi texting the person.
-          _row(context, Icons.sms_outlined, 'Text me my codes', '', () {
+          _row(context, Icons.sms_outlined, 'Text me my codes', null, () {
             _open(
               context,
               'Text me my codes',
@@ -298,7 +298,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ]),
 
         _group(context, 'Appearance', [
-          _row(context, Icons.palette_outlined, 'Theme and sidebar', '', () {
+          _row(context, Icons.palette_outlined, 'Theme and sidebar', null, () {
             _open(
               context,
               'Appearance',
@@ -485,11 +485,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// [value] null is a row that opens something rather than holding a fact:
+  /// Password, Two-factor and Theme printed "Not given", which read as "you
+  /// have no password" to somebody who had just signed in with one.
   Widget _row(
     BuildContext context,
     IconData icon,
     String label,
-    String value,
+    String? value,
     VoidCallback onTap,
   ) {
     final theme = Theme.of(context);
@@ -503,16 +506,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Flexible(
-            child: Text(
-              value.isEmpty ? 'Not given' : value,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          if (value != null)
+            Flexible(
+              child: Text(
+                value.isEmpty ? 'Not given' : value,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
           const Icon(Icons.chevron_right, size: 18),
         ],
       ),
