@@ -55,6 +55,53 @@ void main() {
     });
   }
 
+  // The shape was one and the heights were not: only the filled kind carried
+  // padding of its own, so "Done" stood taller than "Write another" beside it.
+  // Measured as a phone and as a desktop sizes them: a phone pads every tap
+  // target to 48, which hides a difference a desktop shows.
+  for (final (name, density, target) in [
+    ('phone', VisualDensity.standard, MaterialTapTargetSize.padded),
+    ('desktop', VisualDensity.compact, MaterialTapTargetSize.shrinkWrap),
+  ]) {
+    testWidgets('every button kind is one height on a $name', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: EzBiziTheme.light().copyWith(
+            visualDensity: density,
+            materialTapTargetSize: target,
+          ),
+          home: Scaffold(
+            body: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilledButton(onPressed: () {}, child: const Text('Done')),
+                  OutlinedButton(
+                    onPressed: () {},
+                    child: const Text('Write another'),
+                  ),
+                  TextButton(onPressed: () {}, child: const Text('Cancel')),
+                  ElevatedButton(onPressed: () {}, child: const Text('Export')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final heights = {
+        for (final kind in [
+          FilledButton,
+          OutlinedButton,
+          TextButton,
+          ElevatedButton,
+        ])
+          tester.getSize(find.byType(kind)).height,
+      };
+      expect(heights, hasLength(1), reason: 'Heights: $heights');
+    });
+  }
+
   // "No modal dialogs: screens or side panels" (DEVELOPMENT-RULES) had no
   // check, and the AI Library's Add answer shipped as an AlertDialog. These
   // files still open one, with the session that owns each; the list may only

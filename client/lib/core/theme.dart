@@ -158,7 +158,11 @@ class EzBiziTheme {
           // `primary`/`onPrimary`, so naming them again pinned the button to the
           // brand cyan with white on it — 2.5:1, on the app's main action, in
           // both brightnesses. Inheriting is the fix and the shorter code.
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+          //
+          // No padding either, for the same reason one shape is set below: it
+          // made this button taller than every other kind, so "Write another"
+          // beside "Done" stood 6 points short on a desktop and 14 on a phone.
+          // Material's own minimum height now sizes every kind alike.
           shape: control,
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
