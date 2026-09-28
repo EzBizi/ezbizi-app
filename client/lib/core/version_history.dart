@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Workiz: accounts with more than 100 upcoming jobs (Connecticut, Illinois, Ohio and New Jersey) now pick up changes and new bookings for the next days every minute; before, the sweep only read their farthest 100 jobs.',
         'Reports, Experimental: Jobs booked and the jobs of each person count every job for Workiz accounts with more than 100 jobs in the period; before, only the farthest 100 were read.',
+        'Field, Map: a slim list over the map shows each tracked person with since when, miles today, speed, last seen and state; tap a person to see their route today. The map is quieter, follows light and dark mode, and refreshes every 30 seconds.',
+        'Field: on Android, tracking starts even when Google Location Accuracy is turned off.',
       ],
     ),
     VersionRelease(
