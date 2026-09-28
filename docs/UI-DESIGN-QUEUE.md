@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 27 · Marketing · Social posting that feels finished — **DRAWN, awaiting Jose**
+### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
 
 `docs/previews/social-poster-layouts.html`. From Jose, verbatim, via the Meta session,
 2026-09-28: *"there was no hint that the post had been successful … we need to add flare, loading
@@ -2986,7 +2986,7 @@ single-post GET exists; the list is enough, and Meta will add GET /social/posts/
 Scheduled posts dispatch nothing until `ezbizi:publish-due-social-posts` runs: no poll, straight
 onto the calendar from `scheduled_for`.
 
-### 26 · Web Management · Hours for several websites at once — **DRAWN, awaiting Jose**
+### 26 · Web Management · Hours for several websites at once — **Jose picked 2** ("the numbered steps one"); phone **5**, the same form stacked (he named the desktop only) — **BUILDING**
 
 `docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
 0.0.0290, `c77a7873`: `POST /web/hours/review` and `/apply`), from Rodrigo's brief via Jose,
