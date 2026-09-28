@@ -2,9 +2,14 @@
 
 namespace Tests\Feature\Ads;
 
+use App\Models\Customer;
+use App\Models\Job;
+use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -229,6 +234,90 @@ class CampaignPerformanceTest extends TestCase
      * A paused campaign with no impressions has no click-through rate. Zero
      * would say "shown and never clicked", which is false.
      */
+    /**
+     * Leads and cost per lead, counted from EzBizi's own leads on the
+     * ACCOUNT's calendar. 23:30 in New York on the 1st is the 2nd in UTC and
+     * still counts; 23:00 on the 31st is the 1st in UTC and does not - the
+     * same trap the Local Services timestamps fell into.
+     */
+    public function test_leads_are_counted_on_the_accounts_own_days_and_priced(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connected($t);
+        $this->fakeGoogle($this->customerRow(), []);
+
+        $this->inTenant($t['org'], function () use ($t, $row) {
+            $leads = [];
+            foreach ([
+                ['a', '2026-09-01T14:00:00Z', 'CHARGED'],
+                ['b', '2026-09-01T20:00:00Z', 'CREDITED'],
+                ['c', '2026-09-02T03:30:00Z', 'CHARGED'],   // 23:30 NY on the 1st
+                ['d', '2026-09-01T03:00:00Z', 'CREDITED'],  // 23:00 NY on the 31st
+            ] as [$id, $at, $charge]) {
+                $leads[$id] = Lead::create([
+                    'organization_id' => $t['org']->id,
+                    'connection_id' => $row->getKey(),
+                    'source' => 'local_services',
+                    'remote_id' => $id,
+                    'lead_type' => $id === 'b' ? 'MESSAGE' : 'PHONE_CALL',
+                    'received_at' => Carbon::parse($at),
+                    'charge_status' => $charge,
+                ]);
+            }
+            $talk = fn (string $lead, string $channel, string $who, string $at, ?int $ms = null) => LeadConversation::create([
+                'organization_id' => $t['org']->id,
+                'lead_id' => $leads[$lead]->id,
+                'remote_id' => "{$lead}-{$at}",
+                'channel' => $channel,
+                'participant' => $who,
+                'occurred_at' => Carbon::parse($at),
+                'duration_ms' => $ms,
+            ]);
+            $talk('a', 'PHONE_CALL', 'CONSUMER', '2026-09-01T14:00:00Z', 95000);   // answered
+            $talk('c', 'PHONE_CALL', 'CONSUMER', '2026-09-02T03:30:00Z');          // rang out
+            $talk('c', 'PHONE_CALL', 'CONSUMER', '2026-09-01T15:00:00Z', 30000);   // answered
+            $talk('d', 'PHONE_CALL', 'CONSUMER', '2026-09-01T03:00:00Z');          // the 31st: not counted
+            $talk('b', 'MESSAGE', 'CONSUMER', '2026-09-01T20:00:00Z');
+            $talk('b', 'EMAIL', 'ADVERTISER', '2026-09-01T20:45:00Z');             // first answer, 45 min
+            $talk('b', 'EMAIL', 'ADVERTISER', '2026-09-01T22:00:00Z');
+
+            // What they became: a and c are the same customer's one job,
+            // counted once; d's job is outside the days; b's was cancelled.
+            $job = fn (string $status, int $minor) => Job::create([
+                'franchise_id' => $t['franchise']->id,
+                'customer_id' => Customer::create(['owning_franchise_id' => $t['franchise']->id,
+                    'number' => 'C-'.bin2hex(random_bytes(3)), 'name' => 'A Customer'])->id,
+                'number' => 'J-'.bin2hex(random_bytes(3)),
+                'title' => 'Sweep',
+                'status' => $status,
+                'amount_minor' => $minor,
+                'currency' => 'USD',
+            ]);
+            $done = $job('Done', 45000);
+            $leads['a']->update(['job_id' => $done->id]);
+            $leads['c']->update(['job_id' => $done->id]);
+            $leads['d']->update(['job_id' => $job('Done', 99900)->id]);
+            $leads['b']->update(['job_id' => $job('Canceled', 30000)->id]);
+        });
+
+        $account = $this->signedInAs($t['admin']->fresh())
+            ->getJson('/api/v1/ads/performance?from=2026-09-01&to=2026-09-01&connection_id='.$row->getKey())
+            ->assertOk()
+            ->json('data.0.account');
+
+        $this->assertSame(3, $account['leads']);
+        $this->assertSame(2, $account['charged_leads']);
+        $this->assertSame(1, $account['credited_leads']);
+        $this->assertSame(411.52, $account['cost_per_lead'], '1234.56 over three leads');
+        $this->assertSame(3, $account['calls']);
+        $this->assertSame(1, $account['missed_calls']);
+        $this->assertSame(45, $account['median_first_reply_minutes'], 'the FIRST answer, not the last');
+        $this->assertSame(0, $account['unanswered_messages']);
+        $this->assertSame(1, $account['jobs']);
+        $this->assertSame(450.0, (float) $account['revenue']);
+        $this->assertSame(0.36, $account['return_on_spend'], '450 over 1234.56');
+    }
+
     public function test_a_ratio_with_no_denominator_is_null(): void
     {
         $t = $this->provisionTenant('A1-Group');

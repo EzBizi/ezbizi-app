@@ -69,6 +69,11 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 'A message in the sender\'s own words. Free text, so it can contain anything '
                 .'they chose to write — an address, a name, a reason for the work.',
                 Erasure::erase()),
+            new PersonalDataEntry('transcript', PersonalDataEntry::CONTENT,
+                'The words of a recorded call, read off the recording Google keeps, by Google Cloud '
+                .'Speech-to-Text. The audio is sent there once to be transcribed and kept by '
+                .'neither side; the words are kept here, with the enquiry.',
+                Erasure::erase()),
             new PersonalDataEntry('recording_url', PersonalDataEntry::CONTENT,
                 'Where Google keeps the recording of a call with this person — their voice. '
                 .'EzBizi never copies the audio; it streams it on request with the connected '
@@ -96,7 +101,7 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
 
     protected $fillable = [
         'organization_id', 'lead_id', 'remote_id', 'channel', 'participant',
-        'occurred_at', 'duration_ms', 'recording_url', 'text', 'attachments',
+        'occurred_at', 'duration_ms', 'recording_url', 'text', 'transcript', 'attachments',
         'is_automatic',
     ];
 

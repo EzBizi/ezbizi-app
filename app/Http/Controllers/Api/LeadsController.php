@@ -558,6 +558,8 @@ class LeadsController extends Controller
             'occurred_at' => $c->occurred_at?->toIso8601String(),
             'duration_ms' => $c->duration_ms,
             'text' => $c->text,
+            // A call's words, machine-transcribed from the recording.
+            'transcript' => $c->transcript,
             'attachments' => $c->attachments ?? [],
             // Never the URL itself: it is fetched with the connection's
             // token through the recording endpoint.
@@ -1116,6 +1118,9 @@ class LeadsController extends Controller
             'job' => $lead->job_id !== null && $lead->relationLoaded('job') && $lead->job !== null
                 ? $this->presentJob($lead->job)
                 : null,
+            // 'phone' when the job was found by the customer's number
+            // (`ezbizi:match-leads-to-jobs`) rather than booked from here.
+            'job_matched_by' => $lead->job_matched_by,
         ];
     }
 }

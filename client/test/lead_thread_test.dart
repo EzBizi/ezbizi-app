@@ -57,6 +57,24 @@ void main() {
     );
   });
 
+  testWidgets('a call shows its transcript, folded, labelled as one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+    );
+
+    expect(find.text('Transcript'), findsOneWidget);
+    expect(find.text('Hi, my fireplace smokes when I light it.'), findsNothing);
+
+    await tester.tap(find.text('Transcript'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hi, my fireplace smokes when I light it.'), findsOneWidget);
+  });
+
   testWidgets('a message row has no play bar; only a call with a recording '
       'does', (tester) async {
     await _pump(
@@ -382,6 +400,7 @@ Future<void> _pump(
                   'occurred_at': '2026-09-06T10:00:00Z',
                   'duration_ms': 125000,
                   'text': null,
+                  'transcript': 'Hi, my fireplace smokes when I light it.',
                   'attachments': <String>[],
                   'has_recording': true,
                 },

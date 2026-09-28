@@ -896,6 +896,55 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   hint: 'Every conversion action, including the ones not '
                       'counted above - so it is always the same or larger.',
                 ),
+                // EzBizi's own count, not Google's: the leads this account
+                // brought in over the same days, and what each one cost.
+                if (account['leads'] != null) ...[
+                  _figure(
+                    theme,
+                    'Leads',
+                    _number(account['leads']),
+                    hint: '${_number(account['charged_leads'])} charged, '
+                        '${_number(account['credited_leads'])} credited back.',
+                  ),
+                  _figure(
+                    theme,
+                    'Cost / lead',
+                    account['cost_per_lead'] == null
+                        ? '—'
+                        : _money(account['cost_per_lead'], currency),
+                  ),
+                  _figure(
+                    theme,
+                    'Missed calls',
+                    '${_number(account['missed_calls'])} of '
+                        '${_number(account['calls'])}',
+                    hint: 'Calls that rang out: Google recorded no '
+                        'conversation.',
+                  ),
+                  _figure(
+                    theme,
+                    'First reply',
+                    _minutes(account['median_first_reply_minutes']),
+                    hint: 'Median wait for a first answer to a message or '
+                        'booking. ${_number(account['unanswered_messages'])} '
+                        'still unanswered.',
+                  ),
+                  _figure(
+                    theme,
+                    'Revenue',
+                    _money(account['revenue'], currency),
+                    hint: 'From ${_number(account['jobs'])} jobs these leads '
+                        'became - booked from the lead or matched by the '
+                        "customer's phone. Cancelled jobs are left out.",
+                  ),
+                  _figure(
+                    theme,
+                    'Revenue / cost',
+                    account['return_on_spend'] == null
+                        ? '—'
+                        : '${(account['return_on_spend'] as num).toStringAsFixed(2)}×',
+                  ),
+                ],
                 for (final e in _extras.where((e) => _extra.contains(e.key)))
                   _figure(theme, e.label, _format(e, account[e.key], currency)),
               ],
@@ -1346,7 +1395,20 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
     }
   });
 
-  static const _rollupColumns = ['name', 'cost', 'clicks', 'impressions', 'conversions', 'all_conversions'];
+  static const _rollupColumns = [
+    'name', 'cost', 'clicks', 'impressions', 'conversions', 'all_conversions',
+    'leads', 'cost_per_lead', 'missed_calls', 'median_first_reply_minutes',
+    'revenue',
+  ];
+
+  /// A wait in the unit a person reads it in: "12 min", "3 h 5 min", "2 d".
+  static String _minutes(dynamic value) {
+    if (value == null) return '—';
+    final m = (value as num).round();
+    if (m < 60) return '$m min';
+    if (m < 1440) return '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60} min'}';
+    return '${(m / 1440).toStringAsFixed(m < 14400 ? 1 : 0)} d';
+  }
 
   int? _rollupSortIndex() {
     final i = _rollupColumns.indexOf(_sortBy);
@@ -1565,6 +1627,15 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   'All conversions',
                   _number(total('all_conversions')),
                 ),
+                _figure(theme, 'Leads', _number(total('leads'))),
+                _figure(theme, 'Revenue', _money(total('revenue'), currency)),
+                _figure(
+                  theme,
+                  'Cost / lead',
+                  total('leads') == 0
+                      ? '—'
+                      : _money(total('cost') / total('leads'), currency),
+                ),
               ],
             ),
             const Divider(height: 28),
@@ -1587,6 +1658,11 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                   _sortable('Impressions', 'impressions'),
                   _sortable('Conversions', 'conversions'),
                   _sortable('All conversions', 'all_conversions'),
+                  _sortable('Leads', 'leads'),
+                  _sortable('Cost / lead', 'cost_per_lead'),
+                  _sortable('Missed calls', 'missed_calls'),
+                  _sortable('First reply', 'median_first_reply_minutes'),
+                  _sortable('Revenue', 'revenue'),
                 ],
                 rows: [
                   for (final r in rows)
@@ -1598,6 +1674,24 @@ class _AdsPerformanceScreenState extends State<AdsPerformanceScreen> {
                         DataCell(Text(_number(r['impressions']))),
                         DataCell(Text(_number(r['conversions']))),
                         DataCell(Text(_number(r['all_conversions']))),
+                        DataCell(Text(_number(r['leads']))),
+                        DataCell(
+                          Text(
+                            r['cost_per_lead'] == null
+                                ? '—'
+                                : _money(r['cost_per_lead'], r['currency']),
+                          ),
+                        ),
+                        DataCell(
+                          Text(
+                            '${_number(r['missed_calls'])} of '
+                            '${_number(r['calls'])}',
+                          ),
+                        ),
+                        DataCell(
+                          Text(_minutes(r['median_first_reply_minutes'])),
+                        ),
+                        DataCell(Text(_money(r['revenue'], r['currency']))),
                       ],
                     ),
                 ],

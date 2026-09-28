@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\Job;
+use App\Models\Lead;
+use App\Models\LeadConversation;
 use App\Models\SocialConnection;
 use App\Services\Ads\CampaignPerformance;
 use App\Support\Audit\AuditLogger;
@@ -219,7 +222,7 @@ class AdsPerformanceController extends Controller
                 $report = $this->performance->forConnection($row, $from, $to, withCampaigns: false);
                 $accounts[] = [
                     'connection_id' => $row->getKey(),
-                    ...$report['account'],
+                    ...self::withLeads($row, $report['account'], $from, $to),
                 ];
             } catch (RuntimeException $e) {
                 $refused[] = [
@@ -331,6 +334,104 @@ class AdsPerformanceController extends Controller
      * convenience: an optional fan-out is the kind of default that quietly
      * spends a tenant's whole daily quota because somebody left a tab open.
      */
+    /**
+     * The account's leads over the same days, and what each one cost - the
+     * figure A1 Leads reports per account and Google does not. Counted from
+     * EzBizi's own copy of the leads (every minute's sync), on the account's
+     * own calendar, since that is the calendar Google's cost is summed on.
+     *
+     * @param  array<string, mixed>  $account
+     * @return array<string, mixed>
+     */
+    private static function withLeads(SocialConnection $connection, array $account, Carbon $from, Carbon $to): array
+    {
+        $zone = $account['time_zone'] ?? config('app.timezone');
+        $window = [
+            Carbon::parse($from->format('Y-m-d'), $zone)->startOfDay()->utc(),
+            Carbon::parse($to->format('Y-m-d'), $zone)->endOfDay()->utc(),
+        ];
+        $leads = Lead::query()
+            ->where('connection_id', $connection->getKey())
+            ->whereBetween('received_at', $window)
+            ->selectRaw("COUNT(*) AS total, SUM(charge_status = 'CHARGED') AS charged, SUM(charge_status = 'CREDITED') AS credited")
+            ->first();
+
+        $total = (int) $leads->total;
+
+        /*
+         * Calls, and the ones nobody picked up. Google records a duration on
+         * every call that connected, so a customer's call without one rang
+         * out - measured 2026-09-28: 16,070 of 47,483 calls had none, and none
+         * of those has a recording.
+         */
+        $calls = LeadConversation::query()
+            ->whereIn('lead_id', Lead::query()->select('id')->where('connection_id', $connection->getKey()))
+            ->where('channel', 'PHONE_CALL')
+            ->where('participant', 'CONSUMER')
+            ->whereBetween('occurred_at', $window)
+            ->selectRaw('COUNT(*) AS total, SUM(duration_ms IS NULL) AS missed')
+            ->first();
+
+        /*
+         * How long a written enquiry (a message or a booking) waited for the
+         * business's first answer, as the median - one lead left for a week
+         * must not read as everyone waiting a day. Leads still unanswered are
+         * counted apart rather than left out, which would flatter the median.
+         */
+        $waits = [];
+        $unanswered = 0;
+        Lead::query()
+            ->where('connection_id', $connection->getKey())
+            ->whereIn('lead_type', ['MESSAGE', 'BOOKING'])
+            ->whereBetween('received_at', $window)
+            ->select('id', 'received_at')
+            ->addSelect(['first_reply_at' => LeadConversation::query()
+                ->selectRaw('MIN(occurred_at)')
+                ->whereColumn('lead_id', 'leads.id')
+                ->where('participant', 'ADVERTISER')])
+            ->get()
+            ->each(function (Lead $lead) use (&$waits, &$unanswered) {
+                if ($lead->first_reply_at === null) {
+                    $unanswered++;
+                } else {
+                    $waits[] = max(0, Carbon::parse($lead->first_reply_at, 'UTC')->getTimestamp() - $lead->received_at->getTimestamp());
+                }
+            });
+        sort($waits);
+        $median = $waits === [] ? null : $waits[intdiv(count($waits), 2)];
+
+        /*
+         * What those leads became: the jobs they were booked as or matched to
+         * by phone (`ezbizi:match-leads-to-jobs`), each job once however many
+         * times its customer called. A cancelled job is not revenue.
+         */
+        $jobs = Job::query()
+            ->whereIn('id', Lead::query()->select('job_id')
+                ->where('connection_id', $connection->getKey())
+                ->whereBetween('received_at', $window)
+                ->whereNotNull('job_id'))
+            ->whereRaw("LOWER(status) NOT IN ('canceled', 'cancelled')")
+            ->selectRaw('COUNT(*) AS total, COALESCE(SUM(amount_minor), 0) AS revenue')
+            ->first();
+        $revenue = round(((int) $jobs->revenue) / 100, 2);
+
+        return [
+            ...$account,
+            'leads' => $total,
+            'charged_leads' => (int) $leads->charged,
+            'credited_leads' => (int) $leads->credited,
+            // Null, not 0, with no leads: nothing was bought, so nothing had a price.
+            'cost_per_lead' => $total > 0 ? round(((float) $account['cost']) / $total, 2) : null,
+            'calls' => (int) $calls->total,
+            'missed_calls' => (int) $calls->missed,
+            'median_first_reply_minutes' => $median === null ? null : (int) round($median / 60),
+            'unanswered_messages' => $unanswered,
+            'jobs' => (int) $jobs->total,
+            'revenue' => $revenue,
+            'return_on_spend' => ((float) $account['cost']) > 0 ? round($revenue / (float) $account['cost'], 2) : null,
+        ];
+    }
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -375,9 +476,11 @@ class AdsPerformanceController extends Controller
 
         foreach ($connections as $connection) {
             try {
+                $report = $this->performance->forConnection($connection, $from, $to);
+                $report['account'] = self::withLeads($connection, $report['account'], $from, $to);
                 $accounts[] = [
                     'connection_id' => $connection->getKey(),
-                    ...$this->performance->forConnection($connection, $from, $to),
+                    ...$report,
                 ];
             } catch (RuntimeException $e) {
                 // One dead account must not blank the whole report. A-1 holds

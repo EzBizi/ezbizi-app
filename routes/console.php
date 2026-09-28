@@ -305,3 +305,11 @@ Schedule::command('ezbizi:a1leads-delta-sync')->everyMinute()->withoutOverlappin
 // background check), once a morning before the day's calls - an account that
 // lapses stops showing ads and nobody is told.
 Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('America/New_York')->withoutOverlapping(30);
+
+// Which job each lead became, by the customer's phone - Workiz jobs arrive
+// every minute; a quarter-hour is soon enough for a revenue figure.
+Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutOverlapping(30);
+
+// Recorded Local Services calls, transcribed a few at a time so each lead can
+// be sorted from what was said. Does nothing until GOOGLE_SPEECH_KEY is set.
+Schedule::command('ezbizi:transcribe-lead-calls')->everyFiveMinutes()->withoutOverlapping(15);

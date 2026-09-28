@@ -456,7 +456,11 @@ class _LeadThreadState extends State<LeadThread> {
                       ),
                     _noteBlock(theme, lead),
                     if (lead['job'] is Map)
-                      _bookedLine(theme, lead['job'] as Map),
+                      _bookedLine(
+                        theme,
+                        lead['job'] as Map,
+                        matched: lead['job_matched_by'] == 'phone',
+                      ),
                     if (_canBook && narrow)
                       Padding(
                         padding: const EdgeInsets.only(top: 10),
@@ -597,10 +601,11 @@ class _LeadThreadState extends State<LeadThread> {
   );
 
   /// "Booked · Job 0142 · Thu 17 Sep, 2 PM", with the job one tap away.
-  Widget _bookedLine(ThemeData theme, Map job) {
+  Widget _bookedLine(ThemeData theme, Map job, {bool matched = false}) {
     final when = formatJobWhen(job['scheduled_for'] as String?);
     final line = [
-      'Booked',
+      // Found by the customer's number, not booked from this lead: say so.
+      matched ? 'Matched by phone' : 'Booked',
       'Job ${job['number'] ?? ''}'.trim(),
       if (when.isNotEmpty) when,
     ].join(' · ');
@@ -974,6 +979,25 @@ class _LeadThreadState extends State<LeadThread> {
                 load: () => widget.api.getBytes(
                   '/leads/${widget.lead['id']}/conversations/$id/recording',
                 ),
+              ),
+            ),
+          // Read off the recording by Google's speech service, both voices
+          // in one text - so it is labelled as a transcript, not quoted.
+          if ((c['transcript'] as String?)?.isNotEmpty ?? false)
+            Theme(
+              data: theme.copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: ValueKey('transcript-$id'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 6),
+                dense: true,
+                title: Text('Transcript', style: theme.textTheme.labelMedium),
+                children: [
+                  SelectableText(
+                    c['transcript'] as String,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
               ),
             ),
         ],

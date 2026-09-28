@@ -125,12 +125,17 @@ class LeadInsights
         $saidSomething = false;
 
         foreach ($rows as $row) {
-            if ($row->text === null || trim($row->text) === '') {
+            // A call's words are its transcript, both sides in one text.
+            $said = $row->text ?? $row->transcript;
+            if ($said === null || trim($said) === '') {
                 continue;
             }
 
             $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Customer' : 'Business';
-            $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $row->text));
+            if ($row->text === null) {
+                $who = $row->participant === LeadConversation::FROM_CONSUMER ? 'Call from the customer' : 'Call from the business';
+            }
+            $lines[] = "{$who}: ".trim((string) preg_replace('/\s+/', ' ', $said));
             $saidSomething = $saidSomething || $row->participant === LeadConversation::FROM_CONSUMER;
         }
 

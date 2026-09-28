@@ -574,6 +574,13 @@ return [
         'tiles_key' => env('GOOGLE_MAPS_TILES_KEY'),
     ],
 
+    // Google Cloud Speech-to-Text, for transcribing Local Services call
+    // recordings (`ezbizi:transcribe-lead-calls`). Off while empty: Google
+    // bills every minute of audio, so switching it on is Jose's call.
+    'google_speech' => [
+        'key' => env('GOOGLE_SPEECH_KEY', ''),
+    ],
+
     // Web Management's bulk hours editor can write a listing's regularHours.
     // Off until EzBizi has Business Profile write access of its own (Jose,
     // 2026-09-28); until then that destination answers "not switched on".

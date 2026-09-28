@@ -1,0 +1,138 @@
+<?php
+
+namespace App\Services\Leads;
+
+use App\Models\LeadConversation;
+use App\Models\SocialConnection;
+use App\Support\Social\GoogleToken;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Symfony\Component\Process\ExecutableFinder;
+use Symfony\Component\Process\Process;
+
+/**
+ * A Local Services call, in words - so a call can be read, searched and sorted
+ * like a message. 87% of A-1's leads are calls, and until now the classifier
+ * (LeadInsights) had nothing to read on any of them.
+ *
+ * Google Cloud Speech-to-Text v1, the `phone_call` model, asynchronous: the
+ * recording is fetched with the account's own token, turned into 8 kHz mono
+ * FLAC (a ten-minute call is about 5 MB, under Google's 10 MB inline limit),
+ * and sent once. The audio is not kept here or there; the words are.
+ *
+ * The key travels in a header, never the URL: an exception carrying the
+ * request URL would otherwise carry the key into a log.
+ */
+class CallTranscripts
+{
+    private const API = 'https://speech.googleapis.com/v1';
+
+    /** Google's limit for audio sent inline rather than from Cloud Storage. */
+    public const MAX_BYTES = 10_000_000;
+
+    public function enabled(): bool
+    {
+        return (string) config('services.google_speech.key') !== '';
+    }
+
+    /**
+     * Start transcribing one call; the name of Google's job, to ask after.
+     *
+     * @throws RuntimeException with a sentence, when it cannot be started
+     */
+    public function start(LeadConversation $row, SocialConnection $connection): string
+    {
+        try {
+            $audio = Http::withToken(GoogleToken::forConnection($connection, 'google_ads'))
+                ->withHeaders(['developer-token' => (string) config('services.google_ads.developer_token')])
+                ->timeout(30)
+                ->get((string) $row->recording_url);
+        } catch (ConnectionException) {
+            throw new RuntimeException('Google did not answer while fetching the recording.');
+        }
+        if ($audio->failed()) {
+            throw new RuntimeException('Google refused the recording (HTTP '.$audio->status().').');
+        }
+
+        $flac = self::flac($audio->body());
+        if (strlen($flac) > self::MAX_BYTES) {
+            throw new RuntimeException('The call is too long to transcribe inline.');
+        }
+
+        $response = $this->speech()->timeout(60)->post(self::API.'/speech:longrunningrecognize', [
+            'config' => [
+                'encoding' => 'FLAC',
+                'sampleRateHertz' => 8000,
+                'languageCode' => 'en-US',
+                'model' => 'phone_call',
+                'useEnhanced' => true,
+                'enableAutomaticPunctuation' => true,
+            ],
+            'audio' => ['content' => base64_encode($flac)],
+        ]);
+
+        $name = $response->json('name');
+        if ($response->failed() || ! is_string($name) || $name === '') {
+            throw new RuntimeException((string) ($response->json('error.message') ?? 'Speech-to-Text refused (HTTP '.$response->status().').'));
+        }
+
+        return $name;
+    }
+
+    /**
+     * The words, once Google has them: null while it is still working, '' for
+     * a call with nothing said.
+     *
+     * @throws RuntimeException when the job failed
+     */
+    public function finish(string $operation): ?string
+    {
+        try {
+            $response = $this->speech()->timeout(30)->get(self::API.'/operations/'.rawurlencode($operation));
+        } catch (ConnectionException) {
+            return null;
+        }
+        if ($response->failed()) {
+            throw new RuntimeException((string) ($response->json('error.message') ?? 'Speech-to-Text refused (HTTP '.$response->status().').'));
+        }
+        if ($response->json('done') !== true) {
+            return null;
+        }
+        if ($response->json('error') !== null) {
+            throw new RuntimeException((string) $response->json('error.message', 'The transcription failed.'));
+        }
+
+        $parts = array_map(
+            fn ($result) => trim((string) ($result['alternatives'][0]['transcript'] ?? '')),
+            (array) $response->json('response.results', []),
+        );
+
+        return trim(implode(' ', array_filter($parts, fn ($p) => $p !== '')));
+    }
+
+    private function speech()
+    {
+        return Http::withHeaders(['X-goog-api-key' => (string) config('services.google_speech.key')]);
+    }
+
+    /** @throws RuntimeException */
+    private static function flac(string $bytes): string
+    {
+        $ffmpeg = (new ExecutableFinder)->find('ffmpeg')
+            ?? throw new RuntimeException('ffmpeg is not installed.');
+
+        $process = new Process([$ffmpeg, '-hide_banner', '-loglevel', 'error',
+            '-i', 'pipe:0', '-ac', '1', '-ar', '8000', '-f', 'flac', 'pipe:1']);
+        $process->setInput($bytes);
+        $process->setTimeout(120);
+        $process->run();
+
+        $flac = $process->getOutput();
+        if (! $process->isSuccessful() || ! str_starts_with($flac, 'fLaC')) {
+            throw new RuntimeException('The recording could not be converted.');
+        }
+
+        return $flac;
+    }
+}

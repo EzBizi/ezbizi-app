@@ -395,7 +395,7 @@ class Lead extends Model implements CarriesAutomationScope, HoldsPersonalData, S
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
     protected $fillable = [
-        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id',
+        'organization_id', 'company_id', 'franchise_id', 'connection_id', 'remote_customer_id', 'job_id', 'job_matched_by',
         'source', 'is_test', 'remote_id', 'contact_name', 'phone', 'email', 'phone_digits',
         'marketing_consent_at', 'marketing_consent_text',
         'lead_type', 'category', 'service', 'locale', 'summary', 'note', 'note_by_user_id', 'note_updated_at',
