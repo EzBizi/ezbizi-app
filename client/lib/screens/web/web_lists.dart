@@ -17,15 +17,19 @@ import '../../core/api_client.dart';
 import 'seo_tab.dart' show firstApiError;
 
 /// Which list, and what each entry asks for.
-enum SiteListKind { team, branches, stores }
+enum SiteListKind { team, branches, stores, faq, services, beforeAfter, reviews }
 
 class _Field {
-  const _Field(this.key, this.label, {this.lines = 1, this.number = false});
+  const _Field(this.key, this.label,
+      {this.lines = 1, this.number = false, this.whole = false});
 
   final String key;
   final String label;
   final int lines;
   final bool number;
+
+  /// A whole number (a star rating), sent as an int rather than a double.
+  final bool whole;
 }
 
 const List<_Field> _teamFields = [
@@ -48,6 +52,40 @@ const List<_Field> _locationFields = [
   _Field('maps_url', 'Google Maps link'),
   _Field('latitude', 'Latitude', number: true),
   _Field('longitude', 'Longitude', number: true),
+];
+
+const List<_Field> _faqFields = [
+  _Field('title', 'Question'),
+  _Field('body', 'Answer', lines: 4),
+  _Field('category', 'Group'),
+];
+
+const List<_Field> _serviceFields = [
+  _Field('title', 'Service'),
+  _Field('body', 'Description', lines: 3),
+  _Field('image_url', 'Picture link'),
+  _Field('icon', 'Icon: chimney, fire, door, roof, tools, shield, star, check, home'),
+  _Field('link_url', 'Its page'),
+  _Field('phone', 'Phone'),
+  _Field('category', 'Group'),
+];
+
+const List<_Field> _beforeAfterFields = [
+  _Field('title', 'Title'),
+  _Field('body', 'Description', lines: 2),
+  _Field('image_url', 'Before picture link'),
+  _Field('image2_url', 'After picture link'),
+  _Field('subtitle', 'Where'),
+  _Field('category', 'Service'),
+];
+
+const List<_Field> _reviewFields = [
+  _Field('title', 'Name'),
+  _Field('body', 'Review', lines: 4),
+  _Field('rating', 'Stars (1 to 5)', number: true, whole: true),
+  _Field('dated', 'Date (YYYY-MM-DD)'),
+  _Field('subtitle', 'Where it was left'),
+  _Field('image_url', 'Photo link'),
 ];
 
 const List<_Field> _storeExtras = [
@@ -102,11 +140,26 @@ class _SiteListEditorState extends State<SiteListEditor> {
         SiteListKind.team => _teamFields,
         SiteListKind.branches => _locationFields,
         SiteListKind.stores => [..._locationFields, ..._storeExtras],
+        SiteListKind.faq => _faqFields,
+        SiteListKind.services => _serviceFields,
+        SiteListKind.beforeAfter => _beforeAfterFields,
+        SiteListKind.reviews => _reviewFields,
       };
 
-  String get _path => widget.kind == SiteListKind.team
-      ? '/web/sites/${widget.siteId}/team'
-      : '/web/sites/${widget.siteId}/locations';
+  /// The `web_items` kind, for the four lists kept there.
+  String? get _itemKind => switch (widget.kind) {
+        SiteListKind.faq => 'faq',
+        SiteListKind.services => 'service',
+        SiteListKind.beforeAfter => 'before_after',
+        SiteListKind.reviews => 'review',
+        _ => null,
+      };
+
+  String get _path => _itemKind != null
+      ? '/web/sites/${widget.siteId}/items/$_itemKind'
+      : widget.kind == SiteListKind.team
+          ? '/web/sites/${widget.siteId}/team'
+          : '/web/sites/${widget.siteId}/locations';
 
   @override
   void initState() {
@@ -146,9 +199,9 @@ class _SiteListEditorState extends State<SiteListEditor> {
 
       final data = response.body['data'];
       final list = switch (widget.kind) {
-        SiteListKind.team => data,
         SiteListKind.branches => (data as Map?)?['site'],
         SiteListKind.stores => (data as Map?)?['company'],
+        _ => data,
       };
 
       _retire(List.of(_rows));
@@ -175,6 +228,7 @@ class _SiteListEditorState extends State<SiteListEditor> {
             f.key: () {
               final text = r.boxes[f.key]!.text.trim();
               if (text.isEmpty) return null;
+              if (f.whole) return int.tryParse(text);
               return f.number ? double.tryParse(text) : text;
             }(),
         },
@@ -182,12 +236,15 @@ class _SiteListEditorState extends State<SiteListEditor> {
 
     final response = await widget.api.put(
       _path,
-      widget.kind == SiteListKind.team
-          ? {'members': items}
-          : {
-              'scope': widget.kind == SiteListKind.branches ? 'site' : 'company',
-              'locations': items,
-            },
+      _itemKind != null
+          ? {'items': items}
+          : widget.kind == SiteListKind.team
+              ? {'members': items}
+              : {
+                  'scope':
+                      widget.kind == SiteListKind.branches ? 'site' : 'company',
+                  'locations': items,
+                },
     );
     if (!mounted) return;
 
@@ -226,6 +283,18 @@ class _SiteListEditorState extends State<SiteListEditor> {
         SiteListKind.stores =>
           'Every location, for [ezbizi_store_locator]. One list for every '
               'website this company runs.',
+        SiteListKind.faq =>
+          'The questions [ezbizi_faq] answers, grouped under "Group". One '
+              'list for every website this company runs.',
+        SiteListKind.services =>
+          'The services [ezbizi_services] shows. One list for every website '
+              'this company runs.',
+        SiteListKind.beforeAfter =>
+          'Before-and-after pairs for [ezbizi_before_after]. One list for '
+              'every website this company runs.',
+        SiteListKind.reviews =>
+          'Reviews to feature on [ezbizi_reviews]. With none here it shows '
+              'the Google reviews EzBizi already has.',
       };
 
   @override
@@ -244,7 +313,14 @@ class _SiteListEditorState extends State<SiteListEditor> {
       children: [
         const SizedBox(height: 16),
         Text(
-          widget.kind == SiteListKind.team ? 'The team' : 'Locations',
+          switch (widget.kind) {
+            SiteListKind.team => 'The team',
+            SiteListKind.branches || SiteListKind.stores => 'Locations',
+            SiteListKind.faq => 'Questions',
+            SiteListKind.services => 'Services',
+            SiteListKind.beforeAfter => 'Pairs',
+            SiteListKind.reviews => 'Featured reviews',
+          },
           style: theme.textTheme.titleSmall,
         ),
         const SizedBox(height: 4),
@@ -270,9 +346,14 @@ class _SiteListEditorState extends State<SiteListEditor> {
                   _saved = null;
                 }),
                 icon: const Icon(Icons.add, size: 18),
-                label: Text(widget.kind == SiteListKind.team
-                    ? 'Add a person'
-                    : 'Add a location'),
+                label: Text(switch (widget.kind) {
+                  SiteListKind.team => 'Add a person',
+                  SiteListKind.branches || SiteListKind.stores => 'Add a location',
+                  SiteListKind.faq => 'Add a question',
+                  SiteListKind.services => 'Add a service',
+                  SiteListKind.beforeAfter => 'Add a pair',
+                  SiteListKind.reviews => 'Add a review',
+                }),
               ),
               FilledButton(
                 onPressed: _saving ? null : _save,
@@ -299,16 +380,23 @@ class _SiteListEditorState extends State<SiteListEditor> {
 
   Widget _entry(ThemeData theme, int i) {
     final row = _rows[i];
-    final name = row.boxes['name']!.text.trim();
+    // The first field names the entry: a person, a location, a question.
+    final name = row.boxes[_fields.first.key]!.text.trim();
 
     return Card(
       key: ValueKey('site-list-${row.id}'),
       margin: const EdgeInsets.only(bottom: 8),
       child: ExpansionTile(
         title: Text(name.isEmpty ? 'New entry' : name),
-        subtitle: widget.kind == SiteListKind.team
-            ? (row.boxes['role']!.text.trim().isEmpty ? null : Text(row.boxes['role']!.text))
-            : (row.boxes['city']!.text.trim().isEmpty ? null : Text(row.boxes['city']!.text)),
+        subtitle: () {
+          final key = switch (widget.kind) {
+            SiteListKind.team => 'role',
+            SiteListKind.branches || SiteListKind.stores => 'city',
+            _ => 'category',
+          };
+          final text = row.boxes[key]?.text.trim() ?? '';
+          return text.isEmpty ? null : Text(text);
+        }(),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
         children: [
           for (final f in _fields)

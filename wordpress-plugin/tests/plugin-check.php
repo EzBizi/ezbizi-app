@@ -116,9 +116,11 @@ function home_url($path = '') { return ($GLOBALS['home'] ?? 'https://a-1chimney.
 function wp_parse_url($u, $c = -1) { return $c === -1 ? parse_url($u) : parse_url($u, $c); }
 function sanitize_text_field($s) { return is_string($s) ? trim(strip_tags($s)) : ''; }
 function wp_unslash($s) { return is_string($s) ? stripslashes($s) : $s; }
+function untrailingslashit($s) { return rtrim((string) $s, '/'); }
 function esc_html($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
 function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
-function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) ? (string) $s : ''; }
+// WordPress lets tel:, sms: and mailto: through esc_url; so does this.
+function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) || preg_match('/^(tel|sms|mailto):[^\s"<>]+$/i', (string) $s) ? (string) $s : ''; }
 function esc_url_raw($s) { return (string) $s; }
 function register_setting($g, $n, $a = []) { $GLOBALS['settings'][$n] = $a; }
 function add_filter($hook, $cb, $p = 10, $a = 1) { $GLOBALS['filters'][$hook][] = $cb; }
@@ -137,6 +139,9 @@ function human_time_diff($from, $to = 0) {
 function __($t, $d = null) { return $t; }
 function esc_html__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
 function esc_attr__($t, $d = null) { return htmlspecialchars($t, ENT_QUOTES, 'UTF-8'); }
+if (! function_exists('date_i18n')) { function date_i18n($f, $ts) { return date($f, $ts); } }
+if (! function_exists('wpautop')) { function wpautop($s) { return '<p>' . $s . '</p>'; } }
+if (! function_exists('_n')) { function _n($one, $many, $n, $d = null) { return $n == 1 ? $one : $many; } }
 /*
  * Records instead of discarding, because the menu is the thing being asserted.
  * `add_options_page` is gone with the page that used it: a stub for a function
@@ -851,6 +856,49 @@ check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), tr
 check('and its position', str_contains($chat, 'right:20px'), true);
 check('the chat posts to the chat endpoint', str_contains($chat, '/api/v1/web/chat'), true);
 
+echo PHP_EOL . "The form carries A1's appointment form" . PHP_EOL;
+reset_site();
+$booking = json_decode(widget_payload(), true);
+$booking['widgets']['form'] = array_merge($booking['widgets']['form'], [
+    'title' => 'Book an Appointment Online',
+    'subtitle' => 'Schedule directly with our scheduling system.',
+    'antibot' => true, 'antibot_label' => "I'm not a robot",
+    'consent_on' => false,
+    'redirect' => 'https://a1.test/thanks/',
+    'fields' => [
+        ['label' => 'First Name', 'type' => 'text', 'required' => true, 'placeholder' => 'John', 'width' => 25],
+        ['label' => 'Last Name', 'type' => 'text', 'required' => true, 'width' => 25],
+        ['label' => 'Appointment Date', 'type' => 'date', 'required' => true, 'width' => 50],
+        ['label' => 'Contact me by', 'type' => 'radio', 'options' => ['Phone', 'Email']],
+        ['label' => 'Campaign', 'type' => 'hidden', 'value' => 'spring'],
+    ],
+]);
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($booking)];
+ezbizi_fetch();
+do_action('init');
+$bform = $GLOBALS['sc']['ezbizi_form']([]);
+check('its title', str_contains($bform, '>Book an Appointment Online</h3>'), true);
+check('and the line under it', str_contains($bform, 'Schedule directly'), true);
+check('a quarter-width field', str_contains($bform, 'calc(25% - '), true);
+check('a placeholder', str_contains($bform, 'placeholder="John"'), true);
+check('a date picker', str_contains($bform, 'type="date"'), true);
+check('radio choices', substr_count($bform, 'type="radio"'), 2);
+check('a hidden value sent with it', str_contains($bform, 'type="hidden" name="Campaign" value="spring"'), true);
+check('the robot box', str_contains($bform, 'ezbizi-antibot-box'), true);
+check('no consent box when switched off', str_contains($bform, '<input type="checkbox" class="ezbizi-consent-box"'), false);
+check('where it goes after', str_contains($bform, 'location.href="https:\/\/a1.test\/thanks\/"'), true);
+check('consent links are drawn as links', ezbizi_consent_html('See our [Privacy Policy](https://a1.test/privacy/).'), 'See our <a href="https://a1.test/privacy/" target="_blank" rel="noopener">Privacy Policy</a>.');
+check('and nothing else is', ezbizi_consent_html('[x](javascript:alert(1)) <b>hi</b>'), '[x](javascript:alert(1)) &lt;b&gt;hi&lt;/b&gt;');
+check('a link cannot break out of its href', str_contains(ezbizi_consent_html('[y](https://e.test/"onmouseover=x)'), '"onmouseover'), false);
+check('first and last name make the lead\'s name', str_contains($bform, "low==='first name'"), true);
+
+// Back to the standard widget payload for the sections that follow.
+reset_site();
+$GLOBALS['http_next'] = ['code' => 200, 'body' => widget_payload()];
+ezbizi_fetch();
+do_action('init');
+check('a select with no placeholder prompts for a choice', str_contains($GLOBALS['sc']['ezbizi_form']([]), '<option value="">Choose…</option><option value="Sweep">'), true);
+
 echo PHP_EOL . "A shortcode argument cannot override EzBizi" . PHP_EOL;
 $forced = $GLOBALS['sc']['ezbizi_form'](['fields' => 'Something,Else', 'button' => 'Override me']);
 check('the fields still come from EzBizi', str_contains($forced, 'What needs doing?'), true);
@@ -987,6 +1035,40 @@ check('and the launcher its own shape', str_contains($chat_html, 'border-radius:
 // It must not be readable as HTML when it comes back from a stranger.
 check('replies are drawn as text', str_contains($chat_html, 'row.textContent=m.text'), true);
 check('and never as markup', str_contains($chat_html, 'row.innerHTML=m.text'), false);
+
+echo PHP_EOL . "The chat takes Toula's options" . PHP_EOL;
+reset_site();
+$toula = json_decode(widget_payload(), true);
+$toula['widgets']['chat'] += [
+    'agent_name' => 'Maria', 'avatar_url' => 'https://example.com/m.jpg', 'show_status' => true,
+    'online_text' => 'Here now', 'bubble_icon' => 'phone', 'bubble_size' => 60, 'offset_x' => 30,
+    'offset_y' => 40, 'animation' => 'fade', 'delay' => 5, 'devices' => 'mobile', 'hide_on' => "/careers
+/jobs/*",
+    'bubble_bg' => '#ff0000', 'header_bg' => '#00ff00', 'shadow' => false, 'analytics' => true,
+];
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($toula)];
+ezbizi_fetch();
+$_SERVER['REQUEST_URI'] = '/about/';
+$c = $GLOBALS['sc']['ezbizi_chat']([]);
+check('the agent is named', str_contains($c, 'ezbizi-chat-agent">Maria'), true);
+check('with a face', str_contains($c, 'src="https://example.com/m.jpg"'), true);
+check('and an online dot', str_contains($c, 'Here now'), true);
+check('where it was put', str_contains($c, 'right:30px;bottom:40px'), true);
+check('hidden until the delay', str_contains($c, 'display:none') && str_contains($c, 'delay=5'), true);
+check('the bubble colour', str_contains($c, 'background:#ff0000'), true);
+check('and size', str_contains($c, 'height:60px'), true);
+check('no shadow when asked', str_contains($c, 'box-shadow:0 6px 20px'), false);
+check('phones only', str_contains($c, '@media (min-width:768px)'), true);
+check('fades rather than slides', str_contains($c, 'ezbizi-chat-fade'), true);
+check('and tells analytics', str_contains($c, "event:'ezbizi_chat_'+e"), true);
+check('the phone icon', str_contains($c, 'M6.6 10.8'), true);
+$_SERVER['REQUEST_URI'] = '/careers/';
+check('never on a hidden page', $GLOBALS['sc']['ezbizi_chat']([]), '');
+$_SERVER['REQUEST_URI'] = '/jobs/roofer/';
+check('or under a hidden path', $GLOBALS['sc']['ezbizi_chat']([]), '');
+$_SERVER['REQUEST_URI'] = '/careersx/';
+check('but a longer name is not the page', $GLOBALS['sc']['ezbizi_chat']([]) !== '', true);
+unset($_SERVER['REQUEST_URI'], $GLOBALS['ezbizi_chat_drawn']);
 
 echo PHP_EOL . "The chat bubble is on every page, and only once" . PHP_EOL;
 /*
@@ -1177,6 +1259,8 @@ function city_pages() {
         '/chimney-sweep-montclair' => ['city' => 'Montclair', 'state' => 'NJ', 'group' => 'North Jersey'],
         '/chimney-sweep-caldwell' => ['city' => 'Caldwell', 'state' => 'NJ', 'group' => 'North Jersey', 'phone' => '555-0111'],
         '/chimney-sweep-vineland' => ['city' => 'Vineland', 'state' => 'NJ', 'group' => 'South Jersey'],
+        // A second page about the same town: one town in the list, not two.
+        '/chimney-repair-vineland' => ['city' => 'Vineland', 'state' => 'NJ', 'group' => 'South Jersey'],
         // No group, so it has nowhere to be filed and goes last.
         '/chimney-sweep-dover' => ['city' => 'Dover', 'state' => 'DE'],
         // Not a town page at all: no city, so nothing may list it.
@@ -1222,12 +1306,51 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'icon_color' => ['type' => 'color', 'part' => 'icon', 'prop' => 'color'],
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
+                    'networks' => ['type' => 'text', 'max' => 300],
+                    'colors' => ['type' => 'choice', 'choices' => ['single', 'brand']],
+                    'new_tab' => ['type' => 'bool'],
+                ],
+                'city_list' => [
+                    'heading_tag' => ['type' => 'choice', 'choices' => ['none', 'h2', 'h3', 'h4', 'h5', 'h6']],
+                    'other_label' => ['type' => 'text', 'max' => 40],
+                    'search' => ['type' => 'bool'],
+                    'count' => ['type' => 'bool'],
+                    'show_state' => ['type' => 'bool'],
+                ],
+                'phone_box' => [
+                    'which' => ['type' => 'choice', 'choices' => ['primary', 'secondary']],
+                    'format' => ['type' => 'choice', 'choices' => ['as_entered', 'dashes', 'dots', 'parentheses']],
+                    'link_type' => ['type' => 'choice', 'choices' => ['call', 'sms', 'whatsapp']],
+                    'link' => ['type' => 'bool'],
+                ],
+                'google_map' => [
+                    'map_type' => ['type' => 'choice', 'choices' => ['roadmap', 'satellite', 'hybrid', 'terrain']],
+                    'directions' => ['type' => 'bool'],
+                ],
+                'post_title' => [
+                    'tag' => ['type' => 'choice', 'choices' => ['none', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div']],
+                    'format' => ['type' => 'choice', 'choices' => ['title', 'city', 'city_state', 'address']],
+                ],
+                'hours_table' => [
+                    'layout' => ['type' => 'choice', 'choices' => ['table', 'stack', 'inline']],
+                    'days' => ['type' => 'choice', 'choices' => ['short', 'long']],
+                    'clock' => ['type' => 'choice', 'choices' => ['12', '24']],
+                    'status' => ['type' => 'bool'],
+                    'show_closed' => ['type' => 'bool'],
+                ],
+                'contact_info' => [
+                    'hours' => ['type' => 'bool'],
+                    'secondary' => ['type' => 'bool'],
+                    'links' => ['type' => 'bool'],
+                    'closed_text' => ['type' => 'text', 'max' => 30],
+                    'order' => ['type' => 'text', 'max' => 60],
                 ],
                 'cta' => [
                     'action' => ['type' => 'choice', 'choices' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp']],
                     'url' => ['type' => 'text', 'max' => 500],
                     'url_params' => ['type' => 'text', 'max' => 200],
                     'new_tab' => ['type' => 'bool'],
+                    'label' => ['type' => 'choice', 'choices' => ['words', 'value']],
                     'icon' => ['type' => 'bool'],
                     'icon_position' => ['type' => 'choice', 'choices' => ['left', 'right']],
                     'animation' => ['type' => 'choice', 'choices' => ['none', 'pulse', 'shake', 'bounce', 'glow']],
@@ -1318,6 +1441,12 @@ check('an override cannot write its own CSS', str_contains($GLOBALS['sc']['ezbiz
 // Compared without the element id, which every call numbers afresh.
 $strip = fn ($html) => preg_replace('/ezbizi-social-\d+/', '', $html);
 check('an option nobody described is ignored', $strip($GLOBALS['sc']['ezbizi_social_links'](['onclick' => 'x'])) === $strip($GLOBALS['sc']['ezbizi_social_links']([])), true);
+
+$picked = $GLOBALS['sc']['ezbizi_social_links'](['networks' => 'tiktok,facebook']);
+check('only the networks asked for', substr_count($picked, '<a class="ezbizi-social-link'), 2);
+check('in the order asked for', strpos($picked, 'tiktok.com') < strpos($picked, 'facebook.com'), true);
+check('brand colours', str_contains($GLOBALS['sc']['ezbizi_social_links'](['colors' => 'brand']), '#1877F2'), true);
+check('a new tab can be switched off', str_contains($GLOBALS['sc']['ezbizi_social_links'](['new_tab' => 'no']), 'target="_blank"'), false);
 
 // Jose, 2026-09-25: "i want all the options, for all the widgets".
 $styled = $GLOBALS['sc']['ezbizi_social_links'](['icon_color' => '#FF0000', 'label_font_family' => 'Oswald', 'box_devices' => 'mobile']);
@@ -1504,8 +1633,17 @@ $folded = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded']);
 // `<details>` because the accordion has to work with JavaScript off, and
 // because the alternative is enqueuing a script for a fold.
 check('the accordion folds with no script', str_contains($folded, '<details'), true);
-check('each group is a panel', str_contains($folded, '<summary>North Jersey</summary>'), true);
+$searchable = $GLOBALS['sc']['ezbizi_city_list'](['search' => 'yes', 'count' => 'yes']);
+check('a search box over the towns', str_contains($searchable, 'class="ezbizi-cities-search"'), true);
+check('a count beside each group', (bool) preg_match('/ezbizi-cities-count">\(\d+\)/', $searchable), true);
+check('the state can be left off', str_contains($GLOBALS['sc']['ezbizi_city_list'](['show_state' => 'no']), ', NJ<'), false);
+check('each group is a panel', str_contains($folded, '<summary class="ezbizi-cities-label">North Jersey</summary>'), true);
 check('and nothing is enqueued to make it work', str_contains($folded, '<script'), false);
+check('two pages about one town list it once', substr_count($folded, 'Vineland, NJ'), 1);
+check('a town in no group gets its own panel when groups fold', str_contains($folded, '<summary class="ezbizi-cities-label">Other areas</summary>'), true);
+$a1like = $GLOBALS['sc']['ezbizi_city_list'](['preset' => 'folded', 'heading_tag' => 'h3', 'other_label' => 'Ungrouped']);
+check('a group name can be a heading, as A1 drew it', str_contains($a1like, '<summary class="ezbizi-cities-label"><h3 class="ezbizi-cities-heading">North Jersey</h3></summary>'), true);
+check('and the panel keeps A1 its name', str_contains($a1like, '>Ungrouped</h3></summary>'), true);
 
 check(
     'an unknown name renders the default',
@@ -1716,6 +1854,42 @@ check('no team, nothing drawn', $GLOBALS['sc']['ezbizi_team']([]), '');
 check('no branches, nothing drawn', $GLOBALS['sc']['ezbizi_branches']([]), '');
 check('no stores, nothing drawn', $GLOBALS['sc']['ezbizi_store_locator']([]), '');
 
+echo PHP_EOL . "Services, reviews, before-and-after and FAQ draw EzBizi's lists" . PHP_EOL;
+reset_site();
+serve_preset_payload([], [], [
+    'items' => [
+        'service' => [
+            ['title' => 'Chimney Sweep', 'body' => 'Every flue, cleaned.', 'image_url' => 'https://x.test/sweep.jpg', 'icon' => 'chimney', 'link_url' => 'https://x.test/sweep/', 'category' => 'Chimney'],
+            ['title' => 'Door Repair', 'body' => 'Springs and rollers.', 'category' => 'Doors'],
+        ],
+        'review' => [
+            ['title' => 'Pat L.', 'body' => 'Quick and tidy.', 'rating' => 5, 'dated' => '2026-09-01', 'subtitle' => 'Google'],
+            ['title' => 'Sam K.', 'body' => 'Late but fine.', 'rating' => 3],
+        ],
+        'before_after' => [['title' => 'Crown rebuild', 'image_url' => 'https://x.test/b.jpg', 'image2_url' => 'https://x.test/a.jpg']],
+        'faq' => [['title' => 'Do you sweep in winter?', 'body' => 'Yes, all year.', 'category' => 'General']],
+    ],
+    'reviews' => [['title' => 'Google Person', 'body' => 'From Google.', 'rating' => 5]],
+]);
+$services = $GLOBALS['sc']['ezbizi_services']([]);
+check('every service', substr_count($services, 'class="ezbizi-service"'), 2);
+check('its icon is inline markup', str_contains($services, '<svg'), true);
+check('a service links to its page', str_contains($services, 'href="https://x.test/sweep/"'), true);
+$reviews = $GLOBALS['sc']['ezbizi_reviews']([]);
+check('featured reviews first, so not Google\'s', str_contains($reviews, 'From Google.'), false);
+check('below the lowest rating asked for, left out', str_contains($reviews, 'Late but fine.'), false);
+check('five stars as a label a screen reader says', str_contains($reviews, 'aria-label="5 out of 5"'), true);
+$ba = $GLOBALS['sc']['ezbizi_before_after']([]);
+check('a pair to compare', str_contains($ba, 'b.jpg') && str_contains($ba, 'a.jpg'), true);
+check('by dragging, which a keyboard can do too', str_contains($ba, 'type="range"'), true);
+$faq = $GLOBALS['sc']['ezbizi_faq']([]);
+check('a question that opens', str_contains($faq, '<summary class="ezbizi-faq-question">Do you sweep in winter?</summary>'), true);
+check('with the FAQ markup search engines read', str_contains($faq, '"@type":"FAQPage"'), true);
+reset_site();
+serve_preset_payload();
+check('no services, nothing drawn', $GLOBALS['sc']['ezbizi_services']([]), '');
+check('no FAQs, nothing drawn', $GLOBALS['sc']['ezbizi_faq']([]), '');
+
 echo PHP_EOL . "Elementor can find the widgets" . PHP_EOL;
 /*
  * Jose typed "EzBizi" into Elementor's Elements panel and got "No widget
@@ -1737,7 +1911,7 @@ elementor_present();
 $manager = new Elementor_Widgets_Manager;
 do_action('elementor/widgets/register', $manager);
 
-check('every widget is registered', count($manager->registered), 17);
+check('every widget is registered', count($manager->registered), 21);
 check('the form, under a name Elementor can address', isset($manager->registered['ezbizi-form']), true);
 check('the chat too', isset($manager->registered['ezbizi-chat']), true);
 
@@ -1874,10 +2048,27 @@ ob_start();
 $manager->registered['ezbizi-post-title']->ezbizi_call_render();
 check('and the page title', ob_get_clean(), 'Chimney Sweep in Caldwell, NJ');
 
+echo PHP_EOL . "Contact details carry A1's sections" . PHP_EOL;
+reset_site();
+serve_preset_payload([
+    'phone' => '(888) 984-4344', 'phone_secondary' => '(888) 111-2222', 'email' => 'office@a1.test',
+    'hours' => "Mon\u{2013}Fri 8:00 AM \u{2013} 5:00 PM \u{00B7} Sat closed",
+]);
+$contact = fn ($atts) => $GLOBALS['sc']['ezbizi_contact_info']($atts);
+$withHours = $contact(['hours' => 'yes', 'closed_text' => 'Shut']);
+check('hours as a section', str_contains($withHours, 'class="ezbizi-contact-day">Mon'), true);
+check('with the closed wording chosen', str_contains($withHours, '>Shut<'), true);
+$ordered = $contact(['order' => 'email,phone']);
+check('in the order asked for', strpos($ordered, 'office@a1.test') < strpos($ordered, '984-4344'), true);
+check('the second number when asked', str_contains($contact(['secondary' => 'yes']), '111-2222'), true);
+check('and not otherwise', str_contains($contact([]), '111-2222'), false);
+check('links can be switched off', str_contains($contact(['links' => 'no']), 'mailto:'), false);
+
 echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
 reset_site();
 serve_preset_payload(['phone' => '(888) 984-4344', 'email' => 'office@a1.test', 'review_link' => 'https://g.page/r/a1/review']);
 $cta = fn ($atts) => $GLOBALS['sc']['ezbizi_cta']($atts);
+check('the number itself, as A1 showed it', str_contains($cta(['label' => 'value']), '>(888) 984-4344<'), true);
 check('email opens a message', str_contains($cta(['action' => 'email']), 'href="mailto:office@a1.test"'), true);
 check('review goes to the review link', str_contains($cta(['action' => 'review']), 'g.page/r/a1/review'), true);
 check('WhatsApp takes the number with its country code', str_contains($cta(['action' => 'whatsapp']), 'https://wa.me/18889844344'), true);
@@ -1889,6 +2080,38 @@ $moving = $cta(['animation' => 'pulse']);
 check('an animation runs', str_contains($moving, '@keyframes ezbizi-pulse-'), true);
 check('except for a visitor who asked for less motion', str_contains($moving, 'prefers-reduced-motion'), true);
 check('a bar on phones', str_contains($cta(['mobile' => 'bar']), 'position:fixed'), true);
+
+echo PHP_EOL . "Phone, hours, map and page title take Toula's options" . PHP_EOL;
+reset_site();
+serve_preset_payload(['phone' => '8889844344', 'phone_secondary' => '(888) 111-2222', 'latitude' => '40.7', 'longitude' => '-74.1', 'city' => 'Newark', 'state' => 'NJ', 'timezone' => 'America/New_York']);
+$sc = $GLOBALS['sc'];
+check('the second number when asked', str_contains($sc['ezbizi_phone_box'](['which' => 'secondary']), '111-2222'), true);
+check('written with parentheses', str_contains($sc['ezbizi_phone_box'](['format' => 'parentheses']), '(888) 984-4344'), true);
+check('a tap can text instead', str_contains($sc['ezbizi_phone_box'](['link' => 'yes', 'link_type' => 'sms']), 'href="sms:'), true);
+check('a satellite map', str_contains($sc['ezbizi_google_map'](['map_type' => 'satellite']), '&amp;t=k') || str_contains($sc['ezbizi_google_map'](['map_type' => 'satellite']), '&t=k'), true);
+check('a way there under the map', str_contains($sc['ezbizi_google_map'](['directions' => 'yes']), 'ezbizi-map-directions'), true);
+check('the title as a heading', str_contains($sc['ezbizi_post_title'](['tag' => 'h2', 'format' => 'city_state']), '>Newark, NJ</h2>'), true);
+check('and bare words by default', str_contains($sc['ezbizi_post_title'](['format' => 'city']), '<'), false);
+$week = $sc['ezbizi_hours_table'](['layout' => 'stack', 'days' => 'long', 'clock' => '24', 'status' => 'yes', 'show_closed' => 'no']);
+check('hours as a stack', str_contains($week, 'ezbizi-hours-list'), true);
+check('days in full', str_contains($week, 'Monday'), true);
+check('a 24-hour clock', (bool) preg_match('/\b\d{2}:\d{2} – \d{2}:\d{2}\b/u', $week), true);
+check('an open-now badge worked out in the browser', str_contains($week, 'ezbizi-hours-badge'), true);
+
+echo PHP_EOL . "A1's look survives the swap" . PHP_EOL;
+check('hours have a clock, not a pin', str_contains(ezbizi_contact_icon('hours'), 'a10 10 0 100 20'), true);
+check('a network with a mark draws the mark', str_contains(ezbizi_social_icon('tiktok', 'TikTok'), '<path fill="currentColor"'), true);
+check('one without keeps its letters', str_contains(ezbizi_social_icon('bbb', 'BBB'), '>B</text>'), true);
+
+echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
+reset_site();
+serve_preset_payload(['state' => 'NJ', 'state_link' => 'https://www.nj.gov/']);
+check('the name from the code', $GLOBALS['sc']['ezbizi_state_name']([]), 'New Jersey');
+check('linked to the state website', str_contains($GLOBALS['sc']['ezbizi_state_anchor']([]), '>New Jersey</a>'), true);
+reset_site();
+serve_preset_payload(['state' => 'Ontario']);
+check('a name that is not a code prints as stored', $GLOBALS['sc']['ezbizi_state_name']([]), 'Ontario');
+check('and without a link it is only the name', $GLOBALS['sc']['ezbizi_state_anchor']([]), 'Ontario');
 
 echo PHP_EOL . "Street View draws only a Google Maps embed" . PHP_EOL;
 $embed = 'https://www.google.com/maps/embed?pb=!4v1!6m8!1m7!1sAbc';
@@ -1935,6 +2158,14 @@ check('the privacy-enhanced player', str_contains($videos, 'youtube-nocookie.com
 check('a looped video names itself as the playlist', str_contains($videos, 'playlist=abcdefghijk'), true);
 check('two videos fit in four, so no arrows', str_contains($videos, 'class="ezv-arrow'), false);
 check('no videos renders nothing', ezbizi_video_carousel_render(['videos' => [['video_url' => 'nope']]]), '');
+$a1g = ezbizi_gallery_render(['image_ratio' => '16-9', 'page_color' => '#ffd500', 'work_gallery' => [['url' => 'https://a1.test/w.jpg']], 'images' => [['image' => ['url' => 'https://a1.test/a.jpg']]]]);
+check('a gallery ratio crops every tile to it', str_contains($a1g, 'aspect-ratio:16/9'), true);
+check('work tiles are one height, as A1 drew them', str_contains($a1g, '[data-view=work] .ezg-item{height:360px'), true);
+check('the page numbers take A1\'s colour', str_contains($a1g, 'color:#ffd500'), true);
+check('and a colour that is not one is dropped', str_contains(ezbizi_gallery_render(['page_color' => 'red;}body{x', 'images' => [['image' => ['url' => 'https://a1.test/a.jpg']]]]), 'red;}'), false);
+$a1v = ezbizi_video_carousel_render(['slides_per_view' => 1, 'arrows_position' => 'outside', 'arrows_color' => '#ffd500', 'videos' => [['video_url' => 'https://youtu.be/08aVKV6xiPI'], ['video_url' => 'https://youtu.be/kXrNMnDSGZo']]]);
+check('arrows can sit outside the videos', str_contains($a1v, 'color:#ffd500') && str_contains($a1v, 'padding:0 48px'), true);
+check('with a dot per page', substr_count($a1v, 'aria-label="Page '), 2);
 check('a watch link is read', ezbizi_youtube_id('https://www.youtube.com/watch?feature=x&v=abcdefghijk'), 'abcdefghijk');
 
 echo "\n".($failures === 0

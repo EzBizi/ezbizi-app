@@ -319,6 +319,7 @@ class MobileVoiceDevice implements VoiceDevice {
       // Nothing to say here that registration will not say better.
     }
 
+
     // BEFORE the token and before Twilio, because neither can help.
     //
     // Twilio registration succeeding while Telecom refuses the call is the
@@ -359,6 +360,19 @@ class MobileVoiceDevice implements VoiceDevice {
       }
 
       _needsCallingAccount = false;
+    } on TimeoutException {
+      // A PERMISSION FUTURE THAT NEVER COMPLETED, not the network. Measured on
+      // 0.0.0278: after a denial in the phone group the plugin's request never
+      // resolves, the timeout fires, and this used to print "Android refused
+      // this app a calling account: TimeoutException after 0:00:20.000000:
+      // Future not completed" — a developer string, pointing at the wrong
+      // cause, at the one person who knows exactly what they just refused.
+      _registered = false;
+      _registrationError =
+          'EzBizi needs the phone permission to place and take calls. Allow '
+          'it under Settings › Apps › EzBizi › Permissions › Phone.';
+
+      return;
     } catch (error) {
       _registered = false;
       _registrationError = 'Android refused this app a calling account: $error';
@@ -481,8 +495,110 @@ class MobileVoiceDevice implements VoiceDevice {
     }
   }
 
+  /// CALL_PHONE, and the self-managed-calls permission beside it.
+  ///
+  /// Android will not place an outbound call without CALL_PHONE, and the
+  /// plugin says so only to logcat: `TVConnectionService.onStartCommand` logs
+  /// "Missing CALL_PHONE permission" and RETURNS before `placeCall`, so
+  /// pressing Call did nothing and said nothing. This app never asked.
+  ///
+  /// ── Why only when somebody presses Call ─────────────────────────
+  ///
+  /// I first asked at start-up beside the microphone, on the microphone's
+  /// reasoning — and that reasoning is about INBOUND, where a prompt arriving
+  /// over a ringing call costs the call. For outbound, pressing Call IS the
+  /// moment of intent and nobody is waiting yet.
+  ///
+  /// And start-up was actively harmful. `_ensureCallingAccount` already asks
+  /// for the phone group there; a second request into the same group is a
+  /// second, IDENTICAL dialog. Somebody who says no twice because they were
+  /// asked twice gets READ_PHONE_STATE marked USER_FIXED — Android never asks
+  /// again, and calling is lost in BOTH directions with no way back from the
+  /// app. Measured on 0.0.0278.
+  ///
+  /// Asked here instead, if the group was granted at start-up this is silent:
+  /// Android auto-grants a permission whose group already holds one.
+  ///
+  /// Android only — iOS has no such permission and places calls through
+  /// CallKit without one.
+  Future<bool> _askToPlaceCalls() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return true;
+
+    final voice = TwilioVoicePlatform.instance;
+
+    return placeCallsAllowed(
+      hasCallPhone: voice.hasCallPhonePermission,
+      requestCallPhone: voice.requestCallPhonePermission,
+      hasManageOwnCalls: voice.hasManageOwnCallsPermission,
+      requestManageOwnCalls: voice.requestManageOwnCallsPermission,
+    );
+  }
+
+  /// Whether an outbound call may be attempted, asking once where needed.
+  ///
+  /// Static and handed the four platform calls, so the FAIL-CLOSED rule below
+  /// can be tested without a device — the rule is the whole point and it is
+  /// exactly the part a real handset reached by a path nobody had written a
+  /// test for.
+  @visibleForTesting
+  static Future<bool> placeCallsAllowed({
+    required Future<bool> Function() hasCallPhone,
+    required Future<bool?> Function() requestCallPhone,
+    required Future<bool> Function() hasManageOwnCalls,
+    required Future<bool?> Function() requestManageOwnCalls,
+  }) async {
+    try {
+      if (!await hasCallPhone()) {
+        await requestCallPhone();
+      }
+
+      // Normally granted at install on every Android version this app
+      // supports, but the plugin refuses without it just as silently, so it is
+      // checked rather than assumed.
+      if (!await hasManageOwnCalls()) {
+        await requestManageOwnCalls();
+      }
+
+      return await hasCallPhone();
+    } catch (_) {
+      // FAIL CLOSED. I first wrote "a platform channel that throws is not a
+      // refusal" and returned true, and on an emulator it produced a phantom
+      // call: "On a call · Hang up" for a call that never existed. The plugin
+      // reaches `showPermissionRationaleDialog` — which is what threw — ONLY
+      // after a prior denial, because that is when Android says a rationale
+      // is due. So on this path the throw IS the refusal. Measured by the
+      // Android session on 0.0.0278, 2026-09-25.
+      //
+      // Wrongly refusing costs a sentence telling somebody where to switch it
+      // on. Wrongly proceeding costs a desk marked on a call it is not on,
+      // which takes that person out of their own ring group. Only one of those
+      // is safe to get wrong.
+      try {
+        return await hasCallPhone();
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
   @override
   Future<void> connect({required String to, String? callerId}) async {
+    // ASKED AGAIN, because the answer at start-up is not the last word. And
+    // refused OUT LOUD: the plugin's own behaviour here is to log and return,
+    // which leaves somebody pressing Call on a phone that does nothing and
+    // says nothing.
+    //
+    // A THROW, where every other failure in this method is swallowed as a
+    // state. The difference is that the desk has to NOT mark this person on a
+    // call — a call that was never placed must not put somebody `on_call` and
+    // take them out of their own ring group.
+    if (!await _askToPlaceCalls()) {
+      throw const CallRefused(
+        'Android has not given EzBizi permission to place calls. Allow it '
+        'under Settings › Apps › EzBizi › Permissions › Phone.',
+      );
+    }
+
     try {
       await TwilioVoicePlatform.instance.call.place(
         from: callerId ?? '',

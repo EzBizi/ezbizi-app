@@ -1,5 +1,16 @@
 # Apple — reply to Guideline 2.1 (Information Needed)
 
+> **The live Notes text is `docs/apple-review-notes/ios.txt` and `macos.txt`,**
+> byte for byte - not this document. Edit those, then run
+> `python scripts/asc-review-notes.py --push`, which writes both platforms to
+> App Store Connect and reads each back. Run it without `--push` to see
+> whether live and the files still agree. No browser or password needed.
+>
+> A change that alters what the app asks for (a permission, a background
+> mode, an outside service) must change those files **in the same commit**.
+> They were false for three weeks because the permission line was written
+> once and never re-read against the binary.
+
 Paste the block below into **App Store Connect → App Review Information → Notes**,
 and reply on the Resolution Center thread pointing at it.
 
@@ -90,8 +101,24 @@ Not used, stated explicitly because the question asks:
     No payment processor. Nothing is sold inside the app.
     No AI or machine-learning service of any kind.
     No advertising, analytics, attribution or crash-reporting SDK. The app
-      contains no third-party SDK that collects data — verified in the
-      submitted binary, whose only requested permission is network access.
+      contains no third-party SDK that collects data.
+
+Permissions, read out of the shipped binary (0.0.0275, 2026-09-25) rather than
+remembered — this line said "the only requested permission is network access"
+for three weeks after that stopped being true:
+
+    Microphone     asked the first time somebody makes or takes a call in the app
+    Notifications  so a job assigned to somebody reaches their phone
+    Location       iPhone only, When In Use only (never Always), and only for an
+                   employee whose employer turned Field on and marked their role
+                   tracked; or on SOS from a phone. macOS never requests it.
+    Nothing else.  No contacts, camera, photos or tracking (ATT).
+
+Location arrived with the Field module (0.0.0278). This block,
+apple-review-notes/ios.txt and macos.txt changed in the same commit as the
+code. The App Privacy label must also declare Precise Location, linked to
+the user, for App Functionality, in the portal, before a build carrying
+Field is submitted.
 
 ## 6. Regional differences
 
@@ -124,10 +151,10 @@ Both paired iPhones run iOS 26.6, which is current, so either works:
 |---|---|
 | Account registration | **Does not exist in the app** — say so aloud |
 | Login | Yes — show it |
-| Account deletion | **Not in the app.** See the risk note below |
+| Account deletion | **In the app** - `DELETE /api/v1/me`, from the account screen. Show it |
 | Paid content, purchase, subscription | None. Nothing is sold in the app |
-| User-generated content, reporting, blocking | No public content, no feed, no user-to-user contact |
-| Permission prompts (location, contacts, camera, ATT) | **None.** The app requests no device permission at all |
+| User-generated content, reporting, blocking | No public content or feed. Users reach only colleagues in their own organization (phone extensions) |
+| Permission prompts | **Microphone** (on the first call), **notifications**, and on iPhone **location** When In Use, only for an employee their employer tracks (Field). No contacts, camera or ATT — see "Permissions" above, and re-read the binary before trusting this row |
 
 So the recording is: launch, sign in, walk the core features. Nothing to
 demonstrate for the other four categories, but say out loud that they do not
@@ -146,8 +173,11 @@ second rejection.
 6. Inspections → open a named inspection.
 7. Inventory → items and stock.
 8. Fleet → a vehicle with its service history.
-9. Say: "No purchases, no subscriptions, no user-generated public content, and
-   the app requests no device permissions."
+9. Say: "No purchases, no subscriptions, and no user-generated public content.
+   The app asks for the microphone only when a call starts, and for
+   notifications." Place or take a call on camera so the microphone prompt is
+   seen in context — a reviewer who meets a prompt the notes did not mention
+   is the rejection this line exists to prevent.
 
 Record with the iPhone's own screen recorder (Control Centre), or QuickTime on
 the Mac with the iPhone as the movie source. Either is a genuine device capture.

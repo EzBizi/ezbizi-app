@@ -448,10 +448,29 @@ class PhoneCallService extends ChangeNotifier {
     final device = _device;
     if (device == null || !device.supported) return;
 
-    await device.connect(to: to, callerId: callerId);
+    callRefusal = null;
+
+    try {
+      await device.connect(to: to, callerId: callerId);
+    } on CallRefused catch (refused) {
+      // NOT ON A CALL. Marking this person `on_call` for a call the platform
+      // never placed takes them out of their own ring group until something
+      // else clears it, and draws a Hang up button over nothing.
+      callRefusal = refused.reason;
+      notifyListeners();
+
+      return;
+    }
+
     _onCall = true;
     notifyListeners();
   }
+
+  /// Why the last Call pressed did not start one, when the platform said.
+  ///
+  /// Cleared at the start of the next attempt, so a sentence about a call that
+  /// failed an hour ago does not sit on screen beside one that worked.
+  String? callRefusal;
 
   /// The handset's own call UI answered, so the desk stops offering to.
   ///

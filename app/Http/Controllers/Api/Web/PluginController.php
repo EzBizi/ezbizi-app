@@ -113,6 +113,8 @@ class PluginController extends Controller
                 // The lists the team, branches and store-locator widgets draw.
                 'team' => SiteLists::team($site),
                 'locations' => SiteLists::locations($site),
+                'items' => SiteLists::items($site),
+                'reviews' => SiteLists::reviews($site),
                 /*
                  * So the plugin can revoke its own application password when
                  * EzBizi has let go of the pairing. Without this, unlinking here

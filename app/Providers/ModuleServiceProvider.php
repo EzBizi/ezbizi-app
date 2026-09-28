@@ -7,6 +7,7 @@ use App\Models\BusinessLocation;
 use App\Models\A1LeadsReviewEvent;
 use App\Models\Company;
 use App\Models\Customer;
+use App\Models\FieldAlert;
 use App\Models\Franchise;
 use App\Models\InspectionReport;
 use App\Models\InspectionRun;
@@ -2404,6 +2405,31 @@ class ModuleServiceProvider extends ServiceProvider
             ),
 
             /*
+             * ── Customer Experience: a container for Reviews and Business Profile ──
+             *
+             * Jose, 2026-09-25: *"inside you will move reviews and business
+             * profile that are currently in marketing out of there and into the
+             * new customer experience tab"*.
+             *
+             * Not A1Leads GBP: that is a window onto Rodrigo's system, and
+             * putting EzBizi's own modules there was the mistake undone on
+             * 2026-09-23. This is EzBizi's own tab and holds EzBizi's own modules.
+             *
+             * `view` because the registry refuses `actions: []`. Holding it and
+             * neither child gets the row and a screen saying nothing inside is
+             * available; holding a child and not this still gets the row
+             * (main.dart `_hasDestination`). Nesting is layout, not a grant.
+             */
+            new ModuleDefinition(
+                key: 'customer_experience',
+                label: 'Customer Experience',
+                actions: ['view'],
+                automationExemptBecause: 'A container for other modules. It holds no '
+                    .'records and raises no events; Reviews and Business Profile declare '
+                    .'their own triggers and subjects.',
+            ),
+
+            /*
              * ── Reviews: what the public said, and the answer ────
              *
              * Sold separately from Leads on purpose. A business with three Maps
@@ -2444,18 +2470,15 @@ class ModuleServiceProvider extends ServiceProvider
             new ModuleDefinition(
                 key: 'reviews',
                 label: 'Reviews',
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
+                // Drawn as a tab inside Customer Experience (moved out of
+                // Marketing 2026-09-25, Jose). Its permissions are untouched:
+                // this says where it appears, not who reaches it.
                 //
-                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
-                // put back the same day - Jose: *"i didn't ask u to modify our
-                // current system, i said we are integrating Rodrigo's system as a
-                // different thing, we still need our system in place for when we
-                // get OUR GBP Credentials and we'll need the google reviewers to
-                // see it."* A1Leads GBP is a bridge to somebody else's system and
-                // is temporary; this is EzBizi's own module and is not.
-                parent: 'marketing',
+                // NEVER inside A1Leads GBP - moved there on 2026-09-23 and put
+                // back the same day. Jose: *"we still need our system in place
+                // for when we get OUR GBP Credentials."* A1Leads GBP is a bridge
+                // to somebody else's system; this is EzBizi's own module.
+                parent: 'customer_experience',
                 actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'publish'],
                 subject: new AutomationSubject(Review::class, 'Review'),
                 triggers: [
@@ -2535,18 +2558,15 @@ class ModuleServiceProvider extends ServiceProvider
                 key: 'business_profile',
                 label: 'Business Profile',
                 auditActionPrefixes: ['business_location'],
-                // Drawn as a tab inside Marketing rather than as a row of its own
-                // in a sidebar that already holds fifteen. Its permissions are
-                // untouched by that: this says where it appears, not who reaches it.
+                // Drawn as a tab inside Customer Experience (moved out of
+                // Marketing 2026-09-25, Jose). Its permissions are untouched:
+                // this says where it appears, not who reaches it.
                 //
-                // IT STAYS HERE. Briefly moved into A1Leads GBP on 2026-09-23 and
-                // put back the same day - Jose: *"i didn't ask u to modify our
-                // current system, i said we are integrating Rodrigo's system as a
-                // different thing, we still need our system in place for when we
-                // get OUR GBP Credentials and we'll need the google reviewers to
-                // see it."* A1Leads GBP is a bridge to somebody else's system and
-                // is temporary; this is EzBizi's own module and is not.
-                parent: 'marketing',
+                // NEVER inside A1Leads GBP - moved there on 2026-09-23 and put
+                // back the same day. Jose: *"we still need our system in place
+                // for when we get OUR GBP Credentials."* A1Leads GBP is a bridge
+                // to somebody else's system; this is EzBizi's own module.
+                parent: 'customer_experience',
                 actions: ModuleDefinition::DEFAULT_ACTIONS,
                 // `key:` declared for the same reason InventoryItem declares
                 // `item`: the default is strtolower(class_basename()), which
@@ -3617,6 +3637,66 @@ class ModuleServiceProvider extends ServiceProvider
                     .'to fire on. This stops being true the day a week is cached or watched: '
                     .'an alert on a branch going into loss is a real trigger, and it needs this '
                     .'line removed rather than reworded.',
+            ),
+
+            /*
+             * Field — GPS tracking of the people a role says to track, for
+             * safety and compliance, and suggested routes for their jobs
+             * (docs/superpowers/specs/2026-09-25-field-module-design.md).
+             *
+             * `tracked` is not something a person DOES, it is something done
+             * to them: holding it is what puts a role's phones on the map. It
+             * is a grant rather than a setting because "which roles" is
+             * exactly the question the roles editor already answers, per role,
+             * at every level of the organization.
+             *
+             * `manage` acknowledges alerts. Settings edits ride the settings
+             * registry's own editPermission, which names it too.
+             */
+            new ModuleDefinition(
+                key: 'field',
+                label: 'Field',
+                actions: ['view', 'tracked', 'manage'],
+                tabs: [
+                    new TabDefinition('dashboard', 'Dashboard'),
+                    new TabDefinition('map', 'Map'),
+                    new TabDefinition('route', 'Route'),
+                    new TabDefinition('settings', 'Settings'),
+                ],
+                auditActionPrefixes: ['field'],
+                emits: [Job::class, FieldAlert::class],
+                triggers: [
+                    new TriggerDefinition(
+                        key: 'field.arrived_at_job',
+                        label: 'Arrived at a job',
+                        description: 'A tracked person came within the arrival distance of one of '
+                            .'their jobs today. It is about the job, and carries who arrived.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.left_job',
+                        label: 'Left a job',
+                        description: 'A tracked person who had arrived at a job moved away from it. '
+                            .'It is about the job, and carries who left.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.stopped_too_long',
+                        label: 'Stopped too long',
+                        description: 'A tracked person has not moved for the minutes set in Field › '
+                            .'Settings, away from any of their jobs. Fires once until they move again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.signal_lost',
+                        label: 'Lost signal',
+                        description: 'A tracked person\'s phone has not reported for the minutes set in '
+                            .'Field › Settings while they should be tracked. Fires once until it reports again.',
+                    ),
+                    new TriggerDefinition(
+                        key: 'field.sos',
+                        label: 'SOS pressed',
+                        description: 'A tracked person pressed SOS. It carries where they were. '
+                            .'Managers who can see them are told straight away, rule or no rule.',
+                    ),
+                ],
             ),
         ];
     }

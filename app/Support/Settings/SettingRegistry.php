@@ -73,6 +73,8 @@ class SettingRegistry
             // Renamed from Human Resources when the pane left HR (2026-09-24).
             'work_hours' => ['Work Hours',       $this->hr()],
             'ai_assistance' => ['AI Assistance',  $this->assistant()],
+            'field' => ['Field',              $this->field()],
+            'phone' => ['Communication',      $this->phone()],
         ] as $group => [$label, $definitions]) {
             foreach ($definitions as $definition) {
                 $this->register($definition, $group, $label);
@@ -980,6 +982,81 @@ class SettingRegistry
                 editPermission: 'ai_assistance.manage',
                 help: 'Find a location searches the sites in Web Management whose Group is this. '
                     .'Empty searches every site.',
+            ),
+        ];
+    }
+
+    /**
+     * Field (docs/superpowers/specs/2026-09-25-field-module-design.md).
+     *
+     * Every level may set these: a franchise that runs night calls tracks
+     * differently from the office company above it. They are resolved at the
+     * TRACKED person's place, the way Clock in resolves their schedule.
+     */
+    private function phone(): array
+    {
+        return [
+            // THE COMPANY'S CALL, not each person's. Jose, 2026-09-25: *"the
+            // company should decide on the default toggle or not, not the
+            // user"*. It was a per-user preference before that. On /me via
+            // DisplaySettings, because the shell draws the window from it.
+            new SettingDefinition(
+                key: 'phone.incoming_popup',
+                label: 'Pop-up for incoming calls',
+                type: SettingDefinition::TYPE_BOOL,
+                default: true,
+                editPermission: 'phone.edit',
+                help: 'A card with the caller and Accept or Ignore, which can be dragged out of '
+                    .'the way. The strip at the top of the screen appears either way.',
+            ),
+        ];
+    }
+
+    private function field(): array
+    {
+        return [
+            new SettingDefinition(
+                key: 'field.tracking_mode',
+                label: 'When phones report their location',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 'clocked_in',
+                options: ['clocked_in', 'scheduled', 'always'],
+                optionLabels: [
+                    'clocked_in' => 'While clocked in',
+                    'scheduled' => 'During their scheduled work hours',
+                    'always' => 'Always',
+                ],
+                editPermission: 'field.manage',
+                help: 'Applies to people whose role includes Field › Tracked. Their phone shows a '
+                    .'notification whenever it is sharing. Points sent outside this window are '
+                    .'refused, whatever the phone does.',
+            ),
+            new SettingDefinition(
+                key: 'field.arrival_radius_m',
+                label: 'Arrived within, metres',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 150,
+                options: [50, 100, 150, 250, 500],
+                editPermission: 'field.manage',
+                help: 'How close to a job’s address counts as arrived. Leaving is one and a half times this.',
+            ),
+            new SettingDefinition(
+                key: 'field.stopped_minutes',
+                label: 'Stopped too long after, minutes',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 20,
+                options: [10, 15, 20, 30, 45, 60],
+                editPermission: 'field.manage',
+                help: 'Somebody standing still this long away from any of their jobs raises an alert.',
+            ),
+            new SettingDefinition(
+                key: 'field.lost_signal_minutes',
+                label: 'Lost signal after, minutes',
+                type: SettingDefinition::TYPE_ENUM,
+                default: 15,
+                options: [5, 10, 15, 30, 60],
+                editPermission: 'field.manage',
+                help: 'A phone that should be reporting and has been silent this long raises an alert.',
             ),
         ];
     }

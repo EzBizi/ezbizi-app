@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\FieldController;
 use App\Http\Controllers\Api\AssistantController;
 use App\Http\Controllers\Api\AssistantEntriesController;
 use App\Http\Controllers\Api\AccountDeletionController;
@@ -107,6 +108,8 @@ use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\SchedulingAreasController;
 use App\Http\Controllers\Api\SchedulingAvailabilityController;
 use App\Http\Controllers\Api\SchedulingBoardController;
+use App\Http\Controllers\Api\SchedulingDispatchController;
+use App\Http\Controllers\Api\SchedulingFranchiseLimitsController;
 use App\Http\Controllers\Api\SchedulingPatternController;
 use App\Http\Controllers\Api\SchedulingSuggestController;
 use App\Http\Controllers\Api\SchedulingTechniciansController;
@@ -893,6 +896,8 @@ Route::prefix('v1')
             Route::put('web/sites/{site}/team', [WebListsController::class, 'saveTeam']);
             Route::get('web/sites/{site}/locations', [WebListsController::class, 'locations']);
             Route::put('web/sites/{site}/locations', [WebListsController::class, 'saveLocations']);
+            Route::get('web/sites/{site}/items/{kind}', [WebListsController::class, 'items']);
+            Route::put('web/sites/{site}/items/{kind}', [WebListsController::class, 'saveItems']);
         });
         /*
          * The Orders tab owns buying, selling and issuing outright: nothing
@@ -1116,6 +1121,13 @@ Route::prefix('v1')
             Route::get('scheduling/board', [SchedulingBoardController::class, 'show']);
         });
 
+        // Dispatching writes to Workiz: the Schedule tab AND Scheduling's edit.
+        Route::middleware(['permission:scheduling.schedule.view', 'permission:scheduling.edit'])->group(function () {
+            Route::post('scheduling/board/jobs/{job}/assign', [SchedulingDispatchController::class, 'assign']);
+            Route::post('scheduling/board/jobs/{job}/unassign', [SchedulingDispatchController::class, 'unassign']);
+            Route::post('scheduling/board/jobs/{job}/reschedule', [SchedulingDispatchController::class, 'reschedule']);
+        });
+
         Route::middleware('permission:scheduling.availability.view')->group(function () {
             Route::get('scheduling/availability', [SchedulingAvailabilityController::class, 'show']);
 
@@ -1125,6 +1137,7 @@ Route::prefix('v1')
             // belongs to the same grant rather than to settings.
             Route::get('scheduling/suggest', [SchedulingSuggestController::class, 'index']);
             Route::get('scheduling/availability/franchises', [SchedulingAvailabilityController::class, 'franchises']);
+            Route::get('scheduling/availability/calendar', [SchedulingAvailabilityController::class, 'calendar']);
         });
 
         /*
@@ -1145,6 +1158,7 @@ Route::prefix('v1')
             // Settings › Schedule: Workiz technicians and their EzBizi users.
             Route::get('scheduling/technicians', [SchedulingTechniciansController::class, 'index']);
             Route::put('scheduling/technicians/{member}', [SchedulingTechniciansController::class, 'update']);
+            Route::put('scheduling/franchises/{franchise}/limits', [SchedulingFranchiseLimitsController::class, 'update']);
             Route::put('scheduling/areas/{area}/slots', [SchedulingAreasController::class, 'slots']);
             Route::put('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'setDate']);
             Route::delete('scheduling/areas/{area}/dates/{date}', [SchedulingAreasController::class, 'clearDate']);
@@ -1154,6 +1168,30 @@ Route::prefix('v1')
             Route::post('scheduling/pattern/apply', [SchedulingPatternController::class, 'apply']);
             Route::apiResource('scheduling/areas', SchedulingAreasController::class)
                 ->parameters(['areas' => 'area']);
+        });
+
+        // Field — docs/superpowers/specs/2026-09-25-field-module-design.md.
+        // `me` answers anybody (a phone asks before it knows its role); the
+        // phone's writes need `tracked`; every read is one tab's grant.
+        Route::get('field/me', [FieldController::class, 'me']);
+        Route::middleware('permission:field.tracked')->group(function () {
+            Route::post('field/locations', [FieldController::class, 'ingest'])->middleware('throttle:120,1');
+            Route::post('field/sos', [FieldController::class, 'sos'])->middleware('throttle:10,1');
+        });
+        Route::middleware('permission:field.dashboard.view')->group(function () {
+            Route::get('field/dashboard', [FieldController::class, 'dashboard']);
+        });
+        Route::middleware('permission:field.manage')->group(function () {
+            Route::post('field/alerts/{alert}/acknowledge', [FieldController::class, 'acknowledge']);
+        });
+        Route::middleware('permission:field.map.view')->group(function () {
+            Route::get('field/map', [FieldController::class, 'map']);
+            Route::get('field/map/tiles', [FieldController::class, 'tiles']);
+            Route::get('field/map/attribution', [FieldController::class, 'attribution']);
+        });
+        Route::middleware('permission:field.route.view')->group(function () {
+            Route::get('field/people', [FieldController::class, 'people']);
+            Route::get('field/route', [FieldController::class, 'route']);
         });
 
         // Training — guides people read, the tests they take, and (later

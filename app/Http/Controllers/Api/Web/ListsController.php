@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Web;
 
 use App\Http\Controllers\Api\Controller;
+use App\Models\WebItem;
 use App\Models\WebLocation;
 use App\Models\WebSite;
 use App\Models\WebTeamMember;
@@ -61,6 +62,52 @@ class ListsController extends Controller
         });
 
         return $this->team($site);
+    }
+
+    /** GET /api/v1/web/sites/{site}/items/{kind} — FAQs, services, before-and-after or reviews. */
+    public function items(WebSite $site, string $kind): JsonResponse
+    {
+        $this->authorize('view', $site);
+        abort_unless(in_array($kind, WebItem::KINDS, true), 404);
+
+        return response()->json(['data' => SiteLists::items($site, $kind)[$kind]]);
+    }
+
+    /** PUT /api/v1/web/sites/{site}/items/{kind} — the whole list, replaced. */
+    public function saveItems(Request $request, WebSite $site, string $kind): JsonResponse
+    {
+        $this->authorize('update', $site);
+        abort_unless(in_array($kind, WebItem::KINDS, true), 404);
+
+        $input = $request->validate([
+            'items' => ['present', 'array', 'max:500'],
+            'items.*.title' => ['required', 'string', 'max:191'],
+            'items.*.body' => ['nullable', 'string', 'max:8000'],
+            'items.*.subtitle' => ['nullable', 'string', 'max:191'],
+            'items.*.image_url' => ['nullable', 'url:https,http', 'max:1000'],
+            'items.*.image2_url' => ['nullable', 'url:https,http', 'max:1000'],
+            'items.*.link_url' => ['nullable', 'url:https,http', 'max:1000'],
+            'items.*.phone' => ['nullable', 'string', 'max:64'],
+            'items.*.icon' => ['nullable', 'string', 'max:40', 'regex:/^[a-z0-9_-]*$/'],
+            'items.*.category' => ['nullable', 'string', 'max:191'],
+            'items.*.rating' => ['nullable', 'integer', 'between:1,5'],
+            'items.*.dated' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        DB::transaction(function () use ($site, $input, $kind): void {
+            WebItem::query()->where('company_id', $site->company_id)->where('kind', $kind)->delete();
+
+            foreach (array_values($input['items']) as $i => $item) {
+                WebItem::query()->create([
+                    ...Arr::only($item, SiteLists::ITEM_FIELDS),
+                    'company_id' => $site->company_id,
+                    'kind' => $kind,
+                    'sort_order' => $i,
+                ]);
+            }
+        });
+
+        return $this->items($site, $kind);
     }
 
     /** GET /api/v1/web/sites/{site}/locations */

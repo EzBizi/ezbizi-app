@@ -66,7 +66,7 @@ abstract class EzBizi_Elementor_Widget extends \Elementor\Widget_Base {
 }
 
 /** The contact form, landing as a Lead in EzBizi. */
-class EzBizi_Elementor_Form extends EzBizi_Elementor_Widget {
+class EzBizi_Elementor_Form extends EzBizi_Elementor_Preset_Widget {
     public function get_name() {
         return 'ezbizi-form';
     }
@@ -79,15 +79,14 @@ class EzBizi_Elementor_Form extends EzBizi_Elementor_Widget {
         return 'eicon-form-horizontal';
     }
 
-    protected function render() {
-        if (ezbizi_in_elementor_editor()) {
-            echo ezbizi_elementor_placeholder(esc_html__('EzBizi Contact Form', 'ezbizi'));
-
-            return;
-        }
-
+    /**
+     * A preset and "This widget only" style its look (Jose, 2026-09-25:
+     * "company wide preset but allowing per widget override"); its questions
+     * and words stay the form's own, set in EzBizi.
+     */
+    protected function ezbizi_draw($atts) {
         // The shortcode escapes everything it prints; see enquiries.php.
-        echo ezbizi_form_shortcode(array());
+        return ezbizi_form_shortcode($atts);
     }
 }
 
@@ -339,7 +338,7 @@ class EzBizi_Elementor_City_List extends EzBizi_Elementor_Preset_Widget {
  * that resolved to nothing would be a box somebody fills in and then wonders
  * about, so it gets the notice instead.
  */
-class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
+class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Preset_Widget {
     public function get_name() {
         return 'ezbizi-post-title';
     }
@@ -356,31 +355,9 @@ class EzBizi_Elementor_Post_Title extends EzBizi_Elementor_Widget {
         return array_merge(parent::get_keywords(), array('title', 'page title', 'heading'));
     }
 
-    protected function register_controls() {
-        $this->start_controls_section('ezbizi_where', array(
-            'label' => esc_html__('EzBizi', 'ezbizi'),
-        ));
-
-        $this->add_control('ezbizi_notice', array(
-            'type' => \Elementor\Controls_Manager::RAW_HTML,
-            'raw' => esc_html__(
-                'Shows the title of the page it is placed on, so one template can head every town page with its own name. There is nothing to configure.',
-                'ezbizi'
-            ),
-            'content_classes' => 'elementor-descriptor',
-        ));
-
-        $this->end_controls_section();
-    }
-
-    protected function render() {
-        if (ezbizi_in_elementor_editor()) {
-            echo ezbizi_elementor_placeholder(esc_html__('EzBizi Page Title', 'ezbizi'));
-
-            return;
-        }
-
-        echo ezbizi_post_title_shortcode(array());
+    /** The page's own title (or its town), with a preset for the tag and look. */
+    protected function ezbizi_draw($atts) {
+        return ezbizi_post_title_shortcode($atts);
     }
 }
 
@@ -565,5 +542,97 @@ class EzBizi_Elementor_Store_Locator extends EzBizi_Elementor_Preset_Widget {
 
     protected function ezbizi_draw($atts) {
         return ezbizi_store_locator_shortcode($atts);
+    }
+}
+
+/** The services the company lists in EzBizi. */
+class EzBizi_Elementor_Services extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-services';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Services', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-apps';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('services', 'offer', 'cards'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_services_shortcode($atts);
+    }
+}
+
+/** Featured or Google reviews. */
+class EzBizi_Elementor_Reviews extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-reviews';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Reviews', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-review';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('reviews', 'testimonials', 'rating', 'google'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_reviews_shortcode($atts);
+    }
+}
+
+/** Before-and-after pairs, compared. */
+class EzBizi_Elementor_Before_After extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-before-after';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi Before & After', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-image-before-after';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('before', 'after', 'compare', 'projects'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_before_after_shortcode($atts);
+    }
+}
+
+/** Questions and answers, with FAQ markup. */
+class EzBizi_Elementor_Faq extends EzBizi_Elementor_Preset_Widget {
+    public function get_name() {
+        return 'ezbizi-faq';
+    }
+
+    public function get_title() {
+        return esc_html__('EzBizi FAQ', 'ezbizi');
+    }
+
+    public function get_icon() {
+        return 'eicon-accordion';
+    }
+
+    public function get_keywords() {
+        return array_merge(parent::get_keywords(), array('faq', 'questions', 'answers', 'accordion'));
+    }
+
+    protected function ezbizi_draw($atts) {
+        return ezbizi_faq_shortcode($atts);
     }
 }

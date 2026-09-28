@@ -8,6 +8,7 @@ import '../screens/dashboard_screen.dart';
 import '../screens/email/email_screen.dart';
 import '../screens/hr_screen.dart';
 import '../screens/inspection_screen.dart';
+import '../screens/field_screen.dart';
 import '../screens/fleet_screen.dart';
 import '../screens/inventory_screen.dart';
 import '../screens/jobs_screen.dart';
@@ -17,6 +18,7 @@ import '../screens/monitoring/monitoring_screen.dart';
 import '../screens/reports_screen.dart';
 import '../screens/reviews_screen.dart';
 import '../screens/a1leads_gbp_screen.dart';
+import '../screens/customer_experience_screen.dart';
 import '../screens/marketing_screen.dart';
 import '../screens/profit_loss_screen.dart';
 import '../screens/phone_screen.dart';
@@ -88,6 +90,10 @@ final Map<String, ModuleScreen> moduleScreens = {
     Icons.badge_outlined,
     (api, session) => HrScreen(api: api, session: session),
   ),
+  'field': ModuleScreen(
+    Icons.near_me_outlined,
+    (api, session) => FieldScreen(api: api, session: session),
+  ),
   'work_hours': ModuleScreen(
     Icons.schedule_outlined,
     (api, session) => WorkHoursScreen(api: api, session: session),
@@ -109,6 +115,11 @@ final Map<String, ModuleScreen> moduleScreens = {
   'a1leads_gbp': ModuleScreen(
     Icons.business_outlined,
     (api, session) => A1LeadsGbpScreen(api: api, session: session),
+  ),
+  // Reviews and Business Profile, moved out of Marketing 2026-09-25.
+  'customer_experience': ModuleScreen(
+    Icons.sentiment_satisfied_outlined,
+    (api, session) => CustomerExperienceScreen(api: api, session: session),
   ),
   'marketing': ModuleScreen(
     Icons.campaign_outlined,

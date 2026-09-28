@@ -417,6 +417,9 @@ class EzBiziTheme {
   static const Color reviewHappy = Color(0xFF22B24C);
   static const Color reviewSad = Color(0xFFE23D4B);
 
+  /// The stars on [ezbizi_reviews] until a site picks its own colour.
+  static const Color reviewStar = Color(0xFFF5B301);
+
   /// Eight colours for standing in where a person has no picture.
   ///
   /// Picked by a stable hash of the sender, so the same person keeps the same

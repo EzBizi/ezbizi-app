@@ -13,12 +13,14 @@ import '../../widgets/search_picker.dart';
 /// Jose, 2026-09-25, with a screenshot of A1 Tools' Scheduling board: "start
 /// building the schedule screen as well ... as usual with our theme, design".
 ///
-/// ── Read-only, and says so ──────────────────────────────────────
+/// ── Dispatching goes to Workiz ──────────────────────────────────
 ///
-/// A-1 assigns jobs in Workiz. Assigning from here would write to Workiz — the
-/// Workiz module's integration and Jose's decision — so this board shows the
-/// day and changes nothing. There is no Schedule button to press that would
-/// silently do nothing.
+/// Tap a job and a panel opens beside the board: who is on it, assign, unassign,
+/// move. Every change is written TO Workiz (Jose: "it should be possible on
+/// both with the sync") and the board reloads Workiz's own answer. A refusal
+/// shows Workiz's sentence. Somebody without Scheduling's edit sees the same
+/// panel with no buttons — the server says `can_dispatch`, so nothing is drawn
+/// that would only be refused.
 class SchedulePane extends StatefulWidget {
   const SchedulePane({
     super.key,
@@ -55,6 +57,14 @@ class _SchedulePaneState extends State<SchedulePane> {
   Map<String, dynamic>? _board;
   final _unassignedSearch = TextEditingController();
   int _request = 0;
+
+  /// The job whose panel is open, by mirror row.
+  String? _openJobId;
+  bool _busy = false;
+  String? _dispatchError;
+  String? _assignMemberId;
+  DateTime? _moveDay;
+  int? _moveWindow;
 
   @override
   void initState() {
@@ -138,7 +148,10 @@ class _SchedulePaneState extends State<SchedulePane> {
               builder: (context, box) {
                 final wide = box.maxWidth >= 1000;
                 final grid = _grid(theme, board);
-                final panel = _unassignedPanel(theme, board, wide: wide);
+                final open = _openJob(board);
+                final panel = open == null
+                    ? _unassignedPanel(theme, board, wide: wide)
+                    : _jobPanel(theme, board, open, wide: wide);
 
                 return wide
                     ? Row(
@@ -464,7 +477,11 @@ class _SchedulePaneState extends State<SchedulePane> {
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 6),
           child: Text(
-            'Jobs are assigned in Workiz; this board shows what is booked.',
+            board['can_dispatch'] == true
+                ? 'Tap a job to assign, unassign or move it. Changes go '
+                      'straight to Workiz.'
+                : 'Jobs are assigned in Workiz; this board shows what is '
+                      'booked.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -497,70 +514,361 @@ class _SchedulePaneState extends State<SchedulePane> {
     final colours = ToneColours.of(context, tone);
     final when = c['time'] == null ? 'No time set' : _time(c['time'] as String);
 
+    final selected = c['job_id'] != null && c['job_id'] == _openJobId;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        border: Border.all(color: EzBiziTheme.edge(context)),
+        border: Border.all(
+          color: selected
+              ? theme.colorScheme.primary
+              : EzBiziTheme.edge(context),
+          width: selected ? 2 : 1,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: c['job_id'] == null ? null : () => _open(c),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  c['customer'] as String? ?? 'No name',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (status.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colours.fill,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    status,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colours.ink,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      c['customer'] as String? ?? 'No name',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  if (status.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colours.fill,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        status,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colours.ink,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              if ((c['number'] as String? ?? '').isNotEmpty)
+                Text(
+                  '#${c['number']}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
+              if (c['job_type'] != null)
+                Text(
+                  c['job_type'] as String,
+                  style: theme.textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              Text(
+                [
+                  if (showWindow || c['time'] != null) when,
+                  c['city'],
+                ].whereType<String>().join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
-          if ((c['number'] as String? ?? '').isNotEmpty)
-            Text(
-              '#${c['number']}',
-              style: theme.textTheme.bodySmall?.copyWith(color: muted),
+        ),
+      ),
+    );
+  }
+
+  /// The open job, looked up afresh in each board so the panel shows what
+  /// Workiz answered after a change. Null when it has left this day.
+  Map<String, dynamic>? _openJob(Map<String, dynamic> board) {
+    if (_openJobId == null) return null;
+    for (final key in ['unassigned', 'scheduled']) {
+      for (final c in (board[key] as List? ?? const [])) {
+        if ((c as Map)['job_id'] == _openJobId) {
+          return c.cast<String, dynamic>();
+        }
+      }
+    }
+    return null;
+  }
+
+  void _open(Map<String, dynamic> c) => setState(() {
+    _openJobId = c['job_id'] as String?;
+    _dispatchError = null;
+    _assignMemberId = null;
+    _moveDay = _day;
+    _moveWindow = c['window'] as int?;
+  });
+
+  void _close() => setState(() {
+    _openJobId = null;
+    _dispatchError = null;
+  });
+
+  /// One write, then the board again: Workiz's answer, not ours.
+  Future<void> _dispatch(String action, Map<String, dynamic> body) async {
+    final id = _openJobId;
+    if (id == null) return;
+
+    setState(() {
+      _busy = true;
+      _dispatchError = null;
+    });
+
+    // Spelled out, not '$action': ClientCallsRealRoutesTest reads these
+    // literals to prove each one is a route.
+    final path = switch (action) {
+      'assign' => '/scheduling/board/jobs/$id/assign',
+      'unassign' => '/scheduling/board/jobs/$id/unassign',
+      _ => '/scheduling/board/jobs/$id/reschedule',
+    };
+    final response = await widget.api.post(path, body);
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+      if (!response.ok) _dispatchError = response.message;
+      if (response.ok) _assignMemberId = null;
+    });
+
+    if (!response.ok) return;
+
+    // A moved job leaves this day; follow it so its panel stays open.
+    if (action == 'reschedule' && _moveDay != null && _moveDay != _day) {
+      _go(_moveDay!);
+    } else {
+      await _load();
+    }
+  }
+
+  Future<void> _pickMoveDay() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _moveDay ?? _day,
+      firstDate: DateUtils.dateOnly(DateTime.now()),
+      lastDate: DateTime(_day.year + 2),
+    );
+    if (picked != null) setState(() => _moveDay = DateUtils.dateOnly(picked));
+  }
+
+  Widget _jobPanel(
+    ThemeData theme,
+    Map<String, dynamic> board,
+    Map<String, dynamic> c, {
+    required bool wide,
+  }) {
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final canDispatch = board['can_dispatch'] == true;
+    final windows = (board['windows'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final team = (c['team'] as List? ?? const []).cast<Map<String, dynamic>>();
+    final onIt = {for (final t in team) t['member_id']};
+    final area = (c['service_area'] as String? ?? '').trim().toLowerCase();
+
+    // Workiz refuses a technician outside the job's service area (measured),
+    // so only the ones who cover it are offered — and only from the job's own
+    // branch, whose Workiz account it is.
+    final covering = [
+      for (final t
+          in (board['technicians'] as List? ?? const [])
+              .cast<Map<String, dynamic>>())
+        if (t['member_id'] != null &&
+            t['franchise_id'] == c['franchise_id'] &&
+            !onIt.contains(t['member_id']) &&
+            (t['service_areas'] as List? ?? const []).any(
+              (a) => '$a'.trim().toLowerCase() == area,
+            ))
+          t,
+    ];
+
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 6),
+      child: Text(
+        text,
+        style: theme.textTheme.labelSmall?.copyWith(
+          letterSpacing: 0.8,
+          color: muted,
+        ),
+      ),
+    );
+
+    final moveLabel = _moveDay == null
+        ? 'Pick a day'
+        : '${_weekdays[_moveDay!.weekday - 1].substring(0, 3)}, '
+              '${_months[_moveDay!.month - 1]} ${_moveDay!.day}';
+
+    final children = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              c['customer'] as String? ?? 'No name',
+              style: theme.textTheme.titleMedium,
             ),
-          if (c['job_type'] != null)
-            Text(
-              c['job_type'] as String,
-              style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-            ),
-          Text(
-            [
-              if (showWindow || c['time'] != null) when,
-              c['city'],
-            ].whereType<String>().join(' · '),
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-            overflow: TextOverflow.ellipsis,
+          ),
+          IconButton(
+            tooltip: 'Close',
+            icon: const Icon(Icons.close),
+            onPressed: _close,
           ),
         ],
       ),
+      Text(
+        [
+          if ((c['number'] as String? ?? '').isNotEmpty) '#${c['number']}',
+          c['job_type'],
+          c['status'],
+        ].whereType<String>().join(' · '),
+        style: theme.textTheme.bodySmall?.copyWith(color: muted),
+      ),
+      Text(
+        [
+          c['time'] == null ? 'No time set' : _time(c['time'] as String),
+          c['service_area'],
+          c['city'],
+        ].whereType<String>().join(' · '),
+        style: theme.textTheme.bodySmall?.copyWith(color: muted),
+      ),
+      if (_dispatchError != null) ...[
+        const SizedBox(height: 12),
+        ErrorNote(_dispatchError!),
+      ],
+      heading('ON THIS JOB'),
+      if (team.isEmpty) Text('Nobody yet.', style: theme.textTheme.bodyMedium),
+      for (final t in team)
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                t['name'] as String? ?? '',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            if (canDispatch && t['member_id'] != null)
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () =>
+                          _dispatch('unassign', {'member_id': t['member_id']}),
+                child: const Text('Unassign'),
+              ),
+          ],
+        ),
+      if (canDispatch) ...[
+        heading('ASSIGN'),
+        if (covering.isEmpty)
+          Text(
+            'No other technician in Workiz covers '
+            '${c['service_area'] ?? 'this area'}.',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          )
+        else ...[
+          SearchPickerField<String>(
+            key: const Key('dispatch-assign'),
+            value: _assignMemberId,
+            hint: 'Technician',
+            isDense: true,
+            options: [
+              for (final t in covering)
+                SearchOption(
+                  value: t['member_id'] as String,
+                  label: t['name'] as String? ?? '',
+                  detail: '${t['jobs']} ${t['jobs'] == 1 ? 'job' : 'jobs'}',
+                ),
+            ],
+            onChanged: (v) => setState(() => _assignMemberId = v),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed: _busy || _assignMemberId == null
+                  ? null
+                  : () => _dispatch('assign', {'member_id': _assignMemberId}),
+              child: const Text('Assign'),
+            ),
+          ),
+        ],
+        heading('MOVE'),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              key: const Key('dispatch-move-day'),
+              onPressed: _busy ? null : _pickMoveDay,
+              icon: const Icon(Icons.event, size: 18),
+              label: Text(moveLabel),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: SearchPickerField<int>(
+                key: const Key('dispatch-move-window'),
+                value: _moveWindow,
+                hint: 'Time slot',
+                isDense: true,
+                options: [
+                  for (var i = 0; i < windows.length; i++)
+                    SearchOption(
+                      value: i,
+                      label:
+                          '${_time(windows[i]['start_time'] as String)} – '
+                          '${_time(windows[i]['end_time'] as String)}',
+                    ),
+                ],
+                onChanged: (v) => setState(() => _moveWindow = v),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton(
+            onPressed:
+                _busy ||
+                    _moveDay == null ||
+                    _moveWindow == null ||
+                    _moveWindow! >= windows.length
+                ? null
+                : () => _dispatch('reschedule', {
+                    'date': _ymd(_moveDay!),
+                    'start_time': windows[_moveWindow!]['start_time'],
+                    'end_time': windows[_moveWindow!]['end_time'],
+                  }),
+            child: const Text('Move'),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'The job keeps its length and starts when the slot does.',
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+        ),
+      ],
+    ];
+
+    final body = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
     );
+
+    return wide ? SingleChildScrollView(child: body) : body;
   }
 
   static Tone _toneFor(String status) => switch (status.trim().toLowerCase()) {

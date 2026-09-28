@@ -4,6 +4,7 @@ import '../../core/api_client.dart';
 import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../widgets/error_note.dart';
+import 'availability_calendar.dart';
 
 /// Availability — "When can we come out?"
 ///
@@ -43,7 +44,7 @@ class AvailabilityPane extends StatefulWidget {
   State<AvailabilityPane> createState() => _AvailabilityPaneState();
 }
 
-enum _Mode { zip, area }
+enum _Mode { zip, area, calendar }
 
 class _AvailabilityPaneState extends State<AvailabilityPane> {
   static const _unknown =
@@ -193,7 +194,11 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
+            // The calendar needs seven readable columns; the searches read
+            // best narrow.
+            constraints: BoxConstraints(
+              maxWidth: _mode == _Mode.calendar ? 1000 : 680,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -206,7 +211,7 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Search by zip code, or pick an area.',
+                  'Search by zip code, pick an area, or see a month.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
@@ -228,10 +233,25 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                         'Search by Area',
                       ),
                     ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _modeButton(
+                        _Mode.calendar,
+                        Icons.calendar_month_outlined,
+                        'Calendar View',
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
-                if (_mode == _Mode.zip) _zipSearch(theme) else _areaChips(),
+                switch (_mode) {
+                  _Mode.zip => _zipSearch(theme),
+                  _Mode.area => _areaChips(),
+                  _Mode.calendar => AvailabilityCalendar(
+                    api: widget.api,
+                    franchises: _franchises,
+                  ),
+                },
                 const SizedBox(height: 20),
                 if (_error != null) ErrorNote(_error!),
                 if (_loading)

@@ -112,7 +112,7 @@ class DisplaySettingsTest extends TestCase
         // The whole point. Before this, the key was absent and a client that
         // wanted to honour the setting had nowhere to read it from.
         $this->assertSame(
-            ['date_format' => 'M/D/YYYY', 'time_format' => '12h'],
+            ['date_format' => 'M/D/YYYY', 'time_format' => '12h', 'phone.incoming_popup' => true],
             $me['display'],
         );
     }
@@ -189,6 +189,23 @@ class DisplaySettingsTest extends TestCase
         // are absent on purpose — nothing in the client reads them yet, and a
         // value that travels but changes nothing is the failure being fixed
         // here, not a head start on the next feature.
-        $this->assertSame(['date_format', 'time_format'], array_keys($me['display']));
+        $this->assertSame(['date_format', 'time_format', 'phone.incoming_popup'], array_keys($me['display']));
+    }
+
+    /**
+     * THE COMPANY DECIDES THE POP-UP, not the person. Jose, 2026-09-25: *"the
+     * company should decide on the default toggle or not, not the user"*. The
+     * shell draws the incoming-call card from this value on /me.
+     */
+    public function test_the_company_switching_the_call_pop_up_off_reaches_me(): void
+    {
+        $this->assertTrue($this->as()->getJson('/api/v1/me')->json('data.display')['phone.incoming_popup']);
+
+        app(TenantContext::class)->run($this->w['org'], fn () => app(SettingsResolver::class)
+            ->set('phone.incoming_popup', $this->w['org'], false));
+
+        $this->app['auth']->forgetGuards();
+
+        $this->assertFalse($this->as()->getJson('/api/v1/me')->json('data.display')['phone.incoming_popup']);
     }
 }

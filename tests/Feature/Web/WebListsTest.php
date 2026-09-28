@@ -89,6 +89,35 @@ class WebListsTest extends TestCase
         $this->assertSame(['North Jersey'], array_column($after['site'], 'name'));
     }
 
+    /** Jose, 2026-09-25: "yes all of it" — FAQs, services, before-and-after, reviews. */
+    public function test_items_are_kept_by_kind_and_reach_the_plugin(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->editor($tenant);
+        $site = $this->site($editor, $tenant, 'a-1chimney.com');
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site['data']['id']}/items/faq", [
+            'items' => [['title' => 'Do you sweep in winter?', 'body' => 'Yes.']],
+        ])->assertOk();
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site['data']['id']}/items/before_after", [
+            'items' => [['title' => 'Crown', 'image_url' => 'https://x.test/b.jpg', 'image2_url' => 'https://x.test/a.jpg']],
+        ])->assertOk();
+
+        $items = $this->plugin($site)->assertOk()->json('items');
+        $this->assertSame('Do you sweep in winter?', $items['faq'][0]['title']);
+        $this->assertSame('https://x.test/a.jpg', $items['before_after'][0]['image2_url']);
+        // Saving one kind leaves the others alone.
+        $this->assertSame([], $items['service']);
+
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site['data']['id']}/items/faq", ['items' => []])->assertOk();
+        $this->assertCount(1, $this->plugin($site)->json('items.before_after'));
+
+        $this->signedInAs($editor)->getJson("/api/v1/web/sites/{$site['data']['id']}/items/nonsense")->assertNotFound();
+        $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site['data']['id']}/items/review", [
+            'items' => [['title' => 'Pat', 'rating' => 9]],
+        ])->assertUnprocessable();
+    }
+
     public function test_a_link_that_is_not_a_web_address_is_refused(): void
     {
         $tenant = $this->provisionTenant('Alpha');

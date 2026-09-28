@@ -45,11 +45,63 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Ignore'), findsOneWidget);
   });
 
-  /// THE CONTROL, and the one that keeps the house rule true.
+  /// ON BY DEFAULT. Jose's own account had never touched the switch, and a
+  /// call rang with only the strip: *"remember i asked for a pop up"*
+  /// (2026-09-25). No key at all is the state that case was in.
+  testWidgets('a person who never chose gets the window', (tester) async {
+    final device = _FakeDevice();
+    final service = await _pump(tester, device: device, popup: null);
+    addTearDown(service.stop);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('incoming-call-popup')), findsOneWidget);
+  });
+
+  /// NOTHING UNDERNEATH IS BLOCKED. Jose, 2026-09-25, of the dimmed first
+  /// version: *"it does block the screen"*. A tap beside the card reaches the
+  /// app, which a full-screen backdrop would have swallowed.
+  testWidgets('the app underneath stays usable while it rings', (tester) async {
+    final device = _FakeDevice();
+    var taps = 0;
+    final service = await _pump(
+      tester,
+      device: device,
+      popup: true,
+      onUnderneath: () => taps++,
+    );
+    addTearDown(service.stop);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('incoming-call-popup')), findsOneWidget);
+
+    await tester.tapAt(const Offset(10, 890));
+    expect(taps, 1);
+  });
+
+  /// *"we can move it around like draggable"*.
+  testWidgets('the card can be dragged out of the way', (tester) async {
+    final device = _FakeDevice();
+    final service = await _pump(tester, device: device, popup: true);
+    addTearDown(service.stop);
+
+    device.ring('+13055550100');
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('incoming-call-popup'));
+    final before = tester.getTopLeft(card);
+
+    await tester.drag(find.text('Marta Delgado'), const Offset(-150, 200));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopLeft(card), before + const Offset(-150, 200));
+  });
+
+  /// THE CONTROL: a company that switched it off does not get it.
   ///
-  /// Off is the default, so this is what everybody who has not asked for the
-  /// window gets. Without it the test above passes on a build that shows the
-  /// window to the whole company.
+  /// Without it the test above passes on a build that ignores the switch.
   testWidgets('it stays away when the setting is off', (tester) async {
     final device = _FakeDevice();
     final service = await _pump(tester, device: device, popup: false);
@@ -173,9 +225,10 @@ void main() {
 Future<PhoneCallService> _pump(
   WidgetTester tester, {
   required _FakeDevice device,
-  required bool popup,
+  required bool? popup,
   bool known = true,
   List<void Function()>? holdReplies,
+  VoidCallback? onUnderneath,
 }) async {
   tester.view.physicalSize = const Size(900, 900);
   tester.view.devicePixelRatio = 1.0;
@@ -189,7 +242,8 @@ Future<PhoneCallService> _pump(
         return _json({
           'data': {
             ..._me,
-            'preferences': {'phone.incoming_popup': popup},
+            // The COMPANY's setting, on /me under `display`.
+            'display': {'phone.incoming_popup': ?popup},
           },
         });
       }
@@ -243,8 +297,11 @@ Future<PhoneCallService> _pump(
         // geometry from the one that ships.
         body: Stack(
           children: [
-            const SizedBox.expand(
-              child: Text('the estimate you were halfway through'),
+            SizedBox.expand(
+              child: TextButton(
+                onPressed: onUnderneath,
+                child: const Text('the estimate you were halfway through'),
+              ),
             ),
             IncomingCallPopup(api: api, session: session, service: service),
           ],

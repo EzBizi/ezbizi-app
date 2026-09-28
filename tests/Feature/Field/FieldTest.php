@@ -1,0 +1,389 @@
+<?php
+
+namespace Tests\Feature\Field;
+
+use App\Models\AuditEvent;
+use App\Models\AutomationEvent;
+use App\Models\Customer;
+use App\Models\FieldAlert;
+use App\Models\FieldGeocode;
+use App\Models\FieldLocation;
+use App\Models\FieldPresence;
+use App\Models\Job;
+use App\Models\Notification;
+use App\Models\TimeClockShift;
+use App\Models\User;
+use App\Support\Modules\ModuleRegistry;
+use App\Support\Settings\SettingsResolver;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\Concerns\BuildsTenants;
+use Tests\TestCase;
+
+/**
+ * Field (docs/superpowers/specs/2026-09-25-field-module-design.md).
+ *
+ * Coordinates: the job sits at (40.0, -75.0). 0.001° of latitude is ~111 m,
+ * so +0.0005 is ~55 m (inside the 150 m default) and +0.01 is ~1.1 km.
+ */
+class FieldTest extends TestCase
+{
+    use BuildsTenants;
+    use RefreshDatabase;
+
+    private array $t;
+
+    private User $tech;
+
+    private User $manager;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // A fixed instant: jobs are dated by wall clock, and a live clock
+        // beside a fixed date goes red at midnight.
+        $this->travelTo('2026-09-25 14:00:00');
+
+        $this->t = $this->provisionTenant();
+        $this->inTenant($this->t['org'], function () {
+            app(SettingsResolver::class)->set('timezone', $this->t['org'], 'UTC');
+            $this->t['franchise']->forceFill(['timezone' => 'UTC'])->save();
+        });
+
+        $this->tech = $this->userWithRole($this->t, 'Technician', ['field.view', 'field.tracked']);
+        $this->manager = $this->userWithRole($this->t, 'Dispatcher', [
+            'field.view', 'field.dashboard.view', 'field.map.view', 'field.route.view', 'field.manage',
+        ]);
+    }
+
+    private function mode(string $mode): void
+    {
+        $this->inTenant($this->t['org'], fn () => app(SettingsResolver::class)->set('field.tracking_mode', $this->t['org'], $mode));
+    }
+
+    private function point(float $lat, float $lng, string $at = '2026-09-25 14:00:00'): array
+    {
+        return ['lat' => $lat, 'lng' => $lng, 'recorded_at' => \Illuminate\Support\Carbon::parse($at)->toIso8601ZuluString()];
+    }
+
+    private function jobAt(float $lat, float $lng, string $when = '2026-09-25 15:00:00', string $street = '1 Main St'): Job
+    {
+        return $this->inTenant($this->t['org'], function () use ($lat, $lng, $when, $street) {
+            $customer = Customer::factory()->create([
+                'owning_franchise_id' => $this->t['franchise']->id,
+                'address_line1' => $street, 'city' => 'Town', 'state' => 'PA', 'postal_code' => '19000',
+            ]);
+            FieldGeocode::query()->create([
+                'address_hash' => FieldGeocode::hash(FieldGeocode::addressOf($customer)),
+                'address' => FieldGeocode::addressOf($customer),
+                'latitude' => $lat, 'longitude' => $lng, 'status' => FieldGeocode::OK,
+            ]);
+
+            return Job::factory()->create([
+                'franchise_id' => $this->t['franchise']->id,
+                'customer_id' => $customer->id,
+                'performed_by_user_id' => $this->tech->id,
+                'scheduled_for' => $when,
+                'duration_minutes' => 60,
+            ]);
+        });
+    }
+
+    private function send(array ...$points)
+    {
+        return $this->signedInAs($this->tech)->postJson('/api/v1/field/locations', ['points' => $points]);
+    }
+
+    private function events(string $key)
+    {
+        return $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->where('event_key', $key)->get());
+    }
+
+    public function test_the_module_declares_its_grants_and_four_tabs(): void
+    {
+        $module = app(ModuleRegistry::class)->get('field');
+
+        $this->assertSame(
+            ['field.view', 'field.tracked', 'field.manage',
+                'field.dashboard.view', 'field.map.view', 'field.route.view', 'field.settings.view'],
+            $module->permissionKeys(),
+        );
+    }
+
+    public function test_an_untracked_role_is_told_so_and_cannot_send(): void
+    {
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/me')
+            ->assertOk()->assertJsonPath('data.tracked', false)->assertJsonPath('data.should_track', false);
+
+        $this->signedInAs($this->manager)->postJson('/api/v1/field/locations', ['points' => [$this->point(40, -75)]])
+            ->assertForbidden();
+    }
+
+    public function test_clocked_in_mode_refuses_points_outside_a_shift_and_keeps_those_inside(): void
+    {
+        // The default mode.
+        $this->send($this->point(40, -75))->assertOk()->assertJsonPath('data.kept', 0)->assertJsonPath('data.refused', 1);
+
+        $this->inTenant($this->t['org'], fn () => TimeClockShift::query()->create([
+            'user_id' => $this->tech->id, 'clocked_in_at' => now()->subHour(),
+            'scheduled_end_at' => now()->addHours(4),
+        ]));
+
+        $this->send($this->point(40, -75, '2026-09-25 12:00:00'), $this->point(40, -75))
+            ->assertOk()->assertJsonPath('data.kept', 1)
+            ->assertJsonPath('data.status.should_track', true);
+    }
+
+    public function test_arriving_and_leaving_a_job_raise_one_event_each(): void
+    {
+        $this->mode('always');
+        $job = $this->jobAt(40.0, -75.0);
+
+        $this->send($this->point(40.01, -75.0, '2026-09-25 13:50:00'))->assertJsonPath('data.kept', 1);
+        $this->assertCount(0, $this->events('field.arrived_at_job'));
+
+        $this->send($this->point(40.0005, -75.0, '2026-09-25 13:55:00'));
+        $this->send($this->point(40.0004, -75.0, '2026-09-25 13:56:00'));
+        $arrived = $this->events('field.arrived_at_job');
+        $this->assertCount(1, $arrived, 'arrives once, not once per point');
+        $this->assertSame($job->id, $arrived->first()->subject_id);
+        $this->assertSame($this->tech->id, $arrived->first()->payload['user_id']);
+
+        $this->send($this->point(40.01, -75.0, '2026-09-25 13:59:00'));
+        $this->assertCount(1, $this->events('field.left_job'));
+        $this->assertNull($this->inTenant($this->t['org'], fn () => FieldPresence::query()->first()->at_job_id));
+    }
+
+    public function test_a_job_on_another_day_is_not_arrived_at(): void
+    {
+        $this->mode('always');
+        $this->jobAt(40.0, -75.0, '2026-09-26 09:00:00');
+
+        $this->send($this->point(40.0, -75.0));
+
+        $this->assertCount(0, $this->events('field.arrived_at_job'));
+    }
+
+    public function test_standing_still_away_from_a_job_alerts_once_and_rearms_on_moving(): void
+    {
+        $this->mode('always');
+
+        $this->send($this->point(41.0, -75.0, '2026-09-25 13:30:00'));
+        $this->send($this->point(41.0001, -75.0, '2026-09-25 13:45:00'));
+        $this->assertCount(0, $this->events('field.stopped_too_long'), '15 min is under the 20 min default');
+
+        $this->send($this->point(41.0002, -75.0, '2026-09-25 13:51:00'));
+        $this->send($this->point(41.0001, -75.0, '2026-09-25 13:55:00'));
+        $this->assertCount(1, $this->events('field.stopped_too_long'));
+        $this->assertSame(1, $this->inTenant($this->t['org'], fn () => FieldAlert::query()->where('kind', 'stopped')->count()));
+
+        // Moves on, stops again for 20 minutes: a second episode.
+        $this->travelTo('2026-09-25 14:30:00');
+        $this->send($this->point(41.1, -75.0, '2026-09-25 14:05:00'));
+        $this->send($this->point(41.1, -75.0, '2026-09-25 14:26:00'));
+        $this->assertCount(2, $this->events('field.stopped_too_long'));
+    }
+
+    public function test_the_sweep_raises_lost_signal_once_while_the_person_should_be_reporting(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40.0, -75.0, '2026-09-25 13:59:00'));
+
+        $this->travelTo('2026-09-25 14:10:00');
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        $this->assertCount(0, $this->events('field.signal_lost'), '11 min is under the 15 min default');
+
+        $this->travelTo('2026-09-25 14:20:00');
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        $this->assertCount(1, $this->events('field.signal_lost'));
+
+        // Clocked-in mode and not clocked in: silence is expected, not an alert.
+        $this->inTenant($this->t['org'], fn () => FieldPresence::query()->update(['signal_lost_alerted' => false]));
+        $this->mode('clocked_in');
+        $this->artisan('ezbizi:field-sweep')->assertSuccessful();
+        $this->assertCount(1, $this->events('field.signal_lost'));
+    }
+
+    public function test_sos_alerts_notifies_the_managers_who_can_see_the_person_and_is_audited(): void
+    {
+        $bystander = $this->userWithRole($this->t, 'Office', ['field.view']);
+
+        $this->signedInAs($this->tech)->postJson('/api/v1/field/sos', ['lat' => 40.1, 'lng' => -75.1])
+            ->assertCreated()->assertJsonPath('data.kind', 'sos');
+
+        $this->inTenant($this->t['org'], function () use ($bystander) {
+            $this->assertCount(1, AutomationEvent::query()->where('event_key', 'field.sos')->get());
+            $this->assertTrue(AuditEvent::query()->where('action', 'field.sos')->exists());
+
+            $told = Notification::query()->pluck('user_id')->all();
+            $this->assertContains($this->manager->id, $told);
+            $this->assertNotContains($bystander->id, $told);
+            $this->assertNotContains($this->tech->id, $told);
+        });
+
+        $alert = $this->inTenant($this->t['org'], fn () => FieldAlert::query()->first());
+        $this->signedInAs($this->manager)->postJson("/api/v1/field/alerts/{$alert->id}/acknowledge")
+            ->assertOk()->assertJsonPath('data.acknowledged_at', now()->toIso8601ZuluString());
+    }
+
+    /**
+     * Chosen, not accidental: SOS is a button somebody presses, so the owner
+     * out on a job may press it too. Being TRACKED is what administrators are
+     * spared (the test above); asking for help is not.
+     */
+    public function test_an_administrator_may_press_sos_though_never_tracked(): void
+    {
+        $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/sos', ['lat' => 40.0, 'lng' => -75.0])
+            ->assertCreated();
+
+        $this->inTenant($this->t['org'], fn () => $this->assertSame(0, FieldPresence::query()->count()));
+    }
+
+    public function test_sos_without_a_position_still_goes_out(): void
+    {
+        $this->signedInAs($this->tech)->postJson('/api/v1/field/sos', [])
+            ->assertCreated()->assertJsonPath('data.lat', null);
+
+        $this->inTenant($this->t['org'], fn () => $this->assertSame(
+            1, Notification::query()->where('user_id', $this->manager->id)->count(),
+        ));
+    }
+
+    public function test_a_manager_at_one_franchise_does_not_see_a_technician_at_another(): void
+    {
+        $this->mode('always');
+        $other = $this->extraFranchise($this->t, 'F2');
+        $tech = $this->userWithRole($this->t, 'Tech2', ['field.view', 'field.tracked'], onlyAt: $other);
+        $local = $this->userWithRole($this->t, 'Local', ['field.view', 'field.map.view'], onlyAt: $this->t['franchise']);
+
+        $this->signedInAs($tech)->postJson('/api/v1/field/locations', ['points' => [$this->point(40, -75)]])
+            ->assertJsonPath('data.kept', 1);
+
+        $this->signedInAs($local)->getJson('/api/v1/field/map')->assertOk()->assertJsonCount(0, 'data');
+        $this->signedInAs($local)->getJson("/api/v1/field/map?user_id={$tech->id}&date=2026-09-25")->assertNotFound();
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/map')->assertOk()
+            ->assertJsonPath('data.0.user.id', $tech->id);
+    }
+
+    public function test_the_trail_returns_the_day_in_order(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40.0, -75.0, '2026-09-25 13:00:00'), $this->point(40.1, -75.0, '2026-09-25 12:00:00'));
+
+        $this->signedInAs($this->manager)->getJson("/api/v1/field/map?user_id={$this->tech->id}&date=2026-09-25")
+            ->assertOk()->assertJsonCount(2, 'data.points')->assertJsonPath('data.points.0.lat', 40.1);
+    }
+
+    public function test_route_without_a_key_keeps_booked_order_and_says_why(): void
+    {
+        config(['services.google_maps.server_key' => null]);
+        $late = $this->jobAt(40.02, -75.0, '2026-09-25 16:00:00', '2 Oak St');
+        $early = $this->jobAt(40.01, -75.0, '2026-09-25 15:00:00', '1 Elm St');
+        $this->inTenant($this->t['org'], fn () => Job::factory()->create([
+            'franchise_id' => $this->t['franchise']->id,
+            'customer_id' => Customer::factory()->create(['owning_franchise_id' => $this->t['franchise']->id, 'address_line1' => null])->id,
+            'performed_by_user_id' => $this->tech->id, 'scheduled_for' => '2026-09-25 17:00:00',
+        ]));
+
+        $this->signedInAs($this->manager)->getJson("/api/v1/field/route?user_id={$this->tech->id}")
+            ->assertOk()
+            ->assertJsonPath('data.optimised', false)
+            ->assertJsonPath('data.stops.0.job_id', $early->id)
+            ->assertJsonPath('data.stops.1.job_id', $late->id)
+            ->assertJsonCount(1, 'data.unroutable')
+            ->assertJsonPath('data.unroutable.0.why', 'The customer has no street address.');
+    }
+
+    public function test_route_uses_googles_order_from_where_the_technician_stands(): void
+    {
+        config(['services.google_maps.server_key' => 'k']);
+        $this->mode('always');
+        $a = $this->jobAt(40.02, -75.0, '2026-09-25 15:00:00', '1 A St');
+        $b = $this->jobAt(40.01, -75.0, '2026-09-25 15:30:00', '2 B St');
+        $c = $this->jobAt(40.03, -75.0, '2026-09-25 17:00:00', '3 C St');
+        $this->send($this->point(40.0, -75.0));
+
+        Http::fake(['routes.googleapis.com/*' => Http::response(['routes' => [[
+            // Intermediates were [a, b]; Google says b first.
+            'optimizedIntermediateWaypointIndex' => [1, 0],
+            'legs' => [
+                ['duration' => '600s', 'distanceMeters' => 1100],
+                ['duration' => '7200s', 'distanceMeters' => 1100],
+                ['duration' => '300s', 'distanceMeters' => 1100],
+            ],
+        ]]])]);
+
+        $this->signedInAs($this->manager)->getJson("/api/v1/field/route?user_id={$this->tech->id}")
+            ->assertOk()
+            ->assertJsonPath('data.starts_from', 'current_position')
+            ->assertJsonPath('data.optimised', true)
+            ->assertJsonPath('data.stops.0.job_id', $b->id)
+            ->assertJsonPath('data.stops.0.drive_minutes', 10)
+            ->assertJsonPath('data.stops.1.job_id', $a->id)
+            // b: arrive 14:10, wait for 15:30, work to 16:30, +2h drive = 18:30 against 15:00.
+            ->assertJsonPath('data.stops.1.late', true)
+            ->assertJsonPath('data.stops.2.job_id', $c->id);
+
+        Http::assertSent(fn ($r) => $r->hasHeader('X-Goog-Api-Key', 'k') && $r['optimizeWaypointOrder'] === true);
+    }
+
+    public function test_the_administrator_is_never_tracked_by_implication(): void
+    {
+        $this->mode('always');
+
+        $this->signedInAs($this->t['admin'])->getJson('/api/v1/field/me')
+            ->assertOk()->assertJsonPath('data.tracked', false);
+        $this->signedInAs($this->t['admin'])->postJson('/api/v1/field/locations', ['points' => [$this->point(40, -75)]])
+            ->assertJsonPath('data.kept', 0);
+    }
+
+    public function test_the_map_carries_googles_copyright_for_the_viewport(): void
+    {
+        config(['services.google_maps.tiles_key' => 't']);
+        Http::fake([
+            'tile.googleapis.com/v1/createSession*' => Http::response(['session' => 's1', 'expiry' => time() + 86400 * 14]),
+            'tile.googleapis.com/tile/v1/viewport*' => Http::response(['copyright' => 'Map data ©2026 Google']),
+        ]);
+
+        $this->signedInAs($this->manager)
+            ->getJson('/api/v1/field/map/attribution?zoom=12&north=40.1&south=39.9&east=-74.9&west=-75.1')
+            ->assertOk()->assertJsonPath('data.copyright', 'Map data ©2026 Google');
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'viewport') && $r['session'] === 's1');
+    }
+
+    public function test_the_dashboard_counts_only_people_you_can_see(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40, -75));
+
+        $this->signedInAs($this->manager)->getJson('/api/v1/field/dashboard')
+            ->assertOk()
+            ->assertJsonPath('data.counts.tracked', 1)
+            ->assertJsonPath('data.counts.reporting', 1);
+    }
+
+    public function test_the_dashboard_glance_says_who_is_reporting(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40, -75));
+
+        $payload = app(\App\Support\Dashboard\Glances\FieldGlance::class)
+            ->resolve($this->manager->fresh(), \App\Support\Dashboard\DashboardPeriod::for($this->manager), []);
+
+        $this->assertSame(['1 of 1 tracked person is reporting now.'], $payload->data['sentences']);
+    }
+
+    public function test_erasing_a_person_drops_their_trail(): void
+    {
+        $this->mode('always');
+        $this->send($this->point(40, -75));
+
+        $this->inTenant($this->t['org'], function () {
+            $this->assertSame(1, FieldLocation::personalDataAbout($this->tech)->count());
+            $this->assertSame(1, FieldPresence::personalDataAbout($this->tech)->count());
+        });
+    }
+}

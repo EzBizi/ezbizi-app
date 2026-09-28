@@ -64,6 +64,14 @@ Widget renderedPreview({
       return _branches(options, accent, onAccent, text);
     case 'store_locator':
       return _storeLocator(options, accent, text);
+    case 'services':
+      return _services(options, accent, text);
+    case 'reviews':
+      return _reviews(options, text);
+    case 'before_after':
+      return _beforeAfter(options, text);
+    case 'faq':
+      return _faq(options, text);
     default:
       return const SizedBox.shrink();
   }
@@ -735,6 +743,130 @@ Widget _storeLocator(Map<String, dynamic> options, Color accent, Color text) {
             child: Center(child: Icon(Icons.map_outlined, color: accent)),
           ),
         ],
+      ],
+    ),
+  );
+}
+
+/// A #rgb or #rrggbb the screen was given, as a colour, or null.
+Color? _hex(String raw) {
+  var h = raw.replaceFirst('#', '');
+  if (h.length == 3) h = h.split('').map((c) => '$c$c').join();
+  final v = h.length == 6 ? int.tryParse('FF$h', radix: 16) : null;
+  return v == null ? null : Color(v);
+}
+
+/// Two stand-in services.
+Widget _services(Map<String, dynamic> options, Color accent, Color text) {
+  Widget card(String name) => SizedBox(
+        width: 150,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_flag(options['image'], true))
+              Container(
+                height: 70,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            if (_flag(options['icon'], true))
+              Icon(Icons.handyman_outlined, color: accent),
+            Text(name, style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+            if (_flag(options['description'], true))
+              Text('What it includes.',
+                  style: TextStyle(color: text.withValues(alpha: 0.8), fontSize: 12)),
+          ],
+        ),
+      );
+
+  return Wrap(spacing: 12, runSpacing: 12, children: [card('Example service'), card('Another one')]);
+}
+
+/// One stand-in review.
+Widget _reviews(Map<String, dynamic> options, Color text) {
+  final star = _hex('${options['star_color'] ?? ''}') ?? EzBiziTheme.reviewStar;
+
+  return SizedBox(
+    width: 280,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Pat Example', style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+        if (_flag(options['stars'], true))
+          Text('★★★★★', style: TextStyle(color: star, letterSpacing: 2)),
+        Text('Quick, tidy and on time.', style: TextStyle(color: text)),
+      ],
+    ),
+  );
+}
+
+/// One stand-in pair, split down the middle.
+Widget _beforeAfter(Map<String, dynamic> options, Color text) {
+  final before = '${options['before_label'] ?? 'Before'}';
+  final after = '${options['after_label'] ?? 'After'}';
+
+  return SizedBox(
+    width: 260,
+    height: 150,
+    child: Row(
+      children: [
+        Expanded(
+          child: Container(
+            color: text.withValues(alpha: 0.25),
+            alignment: Alignment.topLeft,
+            padding: const EdgeInsets.all(6),
+            child: Text(before, style: TextStyle(color: text, fontSize: 11)),
+          ),
+        ),
+        Container(width: 3, color: text),
+        Expanded(
+          child: Container(
+            color: text.withValues(alpha: 0.08),
+            alignment: Alignment.topRight,
+            padding: const EdgeInsets.all(6),
+            child: Text(after, style: TextStyle(color: text, fontSize: 11)),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Two stand-in questions, the first open.
+Widget _faq(Map<String, dynamic> options, Color text) {
+  final chevron = _pick(options['icon'], 'plus') == 'chevron';
+
+  Widget row(String q, {String? answer}) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(q, style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+                ),
+                Text(chevron ? '›' : '+', style: TextStyle(color: text)),
+              ],
+            ),
+            if (answer != null)
+              Text(answer, style: TextStyle(color: text.withValues(alpha: 0.8), fontSize: 12)),
+          ],
+        ),
+      );
+
+  return SizedBox(
+    width: 300,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        row('Do you work weekends?', answer: 'Saturdays, by appointment.'),
+        row('Are you insured?'),
       ],
     ),
   );

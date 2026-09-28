@@ -27,6 +27,15 @@
 	-->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Field: GPS for people whose role is tracked, while their organization's
+	     tracking window is open (clocked in, scheduled hours, or always), and
+	     for SOS. `location` in UIBackgroundModes keeps it running with the blue
+	     indicator showing; "Always" is never required, since sharing always
+	     starts while the app is open. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your organization uses your location while you are working, for your safety, to see when you arrive at a job, and to suggest the fastest route between your jobs. It is also sent when you press SOS.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Your organization uses your location while you are working, for your safety, to see when you arrive at a job, and to suggest the fastest route between your jobs. It is also sent when you press SOS.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EzBizi needs the microphone so you can speak during phone calls made and received in the app, such as calling a customer back about a job. It is used only while you are on a call.</string>
 	<key>CFBundleDevelopmentRegion</key>
@@ -84,6 +93,7 @@
 	<array>
 		<string>voip</string>
 		<string>audio</string>
+		<string>location</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

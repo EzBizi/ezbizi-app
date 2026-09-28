@@ -89,6 +89,43 @@ class AutomationEventErasureTest extends TestCase
         });
     }
 
+    /**
+     * Where an employee WAS is about them. Field events carry a top-level
+     * user_id beside a latitude and longitude; training results carry
+     * after.user_id. A colleague's identical event is the control that the
+     * match is on this person's id and not on the shape.
+     */
+    public function test_erasing_an_employee_drops_events_that_carry_their_id(): void
+    {
+        $alpha = $this->provisionTenant('Alpha');
+        $employee = $this->userWithRole($alpha, 'Tech', email: self::EMAIL);
+        $colleague = $this->userWithRole($alpha, 'Tech 2', email: 'other@example.test');
+
+        [$theirs, $colleagues] = $this->inTenant($alpha['org'], function () use ($alpha, $employee, $colleague) {
+            $at = fn (User $u) => AutomationEvent::create([
+                'organization_id' => $alpha['org']->id, 'event_key' => 'field.sos',
+                'payload' => ['user_id' => $u->id, 'user_name' => $u->name,
+                    'latitude' => 40.1, 'longitude' => -74.2, 'map_url' => 'https://maps.example/x'],
+                'occurred_at' => now(), 'available_at' => now(),
+            ]);
+            $failed = fn (User $u) => app(EventEmitter::class)->emit('training.failed', null,
+                ['after' => ['test_id' => 't', 'user_id' => $u->id, 'score' => 40, 'passed' => false]]);
+
+            return [[$at($employee), $failed($employee)], [$at($colleague), $failed($colleague)]];
+        });
+
+        app(Anonymiser::class)->purge($employee);
+
+        $this->inTenant($alpha['org'], function () use ($theirs, $colleagues) {
+            foreach ($theirs as $event) {
+                $this->assertNull(AutomationEvent::find($event->id), "{$event->event_key} still says where they were.");
+            }
+            foreach ($colleagues as $event) {
+                $this->assertNotNull(AutomationEvent::find($event->id), "{$event->event_key} was a colleague's.");
+            }
+        });
+    }
+
     public function test_erasing_an_employee_drops_their_invitation_and_only_blanks_their_name_elsewhere(): void
     {
         $alpha = $this->provisionTenant('Alpha');

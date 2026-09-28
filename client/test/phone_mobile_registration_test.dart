@@ -43,6 +43,83 @@ void main() {
   ///
   /// It gates BOTH directions, which is why placing a call did not get round
   /// the question of whether incoming worked.
+  // ── Placing a call on Android: the deny path ─────────────────────
+  //
+  // Measured by the Android session on 0.0.0278, 2026-09-25. Allow worked;
+  // Deny was broken three ways. These pin the two that can be reached without
+  // a device. The third — a second phone-group dialog at start-up that made
+  // one "no" permanent — was fixed by no longer asking at start-up, and is
+  // verified on the emulator rather than here, because it is Android's dialog
+  // policy and not our logic.
+
+  /// THE PHANTOM CALL. A throw while asking is the refusal, not an unknown.
+  ///
+  /// The plugin reaches `showPermissionRationaleDialog`, which is what threw,
+  /// ONLY after a prior denial. My first version returned `true` from the
+  /// catch; on the emulator that sent the call on, native bailed silently, and
+  /// the desk showed "On a call · Hang up" for a call that never existed.
+  test('a request that throws after a denial refuses the call', () async {
+    final allowed = await MobileVoiceDevice.placeCallsAllowed(
+      hasCallPhone: () async => false,
+      requestCallPhone: () async =>
+          throw PlatformException(code: 'showPermissionRationaleDialog'),
+      hasManageOwnCalls: () async => true,
+      requestManageOwnCalls: () async => true,
+    );
+
+    expect(allowed, isFalse, reason: 'a throw after a denial was treated as permission');
+  });
+
+  /// The control. With the permission held, the call is allowed — without
+  /// this, the case above passes on a function that refuses everything.
+  test('a granted permission allows the call', () async {
+    final allowed = await MobileVoiceDevice.placeCallsAllowed(
+      hasCallPhone: () async => true,
+      requestCallPhone: () async => true,
+      hasManageOwnCalls: () async => true,
+      requestManageOwnCalls: () async => true,
+    );
+
+    expect(allowed, isTrue);
+  });
+
+  /// And a plain denial — no throw — refuses too.
+  test('a denied permission refuses the call', () async {
+    final allowed = await MobileVoiceDevice.placeCallsAllowed(
+      hasCallPhone: () async => false,
+      requestCallPhone: () async => false,
+      hasManageOwnCalls: () async => true,
+      requestManageOwnCalls: () async => true,
+    );
+
+    expect(allowed, isFalse);
+  });
+
+  /// A TIMEOUT AFTER A REFUSED PERMISSION IS NOT A NETWORK FAULT.
+  ///
+  /// After a denial in the phone group the plugin's request future never
+  /// resolves, the timeout fires, and the banner used to read "Android refused
+  /// this app a calling account: TimeoutException after 0:00:20.000000:
+  /// Future not completed" — a developer string pointing at the wrong cause.
+  test('a permission that never answers is reported as the permission', () async {
+    final device = MobileVoiceDevice(
+      ensureCallingAccount: () => Completer<CallingAccountState>().future,
+      readDeviceToken: () async => 'fcm',
+      register: (_, _) async => true,
+      registrationTimeout: const Duration(milliseconds: 10),
+    );
+
+    await device.setup('a-token');
+
+    expect(device.registered, isFalse);
+    expect(device.registrationError, contains('phone permission'));
+    expect(
+      device.registrationError,
+      isNot(contains('TimeoutException')),
+      reason: 'a developer string reached the person who refused the permission',
+    );
+  });
+
   test('a phone with no calling account is not registered, and says so', () async {
     final device = MobileVoiceDevice(
       ensureCallingAccount: () async => CallingAccountState.needsEnabling,

@@ -617,6 +617,16 @@ class _CallTabState extends State<CallTab> {
     }
 
     await _service.connect(to: to, callerId: number.e164);
+
+    // Refused by the platform before it started — say so where the Call
+    // button is, and do NOT tell the server this person is on a call.
+    final refused = _service.callRefusal;
+    if (refused != null) {
+      if (mounted) setState(() => _bridgeNote = refused);
+
+      return;
+    }
+
     await widget.api.put('/phone/presence', {
       'connection_id': number.connectionId,
       'state': 'on_call',
@@ -1441,31 +1451,6 @@ class _CallTabState extends State<CallTab> {
               ),
             ),
           ),
-        // HOW THIS PERSON'S PHONE BEHAVES, beside the line that says what it
-        // is doing. Not in Settings › General: everything there belongs to a
-        // LINE and is the company's, and a personal choice sitting among them
-        // reads as one more thing being changed for everybody.
-        //
-        // The same reasoning that put the customer-panel pin on the panel
-        // itself — the control lives where the thing it governs is.
-        SwitchListTile(
-          key: const Key('phone-incoming-popup-switch'),
-          dense: true,
-          value: widget.session.me?.phoneIncomingPopup ?? false,
-          title: const Text('Pop-up for incoming calls'),
-          subtitle: const Text(
-            'A window with the caller and Accept or Ignore, over whatever you '
-            'are doing. The strip at the top appears either way.',
-          ),
-          onChanged: (on) {
-            setState(() {});
-
-            // Not awaited, same as the pin: Session updates its own copy first
-            // and refetches if the write fails, so a switch that could not be
-            // saved comes back off rather than lying on screen.
-            widget.session.setPreference('phone.incoming_popup', on);
-          },
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: TextField(

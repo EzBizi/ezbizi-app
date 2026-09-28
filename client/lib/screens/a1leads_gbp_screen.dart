@@ -406,7 +406,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
             '${_source['because'] ?? 'The connection to A1 Leads is not available.'}\n\n'
             'Nothing is missing and nothing is broken here — there is simply '
             'nothing to show until the connection is in place. EzBizi\'s own '
-            'Reviews and Business Profile are in Marketing, unchanged.',
+            'Reviews and Business Profile are in Customer Experience, unchanged.',
       );
     }
 
@@ -512,8 +512,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
                     ? 'This data is from ${_short(_source['captured_at'])} and has not '
                         'refreshed since — ${_source['hours_old']} hours old. Treat it as '
                         'historical rather than current.'
-                    : 'Read from A1 Leads. Snapshot captured ${_short(_source['captured_at'])}, '
-                        'installed ${_short(_source['installed_at'])}.',
+                    : _source['live'] == true
+                        // The live copy, in step with A1 Leads every minute.
+                        ? 'Live from A1 Leads, as of ${_short(_source['captured_at'])}.'
+                        : 'Read from A1 Leads. Snapshot captured ${_short(_source['captured_at'])}, '
+                            'installed ${_short(_source['installed_at'])}.',
                 style: theme.textTheme.bodySmall?.copyWith(color: onColour),
               ),
             ),

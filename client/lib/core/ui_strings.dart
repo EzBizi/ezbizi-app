@@ -47,6 +47,8 @@ class UiStrings {
     'module.hr.subtitle':
         'Everyone on the books, what they have signed, and who is on the clock.',
     'module.marketing.subtitle': 'Reach people who are not customers yet.',
+    'module.customer_experience.subtitle':
+        'What customers say about you, and how they find you.',
     'module.web_management.subtitle':
         'What your website says about you, held here and rendered there.',
     'module.phone.subtitle': 'Calls, texts, and the lines they arrive on.',

@@ -456,6 +456,363 @@ void main() {
     expect(find.text('Atlanta North'), findsNWidgets(2));
   });
 
+  /// Jose, 2026-09-25, asking for the Overview to look like the area editor:
+  /// each franchise heads its areas with the day's total across them, and an
+  /// area with no capacity at all says so instead of seven dashes.
+  testWidgets('the overview totals each franchise and flags areas not set up', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      me: const {
+        'franchises': [
+          {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+          {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+        ],
+      },
+      areas: const [
+        {
+          'id': 'a-1',
+          'name': 'East',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {
+            '1': 4,
+            '2': 4,
+            '3': 4,
+            '4': 4,
+            '5': 2,
+            '6': null,
+            '0': null,
+          },
+        },
+        {
+          'id': 'a-2',
+          'name': 'West',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {'1': 3, '2': 3, '3': 3, '4': 3, '5': 3, '6': 1, '0': null},
+        },
+        {
+          'id': 'a-3',
+          'name': 'Atlanta North',
+          'franchise_id': 'fr-2',
+          'zip_count': 4,
+          'follows_pattern': false,
+          'week': {
+            '1': null,
+            '2': null,
+            '3': null,
+            '4': null,
+            '5': null,
+            '6': null,
+            '0': null,
+          },
+        },
+      ],
+      pattern: null,
+    );
+
+    Finder inRow(String key, String text) => find.descendant(
+      of: find.byKey(ValueKey(key)),
+      matching: find.text(text),
+    );
+
+    // Connecticut: Monday 4 + 3, Friday 2 + 3, Saturday West alone, Sunday
+    // closed in both.
+    expect(inRow('overview-franchise-Connecticut', '7'), findsNWidgets(4));
+    expect(inRow('overview-franchise-Connecticut', '5'), findsOneWidget);
+    expect(inRow('overview-franchise-Connecticut', '1'), findsOneWidget);
+    expect(inRow('overview-franchise-Connecticut', '—'), findsOneWidget);
+
+    expect(
+      inRow('overview-area-a-3', 'Not set up · open it to add capacity'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('1 of 3 areas have no capacity yet'),
+      findsOneWidget,
+    );
+  });
+
+  /// Jose, 2026-09-25: "i want to be able to have overview for each franchise
+  /// too ... so i can see the daily totals for the whole franchise".
+  testWidgets(
+    'a franchise heading opens that franchise with its daily totals',
+    (tester) async {
+      await _pump(
+        tester,
+        me: const {
+          'franchises': [
+            {'id': 'fr-1', 'name': 'Connecticut', 'company_id': 'co-1'},
+            {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+          ],
+        },
+        areas: const [
+          {
+            'id': 'a-1',
+            'name': 'East',
+            'franchise_id': 'fr-1',
+            'zip_count': 3,
+            'follows_pattern': true,
+            'week': {
+              '1': 4,
+              '2': 4,
+              '3': 4,
+              '4': 4,
+              '5': 2,
+              '6': null,
+              '0': null,
+            },
+          },
+          {
+            'id': 'a-2',
+            'name': 'West',
+            'franchise_id': 'fr-1',
+            'zip_count': 3,
+            'follows_pattern': true,
+            'week': {'1': 3, '2': 3, '3': 3, '4': 3, '5': 3, '6': 1, '0': null},
+          },
+          {
+            'id': 'a-3',
+            'name': 'Atlanta North',
+            'franchise_id': 'fr-2',
+            'zip_count': 4,
+            'follows_pattern': true,
+            'week': {
+              '1': 9,
+              '2': 9,
+              '3': 9,
+              '4': 9,
+              '5': 9,
+              '6': null,
+              '0': null,
+            },
+          },
+        ],
+        pattern: null,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('rail-franchise-fr-1')));
+      await tester.pumpAndSettle();
+
+      Finder tile(int weekday, String text) => find.descendant(
+        of: find.byKey(ValueKey('franchise-total-$weekday')),
+        matching: find.text(text),
+      );
+
+      expect(tile(1, '7'), findsOneWidget);
+      expect(tile(5, '5'), findsOneWidget);
+      expect(tile(6, '1'), findsOneWidget);
+      expect(tile(0, 'Closed'), findsOneWidget);
+
+      // Its own areas only: Georgia's is not in this table.
+      final pane = find.byKey(const Key('scheduling-franchise-overview'));
+      expect(
+        find.descendant(of: pane, matching: find.text('East')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: pane, matching: find.text('Atlanta North')),
+        findsNothing,
+      );
+
+      // Seven tiles, one size.
+      final sizes = {
+        for (var d = 0; d < 7; d++)
+          tester.getSize(find.byKey(ValueKey('franchise-total-$d'))),
+      };
+      expect(sizes, hasLength(1), reason: '$sizes');
+
+      // Overview goes back to the whole view.
+      await tester.tap(find.text('Overview'));
+      await tester.pumpAndSettle();
+      expect(pane, findsNothing);
+    },
+  );
+
+  /// Jose, 2026-09-25: "i should be able to set a limit of jobs as well for
+  /// the franchise itself, since the technicians are shared". The limit shows
+  /// under each day's total and saves as weekday => jobs, blank as none.
+  testWidgets(
+    "a franchise's daily limit is shown and saved from its overview",
+    (tester) async {
+      Map<String, dynamic>? saved;
+      const areas = [
+        {
+          'id': 'a-1',
+          'name': 'Maryland',
+          'franchise_id': 'fr-1',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {'1': 8, '2': 8, '3': 8, '4': 8, '5': 6, '6': null, '0': 8},
+        },
+        {
+          'id': 'a-2',
+          'name': 'Atlanta',
+          'franchise_id': 'fr-2',
+          'zip_count': 3,
+          'follows_pattern': true,
+          'week': {
+            '1': 5,
+            '2': 5,
+            '3': 5,
+            '4': 5,
+            '5': 5,
+            '6': null,
+            '0': null,
+          },
+        },
+      ];
+
+      await _pump(
+        tester,
+        me: const {
+          'franchises': [
+            {'id': 'fr-1', 'name': 'DMV', 'company_id': 'co-1'},
+            {'id': 'fr-2', 'name': 'Georgia', 'company_id': 'co-1'},
+          ],
+        },
+        onRequest: (request) {
+          final path = request.url.path;
+          if (request.method == 'GET' && path.endsWith('/scheduling/areas')) {
+            return _json({
+              'data': areas,
+              'pattern': null,
+              'franchise_limits': {
+                'fr-1': {'1': 15},
+              },
+            });
+          }
+          if (request.method == 'PUT' &&
+              path.endsWith('/franchises/fr-1/limits')) {
+            saved = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'data': {'1': 15, '5': 10},
+            });
+          }
+          return null;
+        },
+      );
+
+      await tester.tap(find.byKey(const ValueKey('rail-franchise-fr-1')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('franchise-total-1')),
+          matching: find.text('max 15'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('franchise-limit-1')))
+            .controller!
+            .text,
+        '15',
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('franchise-limit-5')),
+        '10',
+      );
+      await tester.tap(find.text('Save DMV limit'));
+      await tester.pumpAndSettle();
+
+      expect(saved!['limits'], {
+        '0': null,
+        '1': 15,
+        '2': null,
+        '3': null,
+        '4': null,
+        '5': 10,
+        '6': null,
+      });
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('franchise-total-5')),
+          matching: find.text('max 10'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  /// Jose, 2026-09-25: "make the days sticky, cause once you go down u dont
+  /// know what day ur looking at anymore".
+  testWidgets('the weekday row stays on screen while the areas scroll', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      areas: [
+        for (var i = 0; i < 40; i++)
+          {
+            'id': 'a-$i',
+            'name': 'Area $i',
+            'franchise_id': 'fr-1',
+            'zip_count': 1,
+            'follows_pattern': true,
+            'week': {
+              '1': 2,
+              '2': 2,
+              '3': 2,
+              '4': 2,
+              '5': 2,
+              '6': null,
+              '0': null,
+            },
+          },
+      ],
+    );
+
+    final header = find.byKey(const Key('overview-weekdays'));
+    final before = tester.getTopLeft(header).dy;
+
+    await tester.drag(
+      find.byKey(const ValueKey('overview-area-a-5')),
+      const Offset(0, -1500),
+    );
+    await tester.pumpAndSettle();
+
+    // The areas moved; the weekdays did not leave the screen.
+    expect(find.text('Area 0'), findsOneWidget, reason: 'rail still lists it');
+    expect(header, findsOneWidget);
+    final after = tester.getTopLeft(header).dy;
+    expect(after, lessThan(before), reason: 'it rose to the top');
+    expect(after, greaterThanOrEqualTo(0));
+    expect(
+      find.descendant(of: header, matching: find.text('Mon')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a narrow overview scrolls its table, not the page', (
+    tester,
+  ) async {
+    final errors = <FlutterErrorDetails>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = errors.add;
+    addTearDown(() => FlutterError.onError = previous);
+
+    // The narrowest screen that draws the Overview beside the rail: the table
+    // is wider than its pane here, so it must scroll inside itself.
+    await _pump(tester, width: 600);
+    expect(
+      find.byKey(const ValueKey('overview-area-a-dallas')),
+      findsOneWidget,
+    );
+
+    expect(
+      errors,
+      isEmpty,
+      reason: errors.map((e) => e.exceptionAsString()).join(' | '),
+    );
+  });
+
   /// One franchise means nothing to disambiguate, so a header would be a
   /// label on the whole screen.
   testWidgets('a single franchise gets no group header', (tester) async {

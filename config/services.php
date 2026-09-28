@@ -566,4 +566,12 @@ return [
         'credentials' => env('FCM_CREDENTIALS'),
     ],
 
+    // Field (spec 2026-09-25). Two keys on purpose: the server key does
+    // Geocoding and Routes and never leaves the box; the tiles key is handed
+    // to every client with a Map Tiles session, so it is restricted to that API.
+    'google_maps' => [
+        'server_key' => env('GOOGLE_MAPS_SERVER_KEY'),
+        'tiles_key' => env('GOOGLE_MAPS_TILES_KEY'),
+    ],
+
 ];

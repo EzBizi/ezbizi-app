@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
@@ -17,16 +18,12 @@ import '../core/theme.dart';
 /// conjunction with what we already have of course, and also must be a setting
 /// to be enabled or disabled."*
 ///
-/// ── Why it is OFF unless somebody asks for it ───────────────────
+/// ── ON unless somebody switches it off ─────────────────────────
 ///
-/// It reverses a house rule, and the rule has a reason worth keeping: a
-/// ringing phone must not take the app away from somebody halfway through
-/// writing up a job. That is why the shell already shows a STRIP — you answer
-/// and keep typing, and the work underneath keeps its state.
-///
-/// Jose asked for both, and asked for the switch himself, which is what
-/// resolves it: the strip stays for everybody, and the window is a choice each
-/// person makes. `phone.incoming_popup`, default false.
+/// It was off by default at first, and Jose took a call that showed only the
+/// strip: *"remember i asked for a pop up"* (2026-09-25). The strip stays for
+/// everybody; the window is on for everybody who has not switched it off.
+/// `phone.incoming_popup`, default true.
 ///
 /// ── Why it is drawn rather than PUSHED ──────────────────────────
 ///
@@ -128,17 +125,37 @@ class _IncomingCallPopupState extends State<IncomingCallPopup> {
     final theme = Theme.of(context);
     final number = formatPhoneNumber(ringing);
 
-    return Positioned.fill(
-      child: Material(
-        // Dark enough to say the app is not the subject right now, light
-        // enough that you can still see what you were doing underneath.
-        color: Colors.black.withValues(alpha: 0.45),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
+    // NO BACKDROP, AND IT MOVES. Jose, 2026-09-25, of the first version's
+    // dimmed screen: *"it does block the screen... we can move it around like
+    // draggable"*. A card, not a modal: everything around it stays clickable,
+    // and a drag puts it wherever it is out of the way. The spot is kept for
+    // the next call, since this State outlives each one.
+    final screen = MediaQuery.sizeOf(context);
+    final at = _clamp(
+      _offset ?? Offset((screen.width - _width) / 2, screen.height * 0.3),
+      screen,
+    );
+
+    return Positioned(
+      left: at.dx,
+      top: at.dy,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.move,
+        child: GestureDetector(
+          // Where the pointer grabbed the card, kept from the PRESS: summing
+          // deltas loses the slop the recogniser eats before it accepts, and
+          // the card then trails the pointer.
+          dragStartBehavior: DragStartBehavior.down,
+          onPanStart: (drag) => _grip = drag.globalPosition - at,
+          onPanUpdate: (drag) => setState(
+            () => _offset = _clamp(drag.globalPosition - _grip, screen),
+          ),
+          child: SizedBox(
+            width: _width,
             child: Card(
               key: const Key('incoming-call-popup'),
-              margin: const EdgeInsets.all(24),
+              margin: EdgeInsets.zero,
+              elevation: 12,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -228,4 +245,20 @@ class _IncomingCallPopupState extends State<IncomingCallPopup> {
       ),
     );
   }
+
+  static const double _width = 312;
+
+  /// Where the card was dragged to, or null for the starting spot.
+  Offset? _offset;
+
+  /// The pointer's place on the card during a drag.
+  Offset _grip = Offset.zero;
+
+  /// Keeps the card on screen, so a drag or a smaller window cannot lose it.
+  // ponytail: the height is a guess at the card's (~300); measure it with a
+  // GlobalKey if a taller card ever gets pushed off the bottom.
+  Offset _clamp(Offset o, Size screen) => Offset(
+    o.dx.clamp(0, (screen.width - _width).clamp(0, double.infinity)),
+    o.dy.clamp(0, (screen.height - 300).clamp(0, double.infinity)),
+  );
 }

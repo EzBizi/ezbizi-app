@@ -49,6 +49,18 @@ class ServiceAreaPolicy
             : Refusal::noReach($user, Refusal::AT_FRANCHISE, 'add a service area', $franchise->name);
     }
 
+    /** A franchise's daily limit: editing Scheduling, within reach of that franchise. */
+    public function limit(User $user, Franchise $franchise): Response
+    {
+        if (! $user->hasPermission('scheduling.edit')) {
+            return Refusal::permission("change a franchise's daily limit");
+        }
+
+        return $user->canActOnFranchise($franchise)
+            ? Response::allow()
+            : Refusal::noReach($user, Refusal::AT_FRANCHISE, "change a franchise's daily limit", $franchise->name);
+    }
+
     public function update(User $user, ServiceArea $area): Response
     {
         if (! $user->hasPermission('scheduling.edit')) {

@@ -7,6 +7,7 @@ use App\Support\Dashboard\Glances\AutomationsGlance;
 use App\Support\Dashboard\Glances\BusinessProfileGlance;
 use App\Support\Dashboard\Glances\CustomersGlance;
 use App\Support\Dashboard\Glances\EmailGlance;
+use App\Support\Dashboard\Glances\FieldGlance;
 use App\Support\Dashboard\Glances\FleetGlance;
 use App\Support\Dashboard\Glances\HrGlance;
 use App\Support\Dashboard\Glances\InspectionGlance;
@@ -44,7 +45,9 @@ class GlanceRegistry
         // work_hours beside hr, where its sidebar entry sits (2026-09-24).
         'hr', 'work_hours', 'customers', 'jobs', 'scheduling', 'inspection', 'marketing',
         'web_management', 'phone', 'fleet_management', 'inventory',
-        'services', 'leads', 'reviews', 'business_profile',
+        'services', 'leads',
+        // The container Reviews and Business Profile moved into (2026-09-25).
+        'customer_experience', 'reviews', 'business_profile',
         // New Google reviews for Automations, beside Reviews (2026-09-25).
         'a1leads_gbp',
         'email', 'training',
@@ -58,6 +61,8 @@ class GlanceRegistry
         // already click). Dashboard's copy of this line arrived from main with
         // the old order, which was mine before the decision, not theirs.
         'profit_loss',
+        // Field, on the end like its sidebar entry (2026-09-25).
+        'field',
     ];
 
     /**
@@ -164,6 +169,12 @@ class GlanceRegistry
             'label' => 'Google Ads',
             'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
         ],
+        // A container: Reviews and Business Profile each have a live box of
+        // their own, so a summary here would restate them (2026-09-25).
+        'customer_experience' => [
+            'label' => 'Customer Experience',
+            'sentence' => 'Reviews and Business Profile have their own boxes on this screen. Open the Customer Experience tab for both.',
+        ],
         'newsletter' => [
             'label' => 'Newsletter',
             'sentence' => 'Newsletter keeps its own dashboard inside the tab: the month ahead, what has gone out, and who it reached. Open the Newsletter tab for it.',
@@ -203,6 +214,7 @@ class GlanceRegistry
         PhoneGlance::class,
         MarketingGlance::class,
         ReportsGlance::class,
+        FieldGlance::class,
     ];
 
     public function __construct(

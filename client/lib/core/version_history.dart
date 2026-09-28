@@ -8,15 +8,79 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0283',
+      date: '25 Sep 2026',
+      items: [
+        'Scheduling, Availability, Calendar View: the bar for each day matches the spots left shown above it.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0282',
+      date: '25 Sep 2026',
+      items: [
+        'Web Management, Widgets: the City list has a heading level and an Other label, and the consent wording on a form can be up to 1,000 characters.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0281',
+      date: '25 Sep 2026',
+      items: [
+        'The incoming-call card can be dragged out of the way, no longer darkens the screen behind it, and is switched on or off for the whole company in Settings, Communication. The personal switch on the Dial pad is gone, so a card someone had turned off shows again unless the company turns it off.',
+        'Scheduling, Availability has a Calendar View: pick a franchise or one of its areas to see the month with the spots left each day (green, amber, red), closed days, and days booked over what they take. In Settings, the weekday row of the Overview stays at the top while you scroll.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0280',
+      date: '25 Sep 2026',
+      items: [
+        'Web Management, Widgets: Services, Reviews, Before and After, and FAQ, each with its own list and a website widget.',
+        'Reviews and Business Profile have moved out of Marketing into a new Customer Experience tab. Nothing about either changes except where it is drawn, and who can see them is unchanged.',
+        'Web Management, Widgets: Phone, Opening hours, Map, Page title and Live Chat have the full set of options.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0279',
+      date: '25 Sep 2026',
+      items: [
+        'Scheduling Settings, Availability: the Overview groups areas by franchise, with the daily totals of each franchise, and flags areas that have no capacity yet. Tap a franchise name in the list to see that franchise alone, with its daily totals at the top.',
+        'On Android, refusing the permission to make calls now refuses the call and says why, instead of asking again, showing an error or pretending a call is on.',
+        'Web Management: the Contact form widget has the appointment form A1 Tools had, saving a form no longer wipes the choices of a pick-one question, the Call to action can show the number, address or link itself, and SEO has a Google review link field that the Review faces happy face uses.',
+        'Field: SOS from a computer or the web sends without a location. Only the Android and iPhone apps ask for one.',
+        'Scheduling: each franchise can have a daily limit, set from its Overview under the daily totals. Once that many jobs are booked for the franchise that day, Availability stops offering the day in all its areas, whatever an area has left, and the tiles show the limit as max N.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0278',
+      date: '25 Sep 2026',
+      items: [
+        'New: Field, a tab where managers see where their field team is, keep them safe and plan their day. Dashboard shows who is reporting, anyone at a job, stopped too long or out of signal, and alerts to acknowledge; tracked staff get an SOS button that alerts their managers with their location. Map shows the latest position of each person and replays a route for any day in the last 90 days.',
+        'Field, Route: the jobs of a technician for the day in the fastest order from where they are, with drive times and a warning where they would be late. Navigate opens Google Maps, and booked times are never changed.',
+        'Field, Settings: when phones share their location - while clocked in (the default), during scheduled hours, or always - and the arrival distance, stopped-too-long time and lost-signal time. Automations gain five triggers: arrived at a job, left a job, stopped too long, lost signal and SOS.',
+        'Nobody is tracked until an administrator grants Field, Tracked to a role in Roles, and administrators themselves are never tracked. Tracking runs on the Android and iOS apps only, and the phone always shows when it is sharing.',
+        'A1Leads GBP shows the Google reviews of A-1 Chimney live from A1 Leads, within a minute, instead of the snapshot from the day before: new reviews, replies, card changes and removals show up as they happen.',
+        'Web Management, Widgets: the Contact details, City list and Social links widgets have the sections A1 Tools drew and more options, shown on the sites once the next EzBizi website plugin update reaches them.',
+        'On Android, pressing Call places the call - it had been silently doing nothing, because the app never asked for permission to make calls. It asks now, and a call that is refused no longer takes the person out of their ring group.',
+      ],
+    ),
+    VersionRelease(
+      version: '0.0.0277',
+      date: '25 Sep 2026',
+      items: [
+        'Customer match on A1Leads GBP lists the Workiz jobs A1 Leads finds for your search; before, it showed no suggestion on every review. It asks for a name, phone or address to search by.',
+        'Scheduling, Schedule: tap a job to assign a technician, unassign one, or move it to another day and time slot. Changes go straight to Workiz, and only technicians who cover the service area of the job in Workiz are offered. Dispatching needs the Scheduling Edit permission.',
+        'Web Management, Widgets: each part of a widget has its own style options - font, colour, background, border, corners, spacing and hover colours - and the Call to action widget has the full set of options. The websites show them once the next EzBizi website plugin update reaches them.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0276',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Scheduling Settings, Availability: the week is one compact grid - a row per day, the time slots as columns and the total for the day first - and every row and daily-total tile is the same size.',
       ],
     ),
     VersionRelease(
       version: '0.0.0275',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Web Management, Widgets: a widget keeps its company-wide preset but can change any option for itself, in its shortcode or under This widget only in Elementor. It needs version 1.16.0 of the EzBizi website plugin, which rolls out separately.',
         'Availability counts booked jobs by the service area EzBizi placed them in, so a job Workiz filed under an old area name, or under none, still takes its spot in the right area.',
@@ -25,7 +89,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0274',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Scheduling Settings has two sub-tabs. Availability shows the daily totals of each area at the top, updating as you type, with the total of the whole franchise for each day. Schedule lists every Workiz technician, so each can be linked to their EzBizi user.',
         'In Reports, Days until next free spot counts from tomorrow in the organization time zone, as Availability does, since today cannot be booked.',
@@ -38,7 +102,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0273',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Reports has a service-area column, Days until next free spot. Filter it at a number of days and an automation can warn when an area is booked out that far ahead; an area that is closed or not set up stays blank.',
         'Web Management: a page has a Street View link field, for the Google Maps embed of the place a location page is about. The website plugin that draws it, with a photo gallery and a video carousel like the A1 Tools ones, rolls out to the sites separately.',
@@ -46,7 +110,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0272',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Web Management, SEO: a field that publishes nothing is amber and says Not filled in, labels sit above the boxes so an empty box no longer looks filled, and each website in the list shows how many fields it is missing.',
         'In Reports, Days until next open day counts closed dates and each area\'s date before which it takes no bookings, not only the weekly pattern.',
@@ -56,7 +120,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0271',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'Scheduling Settings can close a particular date or change how many jobs it takes, and set a date before which a service area takes no bookings. Availability follows both.',
         'Scheduling, Schedule shows the day as a board: technicians down the side, time slots across, each job in the cell of the technician on it, and the unassigned jobs beside it. It is read-only; jobs are still assigned in Workiz.',
@@ -64,7 +128,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0270',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'A zip code belongs to one service area across the whole organization, so a zip search has one answer. Scheduling Settings names the area that already holds a zip when you try to add it to another.',
         'Scheduling, Availability is redrawn the way A1 Tools shows it. Search by zip code or pick a franchise, and each area shows its first available day and the five after it, every time slot coloured by the spots left - green, yellow, red, or grey when full. Spots left count real bookings; canceled jobs and jobs with a deposit received do not take one.',
@@ -72,7 +136,7 @@ class VersionHistory {
     ),
     VersionRelease(
       version: '0.0.0269',
-      date: '24 Sep 2026',
+      date: '25 Sep 2026',
       items: [
         'AI Assistance has an Ask field, and the WhatsApp staff bot answers what is typed to it: a question is matched against the Library answers that person may read. One clear answer is sent, several come as a list to pick from, and otherwise it looks for a location as before.',
       ],

@@ -38,6 +38,27 @@ class WebWidgetsTest extends TestCase
         ];
     }
 
+    /** Toula's chat options: only a web address, a colour and a path get through. */
+    public function test_the_chat_options_keep_their_shape(): void
+    {
+        $chat = WidgetDefaults::resolve(['chat' => [
+            'avatar_url' => 'javascript:alert(1)',
+            'bubble_bg' => 'red;} body{display:none',
+            'header_bg' => '#ABCDEF',
+            'hide_on' => "/careers\r\n\r\n/jobs/*\n",
+            'bubble_size' => 9999,
+            'devices' => 'tv',
+        ]])['chat'];
+
+        $this->assertSame('', $chat['avatar_url']);
+        $this->assertSame('', $chat['bubble_bg']);
+        $this->assertSame('#abcdef', $chat['header_bg']);
+        $this->assertSame("/careers\n/jobs/*", $chat['hide_on']);
+        $this->assertSame(96, $chat['bubble_size']);
+        $this->assertSame('all', $chat['devices']);
+        $this->assertSame('https://x.test/a.jpg', WidgetDefaults::resolve(['chat' => ['avatar_url' => 'https://x.test/a.jpg']])['chat']['avatar_url']);
+    }
+
     /**
      * ── When the chat bubble is on the page at all ──
      *

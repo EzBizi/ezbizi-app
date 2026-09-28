@@ -69,6 +69,19 @@ final class WidgetPresets
         'team',
         'branches',
         'store_locator',
+        // The form's LOOK. Its questions and words stay in the form's own
+        // config; a preset only styles them, so one form can sit dark on one
+        // page and light on another.
+        'form',
+        // Jose, 2026-09-25: "yes all of it" — A1's Services, Reviews,
+        // Before & After and FAQ too, drawn from web_items (and, for
+        // reviews, the Google reviews EzBizi syncs).
+        'services',
+        'reviews',
+        'before_after',
+        // The page's own title, as a widget with options (Toula, 01a0d8e6-424e).
+        'post_title',
+        'faq',
     ];
 
     public const DEFAULT = 'default';
@@ -101,6 +114,12 @@ final class WidgetPresets
         'phone_box',
         'review_faces',
         'street_view',
+        'state_name',
+        'state_anchor',
+        'services',
+        'reviews',
+        'before_after',
+        'faq',
         'team',
         'branches',
         'store_locator',
@@ -141,16 +160,22 @@ final class WidgetPresets
      */
     private const PARTS = [
         'social_links' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text'],
-        'city_list' => ['box' => 'box', 'heading' => 'text', 'link' => 'text'],
-        'hours_table' => ['box' => 'box', 'day' => 'text', 'time' => 'text', 'closed' => 'text'],
-        'google_map' => ['box' => 'box'],
-        'contact_info' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text'],
+        'city_list' => ['box' => 'box', 'heading' => 'text', 'group' => 'box', 'link' => 'text', 'count' => 'text', 'search' => 'button', 'arrow' => 'icon', 'bullet' => 'icon'],
+        'hours_table' => ['box' => 'box', 'title' => 'text', 'day' => 'text', 'time' => 'text', 'closed' => 'text', 'badge' => 'button'],
+        'google_map' => ['box' => 'box', 'button' => 'button', 'address' => 'text'],
+        'post_title' => ['title' => 'text'],
+        'contact_info' => ['box' => 'box', 'item' => 'box', 'icon' => 'icon', 'label' => 'text', 'value' => 'text', 'day' => 'text', 'time' => 'text'],
         'cta' => ['box' => 'box', 'button' => 'button', 'icon' => 'icon'],
         'phone_box' => ['box' => 'box', 'icon' => 'icon', 'label' => 'text', 'number' => 'text'],
         'review_faces' => ['box' => 'box', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
         'team' => ['box' => 'box', 'heading' => 'text', 'name' => 'text', 'role' => 'text', 'photo' => 'box'],
         'branches' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'button' => 'button'],
         'store_locator' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'link' => 'text'],
+        'form' => ['box' => 'box', 'title' => 'text', 'subtitle' => 'text', 'label' => 'text', 'input' => 'button', 'submit' => 'button', 'consent' => 'text', 'help' => 'text'],
+        'services' => ['box' => 'box', 'card' => 'box', 'image' => 'box', 'icon' => 'icon', 'title' => 'text', 'text' => 'text', 'button' => 'button'],
+        'reviews' => ['box' => 'box', 'card' => 'box', 'name' => 'text', 'text' => 'text', 'date' => 'text', 'summary' => 'text'],
+        'before_after' => ['box' => 'box', 'card' => 'box', 'title' => 'text', 'text' => 'text', 'label' => 'text'],
+        'faq' => ['box' => 'box', 'item' => 'box', 'question' => 'text', 'answer' => 'text', 'icon' => 'icon', 'category' => 'text'],
     ];
 
     /**
@@ -177,6 +202,10 @@ final class WidgetPresets
             'border_width' => ['range', 0, 20],
             'radius' => ['range', 0, 100],
             'padding' => ['range', 0, 120],
+            // Top and bottom, and the sides, when they differ: A1's buttons are
+            // usually 12 by 24.
+            'padding_y' => ['range', 0, 120],
+            'padding_x' => ['range', 0, 120],
             'shadow' => ['choice', ['', 'none', 'soft', 'strong']],
             'align' => ['choice', ['', 'left', 'center', 'right']],
             'devices' => ['choice', ['', 'desktop', 'mobile']],
@@ -185,6 +214,8 @@ final class WidgetPresets
             'color' => ['color'],
             'hover_color' => ['color'],
             'bg' => ['color'],
+            'border_color' => ['color'],
+            'border_width' => ['range', 0, 20],
             'size' => ['range', 0, 120],
             'padding' => ['range', 0, 60],
             'radius' => ['range', 0, 100],
@@ -198,6 +229,9 @@ final class WidgetPresets
             'border_width' => ['range', 0, 20],
             'radius' => ['range', 0, 100],
             'padding' => ['range', 0, 60],
+            'padding_y' => ['range', 0, 60],
+            'padding_x' => ['range', 0, 60],
+            'shadow' => ['choice', ['', 'none', 'soft', 'strong']],
             'font_family' => ['font'],
             'font_size' => ['range', 0, 96],
             'font_weight' => ['choice', ['', '300', '400', '500', '600', '700', '800', '900']],
@@ -285,6 +319,14 @@ final class WidgetPresets
                 'size' => 28,
                 'gap' => 10,
                 'labels' => false,
+                // Toula's Social Links (01a0d8e6-c580): which networks and in
+                // what order (empty is every one this site has, in EzBizi's
+                // order), their brand colours or one colour, a new tab, and a
+                // hover effect.
+                'networks' => '',
+                'colors' => 'single',
+                'new_tab' => true,
+                'hover' => 'none',
             ],
             /*
              * The accordion is A1's most-used arrangement — 17 of them on
@@ -297,6 +339,25 @@ final class WidgetPresets
                 'columns' => 3,
                 'group' => true,
                 'link' => true,
+                // Toula's City List (01a0d8e6-28cc) and A1's live lists: a
+                // search box, the state after each town, bullets, a count per
+                // group, the first group open, one open at a time, links in a
+                // new tab, and what to say when a search finds nothing.
+                'search' => false,
+                'search_placeholder' => 'Search cities...',
+                'show_state' => true,
+                'bullets' => false,
+                'count' => false,
+                'open_first' => false,
+                'one_open' => false,
+                'new_tab' => false,
+                'column_gap' => 28,
+                'empty_text' => 'No cities match that search.',
+                // A group's name as a heading of the page (A1 drew an h3, so
+                // it took the theme's heading font), or `none` for a label.
+                'heading_tag' => 'none',
+                // Towns in no group, as a panel of their own when groups fold.
+                'other_label' => 'Other areas',
             ],
             /*
              * `today` earns its default: the reason a visitor reads an hours
@@ -305,10 +366,29 @@ final class WidgetPresets
             'hours_table' => [
                 'today' => true,
                 'compact' => false,
+                // Toula's Opening Hours list (01a0d8e6-0598).
+                'layout' => 'table',
+                'title' => '',
+                'show_closed' => true,
+                'closed_text' => 'Closed',
+                'clock' => '12',
+                'days' => 'short',
+                'status' => false,
+                'open_text' => 'Open now',
+                'shut_text' => 'Closed now',
+                'dividers' => false,
+                'divider_color' => '',
             ],
             'google_map' => [
                 'height' => 320,
                 'zoom' => 14,
+                // Toula's Map list (01a0d8e6-e13a).
+                'map_type' => 'roadmap',
+                'grayscale' => false,
+                'height_mobile' => 0,
+                'directions' => false,
+                'directions_text' => 'Get directions',
+                'address' => false,
             ],
             /*
              * The block in every footer on all three A1 sites: an icon, a
@@ -337,6 +417,26 @@ final class WidgetPresets
                 'phone' => true,
                 'email' => true,
                 'address' => true,
+                // Toula's Contact Details list (01a0d8e6-6684) and what A1's
+                // live info boxes use: hours and licence sections, the second
+                // number and inbox, each section's own title (empty hides it),
+                // their order, spacing, links and dividers.
+                'hours' => false,
+                'license' => false,
+                'secondary' => false,
+                'phone_title' => 'Phone',
+                'email_title' => 'Email',
+                'address_title' => 'Location',
+                'hours_title' => 'Hours',
+                'license_title' => 'License',
+                'closed_text' => 'Closed',
+                'order' => 'phone,email,address,hours,license',
+                'icon_gap' => 10,
+                'item_gap' => 18,
+                'links' => true,
+                'underline' => false,
+                'dividers' => false,
+                'divider_color' => '',
             ],
             /*
              * A1's sticky yellow "CALL US TODAY" bar, and Everdoors' popup.
@@ -364,6 +464,9 @@ final class WidgetPresets
                 // Toula's CTA list (suggestion 01a0d8e6-8d95): a custom link,
                 // tracking on it, a new tab, the icon, an animation, and what
                 // the button does on a phone.
+                // `value` shows the number, address or link itself, as A1's
+                // button did whenever nobody had typed its words.
+                'label' => 'words',
                 'url' => '',
                 'url_params' => '',
                 'new_tab' => false,
@@ -388,6 +491,12 @@ final class WidgetPresets
                 'icon' => true,
                 'link' => true,
                 'label' => '',
+                // Toula's Phone list (01a0d8e6-a9ce): which number, what a tap
+                // does, where the icon sits, and how the number is written.
+                'which' => 'primary',
+                'link_type' => 'call',
+                'icon_position' => 'left',
+                'format' => 'as_entered',
             ],
             /*
              * A1 Tools' smiley widget: a happy face sends somebody to the
@@ -441,20 +550,79 @@ final class WidgetPresets
                 'images' => true,
                 'maps' => true,
             ],
+            'form' => [
+                'field_gap' => 12,
+                'button_width' => 'auto',
+            ],
+            'services' => [
+                'layout' => 'grid',
+                'columns' => 3,
+                'image' => true,
+                'icon' => true,
+                'description' => true,
+                'phone' => false,
+                'category' => '',
+                'button_text' => 'Learn more',
+                'new_tab' => false,
+            ],
+            'reviews' => [
+                'layout' => 'grid',
+                'columns' => 3,
+                'source' => 'auto',
+                'limit' => 6,
+                'min_rating' => 4,
+                'stars' => true,
+                'show_source' => true,
+                'date' => true,
+                'photo' => true,
+                'excerpt' => 0,
+                'summary' => false,
+                'star_color' => '',
+            ],
+            'before_after' => [
+                'layout' => 'slider',
+                'columns' => 2,
+                'title' => true,
+                'description' => true,
+                'category' => '',
+                'before_label' => 'Before',
+                'after_label' => 'After',
+                'handle_color' => '',
+            ],
+            'post_title' => [
+                // `none` prints the words alone, as it always has, so a title
+                // sitting inside a heading is not wrapped in a second one.
+                'tag' => 'none',
+                'format' => 'title',
+                'prefix' => '',
+                'suffix' => '',
+                'fallback' => '',
+            ],
+            'faq' => [
+                'category' => '',
+                'show_category' => false,
+                'icon' => 'plus',
+                'schema' => true,
+                'open_first' => false,
+                'one_open' => true,
+            ],
         ];
     }
 
     /** The values each option may take. Anything else becomes the default. */
     private const CHOICES = [
+        'city_list' => [
+            'layout' => ['columns', 'list', 'accordion'],
+            'heading_tag' => ['none', 'h2', 'h3', 'h4', 'h5', 'h6'],
+        ],
         'social_links' => [
             'style' => ['plain', 'solid', 'outline'],
             'shape' => ['circle', 'square', 'rounded'],
-        ],
-        'city_list' => [
-            'layout' => ['columns', 'list', 'accordion'],
+            'colors' => ['single', 'brand'],
+            'hover' => ['none', 'fade', 'grow', 'lift'],
         ],
         'contact_info' => [
-            'layout' => ['stack', 'row', 'compact'],
+            'layout' => ['stack', 'row', 'compact', 'grid', 'inline'],
         ],
         'cta' => [
             // `bar` is fixed to the bottom of the window, `popup` opens over
@@ -462,6 +630,7 @@ final class WidgetPresets
             'placement' => ['inline', 'bar', 'popup'],
             'action' => ['call', 'book', 'form', 'email', 'review', 'url', 'sms', 'whatsapp'],
             'icon_type' => ['auto', 'phone', 'email', 'calendar', 'star', 'arrow', 'chat', 'none'],
+            'label' => ['words', 'value'],
             'icon_position' => ['left', 'right'],
             'animation' => ['none', 'pulse', 'shake', 'bounce', 'glow'],
             'animate_on' => ['always', 'hover'],
@@ -469,10 +638,34 @@ final class WidgetPresets
         ],
         'phone_box' => [
             'size' => ['small', 'medium', 'large'],
+            'which' => ['primary', 'secondary'],
+            'link_type' => ['call', 'sms', 'whatsapp'],
+            'icon_position' => ['left', 'right', 'top'],
+            'format' => ['as_entered', 'dashes', 'dots', 'parentheses'],
+        ],
+        'hours_table' => [
+            'layout' => ['table', 'stack', 'inline'],
+            'clock' => ['12', '24'],
+            'days' => ['short', 'long'],
+        ],
+        'google_map' => [
+            'map_type' => ['roadmap', 'satellite', 'hybrid', 'terrain'],
+        ],
+        'post_title' => [
+            'tag' => ['none', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'div'],
+            'format' => ['title', 'city', 'city_state', 'address'],
         ],
         'review_faces' => [
             'tone' => ['light', 'dark'],
         ],
+        'form' => [
+            'button_width' => ['auto', 'full'],
+        ],
+        'services' => ['layout' => ['grid', 'list']],
+        // `auto`: the hand-picked reviews when there are any, Google's when not.
+        'reviews' => ['layout' => ['grid', 'list', 'slider'], 'source' => ['auto', 'featured', 'google']],
+        'before_after' => ['layout' => ['slider', 'side']],
+        'faq' => ['icon' => ['plus', 'chevron']],
         'team' => [
             'photo' => ['square', 'circle'],
         ],
@@ -495,6 +688,18 @@ final class WidgetPresets
     private const TEXT = [
         'cta' => ['text' => 80, 'url' => 500, 'url_params' => 200],
         'phone_box' => ['label' => 60],
+        'city_list' => ['search_placeholder' => 60, 'empty_text' => 80, 'other_label' => 40],
+        'services' => ['category' => 60, 'button_text' => 40],
+        'before_after' => ['category' => 60, 'before_label' => 30, 'after_label' => 30],
+        'faq' => ['category' => 60],
+        'hours_table' => ['title' => 80, 'closed_text' => 30, 'open_text' => 30, 'shut_text' => 30],
+        'google_map' => ['directions_text' => 40],
+        'post_title' => ['prefix' => 80, 'suffix' => 80, 'fallback' => 120],
+        'social_links' => ['networks' => 300],
+        'contact_info' => [
+            'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
+            'license_title' => 40, 'closed_text' => 30, 'order' => 60,
+        ],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,
             'happy_title' => 80, 'happy_text' => 160, 'button' => 60,
@@ -506,17 +711,26 @@ final class WidgetPresets
     /** Numbers, with the range a website can survive. */
     private const RANGES = [
         'social_links' => ['size' => [16, 64], 'gap' => [0, 40]],
-        'city_list' => ['columns' => [1, 6]],
-        'google_map' => ['height' => [120, 900], 'zoom' => [1, 20]],
+        'city_list' => ['columns' => [1, 6], 'column_gap' => [0, 80]],
+        'google_map' => ['height' => [120, 900], 'zoom' => [1, 20], 'height_mobile' => [0, 900]],
         'review_faces' => ['face_size' => [40, 120]],
         'team' => ['columns' => [1, 6]],
         'branches' => ['columns' => [1, 4]],
         'cta' => ['icon_gap' => [0, 40], 'animation_speed' => [1, 10]],
+        'contact_info' => ['icon_gap' => [0, 40], 'item_gap' => [0, 80]],
+        'form' => ['field_gap' => [0, 40]],
+        'services' => ['columns' => [1, 4]],
+        'reviews' => ['columns' => [1, 4], 'limit' => [1, 50], 'min_rating' => [1, 5], 'excerpt' => [0, 1000]],
+        'before_after' => ['columns' => [1, 4]],
     ];
 
     /** Hand-written options that are a colour: a hex, or empty for the site's accent. */
     private const COLORS = [
         'cta' => ['glow_color'],
+        'contact_info' => ['divider_color'],
+        'reviews' => ['star_color'],
+        'before_after' => ['handle_color'],
+        'hours_table' => ['divider_color'],
     ];
 
     /**

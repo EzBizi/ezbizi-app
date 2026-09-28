@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.17.0
+Stable tag: 1.20.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,61 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.20.5 =
+* NEW: the gallery crops its tiles to a chosen ratio, draws "our work" tiles
+  at one height, and takes its corner and page-number colours.
+
+= 1.20.4 =
+* NEW: the city list can show group names as headings, and folds towns in
+  no group into a panel of their own; a town with several pages is listed
+  once; the fold arrows show whatever the theme does to them.
+* NEW: the video carousel reads its gap, arrow position, colours and sizes,
+  and shows page dots.
+
+= 1.20.3 =
+* FIX: social links show each network's own logo; opening hours have a
+  clock and a licence a badge; a call button keeps its number on one line.
+
+= 1.20.2 =
+* FIX: a contact icon's box grows around the icon, so a large icon or
+  padding no longer squeezes it out of sight.
+
+= 1.20.1 =
+* FIX: the contact form's consent words can carry links, written
+  [words](https://…); a dropdown with no placeholder says "Choose…"; the
+  consent and "I'm not a robot" boxes sit beside their words; the required
+  mark takes the accent colour.
+
+= 1.20.0 =
+* NEW: the live chat takes an agent name and photo, an online dot, its own
+  icon, size, distance from the corner, colours and shadow, fades or slides
+  in, can wait before showing, show on desktop or phones only, stay off
+  chosen pages, and report opens and starts to analytics.
+* NEW: the phone box shows either number, written as you choose, and can
+  text or WhatsApp; opening hours as a table, list or line, with a 24-hour
+  clock and an open-now badge; the map as satellite or terrain with a way
+  there; the page title as a heading of your choice.
+
+= 1.19.0 =
+* NEW: [ezbizi_services], [ezbizi_reviews], [ezbizi_before_after] and
+  [ezbizi_faq], with an Elementor widget each, drawn from lists kept in
+  EzBizi under Web Management > Widgets. Reviews show featured ones, or the
+  Google reviews EzBizi has; the FAQ carries the markup search engines read.
+
+= 1.18.0 =
+* NEW: the contact form takes number, date, time, checkbox, radio and hidden
+  questions, a placeholder, help line and width per question, a title and a
+  line under it, an "I'm not a robot" box, its own consent wording, and a
+  page to go to after sending. Its look takes a preset and per-widget changes.
+* NEW: contact details can show the hours, the licence and the second number
+  and inbox, with each section's own title, in any order, in a grid or a row.
+* NEW: the city list can have a search box, a count per group, bullets and the
+  state left off; social links can show chosen networks in order, in their
+  brand colours, with a hover effect.
+* NEW: [ezbizi_state_name] and [ezbizi_state_anchor] print the state's full
+  name, linked to its website.
+* NEW: the call to action can show the number, address or link itself.
 
 = 1.17.0 =
 * NEW: style options for every widget: colours and hover colours, font,

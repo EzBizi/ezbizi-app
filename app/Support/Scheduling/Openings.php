@@ -2,10 +2,12 @@
 
 namespace App\Support\Scheduling;
 
+use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -64,6 +66,16 @@ use Illuminate\Support\Facades\DB;
  * EzBizi status still says Pending while Workiz says Canceled; the New York
  * and Connecticut rows were two of the unprojected jobs above.
  *
+ * ── The franchise's daily limit ─────────────────────────────────
+ *
+ * On top of each area's own capacity, a franchise can cap the whole day
+ * (`franchise_daily_limits`, per weekday): its areas share technicians, so
+ * DMV's three areas adding up to 19 does not mean DMV can do 19 (Jose,
+ * 2026-09-25). Every seat-holding job of the franchise that day counts
+ * against it — any area, no area, no time — by the same rules as a seat.
+ * No window offers more than the franchise has left, so at the limit the day
+ * is full in every one of its areas. It never raises an area's own numbers.
+ *
  * ponytail: FREE_STATUSES and EXCLUDED_TAGS are constants, not settings. They
  * hold A-1's vocabulary; the day another organization's words differ, they
  * move into SettingRegistry as org-scoped lists — POPULATED by default, not
@@ -111,6 +123,13 @@ final class Openings
         // Every day before this is CLOSED, not full. NULL is no floor.
         $floor = $area->available_from?->toDateString();
 
+        $limits = FranchiseDailyLimit::query()
+            ->where('franchise_id', $area->franchise_id)
+            ->pluck('max_jobs', 'weekday');
+        $franchiseBooked = $limits->isEmpty()
+            ? []
+            : $this->franchiseBooked($area, $from, $from->addDays($days));
+
         $out = [];
 
         for ($i = 0; $i < $days; $i++) {
@@ -120,6 +139,9 @@ final class Openings
 
             $windows = [];
             $placed = 0;
+
+            $limit = $limits[$date->dayOfWeek] ?? null;
+            $franchiseLeft = $limit === null ? null : max(0, $limit - ($franchiseBooked[$key] ?? 0));
 
             $pattern = match (true) {
                 $floor !== null && $key < $floor => collect(),
@@ -142,7 +164,10 @@ final class Openings
                     'taken' => $in,
                     // Never negative: an over-booked window reports 0 left,
                     // and taken > capacity is what shows it is over.
-                    'remaining' => max(0, (int) $slot->max_jobs - $in),
+                    'remaining' => min(
+                        max(0, (int) $slot->max_jobs - $in),
+                        $franchiseLeft ?? PHP_INT_MAX,
+                    ),
                 ];
             }
 
@@ -152,6 +177,10 @@ final class Openings
                 // Jobs that day in no window: no time set, or a time outside
                 // every window.
                 'no_time' => $booked['no_time'] + (count($booked['times']) - $placed),
+                // The franchise's cap that day and how much of it is spoken
+                // for; both null without a limit.
+                'franchise_limit' => $limit,
+                'franchise_booked' => $limit === null ? null : ($franchiseBooked[$key] ?? 0),
             ];
         }
 
@@ -209,19 +238,9 @@ final class Openings
             ->where('scheduled_for', '<', $end)
             ->get(['scheduled_for', 'status', 'payload']);
 
-        $jobs = $placed->concat($pending);
-
         $byDay = [];
 
-        foreach ($jobs as $job) {
-            if (in_array(mb_strtolower(trim((string) $job->status)), self::FREE_STATUSES, true)) {
-                continue;
-            }
-
-            if ($this->excluded($job->payload)) {
-                continue;
-            }
-
+        foreach ($this->seats($placed->concat($pending)) as $job) {
             $at = (string) $job->scheduled_for;
             $day = substr($at, 0, 10);
             $time = substr($at, 11, 5);
@@ -237,6 +256,47 @@ final class Openings
         }
 
         return $byDay;
+    }
+
+    /**
+     * Seat-holding jobs of the area's whole FRANCHISE per day, for its daily
+     * limit: EzBizi's jobs of that franchise, placed in an area or not, plus
+     * mirrored Workiz jobs not projected yet. Midnight counts: a job with no
+     * time still takes a technician that day.
+     *
+     * @return array<string, int>
+     */
+    private function franchiseBooked(ServiceArea $area, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $start = $from->toDateString().' 00:00:00';
+        $end = $to->toDateString().' 00:00:00';
+
+        $jobs = DB::table('jobs')
+            ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
+            ->where('jobs.organization_id', $area->organization_id)
+            ->where('jobs.franchise_id', $area->franchise_id)
+            ->whereNull('jobs.deleted_at')
+            ->where('jobs.scheduled_for', '>=', $start)
+            ->where('jobs.scheduled_for', '<', $end)
+            ->get(['jobs.scheduled_for', 'jobs.status', 'workiz_jobs.payload'])
+            ->concat(DB::table('workiz_jobs')
+                ->whereNull('job_id')
+                ->where('organization_id', $area->organization_id)
+                ->where('franchise_id', $area->franchise_id)
+                ->where('scheduled_for', '>=', $start)
+                ->where('scheduled_for', '<', $end)
+                ->get(['scheduled_for', 'status', 'payload']));
+
+        return $this->seats($jobs)
+            ->countBy(fn ($job) => substr((string) $job->scheduled_for, 0, 10))
+            ->all();
+    }
+
+    /** The jobs that hold a seat: not a free status, not an excluded tag. */
+    private function seats(Collection $jobs): Collection
+    {
+        return $jobs->reject(fn ($job) => in_array(mb_strtolower(trim((string) $job->status)), self::FREE_STATUSES, true)
+            || $this->excluded($job->payload));
     }
 
     private function excluded(mixed $payload): bool

@@ -75,11 +75,13 @@ final class RetentionPolicy
      * silently matched nothing in exactly the table that grows fastest, which is
      * indistinguishable from a table that was already clean.
      *
-     * The 15 tables this governs today are `a1leads_review_events`
+     * The 19 tables this governs today are `a1leads_review_events`
      * (created_at), `a1leads_review_reply_receipts`
      * (created_at), `automation_events` (occurred_at),
      * `device_tokens` (last_registered_at),
-     * `email_verifications` (created_at), `invitations` (created_at),
+     * `email_verifications` (created_at), `field_alerts` (created_at),
+     * `field_geocodes` (updated_at), `field_locations` (recorded_at),
+     * `field_presences` (last_seen_at), `invitations` (created_at),
      * `monitoring_activity` (occurred_at),
      * `notifications` (created_at), `password_resets` (created_at),
      * `phone_callbacks` (created_at), `phone_calls` (created_at), `phone_device_registrations` (last_seen_at),

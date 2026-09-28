@@ -85,10 +85,10 @@ void main() {
   /// Written down because the mistake this screen is a correction of was
   /// exactly this confusion: nobody reading this tab should conclude that
   /// EzBizi's own Reviews and Business Profile moved or went away.
-  testWidgets('it says our own modules are still in Marketing', (tester) async {
+  testWidgets('it says our own modules are in Customer Experience', (tester) async {
     await _pump(tester, _handler(reachable: false));
 
-    expect(find.textContaining('are in Marketing'), findsOneWidget);
+    expect(find.textContaining('are in Customer Experience'), findsOneWidget);
   });
 
   /// And it draws no chips of its own.
@@ -417,6 +417,13 @@ void main() {
     expect(find.text('Dana Whitfield'), findsOneWidget);
   });
 
+  /// Read from the live copy, the line says so - not "snapshot captured".
+  testWidgets('the live copy is labelled live', (tester) async {
+    await _pump(tester, _handler(live: true));
+    expect(find.textContaining('Live from A1 Leads'), findsOneWidget);
+    expect(find.textContaining('Snapshot captured'), findsNothing);
+  });
+
   /// A card that DOES carry a phone brings the Contact column back.
   ///
   /// The discriminating half of the test above: without it, a table that had
@@ -715,6 +722,7 @@ MockClientHandler _handler({
   bool withCustomer = false,
   bool opsAvailable = false,
   bool manageGranted = false,
+  bool live = false,
   List<Uri>? seen,
   List<http.Request>? requests,
 }) {
@@ -772,6 +780,7 @@ MockClientHandler _handler({
       'generation': '20260923T150107Z-23510eb0',
       'hours_old': stale ? 41.5 : 2.1,
       'stale': stale,
+      'live': live,
       'because': configured
           ? (reachable ? null : 'A1 Leads refused reviews with HTTP 403.')
           : 'No A1 Leads key is configured for this environment.',
