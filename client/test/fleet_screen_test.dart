@@ -360,6 +360,59 @@ void main() {
     expect(find.widgetWithText(FilterChip, 'Due soon'), findsOneWidget);
   });
 
+  // Company is the FIRST field inside the add pane's scroll view, so its
+  // floating label rises toward the view's top edge — the one place a clip can
+  // cut it. That happened once and was fixed in 0873bf98 with two things: top
+  // padding and Clip.none. c1d7401a removed Clip.none (it let the form slide
+  // under the Save bar on a phone), leaving the padding as the only thing
+  // keeping the label whole. Clipping is painted, so no finder can see it;
+  // this measures the label's box against the viewport it is clipped to.
+  testWidgets('the Company label stays inside the add pane on a phone', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      size: const Size(375, 812),
+      me: {
+        ..._me,
+        'organization': {
+          ..._me['organization'] as Map<String, dynamic>,
+          'name': 'A-1 Group',
+        },
+        'scope': {
+          'type': 'organization',
+          'id': 'org-1',
+          'label': 'A-1 Group',
+          'path': ['A-1 Group'],
+        },
+        'companies': [
+          {'id': 'co-1', 'name': 'A-1 Chimney', 'parent_company_id': null},
+        ],
+      },
+    );
+
+    await tester.tap(find.text('Add vehicle'));
+    await tester.pumpAndSettle();
+
+    final label = find.text('Company').first;
+    final viewport = find
+        .ancestor(of: label, matching: find.byType(SingleChildScrollView))
+        .first;
+
+    // Control: without both, the comparison below would compare nothing.
+    expect(label, findsOneWidget);
+    expect(viewport, findsOneWidget);
+
+    final labelTop = tester.getTopLeft(label).dy;
+    final viewportTop = tester.getTopLeft(viewport).dy;
+
+    expect(
+      labelTop,
+      greaterThanOrEqualTo(viewportTop),
+      reason: 'the Company label starts above the scroll view and is clipped',
+    );
+  });
+
   testWidgets('Add names General, not Company pool, and offers the group', (
     tester,
   ) async {
