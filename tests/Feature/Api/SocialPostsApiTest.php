@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\SocialConnection;
 use App\Models\SocialPost;
 use App\Models\SocialPostTarget;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
@@ -39,8 +40,8 @@ class SocialPostsApiTest extends TestCase
 
     public function test_publishing_is_refused_to_a_role_that_can_only_look(): void
     {
-        $t      = $this->provisionTenant('A1-Group');
-        $row    = $this->connection($t, 'company', $t['company']->id);
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id);
         $reader = $this->userWithRole($t, 'Reader', ['marketing.view']);
 
         $this->signedInAs($reader)
@@ -57,10 +58,10 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_sibling_company_cannot_publish_as_this_companys_account(): void
     {
-        $t       = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $premier = $this->inTenant($t['org'], fn () => Company::create([
             'organization_id' => $t['org']->id,
-            'name'            => 'Premier Garage Repair',
+            'name' => 'Premier Garage Repair',
         ]));
 
         $row = $this->connection($t, 'company', $t['company']->id);
@@ -70,7 +71,7 @@ class SocialPostsApiTest extends TestCase
         $this->signedInAs($t['admin']->fresh())
             ->post(self::ENDPOINT, [
                 'connections' => [$row->getKey()],
-                'body'        => 'Posting as somebody else',
+                'body' => 'Posting as somebody else',
             ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('connections');
@@ -80,7 +81,7 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_network_that_needs_a_picture_refuses_words_alone_before_anything_is_written(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake();
@@ -100,7 +101,7 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_connected_network_with_no_publisher_says_so_and_says_the_account_is_fine(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         // LinkedIn, and it has to be a network EzBizi genuinely cannot post
         // to. This said facebook_page until 2026-09-01, when Facebook got a
         // publisher and the test started asserting the opposite of the truth.
@@ -129,7 +130,7 @@ class SocialPostsApiTest extends TestCase
      */
     public function test_a_network_that_takes_video_but_has_no_video_poster_is_refused_before_a_row_is_written(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake();
@@ -137,8 +138,8 @@ class SocialPostsApiTest extends TestCase
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, [
                 'connections' => [$row->getKey()],
-                'body'        => 'A sweep, on video.',
-                'media'       => UploadedFile::fake()->create('sweep.mp4', 12, 'video/mp4'),
+                'body' => 'A sweep, on video.',
+                'media' => UploadedFile::fake()->create('sweep.mp4', 12, 'video/mp4'),
             ])
             ->assertStatus(422)
             ->assertJsonPath(
@@ -164,16 +165,16 @@ class SocialPostsApiTest extends TestCase
      */
     public function test_a_scheduled_post_sends_nothing_until_its_time(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake();
 
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, [
-                'connections'   => [$row->getKey()],
-                'body'          => 'Book your autumn sweep.',
-                'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'connections' => [$row->getKey()],
+                'body' => 'Book your autumn sweep.',
+                'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
                 'scheduled_for' => now()->addDays(3)->format('Y-m-d H:i'),
             ])
             ->assertCreated()
@@ -194,18 +195,18 @@ class SocialPostsApiTest extends TestCase
 
     public function test_the_sweep_releases_a_post_once_it_is_due_and_not_before(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+            'api.pinterest.com/v5/pins' => Http::response(['id' => 'pin-9']),
         ]);
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
-            'connections'   => [$row->getKey()],
-            'body'          => 'Autumn sweep.',
-            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'connections' => [$row->getKey()],
+            'body' => 'Autumn sweep.',
+            'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             'scheduled_for' => now()->addHour()->format('Y-m-d H:i'),
         ])->assertCreated();
 
@@ -247,18 +248,18 @@ class SocialPostsApiTest extends TestCase
      */
     public function test_a_second_sweep_does_not_send_the_same_post_again(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+            'api.pinterest.com/v5/pins' => Http::response(['id' => 'pin-9']),
         ]);
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
-            'connections'   => [$row->getKey()],
-            'body'          => 'Once, please.',
-            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'connections' => [$row->getKey()],
+            'body' => 'Once, please.',
+            'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             'scheduled_for' => now()->addMinutes(5)->format('Y-m-d H:i'),
         ])->assertCreated();
 
@@ -285,15 +286,15 @@ class SocialPostsApiTest extends TestCase
      */
     public function test_the_time_is_stored_as_the_view_reads_it(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake();
 
         $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
-            'connections'   => [$row->getKey()],
-            'body'          => 'Nine in the morning, wherever I am standing.',
-            'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+            'connections' => [$row->getKey()],
+            'body' => 'Nine in the morning, wherever I am standing.',
+            'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             'scheduled_for' => '2099-03-04 09:00',
         ])->assertCreated();
 
@@ -314,16 +315,16 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_time_that_has_already_passed_is_refused_rather_than_sent_now(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake();
 
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, [
-                'connections'   => [$row->getKey()],
-                'body'          => 'Yesterday.',
-                'media'         => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'connections' => [$row->getKey()],
+                'body' => 'Yesterday.',
+                'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
                 'scheduled_for' => now()->subDays(2)->format('Y-m-d H:i'),
             ])
             ->assertStatus(422)
@@ -340,7 +341,7 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_post_with_neither_words_nor_a_file_is_refused(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         $this->signedInAs($t['admin'])
@@ -351,19 +352,19 @@ class SocialPostsApiTest extends TestCase
 
     public function test_an_image_reaches_pinterest_and_the_target_carries_the_pin_id(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $row = $this->connection($t, 'company', $t['company']->id);
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+            'api.pinterest.com/v5/pins' => Http::response(['id' => 'pin-9']),
         ]);
 
         $response = $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, [
                 'connections' => [$row->getKey()],
-                'body'        => 'New flue liner, same day.',
-                'media'       => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'body' => 'New flue liner, same day.',
+                'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             ])
             ->assertCreated();
 
@@ -394,13 +395,13 @@ class SocialPostsApiTest extends TestCase
 
     public function test_a_send_raises_the_automation_event_and_a_refusal_raises_the_other(): void
     {
-        $t   = $this->provisionTenant('A1-Group');
-        $ok  = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
+        $t = $this->provisionTenant('A1-Group');
+        $ok = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
         $bad = $this->connection($t, 'company', $t['company']->id, 'A-1 Roofing', 'pin-b');
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::sequence()
+            'api.pinterest.com/v5/pins' => Http::sequence()
                 ->push(['id' => 'pin-9'])
                 ->push(['message' => 'That board is archived.'], 400),
         ]);
@@ -408,8 +409,8 @@ class SocialPostsApiTest extends TestCase
         $this->signedInAs($t['admin'])
             ->post(self::ENDPOINT, [
                 'connections' => [$ok->getKey(), $bad->getKey()],
-                'body'        => 'Two accounts, one of them unhappy.',
-                'media'       => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'body' => 'Two accounts, one of them unhappy.',
+                'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             ])
             ->assertCreated();
 
@@ -434,25 +435,25 @@ class SocialPostsApiTest extends TestCase
 
     public function test_the_list_shows_what_this_view_sent_and_not_a_siblings(): void
     {
-        $t       = $this->provisionTenant('A1-Group');
+        $t = $this->provisionTenant('A1-Group');
         $premier = $this->inTenant($t['org'], fn () => Company::create([
             'organization_id' => $t['org']->id,
-            'name'            => 'Premier Garage Repair',
+            'name' => 'Premier Garage Repair',
         ]));
 
-        $mine     = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
-        $theirs   = $this->connection($t, 'company', $premier->id, 'Premier', 'pin-b');
+        $mine = $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'pin-a');
+        $theirs = $this->connection($t, 'company', $premier->id, 'Premier', 'pin-b');
 
         Http::fake([
             'api.pinterest.com/v5/boards*' => Http::response(['items' => [['id' => 'board-1']]]),
-            'api.pinterest.com/v5/pins'    => Http::response(['id' => 'pin-9']),
+            'api.pinterest.com/v5/pins' => Http::response(['id' => 'pin-9']),
         ]);
 
         foreach ([$mine, $theirs] as $connection) {
             $this->signedInAs($t['admin'])->post(self::ENDPOINT, [
                 'connections' => [$connection->getKey()],
-                'body'        => 'From '.$connection->display_name,
-                'media'       => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
+                'body' => 'From '.$connection->display_name,
+                'media' => UploadedFile::fake()->create('shot.png', 12, 'image/png'),
             ])->assertCreated();
         }
 
@@ -488,6 +489,40 @@ class SocialPostsApiTest extends TestCase
         );
     }
 
+    public function test_a_facebook_post_carries_the_link_facebook_gives_for_it(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id, remoteId: 'page-1', provider: 'facebook_page');
+
+        Http::fake([
+            'graph.facebook.com/*/feed' => Http::response(['id' => 'page-1_post-2']),
+            // Read back, never built from the id (pages_read_engagement).
+            'graph.facebook.com/*/page-1_post-2*' => Http::response(['permalink_url' => 'https://www.facebook.com/a1chimney/posts/2']),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Chimney season is here.'])
+            ->assertCreated()
+            ->assertJsonPath('data.targets.0.url', 'https://www.facebook.com/a1chimney/posts/2');
+    }
+
+    public function test_a_post_whose_link_cannot_be_read_is_still_sent(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id, remoteId: 'page-1', provider: 'facebook_page');
+
+        Http::fake([
+            'graph.facebook.com/*/feed' => Http::response(['id' => 'page-1_post-2']),
+            'graph.facebook.com/*/page-1_post-2*' => Http::response(['error' => ['message' => 'nope']], 500),
+        ]);
+
+        $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Chimney season is here.'])
+            ->assertCreated()
+            ->assertJsonPath('data.targets.0.status', SocialPostTarget::STATUS_SENT)
+            ->assertJsonPath('data.targets.0.url', null);
+    }
+
     private function assertNothingWasWritten(array $t): void
     {
         $this->inTenant($t['org'], function () {
@@ -508,16 +543,16 @@ class SocialPostsApiTest extends TestCase
             $row = new SocialConnection;
             $row->forceFill([
                 'organization_id' => $t['org']->id,
-                'scope_type'      => $scopeType,
-                'scope_id'        => $scopeId,
-                'provider'        => $provider,
-                'remote_id'       => $remoteId,
-                'display_name'    => $name,
-                'handle'          => strtolower(str_replace(' ', '', $name)),
+                'scope_type' => $scopeType,
+                'scope_id' => $scopeId,
+                'provider' => $provider,
+                'remote_id' => $remoteId,
+                'display_name' => $name,
+                'handle' => strtolower(str_replace(' ', '', $name)),
             ]);
             $row->connect([
                 'refresh_token' => 'pinr-a-refresh-token',
-                'access_token'  => 'pina-an-access-token',
+                'access_token' => 'pina-an-access-token',
             ]);
             $row->save();
 
@@ -525,7 +560,7 @@ class SocialPostsApiTest extends TestCase
         });
     }
 
-    private function lookingAt(\App\Models\User $user, string $type, string $id): void
+    private function lookingAt(User $user, string $type, string $id): void
     {
         $this->inTenant($user->organization, function () use ($user, $type, $id) {
             $user->forceFill([

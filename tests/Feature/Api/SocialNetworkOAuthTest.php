@@ -6,13 +6,14 @@ use App\Models\SocialConnection;
 use App\Support\Social\FacebookOAuth;
 use App\Support\Social\InstagramOAuth;
 use App\Support\Social\LinkedInOAuth;
-use App\Support\Social\TikTokOAuth;
+use App\Support\Social\SocialProvider;
 use App\Support\Social\ThreadsOAuth;
+use App\Support\Social\ThumbtackOAuth;
+use App\Support\Social\TikTokOAuth;
 use App\Support\Social\XOAuth;
 use App\Support\Social\YouTubeOAuth;
-use App\Support\Social\SocialProvider;
-use App\Support\Social\ThumbtackOAuth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Concerns\BuildsTenants;
@@ -33,27 +34,27 @@ class SocialNetworkOAuthTest extends TestCase
         parent::setUp();
 
         config([
-            'services.meta.client_id'            => 'a-meta-app-id',
-            'services.meta.client_secret'        => 'a-meta-app-secret',
-            'services.meta.facebook_redirect'    => 'https://app.ezbizi.test'.FacebookOAuth::CALLBACK_PATH,
-            'services.meta.instagram_redirect'   => 'https://app.ezbizi.test'.InstagramOAuth::CALLBACK_PATH,
-            'services.meta.threads_redirect'     => 'https://app.ezbizi.test'.ThreadsOAuth::CALLBACK_PATH,
-            'services.meta.instagram_id'         => 'an-instagram-app-id',
-            'services.meta.instagram_secret'     => 'an-instagram-app-secret',
-            'services.meta.threads_id'           => 'a-threads-app-id',
-            'services.meta.threads_secret'       => 'a-threads-app-secret',
-            'services.linkedin.client_id'        => 'a-linkedin-id',
-            'services.linkedin.client_secret'    => 'a-linkedin-secret',
-            'services.linkedin.redirect'         => 'https://app.ezbizi.test'.LinkedInOAuth::CALLBACK_PATH,
-            'services.tiktok.client_key'         => 'a-tiktok-key',
-            'services.tiktok.client_secret'      => 'a-tiktok-secret',
-            'services.tiktok.redirect'           => 'https://app.ezbizi.test'.TikTokOAuth::CALLBACK_PATH,
-            'services.youtube.client_id'         => 'a-youtube-id.apps.googleusercontent.com',
-            'services.youtube.client_secret'     => 'a-youtube-secret',
-            'services.youtube.redirect'          => 'https://app.ezbizi.test'.YouTubeOAuth::CALLBACK_PATH,
-            'services.x.client_id'               => 'an-x-client-id',
-            'services.x.client_secret'           => 'an-x-client-secret',
-            'services.x.redirect'                => 'https://app.ezbizi.test'.XOAuth::CALLBACK_PATH,
+            'services.meta.client_id' => 'a-meta-app-id',
+            'services.meta.client_secret' => 'a-meta-app-secret',
+            'services.meta.facebook_redirect' => 'https://app.ezbizi.test'.FacebookOAuth::CALLBACK_PATH,
+            'services.meta.instagram_redirect' => 'https://app.ezbizi.test'.InstagramOAuth::CALLBACK_PATH,
+            'services.meta.threads_redirect' => 'https://app.ezbizi.test'.ThreadsOAuth::CALLBACK_PATH,
+            'services.meta.instagram_id' => 'an-instagram-app-id',
+            'services.meta.instagram_secret' => 'an-instagram-app-secret',
+            'services.meta.threads_id' => 'a-threads-app-id',
+            'services.meta.threads_secret' => 'a-threads-app-secret',
+            'services.linkedin.client_id' => 'a-linkedin-id',
+            'services.linkedin.client_secret' => 'a-linkedin-secret',
+            'services.linkedin.redirect' => 'https://app.ezbizi.test'.LinkedInOAuth::CALLBACK_PATH,
+            'services.tiktok.client_key' => 'a-tiktok-key',
+            'services.tiktok.client_secret' => 'a-tiktok-secret',
+            'services.tiktok.redirect' => 'https://app.ezbizi.test'.TikTokOAuth::CALLBACK_PATH,
+            'services.youtube.client_id' => 'a-youtube-id.apps.googleusercontent.com',
+            'services.youtube.client_secret' => 'a-youtube-secret',
+            'services.youtube.redirect' => 'https://app.ezbizi.test'.YouTubeOAuth::CALLBACK_PATH,
+            'services.x.client_id' => 'an-x-client-id',
+            'services.x.client_secret' => 'an-x-client-secret',
+            'services.x.redirect' => 'https://app.ezbizi.test'.XOAuth::CALLBACK_PATH,
         ]);
     }
 
@@ -61,13 +62,13 @@ class SocialNetworkOAuthTest extends TestCase
     public static function networks(): array
     {
         return [
-            'facebook'  => ['facebook', 'facebook.com'],
+            'facebook' => ['facebook', 'facebook.com'],
             'instagram' => ['instagram', 'instagram.com'],
-            'threads'   => ['threads', 'threads.net'],
-            'linkedin'  => ['linkedin', 'linkedin.com'],
-            'tiktok'    => ['tiktok', 'tiktok.com'],
-            'youtube'   => ['youtube', 'accounts.google.com'],
-            'x'         => ['x', 'x.com/i/oauth2/authorize'],
+            'threads' => ['threads', 'threads.net'],
+            'linkedin' => ['linkedin', 'linkedin.com'],
+            'tiktok' => ['tiktok', 'tiktok.com'],
+            'youtube' => ['youtube', 'accounts.google.com'],
+            'x' => ['x', 'x.com/i/oauth2/authorize'],
         ];
     }
 
@@ -85,7 +86,14 @@ class SocialNetworkOAuthTest extends TestCase
         $this->assertStringContainsString('state=', $url);
         $this->assertStringContainsString('redirect_uri=', $url);
         $this->assertStringNotContainsString('ads:', $url);
-        $this->assertStringNotContainsString('pages_messaging', $url);
+        // Facebook asks for messaging since Messenger enquiries became Leads
+        // (2026-09-28); when Facebook was posting-only this asserted the
+        // opposite. No other network may ask for a Page permission.
+        if ($network === 'facebook') {
+            $this->assertStringContainsString('pages_messaging', $url);
+        } else {
+            $this->assertStringNotContainsString('pages_messaging', $url);
+        }
     }
 
     public function test_a_facebook_sign_in_connects_each_page(): void
@@ -99,7 +107,7 @@ class SocialNetworkOAuthTest extends TestCase
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $state = $query['state'];
 
-        Http::fake(function (\Illuminate\Http\Client\Request $request) {
+        Http::fake(function (Request $request) {
             $url = $request->url();
 
             if (str_contains($url, 'oauth/access_token')) {
@@ -120,6 +128,10 @@ class SocialNetworkOAuthTest extends TestCase
                 ]]);
             }
 
+            if (str_contains($url, '/subscribed_apps')) {
+                return Http::response(['success' => true]);
+            }
+
             return Http::response(['error' => 'unexpected '.$url], 500);
         });
 
@@ -131,10 +143,52 @@ class SocialNetworkOAuthTest extends TestCase
         $names = $this->inTenant($t['org'], fn () => SocialConnection::query()->orderBy('display_name')->pluck('display_name')->all());
 
         $this->assertSame(['A-1 Blog', 'A-1 Chimney'], $names);
+
+        // Each Page subscribes the app, with its own token, or Meta never
+        // delivers its Messenger enquiries (found 2026-09-28).
+        foreach (['111', '222'] as $page) {
+            Http::assertSent(fn ($request) => str_contains($request->url(), "/{$page}/subscribed_apps")
+                && $request['access_token'] === "page-token-{$page}"
+                && str_contains($request['subscribed_fields'], 'messages'));
+        }
         $this->assertSame(
             'page-token-111',
             $this->inTenant($t['org'], fn () => SocialConnection::where('remote_id', '111')->first()->getAttribute('credentials')['access_token']),
         );
+    }
+
+    public function test_an_instagram_account_is_stored_under_its_professional_account_id(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+
+        $url = $this->signedInAs($t['admin'])
+            ->postJson('/api/v1/social/instagram/start')
+            ->assertOk()->json('data.authorization_url');
+
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+        Http::fake(function (Request $request) {
+            $url = $request->url();
+
+            return match (true) {
+                str_contains($url, 'oauth/access_token') => Http::response(['access_token' => 'short-ig', 'user_id' => 17841400000000001]),
+                str_contains($url, '/access_token') => Http::response(['access_token' => 'long-ig', 'expires_in' => 5184000]),
+                str_contains($url, '/subscribed_apps') => Http::response(['success' => true]),
+                // Instagram Login returns both: `id` is app-scoped, `user_id`
+                // is the account the webhooks and /messages speak of.
+                str_contains($url, '/me') => Http::response(['id' => 'app-scoped-999', 'user_id' => '17841400000000001', 'username' => 'a1chimney']),
+                default => Http::response(['error' => 'unexpected '.$url], 500),
+            };
+        });
+
+        $this->get('/api/v1/social/instagram/callback?code=an-auth-code&state='.$query['state'])->assertOk();
+
+        $this->assertSame(
+            ['17841400000000001'],
+            $this->inTenant($t['org'], fn () => SocialConnection::query()->pluck('remote_id')->all()),
+        );
+        Http::assertSent(fn ($request) => $request->url() === 'https://graph.instagram.com/v21.0/me/subscribed_apps'
+            && $request['subscribed_fields'] === 'messages');
     }
 
     public function test_youtube_asks_for_pkce_and_offline_access(): void

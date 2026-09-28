@@ -188,6 +188,23 @@ class MetaMessageRepliesTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_an_instagram_reply_goes_to_instagrams_own_host(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        [$lead] = $this->enquiry($t, hoursAgo: 1, source: Lead::SOURCE_INSTAGRAM);
+
+        // Found preparing App Review, 2026-09-28: an Instagram Login token is
+        // refused on graph.facebook.com, so every Instagram reply failed.
+        Http::fake([
+            'graph.instagram.com/*' => Http::response(['message_id' => 'm_IG_OUT']),
+            'graph.facebook.com/*' => Http::response(['error' => ['message' => 'Invalid OAuth access token']], 400),
+        ]);
+
+        $this->inTenant($t['org'], fn () => app(LeadReplies::class)->for($lead)->send($lead, 'Yes - Thursday?'));
+
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://graph.instagram.com/v21.0/'.self::PAGE_ID.'/messages'));
+    }
+
     public function test_instagram_has_its_own_channel_registered(): void
     {
         $t = $this->provisionTenant('A1-Group');
