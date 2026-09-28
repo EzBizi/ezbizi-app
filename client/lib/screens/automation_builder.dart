@@ -411,6 +411,11 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   String? _lockedBecause;
 
   bool _busy = false;
+
+  /// A template waiting for "Use the template", when applying it would
+  /// clear work already on the form. Shown inline under the picker: the
+  /// house has no modal dialogs.
+  Map<String, dynamic>? _pendingTemplate;
   String? _error;
 
   bool get _isEdit => widget.editing != null;
@@ -1508,9 +1513,58 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
   Widget _templateBar(BuildContext context) {
     if (widget.catalogue.templates.isEmpty) return const SizedBox.shrink();
 
+    final pending = _pendingTemplate;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
-      child: SearchPickerField<String>(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _templatePicker(context),
+          // THE CONFIRM, IN PLACE. It sits under the picker it answers, and
+          // nothing covers the form it is about to clear.
+          if (pending != null)
+            Container(
+              margin: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.fromLTRB(14, 12, 8, 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Starting from "${pending['name']}" clears the name, the '
+                    'conditions and the steps you have here now.',
+                  ),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() => _pendingTemplate = null),
+                        child: const Text('Keep mine'),
+                      ),
+                      FilledButton(
+                        onPressed: () {
+                          setState(() => _pendingTemplate = null);
+                          _fillFromTemplate(pending);
+                        },
+                        child: const Text('Use the template'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _templatePicker(BuildContext context) {
+    return SearchPickerField<String>(
         value: null,
         label: 'Start from a template',
         helperText: 'Fills this form in. Nothing is saved until you press the '
@@ -1542,7 +1596,6 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
             ),
         ],
         onChanged: _busy ? null : _applyTemplate,
-      ),
     );
   }
 
@@ -1623,30 +1676,14 @@ class _AutomationBuilderState extends State<AutomationBuilder> {
         _actions.isNotEmpty;
 
     if (hasWork) {
-      final replace = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Replace what you have?'),
-          content: Text(
-            'Starting from "${template['name']}" clears the name, the '
-            'conditions and the steps you have here now.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Keep mine'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Use the template'),
-            ),
-          ],
-        ),
-      );
-
-      if (replace != true || !mounted) return;
+      setState(() => _pendingTemplate = template);
+      return;
     }
 
+    _fillFromTemplate(template);
+  }
+
+  void _fillFromTemplate(Map<String, dynamic> template) {
     setState(() {
       _name.text = template['name'] as String;
       _description.text = (template['description'] as String?) ?? '';
