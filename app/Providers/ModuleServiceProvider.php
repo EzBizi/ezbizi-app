@@ -2248,6 +2248,23 @@ class ModuleServiceProvider extends ServiceProvider
                             .'not raise it.',
                     ),
                     /*
+                     * Jose, 2026-09-28: "a new lead would be that exactly, a new
+                     * lead, while we need to have another sort of automation for
+                     * replies, which should count only reply from the costumer
+                     * not our own replies". "Enquirer called or messaged" also
+                     * fires on a new lead's FIRST message, so a reply rule on it
+                     * would ring for every new lead too. This one is only a
+                     * customer message on a lead that already had one.
+                     */
+                    new TriggerDefinition(
+                        key: 'lead.customer_replied',
+                        label: 'Customer replied',
+                        description: 'The customer wrote or called again on a lead that already '
+                            .'had a conversation, on any source. Their first message is "Lead '
+                            .'received", not this, and replies from the business never raise it. '
+                            .'It carries the source, the channel and the first line of what they said.',
+                    ),
+                    /*
                      * Separate from "received" because the gap between them is
                      * real and sometimes minutes long: a voicemail has to be
                      * transcribed before anything can be said about it. A rule

@@ -68,6 +68,7 @@ void main() {
     // Chat Lead" and given no way to open the lead is the whole complaint.
     final opened = <String>[];
     String? filter;
+    String? record;
 
     await _pumpWithItem(
       tester,
@@ -81,9 +82,10 @@ void main() {
         'read_at': null,
         'created_at': '2026-09-16T12:00:00+00:00',
       },
-      onOpenModule: (m, f) {
+      onOpenModule: (m, f, r) {
         opened.add(m);
         filter = f;
+        record = r;
       },
     );
 
@@ -97,6 +99,8 @@ void main() {
     // The chat filter travels with the module. Without it the tap lands on a
     // list of every source, which is where the person already was.
     expect(filter, 'website_chat');
+    // And the record it is about, so Leads opens THAT lead, not the newest.
+    expect(record, 'lead-1');
   });
 
   testWidgets('a notification about nothing openable navigates nowhere', (
@@ -121,7 +125,7 @@ void main() {
         'read_at': null,
         'created_at': '2026-09-16T12:00:00+00:00',
       },
-      onOpenModule: (m, f) => opened.add(m),
+      onOpenModule: (m, f, r) => opened.add(m),
     );
 
     await tester.tap(find.byIcon(Icons.notifications_none));
@@ -140,7 +144,7 @@ void main() {
 Future<void> _pumpWithItem(
   WidgetTester tester, {
   required Map<String, dynamic> item,
-  required void Function(String, String?) onOpenModule,
+  required void Function(String, String?, String?) onOpenModule,
 }) async {
   final api = ApiClient(
     client: MockClient((request) async {

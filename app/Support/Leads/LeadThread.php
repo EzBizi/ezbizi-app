@@ -50,6 +50,13 @@ final class LeadThread
             return false;
         }
 
+        // Asked BEFORE the row exists: a customer message on a lead that
+        // already had a conversation is a reply, the first one is the enquiry.
+        $hadConversation = LeadConversation::query()
+            ->where('organization_id', $lead->organization_id)
+            ->where('lead_id', $lead->getKey())
+            ->exists();
+
         $row = LeadConversation::create([
             'organization_id' => $lead->organization_id,
             'lead_id'         => $lead->getKey(),
@@ -67,6 +74,19 @@ final class LeadThread
                     'phone'        => $lead->phone,
                 ],
             ]);
+
+            if ($hadConversation) {
+                $this->events->emitAfterCommit('lead.customer_replied', $lead, [
+                    'after' => [
+                        'source'       => $lead->source,
+                        'channel'      => $row->channel,
+                        'occurred_at'  => $row->occurred_at,
+                        'preview'      => self::preview($row),
+                        'contact_name' => $lead->contact_name,
+                        'phone'        => $lead->phone,
+                    ],
+                ]);
+            }
         }
 
         return true;

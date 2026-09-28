@@ -20,6 +20,24 @@ import 'package:http/http.dart' as http;
 void main() {
   _conversationRowTests();
 
+  /// A NOTIFICATION OPENS ITS OWN LEAD, not the newest.
+  ///
+  /// Jose, 2026-09-28: clicking one "always [opens] the newest lead, instead
+  /// of the one it was spawned for". Two leads, the notification's second:
+  /// its name drawn twice (row and thread header) and the newest once is
+  /// what says the thread is the right one.
+  testWidgets('arriving from a notification opens that lead', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell'), _lead('lead-2', 'Dana Whitfield')],
+      connections: _connected,
+      initialLeadId: 'lead-2',
+    );
+
+    expect(find.text('Dana Whitfield'), findsNWidgets(2));
+    expect(find.text('Marcus Bell'), findsOneWidget);
+  });
+
   testWidgets('search runs as you type, without Enter', (tester) async {
     await _pump(
       tester,
@@ -1319,6 +1337,7 @@ Future<void> _pump(
   ],
   Size size = const Size(1200, 900),
   String? initialSource,
+  String? initialLeadId,
 }) async {
   _posts.clear();
   _patches.clear();
@@ -1484,6 +1503,7 @@ Future<void> _pump(
           api: api,
           session: session,
           initialSource: initialSource,
+          initialLeadId: initialLeadId,
         ),
       ),
     ),

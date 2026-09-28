@@ -143,6 +143,17 @@ final class AutomationTemplates
                 ],
             ],
             [
+                'key' => 'customer-replied',
+                'name' => 'Tell the office when a customer replies',
+                'description' => 'When somebody who already enquired writes or calls again, on any '
+                    .'source. A brand new lead does not set it off, and neither do your own replies.',
+                'trigger_key' => 'lead.customer_replied',
+                'conditions' => null,
+                'actions' => [
+                    ['type' => 'notify', 'message' => 'A customer replied on {{source}}: {{preview}}'],
+                ],
+            ],
+            [
                 'key' => 'lead-won',
                 'name' => 'Celebrate a lead that became a customer',
                 'description' => 'When an enquiry is turned into a customer and a job, the '

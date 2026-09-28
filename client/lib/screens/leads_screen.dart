@@ -34,6 +34,7 @@ class LeadsScreen extends StatefulWidget {
     required this.api,
     required this.session,
     this.initialSource,
+    this.initialLeadId,
   });
 
   final ApiClient api;
@@ -57,6 +58,13 @@ class LeadsScreen extends StatefulWidget {
   /// A source the strip does not know is ignored rather than drawn: an unknown
   /// value would otherwise select nothing and read as an empty inbox.
   final String? initialSource;
+
+  /// The lead to open, for arriving from a notification about it. Jose,
+  /// 2026-09-28: clicking one "always [opens] the newest lead, instead of the
+  /// one it was spawned for". Selected beside the list on a wide screen,
+  /// opened full screen on a phone, and fetched on its own when it is not on
+  /// the first page of the list.
+  final String? initialLeadId;
 
   @override
   State<LeadsScreen> createState() => _LeadsScreenState();
@@ -186,6 +194,13 @@ class _LeadsScreenState extends State<LeadsScreen> {
   /// means the first one, so the pane is never blank while there are leads.
   String? _selectedId;
 
+  /// The notification's lead, until the first load has put it on screen.
+  String? _toOpen;
+
+  /// That lead when it was fetched from outside the loaded page, kept at the
+  /// top so the list's own refresh does not drop it and jump to the newest.
+  Map<String, dynamic>? _pinned;
+
   /// The list's share of the two panes, dragged on the divider. Bounded in
   /// PIXELS so neither pane can be squeezed below what it lays out (Jose,
   /// 2026-09-09: "with limits of course to not break overflow"): the list
@@ -249,6 +264,9 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _source = wanted;
     }
 
+    _selectedId = widget.initialLeadId;
+    _toOpen = widget.initialLeadId;
+
     _load();
     _poll = Timer.periodic(_pollEvery, (_) => _load());
   }
@@ -295,6 +313,10 @@ class _LeadsScreenState extends State<LeadsScreen> {
       _leads = List<Map<String, dynamic>>.from(
         (response.data as List? ?? const []).cast<Map<String, dynamic>>(),
       );
+      final pinned = _pinned;
+      if (pinned != null && !_leads.any((l) => l['id'] == pinned['id'])) {
+        _leads = [pinned, ..._leads];
+      }
       final meta = response.body['meta'] as Map<String, dynamic>? ?? const {};
       _delayedSince = meta['sync_delayed_since'] as String?;
       _total = (meta['total'] as num?)?.toInt() ?? _leads.length;
@@ -303,6 +325,30 @@ class _LeadsScreenState extends State<LeadsScreen> {
       );
     });
     _redrawSources?.call(() {});
+
+    if (response.ok && _toOpen != null) await _openWanted(_toOpen!);
+  }
+
+  /// Put the notification's lead on screen: fetched when it is not in the
+  /// loaded page, then selected, or opened full screen on a phone.
+  Future<void> _openWanted(String id) async {
+    _toOpen = null;
+
+    var lead = _leads.where((l) => l['id'] == id).firstOrNull;
+
+    if (lead == null) {
+      final one = await widget.api.get('/leads/$id');
+      if (!mounted || !one.ok || one.data is! Map) return;
+      lead = Map<String, dynamic>.from(one.data as Map);
+      _pinned = lead;
+      setState(() => _leads = [lead!, ..._leads]);
+    }
+
+    setState(() => _selectedId = id);
+
+    if (mounted && MediaQuery.sizeOf(context).width < 900) {
+      await _openThread(lead);
+    }
   }
 
   Future<void> _sync() async {

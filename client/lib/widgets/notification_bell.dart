@@ -48,7 +48,12 @@ class NotificationBell extends StatefulWidget {
   ///
   /// Optional so the bell keeps working in a test or any shell that has nowhere
   /// to send anybody. Null here means the old behaviour: tapping marks read.
-  final void Function(String moduleKey, String? filter)? onOpenModule;
+  ///
+  /// `recordId` is the record the notification is about (its subject), so a
+  /// destination that can open one does: Jose, 2026-09-28, a lead
+  /// notification "always [opens] the newest lead, instead of the one it was
+  /// spawned for".
+  final void Function(String moduleKey, String? filter, String? recordId)? onOpenModule;
 
   @override
   State<NotificationBell> createState() => _NotificationBellState();
@@ -413,8 +418,12 @@ class _NotificationBellState extends State<NotificationBell>
                               (current?['meta'] as Map<String, dynamic>?)?['filter']
                                   as String?;
 
+                          final record =
+                              (current?['subject'] as Map<String, dynamic>?)?['id']
+                                  as String?;
+
                           Navigator.of(context).pop();
-                          widget.onOpenModule!(module, filter);
+                          widget.onOpenModule!(module, filter, record);
                           return;
                         }
 

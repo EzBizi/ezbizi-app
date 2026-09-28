@@ -782,6 +782,9 @@ class _HomeShellState extends State<HomeShell> {
   /// the person can see selected.
   String? _leadsFilter;
 
+  /// The lead a notification was about, opened rather than the newest one.
+  String? _leadsOpen;
+
   /// One module screen, with the one destination that accepts a filter.
   ///
   /// A special case at a single site rather than a third argument on every
@@ -798,12 +801,13 @@ class _HomeShellState extends State<HomeShell> {
   /// notification and then from a form one would leave the first filter in
   /// place. Changing the key rebuilds the screen, which re-runs initState.
   Widget _screenFor(String key, ModuleScreen screen) {
-    if (key == 'leads' && _leadsFilter != null) {
+    if (key == 'leads' && (_leadsFilter != null || _leadsOpen != null)) {
       return LeadsScreen(
-        key: ValueKey(_leadsFilter),
+        key: ValueKey('$_leadsFilter|$_leadsOpen'),
         api: widget.api,
         session: widget.session,
         initialSource: _leadsFilter,
+        initialLeadId: _leadsOpen,
       );
     }
 
@@ -1360,8 +1364,11 @@ class _HomeShellState extends State<HomeShell> {
                 api: widget.api,
                 // The shell already knows how to select a module; the bell
                 // only needs to name one.
-                onOpenModule: (key, filter) {
-                  setState(() => _leadsFilter = filter);
+                onOpenModule: (key, filter, record) {
+                  setState(() {
+                    _leadsFilter = filter;
+                    _leadsOpen = record;
+                  });
                   _show(_Rail.modules, key);
                 },
               ),
