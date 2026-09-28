@@ -20,6 +20,53 @@ void main() {
     expect(controller.text, '2026-09-01');
   });
 
+  // On a phone the hour ended one line and the minute began the next. The
+  // date and the time now wrap as two whole pieces.
+  testWidgets('at a narrow width the hour and the minute stay on one line', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(392, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await _pump(
+      tester,
+      TextEditingController(),
+      formats: american,
+      withTime: true,
+    );
+
+    expect(
+      tester.getTopLeft(find.byKey(const Key('calendar-day-hour'))).dy,
+      tester.getTopLeft(find.byKey(const Key('calendar-day-minute'))).dy,
+    );
+  });
+
+  // Resting inside a box this narrow, the label was cut to "Mo…" on a phone.
+  // It sits above the box instead, with the format inside.
+  testWidgets('an empty box names itself above, not inside', (tester) async {
+    await _pump(
+      tester,
+      TextEditingController(),
+      formats: american,
+      withTime: true,
+    );
+
+    for (final (key, label) in [('month', 'Month'), ('minute', 'Minute')]) {
+      final box = find.byKey(Key('calendar-day-$key'));
+      final text = find.descendant(
+        of: box,
+        matching: find.byType(EditableText),
+      );
+      expect(
+        tester
+            .getCenter(find.descendant(of: box, matching: find.text(label)))
+            .dy,
+        lessThan(tester.getTopLeft(text).dy),
+        reason: label,
+      );
+    }
+  });
+
   testWidgets('D/M/YYYY puts the day box first', (tester) async {
     final controller = TextEditingController();
     await _pump(tester, controller, formats: european);

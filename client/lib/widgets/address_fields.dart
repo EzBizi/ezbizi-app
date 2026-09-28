@@ -87,7 +87,10 @@ class _AddressFieldsState extends State<AddressFields> {
               ),
             ),
             const SizedBox(width: 10),
-            Expanded(
+            // A fixed width, not a share of the row: on a phone the share was
+            // narrower than the box's own padding and the ST label vanished.
+            SizedBox(
+              width: 80,
               child: TextField(
                 controller: widget.state,
                 enabled: widget.enabled,

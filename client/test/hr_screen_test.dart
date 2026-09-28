@@ -896,6 +896,27 @@ void main() {
     expect(find.text('Jose Silva'), findsOneWidget);
   });
 
+  // The person and the section strip stood over the form, and with the HR
+  // chrome above them took 270 of a phone's 800 pixels.
+  testWidgets("on a phone the record's header scrolls away with its form", (
+    tester,
+  ) async {
+    await _pump(tester, _handler(), size: const Size(390, 700));
+    await _tap(tester, _tab('Records'));
+    await _openPerson(tester, 'Bea Okafor');
+
+    expect(find.byTooltip('All people'), findsOneWidget);
+
+    await tester.drag(
+      find.byType(SingleChildScrollView).last,
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+
+    // A finder skips what a viewport has scrolled out of view.
+    expect(find.byTooltip('All people'), findsNothing);
+  });
+
   /// "Abandoned" used to be one word for two different things — nobody came,
   /// and we changed our mind — and the two want opposite responses. They are two
   /// words now, and this is what proves the screen uses both.

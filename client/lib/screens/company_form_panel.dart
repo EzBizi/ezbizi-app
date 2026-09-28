@@ -260,7 +260,10 @@ class _CompanyFormPanelState extends State<CompanyFormPanel> {
               // Two characters, because that is what the server accepts — a full
               // state name would be refused after the fact for a reason the form
               // could have made obvious.
-              Expanded(
+              // A fixed width, not a share of the row: at a sixth of a phone
+              // the box was narrower than its own padding and showed nothing.
+              SizedBox(
+                width: 80,
                 child: _field(_state, hint: 'ST', maxLength: 2, caps: true),
               ),
               const SizedBox(width: 10),

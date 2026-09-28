@@ -208,7 +208,6 @@ class _AddPurchaseOrderPaneState extends State<AddPurchaseOrderPane> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
-                  clipBehavior: Clip.none,
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

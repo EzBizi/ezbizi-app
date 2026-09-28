@@ -9,6 +9,7 @@ import 'package:ezbizi_client/widgets/calendar_day_field.dart';
 import 'package:ezbizi_client/widgets/coming_soon.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -200,6 +201,77 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     expect(find.text('Due soon'), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  // Records and forms are drawn inside the screen, each with its own arrow,
+  // and Android's Back used to ignore the arrow and close the app.
+  testWidgets('on a phone Back closes the page inside the screen, not the app', (
+    tester,
+  ) async {
+    final exits = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'SystemNavigator.pop') exits.add(call.method);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    tester.view.physicalSize = const Size(375, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final api = ApiClient(client: MockClient(_handler()));
+    final session = Session(api);
+    await tester.runAsync(() => session.adopt('tok'));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EzBiziTheme.light(),
+        home: ListenableBuilder(
+          listenable: session,
+          builder: (_, _) => HomeShell(api: api, session: session),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+
+    // Back with the drawer open closes the drawer.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(Drawer), findsNothing);
+    expect(exits, isEmpty);
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(Drawer),
+        matching: find.text('Fleet Management'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add vehicle'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Back to the list'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Back to the list'), findsNothing);
+    expect(find.text('Add vehicle'), findsOneWidget);
+    expect(exits, isEmpty);
+
+    // Nothing left to go back from: now it leaves.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(exits, ['SystemNavigator.pop']);
   });
 
   testWidgets('Cancel leaves nothing', (tester) async {

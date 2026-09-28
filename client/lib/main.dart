@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core/address.dart';
 import 'core/api_client.dart';
 import 'core/contracts.dart';
@@ -25,6 +26,7 @@ import 'core/ui_strings.dart';
 import 'core/clock_window.dart';
 import 'core/version_gate.dart';
 import 'screens/lock_screen.dart';
+import 'widgets/in_page_back.dart';
 import 'widgets/controlled_banner.dart';
 import 'widgets/shift_reminder.dart';
 import 'screens/development_screen.dart';
@@ -419,6 +421,9 @@ const Key shellSidebarGroup = Key('shell-traversal-sidebar');
 const Key shellPageGroup = Key('shell-traversal-page');
 
 class _HomeShellState extends State<HomeShell> {
+  /// For Android's Back, which closes the drawer before anything else.
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
   /// The countdown before a scheduled shift ends (design 2026-09-08 §10.1).
   late final ShiftReminderController _reminder;
   Timer? _clockPoll;
@@ -1123,6 +1128,7 @@ class _HomeShellState extends State<HomeShell> {
     _syncShown(Address.pathOf(shownId));
 
     return Scaffold(
+      key: _scaffoldKey,
       // The top bar belongs to the CHROME, not to the page.
       //
       // In a mixed mode it takes the sidebar's theme, so the bar and the
@@ -1493,6 +1499,7 @@ class _HomeShellState extends State<HomeShell> {
         top: false,
         child: Column(
           children: [
+            if (!wide) _phoneBack(),
             /*
              * The call, above whatever you were doing.
              *
@@ -1832,6 +1839,25 @@ class _HomeShellState extends State<HomeShell> {
             ),
     );
   }
+
+  /// Android's Back on a phone: the drawer if it is open, else the ← of the
+  /// page drawn inside the screen (see pressInPageBack), and out of the app
+  /// only when there is neither. It used to leave the app from inside any
+  /// record, form or settings section. Zero-size: a PopScope answers for its
+  /// route wherever in it it sits.
+  Widget _phoneBack() => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop) return;
+      final shell = _scaffoldKey.currentState;
+      if (shell?.isDrawerOpen ?? false) {
+        shell!.closeDrawer();
+      } else if (!pressInPageBack(context)) {
+        SystemNavigator.pop();
+      }
+    },
+    child: const SizedBox.shrink(),
+  );
 
   /// Every destination, grouped as the sidebar groups them.
   /// A module, under its own name.

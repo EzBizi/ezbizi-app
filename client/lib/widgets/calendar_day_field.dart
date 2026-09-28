@@ -399,43 +399,48 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
               ),
             ),
           ),
+        // The date and the time are each one piece that wraps whole: on a
+        // phone the hour used to end one line and the minute start the next.
         Wrap(
           spacing: 8,
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            for (final part in widget.formats.dateParts) _partBox(part),
-            if (widget.withTime) ...[
-              _timeBox(
-                controller: _hour,
-                focus: _hourFocus,
-                hint: widget.formats.timeFormat == '12h' ? 'H' : 'HH',
-                label: 'Hour',
-                keyName: 'hour',
-                onChanged: _onHour,
-                width: 56,
-              ),
-              Text(':', style: theme.textTheme.titleMedium),
-              _timeBox(
-                controller: _minute,
-                focus: _minuteFocus,
-                hint: 'MM',
-                label: 'Minute',
-                keyName: 'minute',
-                onChanged: _onMinute,
-                width: 56,
-              ),
-              if (widget.formats.timeFormat == '12h')
-                OutlinedButton(
-                  onPressed: widget.enabled
-                      ? () {
-                          setState(() => _pm = !_pm);
-                          _commit();
-                        }
-                      : null,
-                  child: Text(_pm ? 'PM' : 'AM'),
+            _group([
+              for (final part in widget.formats.dateParts) _partBox(part),
+            ]),
+            if (widget.withTime)
+              _group([
+                _timeBox(
+                  controller: _hour,
+                  focus: _hourFocus,
+                  hint: widget.formats.timeFormat == '12h' ? 'H' : 'HH',
+                  label: 'Hour',
+                  keyName: 'hour',
+                  onChanged: _onHour,
+                  width: 64,
                 ),
-            ],
+                Text(':', style: theme.textTheme.titleMedium),
+                _timeBox(
+                  controller: _minute,
+                  focus: _minuteFocus,
+                  hint: 'MM',
+                  label: 'Minute',
+                  keyName: 'minute',
+                  onChanged: _onMinute,
+                  width: 76,
+                ),
+                if (widget.formats.timeFormat == '12h')
+                  OutlinedButton(
+                    onPressed: widget.enabled
+                        ? () {
+                            setState(() => _pm = !_pm);
+                            _commit();
+                          }
+                        : null,
+                    child: Text(_pm ? 'PM' : 'AM'),
+                  ),
+              ]),
             IconButton(
               key: const Key('calendar-day-pick'),
               tooltip: _open
@@ -484,6 +489,17 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
     );
   }
 
+  /// Boxes that stay on one line together, 8 apart.
+  Widget _group(List<Widget> children) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (var i = 0; i < children.length; i++) ...[
+        if (i > 0) const SizedBox(width: 8),
+        children[i],
+      ],
+    ],
+  );
+
   DateTime _initialPickerDate() {
     var at = _typedDay() ?? DateTime.now();
     if (at.isBefore(_firstDate)) at = _firstDate;
@@ -500,7 +516,9 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
         'Month',
         2,
         'month',
-        64.0,
+        // Wide enough for the label itself: at 64 the theme's 16px label
+        // read "Mo…", and Hour and Minute read "H…" and "M…".
+        72.0,
       ),
       DatePart.day => (_day, _dayFocus, 'DD', 'Day', 2, 'day', 64.0),
       DatePart.year => (_year, _yearFocus, 'YYYY', 'Year', 4, 'year', 88.0),
@@ -522,6 +540,9 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
         decoration: InputDecoration(
           hintText: hint,
           labelText: label,
+          // Above the box, small, with the format inside: resting in a box
+          // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
+          floatingLabelBehavior: FloatingLabelBehavior.always,
           isDense: true,
           contentPadding: EdgeInsets.symmetric(
             horizontal: 10,
@@ -557,6 +578,9 @@ class _CalendarDayFieldState extends State<CalendarDayField> {
         decoration: InputDecoration(
           hintText: hint,
           labelText: label,
+          // Above the box, small, with the format inside: resting in a box
+          // this narrow the label read "Mo…", "Ho…" and "Min…" on a phone.
+          floatingLabelBehavior: FloatingLabelBehavior.always,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 10,

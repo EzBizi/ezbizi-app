@@ -674,36 +674,39 @@ class _PersonRecordState extends State<_PersonRecord> {
       loading: _loading,
       error: _error,
       onRetry: _reload,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _header(context),
-          Material(
-            color: Theme.of(context).colorScheme.surface,
-            child: TabBarLike(
-              // Keyed so a test can name THIS strip. The HR screen draws its
-              // own module chips above it, and "Onboarding" is on both.
-              key: _RecordsTabState.sectionsKey,
-              labels: [for (final s in _sections) (s.$2, s.$3)],
-              selected: _sections.indexWhere((s) => s.$1 == _section),
-              onSelected: (i) => setState(() => _section = _sections[i].$1),
-            ),
-          ),
-          const Divider(height: 1),
-          if (_busy) const LinearProgressIndicator(minHeight: 2),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: _body(context),
-                ),
+      // On a phone the person and the section strip scroll away with the
+      // form: standing, they and the HR chrome above took 270 of 800 pixels.
+      child: HeaderAboveList(
+        header: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _header(context),
+            Material(
+              color: Theme.of(context).colorScheme.surface,
+              child: TabBarLike(
+                // Keyed so a test can name THIS strip. The HR screen draws its
+                // own module chips above it, and "Onboarding" is on both.
+                key: _RecordsTabState.sectionsKey,
+                labels: [for (final s in _sections) (s.$2, s.$3)],
+                selected: _sections.indexWhere((s) => s.$1 == _section),
+                onSelected: (i) => setState(() => _section = _sections[i].$1),
               ),
             ),
+            const Divider(height: 1),
+            if (_busy) const LinearProgressIndicator(minHeight: 2),
+          ],
+        ),
+        list: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: _body(context),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }

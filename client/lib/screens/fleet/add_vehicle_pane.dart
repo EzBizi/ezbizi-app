@@ -344,7 +344,6 @@ class _AddVehiclePaneState extends State<AddVehiclePane> {
         ),
         Expanded(
           child: SingleChildScrollView(
-            clipBehavior: Clip.none,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

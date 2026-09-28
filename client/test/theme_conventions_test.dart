@@ -55,6 +55,22 @@ void main() {
     });
   }
 
+  // Nine create panes scrolled with Clip.none, so their fields slid under the
+  // Cancel / Save bar below them, which has no background: on a phone "Save"
+  // sat on top of the Body type field.
+  test('no scroll view draws its content outside itself', () {
+    final offenders = <String>[
+      for (final file in Directory('lib').listSync(recursive: true))
+        if (file is File &&
+            file.path.endsWith('.dart') &&
+            RegExp(
+              r'ScrollView\(\s*clipBehavior:\s*Clip\.none',
+            ).hasMatch(file.readAsStringSync()))
+          file.path,
+    ];
+    expect(offenders, isEmpty);
+  });
+
   group('theme colour contrast', () {
     // 4.5:1 is AA for normal text. Deliberately not 3:1 (AA-large): these
     // tokens carry body text and 12px captions, not just headings.
