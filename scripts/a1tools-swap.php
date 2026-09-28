@@ -82,7 +82,15 @@ function a1swap_shortcode($name, $attrs) {
         'state_link' => '[ezbizi_state_anchor]',
         'city_web' => '[ezbizi_city_link]', 'seo_city_web' => '[ezbizi_city_link]',
         'state_web' => '[ezbizi_state_link]',
+        // The page's map address, falling back to the site's: EzBizi's address does both.
+        'map_address' => '[ezbizi_address]',
     );
+
+    // A block of text kept in A1's app. The five -ads sites that use it hold no
+    // blocks (it renders nothing today), so it becomes its `default` or nothing.
+    if ($name === 'content') {
+        return preg_match('/default\s*=\s*["\x{201C}]([^"\x{201D}]*)["\x{201D}]/u', $attrs, $m) ? esc_html($m[1]) : '';
+    }
 
     if ($name === 'var') {
         return preg_match('/key\s*=\s*["\'\x{201C}\x{201D}]?([a-z0-9_]+)/u', $attrs, $m) ? a1swap_var_shortcode($m[1]) : null;
