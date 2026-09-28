@@ -18,6 +18,10 @@ class VersionHistory {
         'Automations: Send a notification has no email switch any more, and a notification from an automation is never emailed. To email from a rule, add a Send an email step.',
         'On Android, Back returns from a record, a form or a settings section, instead of closing the app.',
         'On a phone, the fields of Add vehicle, Add service and the Inventory create forms no longer slide under their Save bar, date and time boxes fit with their labels, the address State box shows what is typed, and a person record in HR scrolls its header away with the form.',
+        'Reports, Google Ads: each Local Services account shows its leads, cost per lead, missed calls, the time to a first reply, the jobs its leads were booked as, their revenue, and revenue per dollar spent.',
+        'Leads: a lead is linked to the Workiz job its customer booked within 30 days, matched by phone number, and its thread shows Matched by phone.',
+        'Automations: Ads stopped showing, a new trigger, starts a rule when a Local Services campaign that was showing stops, and says who paused it.',
+        'Dashboard: the Google Ads box shows certification problems and stopped campaigns first, then the accounts in view.',
       ],
     ),
     VersionRelease(
