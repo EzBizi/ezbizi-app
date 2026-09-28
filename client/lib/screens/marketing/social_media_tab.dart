@@ -10,6 +10,7 @@ import 'instagram_comments_panel.dart';
 import '../../core/api_client.dart';
 import '../../core/files.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/dashboard_card.dart';
@@ -61,6 +62,24 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   String? _loadError;
   Timer? _poll;
   bool _gaveUpWaiting = false;
+
+  /// The post just published, while it is landing: the composer (desktop) or
+  /// the whole pane (phone) shows its accounts resolving. Null is the form.
+  String? _justPosted;
+
+  /// What the POST answered, until the list read back carries the post. The
+  /// list is read after the POST returns, and that moment is when somebody is
+  /// watching hardest.
+  _SentPost? _provisional;
+
+  /// The newest post, outlined on the calendar the first time it is seen.
+  String? _outlined;
+
+  /// The day "See it on the calendar" asked for; the month calendar opens on it.
+  DateTime? _focusDay;
+
+  /// The calendar or the agenda, to scroll to when the layout is stacked.
+  final GlobalKey _calendarKey = GlobalKey();
 
   String get _viewName =>
       widget.session.me?.scope.label ??
@@ -137,7 +156,73 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
   /// clock, not for the worker — polling it would spend twenty requests to
   /// learn nothing and then announce that the queue had stopped answering.
   bool get _anyQueued =>
-      _posts.any((p) => p.targets.any((t) => t.status == 'queued'));
+      _shown.any((p) => p.targets.any((t) => t.status == 'queued'));
+
+  /// The posts to draw: the list, and the just-published one until the list
+  /// carries it.
+  List<_SentPost> get _shown {
+    final early = _provisional;
+    if (early == null || _posts.any((p) => p.id == early.id)) return _posts;
+
+    return [early, ..._posts];
+  }
+
+  /// The just-published post as the server last described it.
+  _SentPost? get _landing {
+    for (final post in _shown) {
+      if (post.id == _justPosted) return post;
+    }
+
+    return null;
+  }
+
+  DisplayFormats get _formats =>
+      widget.session.me?.display ?? DisplayFormats.fallback;
+
+  /// A post went out (or was filed for later): follow it where it was sent.
+  Future<void> _posted(_SentPost post) async {
+    setState(() {
+      _provisional = post;
+      _justPosted = post.id;
+      _outlined = post.id;
+      _gaveUpWaiting = false;
+    });
+
+    await _load();
+  }
+
+  /// Open the calendar on the post's day, and scroll to it when the layout
+  /// stacks. [leave] ends the finish screen as well (the phone's Done).
+  void _toCalendar({bool leave = false}) {
+    final when = _landing?.when;
+
+    setState(() {
+      if (when != null) _focusDay = when;
+      if (leave) _justPosted = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final calendar = _calendarKey.currentContext;
+      if (mounted && calendar != null) {
+        Scrollable.ensureVisible(
+          calendar,
+          duration: const Duration(milliseconds: 300),
+        );
+      }
+    });
+  }
+
+  /// One post: every account, its link or its reason.
+  Future<void> _openPost(_SentPost post) {
+    return showSidePanel<void>(
+      context,
+      builder: (context) => SidePanel(
+        title: 'Post',
+        subtitle: _stamp(post, _formats),
+        child: _PostDetail(post: post, connections: _connections),
+      ),
+    );
+  }
 
   /// Follow a post until the queue has actually dealt with it.
   ///
@@ -205,10 +290,19 @@ class _SocialMediaTabState extends State<SocialMediaTab> {
                   session: widget.session,
                   viewName: _viewName,
                   connections: _connections,
-                  posts: _posts,
+                  posts: _shown,
                   stillWaiting: _gaveUpWaiting,
                   pickMedia: widget.pickMedia,
-                  onSent: _load,
+                  landing: _landing,
+                  outlined: _outlined,
+                  focusDay: _focusDay,
+                  calendarKey: _calendarKey,
+                  formats: _formats,
+                  onSent: _posted,
+                  onWriteAnother: () => setState(() => _justPosted = null),
+                  onSeeCalendar: _toCalendar,
+                  onDone: () => _toCalendar(leave: true),
+                  onOpen: _openPost,
                   onConnect: () => _openConnect(context),
                 )
               : _AccountsPane(
@@ -313,7 +407,16 @@ class _PostsPane extends StatelessWidget {
     required this.posts,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.landing,
+    required this.outlined,
+    required this.focusDay,
+    required this.calendarKey,
+    required this.formats,
     required this.onSent,
+    required this.onWriteAnother,
+    required this.onSeeCalendar,
+    required this.onDone,
+    required this.onOpen,
     required this.onConnect,
   });
 
@@ -324,16 +427,49 @@ class _PostsPane extends StatelessWidget {
   final List<_SentPost> posts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
-  final Future<void> Function() onSent;
+  final _SentPost? landing;
+  final String? outlined;
+  final DateTime? focusDay;
+  final GlobalKey calendarKey;
+  final DisplayFormats formats;
+  final Future<void> Function(_SentPost) onSent;
+  final VoidCallback onWriteAnother;
+  final VoidCallback onSeeCalendar;
+  final VoidCallback onDone;
+  final void Function(_SentPost) onOpen;
   final VoidCallback onConnect;
 
   static const double _stackBelow = 900;
+
+  /// Below this a month grid does not fit, so the calendar is an agenda and
+  /// publishing takes the pane (design 27, pick 4).
+  static const double _phoneBelow = 600;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final phone = constraints.maxWidth < _phoneBelow;
         final stack = constraints.maxWidth < _stackBelow;
+        final landing = this.landing;
+
+        if (phone && landing != null) {
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _PostOutcome(
+                post: landing,
+                connections: connections,
+                stillWaiting: stillWaiting,
+                formats: formats,
+                large: true,
+                onWriteAnother: onWriteAnother,
+                onDone: onDone,
+              ),
+            ],
+          );
+        }
+
         final pages = _PagesColumn(
           viewName: viewName,
           connections: connections,
@@ -347,19 +483,45 @@ class _PostsPane extends StatelessWidget {
           posts: posts,
           stillWaiting: stillWaiting,
           pickMedia: pickMedia,
+          landing: landing,
+          formats: formats,
           onSent: onSent,
+          onWriteAnother: onWriteAnother,
+          onSeeCalendar: onSeeCalendar,
         );
+        final Widget calendar = phone
+            ? _Agenda(
+                key: calendarKey,
+                posts: posts,
+                outlined: outlined,
+                formats: formats,
+                onOpen: onOpen,
+              )
+            : _CalendarsColumn(
+                key: calendarKey,
+                fill: !stack,
+                posts: posts,
+                outlined: outlined,
+                focusDay: focusDay,
+                formats: formats,
+                onOpen: onOpen,
+              );
 
         if (stack) {
-          return ListView(
+          // Not a ListView: that builds lazily, so the calendar at the bottom
+          // had no context yet when Done asked to scroll to it.
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            children: [
-              pages,
-              const SizedBox(height: 12),
-              compose,
-              const SizedBox(height: 12),
-              const _CalendarsColumn(),
-            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                pages,
+                const SizedBox(height: 12),
+                compose,
+                const SizedBox(height: 12),
+                calendar,
+              ],
+            ),
           );
         }
 
@@ -370,12 +532,22 @@ class _PostsPane extends StatelessWidget {
             children: [
               SizedBox(width: 220, child: pages),
               const SizedBox(width: 10),
-              Expanded(flex: 4, child: compose),
-              const SizedBox(width: 10),
-              const Expanded(
-                flex: 7,
-                child: _CalendarsColumn(fill: true),
+              // Scrolls on its own, at least as tall as the column: twenty
+              // posts in the Sent list below the form are taller than a
+              // laptop screen.
+              Expanded(
+                flex: 4,
+                child: LayoutBuilder(
+                  builder: (context, column) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: column.maxHeight),
+                      child: compose,
+                    ),
+                  ),
+                ),
               ),
+              const SizedBox(width: 10),
+              Expanded(flex: 7, child: calendar),
             ],
           ),
         );
@@ -458,7 +630,11 @@ class _ComposeColumn extends StatefulWidget {
     required this.posts,
     required this.stillWaiting,
     required this.pickMedia,
+    required this.landing,
+    required this.formats,
     required this.onSent,
+    required this.onWriteAnother,
+    required this.onSeeCalendar,
   });
 
   final ApiClient api;
@@ -468,7 +644,14 @@ class _ComposeColumn extends StatefulWidget {
   final List<_SentPost> posts;
   final bool stillWaiting;
   final Future<PickedBytes?> Function() pickMedia;
-  final Future<void> Function() onSent;
+
+  /// The post just published. While set, the composer IS the result
+  /// (design 27, pick 1): its accounts resolving, then what happened.
+  final _SentPost? landing;
+  final DisplayFormats formats;
+  final Future<void> Function(_SentPost) onSent;
+  final VoidCallback onWriteAnother;
+  final VoidCallback onSeeCalendar;
 
   @override
   State<_ComposeColumn> createState() => _ComposeColumnState();
@@ -689,6 +872,20 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       return;
     }
 
+    // What the POST answered, drawn at once: every account still queued.
+    final data = response.body['data'] as Map<String, dynamic>? ?? const {};
+    final posted = _SentPost(
+      id: data['id'] as String? ?? '',
+      body: _body.text.trim(),
+      hasMedia: media != null,
+      scheduledFor: when.isEmpty ? null : when,
+      createdAt: DateTime.now(),
+      targets: ((data['targets'] as List<dynamic>?) ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(_SentTarget.fromJson)
+          .toList(),
+    );
+
     // Cleared only on success. A refusal leaves the words and the picture
     // exactly where they were, because the fix is usually one tick or one
     // attachment away and retyping the post is not part of it.
@@ -702,11 +899,28 @@ class _ComposeColumnState extends State<_ComposeColumn> {
       _scheduling = false;
     });
 
-    await widget.onSent();
+    await widget.onSent(posted);
   }
 
   @override
   Widget build(BuildContext context) {
+    final landing = widget.landing;
+    if (landing != null) {
+      return DashboardCard(
+        title: 'Compose',
+        icon: Icons.edit_outlined,
+        child: _PostOutcome(
+          post: landing,
+          connections: widget.connections,
+          stillWaiting: widget.stillWaiting,
+          formats: widget.formats,
+          large: false,
+          onWriteAnother: widget.onWriteAnother,
+          onSeeCalendar: widget.onSeeCalendar,
+        ),
+      );
+    }
+
     final refusal = _refusal;
 
     return DashboardCard(
@@ -1070,12 +1284,33 @@ class _RecentPosts extends StatelessWidget {
 }
 
 class _CalendarsColumn extends StatefulWidget {
-  const _CalendarsColumn({this.fill = false});
+  const _CalendarsColumn({
+    super.key,
+    this.fill = false,
+    this.posts = const [],
+    this.outlined,
+    this.focusDay,
+    this.formats = DisplayFormats.fallback,
+    this.onOpen,
+  });
 
   /// When true the column fills the pane and month squares shrink to fit,
   /// so the whole month is on screen. Off in the stacked (phone) layout,
   /// which already scrolls the page as a whole.
   final bool fill;
+
+  /// Every post, sent and scheduled, drawn on its day: green posted, blue
+  /// scheduled, red a failure to look at (design 27). They used to be drawn
+  /// with no posts passed in at all, so a post that went out never appeared.
+  final List<_SentPost> posts;
+
+  /// The newest post, outlined.
+  final String? outlined;
+
+  /// A day to show: the month calendar moves to it when it changes.
+  final DateTime? focusDay;
+  final DisplayFormats formats;
+  final void Function(_SentPost)? onOpen;
 
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -1138,8 +1373,17 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
+    final now = widget.focusDay ?? DateTime.now();
     _month = DateTime(now.year, now.month, 1);
+  }
+
+  @override
+  void didUpdateWidget(_CalendarsColumn old) {
+    super.didUpdateWidget(old);
+    final focus = widget.focusDay;
+    if (focus != null && focus != old.focusDay) {
+      _month = DateTime(focus.year, focus.month, 1);
+    }
   }
 
   void _shiftMonth(int months) {
@@ -1150,17 +1394,24 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
 
   @override
   Widget build(BuildContext context) {
+    final entries = _DayEntries(
+      byDay: _postsByDay(widget.posts),
+      outlined: widget.outlined,
+      formats: widget.formats,
+      onOpen: widget.onOpen,
+    );
     final month = _MonthCard(
       month: _month,
       onPrevious: () => _shiftMonth(-1),
       onNext: () => _shiftMonth(1),
       fill: widget.fill,
+      entries: entries,
     );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _WeekCard(),
+        _WeekCard(entries: entries),
         const SizedBox(height: 12),
         if (widget.fill) Expanded(child: month) else month,
       ],
@@ -1169,7 +1420,9 @@ class _CalendarsColumnState extends State<_CalendarsColumn> {
 }
 
 class _WeekCard extends StatelessWidget {
-  const _WeekCard();
+  const _WeekCard({required this.entries});
+
+  final _DayEntries entries;
 
   @override
   Widget build(BuildContext context) {
@@ -1203,6 +1456,7 @@ class _WeekCard extends StatelessWidget {
                       theme: theme,
                       label: '${monday.add(Duration(days: i)).day}',
                       highlight: monday.add(Duration(days: i)) == today,
+                      entries: entries.on(monday.add(Duration(days: i))),
                     ),
                 ],
               ),
@@ -1219,12 +1473,14 @@ class _MonthCard extends StatelessWidget {
     required this.month,
     required this.onPrevious,
     required this.onNext,
+    required this.entries,
     this.fill = false,
   });
 
   final DateTime month;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
+  final _DayEntries entries;
   final bool fill;
 
   @override
@@ -1275,6 +1531,7 @@ class _MonthCard extends StatelessWidget {
                                 leading,
                                 daysInMonth,
                                 r * 7 + c,
+                                entries,
                                 height: rowHeight,
                               ),
                           ],
@@ -1299,6 +1556,7 @@ class _MonthCard extends StatelessWidget {
                           leading,
                           daysInMonth,
                           r * 7 + c,
+                          entries,
                         ),
                     ],
                   ),
@@ -1315,7 +1573,8 @@ class _MonthCard extends StatelessWidget {
     DateTime month,
     int leading,
     int daysInMonth,
-    int index, {
+    int index,
+    _DayEntries entries, {
     double? height,
   }) {
     final day = index - leading + 1;
@@ -1335,6 +1594,7 @@ class _MonthCard extends StatelessWidget {
       height: height,
       label: '$day',
       highlight: date == today,
+      entries: entries.on(date),
     );
   }
 }
@@ -1416,6 +1676,7 @@ class _DayCell extends StatelessWidget {
     this.label,
     this.highlight = false,
     this.empty = false,
+    this.entries = const [],
   });
 
   final double? height;
@@ -1424,6 +1685,9 @@ class _DayCell extends StatelessWidget {
   final String? label;
   final bool highlight;
   final bool empty;
+
+  /// The day's posts, drawn under the date.
+  final List<Widget> entries;
 
   @override
   Widget build(BuildContext context) {
@@ -1443,13 +1707,28 @@ class _DayCell extends StatelessWidget {
       padding: const EdgeInsets.all(6),
       child: label == null
           ? null
-          : Text(
-              label!,
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
-                color: highlight
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface,
+          // Clipped, not overflowing: a small square shows the date and what
+          // fits, and "+2 more" says the rest is there.
+          : ClipRect(
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      label!,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontWeight: highlight
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        color: highlight
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    ...entries,
+                  ],
+                ),
               ),
             ),
     );
@@ -1704,12 +1983,16 @@ class _SentPost {
     this.author,
     this.scheduledFor,
     this.scheduledTimezone,
+    this.createdAt,
   });
 
   final String id;
   final String body;
   final bool hasMedia;
   final String? author;
+
+  /// When it was made, on this device's clock.
+  final DateTime? createdAt;
 
   /// Wall clock, in the view's timezone, exactly as it was promised. Null for
   /// a post that went out immediately.
@@ -1730,11 +2013,45 @@ class _SentPost {
       author: json['author'] as String?,
       scheduledFor: json['scheduled_for'] as String?,
       scheduledTimezone: json['scheduled_timezone'] as String?,
+      createdAt: DateTime.tryParse(
+        json['created_at'] as String? ?? '',
+      )?.toLocal(),
       targets: ((json['targets'] as List<dynamic>?) ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(_SentTarget.fromJson)
           .toList(),
     );
+  }
+
+  /// Where it sits on a calendar: the promised wall time for a scheduled
+  /// post, otherwise when it was made. Null when neither is known.
+  DateTime? get when {
+    final wall = scheduledFor;
+    final promised = wall == null
+        ? null
+        : DateTime.tryParse(wall.replaceFirst(' ', 'T'));
+
+    return promised ?? createdAt;
+  }
+
+  /// The one colour a calendar has room for. A failure outranks everything,
+  /// so a post that reached two accounts of three still reads red.
+  Tone get tone {
+    if (targets.any((t) => t.status == 'failed')) return Tone.bad;
+    if (targets.any((t) => t.status == 'queued')) return Tone.neutral;
+    if (targets.isNotEmpty && targets.every((t) => t.status == 'scheduled')) {
+      return Tone.info;
+    }
+
+    return Tone.ok;
+  }
+
+  /// Its first line, or what it carries when it has no words.
+  String get preview {
+    final text = body.trim();
+    if (text.isEmpty) return hasMedia ? 'A picture or video' : 'A post';
+
+    return text.split('\n').first;
   }
 }
 
@@ -1745,11 +2062,19 @@ class _SentTarget {
     required this.status,
     this.failure,
     this.url,
+    this.connectionId,
+    this.provider,
   });
 
   final String account;
   final String providerLabel;
   final String status;
+
+  /// Which connection, to read its posting note (TikTok's drafts).
+  final String? connectionId;
+
+  /// The network's key, for its mark.
+  final String? provider;
   final String? failure;
 
   /// Where the post can be seen, as the network reported it; null when it
@@ -1763,6 +2088,8 @@ class _SentTarget {
       status: json['status'] as String? ?? 'queued',
       failure: json['failure'] as String?,
       url: json['url'] as String?,
+      connectionId: json['connection_id'] as String?,
+      provider: json['provider'] as String?,
     );
   }
 }
@@ -2078,4 +2405,859 @@ class _ConnectPanelState extends State<_ConnectPanel> {
       }
     });
   }
+}
+
+// ── Design 27: posting that feels finished ─────────────────────────
+//
+// Jose, 2026-09-28, via the Meta session: "there was no hint that the post had
+// been successful ... i didn't see anything appear on the calendar even though
+// you posted it and it succeeded". He took the recommendation: on a desktop
+// the composer becomes the result and the post lands on the calendar (1); on
+// a phone a posting screen, a finish screen, then an agenda (4).
+// `docs/previews/social-poster-layouts.html`.
+
+/// A post just published, landing: one line per account that resolves on its
+/// own, then what happened, in a sentence.
+///
+/// The composer becomes this on a desktop; on a phone it is the whole pane.
+/// Both read the list the calendar reads, so the finish and the calendar
+/// cannot disagree about one post.
+class _PostOutcome extends StatelessWidget {
+  const _PostOutcome({
+    required this.post,
+    required this.connections,
+    required this.stillWaiting,
+    required this.formats,
+    required this.large,
+    required this.onWriteAnother,
+    this.onSeeCalendar,
+    this.onDone,
+  });
+
+  final _SentPost post;
+  final List<_SocialConnection> connections;
+
+  /// The poll gave up with accounts still queued: said as still sending,
+  /// never as failed.
+  final bool stillWaiting;
+  final DisplayFormats formats;
+
+  /// The phone's version: a ring while posting, a big mark after.
+  final bool large;
+  final VoidCallback onWriteAnother;
+  final VoidCallback? onSeeCalendar;
+  final VoidCallback? onDone;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = post.targets.length;
+    final waiting = post.targets.where((t) => t.status == 'queued').length;
+    final sending = waiting > 0 && !stillWaiting;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // The phone's way back, and what Android's Back presses.
+        if (onDone != null)
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: IconButton(
+              tooltip: 'Back to your posts',
+              icon: const Icon(Icons.arrow_back),
+              onPressed: onDone,
+            ),
+          ),
+        if (sending)
+          _progress(context, total - waiting, total)
+        else
+          _verdict(context),
+        const SizedBox(height: 16),
+        if (!sending) ...[_Quote(post: post), const SizedBox(height: 8)],
+        for (final target in post.targets)
+          _TargetLine(target: target, drafts: _draftsFor(target, connections)),
+        if (!sending) ...[
+          const SizedBox(height: 16),
+          Wrap(
+            alignment: large ? WrapAlignment.end : WrapAlignment.start,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (onSeeCalendar != null && post.when != null)
+                OutlinedButton(
+                  onPressed: onSeeCalendar,
+                  child: const Text('See it on the calendar'),
+                ),
+              if (onDone != null) ...[
+                OutlinedButton(
+                  onPressed: onWriteAnother,
+                  child: const Text('Write another'),
+                ),
+                FilledButton(onPressed: onDone, child: const Text('Done')),
+              ] else
+                FilledButton(
+                  onPressed: onWriteAnother,
+                  child: const Text('Write another'),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// "Posting… 1 of 3 done" with a bar, or on a phone a ring that fills as
+  /// each account answers. Filled by answers, never by a clock: a bar that
+  /// moved on its own would be claiming progress nobody reported.
+  Widget _progress(BuildContext context, int done, int total) {
+    final theme = Theme.of(context);
+    final share = total == 0 ? 0.0 : done / total;
+
+    Widget filling(Widget Function(double) draw) =>
+        TweenAnimationBuilder<double>(
+          tween: Tween(end: share),
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          builder: (context, value, _) => draw(value),
+        );
+
+    if (!large) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Posting… $done of $total done',
+            style: theme.textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          filling((value) => LinearProgressIndicator(value: value)),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        SizedBox.square(
+          dimension: 120,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              filling(
+                (value) => CircularProgressIndicator(
+                  value: value,
+                  strokeWidth: 8,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
+              ),
+              Center(
+                child: Text(
+                  '$done / $total',
+                  style: theme.textTheme.headlineSmall,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Posting to your accounts',
+          style: theme.textTheme.titleMedium,
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _verdict(BuildContext context) {
+    final theme = Theme.of(context);
+    final (icon, tone, title, line) = _say();
+    final colours = ToneColours.of(context, tone);
+    final size = large ? 88.0 : 40.0;
+
+    // The flourish Jose asked for, and it ends: a mark that settles once.
+    final mark = TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.5, end: 1),
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOutBack,
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: colours.fill, shape: BoxShape.circle),
+        child: Icon(icon, color: colours.ink, size: size * 0.55),
+      ),
+    );
+    final align = large ? TextAlign.center : TextAlign.start;
+    final words = Column(
+      crossAxisAlignment: large
+          ? CrossAxisAlignment.center
+          : CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          textAlign: align,
+          style: large
+              ? theme.textTheme.titleLarge
+              : theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 4),
+        Text(line, textAlign: align, style: theme.textTheme.bodyMedium),
+      ],
+    );
+
+    if (large) {
+      return Column(children: [mark, const SizedBox(height: 16), words]);
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        mark,
+        const SizedBox(width: 12),
+        Expanded(child: words),
+      ],
+    );
+  }
+
+  /// What happened, as a heading and a sentence.
+  (IconData, Tone, String, String) _say() {
+    final targets = post.targets;
+    List<_SentTarget> withStatus(String status) =>
+        targets.where((t) => t.status == status).toList();
+    final waiting = withStatus('queued');
+    final failed = withStatus('failed');
+    final sent = withStatus('sent');
+    final drafts = [
+      for (final t in sent)
+        if (_draftsFor(t, connections) != null) t,
+    ];
+    final live = [
+      for (final t in sent)
+        if (_draftsFor(t, connections) == null) t,
+    ];
+    String accounts(int n) => n == 1 ? '1 account' : '$n accounts';
+
+    if (targets.isNotEmpty &&
+        withStatus('scheduled').length == targets.length) {
+      final when = post.when;
+      final at = when == null
+          ? ''
+          : ' for ${_dayWord(when)} ${formats.formatTime(when.hour, when.minute)}';
+
+      return (
+        Icons.schedule,
+        Tone.info,
+        'Scheduled$at on ${accounts(targets.length)}',
+        'It goes out on its own, and it is on the calendar now.',
+      );
+    }
+
+    if (waiting.isNotEmpty) {
+      return (
+        Icons.hourglass_empty,
+        Tone.caution,
+        'Still sending',
+        '${_names(waiting)} ${_names(waiting).contains(' and ') ? 'have' : 'has'} '
+            'not answered yet. Nothing has failed; look again in a minute.',
+      );
+    }
+
+    if (sent.isEmpty) {
+      return (
+        Icons.error_outline,
+        Tone.bad,
+        'Not posted',
+        failed.length == 1
+            ? '${_names(failed)} did not take it. The reason is below.'
+            : 'None of the accounts took it. The reasons are below.',
+      );
+    }
+
+    if (failed.isNotEmpty) {
+      return (
+        Icons.error_outline,
+        Tone.caution,
+        'Posted to ${sent.length} of ${targets.length} accounts',
+        '${_names(failed)} did not take it. The reason is below.',
+      );
+    }
+
+    if (live.isEmpty) {
+      return (
+        Icons.edit_note,
+        Tone.ok,
+        'Sent to your drafts',
+        'Open ${_names(drafts)} to finish and post it.',
+      );
+    }
+
+    String isAre(List<_SentTarget> some) =>
+        _names(some).contains(' and ') ? 'are' : 'is';
+
+    return (
+      Icons.check_circle,
+      Tone.ok,
+      'Posted to ${accounts(targets.length)}',
+      drafts.isEmpty
+          ? '${_names(live)} ${isAre(live)} live.'
+          : '${_names(live)} ${isAre(live)} live. ${_names(drafts)} '
+                '${isAre(drafts)} waiting in your drafts.',
+    );
+  }
+}
+
+/// A post opened from the calendar: what went out, then every account.
+class _PostDetail extends StatelessWidget {
+  const _PostDetail({required this.post, required this.connections});
+
+  final _SentPost post;
+  final List<_SocialConnection> connections;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Quote(post: post),
+        if (post.author != null) ...[
+          const SizedBox(height: 6),
+          Text('By ${post.author}', style: theme.textTheme.bodySmall),
+        ],
+        const SizedBox(height: 12),
+        for (final target in post.targets)
+          _TargetLine(target: target, drafts: _draftsFor(target, connections)),
+      ],
+    );
+  }
+}
+
+/// The post, shown back as it went out.
+class _Quote extends StatelessWidget {
+  const _Quote({required this.post});
+
+  final _SentPost post;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final words = post.body.trim();
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            words.isEmpty ? post.preview : words,
+            maxLines: 6,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+          if (post.hasMedia && words.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  Icons.image_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'With a picture or video',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One account's answer: posted with its link, in drafts, failed with the
+/// network's own sentence, or still going.
+class _TargetLine extends StatelessWidget {
+  const _TargetLine({required this.target, required this.drafts});
+
+  final _SentTarget target;
+
+  /// The account's posting note, when what "sent" means is its drafts.
+  final String? drafts;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final network = target.providerLabel.isEmpty
+        ? 'the network'
+        : target.providerLabel;
+    final (word, tone, icon) = switch (target.status) {
+      'queued' => ('Posting…', Tone.neutral, Icons.hourglass_top),
+      'scheduled' => ('Scheduled', Tone.info, Icons.schedule),
+      // The network's sentence, whole: "failed" says something is wrong and
+      // nothing about what to do.
+      'failed' => (
+        target.failure ?? 'Did not post.',
+        Tone.bad,
+        Icons.error_outline,
+      ),
+      _ when drafts != null => (
+        'In your $network drafts. Finish it in the $network app.',
+        Tone.ok,
+        Icons.edit_note,
+      ),
+      _ => ('Posted', Tone.ok, Icons.check_circle_outline),
+    };
+    final colours = ToneColours.of(context, tone);
+    final url = target.url;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SocialNetworkMark(network: target.provider ?? '', size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  target.account.isEmpty ? network : target.account,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+                Text(
+                  word,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colours.ink,
+                  ),
+                ),
+                if (url != null && target.status == 'sent')
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () => launchUrl(
+                      Uri.parse(url),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: Text('View on $network'),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(icon, size: 18, color: colours.ink),
+        ],
+      ),
+    );
+  }
+}
+
+/// A day's posts for a calendar square: two, then "+N more".
+class _DayEntries {
+  const _DayEntries({
+    required this.byDay,
+    required this.outlined,
+    required this.formats,
+    required this.onOpen,
+  });
+
+  final Map<DateTime, List<_SentPost>> byDay;
+  final String? outlined;
+  final DisplayFormats formats;
+  final void Function(_SentPost)? onOpen;
+
+  /// ponytail: two, which is what a month square holds. A busier day is read
+  /// in the Sent list; a day view is the upgrade if that stops being enough.
+  static const int _room = 2;
+
+  List<Widget> on(DateTime day) {
+    final posts = byDay[day] ?? const <_SentPost>[];
+
+    return [
+      for (final post in posts.take(_room))
+        _PostChip(
+          post: post,
+          formats: formats,
+          outlined: post.id == outlined,
+          onOpen: onOpen,
+        ),
+      if (posts.length > _room)
+        Builder(
+          builder: (context) => Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '+${posts.length - _room} more',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ),
+        ),
+    ];
+  }
+}
+
+/// Posts by the day they sit on, each day in time order.
+Map<DateTime, List<_SentPost>> _postsByDay(List<_SentPost> posts) {
+  final byDay = <DateTime, List<_SentPost>>{};
+
+  for (final post in posts) {
+    final when = post.when;
+    if (when == null) continue;
+    byDay.putIfAbsent(_CalendarsColumn._dateOnly(when), () => []).add(post);
+  }
+  for (final day in byDay.values) {
+    day.sort((a, b) => a.when!.compareTo(b.when!));
+  }
+
+  return byDay;
+}
+
+/// One post in a calendar square: its time and first words, in its colour.
+class _PostChip extends StatelessWidget {
+  const _PostChip({
+    required this.post,
+    required this.formats,
+    required this.outlined,
+    required this.onOpen,
+  });
+
+  final _SentPost post;
+  final DisplayFormats formats;
+
+  /// The newest post, outlined the first time it is seen.
+  final bool outlined;
+  final void Function(_SentPost)? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colours = ToneColours.of(context, post.tone);
+    final when = post.when!;
+    final open = onOpen;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Material(
+        color: colours.fill,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(6),
+          side: outlined
+              ? BorderSide(color: colours.ink, width: 1.5)
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          onTap: open == null ? null : () => open(post),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              children: [
+                Icon(_toneIcon(post.tone), size: 11, color: colours.ink),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(
+                    '${_clockShort(when, formats)} ${post.preview}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: colours.ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The phone's calendar. A month grid does not fit a phone; a list of days
+/// does: Today, Tomorrow, the days ahead, then Earlier.
+class _Agenda extends StatelessWidget {
+  const _Agenda({
+    super.key,
+    required this.posts,
+    required this.outlined,
+    required this.formats,
+    required this.onOpen,
+  });
+
+  final List<_SentPost> posts;
+  final String? outlined;
+  final DisplayFormats formats;
+  final void Function(_SentPost) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final ahead = <int, List<_SentPost>>{};
+    final earlier = <_SentPost>[];
+
+    for (final post in posts) {
+      final when = post.when;
+      final days = when == null ? -1 : _daysFromToday(when);
+      if (days < 0) {
+        earlier.add(post);
+      } else {
+        ahead.putIfAbsent(days, () => []).add(post);
+      }
+    }
+
+    int byTime(_SentPost a, _SentPost b) =>
+        (a.when ?? DateTime(0)).compareTo(b.when ?? DateTime(0));
+
+    final sections = <(String, List<_SentPost>, bool)>[
+      for (final days in ahead.keys.toList()..sort())
+        (
+          switch (days) {
+            0 => 'Today',
+            1 => 'Tomorrow',
+            _ => _shortDay(ahead[days]!.first.when!),
+          },
+          // Today newest first, so what was just posted is at the top; the
+          // days ahead in the order they come.
+          ahead[days]!..sort((a, b) => days == 0 ? byTime(b, a) : byTime(a, b)),
+          false,
+        ),
+      if (earlier.isNotEmpty)
+        ('Earlier', earlier..sort((a, b) => byTime(b, a)), true),
+    ];
+
+    return DashboardCard(
+      title: 'Your posts',
+      icon: Icons.view_agenda_outlined,
+      child: sections.isEmpty
+          ? const DashboardNote(
+              'Nothing posted or scheduled yet. What you publish lands here, '
+              'on its day.',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (heading, list, dated) in sections) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 6),
+                    child: Text(heading, style: theme.textTheme.titleSmall),
+                  ),
+                  for (final post in list)
+                    _AgendaRow(
+                      post: post,
+                      formats: formats,
+                      outlined: post.id == outlined,
+                      dated: dated,
+                      onOpen: onOpen,
+                    ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _AgendaRow extends StatelessWidget {
+  const _AgendaRow({
+    required this.post,
+    required this.formats,
+    required this.outlined,
+    required this.dated,
+    required this.onOpen,
+  });
+
+  final _SentPost post;
+  final DisplayFormats formats;
+  final bool outlined;
+
+  /// Earlier posts carry their date; the rest sit under one already.
+  final bool dated;
+  final void Function(_SentPost) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colours = ToneColours.of(context, post.tone);
+    final when = post.when;
+    final stamp = when == null
+        ? ''
+        : dated
+        ? '${_CalendarsColumn._shortMonths[when.month - 1]} ${when.day}'
+        : formats.formatTime(when.hour, when.minute);
+    final networks = {
+      for (final t in post.targets)
+        if (t.provider != null) t.provider!,
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        key: ValueKey('agenda-${post.id}'),
+        color: theme.colorScheme.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: outlined ? colours.ink : theme.colorScheme.outlineVariant,
+            width: outlined ? 2 : 1,
+          ),
+        ),
+        child: InkWell(
+          onTap: () => onOpen(post),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(_toneIcon(post.tone), size: 20, color: colours.ink),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 2,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (stamp.isNotEmpty)
+                            Text(stamp, style: theme.textTheme.titleSmall),
+                          for (final network in networks)
+                            SocialNetworkMark(network: network, size: 14),
+                          Text(
+                            _postWord(post),
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: colours.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        post.preview,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The account's posting note when [target] went to its drafts, not live.
+String? _draftsFor(_SentTarget target, List<_SocialConnection> connections) {
+  if (target.status != 'sent') return null;
+
+  for (final connection in connections) {
+    if (connection.id == target.connectionId) return connection.postingNote;
+  }
+
+  return null;
+}
+
+/// "Facebook", "Facebook and Instagram", "Facebook, Instagram and TikTok".
+String _names(List<_SentTarget> targets) {
+  final names = {
+    for (final t in targets)
+      t.providerLabel.isEmpty ? t.account : t.providerLabel,
+  }.toList();
+  if (names.length < 2) return names.join();
+
+  return '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+}
+
+IconData _toneIcon(Tone tone) => switch (tone) {
+  Tone.bad => Icons.error_outline,
+  Tone.caution => Icons.warning_amber_outlined,
+  Tone.neutral => Icons.hourglass_top,
+  Tone.info => Icons.schedule,
+  _ => Icons.check_circle_outline,
+};
+
+/// A post's state in a word or two.
+String _postWord(_SentPost post) => switch (post.tone) {
+  Tone.bad => 'needs a look',
+  Tone.neutral => 'posting…',
+  Tone.info => 'scheduled',
+  _ => 'posted',
+};
+
+const _weekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/// Whole days from today to [day], counted on the calendar rather than in
+/// hours, so the night the clocks change is still one day.
+int _daysFromToday(DateTime day) {
+  final now = DateTime.now();
+
+  return DateTime.utc(
+    day.year,
+    day.month,
+    day.day,
+  ).difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+}
+
+/// "Fri, Oct 2".
+String _shortDay(DateTime day) =>
+    '${_CalendarsColumn._days[day.weekday - 1]}, '
+    '${_CalendarsColumn._shortMonths[day.month - 1]} ${day.day}';
+
+/// "today", "tomorrow", "Tuesday" within the week, else "Fri, Oct 2".
+String _dayWord(DateTime day) => switch (_daysFromToday(day)) {
+  0 => 'today',
+  1 => 'tomorrow',
+  final n when n > 1 && n < 7 => _weekdayNames[day.weekday - 1],
+  _ => _shortDay(day),
+};
+
+/// "9a", "2:30p" on a 12-hour clock, "09:00" on a 24-hour one. A calendar
+/// square has room for a time or for words, and "9:00 AM" left it neither.
+String _clockShort(DateTime time, DisplayFormats formats) {
+  if (formats.timeFormat != '12h') {
+    return formats.formatTime(time.hour, time.minute);
+  }
+
+  final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+  final minute = time.minute == 0
+      ? ''
+      : ':${time.minute.toString().padLeft(2, '0')}';
+
+  return '$hour$minute${time.hour < 12 ? 'a' : 'p'}';
+}
+
+/// "Today 3:14 PM · posted", for the panel's subtitle.
+String _stamp(_SentPost post, DisplayFormats formats) {
+  final when = post.when;
+  if (when == null) return _postWord(post);
+
+  final day = _dayWord(when);
+
+  return '${day[0].toUpperCase()}${day.substring(1)} '
+      '${formats.formatTime(when.hour, when.minute)} · ${_postWord(post)}';
 }

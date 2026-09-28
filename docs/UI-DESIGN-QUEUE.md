@@ -2958,7 +2958,21 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
+### 27 · Marketing · Social posting that feels finished — **Jose: "as u recommend" — 1 and 4** — **BUILT**
+
+**Built (client, social_media_tab.dart):** desktop 1 — Publish turns the composer into the
+accounts resolving ("Posting… 1 of 3 done", a bar filled only by answers), then a mark that
+settles and the sentence ("Posted to 3 accounts · Facebook and Instagram are live. TikTok is
+waiting in your drafts." / "Posted to 1 of 2" / "Not posted" / "Scheduled for Tuesday 9:00 AM
+on 3 accounts" / "Still sending" when the poll gives up), the post shown back, View on Facebook
+per account, See it on the calendar and Write another. Every post is on both calendars on its
+day (green posted, blue scheduled, red needs a look, the new one outlined), and clicking one
+opens a side panel with each account. Phone 4 — publishing takes the pane (ring "2 / 3"), the
+finish screen with Write another / Done, and Done scrolls to **Your posts**, an agenda (Today,
+Tomorrow, the days ahead, Earlier) replacing both calendars below 600. Also fixed: the composer
+column now scrolls — twenty Sent posts overflowed a 900-tall screen by 437 px. **Not built:**
+Try again on a failed account (no retry endpoint; asked Meta). The poll stays every 3 s for
+about a minute (the existing one), not the 2 s Meta suggested.
 
 `docs/previews/social-poster-layouts.html`. From Jose, verbatim, via the Meta session,
 2026-09-28: *"there was no hint that the post had been successful … we need to add flare, loading

@@ -489,8 +489,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Compose'), findsOneWidget);
-      expect(find.text('Weekly Calendar'), findsOneWidget);
-      expect(find.text('Monthly Calendar'), findsOneWidget);
+      // A month grid does not fit a phone: the calendar is an agenda there
+      // (design 27, Jose's pick 4).
+      expect(find.text('Your posts'), findsOneWidget);
+      expect(find.text('Monthly Calendar'), findsNothing);
     });
 
     testWidgets(
@@ -647,6 +649,12 @@ void main() {
       final body = jsonDecode(sent!.body) as Map<String, dynamic>;
       expect(body['body'], 'New flue liner, same day.');
       expect(body['connections'], ['conn-2']);
+
+      // The composer is the result now (design 27). This server never
+      // answers, so it waits out the poll before offering the form again.
+      await _tick(tester, times: 21);
+      await tester.tap(find.widgetWithText(FilledButton, 'Write another'));
+      await tester.pumpAndSettle();
 
       // Emptied only because the send worked.
       expect(
@@ -849,6 +857,232 @@ void main() {
       // It gives up and says why, rather than drawing an indefinite wait or
       // hammering the server forever.
       expect(find.textContaining('queue has stopped answering'), findsOneWidget);
+    });
+  });
+
+  /// Design 27, Jose's picks 1 and 4. His words, via the Meta session: "there
+  /// was no hint that the post had been successful ... i didn't see anything
+  /// appear on the calendar even though you posted it and it succeeded".
+  group('posting feels finished', () {
+    testWidgets('the composer becomes the result, and the post lands on today', (
+      tester,
+    ) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => switch (reads++) {
+            0 => const [],
+            1 => [_landed('queued')],
+            _ => [_landed('sent', url: 'https://www.pinterest.com/pin/1/')],
+          },
+        ),
+      );
+
+      await _write(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      // Each account resolving, where the form was.
+      expect(find.text('Posting… 0 of 1 done'), findsOneWidget);
+      expect(find.text('Posting…'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'What should go out?'), findsNothing);
+
+      await _tick(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Posted to 1 account'), findsOneWidget);
+      expect(find.text('Pinterest is live.'), findsOneWidget);
+      expect(find.text('View on Pinterest'), findsOneWidget);
+
+      // On today's square at the same moment, outlined.
+      final chip = find.descendant(
+        of: find.byKey(Key('month-day-${DateTime.now().day}')),
+        matching: find.textContaining('New flue liner'),
+      );
+      expect(chip, findsOneWidget);
+      final box = tester.widget<Material>(
+        find.ancestor(of: chip, matching: find.byType(Material)).first,
+      );
+      expect((box.shape! as RoundedRectangleBorder).side.width, greaterThan(0));
+    });
+
+    testWidgets('a refusal from the network reads as not posted, with why', (
+      tester,
+    ) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => reads++ == 0
+              ? const []
+              : [
+                  _landed(
+                    'failed',
+                    failure:
+                        'That account has no boards, and a Pin has to live '
+                        'on one.',
+                  ),
+                ],
+        ),
+      );
+
+      await _write(tester);
+      await tester.tap(find.widgetWithText(FilledButton, 'Publish now'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Not posted'), findsOneWidget);
+      expect(
+        find.text('Pinterest did not take it. The reason is below.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('has no boards'), findsOneWidget);
+    });
+
+    testWidgets('a scheduled post says when, and the calendar goes to it', (
+      tester,
+    ) async {
+      // Far enough ahead to be another month, so the calendar has to move.
+      final when = DateTime.now().add(const Duration(days: 40));
+      final wall = '${when.year}-${_two(when.month)}-${_two(when.day)} 09:00';
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _scheduling(
+          _handler(
+            canEdit: true,
+            connections: const [_pinterestBoard],
+            postsFor: () => reads++ == 0
+                ? const []
+                : [_landed('scheduled', scheduledFor: wall)],
+          ),
+        ),
+      );
+
+      await _write(tester);
+      await tester.tap(find.widgetWithText(TextButton, 'Send it later'));
+      await tester.pumpAndSettle();
+      await _typeWhen(tester, when, hour: '09', minute: '00');
+      await tester.tap(find.widgetWithText(FilledButton, 'Schedule'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Scheduled for '), findsOneWidget);
+      expect(find.textContaining(' on 1 account'), findsOneWidget);
+
+      await tester.tap(
+        find.widgetWithText(OutlinedButton, 'See it on the calendar'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(Key('month-day-${when.day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('on a phone publishing takes the pane, and Done lands on the '
+        'agenda', (tester) async {
+      var reads = 0;
+
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          postsFor: () => switch (reads++) {
+            0 => const [],
+            1 => [_landed('queued')],
+            _ => [_landed('sent')],
+          },
+        ),
+        size: const Size(375, 900),
+      );
+
+      await _write(tester);
+      final publish = find.widgetWithText(FilledButton, 'Publish now');
+      await tester.ensureVisible(publish);
+      await tester.pumpAndSettle();
+      await tester.tap(publish);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Posting to your accounts'), findsOneWidget);
+      expect(find.text('0 / 1'), findsOneWidget);
+      expect(find.text('Compose'), findsNothing);
+
+      await _tick(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Posted to 1 account'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Done'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Today'), findsOneWidget);
+      final row = tester.widget<Material>(
+        find.byKey(const ValueKey('agenda-post-1')),
+      );
+      expect((row.shape! as RoundedRectangleBorder).side.width, 2);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a post on the calendar opens in a panel with each account', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [_landed('sent', url: 'https://www.pinterest.com/pin/1/')],
+        ),
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(Key('month-day-${DateTime.now().day}')),
+          matching: find.textContaining('New flue liner'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(SidePanel),
+          matching: find.text('View on Pinterest'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    // The composer column did not scroll: twenty posts in its Sent list are
+    // taller than a laptop screen, and the card ran off the bottom.
+    testWidgets('a long Sent list scrolls instead of running off the screen', (
+      tester,
+    ) async {
+      await _pumpSocial(
+        tester,
+        _handler(
+          canEdit: true,
+          connections: const [_pinterestBoard],
+          posts: [
+            for (var i = 0; i < 12; i++) {..._landed('sent'), 'id': 'post-$i'},
+          ],
+        ),
+        size: const Size(1400, 900),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('Compose'), findsOneWidget);
     });
   });
 
@@ -1994,6 +2228,68 @@ MockClientHandler _handler({
     return _json({'message': 'Unexpected ${request.method} $path'}, 500);
   };
 }
+
+/// One post as GET /social/posts carries it, made today, to Everdoors Boards.
+Map<String, Object?> _landed(
+  String status, {
+  String? failure,
+  String? url,
+  String? scheduledFor,
+}) => {
+  'id': 'post-1',
+  'body': 'New flue liner, same day.',
+  'has_media': false,
+  'created_at': DateTime.now().toUtc().toIso8601String(),
+  'scheduled_for': scheduledFor,
+  'targets': [
+    {
+      'id': 'target-1',
+      'connection_id': 'conn-2',
+      'account': 'Everdoors Boards',
+      'provider': 'pinterest',
+      'provider_label': 'Pinterest',
+      'status': status,
+      'failure': failure,
+      'url': url,
+    },
+  ],
+};
+
+/// Words, and Everdoors Boards ticked: a post ready to go.
+Future<void> _write(WidgetTester tester) async {
+  final words = find.widgetWithText(TextField, 'What should go out?');
+  await tester.ensureVisible(words);
+  await tester.enterText(words, 'New flue liner, same day.');
+  final board = find.widgetWithText(CheckboxListTile, 'Everdoors Boards');
+  await tester.ensureVisible(board);
+  await tester.pumpAndSettle();
+  await tester.tap(board);
+  await tester.pumpAndSettle();
+}
+
+/// The server as production answers a post filed for later: every target
+/// `scheduled`, never `queued`.
+MockClientHandler _scheduling(MockClientHandler inner) => (request) async {
+  if (request.method == 'POST' && request.url.path.endsWith('/social/posts')) {
+    return _json({
+      'data': {
+        'id': 'post-1',
+        'targets': [
+          {
+            'id': 'target-1',
+            'connection_id': 'conn-2',
+            'status': 'scheduled',
+            'account': 'Everdoors Boards',
+            'provider': 'pinterest',
+            'provider_label': 'Pinterest',
+          },
+        ],
+      },
+    }, 201);
+  }
+
+  return inner(request);
+};
 
 /// A genuine 1x1 PNG. `Image.memory` decodes bytes for real, so a handful of
 /// arbitrary numbers would fail to decode and prove the fallback instead of
