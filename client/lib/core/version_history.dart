@@ -13,6 +13,8 @@ class VersionHistory {
       items: [
         'Web Management, SEO: Edit hours on several websites changes the opening hours of several websites at once, with a review before anything is written.',
         'Leads: a contact form sent on one of the websites arrives in Leads, once that site has plugin 1.21.0. The form still sends its own email, and no marketing consent is recorded from it.',
+        'Automations: Customer replied, a new trigger, starts a rule when a customer writes again on a lead that already has a conversation; your own replies never set it off. A new template, Tell the office when a customer replies, uses it.',
+        'Notifications: opening a lead notification takes you to that lead, not the newest one.',
       ],
     ),
     VersionRelease(
