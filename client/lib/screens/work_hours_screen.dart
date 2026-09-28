@@ -18,6 +18,7 @@ import '../core/api_client.dart';
 import '../core/session.dart';
 import '../widgets/tab_bar_like.dart';
 import 'hr/pto_tab.dart';
+import 'hr/work_hours_reports_tab.dart';
 import 'hr/work_hours_tab.dart';
 import 'settings_screen.dart';
 
@@ -56,6 +57,18 @@ class _WorkHoursScreenState extends State<WorkHoursScreen> {
         'Paid Time Off',
         Icons.beach_access_outlined,
         () => PtoTab(api: widget.api, session: widget.session),
+      ),
+    // Saved weekly hours reports (2026-09-28), sent by hand here or by an
+    // automation rule on a schedule.
+    if (_may('work_hours.reports.view'))
+      (
+        'reports',
+        'Reports',
+        Icons.summarize_outlined,
+        () => WorkHoursReportsTab(
+          api: widget.api,
+          canManage: _may('work_hours.manage'),
+        ),
       ),
     if (_may('work_hours.settings.view'))
       (

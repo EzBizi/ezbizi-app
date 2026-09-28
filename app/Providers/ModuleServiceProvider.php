@@ -710,6 +710,9 @@ class ModuleServiceProvider extends ServiceProvider
                     new TabDefinition('general', 'General'),
                     new TabDefinition('pto', 'Paid Time Off'),
                     new TabDefinition('settings', 'Settings'),
+                    // Saved weekly hours reports (2026-09-28): sent by hand here,
+                    // or on a schedule by the action below.
+                    new TabDefinition('reports', 'Reports'),
                 ],
                 auditActionPrefixes: ['time_clock'],
                 automationExemptBecause: 'Its automations are the clock\'s, and they stay on the '

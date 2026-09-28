@@ -136,6 +136,7 @@ use App\Http\Controllers\Api\StaffSuggestionsController;
 use App\Http\Controllers\Api\SuggestionsController;
 use App\Http\Controllers\Api\ThumbtackWebhookController;
 use App\Http\Controllers\Api\TimeClockController;
+use App\Http\Controllers\Api\TimeClockReportsController;
 use App\Http\Controllers\Api\Training\AssignmentsController as TrainingAssignmentsController;
 use App\Http\Controllers\Api\Training\DashboardController as TrainingDashboardController;
 use App\Http\Controllers\Api\Training\GuidesController as TrainingGuidesController;
@@ -1439,6 +1440,25 @@ Route::prefix('v1')
             // Force clock out, and the day's tag / extra hours / note (2026-09-24).
             Route::post('hr/time-clock/shifts/{shift}/clock-out', [TimeClockController::class, 'forceClockOut']);
             Route::put('hr/time-clock/people/{user}/days/{date}', [TimeClockController::class, 'recordDay']);
+        });
+
+        /*
+         * ── Work Hours › Reports (2026-09-28) ──
+         *
+         * Saved weekly hours reports, sent by hand here or by the
+         * `work_hours.send_report` automation. Reading is the tab; saving,
+         * deleting and sending are `manage`, because a report is everybody's
+         * hours delivered to an inbox.
+         */
+        Route::middleware('permission:work_hours.reports.view')->group(function () {
+            Route::get('hr/time-clock/reports', [TimeClockReportsController::class, 'index']);
+            Route::get('hr/time-clock/reports/{report}/preview', [TimeClockReportsController::class, 'preview']);
+        });
+        Route::middleware('permission:work_hours.manage')->group(function () {
+            Route::post('hr/time-clock/reports', [TimeClockReportsController::class, 'store']);
+            Route::patch('hr/time-clock/reports/{report}', [TimeClockReportsController::class, 'update']);
+            Route::delete('hr/time-clock/reports/{report}', [TimeClockReportsController::class, 'destroy']);
+            Route::post('hr/time-clock/reports/{report}/send', [TimeClockReportsController::class, 'send']);
         });
 
         // The tab the owner asked for. It computes nothing itself — the figures

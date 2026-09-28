@@ -783,6 +783,23 @@ final class TimeClock
     }
 
     /**
+     * The first day of the week `$weeksFromNow` away from today, in the
+     * organization's own week and the view's clock — 0 is this week, -1 the
+     * one that has just finished. For saved reports (2026-09-28), which ask
+     * "last week" and must mean the same week Work Hours shows.
+     */
+    public function weekStartOf(User $actor, int $weeksFromNow = 0): string
+    {
+        $view = ViewScope::forUser($actor);
+        $tz = (string) $this->settings->get('timezone', $view->settingsScope());
+        $startsOn = (string) $this->settings->get('time_clock.week_starts_on', $actor->organization);
+
+        return $this->weekStart($this->resolveDate(null, $tz), $tz, $startsOn)
+            ->addWeeks($weeksFromNow)
+            ->toDateString();
+    }
+
+    /**
      * The start of the week `$date` falls in, in this organization's reckoning.
      *
      * Carbon's own `startOfWeek()` is deliberately not used: it answers for the

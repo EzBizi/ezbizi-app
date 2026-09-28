@@ -701,6 +701,142 @@ void main() {
 
     expect(find.widgetWithText(TextButton, 'Edit'), findsOneWidget);
   });
+
+  // ── Work Hours › Reports (2026-09-28) ─────────────────────────────
+
+  http.Response? reportsServer(
+    http.Request request,
+    List<http.Request> writes,
+  ) {
+    final path = request.url.path;
+    if (path.endsWith('/hr/time-clock/reports') && request.method == 'GET') {
+      return _json({
+        'data': [
+          {
+            'id': 'r-1',
+            'name': 'Weekly hours',
+            'role_ids': ['role-t'],
+            'include_user_ids': <String>[],
+            'exclude_user_ids': <String>[],
+            'recipients': ['dismanager@a-1chimney.com'],
+          },
+        ],
+        'roles': [
+          {'id': 'role-t', 'name': 'Technician'},
+        ],
+        'people': [
+          {
+            'id': 'u-2',
+            'name': 'Bea Okafor',
+            'email': 'bea@x.test',
+            'role_id': 'role-t',
+          },
+        ],
+      });
+    }
+    if (path.endsWith('/reports/r-1/preview')) {
+      return _json({
+        'data': {
+          'week_start': '2026-09-20',
+          'week_end': '2026-09-26',
+          'range': 'Sunday, Sep 20 – Saturday, Sep 26',
+          'rows': [
+            {
+              'id': 'u-2',
+              'name': 'Bea Okafor',
+              'seconds': 30600,
+              'hours': '8:30',
+              'days_worked': 1,
+            },
+          ],
+          'total_seconds': 30600,
+          'total': '8:30',
+          'recipients': ['dismanager@a-1chimney.com'],
+        },
+      });
+    }
+    if (path.endsWith('/reports/r-1/send')) {
+      writes.add(request);
+      return _json({
+        'data': {
+          'to': ['dismanager@a-1chimney.com'],
+          'rows': 1,
+          'range': 'Sunday, Sep 20 – Saturday, Sep 26',
+        },
+      });
+    }
+
+    return null;
+  }
+
+  testWidgets('Reports lists a saved report, previews last week and sends it', (
+    tester,
+  ) async {
+    final writes = <http.Request>[];
+
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.reports.view', 'work_hours.manage'],
+      onClock: (_, _) => _week(people: [_person()]),
+      onWrite: (request) => reportsServer(request, writes),
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Reports'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Weekly hours'), findsOneWidget);
+    expect(find.text('Technician'), findsOneWidget);
+    expect(find.text('To: dismanager@a-1chimney.com'), findsOneWidget);
+
+    await tester.tap(find.text('Preview'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sunday, Sep 20 – Saturday, Sep 26'), findsOneWidget);
+    expect(find.text('Total (1 employee)'), findsOneWidget);
+    expect(
+      find.text('8:30'),
+      findsNWidgets(2),
+      reason: 'the row and the total',
+    );
+
+    await tester.tap(find.text('Send now'));
+    await tester.pumpAndSettle();
+
+    expect(writes.single.method, 'POST');
+    expect(writes.single.url.queryParameters['week'], 'last');
+    expect(find.text('Sent to 1 address.'), findsOneWidget);
+  });
+
+  testWidgets('without manage the Reports tab reads and cannot send or edit', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: true),
+      grants: const ['work_hours.reports.view'],
+      onClock: (_, _) => _week(people: [_person()]),
+      onWrite: (request) => reportsServer(request, []),
+    );
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Reports'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Weekly hours'),
+      findsOneWidget,
+      reason: 'the tab rendered',
+    );
+    expect(find.text('New report'), findsNothing);
+    expect(find.byTooltip('Edit report'), findsNothing);
+    expect(find.byTooltip('Delete report'), findsNothing);
+
+    await tester.tap(find.text('Preview'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Total (1 employee)'), findsOneWidget);
+    expect(find.text('Send now'), findsNothing);
+  });
 }
 
 Future<void> _pump(
