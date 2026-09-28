@@ -100,15 +100,16 @@ final class FieldTracking
     }
 
     /**
-     * EXPLICIT grants only. Administrator holds every permission implicitly
-     * (Role::hasPermission), which is right for "may do" and wrong for "is
-     * done to": owning the organization must not put your phone on its map.
+     * Administrators ARE tracked, like any tracked role, within the same
+     * window. Jose, 2026-09-28, overturning the first version's exclusion:
+     * "admins should be tracked as well, i never said they shouldn't" and,
+     * asked whether always or only when switched on, "Always, like any
+     * tracked role." Role::hasPermission is true for Administrator on every
+     * key, so no clause is needed; FieldTest pins it.
      */
     public function isTracked(User $user): bool
     {
-        return $user->is_active
-            && $user->hasPermission('field.tracked')
-            && ! $user->role?->isAdministrator();
+        return $user->is_active && $user->hasPermission('field.tracked');
     }
 
     /**
