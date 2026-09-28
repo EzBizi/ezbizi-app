@@ -17,6 +17,7 @@ class VersionHistory {
         'Leads: on a phone, the search, the sources and the filters scroll away with the list.',
         'Suggestions: the back arrow sits at the start of the line, and only shows when there is a list to go back to.',
         'Customers: the State and ZIP boxes line up.',
+        'Automations: replacing your work with a template asks in place, with Keep mine and Use the template, instead of in a pop-up.',
       ],
     ),
     VersionRelease(
