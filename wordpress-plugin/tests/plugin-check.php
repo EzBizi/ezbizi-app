@@ -81,6 +81,7 @@ function set_transient($k, $v, $ttl = 0) { $GLOBALS['tr'][$k] = [$v, $ttl ? time
 function delete_transient($k) { unset($GLOBALS['tr'][$k]); return true; }
 
 function add_shortcode($tag, $cb) { $GLOBALS['sc'][$tag] = $cb; }
+function do_shortcode($s) { return preg_replace_callback('/\[([a-z0-9_]+)\]/', fn ($m) => isset($GLOBALS['sc'][$m[1]]) ? $GLOBALS['sc'][$m[1]]([]) : $m[0], (string) $s); }
 function shortcode_atts($pairs, $atts, $sc = '') {
     $atts = (array) $atts;
     $out = [];
@@ -507,6 +508,23 @@ check('a page field renders on its page', $GLOBALS['sc']['ezbizi_about_us_field_
 
 $_SERVER['REQUEST_URI'] = '/contact';
 check('and nowhere else', $GLOBALS['sc']['ezbizi_about_us_field_1']([]), '');
+
+// Text that names another value, as the texts imported from A1 do.
+$named = json_decode(invented_payload(), true);
+$named['fields'][] = ['key' => 'template_2', 'label' => 'Template 2', 'hint' => '', 'shortcode' => '[ezbizi_template_2]'];
+$named['fields'][] = ['key' => 'template_3', 'label' => 'Template 3', 'hint' => '', 'shortcode' => '[ezbizi_template_3]'];
+$named['values']['template_2'] = 'Call [ezbizi_phone] or see [gallery] & more';
+$named['values']['template_3'] = 'Again [ezbizi_template_3]';
+$named['values']['tagline'] = 'Call [ezbizi_phone]';
+$GLOBALS['http_next'] = ['code' => 200, 'body' => json_encode($named)];
+ezbizi_fetch();
+do_action('init');
+check('a template can name another value', $GLOBALS['sc']['ezbizi_template_2']([]), 'Call 555-0100 or see [gallery] &amp; more');
+check('a template naming itself stops', substr_count($GLOBALS['sc']['ezbizi_template_3']([]), 'Again'), 4);
+check('a plain field prints its words as written', $GLOBALS['sc']['ezbizi_tagline']([]), 'Call [ezbizi_phone]');
+$GLOBALS['http_next'] = ['code' => 200, 'body' => invented_payload()];
+ezbizi_fetch();
+do_action('init');
 
 /*
  * The control. Without it, "renders nothing elsewhere" would pass just as

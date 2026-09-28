@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.20.5
+ * Version:           1.20.6
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.20.5';
+const EZBIZI_VERSION = '1.20.6';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -410,7 +410,31 @@ function ezbizi_shortcode($atts) {
         $value = (string) $atts['default'];
     }
 
-    return ezbizi_is_link_key($atts['key']) ? esc_url($value) : esc_html($value);
+    if (ezbizi_is_link_key($atts['key'])) {
+        return esc_url($value);
+    }
+
+    $out = esc_html($value);
+
+    /*
+     * A page's text or a template may name another value — "serving
+     * [ezbizi_state_anchor] homeowners" — as the texts imported from A1 do.
+     * Only EzBizi's own shortcodes run, each on its own, so text a customer
+     * typed cannot call anything else; and a value naming itself stops after
+     * a few levels instead of looping.
+     */
+    static $depth = 0;
+
+    if ($depth < 3 && strpos($out, '[ezbizi_') !== false
+        && (preg_match('/_field_[0-9]+$/', $atts['key']) === 1 || preg_match('/^template_[0-9]+$/', $atts['key']) === 1)) {
+        $depth++;
+        $out = preg_replace_callback('/\[ezbizi_[a-z0-9_]+\]/', function ($m) {
+            return do_shortcode($m[0]);
+        }, $out);
+        $depth--;
+    }
+
+    return $out;
 }
 
 /**
