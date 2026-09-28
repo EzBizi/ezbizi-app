@@ -1290,6 +1290,36 @@ void main() {
     expect(find.byType(Card), findsWidgets);
   });
 
+  /// CARDS IN ONE ROW ARE ONE SIZE, whatever their names.
+  ///
+  /// A rule's name wraps to two lines now (b32c4e3d, for phones). In a Wrap
+  /// each card sized to itself, so one long name beside a short one made two
+  /// cards of different heights — Jose's "you always make that mistake". The
+  /// short/long pair is what can tell the difference.
+  testWidgets('rule cards side by side are the same size', (tester) async {
+    final pair = [
+      {..._list.first, 'id': 'a-1', 'name': 'Short'},
+      {
+        ..._list.first,
+        'id': 'a-2',
+        'name': 'A rule whose name is long enough to need a second line at card width',
+      },
+    ];
+
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await _pump(tester, _handler(list: pair));
+
+    expect(
+      tester.getTopLeft(find.byType(Card).at(1)).dy,
+      tester.getTopLeft(find.byType(Card).at(0)).dy,
+      reason: 'the two must be side by side for this to test anything',
+    );
+    expect({for (var i = 0; i < 2; i++) tester.getSize(find.byType(Card).at(i))}, hasLength(1));
+  });
+
   /// A BUILT ACTION IS OFFERED, AND DRAWS ITS OWN FORM.
   ///
   /// Two defects that looked like one from the screen. Jose, 2026-09-24:

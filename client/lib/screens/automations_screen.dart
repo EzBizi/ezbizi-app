@@ -286,16 +286,31 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     (constraints.maxWidth - sides - (columns - 1) * gap) /
                     columns;
 
+                // ONE HEIGHT PER ROW. A Wrap sizes each card to itself, so a
+                // name on two lines or one more tag made a card taller than
+                // the one beside it. Rows of [columns], each as tall as its
+                // tallest card, keep every card in a row the same size.
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-                  child: Wrap(
-                    spacing: gap,
-                    runSpacing: gap,
+                  child: Column(
                     children: [
-                      for (final automation in _automations)
-                        SizedBox(
-                          width: width,
-                          child: _row(context, automation),
+                      for (var i = 0; i < _automations.length; i += columns)
+                        Padding(
+                          padding: EdgeInsets.only(top: i == 0 ? 0 : gap),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var j = i; j < i + columns && j < _automations.length; j++) ...[
+                                  if (j > i) const SizedBox(width: gap),
+                                  SizedBox(
+                                    width: width,
+                                    child: _row(context, _automations[j]),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                     ],
                   ),
