@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:ezbizi_client/core/api_client.dart';
+import 'package:ezbizi_client/screens/web/seo_helper_pane.dart';
 import 'package:ezbizi_client/screens/web/seo_tab.dart';
 import 'package:ezbizi_client/widgets/address_lookup.dart';
 import 'package:ezbizi_client/core/session.dart';
@@ -417,6 +418,29 @@ void main() {
     // That page is gone, so the editor is what is on screen.
     expect(find.byType(AppBar), findsNothing);
     expect(find.text('Which websites'), findsOneWidget);
+  });
+
+  // Design 29: the SEO Helper is a section of the SEO strip, and opens in the
+  // pane beside the websites.
+  testWidgets('the SEO strip has the SEO Helper, and it opens in the pane', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    final section = find.descendant(
+      of: find.byKey(const ValueKey('seo-sections')),
+      matching: find.text('SEO Helper'),
+    );
+    await tester.ensureVisible(section);
+    await tester.pumpAndSettle();
+    await tester.tap(section);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SeoHelperPane), findsOneWidget);
+    expect(find.byType(NavigationSidebar), findsOneWidget);
   });
 
   testWidgets('view alone is not offered the several-websites editor', (

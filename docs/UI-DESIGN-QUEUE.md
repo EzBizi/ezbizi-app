@@ -2958,7 +2958,19 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
+### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **BUILT**
+
+**Built (client):** `lib/screens/web/seo_helper_pane.dart`, the last section of the SEO strip. The
+health card (good / could be better / need work bar, five equal tiles that filter the list, site
+issues with **Fix it** when the server sends a fix), then the page list (search, chips, a dot per
+page and its first problem). A page opens in the pane with a back arrow: focus keyphrase, SEO title
+with its variables shown as words ({Page title} {Separator} {Site name} {Year}) and insert chips,
+meta description, each with a meter; the Google preview (desktop/phone, Google's own colours,
+sanctioned in the colour ratchet); the live-page line; Checks as SEO / Readability with the other
+pages named and openable; Social preview and Advanced folds; Save sends only what changed, Discard
+puts it back, and a draft is re-checked 600 ms after typing stops. Read-only without edit access.
+**Not as drawn:** on a phone the health and the list are one scrolling screen, and the editor is
+one column (preview, fields, checks) rather than folds.
 
 `docs/previews/web-seo-helper-layouts.html`. Asked by Web Management (session 8db30bbf), from Jose,
 2026-09-28: *"add it, see if you can improve it as well … a SEO Helper basically"*, never naming the

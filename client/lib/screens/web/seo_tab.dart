@@ -18,6 +18,7 @@ import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
 import 'hours_bulk.dart';
+import 'seo_helper_pane.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
 ///
@@ -179,6 +180,9 @@ class _SeoTabState extends State<SeoTab> {
           const {'key': _citiesKey, 'label': 'Cities'},
           const {'key': _postsKey, 'label': 'Posts'},
           const {'key': _templatesKey, 'label': 'Templates'},
+          // Design 29: the site's search health and each page's title and
+          // description, checked. Last, because it reads across the others.
+          const {'key': _seoHelperKey, 'label': 'SEO Helper'},
         ];
 
         /*
@@ -243,6 +247,9 @@ class _SeoTabState extends State<SeoTab> {
   /// Text shared by many pages, so it belongs beside Pages and Posts rather
   /// than among the field groups: like them it is content, not a field group.
   static const String _templatesKey = 'templates';
+
+  /// Every page's search title, description and keyphrase, checked (design 29).
+  static const String _seoHelperKey = 'seo_helper';
 
   bool get _showingContent =>
       _sectionKey == _pagesKey || _sectionKey == _postsKey;
@@ -451,6 +458,16 @@ class _SeoTabState extends State<SeoTab> {
   /// unbounded height inside a scroll view builds every row at once and takes
   /// the scrolling with it.
   Widget _paneFor(Map<String, dynamic> site) {
+    if (_sectionKey == _seoHelperKey) {
+      return SeoHelperPane(
+        key: ValueKey('${site['id']}:seo-helper'),
+        api: widget.api,
+        siteId: site['id'] as String,
+        host: site['host'] as String,
+        canEdit: _canEdit,
+      );
+    }
+
     if (_sectionKey == _templatesKey) {
       return TemplatesPane(
         key: ValueKey('${site['id']}:templates'),
@@ -520,6 +537,7 @@ IconData _sectionIcon(String key) => switch (key) {
       'cities' => Icons.location_city_outlined,
       'posts' => Icons.edit_note,
       'templates' => Icons.content_copy_outlined,
+      'seo_helper' => Icons.insights_outlined,
       _ => Icons.label_outline,
     };
 

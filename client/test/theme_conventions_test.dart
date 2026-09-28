@@ -523,6 +523,12 @@ void main() {
       'screens/hr/contract_document_page.dart':
           'renders paper and ink for print; already reasoned about at the constants',
 
+      // A picture of somebody else's screen: the SEO Helper draws Google's
+      // own search result so a title can be judged as it will be seen. In the
+      // theme's colours it would look like one of ours.
+      'screens/web/seo_helper_pane.dart':
+          "draws Google's search result, so its colours are Google's",
+
       // A CATEGORICAL PALETTE IS NOT A BRAND COLOUR, and this ratchet was
       // pointed at the wrong end of the problem here.
       //
