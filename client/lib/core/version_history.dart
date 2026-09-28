@@ -21,6 +21,10 @@ class VersionHistory {
         'AI Assistance: adding or editing an answer opens in a side panel instead of a pop-up.',
         'Dashboards: on a phone, the period chips fit on one line; the chosen one is shown by its fill.',
         'Monitoring: with no camera yet, the empty screen points to the Add camera button below it.',
+        'Monitoring: its tabs are the same single scrolling row as every other module, and tabs a role does not grant are hidden instead of shown with a padlock. On a phone, the General ownership chart is a list instead of a table cut off at the edge.',
+        'Communication, Calling out: No numbers yet reads as a next step, not an error.',
+        'Web Management, SEO: its sections sit in one scrolling row, without a second headline.',
+        'Your account: Password, Two-factor, Text me my codes and Theme no longer say Not given; they show the arrow that opens them.',
       ],
     ),
     VersionRelease(
