@@ -226,3 +226,21 @@ rejects recordings that cut it). Six videos cover every permission:
 5. **Threads** — connect, publish, "View post" opens it.
 6. **WhatsApp** — Automations › Send WhatsApp picks a real template; the message
    arrives on a phone; an inbound message appears in EzBizi.
+
+---
+
+## 6. State on 2026-09-28 (end of day)
+
+- Videos: `H:\Development\EzBizi-meta-review\` (1-facebook-pages.mp4, 2-messenger.mp4,
+  6-whatsapp.mp4; built by make_video.py from the Chrome recorder's frames, with
+  frames showing real A-1 customers removed).
+- Form: pages_show_list, public_profile, business_management and both WhatsApp
+  permissions complete. pages_read_engagement, pages_manage_posts,
+  pages_manage_metadata and pages_messaging are filled and wait only on Meta
+  registering today's test calls (up to 24 h). Data handling done. Reviewer
+  instructions filled on App settings › Basic › Website, except the password.
+- The EzBizi Page (1343409435521712) was created today and its connection moved
+  to the EzBizi Demo organization, so meta@ezbizi.com sees test Messenger leads.
+- Blocked on an EzBizi Instagram account (Jose creates it): instagram_basic,
+  instagram_manage_comments, instagram_business_basic, _content_publish,
+  _manage_messages, threads_basic, threads_content_publish.
