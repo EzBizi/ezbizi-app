@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0303',
+      date: '28 Sep 2026',
+      items: [
+        'Web Management, SEO: the SEO Helper. For each page of a website, edit its search title, description, focus keyphrase and what shows when it is shared, and see checks on the live page, including pages that share a keyphrase, title or description with another. It replaces the page SEO editor of A1 Tools.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0302',
       date: '28 Sep 2026',
       items: [
