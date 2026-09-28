@@ -12,6 +12,9 @@ namespace App\Support\Web\SeoHelper;
  */
 final class SiteOverview
 {
+    /** A "shared" check → the value it compares. */
+    private const SHARED = ['keyphrase_unique' => 'keyphrase', 'title_unique' => 'title', 'description_unique' => 'description'];
+
     /**
      * @param  list<array<string, mixed>>  $pages  rows from the site: seo (stored), final (printed), url, slug
      * @param  array<string, mixed>  $site  the site's SEO settings
@@ -21,11 +24,27 @@ final class SiteOverview
     {
         $year ??= (int) date('Y');
         $counts = ['title' => [], 'description' => [], 'keyphrase' => []];
+        // Which pages share each value, so a "shared" issue can name them.
+        $members = ['title' => [], 'description' => [], 'keyphrase' => []];
 
         foreach ($pages as $page) {
             foreach (self::fingerprints($page) as $kind => $print) {
                 if ($print !== '') {
                     $counts[$kind][$print] = ($counts[$kind][$print] ?? 0) + 1;
+                    $members[$kind][$print][] = $page['id'];
+                }
+            }
+        }
+
+        $groups = [];
+
+        foreach ($members as $kind => $byValue) {
+            $groups[$kind] = [];
+
+            foreach ($byValue as $ids) {
+                if (count($ids) > 1) {
+                    $first = array_values(array_filter($pages, fn ($p) => $p['id'] === $ids[0]))[0];
+                    $groups[$kind][] = ['value' => (string) ($kind === 'keyphrase' ? $first['seo']['keyphrase'] : $first['final'][$kind]), 'ids' => $ids];
                 }
             }
         }
@@ -65,13 +84,14 @@ final class SiteOverview
                 'score' => $score,
                 // Only what needs doing; the good checks are for the page view.
                 'issues' => array_values(array_map(
-                    fn (array $c) => ['key' => $c['key'], 'status' => $c['status'], 'text' => $c['text']],
+                    fn (array $c) => ['key' => $c['key'], 'status' => $c['status'], 'text' => $c['text']]
+                        + (isset(self::SHARED[$c['key']]) ? ['with' => array_values(array_diff($members[self::SHARED[$c['key']]][$prints[self::SHARED[$c['key']]]] ?? [], [$page['id']]))] : []),
                     array_filter($checks, fn (array $c) => $c['status'] !== PageAnalysis::GOOD),
                 )),
             ];
         }
 
-        return ['summary' => $summary, 'site_issues' => self::siteIssues($site, $year), 'pages' => $rows];
+        return ['summary' => $summary, 'groups' => $groups, 'site_issues' => self::siteIssues($site, $year), 'pages' => $rows];
     }
 
     /**
@@ -101,8 +121,19 @@ final class SiteOverview
      */
     public static function sharedWith(array $page, array $pages): array
     {
+        return array_map('count', self::sharingPages($page, $pages));
+    }
+
+    /**
+     * The OTHER pages sharing this page's title, description and keyphrase, as {id, name}.
+     *
+     * @param  list<array<string, mixed>>  $pages
+     * @return array{title: list<array{id: int, name: string}>, description: list<array{id: int, name: string}>, keyphrase: list<array{id: int, name: string}>}
+     */
+    public static function sharingPages(array $page, array $pages): array
+    {
         $mine = self::fingerprints($page);
-        $shared = ['title' => 0, 'description' => 0, 'keyphrase' => 0];
+        $shared = ['title' => [], 'description' => [], 'keyphrase' => []];
 
         foreach ($pages as $other) {
             if (($other['id'] ?? null) === ($page['id'] ?? null)) {
@@ -110,7 +141,9 @@ final class SiteOverview
             }
 
             foreach (self::fingerprints($other) as $kind => $print) {
-                $shared[$kind] += (int) ($print !== '' && $print === $mine[$kind]);
+                if ($print !== '' && $print === $mine[$kind]) {
+                    $shared[$kind][] = ['id' => $other['id'], 'name' => (string) ($other['name'] ?? '')];
+                }
             }
         }
 
@@ -129,7 +162,13 @@ final class SiteOverview
         ];
     }
 
-    /** @return list<array{key: string, status: string, text: string}> */
+    /** A template with each written-out year replaced by the variable that keeps it current. */
+    public static function yearless(string $template): string
+    {
+        return (string) preg_replace('/\b(19|20)\d{2}\b/', '%%currentyear%%', $template);
+    }
+
+    /** @return list<array{key: string, status: string, text: string, fix?: array{field: string, value: string}}> */
     private static function siteIssues(array $site, int $year): array
     {
         $issues = [];
@@ -143,10 +182,12 @@ final class SiteOverview
 
             if (preg_match('/\b(19|20)\d{2}\b/', $template, $m) === 1 && (int) $m[0] !== $year) {
                 $issues[] = ['key' => 'stale_year_'.$what, 'status' => PageAnalysis::BAD,
-                    'text' => "The default title for {$what} says {$m[0]}. Use the year variable so it stays current: \"{$template}\"."];
+                    'text' => "The default title for {$what} says {$m[0]}. Use the year variable so it stays current: \"{$template}\".",
+                    'fix' => ['field' => $key, 'value' => self::yearless($template)]];
             } elseif (preg_match('/\b(19|20)\d{2}\b/', $template) === 1) {
                 $issues[] = ['key' => 'fixed_year_'.$what, 'status' => PageAnalysis::OK,
-                    'text' => "The default title for {$what} names this year in plain text; it will be out of date in January."];
+                    'text' => "The default title for {$what} names this year in plain text; it will be out of date in January.",
+                    'fix' => ['field' => $key, 'value' => self::yearless($template)]];
             }
         }
 

@@ -98,6 +98,42 @@ class SeoHelperTest extends TestCase
         $this->assertNotContains('keyphrase_unique', array_column($overview['pages'][2]['issues'], 'key'));
     }
 
+    public function test_shared_keyphrases_come_as_groups_and_name_the_other_pages(): void
+    {
+        $overview = SiteOverview::build([
+            $this->row(1, 'Chimney repair Newark', 'One.'),
+            $this->row(2, 'chimney repair newark', 'Two.'),
+            $this->row(3, 'chimney sweep newark', 'Three.'),
+        ], [], 2026);
+
+        $this->assertSame([['value' => 'Chimney repair Newark', 'ids' => [1, 2]]], $overview['groups']['keyphrase']);
+        $shared = array_values(array_filter($overview['pages'][0]['issues'], fn ($i) => $i['key'] === 'keyphrase_unique'))[0];
+        $this->assertSame([2], $shared['with']);
+    }
+
+    public function test_a_stale_year_issue_carries_its_fix(): void
+    {
+        $issue = SiteOverview::build([], ['page_title_template' => 'UPDATED 2024 Best %%title%% in Ohio'], 2026)['site_issues'][0];
+
+        $this->assertSame(['field' => 'page_title_template', 'value' => 'UPDATED %%currentyear%% Best %%title%% in Ohio'], $issue['fix']);
+    }
+
+    public function test_the_fix_is_applied_through_the_site(): void
+    {
+        ['site' => $site, 'editor' => $editor] = $this->linkedSite();
+        Http::fake([
+            'a-1chimney.com/wp-json/ezbizi/v1/seo/site' => Http::response(['page_title_template' => 'UPDATED %%currentyear%% Best %%title%%']),
+            'a-1chimney.com/wp-json/ezbizi/v1/seo*' => Http::response(['total' => 0, 'pages' => [], 'site' => ['page_title_template' => 'UPDATED %%currentyear%% Best %%title%%']]),
+        ]);
+
+        $body = $this->signedInAs($editor)->putJson("/api/v1/web/sites/{$site}/seo-helper/site", [
+            'page_title_template' => 'UPDATED %%currentyear%% Best %%title%%',
+        ])->assertOk()->json('data');
+
+        $this->assertSame([], $body['site_issues']);
+        Http::assertSent(fn (SentRequest $r) => str_ends_with($r->url(), '/ezbizi/v1/seo/site') && $r['page_title_template'] === 'UPDATED %%currentyear%% Best %%title%%');
+    }
+
     public function test_a_title_template_stuck_in_an_old_year_is_a_site_issue(): void
     {
         $issues = SiteOverview::build([], ['page_title_template' => 'UPDATED 2024 Best %%title%% in Ohio'], 2026)['site_issues'];

@@ -61,6 +61,17 @@ final class SiteSeo
     }
 
     /**
+     * The site's default page and post titles.
+     *
+     * @param  array{page_title_template?: string, post_title_template?: string}  $templates
+     * @return array<string, mixed> the site's settings as saved
+     */
+    public function saveSite(WebSite $site, array $templates): array
+    {
+        return $this->call($site, 'post', 'seo/site', array_intersect_key($templates, array_flip(['page_title_template', 'post_title_template'])));
+    }
+
+    /**
      * @param  array<string, mixed>  $fields  only the fields to change
      * @return array<string, mixed> the page as saved
      */

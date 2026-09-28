@@ -86,6 +86,26 @@ class SeoHelperController extends Controller
         });
     }
 
+    /**
+     * PUT /api/v1/web/sites/{site}/seo-helper/site — the site's default titles,
+     * as a site issue's `fix` suggests (a year written out → the year variable).
+     */
+    public function updateSite(Request $request, WebSite $site): JsonResponse
+    {
+        $this->authorize('update', $site);
+        $input = $request->validate([
+            'page_title_template' => ['sometimes', 'string', 'max:300'],
+            'post_title_template' => ['sometimes', 'string', 'max:300'],
+        ]);
+
+        return $this->guard($site, function () use ($site, $input) {
+            $this->seo->saveSite($site, $input);
+            $all = $this->pages($site, true);
+
+            return ['data' => SiteOverview::build($all['pages'], $all['site'])];
+        });
+    }
+
     /** @return array<string, mixed> */
     private function draft(Request $request): array
     {
@@ -106,7 +126,13 @@ class SeoHelperController extends Controller
     {
         $others = $this->pages($site)['pages'];
 
-        return $row + ['analysis' => PageAnalysis::run($page, $this->html($page['url']), SiteOverview::sharedWith($row, $others))];
+        $sharing = SiteOverview::sharingPages($row, $others);
+
+        return $row + [
+            'analysis' => PageAnalysis::run($page, $this->html($page['url']), array_map('count', $sharing)),
+            // The pages behind a "shared" check, so the screen can name and open them.
+            'shared_with' => $sharing,
+        ];
     }
 
     /** @return array{pages: list<array<string, mixed>>, site: array<string, mixed>} */

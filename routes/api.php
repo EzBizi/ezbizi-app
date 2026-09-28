@@ -871,6 +871,7 @@ Route::prefix('v1')
             // read and written through the site's plugin. Saving authorises
             // `update` on the site, like the values PUT.
             Route::get('web/sites/{site}/seo-helper', [WebSeoHelperController::class, 'index']);
+            Route::put('web/sites/{site}/seo-helper/site', [WebSeoHelperController::class, 'updateSite']);
             Route::get('web/sites/{site}/seo-helper/{page}', [WebSeoHelperController::class, 'show'])->whereNumber('page');
             Route::post('web/sites/{site}/seo-helper/{page}/analyze', [WebSeoHelperController::class, 'analyze'])->whereNumber('page');
             Route::put('web/sites/{site}/seo-helper/{page}', [WebSeoHelperController::class, 'update'])->whereNumber('page');

@@ -47,6 +47,16 @@ add_action('rest_api_init', function () {
         array('methods' => 'GET', 'callback' => 'ezbizi_seo_one', 'permission_callback' => $can_edit),
         array('methods' => 'POST', 'callback' => 'ezbizi_seo_save', 'permission_callback' => $can_edit),
     ));
+    // The site's default titles, which the Helper can correct (a year written
+    // out instead of the year variable). Site-wide, so it takes more than
+    // editing one page does.
+    register_rest_route('ezbizi/v1', '/seo/site', array(
+        'methods' => 'POST',
+        'callback' => 'ezbizi_seo_site_save',
+        'permission_callback' => function () {
+            return current_user_can('edit_published_pages');
+        },
+    ));
     register_rest_route('ezbizi/v1', '/seo/(?P<id>\d+)/preview', array(
         'methods' => 'POST',
         'callback' => 'ezbizi_seo_preview',
@@ -183,6 +193,25 @@ function ezbizi_seo_site() {
         'site_name' => get_bloginfo('name'),
         'search_engines_blocked' => ! get_option('blog_public'),
     );
+}
+
+/** POST /seo/site — the default page and post titles. */
+function ezbizi_seo_site_save($request) {
+    $titles = get_option('wpseo_titles');
+
+    if (! is_array($titles)) {
+        return new WP_Error('no_seo_plugin', 'This site has no SEO plugin settings to change.', array('status' => 409));
+    }
+
+    foreach (array('page_title_template' => 'title-page', 'post_title_template' => 'title-post') as $field => $key) {
+        if ($request->has_param($field)) {
+            $titles[$key] = sanitize_text_field((string) $request[$field]);
+        }
+    }
+
+    update_option('wpseo_titles', $titles);
+
+    return new WP_REST_Response(ezbizi_seo_site());
 }
 
 /** One of the SEO plugin's site-wide title settings, read from where it keeps them. */
