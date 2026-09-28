@@ -44,10 +44,16 @@ class TableColumn<T> {
     this.flex = 1,
     this.width,
     this.numeric = false,
+    this.sortKey,
   });
 
   final String label;
   final Widget Function(BuildContext context, T row) cell;
+
+  /// What the header sends when clicked. Null for a column that cannot be
+  /// sorted, which draws its label as plain text rather than as a control that
+  /// does nothing. The sorting itself is the caller's -- see [GroupedTable.onSort].
+  final String? sortKey;
 
   /// Share of the width left after the fixed columns. Ignored when [width] is
   /// set.
@@ -68,6 +74,9 @@ class GroupedTable<T> extends StatelessWidget {
     required this.idOf,
     required this.onOpen,
     this.footer,
+    this.sortKey,
+    this.sortAscending = true,
+    this.onSort,
   });
 
   final List<TableColumn<T>> columns;
@@ -77,6 +86,16 @@ class GroupedTable<T> extends StatelessWidget {
 
   /// "Load more", under the last row.
   final Widget? footer;
+
+  /// The column the rows arrived sorted by, marked with an arrow.
+  ///
+  /// This widget still never sorts -- the rows come in order, as the class
+  /// docblock says. A paged list sorted here would sort the loaded page and
+  /// nothing else, so a header click is reported to [onSort] and the caller
+  /// asks the server again.
+  final String? sortKey;
+  final bool sortAscending;
+  final ValueChanged<String>? onSort;
 
   @override
   Widget build(BuildContext context) {
@@ -97,16 +116,7 @@ class GroupedTable<T> extends StatelessWidget {
           _Line(
             columns: columns,
             header: true,
-            cells: [
-              for (final c in columns)
-                Text(
-                  c.label,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-            ],
+            cells: [for (final c in columns) _headerCell(context, c)],
           ),
           Expanded(
             child: ListView.builder(
@@ -135,6 +145,41 @@ class GroupedTable<T> extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _headerCell(BuildContext context, TableColumn<T> column) {
+    final scheme = Theme.of(context).colorScheme;
+    final active = column.sortKey != null && column.sortKey == sortKey;
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: active ? scheme.onSurface : scheme.onSurfaceVariant,
+    );
+    final label = Text(column.label, style: style);
+
+    if (column.sortKey == null || onSort == null) return label;
+
+    return InkWell(
+      onTap: () => onSort!(column.sortKey!),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: label),
+            // The arrow only on the column in force. An arrow on every header
+            // reads as "these are all sorted", and the one that is disappears
+            // among them.
+            if (active)
+              Icon(
+                sortAscending ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14,
+                color: scheme.onSurface,
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -445,7 +490,10 @@ typedef _Entry = ({RowGroup<Object?>? group, Object? row});
 
 List<_Entry> _entries<T>(List<RowGroup<T>> groups) => [
   for (final group in groups) ...[
-    (group: group, row: null),
+    // An empty heading draws no band: a list sorted by something other than
+    // the thing it is usually divided by has no honest headings to show, and a
+    // blank band would read as a group with no name.
+    if (group.heading.isNotEmpty) (group: group, row: null),
     for (final row in group.rows) (group: null, row: row),
   ],
 ];

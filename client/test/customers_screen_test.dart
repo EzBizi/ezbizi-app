@@ -249,6 +249,68 @@ void main() {
     expect(find.text('Nothing looks duplicated.'), findsNothing);
   });
 
+
+  /// A header click asks the SERVER again. The list is paged, so sorting the
+  /// rows on screen would sort the fifty that happened to load and nothing
+  /// else; the proof that it did not is the query that went out.
+  ///
+  /// And the date is written in the ORGANIZATION's format. M/D/YYYY is set
+  /// here on purpose: the fallback format is YYYY-MM-DD, so a column that
+  /// ignored the setting would print 2026-08-10 and this would go red.
+  testWidgets('the Created column sorts by asking the server, newest first', (
+    tester,
+  ) async {
+    final sorts = <String>[];
+
+    await _pump(
+      tester,
+      customers: [
+        {..._alice, 'created_at': '2026-08-10T12:00:00Z'},
+      ],
+      onRequest: (request) {
+        final path = request.url.path;
+
+        if (path.endsWith('/me')) {
+          return _json({
+            'data': {
+              ..._me,
+              'permissions': const ['customers.view'],
+              'display': {'date_format': 'M/D/YYYY'},
+            },
+          });
+        }
+
+        if (path.endsWith('/customers')) {
+          final q = request.url.queryParameters;
+          sorts.add('${q['sort']} ${q['direction']}');
+        }
+
+        return null;
+      },
+    );
+
+    expect(find.text('8/10/2026'), findsOneWidget);
+
+    // Name order by default, so the letter heading is there.
+    expect(sorts.last, 'name asc');
+    expect(find.text('A'), findsOneWidget);
+
+    await tester.tap(find.text('Created'));
+    await tester.pumpAndSettle();
+
+    // A date starts newest first -- nobody sorts by created to read 2019.
+    expect(sorts.last, 'created desc');
+
+    // And the letter heading is gone: "A" over rows ordered by date would be
+    // a heading that is true and says nothing.
+    expect(find.text('A'), findsNothing);
+
+    await tester.tap(find.text('Created'));
+    await tester.pumpAndSettle();
+
+    expect(sorts.last, 'created asc');
+  });
+
 }
 
 const _alice = {

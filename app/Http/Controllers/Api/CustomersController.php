@@ -61,7 +61,9 @@ class CustomersController extends Controller
         $this->authorize('viewAny', Customer::class);
 
         $request->validate([
-            'segment' => ['nullable', Rule::in(['repeat', 'none'])],
+            'segment'   => ['nullable', Rule::in(['repeat', 'none'])],
+            'sort'      => ['nullable', Rule::in(array_keys(self::SORTS))],
+            'direction' => ['nullable', Rule::in(['asc', 'desc'])],
         ]);
 
         $scope = \App\Support\Scoping\ViewScope::forUser($request->user());
@@ -126,7 +128,9 @@ class CustomersController extends Controller
              */
             ->with('owningFranchise:id,name,company_id', 'owningFranchise.company:id,name')
             ->withCount('jobs')
-            ->orderBy('name')
+            ->tap(fn ($q) => $this->sortCustomers(
+                $q, $request->query('sort', 'name'), $request->query('direction', 'asc'),
+            ))
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
         $meta = [
@@ -409,6 +413,11 @@ class CustomersController extends Controller
             // in the detailed payload; a list row needs where, not the door.
             'city'  => $customer->city,
             'state' => $customer->state,
+            // When the RECORD was made in EzBizi, which is not when somebody
+            // became a customer: every row the Workiz import wrote reads
+            // 2026-09-23, the day of the import. Named for what it is so the
+            // column heading cannot claim more than the value knows.
+            'created_at' => $customer->created_at?->toIso8601String(),
         ];
 
         if (! $detailed) {
@@ -434,6 +443,60 @@ class CustomersController extends Controller
             'created_at' => $customer->created_at->toIso8601String(),
         ];
     }
+    // ── sorting ─────────────────────────────────────────────────
+
+    /**
+     * The columns the list can be ordered by, keyed by what the client sends.
+     *
+     * A closed list rather than "any column name": the key reaches an ORDER BY,
+     * and a free-text column there is an injection point and a way to sort by
+     * something the screen never showed. Every key is a column on screen.
+     */
+    private const SORTS = [
+        'name'    => 'name',
+        'number'  => 'number',
+        'phone'   => 'phone',
+        'email'   => 'email',
+        'city'    => 'city',
+        'owner'   => 'owner',
+        'jobs'    => 'jobs_count',
+        'created' => 'created_at',
+    ];
+
+    /**
+     * Order the list, then break every tie by id.
+     *
+     * The tie-break is not tidiness, it is what keeps paging honest. The list
+     * is served fifty at a time with "Load more", and a sort that is not TOTAL
+     * lets the database return equal rows in a different order on each page --
+     * so a customer sharing a city with forty others can appear on page one and
+     * again on page two, or on neither. Sorting by city, by jobs or by the
+     * import date (seven thousand rows share one) is exactly that case.
+     */
+    private function sortCustomers($query, string $sort, string $direction): void
+    {
+        $direction = $direction === 'desc' ? 'desc' : 'asc';
+
+        if ($sort === 'owner') {
+            // By the owner's NAME, which is what the column shows -- not by the
+            // id, which would sort in an order nobody can see.
+            $query->orderBy(
+                Franchise::select('name')->whereColumn('franchises.id', 'customers.owning_franchise_id'),
+                $direction,
+            );
+        } else {
+            $query->orderBy(self::SORTS[$sort] ?? 'name', $direction);
+        }
+
+        // Name second, so equal cities or job counts still read alphabetically,
+        // then id, so the order is total and a page cannot repeat or drop a row.
+        if ($sort !== 'name') {
+            $query->orderBy('name');
+        }
+
+        $query->orderBy('customers.id');
+    }
+
     // ── possible duplicates ──────────────────────────────────────
     //
     // Inlined from App\Services\Customers\DuplicateCustomerFinder on 4 Sep. It

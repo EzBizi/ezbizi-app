@@ -92,6 +92,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
   /// Below this the table has no room for its columns — see jobs_screen.
   static const _tableFrom = 900.0;
 
+  /// The column the list is ordered by, and which way. Sent to the server
+  /// rather than applied here: the list is paged, and sorting the rows on
+  /// screen would sort the page that happened to be loaded and nothing else.
+  String _sort = 'name';
+  bool _ascending = true;
+
   /// Everyone, repeat customers, or those who never booked (queue 24).
   String? _segment;
   String? _franchiseId;
@@ -143,6 +149,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'segment': ?_segment,
       'franchise_id': ?_franchiseId,
+      'sort': _sort,
+      'direction': _ascending ? 'asc' : 'desc',
     });
 
     // Superseded while this was in flight — a newer load owns the screen now,
@@ -458,7 +466,12 @@ class _CustomersScreenState extends State<CustomersScreen> {
       );
     }
 
-    final groups = _byLetter(_customers);
+    // Letter headings only while the list is in name order. Sorted by city or
+    // by date, "A" over a run of customers who share nothing but a first
+    // letter would be a heading that is true and says nothing.
+    final groups = _sort == 'name'
+        ? _byLetter(_customers)
+        : [RowGroup(heading: '', rows: _customers)];
     final footer = _page < _lastPage ? _loadMore() : null;
 
     if (!wide) {
@@ -478,6 +491,9 @@ class _CustomersScreenState extends State<CustomersScreen> {
         idOf: _id,
         onOpen: _dock,
         footer: footer,
+        sortKey: _sort,
+        sortAscending: _ascending,
+        onSort: _sortBy,
       );
     }
 
@@ -553,12 +569,14 @@ class _CustomersScreenState extends State<CustomersScreen> {
       TableColumn(
         'Customer',
         width: 96,
+        sortKey: 'number',
         cell: (_, c) =>
             Text('${c['number'] ?? ''}', style: TextStyle(color: muted)),
       ),
       TableColumn(
         'Name',
         flex: 3,
+        sortKey: 'name',
         cell: (_, c) => Row(
           children: [
             Flexible(
@@ -574,6 +592,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
       TableColumn(
         'Phone',
         width: 140,
+        sortKey: 'phone',
         cell: (_, c) => Text(
           c['phone'] == null ? '' : formatPhoneNumber(c['phone'] as String?),
         ),
@@ -581,21 +600,29 @@ class _CustomersScreenState extends State<CustomersScreen> {
       TableColumn(
         'Email',
         flex: 3,
+        sortKey: 'email',
         cell: (_, c) =>
             Text('${c['email'] ?? ''}', style: TextStyle(color: muted)),
       ),
-      TableColumn('City', flex: 2, cell: (_, c) => Text(_place(c))),
+      TableColumn(
+        'City',
+        flex: 2,
+        sortKey: 'city',
+        cell: (_, c) => Text(_place(c)),
+      ),
       // §5.2: visible in the list, not only on the detail screen — on every
       // row, company included; see the class docblock for why.
       TableColumn(
         widget.session.me!.organization.franchiseLabel,
         flex: 3,
+        sortKey: 'owner',
         cell: (context, c) => _owner(context, c),
       ),
       TableColumn(
         'Jobs',
         width: 60,
         numeric: true,
+        sortKey: 'jobs',
         cell: (_, c) {
           final jobs = c['jobs_count'] as int? ?? 0;
           return Text(
@@ -604,7 +631,44 @@ class _CustomersScreenState extends State<CustomersScreen> {
           );
         },
       ),
+      // When the RECORD was made here, not when they became a customer: every
+      // row the Workiz import wrote reads the day of the import. The heading
+      // says "Created" rather than "Since" so it cannot claim more than that.
+      TableColumn(
+        'Created',
+        width: 104,
+        sortKey: 'created',
+        cell: (_, c) => Text(
+          _createdOn(c),
+          style: TextStyle(color: muted),
+        ),
+      ),
     ];
+  }
+
+  /// The date the record was made, in the organization's own date format.
+  /// A date and never a clock: a Created column reading "14:02" for today and a
+  /// date for everything else would be two kinds of answer in one column.
+  String _createdOn(Map<String, dynamic> customer) {
+    final raw = customer['created_at'];
+    final at = raw is String ? DateTime.tryParse(raw)?.toLocal() : null;
+
+    return at == null ? '' : widget.session.me!.display.formatDate(at);
+  }
+
+  /// A header click. The same column flips the direction; a new one starts in
+  /// the direction somebody sorting by it almost always wants -- newest first
+  /// for a date and most first for a count, A to Z for everything else.
+  void _sortBy(String key) {
+    setState(() {
+      if (key == _sort) {
+        _ascending = !_ascending;
+      } else {
+        _sort = key;
+        _ascending = !(key == 'created' || key == 'jobs');
+      }
+    });
+    _load();
   }
 
   Widget _tile(BuildContext context, Map<String, dynamic> customer) {
