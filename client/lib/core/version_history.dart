@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0293',
+      date: '28 Sep 2026',
+      items: [
+        'Scheduling, Settings: each service area can have its own daily limit for each weekday. Time slots stay locked until you press Edit time slots, and removing one asks you to type REMOVE. The Overview shows the daily totals for everything in view.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0292',
       date: '28 Sep 2026',
       items: [
