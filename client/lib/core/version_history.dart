@@ -8,6 +8,18 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0291',
+      date: '28 Sep 2026',
+      items: [
+        'Leads: Messenger messages to a connected Facebook Page, and direct messages to a connected Instagram account, arrive in Leads. An account connected before this update needs connecting again, once.',
+        'Social Media: a post published to Facebook, Instagram or Threads shows View post, which opens it there.',
+        'Social Media, Accounts: Instagram comments, on a connected Page, lists the comments on its recent Instagram posts. You can reply as the business, or hide and show a comment.',
+        'Connecting Facebook also offers the Pages owned by your Business portfolios.',
+        'Leads, Accounts: each Google Ads account shows Certified, or Certification needs attention with each problem on its own line. Its licence, insurance and background check are read every morning, and a licence or insurance that expires within 30 days is listed too.',
+        'Automations: Certification problem, a new trigger, starts a rule when the problems of a Google Ads account change.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0290',
       date: '28 Sep 2026',
       items: [
