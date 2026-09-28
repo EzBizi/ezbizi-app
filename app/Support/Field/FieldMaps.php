@@ -105,41 +105,86 @@ final class FieldMaps
     }
 
     /**
-     * A Map Tiles URL template for the client, or null. Sessions last about
-     * two weeks; one is shared by every tenant, since a tile of a street is
-     * nobody's data.
+     * The quiet map Jose asked for (2026-09-28, pointing at A1 Tools' Positron
+     * and Dark Matter): no businesses, no transit, pale land, grey labels, so
+     * the people are what stands out. Still Google's tiles and attribution.
      */
-    public function tileUrl(): ?string
+    private const STYLES = [
+        'light' => [
+            ['featureType' => 'poi', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'transit', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'road', 'elementType' => 'labels.icon', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'administrative.land_parcel', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'landscape', 'elementType' => 'geometry', 'stylers' => [['color' => '#f4f4f2']]],
+            ['featureType' => 'road', 'elementType' => 'geometry', 'stylers' => [['color' => '#ffffff']]],
+            ['featureType' => 'road.highway', 'elementType' => 'geometry', 'stylers' => [['color' => '#e3e5e8']]],
+            ['featureType' => 'water', 'elementType' => 'geometry', 'stylers' => [['color' => '#d4dde5']]],
+            ['elementType' => 'labels.text.fill', 'stylers' => [['color' => '#80868b']]],
+            ['elementType' => 'labels.text.stroke', 'stylers' => [['color' => '#f4f4f2']]],
+        ],
+        'dark' => [
+            ['featureType' => 'poi', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'transit', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'road', 'elementType' => 'labels.icon', 'stylers' => [['visibility' => 'off']]],
+            ['featureType' => 'administrative.land_parcel', 'stylers' => [['visibility' => 'off']]],
+            ['elementType' => 'geometry', 'stylers' => [['color' => '#1c1f23']]],
+            ['featureType' => 'road', 'elementType' => 'geometry', 'stylers' => [['color' => '#2b3035']]],
+            ['featureType' => 'road.highway', 'elementType' => 'geometry', 'stylers' => [['color' => '#373d43']]],
+            ['featureType' => 'water', 'elementType' => 'geometry', 'stylers' => [['color' => '#101316']]],
+            ['elementType' => 'labels.text.fill', 'stylers' => [['color' => '#8a9096']]],
+            ['elementType' => 'labels.text.stroke', 'stylers' => [['color' => '#1c1f23']]],
+        ],
+    ];
+
+    /**
+     * A Map Tiles URL template for the client, or null. One styled session
+     * per theme, lasting about two weeks and shared by every tenant, since a
+     * tile of a street is nobody's data.
+     */
+    public function tileUrl(string $theme = 'light'): ?string
     {
         $key = (string) config('services.google_maps.tiles_key');
+        $theme = $theme === 'dark' ? 'dark' : 'light';
 
         if ($key === '') {
             return null;
         }
 
-        $session = Cache::get('field.tiles_session');
+        $session = $this->session($key, $theme);
 
-        if (! is_string($session)) {
-            $response = Http::timeout(10)->post('https://tile.googleapis.com/v1/createSession?key='.urlencode($key), [
-                'mapType' => 'roadmap',
-                'language' => 'en-US',
-                'region' => 'US',
-            ]);
+        return $session === null ? null
+            : 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session='.urlencode($session).'&key='.urlencode($key);
+    }
 
-            $session = $response->json('session');
+    private function session(string $key, string $theme): ?string
+    {
+        $cacheKey = 'field.tiles_session.'.$theme;
+        $session = Cache::get($cacheKey);
 
-            if (! $response->ok() || ! is_string($session)) {
-                Log::warning('Field tiles session refused', ['http' => $response->status()]);
-
-                return null;
-            }
-
-            // A day short of Google's expiry, so a cached session is never a dead one.
-            $expires = (int) $response->json('expiry', time() + 86400 * 14);
-            Cache::put('field.tiles_session', $session, max(3600, $expires - time() - 86400));
+        if (is_string($session)) {
+            return $session;
         }
 
-        return 'https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session='.urlencode($session).'&key='.urlencode($key);
+        $response = Http::timeout(10)->post('https://tile.googleapis.com/v1/createSession?key='.urlencode($key), [
+            'mapType' => 'roadmap',
+            'language' => 'en-US',
+            'region' => 'US',
+            'styles' => self::STYLES[$theme],
+        ]);
+
+        $session = $response->json('session');
+
+        if (! $response->ok() || ! is_string($session)) {
+            Log::warning('Field tiles session refused', ['http' => $response->status(), 'theme' => $theme]);
+
+            return null;
+        }
+
+        // A day short of Google's expiry, so a cached session is never a dead one.
+        $expires = (int) $response->json('expiry', time() + 86400 * 14);
+        Cache::put($cacheKey, $session, max(3600, $expires - time() - 86400));
+
+        return $session;
     }
 
     /**
@@ -151,17 +196,17 @@ final class FieldMaps
     public function attribution(int $zoom, float $north, float $south, float $east, float $west): ?string
     {
         $key = (string) config('services.google_maps.tiles_key');
-        $url = $this->tileUrl(); // also ensures a session exists
+        $session = $key === '' ? null : $this->session($key, 'light'); // the copyright is the same for both styles
 
-        if ($key === '' || $url === null) {
+        if ($session === null) {
             return null;
         }
 
         $cacheKey = 'field.tiles_copyright.'.md5(json_encode([$zoom, round($north, 1), round($south, 1), round($east, 1), round($west, 1)]));
 
-        return Cache::remember($cacheKey, now()->addHour(), function () use ($key, $zoom, $north, $south, $east, $west) {
+        return Cache::remember($cacheKey, now()->addHour(), function () use ($key, $session, $zoom, $north, $south, $east, $west) {
             $response = Http::timeout(10)->get('https://tile.googleapis.com/tile/v1/viewport', [
-                'session' => Cache::get('field.tiles_session'),
+                'session' => $session,
                 'key' => $key,
                 'zoom' => $zoom, 'north' => $north, 'south' => $south, 'east' => $east, 'west' => $west,
             ]);
