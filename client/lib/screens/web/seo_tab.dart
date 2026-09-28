@@ -17,6 +17,7 @@ import '../../widgets/shortcode_button.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
 import 'hours.dart';
+import 'hours_bulk.dart';
 
 /// The absolute base a copied snippet must carry, and why it cannot be blank.
 ///
@@ -478,6 +479,17 @@ class _SeoTabState extends State<SeoTab> {
         onToken: (token) =>
             setState(() => _freshTokens[site['id'] as String] = token),
         onChanged: _load,
+        onBulkHours: _canEdit
+            ? () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => HoursBulkScreen(
+                      api: widget.api,
+                      formats: widget.session.me!.display,
+                      startWith: site['id'] as String,
+                    ),
+                  ),
+                )
+            : null,
       );
 }
 
@@ -763,6 +775,7 @@ class _SiteDetail extends StatefulWidget {
     required this.onForgetToken,
     required this.onToken,
     required this.onChanged,
+    this.onBulkHours,
   });
 
   final ApiClient api;
@@ -780,6 +793,9 @@ class _SiteDetail extends StatefulWidget {
   final VoidCallback onForgetToken;
   final void Function(String token) onToken;
   final Future<void> Function() onChanged;
+
+  /// Opens the several-websites hours editor; null without edit rights.
+  final Future<void> Function()? onBulkHours;
 
   @override
   State<_SiteDetail> createState() => _SiteDetailState();
@@ -1121,6 +1137,19 @@ class _SiteDetailState extends State<_SiteDetail> {
                 inherited: _inherited['hours'] ?? '',
                 inheritedFrom: _primaryHost,
               ),
+              if (widget.onBulkHours case final open?)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    key: const Key('seo-bulk-hours'),
+                    icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+                    label: const Text('Edit hours on several websites'),
+                    // The editor may have written this site's hours too.
+                    onPressed: () => open().then((_) {
+                      if (mounted) _loadValues();
+                    }),
+                  ),
+                ),
               const SizedBox(height: 10),
             ],
 

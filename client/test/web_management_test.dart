@@ -368,6 +368,35 @@ void main() {
     expect(find.byType(Switch), findsNWidgets(7));
   });
 
+  /// Design 26: the several-websites editor opens from under the hours, and
+  /// only for somebody who may change them.
+  testWidgets('hours offers the several-websites editor to an editor', (
+    tester,
+  ) async {
+    await _pumpDestination(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+    );
+
+    final open = find.byKey(const Key('seo-bulk-hours'));
+    await tester.ensureVisible(open);
+    await tester.pumpAndSettle();
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Hours on several websites'), findsOneWidget);
+    expect(find.text('Which websites'), findsOneWidget);
+  });
+
+  testWidgets('view alone is not offered the several-websites editor', (
+    tester,
+  ) async {
+    await _pumpDestination(tester, permissions: ['web_management.view', 'web_management.seo.view', 'web_management.widgets.view']);
+
+    expect(find.text('Monday'), findsOneWidget);
+    expect(find.byKey(const Key('seo-bulk-hours')), findsNothing);
+  });
+
   /// Choosing the primary changes what every OTHER site publishes, so it is
   /// gated on edit like any other change to a value.
   testWidgets('view alone cannot make a site primary', (tester) async {

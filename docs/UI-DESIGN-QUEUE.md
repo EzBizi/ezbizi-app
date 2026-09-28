@@ -2986,7 +2986,20 @@ single-post GET exists; the list is enough, and Meta will add GET /social/posts/
 Scheduled posts dispatch nothing until `ezbizi:publish-due-social-posts` runs: no poll, straight
 onto the calendar from `scheduled_for`.
 
-### 26 · Web Management · Hours for several websites at once — **Jose picked 2** ("the numbered steps one"); phone **5**, the same form stacked (he named the desktop only) — **BUILDING**
+### 26 · Web Management · Hours for several websites at once — **Jose picked 2** ("the numbered steps one"); phone **5**, the same form stacked (he named the desktop only) — **BUILT**
+
+**Built (client):** `lib/screens/web/hours_bulk.dart`, opened from SEO › General with "Edit hours
+on several websites" under the hours (edit permission only). Steps 1 Which websites (ticked
+chips, the site it was opened from ticked already) · 2 The week (Keep existing · Set hours ·
+Closed all day; each edge Keep or a time, × puts it back to Keep) · 3 Convert hours from and
+Don't open before. Review replaces the form: a tab per website with its count ("la… · 5",
+"… · blocked"), Day · Now · Requested · Converted · Final and the note (no change / not before
+6:00 AM / the server's error in red); a blocked site says nothing is written to it and why.
+Update N counts only websites that will change; a 409 returns to the form with the server's
+sentence. Results list every ticked website, the untouched ones included. Phone: day cards
+with Keep · Hours · Closed, the note above the bar, Edit instead of Back to the form, review as
+cards. **Not as drawn:** seven day rows, no "Mon – Tue" grouping; Google Business Profile is in
+the step's note, not a greyed chip.
 
 `docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
 0.0.0290, `c77a7873`: `POST /web/hours/review` and `/apply`), from Rodrigo's brief via Jose,
