@@ -18,6 +18,9 @@ class VersionHistory {
         'Suggestions: the back arrow sits at the start of the line, and only shows when there is a list to go back to.',
         'Customers: the State and ZIP boxes line up.',
         'Automations: replacing your work with a template asks in place, with Keep mine and Use the template, instead of in a pop-up.',
+        'AI Assistance: adding or editing an answer opens in a side panel instead of a pop-up.',
+        'Dashboards: on a phone, the period chips fit on one line; the chosen one is shown by its fill.',
+        'Monitoring: with no camera yet, the empty screen points to the Add camera button below it.',
       ],
     ),
     VersionRelease(
