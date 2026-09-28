@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\WithoutRelations;
 use Illuminate\Support\Carbon;
 
 /**
@@ -30,6 +31,12 @@ class EmailVerificationLink extends Notification implements ShouldQueue
     use Queueable;
 
     public function __construct(
+        // Serialized bare: the queue worker has no tenant, and re-loading a
+        // tenant-scoped relation there throws — NotificationNotice lost 7,705
+        // mails that way. ->organization is then lazy-loaded in the worker,
+        // which is safe only because Organization is unscoped and strict mode
+        // is off. See QueuedAuthMailWorkerTest.
+        #[WithoutRelations]
         private readonly User $user,
         /** The raw token. Held for the life of one job and never written down. */
         private readonly string $token,

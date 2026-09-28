@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Queue\Attributes\WithoutRelations;
 use Illuminate\Support\Carbon;
 
 /**
@@ -22,6 +23,10 @@ class PasswordResetLink extends Notification implements ShouldQueue
     use Queueable;
 
     public function __construct(
+        // Serialized bare: the queue worker has no tenant, and re-loading a
+        // tenant-scoped relation there throws — NotificationNotice lost 7,705
+        // mails that way. Only ->name is read. See QueuedAuthMailWorkerTest.
+        #[WithoutRelations]
         private readonly Model $subject,
         private readonly string $token,
         private readonly Carbon $expiresAt,
