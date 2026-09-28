@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Web Management, SEO: Edit hours on several websites changes the opening hours of several websites at once, with a review before anything is written.',
+        'Leads: a contact form sent on one of the websites arrives in Leads, once that site has plugin 1.21.0. The form still sends its own email, and no marketing consent is recorded from it.',
       ],
     ),
     VersionRelease(
