@@ -284,8 +284,20 @@ class LeadsController extends Controller
 
         $leads = $query->paginate(min((int) $request->query('per_page', 50), 200));
 
+        // Which of these numbers already belong to a customer - one query for
+        // the page (8 ms on production's 7,869 customers), so a known caller
+        // is shown by name. Jose, 2026-09-28.
+        $customers = $user->hasPermission('customers.view')
+            ? $this->customersByNumber(array_map(fn (Lead $l) => $l->phone_digits, $leads->items()))
+            : [];
+
         return response()->json([
-            'data' => array_map(fn (Lead $l) => $this->present($l), $leads->items()),
+            'data' => array_map(fn (Lead $l) => [
+                ...$this->present($l),
+                'customer' => ($c = $customers[self::tenDigits($l->phone_digits)] ?? null) === null
+                    ? null
+                    : ['id' => $c->id, 'number' => $c->number, 'name' => $c->name],
+            ], $leads->items()),
             'meta' => [
                 'total' => $leads->total(),
                 'per_page' => $leads->perPage(),
@@ -339,12 +351,92 @@ class LeadsController extends Controller
         // Customers this number already belongs to, so booking can attach to
         // one instead of making a second Jane Doe. Same digits-only match the
         // Customers screen uses for its duplicate warning; advisory only.
-        $data['customer_matches'] = $this->customerMatches($lead)
+        $matches = $this->customerMatches($lead);
+        $data['customer_matches'] = $matches
             ->map(fn (Customer $c) => ['id' => $c->id, 'number' => $c->number, 'name' => $c->name, 'phone' => $c->phone])
             ->values()
             ->all();
 
+        // The customer this number already is, with what they have had done -
+        // so whoever answers knows who is asking before they ask.
+        $customer = $matches->first();
+        $data['customer'] = $customer !== null && request()->user()?->can('view', $customer)
+            ? $this->customerHistory($customer)
+            : null;
+
         return response()->json(['data' => $data]);
+    }
+
+    /**
+     * A known customer, and their jobs the reader may see: newest five, the
+     * count, and what the finished ones came to (cancelled ones left out).
+     *
+     * @return array<string, mixed>
+     */
+    private function customerHistory(Customer $customer): array
+    {
+        $user = request()->user();
+        $jobs = $user->hasPermission('jobs.view')
+            ? $customer->jobs()->get()->filter(fn (Job $j) => $user->can('view', $j))
+            : collect();
+        $when = fn (Job $j) => $j->scheduled_for ?? $j->earned_at ?? $j->created_at;
+        $kept = $jobs->reject(fn (Job $j) => in_array(strtolower((string) $j->status), ['canceled', 'cancelled'], true));
+
+        return [
+            'id' => $customer->id,
+            'number' => $customer->number,
+            'name' => $customer->name,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+            'address' => implode(', ', array_filter([$customer->address_line1, $customer->city, $customer->state])) ?: null,
+            'jobs_total' => $jobs->count(),
+            'revenue_minor' => (int) $kept->sum('amount_minor'),
+            'currency' => $kept->first()?->currency,
+            'jobs' => $jobs->sortByDesc(fn (Job $j) => $when($j)?->getTimestamp() ?? 0)->take(5)
+                ->map(fn (Job $j) => [
+                    'id' => $j->id,
+                    'number' => $j->number,
+                    'title' => $j->title,
+                    'status' => $j->status,
+                    'when' => $when($j)?->toIso8601String(),
+                    'amount_minor' => $j->amount_minor,
+                    'currency' => $j->currency,
+                ])->values()->all(),
+        ];
+    }
+
+    /** The last ten digits, which decide between +1 (216) 555-0100 and 2165550100. */
+    private static function tenDigits(?string $digits): ?string
+    {
+        return $digits === null || strlen($digits) < 10 ? null : substr($digits, -10);
+    }
+
+    /**
+     * Customers by the last ten digits of their phone, for many numbers in one
+     * query. Where two customers share a number the first by name wins, as in
+     * customerMatches().
+     *
+     * @param  list<?string>  $digits
+     * @return array<string, Customer>
+     */
+    private function customersByNumber(array $digits): array
+    {
+        $numbers = array_values(array_unique(array_filter(array_map(self::tenDigits(...), $digits))));
+        if ($numbers === []) {
+            return [];
+        }
+
+        $expr = "RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), 10)";
+
+        return Customer::query()
+            ->whereRaw("{$expr} IN (".implode(',', array_fill(0, count($numbers), '?')).')', $numbers)
+            ->orderBy('name')
+            ->get()
+            ->reduce(function (array $by, Customer $c) {
+                $by[self::tenDigits(preg_replace('/\D/', '', (string) $c->phone))] ??= $c;
+
+                return $by;
+            }, []);
     }
 
     /** @return Collection<int, Customer> */

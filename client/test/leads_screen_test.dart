@@ -236,6 +236,28 @@ void main() {
   });
   _triageTests();
 
+  // Jose, 2026-09-28: a number already in Customers is shown as the customer.
+  testWidgets('a lead from a known customer is named and badged as one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [
+        {
+          ..._lead('lead-1', ''),
+          'phone': '+12155550101',
+          'customer': {'id': 'cu-1', 'number': 'C-0042', 'name': 'Marcus Bell'},
+        },
+        {..._lead('lead-2', ''), 'phone': '+12155550199'},
+      ],
+      connections: const [],
+    );
+
+    expect(find.byKey(const ValueKey('customer-badge-lead-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('customer-badge-lead-2')), findsNothing);
+    expect(find.text('Marcus Bell'), findsWidgets);
+  });
+
   /// A specimen from `ezbizi:thumbtack-test-lead` is a real row with a real
   /// Thumbtack id. It stays in the list — seeing it is how somebody knows the
   /// pipe works — and it says what it is, because on 2026-09-10 one of these

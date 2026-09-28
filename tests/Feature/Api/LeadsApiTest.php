@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\Customer;
+use App\Models\Job;
 use App\Models\Lead;
 use App\Models\Organization;
 use App\Models\SocialConnection;
@@ -103,6 +105,54 @@ class LeadsApiTest extends TestCase
             ->getJson(self::ENDPOINT)
             ->assertOk()
             ->assertJsonCount(1, 'data');
+    }
+
+    /**
+     * A number that is already a customer is shown as that customer, with
+     * their jobs - Jose, 2026-09-28. The customer's phone is typed another way
+     * and carries no country code; the last ten digits decide.
+     */
+    public function test_a_known_number_is_shown_as_the_customer_with_their_jobs(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $lead = $this->lead($t, ['contact_name' => null]);
+        $this->inTenant($t['org'], function () use ($t) {
+            $customer = Customer::create([
+                'owning_franchise_id' => $t['franchise']->id,
+                'number' => 'C-0042',
+                'name' => 'Marcus Bell',
+                'phone' => '('.substr(Lead::digits(self::PHONE), -10, 3).') '.substr(Lead::digits(self::PHONE), -7, 3).'-'.substr(Lead::digits(self::PHONE), -4),
+                'city' => 'Ridgefield',
+                'state' => 'CT',
+            ]);
+            foreach ([['Done', 45000, '2026-09-01'], ['Canceled', 30000, '2026-09-10']] as [$status, $minor, $at]) {
+                Job::create([
+                    'franchise_id' => $t['franchise']->id,
+                    'customer_id' => $customer->id,
+                    'number' => 'J-'.$status,
+                    'title' => 'Chimney sweep',
+                    'status' => $status,
+                    'scheduled_for' => $at,
+                    'amount_minor' => $minor,
+                    'currency' => 'USD',
+                ]);
+            }
+        });
+
+        $row = $this->signedInAs($t['admin'])->getJson(self::ENDPOINT)->assertOk()->json('data.0');
+        $this->assertSame('Marcus Bell', $row['customer']['name']);
+
+        $customer = $this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data.customer');
+        $this->assertSame('Marcus Bell', $customer['name']);
+        $this->assertSame('Ridgefield, CT', $customer['address']);
+        $this->assertSame(2, $customer['jobs_total']);
+        $this->assertSame(45000, $customer['revenue_minor'], 'a cancelled job is not revenue');
+        $this->assertSame('J-Canceled', $customer['jobs'][0]['number'], 'newest first');
+
+        // Without the customers permission the lead says nothing about them.
+        $viewer = $this->userWithRole($t, 'Leads only', ['leads.view', 'leads.local_services.view']);
+        $this->assertNull($this->signedInAs($viewer)->getJson(self::ENDPOINT)->assertOk()->json('data.0.customer'));
+        $this->assertNull($this->getJson(self::ENDPOINT.'/'.$lead->id)->assertOk()->json('data.customer'));
     }
 
     public function test_a_lead_is_listed_for_somebody_who_may_see_it(): void

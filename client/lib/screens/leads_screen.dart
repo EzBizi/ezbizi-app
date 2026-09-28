@@ -1344,6 +1344,14 @@ class _LeadsScreenState extends State<LeadsScreen> {
                         const SizedBox(width: 8),
                         _Badge('Test', key: ValueKey('test-badge-$id')),
                       ],
+                      // This number is already a customer.
+                      if (lead['customer'] is Map) ...[
+                        const SizedBox(width: 8),
+                        _Badge(
+                          'Customer',
+                          key: ValueKey('customer-badge-$id'),
+                        ),
+                      ],
                       // The channel badge is drawn only when it says something
                       // the source badge does not. "Call · Google" is two
                       // facts; a chat row read "Chat · Chat" and a form row

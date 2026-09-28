@@ -185,6 +185,49 @@ void main() {
     expect(find.textContaining('only accepts replies to text'), findsOneWidget);
   });
 
+  // Jose, 2026-09-28: a number that is already a customer shows who they are
+  // and what they have had done.
+  testWidgets('a known customer is shown with their jobs, newest first', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      customer: {
+        'id': 'cu-1',
+        'number': 'C-0042',
+        'name': 'Marcus Bell',
+        'address': '12 Hillcrest Ct, Ridgefield, CT',
+        'jobs_total': 2,
+        'revenue_minor': 45000,
+        'currency': 'USD',
+        'jobs': [
+          {'id': 'j-2', 'number': 'J-2', 'title': 'Flue repair', 'status': 'Pending', 'when': null},
+          {'id': 'j-1', 'number': 'J-1', 'title': 'Chimney sweep', 'status': 'Done', 'when': null, 'amount_minor': 45000, 'currency': 'USD'},
+        ],
+      },
+    );
+
+    expect(find.textContaining('Existing customer · Marcus Bell · C-0042'), findsOneWidget);
+    expect(find.text('12 Hillcrest Ct, Ridgefield, CT'), findsOneWidget);
+    expect(find.textContaining('2 jobs'), findsOneWidget);
+    expect(find.textContaining('Flue repair · Pending'), findsOneWidget);
+    expect(find.textContaining('Chimney sweep · Done'), findsOneWidget);
+  });
+
+  test('a nameless lead from a known number is titled by the customer', () {
+    expect(
+      leadTitle({'phone': '+12155550101', 'customer': {'name': 'Marcus Bell'}}),
+      'Marcus Bell',
+    );
+    expect(
+      leadTitle({'contact_name': 'Marc', 'customer': {'name': 'Marcus Bell'}}),
+      'Marc',
+      reason: 'what the person gave Google still wins',
+    );
+  });
+
   // Android edge to edge: the note's last line sat under the gesture bar.
   testWidgets('the note under the thread clears the phone gesture bar', (
     tester,
@@ -349,6 +392,7 @@ Future<void> _pump(
   String? cannotReplyBecause,
   String? refuseSend,
   String? suggestion,
+  Map<String, dynamic>? customer,
   Future<void> Function()? onRead,
   Future<Map<String, dynamic>?> Function(String? note)? onNote,
 }) async {
@@ -415,6 +459,7 @@ Future<void> _pump(
               'can_reply': canReply,
               'cannot_reply_because': cannotReplyBecause,
               'can_suggest': suggestion != null,
+              'customer': customer,
               'conversations': [
                 {
                   'id': 'c-call',

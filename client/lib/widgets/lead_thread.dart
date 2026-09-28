@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/api_client.dart';
+import '../core/money.dart';
 import '../core/phone_numbers.dart';
 import '../core/session.dart';
+import '../screens/customers/customer_detail_panel.dart';
 import '../screens/jobs/job_detail_panel.dart';
 import '../screens/phone/recording_playback_bar.dart';
 import '../screens/phone/recording_player.dart';
@@ -99,6 +101,10 @@ class _LeadThreadState extends State<LeadThread> {
   /// follows what onStar / onNote return, so a pushed screen on a phone
   /// shows the note's byline without the list having to rebuild it.
   late Map<String, dynamic> _lead = widget.lead;
+
+  /// The customer this number already is, with their jobs - from the lead's
+  /// own read, not the list row.
+  Map<String, dynamic>? _customer;
 
   bool _editingNote = false;
   bool _savingNote = false;
@@ -297,6 +303,7 @@ class _LeadThreadState extends State<LeadThread> {
       _canReply = data['can_reply'] == true;
       _cannotReplyBecause = data['cannot_reply_because'] as String?;
       _canSuggest = data['can_suggest'] == true;
+      _customer = data['customer'] as Map<String, dynamic>?;
       _matches = List<Map<String, dynamic>>.from(
         (data['customer_matches'] as List? ?? const [])
             .cast<Map<String, dynamic>>(),
@@ -455,6 +462,7 @@ class _LeadThreadState extends State<LeadThread> {
                         ),
                       ),
                     _noteBlock(theme, lead),
+                    if (_customer != null) _customerCard(theme, _customer!),
                     if (lead['job'] is Map)
                       _bookedLine(
                         theme,
@@ -605,6 +613,94 @@ class _LeadThreadState extends State<LeadThread> {
   );
 
   /// "Booked · Job 0142 · Thu 17 Sep, 2 PM", with the job one tap away.
+  /// This number is already a customer: who, where, and what they have had
+  /// done, newest first - read before answering. Jose, 2026-09-28.
+  Widget _customerCard(ThemeData theme, Map customer) {
+    final quiet = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final jobs = (customer['jobs'] as List? ?? const []).cast<Map>();
+    final total = (customer['jobs_total'] as num?)?.toInt() ?? 0;
+    final revenue = (customer['revenue_minor'] as num?)?.toInt() ?? 0;
+    final currency = customer['currency'] as String?;
+
+    return Container(
+      key: const ValueKey('lead-customer'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_outline, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Existing customer · ${customer['name']}'
+                  '${customer['number'] != null ? ' · ${customer['number']}' : ''}',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              if (widget.session != null)
+                TextButton(
+                  key: const ValueKey('lead-customer-open'),
+                  onPressed: () => _openCustomer(customer['id'] as String),
+                  child: const Text('Open customer'),
+                ),
+            ],
+          ),
+          if (customer['address'] != null)
+            Text('${customer['address']}', style: quiet),
+          Text(
+            [
+              total == 0 ? 'No jobs yet' : total == 1 ? '1 job' : '$total jobs',
+              if (revenue > 0 && currency != null) formatMinor(revenue, currency),
+            ].join(' · '),
+            style: quiet,
+          ),
+          for (final job in jobs)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                [
+                  formatJobWhen(job['when'] as String?),
+                  '${job['title'] ?? 'Job ${job['number'] ?? ''}'}',
+                  if (job['status'] != null) '${job['status']}',
+                  if (job['amount_minor'] is num && job['currency'] is String)
+                    formatMinor((job['amount_minor'] as num).toInt(), job['currency'] as String),
+                ].where((s) => s.isNotEmpty).join(' · '),
+                style: theme.textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openCustomer(String id) async {
+    final panel = CustomerDetailPanel(
+      api: widget.api,
+      session: widget.session!,
+      id: id,
+    );
+
+    if (MediaQuery.sizeOf(context).width < 600) {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => panel));
+      return;
+    }
+
+    await showSidePanel<void>(context, builder: (_) => panel);
+  }
+
   Widget _bookedLine(ThemeData theme, Map job, {bool matched = false}) {
     final when = formatJobWhen(job['scheduled_for'] as String?);
     final line = [
@@ -1016,6 +1112,9 @@ class _LeadThreadState extends State<LeadThread> {
 String leadTitle(Map<String, dynamic> lead) {
   final name = (lead['contact_name'] as String?)?.trim();
   if (name != null && name.isNotEmpty) return name;
+  // A number that is already a customer is shown by the customer's name.
+  final customer = ((lead['customer'] as Map?)?['name'] as String?)?.trim();
+  if (customer != null && customer.isNotEmpty) return customer;
   final phone = lead['phone'] as String?;
   if (phone != null && phone.isNotEmpty) return formatPhoneNumber(phone);
 
