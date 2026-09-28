@@ -11,7 +11,7 @@ class VersionHistory {
       version: '0.0.0298',
       date: '28 Sep 2026',
       items: [
-        'Recordings: when a computer has no speakers or headphones connected, the player says so instead of showing an error code.',
+        'Recordings: with no speakers or headphones connected, a recording waits and starts playing as soon as some are connected.',
       ],
     ),
     VersionRelease(
