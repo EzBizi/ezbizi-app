@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0289',
+      date: '28 Sep 2026',
+      items: [
+        'Web Management, SEO: a Customer review link field under General, for the reviews page of the site - the page to text a customer once a job is done. It is already filled in for the sites that have one.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0288',
       date: '28 Sep 2026',
       items: [
