@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
+import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/screens/phone/voicemails_pane.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,24 @@ void main() {
       find.textContaining('would not play'),
       findsOneWidget,
       reason: 'the failure was swallowed, exactly as it used to be',
+    );
+  });
+
+  // Windows' own words when there is nothing to play to, from Jose's PC.
+  test('no speakers or headphones is said as that, not as an error code', () {
+    const windows = 'PlatformException(4, MediaEngine error, Activate failed '
+        'to create mediasink. Call OutputNode::GetUINT32(MF_TOPONODE_MAJORTYPE) '
+        'for more information., null)';
+
+    expect(
+      playbackFailureSentence(windows),
+      'Windows has no speakers or headphones to play this on. '
+      'Connect some and press play again.',
+    );
+    expect(
+      playbackFailureSentence('Exception: codec'),
+      'This recording would not play. Exception: codec',
+      reason: 'any other failure keeps its reason',
     );
   });
 

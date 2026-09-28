@@ -113,7 +113,7 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
     } on RecordingPlaybackFailure catch (failure) {
       _error = failure.message;
     } catch (error) {
-      _error = 'This recording would not play. $error';
+      _error = playbackFailureSentence(error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -227,3 +227,14 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
+
+/// What a failed play says. Windows answers "Activate failed to create
+/// mediasink" when it has no speakers or headphones to play to - measured on
+/// Jose's PC 2026-09-28, where every call failed that way with no audio output
+/// present, even once the server sent plain WAV. That is fixable by the
+/// person, so it is said in their words; anything else keeps the raw reason.
+String playbackFailureSentence(Object error) =>
+    '$error'.contains('create mediasink')
+        ? 'Windows has no speakers or headphones to play this on. '
+            'Connect some and press play again.'
+        : 'This recording would not play. $error';
