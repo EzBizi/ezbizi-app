@@ -145,19 +145,18 @@ Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
 Schedule::command('ezbizi:sync-workiz-team')->hourly()->withoutOverlapping(10);
 
 /*
- * HOURLY, and for the same quota reason, plus one of its own.
- *
- * A Workiz lead is a CRM record somebody typed, not a message waiting for an
- * answer - it is excluded from the dispatcher's Unreplied queue by
- * `Lead::INBOX_SOURCES`. Nothing goes stale in the fifty-nine minutes between
- * runs, and the same quota that refuses the job sweep with 429 is the one this
- * would spend.
+ * EVERY MINUTE - Jose, 2026-09-28: "make jobs and customer update every 1 min
+ * as well, as well as leads". It was hourly, to spare the Workiz quota the job
+ * sweep shares. Measured by the Workiz session since 0.0.0268: one 429 in
+ * three days at four calls per account per minute; a run here adds one call
+ * per branch (today's leads since the newest one held), and every 429 is
+ * logged as "Workiz sync: ..." if that stops fitting.
  *
  * The FIRST run against a branch imports nothing and only marks where now was
  * (Jose, 2026-09-23: *"we don't need the past stuff, just start from now"*), so
  * turning this on does not pull thirty-one thousand historical rows.
  */
-Schedule::command('ezbizi:import-workiz-leads')->hourly()->withoutOverlapping(30);
+Schedule::command('ezbizi:import-workiz-leads')->everyMinute()->withoutOverlapping(10);
 
 /*
  * THE ONLY WORKIZ SCHEDULE THAT SPENDS NO QUOTA, which is why it may run often.
