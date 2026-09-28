@@ -17,7 +17,7 @@ class FakeRecordingPlayer implements RecordingPlayer {
   FakeRecordingPlayer({this.refuses, this.duration = const Duration(seconds: 30)});
 
   /// When set, [play] throws this instead of starting.
-  final String? refuses;
+  String? refuses;
 
   /// The length the fake reports once playing, so a scrubber has something to
   /// scrub. Zero models audio whose duration the platform never worked out.

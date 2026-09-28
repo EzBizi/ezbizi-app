@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'recording_player.dart';
@@ -70,14 +72,27 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
 
   static Object? _owner;
 
+  /// Retrying while Windows has nowhere to play to - see [_waitForOutput].
+  Timer? _waiting;
+
   @override
   void dispose() {
+    _waiting?.cancel();
     if (identical(_owner, this)) _owner = null;
     super.dispose();
   }
 
   Future<void> _press() async {
     if (_busy) return;
+
+    // Pressed again while waiting for speakers: stop waiting.
+    if (_waiting != null) {
+      _waiting!.cancel();
+      _waiting = null;
+      setState(() => _error = null);
+
+      return;
+    }
 
     if (_isMine && _state.playing) {
       await widget.player.pause();
@@ -110,13 +125,42 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
       _bytes = bytes;
       _owner = this;
       await widget.player.play(bytes);
-    } on RecordingPlaybackFailure catch (failure) {
-      _error = failure.message;
     } catch (error) {
-      _error = playbackFailureSentence(error);
+      if (isNoAudioOutput(error)) {
+        _waitForOutput();
+      } else {
+        _error = error is RecordingPlaybackFailure
+            ? error.message
+            : 'This recording would not play. $error';
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Windows cannot play at all with no speakers or headphones - other apps
+  /// sit ready and start when some appear, so this does the same: it tries
+  /// again every two seconds and plays the moment a device is there (Jose,
+  /// 2026-09-28: "it should still play like any other app").
+  void _waitForOutput() {
+    _error = 'Waiting for speakers or headphones. It will play as soon as '
+        'some are connected.';
+    var trying = false;
+    _waiting = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (trying || _bytes == null) return;
+      trying = true;
+      try {
+        _owner = this;
+        await widget.player.play(_bytes!);
+        _waiting?.cancel();
+        _waiting = null;
+        if (mounted) setState(() => _error = null);
+      } catch (_) {
+        // Still nowhere to play to; the next tick tries again.
+      } finally {
+        trying = false;
+      }
+    });
   }
 
   Future<void> _seek(double seconds) async {
@@ -228,13 +272,6 @@ class _RecordingPlaybackBarState extends State<RecordingPlaybackBar> {
   }
 }
 
-/// What a failed play says. Windows answers "Activate failed to create
-/// mediasink" when it has no speakers or headphones to play to - measured on
-/// Jose's PC 2026-09-28, where every call failed that way with no audio output
-/// present, even once the server sent plain WAV. That is fixable by the
-/// person, so it is said in their words; anything else keeps the raw reason.
-String playbackFailureSentence(Object error) =>
-    '$error'.contains('create mediasink')
-        ? 'Windows has no speakers or headphones to play this on. '
-            'Connect some and press play again.'
-        : 'This recording would not play. $error';
+/// Windows' answer when it has no speakers or headphones to play to:
+/// "Activate failed to create mediasink" (measured on Jose's PC, 2026-09-28).
+bool isNoAudioOutput(Object error) => '$error'.contains('create mediasink');

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
-import 'package:ezbizi_client/screens/phone/recording_playback_bar.dart';
 import 'package:ezbizi_client/screens/phone/recording_player.dart';
 import 'package:ezbizi_client/screens/phone/voicemails_pane.dart';
 import 'package:flutter/material.dart';
@@ -47,22 +46,31 @@ void main() {
     );
   });
 
-  // Windows' own words when there is nothing to play to, from Jose's PC.
-  test('no speakers or headphones is said as that, not as an error code', () {
-    const windows = 'PlatformException(4, MediaEngine error, Activate failed '
-        'to create mediasink. Call OutputNode::GetUINT32(MF_TOPONODE_MAJORTYPE) '
-        'for more information., null)';
+  // Jose, 2026-09-28: with no headphones it "should still play like any
+  // other app". It waits, and starts by itself once a device is there.
+  testWidgets('with nothing to play to it waits, then plays when a device '
+      'appears', (tester) async {
+    final player = FakeRecordingPlayer(
+      refuses: 'PlatformException(4, MediaEngine error, Activate failed to '
+          'create mediasink. Call OutputNode::GetUINT32(MF_TOPONODE_MAJORTYPE) '
+          'for more information., null)',
+    );
+    await _pump(tester, player: player);
 
-    expect(
-      playbackFailureSentence(windows),
-      'Windows has no speakers or headphones to play this on. '
-      'Connect some and press play again.',
-    );
-    expect(
-      playbackFailureSentence('Exception: codec'),
-      'This recording would not play. Exception: codec',
-      reason: 'any other failure keeps its reason',
-    );
+    await tester.tap(find.byKey(const Key('recording-play')).first);
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Waiting for speakers or headphones'), findsOneWidget);
+    expect(find.textContaining('MediaEngine'), findsNothing, reason: 'no error code');
+    expect(player.played, isEmpty);
+
+    player.refuses = null; // headphones connected
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+
+    expect(player.played, hasLength(1));
+    expect(find.textContaining('Waiting for speakers'), findsNothing);
   });
 
   /// Nothing on this screen sends anybody to another application.
