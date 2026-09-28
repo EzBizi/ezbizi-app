@@ -185,6 +185,29 @@ void main() {
     expect(find.textContaining('only accepts replies to text'), findsOneWidget);
   });
 
+  // Android edge to edge: the note's last line sat under the gesture bar.
+  testWidgets('the note under the thread clears the phone gesture bar', (
+    tester,
+  ) async {
+    tester.view.padding = FakeViewPadding(
+      bottom: 34 * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetPadding);
+    await _pump(
+      tester,
+      player: FakeRecordingPlayer(),
+      recordingGate: Completer()..complete(),
+      canReply: false,
+      cannotReplyBecause: 'Answered by calling back.',
+    );
+
+    final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+    expect(
+      tester.getBottomLeft(find.text('Answered by calling back.')).dy,
+      lessThanOrEqualTo(screen.height - 34),
+    );
+  });
+
   /// The screen used to WRITE that sentence itself, so every source that could
   /// not be replied to was described as a Google phone call. The first real
   /// Thumbtack enquiry was a message thread and was told exactly that

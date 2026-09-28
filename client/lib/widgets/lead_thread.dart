@@ -517,10 +517,13 @@ class _LeadThreadState extends State<LeadThread> {
         // no box rather than drawing one that would be refused.
         if (widget.onStatusChanged != null && !_loading) ...[
           const Divider(height: 1),
-          if (_canReply)
-            _composer(theme)
-          else
-            Padding(
+          // Clear of the phone's gesture bar: edge to edge, the last line
+          // otherwise sits under the home indicator (UI/UX, 2026-09-28).
+          SafeArea(
+            top: false,
+            child: _canReply
+                ? _composer(theme)
+                : Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
               child: Text(
                 // The server's sentence, from the channel that refused. The
@@ -534,6 +537,7 @@ class _LeadThreadState extends State<LeadThread> {
                 ),
               ),
             ),
+          ),
         ],
       ],
     );
