@@ -1054,9 +1054,11 @@ class _LeadThreadState extends State<LeadThread> {
 
   /// Initials in the person's own colour; a bot for a rule.
   Widget _sender(ThemeData theme, String? name, {bool automatic = false}) {
-    final color = automatic
-        ? theme.colorScheme.tertiary
-        : Colors.primaries[name.hashCode.abs() % Colors.primaries.length];
+    // Each person keeps one colour (the theme's person palette, AA in light
+    // and dark); a rule is neutral.
+    final colours = automatic
+        ? ToneColours.of(context, Tone.neutral)
+        : PersonColours.of(context, name!);
     final initials = automatic
         ? ''
         : name!
@@ -1071,15 +1073,15 @@ class _LeadThreadState extends State<LeadThread> {
       child: CircleAvatar(
         key: ValueKey(automatic ? 'sender-bot' : 'sender-$initials'),
         radius: 10,
-        backgroundColor: color,
+        backgroundColor: colours.fill,
         child: automatic
-            ? const Icon(Icons.smart_toy_outlined, size: 12, color: Colors.white)
+            ? Icon(Icons.smart_toy_outlined, size: 12, color: colours.ink)
             : Text(
                 initials,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 9,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: colours.ink,
                 ),
               ),
       ),
