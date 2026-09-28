@@ -8,9 +8,12 @@ use App\Models\User;
 use App\Notifications\NotificationNotice;
 use App\Support\Notifications\NotificationDispatcher;
 use App\Support\Settings\SettingsResolver;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Notifications\SendQueuedNotifications;
 use Illuminate\Support\Facades\Notification as NotificationFacade;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Tests\Concerns\BuildsTenants;
@@ -253,6 +256,61 @@ class NotificationEmailTest extends TestCase
      * ever stopped firing, the only symptom would be mail going out, which is
      * what the code looks like it should do anyway.
      */
+    /**
+     * The mail has to survive the QUEUE WORKER, which has no tenant.
+     *
+     * 7,705 notification emails failed in production between 2026-09-16 and
+     * 2026-09-28, every one with "No tenant in context, refusing to read
+     * App\Models\Assignment unscoped", while every other test in this file
+     * stayed green. They could not see it: NotificationFacade::fake()
+     * intercepts the notification BEFORE it is serialized, so the one step that
+     * failed — the worker unserializing the job — never ran here at all.
+     *
+     * The mechanism, read rather than guessed. SerializesModels records the
+     * notifiable as an id PLUS the names of whatever relations were loaded on
+     * it. In the worker, Laravel restores the User itself through
+     * newQueryForRestoration(), which is newQueryWithoutScopes() — so the User
+     * comes back fine. Then it calls ->load() for each recorded relation, and
+     * THAT goes through Assignment's normal query, TenantScope included, with
+     * no tenant anywhere in a queue worker.
+     *
+     * The relations are not ours. Fleet's VehicleAssignments::reaches()
+     * loadMissing()s assignments onto the very User instance it then passes as
+     * onlyTo, and onlyTo reaches the mailer as that same object. Any reach
+     * check anywhere does the same. So this builds the recipient exactly the
+     * way production did, and then does exactly what the worker does to it.
+     */
+    public function test_the_queued_mail_survives_the_worker_which_has_no_tenant(): void
+    {
+        Queue::fake();
+
+        $tenant = $this->provisionTenant();
+
+        $recipient = $this->inTenant($tenant['org'], function () use ($tenant): User {
+            $admin = $tenant['admin'];
+
+            // What a reach check does to the instance it is about to notify.
+            $admin->loadMissing('assignments.assignedCompany', 'organization');
+
+            $this->dispatcher()->dispatch('A vehicle was assigned to you', onlyTo: $admin);
+
+            return $admin;
+        });
+
+        $jobs = Queue::pushed(SendQueuedNotifications::class);
+        $this->assertCount(1, $jobs, 'The mail must be queued, or there is no worker path to test.');
+
+        // The control. A worker has no tenant, and if one leaked out of the
+        // inTenant() above this would pass for the wrong reason — the restore
+        // would be scoped and succeed, exactly as every request-time path did.
+        $this->assertFalse(app(TenantContext::class)->has(), 'The worker has no tenant; neither may this.');
+
+        // The worker. This line is where production died.
+        $restored = unserialize(serialize($jobs->first()));
+
+        $this->assertSame([$recipient->getKey()], $restored->notifiables->modelKeys());
+    }
+
     public function test_an_audience_above_the_email_ceiling_gets_the_bell_and_no_mail(): void
     {
         NotificationFacade::fake();

@@ -349,7 +349,19 @@ class NotificationDispatcher
                 // in this file is App\Models\Notification, and aliasing a facade
                 // beside it to save one loop is how somebody later writes the
                 // wrong one.
-                $recipient->notify($notice);
+                //
+                // withoutRelations() because this crosses into a QUEUE WORKER,
+                // which has no tenant. The job records the recipient as an id
+                // plus every relation loaded on it; the worker restores the User
+                // unscoped but re-loads each relation THROUGH TenantScope, which
+                // refuses with no tenant. Recipients arrive carrying
+                // assignments from whatever reach check ran first — Fleet's
+                // loadMissing() on the very instance passed as onlyTo — so
+                // 7,705 mails died that way from 2026-09-16 to 2026-09-28
+                // while the bell rows, inserted before this, all landed.
+                // toMail() reads only ->name and the mail route only ->email,
+                // so nothing is lost by sending the bare model.
+                $recipient->withoutRelations()->notify($notice);
                 $sent++;
             } catch (Throwable $exception) {
                 /*
