@@ -16,6 +16,8 @@ class VersionHistory {
         'Social Media, Accounts: someone who works for some branches only sees, manages and posts to the accounts of those branches and their companies, and the organization-wide ones.',
         'One module failing no longer blanks the whole home screen: its card says it could not load, and every other card still shows.',
         'Automations: Send a notification has no email switch any more, and a notification from an automation is never emailed. To email from a rule, add a Send an email step.',
+        'On Android, Back returns from a record, a form or a settings section, instead of closing the app.',
+        'On a phone, the fields of Add vehicle, Add service and the Inventory create forms no longer slide under their Save bar, date and time boxes fit with their labels, the address State box shows what is typed, and a person record in HR scrolls its header away with the form.',
       ],
     ),
     VersionRelease(
