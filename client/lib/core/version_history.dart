@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0299',
+      date: '28 Sep 2026',
+      items: [
+        'Web Management: the SEO Helper server side also groups pages that share a keyphrase, title or description, names the other pages behind a shared problem, and can fix a site title template stuck on an old year. Its screen follows.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0298',
       date: '28 Sep 2026',
       items: [
