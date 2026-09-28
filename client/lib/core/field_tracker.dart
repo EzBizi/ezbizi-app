@@ -75,6 +75,13 @@ class FieldTracker {
   bool _syncing = false;
   bool _sending = false;
 
+  /// Android only: Play services' fused provider refuses to start while the
+  /// phone's "Google Location Accuracy" is off, with no dialog in a
+  /// foreground service. Measured by the Android session on 0.0.0290: the
+  /// stream died 30 ms after starting, forever. The platform LocationManager
+  /// has no such check, so a failed start retries on it.
+  bool _platformProvider = false;
+
   /// Most points a phone holds while offline. A day at 50 m spacing fits.
   static const _cap = 2000;
 
@@ -114,6 +121,7 @@ class FieldTracker {
       TargetPlatform.android => AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 50,
+        forceLocationManager: _platformProvider,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'EzBizi is sharing your location',
           notificationText:
@@ -134,8 +142,22 @@ class FieldTracker {
 
     _stream = Geolocator.getPositionStream(
       locationSettings: settings,
-    ).listen(_add, onError: (_) => _stop());
+    ).listen(_add, onError: _failed);
     _flush = Timer.periodic(const Duration(seconds: 60), (_) => _send());
+  }
+
+  Future<void> _failed(Object error) async {
+    debugPrint('FieldTracker: position stream failed: $error');
+    await _stream?.cancel();
+    _stream = null;
+    _flush?.cancel();
+    _flush = null;
+    if (defaultTargetPlatform == TargetPlatform.android && !_platformProvider) {
+      _platformProvider = true;
+      await _start();
+      return;
+    }
+    await _send();
   }
 
   Future<void> _stop() async {
