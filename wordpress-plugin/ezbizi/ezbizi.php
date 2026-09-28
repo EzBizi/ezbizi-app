@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.20.6
+ * Version:           1.21.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.20.6';
+const EZBIZI_VERSION = '1.21.0';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -92,6 +92,7 @@ const EZBIZI_REFUSED_SINCE = 'ezbizi_refused_since';
 
 require_once __DIR__ . '/service-account.php';
 require_once __DIR__ . '/enquiries.php';
+require_once __DIR__ . '/elementor-forms.php';
 // After `enquiries.php`, which owns the helpers the presentation widgets share
 // — the id counter, the palette reader and the string accessor.
 require_once __DIR__ . '/widgets.php';

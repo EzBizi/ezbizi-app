@@ -11,6 +11,7 @@ use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
 use App\Support\Web\SiteLists;
 use App\Support\Web\ValueResolver;
+use App\Support\Web\WebsiteEnquiries;
 use App\Support\Web\WidgetPresets;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,7 +45,53 @@ class PluginController extends Controller
 {
     public function __construct(
         private readonly TenantContext $tenant,
+        private readonly WebsiteEnquiries $enquiries,
     ) {}
+
+    /**
+     * POST /api/v1/web/plugin/form — a form the website drew itself (an
+     * Elementor Pro form), sent on by the plugin from the server.
+     *
+     * Jose, 2026-09-28: the sites' other contact forms should reach Leads too.
+     * Not through the public `web/form`: that is limited per ADDRESS, and every
+     * one of these comes from the web host's one address, so a busy hour across
+     * a hundred sites would start dropping leads. The site's own token is the
+     * identity here, and the limit is per token.
+     */
+    public function form(Request $request): JsonResponse
+    {
+        $site = $this->siteForToken($request, $request->input('host'));
+
+        if ($site instanceof JsonResponse) {
+            return $site;
+        }
+
+        $input = $request->validate([
+            'fields' => ['required', 'array', 'min:1', 'max:40'],
+            'fields.*' => ['nullable', 'string', 'max:4000'],
+            'name' => ['nullable', 'string', 'max:191'],
+            'email' => ['nullable', 'email', 'max:191'],
+            'phone' => ['nullable', 'string', 'max:40'],
+            'page_url' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
+
+        return $this->tenant->run($organization, function () use ($site, $input): JsonResponse {
+            $this->enquiries->submitForm($site, $input['fields'], [
+                'name' => $input['name'] ?? null,
+                'email' => $input['email'] ?? null,
+                'phone' => $input['phone'] ?? null,
+                'page_url' => $input['page_url'] ?? null,
+                // An Elementor form's own acceptance box says nothing about
+                // marketing, so no consent is recorded from it.
+                'marketing_consent' => false,
+                'marketing_consent_text' => null,
+            ]);
+
+            return response()->json(['received' => true], Response::HTTP_CREATED);
+        });
+    }
 
     /** GET /api/v1/web/plugin/values */
     public function values(Request $request): JsonResponse

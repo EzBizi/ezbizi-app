@@ -343,6 +343,40 @@ class WebsiteEnquiriesTest extends TestCase
      * wiring as well as the delivery: an untagged channel would leave the
      * composer permanently greyed out with nothing to say why.
      */
+    /**
+     * "Customer replied" is the customer writing AGAIN, and only them.
+     *
+     * Jose, 2026-09-28: a new lead and a customer reply are different rules,
+     * and a reply "should count only reply from the costumer not our own
+     * replies". Three messages: their first (the enquiry, not a reply), ours
+     * (never), their second (the one reply). Asserting exactly one event is
+     * what can tell the difference from firing on every consumer message.
+     */
+    public function test_customer_replied_fires_only_when_the_customer_writes_again(): void
+    {
+        ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
+
+        $started = $this->startChat($site->public_key, 'Are you open Saturday?')->assertCreated();
+        $replied = fn () => $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'lead.customer_replied')->count());
+
+        $this->assertSame(0, $replied(), 'the first message is the enquiry, not a reply');
+
+        $this->inTenant($tenant['org'], function () {
+            $lead = Lead::query()->firstOrFail();
+            app(LeadReplies::class)->for($lead)->send($lead, 'We are, 8 until 1.');
+        });
+        $this->assertSame(0, $replied(), 'our own reply is never a customer reply');
+
+        $this->withToken($started->json('token'))
+            ->postJson('/api/v1/web/chat/'.$started->json('chat').'/messages', ['message' => 'Great, 10am?'])
+            ->assertOk();
+
+        $this->assertSame(1, $replied());
+        $this->assertSame('Great, 10am?', $this->inTenant($tenant['org'], fn () => AutomationEvent::query()
+            ->where('event_key', 'lead.customer_replied')->sole()->payload['after']['preview']));
+    }
+
     public function test_a_reply_typed_in_leads_reaches_the_widget(): void
     {
         ['site' => $site, 'tenant' => $tenant] = $this->siteWithKey();
@@ -416,6 +450,57 @@ class WebsiteEnquiriesTest extends TestCase
     // ── helpers ──────────────────────────────────────────────────────
 
     /** @return array{site: WebSite, tenant: array<string, mixed>} */
+    // ── the site's own Elementor forms, sent on by the plugin ────────
+
+    public function test_the_plugin_passes_on_a_site_form_with_the_site_token(): void
+    {
+        [$tenant, $token] = $this->siteWithToken();
+
+        $this->withToken($token)->postJson('/api/v1/web/plugin/form', [
+            'host' => 'a-1chimney.com',
+            'name' => 'Dana Reyes', 'email' => 'dana@example.com', 'phone' => '(555) 010-0100',
+            'fields' => ['Name' => 'Dana Reyes', 'Message' => 'Chimney leaking'],
+            'page_url' => 'https://a-1chimney.com/contact-us/',
+        ])->assertCreated();
+
+        $lead = $this->inTenant($tenant['org'], fn () => Lead::query()->firstOrFail());
+        $this->assertSame(Lead::SOURCE_WEBSITE_FORM, $lead->source);
+        $this->assertSame('Dana Reyes', $lead->contact_name);
+        $this->assertNull($lead->marketing_consent_at, 'an Elementor form records no marketing consent');
+    }
+
+    public function test_a_wrong_token_passes_nothing_on(): void
+    {
+        $this->siteWithToken();
+
+        $this->withToken('not-the-token')->postJson('/api/v1/web/plugin/form', ['fields' => ['A' => 'b']])->assertUnauthorized();
+        $this->assertSame(0, Lead::query()->withoutGlobalScopes()->count());
+    }
+
+    public function test_one_host_address_can_pass_on_more_than_a_browser_may(): void
+    {
+        [$tenant, $token] = $this->siteWithToken();
+
+        // Past the public form's 40 an hour per address: every plugin call comes from the web host's one address.
+        for ($i = 0; $i < 45; $i++) {
+            $this->withToken($token)->postJson('/api/v1/web/plugin/form', ['fields' => ['Message' => "Enquiry {$i}"]])->assertCreated();
+        }
+
+        $this->assertSame(45, $this->inTenant($tenant['org'], fn () => Lead::query()->count()));
+    }
+
+    /** @return array{0: array, 1: string} */
+    private function siteWithToken(): array
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $editor = $this->userWithRole($tenant, 'Web Editor', ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view']);
+        $token = $this->signedInAs($editor)->postJson('/api/v1/web/sites', [
+            'company_id' => $tenant['company']->getKey(), 'host' => 'a-1chimney.com',
+        ])->assertCreated()->json('token');
+
+        return [$tenant, $token];
+    }
+
     private function siteWithKey(string $name = 'Alpha', string $host = 'a-1chimney.com'): array
     {
         $tenant = $this->provisionTenant($name);

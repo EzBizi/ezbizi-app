@@ -123,6 +123,7 @@ function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'
 // WordPress lets tel:, sms: and mailto: through esc_url; so does this.
 function esc_url($s) { return filter_var((string) $s, FILTER_VALIDATE_URL) || preg_match('/^(tel|sms|mailto):[^\s"<>]+$/i', (string) $s) ? (string) $s : ''; }
 function esc_url_raw($s) { return (string) $s; }
+function is_email($s) { return filter_var($s, FILTER_VALIDATE_EMAIL) !== false ? $s : false; }
 function register_setting($g, $n, $a = []) { $GLOBALS['settings'][$n] = $a; }
 function add_filter($hook, $cb, $p = 10, $a = 1) { $GLOBALS['filters'][$hook][] = $cb; }
 function apply_filters($hook, $value) {
@@ -2120,6 +2121,41 @@ echo PHP_EOL . "A1's look survives the swap" . PHP_EOL;
 check('hours have a clock, not a pin', str_contains(ezbizi_contact_icon('hours'), 'a10 10 0 100 20'), true);
 check('a network with a mark draws the mark', str_contains(ezbizi_social_icon('tiktok', 'TikTok'), '<path fill="currentColor"'), true);
 check('one without keeps its letters', str_contains(ezbizi_social_icon('bbb', 'BBB'), '>B</text>'), true);
+
+echo PHP_EOL . "The site's own Elementor forms reach Leads" . PHP_EOL;
+$record = new class {
+    public function get($k) {
+        return $k === 'fields' ? [
+            'first_name' => ['type' => 'text', 'title' => 'First Name', 'value' => 'Dana'],
+            'last_name' => ['type' => 'text', 'title' => 'Last Name', 'value' => 'Reyes'],
+            'email' => ['type' => 'email', 'title' => 'Email', 'value' => 'dana@example.com'],
+            'phone' => ['type' => 'tel', 'title' => 'Phone', 'value' => '(555) 010-0100'],
+            'message' => ['type' => 'textarea', 'title' => 'Message', 'value' => 'Chimney leaking'],
+            'trap' => ['type' => 'honeypot', 'title' => '', 'value' => ''],
+        ] : [];
+    }
+};
+$GLOBALS['opt']['ezbizi_token'] = 'tok_123';
+$GLOBALS['post_calls'] = 0;
+$GLOBALS['actions']['shutdown'] = [];
+ezbizi_elementor_form_record($record);
+check('nothing is sent while the visitor waits', $GLOBALS['post_calls'], 0);
+do_action('shutdown');
+$sent = $GLOBALS['last_post_args']['body'] ?? [];
+check('it is sent after the page has answered', $GLOBALS['post_calls'], 1);
+check('to the token-authenticated form endpoint', str_ends_with($GLOBALS['last_post_url'] ?? '', '/api/v1/web/plugin/form'), true);
+check('with the site token', $GLOBALS['last_post_args']['headers']['Authorization'] ?? '', 'Bearer tok_123');
+check('first and last name make the name', $sent['name'] ?? null, 'Dana Reyes');
+check('the email and phone picked out', [$sent['email'] ?? null, $sent['phone'] ?? null], ['dana@example.com', '(555) 010-0100']);
+check('every answer kept under its question', $sent['fields']['Message'] ?? null, 'Chimney leaking');
+check('the spam trap is not an answer', array_key_exists('trap', $sent['fields'] ?? []), false);
+check('a bad email is not sent as one', isset(ezbizi_elementor_form_lead(['e' => ['type' => 'email', 'title' => 'Email', 'value' => 'nope']])['email']), false);
+check('an empty form sends nothing', ezbizi_elementor_form_lead(['m' => ['type' => 'text', 'title' => 'Message', 'value' => '']]), null);
+$GLOBALS['opt']['ezbizi_token'] = '';
+$GLOBALS['actions']['shutdown'] = [];
+ezbizi_elementor_form_record($record);
+do_action('shutdown');
+check('a site with no token sends nothing', $GLOBALS['post_calls'], 1);
 
 echo PHP_EOL . "The state in words, as A1 printed it" . PHP_EOL;
 reset_site();

@@ -474,6 +474,11 @@ Route::post('v1/web/plugin/service-account', [WebPluginController::class, 'servi
     ->middleware('throttle:web-plugin')
     ->name('web.plugin.service-account');
 
+// A site's own Elementor forms, passed on by the plugin (per-token limit, not per-IP).
+Route::post('v1/web/plugin/form', [WebPluginController::class, 'form'])
+    ->middleware('throttle:web-plugin')
+    ->name('web.plugin.form');
+
 /*
  * The chat widget and the contact form on a customer's own website.
  *

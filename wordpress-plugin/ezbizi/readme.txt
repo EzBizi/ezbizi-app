@@ -4,7 +4,7 @@ Tags: shortcode, business info, contact details, opening hours, local business
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.20.6
+Stable tag: 1.21.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -232,6 +232,11 @@ Deleting the plugin does not revoke the token at the EzBizi end — use "Issue a
 new token" in EzBizi for that.
 
 == Changelog ==
+
+= 1.21.0 =
+* NEW: the site's own Elementor forms reach EzBizi as leads too. Their email
+  still goes as before; the copy is sent after the visitor's page has
+  answered, with the site's token.
 
 = 1.20.6 =
 * NEW: a page's own text or a template can name another EzBizi value, such
