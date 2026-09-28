@@ -352,7 +352,24 @@ void main() {
   ) async {
     await _pump(tester, customers: [_alice]);
 
-    expect(find.byType(SearchPickerField<String>), findsNothing);
+    expect(find.text('Sort'), findsNothing);
+  });
+
+  /// The rule is "no headers -> the picker", not a width. At a desk, opening a
+  /// record turns the table into the sidebar list, which has no headers -- so
+  /// the picker has to appear there too, or a docked record leaves no way to
+  /// change the sort at all. Found by UI/UX reviewing the phone picker.
+  testWidgets('a docked record keeps a Sort picker, because the headers go', (
+    tester,
+  ) async {
+    await _pump(tester, customers: [_alice]);
+
+    expect(find.text('Sort'), findsNothing);
+
+    await tester.tap(find.text('Alice Roofing'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sort'), findsOneWidget);
   });
 
 }

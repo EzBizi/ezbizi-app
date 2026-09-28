@@ -443,13 +443,19 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     },
                   ),
                 ),
-              // Below the table's width there are no column headers to click,
-              // so the same sort is offered here, said in words (UI/UX,
-              // 2026-09-28). A full line: "Created, newest first" does not fit
-              // in half of one.
-              if (!wide)
+              // Wherever the list is drawn WITHOUT column headers, the same
+              // sort is offered here in words (UI/UX, 2026-09-28). The rule is
+              // "no headers -> this picker", not a width: below the table's
+              // breakpoint there is no table, and at a desk with a record
+              // docked the table becomes the 380px sidebar list, which has no
+              // headers either. Keyed on width alone, a docked record left no
+              // way to change the sort at all.
+              //
+              // A full line on a phone -- "Created, newest first" does not fit
+              // in half of one -- and a fixed width beside the search at a desk.
+              if (!wide || _openId != null)
                 SizedBox(
-                  width: constraints.maxWidth,
+                  width: wide ? 260 : constraints.maxWidth,
                   child: SearchPickerField<String>(
                     value: '$_sort:${_ascending ? 'asc' : 'desc'}',
                     label: 'Sort',
