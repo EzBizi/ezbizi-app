@@ -2958,6 +2958,24 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
+### 27 · Marketing · Social posting that feels finished — **DRAWN, awaiting Jose**
+
+`docs/previews/social-poster-layouts.html`. From Jose, verbatim, via the Meta session,
+2026-09-28: *"there was no hint that the post had been successful … we need to add flare, loading
+screens, success screens … i didn't see anything appear on the calendar even though you posted it
+and it succeeded … the user needs to feel like he's accomplished what he set out to do"*. Desktop
+**1** the composer becomes the result and the post lands on the calendar (recommended) · **2** a
+page of its own: posting ring, then a finish screen · **3** the calendar is the page, composing is
+a panel over it. Phone **4** a finish screen, then an agenda (recommended) · **5** progress from
+the bottom, the week as a strip · **6** a running feed, newest first.
+
+**In every option:** a per-account posting line that resolves (posted with the network's link,
+failed with its sentence and Try again, TikTok to drafts); a success moment that names what
+happened ("Posted to 3 accounts", "Scheduled for Tuesday 9:00 AM"); every post on the calendar,
+sent green, scheduled blue, failed red, the new one outlined once. Found while drawing: the
+calendars are built with no posts passed in (`const _CalendarsColumn()` in social_media_tab.dart),
+though `GET /social/posts` already carries the times and per-target status.
+
 ### 26 · Web Management · Hours for several websites at once — **DRAWN, awaiting Jose**
 
 `docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
