@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0304',
+      date: '28 Sep 2026',
+      items: [
+        'Customers: with a customer open beside the list, the Sort picker shows above the list, so it can be sorted without closing the record.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0303',
       date: '28 Sep 2026',
       items: [
