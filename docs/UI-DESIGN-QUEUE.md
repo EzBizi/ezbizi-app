@@ -2958,7 +2958,7 @@ Phone's words for the first half, declining a slot for their own button. Two liv
 `DEVELOPMENT-RULES.md` the whole time and three sessions wrote literals anyway. A number that went
 up could only be answered — Phone's sentence: *a rule would have been argued with.*
 
-### 29 · Web Management · SEO Helper — **DRAWN, with Jose**
+### 29 · Web Management · SEO Helper — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
 
 `docs/previews/web-seo-helper-layouts.html`. Asked by Web Management (session 8db30bbf), from Jose,
 2026-09-28: *"add it, see if you can improve it as well … a SEO Helper basically"*, never naming the
@@ -2982,7 +2982,7 @@ open them. The "UPDATED 2024" warning is the site's own SEO setting, not EzBizi'
 `PUT /web/sites/{site}/seo-helper/site {page_title_template?, post_title_template?}` applies it
 (edit access) and returns the refreshed overview, so the button is **Fix it**, sent as is.
 
-### 28 · Leads · Status, Manage and Mark all read — **DRAWN, with Jose**
+### 28 · Leads · Status, Manage and Mark all read — **Jose: "as u recommend" — 1 and 4** — **BUILDING**
 
 `docs/previews/leads-status-controls-layouts.html`. Asked by Leads (Google API session), from Jose,
 2026-09-28: *"the manage, mark all leads, it all feels like it's not part of the ui and its like
