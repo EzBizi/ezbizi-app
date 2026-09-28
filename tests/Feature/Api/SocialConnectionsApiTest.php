@@ -140,6 +140,28 @@ class SocialConnectionsApiTest extends TestCase
         $this->assertSame(['A-1 Chimney', 'Connecticut', 'Group'], $names);
     }
 
+    public function test_a_branch_only_user_who_never_used_the_switcher_does_not_see_a_sibling_branch(): void
+    {
+        // No stored view means ViewScope falls back to organization; that arm
+        // must answer from this person's reach, not from the scope.
+        $t = $this->provisionTenant('A1-Group');
+        $sibling = $this->extraFranchise($t, 'Illinois');
+
+        $this->connection($t, 'organization', $t['org']->id, 'Group', 'group-pin');
+        $this->connection($t, 'company', $t['company']->id, 'A-1 Chimney', 'a1-pin');
+        $this->connection($t, 'franchise', $t['franchise']->id, 'Connecticut', 'ct-pin');
+        $this->connection($t, 'franchise', $sibling->id, 'Illinois', 'il-pin');
+
+        $branch = $this->userWithRole($t, 'Branch', ['marketing.view'], onlyAt: $t['franchise']);
+
+        $names = $this->signedInAs($branch)
+            ->getJson(self::ENDPOINT)
+            ->assertOk()
+            ->json('data.*.display_name');
+
+        $this->assertSame(['A-1 Chimney', 'Connecticut', 'Group'], $names);
+    }
+
     public function test_the_row_never_carries_tokens(): void
     {
         $t = $this->provisionTenant('A1-Group');

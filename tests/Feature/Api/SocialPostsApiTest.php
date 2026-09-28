@@ -79,6 +79,23 @@ class SocialPostsApiTest extends TestCase
         $this->assertNothingWasWritten($t);
     }
 
+    public function test_a_branch_only_user_who_never_used_the_switcher_cannot_publish_as_a_sibling_branch(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $sibling = $this->extraFranchise($t, 'Illinois');
+        // Facebook takes words alone, so the only refusal left is the view.
+        $row = $this->connection($t, 'franchise', $sibling->id, 'Illinois', 'il-page', 'facebook_page');
+        Http::fake();
+
+        $this->signedInAs($this->userWithRole($t, 'Branch', ['marketing.view', 'marketing.edit'], onlyAt: $t['franchise']))
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Posting as a sibling'])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.connections.0', fn (string $m) => str_contains($m, 'not connected in this view'));
+
+        $this->assertNothingWasWritten($t);
+        Http::assertNothingSent();
+    }
+
     public function test_a_network_that_needs_a_picture_refuses_words_alone_before_anything_is_written(): void
     {
         $t = $this->provisionTenant('A1-Group');

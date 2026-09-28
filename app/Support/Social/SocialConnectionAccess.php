@@ -22,8 +22,18 @@ final class SocialConnectionAccess
     {
         $view = ViewScope::forUser($user);
 
+        // Answered from reach, not from the scope: ViewScope::forUser falls back
+        // to an organization view for anyone who never touched the switcher, so
+        // a branch-only user arrives here claiming the whole tenant. Same trap
+        // as InventoryVisibility::companyIdsFor. A company page is reached
+        // through one of its branches too, as the franchise arm below shows it.
         if ($view->isOrganization()) {
-            return true;
+            return match ($connection->scope_type) {
+                SocialConnection::SCOPE_ORGANIZATION => true,
+                SocialConnection::SCOPE_COMPANY => $this->reaches($user, $connection)
+                    || $user->reachableFranchises()->contains('company_id', $connection->scope_id),
+                default => $this->reaches($user, $connection),
+            };
         }
 
         if ($view->type === ViewScope::COMPANY) {
