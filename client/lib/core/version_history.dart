@@ -15,6 +15,7 @@ class VersionHistory {
         'Reports, Experimental: Jobs booked and the jobs of each person count every job for Workiz accounts with more than 100 jobs in the period; before, only the farthest 100 were read.',
         'Field, Map: a slim list over the map shows each tracked person with since when, miles today, speed, last seen and state; tap a person to see their route today. The map is quieter, follows light and dark mode, and refreshes every 30 seconds.',
         'Field: on Android, tracking starts even when Google Location Accuracy is turned off.',
+        'Field, Map: on Android the map draws when it opens, instead of staying grey until you zoom.',
       ],
     ),
     VersionRelease(
