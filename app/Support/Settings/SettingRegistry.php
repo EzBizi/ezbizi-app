@@ -632,8 +632,23 @@ class SettingRegistry
         return [
             new SettingDefinition(
                 key: 'notifications.email_enabled', label: 'Send email notifications',
-                type: SettingDefinition::TYPE_BOOL, default: true,
+                type: SettingDefinition::TYPE_BOOL, default: false,
                 /*
+                 * OFF BY DEFAULT, by Jose's ruling, 2026-09-28, verbatim: "the
+                 * system is fine, but why is it enabled, it should be disabled
+                 * by default, so yes, stop it asap. emails should only send if
+                 * the toggle for send an email is activated as well", then
+                 * "in automations".
+                 *
+                 * It shipped ON, and was invisible because every mail died in
+                 * the queue worker until abf44c7c. The day that fix went live,
+                 * every "A new lead from local_services has arrived" emailed
+                 * nine people, about 370 an hour. The bell is the notification;
+                 * mail is something an organization chooses. Automations makes
+                 * the rule's own email toggle opt-in to match, so a mail now
+                 * needs BOTH switches on. Production was set false per
+                 * organization by the deploy desk before this landed.
+                 *
                  * The "unless" clause is not hedging: above the ceiling
                  * NOTHING is emailed, not a subset.
                  *
@@ -654,7 +669,8 @@ class SettingRegistry
                  * for that constant to become public and be interpolated, not
                  * for a digit to be copied across a module boundary.
                  */
-                help: 'With this on, a notification is also emailed to each person it was for, '
+                help: 'Off unless an administrator turns it on. '
+                    .'With this on, a notification is also emailed to each person it was for, '
                     .'in the same words the app shows -- unless it was for more people than '
                     .'EzBizi will email at once, and then it stays in the app only. Off leaves '
                     .'the bell working. The two channels are independent: neither one switched '

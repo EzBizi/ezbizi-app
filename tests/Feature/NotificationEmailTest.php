@@ -41,8 +41,28 @@ use Tests\TestCase;
  */
 class NotificationEmailTest extends TestCase
 {
-    use BuildsTenants;
+    use BuildsTenants {
+        provisionTenant as provisionTenantAsShipped;
+    }
     use RefreshDatabase;
+
+    /**
+     * Every tenant in this suite has email switched ON, deliberately.
+     *
+     * Email is off by default since Jose's ruling of 2026-09-28 (see the
+     * SettingRegistry entry). This suite is about what happens once an
+     * organization chooses it, so it chooses it here, in the one place tenants
+     * are made, rather than in every test. The default itself is pinned by
+     * test_email_is_off_until_an_organization_turns_it_on, which provisions
+     * the way a real signup does.
+     */
+    protected function provisionTenant(string $name = 'Alpha', ?string $email = null): array
+    {
+        $tenant = $this->provisionTenantAsShipped($name, $email);
+        $this->set($tenant, 'notifications.email_enabled', true);
+
+        return $tenant;
+    }
 
     private function dispatcher(): NotificationDispatcher
     {
@@ -256,6 +276,28 @@ class NotificationEmailTest extends TestCase
      * ever stopped firing, the only symptom would be mail going out, which is
      * what the code looks like it should do anyway.
      */
+    /**
+     * Jose, 2026-09-28: "it should be disabled by default".
+     *
+     * The bell row is asserted beside the missing mail on purpose. A dispatch
+     * that silently did nothing would also send no mail, and this test would
+     * pass for a reason that has nothing to do with the setting.
+     */
+    public function test_email_is_off_until_an_organization_turns_it_on(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenantAsShipped();
+
+        $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
+            'A new lead has arrived', onlyTo: $tenant['admin'],
+        ));
+
+        $this->assertSame(1, $told, 'The bell must still reach them.');
+        $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Notification::where('user_id', $tenant['admin']->id)->count()));
+        NotificationFacade::assertNothingSent();
+    }
+
     /**
      * The mail has to survive the QUEUE WORKER, which has no tenant.
      *
