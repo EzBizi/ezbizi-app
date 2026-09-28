@@ -2976,6 +2976,16 @@ sent green, scheduled blue, failed red, the new one outlined once. Found while d
 calendars are built with no posts passed in (`const _CalendarsColumn()` in social_media_tab.dart),
 though `GET /social/posts` already carries the times and per-target status.
 
+**For the build (Meta, 2026-09-28):** POST /social/posts answers at once with every target still
+`queued` — production queues one PublishSocialTarget job per target (SocialPostsController.php
+246-250); only the sync test queue sees them resolved in the response. So: draw the "sending"
+lines from the POST answer, then re-read GET /social/posts about every 2s until no target is
+queued, giving up after about 60s (then say which accounts are still pending, not failed). Each
+target ends with its status and `url` (filled when the permalink read-back succeeds). No
+single-post GET exists; the list is enough, and Meta will add GET /social/posts/{post} if asked.
+Scheduled posts dispatch nothing until `ezbizi:publish-due-social-posts` runs: no poll, straight
+onto the calendar from `scheduled_for`.
+
 ### 26 · Web Management · Hours for several websites at once — **DRAWN, awaiting Jose**
 
 `docs/previews/web-hours-bulk-editor-layouts.html`. Asked by Web Management (server live in
