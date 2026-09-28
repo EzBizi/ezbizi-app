@@ -12,6 +12,8 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Customers: click a column heading to sort the whole list, and click again to reverse it. A new Created column shows when each customer was added to EzBizi; customers brought in from Workiz show the day of the import. The letter headings show only in name order.',
+        'A1 Leads, Google reviews: click a column heading to sort, and again to reverse; a new Contact column shows the phone and email of the customer; at half a screen the table scrolls sideways instead of squeezing its columns.',
+        'Leads: the status of a lead is a pill beside its name. A new lead offers Archive and Not a lead beside Book, and any other lead offers Back to New.',
       ],
     ),
     VersionRelease(
