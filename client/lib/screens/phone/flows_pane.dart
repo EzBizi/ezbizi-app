@@ -167,6 +167,9 @@ class _FlowsPaneState extends State<FlowsPane> {
     final body = <String, dynamic>{
       'name': draft.name.trim(),
       'prompt': draft.prompt.trim(),
+      'wait_seconds': draft.waitSeconds,
+      'replays': draft.replays,
+      'no_input': draft.noInput,
       'options': [
         for (final option in draft.options)
           {
@@ -409,8 +412,8 @@ class _FlowsPaneState extends State<FlowsPane> {
         Text('What each key does', style: theme.textTheme.labelLarge),
         const SizedBox(height: 4),
         Text(
-          'A key you do not list, or no key at all, rings the line as usual. '
-          'Nobody is ever hung up on for pressing the wrong thing.',
+          'A key you do not list rings the line as usual. Nobody is ever hung '
+          'up on for pressing the wrong thing.',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -428,6 +431,66 @@ class _FlowsPaneState extends State<FlowsPane> {
                   setState(() => draft.options.add(_OptionDraft.blank())),
             ),
           ),
+
+        // IF NOBODY PRESSES A KEY. Jose, 2026-09-28: the menu rang the line
+        // when it ended, and "spam callers are getting through that way".
+        const SizedBox(height: 20),
+        Text('If nobody presses a key', style: theme.textTheme.labelLarge),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SizedBox(
+              width: 180,
+              child: SearchPickerField<int>(
+                key: const ValueKey('flow-wait'),
+                value: draft.waitSeconds,
+                label: 'Wait for a key',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                options: [
+                  for (final s in const [3, 5, 7, 10, 15, 20, 30])
+                    SearchOption(value: s, label: '$s seconds'),
+                ],
+                onChanged: (v) => setState(() => draft.waitSeconds = v ?? 5),
+              ),
+            ),
+            SizedBox(
+              width: 200,
+              child: SearchPickerField<int>(
+                key: const ValueKey('flow-replays'),
+                value: draft.replays,
+                label: 'Play the menu',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                options: [
+                  for (var n = 0; n <= 5; n++)
+                    SearchOption(
+                      value: n,
+                      label: n == 0 ? 'Once' : '${n + 1} times',
+                    ),
+                ],
+                onChanged: (v) => setState(() => draft.replays = v ?? 0),
+              ),
+            ),
+            SizedBox(
+              width: 220,
+              child: SearchPickerField<String>(
+                key: const ValueKey('flow-no-input'),
+                value: draft.noInput,
+                label: 'Then',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                options: const [
+                  SearchOption(value: 'hangup', label: 'End the call'),
+                  SearchOption(value: 'ring', label: 'Ring the line'),
+                ],
+                onChanged: (v) => setState(() => draft.noInput = v ?? 'ring'),
+              ),
+            ),
+          ],
+        ),
 
         const SizedBox(height: 24),
         Row(
@@ -648,6 +711,9 @@ class _Draft {
     required this.name,
     required this.prompt,
     required this.options,
+    this.waitSeconds = 5,
+    this.replays = 0,
+    this.noInput = 'ring',
   });
 
   final String? id;
@@ -655,6 +721,11 @@ class _Draft {
   String name;
   String prompt;
   final List<_OptionDraft> options;
+
+  /// What happens when nobody presses a key; see the form.
+  int waitSeconds;
+  int replays;
+  String noInput;
 
   static _Draft blank(String connectionId) => _Draft(
     id: null,
@@ -669,6 +740,9 @@ class _Draft {
     connectionId: flow.connectionId,
     name: flow.name,
     prompt: flow.prompt,
+    waitSeconds: flow.waitSeconds,
+    replays: flow.replays,
+    noInput: flow.noInput,
     options: [
       for (final option in flow.options)
         _OptionDraft(
@@ -693,7 +767,14 @@ class _Flow {
     required this.options,
     required this.numberIds,
     required this.plays,
+    this.waitSeconds = 5,
+    this.replays = 0,
+    this.noInput = 'ring',
   });
+
+  final int waitSeconds;
+  final int replays;
+  final String noInput;
 
   final String id;
   final String connectionId;
@@ -730,6 +811,9 @@ class _Flow {
             // "this menu never plays" is a serious claim and inventing it from a
             // missing field would put a warning on every healthy menu.
             plays: row['plays'] == null ? true : row['plays'] == true,
+            waitSeconds: (row['wait_seconds'] as num?)?.toInt() ?? 5,
+            replays: (row['replays'] as num?)?.toInt() ?? 0,
+            noInput: row['no_input']?.toString() ?? 'ring',
           );
         })
         .toList(growable: false);

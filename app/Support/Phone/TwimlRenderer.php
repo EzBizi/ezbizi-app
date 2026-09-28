@@ -185,11 +185,27 @@ final class TwimlRenderer
             // the counter goes in the Gather's action URL — which means giving
             // this Gather an action, and that in turn means moving the timeout
             // fallthrough below into that endpoint.
-            $gather = $response->gather([
-                'language' => $language,
-                'numDigits' => 1,
-            ]);
-            $gather->say($prompt, ['language' => $language]);
+            // PLAYED AGAIN by stacking Gathers: one that times out with no key
+            // falls through to the next verb, so N replays are N more Gathers
+            // and nothing has to count passes.
+            $noInput = $this->menuNoInput($number);
+
+            for ($play = 0; $play <= $noInput['replays']; $play++) {
+                $gather = $response->gather([
+                    'language' => $language,
+                    'numDigits' => 1,
+                    'timeout' => $noInput['wait_seconds'],
+                ]);
+                $gather->say($prompt, ['language' => $language]);
+            }
+
+            // Jose, 2026-09-28: the menu can END the call when nobody presses
+            // anything, instead of ringing the line.
+            if ($noInput['hang_up']) {
+                $response->hangup();
+
+                return (string) $response;
+            }
 
             // Nothing pressed: Gather falls through to here on timeout, and the
             // call must still reach somebody rather than ending in silence.
@@ -2070,7 +2086,26 @@ final class TwimlRenderer
             }
 
             // Pressing nothing is an option too, and it is the commonest one.
-            $link('menu', 'answer', 'No key pressed');
+            // Drawn from the same menuNoInput() the call itself obeys.
+            $noInput = $this->menuNoInput($number);
+
+            if ($noInput['hang_up']) {
+                $add(
+                    'no-key',
+                    'hangup',
+                    'Call ends',
+                    $noInput['replays'] === 0
+                        ? 'Nobody pressed a key, so the call ends.'
+                        : 'Nobody pressed a key after the menu played '.($noInput['replays'] + 1).' times, so the call ends.',
+                    edit: $flowId === null ? null : ['pane' => 'flows', 'id' => (string) $flowId],
+                );
+                $link('menu', 'no-key', 'No key pressed');
+
+                // A key the menu does not list still rings the line.
+                $link('menu', 'answer', 'Any other key');
+            } else {
+                $link('menu', 'answer', 'No key pressed');
+            }
         }
 
         // ── What happens when nobody picks up ───────────────────────
@@ -2332,6 +2367,26 @@ final class TwimlRenderer
         }
 
         $this->ringOrVoicemail($response, $number, $context + ['overflow_group' => $group]);
+    }
+
+    /**
+     * What the menu does when nobody presses a key: how long it waits, how
+     * many more times it plays, and whether it then ends the call. The
+     * defaults are what every menu did before the setting existed.
+     *
+     * @return array{wait_seconds: int, replays: int, hang_up: bool}
+     */
+    private function menuNoInput(PhoneNumber $number): array
+    {
+        $flowId = $number->resolved('flow_id');
+        $flow = $flowId === null ? null : PhoneFlow::query()->find($flowId);
+        $menu = $flow === null ? null : self::menuNodeOf($flow);
+
+        return [
+            'wait_seconds' => max(1, min(30, (int) ($menu['wait_seconds'] ?? 5))),
+            'replays' => max(0, min(5, (int) ($menu['replays'] ?? 0))),
+            'hang_up' => ($menu['no_input'] ?? 'ring') === 'hangup',
+        ];
     }
 
     private function menuPrompt(PhoneNumber $number): ?string

@@ -138,6 +138,14 @@ class FlowsController extends Controller
             'name' => ['required', 'string', 'max:191'],
             'prompt' => ['required', 'string', 'max:1000'],
 
+            // WHEN NOBODY PRESSES A KEY. Jose, 2026-09-28: *"after the menu
+            // ends, it tries to connect the call, instead of ending the call,
+            // where do i set it up"*. How long to wait for a key, how many
+            // times to play it again, then ring the line or end the call.
+            'wait_seconds' => ['sometimes', 'integer', 'min:1', 'max:30'],
+            'replays' => ['sometimes', 'integer', 'min:0', 'max:5'],
+            'no_input' => ['sometimes', Rule::in(['ring', 'hangup'])],
+
             // Ten, because a caller cannot press an eleventh key.
             'options' => ['present', 'array', 'max:10'],
             'options.*.digit' => ['required', 'string', 'distinct', 'regex:/^[0-9*#]$/'],
@@ -201,6 +209,9 @@ class FlowsController extends Controller
         return [
             'type' => 'menu',
             'prompt' => trim((string) $input['prompt']),
+            'wait_seconds' => (int) ($input['wait_seconds'] ?? 5),
+            'replays' => (int) ($input['replays'] ?? 0),
+            'no_input' => (string) ($input['no_input'] ?? 'ring'),
             'options' => array_values(array_map(
                 fn (array $option) => array_filter([
                     'digit' => (string) $option['digit'],
@@ -225,6 +236,9 @@ class FlowsController extends Controller
             'connection_id' => $flow->connection_id,
             'name' => $flow->name,
             'prompt' => $nodes['prompt'] ?? '',
+            'wait_seconds' => (int) ($nodes['wait_seconds'] ?? 5),
+            'replays' => (int) ($nodes['replays'] ?? 0),
+            'no_input' => (string) ($nodes['no_input'] ?? 'ring'),
             'options' => array_values(array_filter(
                 (array) ($nodes['options'] ?? []),
                 'is_array',

@@ -252,6 +252,96 @@ class PhoneFlowTest extends TestCase
     }
 
     /**
+     * NOBODY PRESSES A KEY: the menu plays again, then ends the call.
+     *
+     * Jose, 2026-09-28: *"after the menu ends, it tries to connect the call,
+     * instead of ending the call"* — and *"spam callers are getting through
+     * that way"*. A robocaller waits the menu out; this is where it now stops.
+     */
+    public function test_a_menu_can_end_the_call_when_nobody_presses_a_key(): void
+    {
+        [$t, $connection, $group] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $created = $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
+            'connection_id' => $connection->id,
+            'name' => 'Main menu',
+            'prompt' => 'Press 1 for the desk.',
+            'wait_seconds' => 7,
+            'replays' => 1,
+            'no_input' => 'hangup',
+            'options' => [['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id]],
+        ])->assertCreated();
+
+        $this->assertSame(7, $created->json('data.wait_seconds'));
+        $this->assertSame(1, $created->json('data.replays'));
+        $this->assertSame('hangup', $created->json('data.no_input'));
+
+        [$xml, $graph] = $this->menuLine($t, $connection);
+
+        $this->assertSame(2, substr_count($xml, '<Gather'), 'played once and once more');
+        $this->assertStringContainsString('timeout="7"', $xml);
+        $this->assertStringContainsString('<Hangup/>', $xml);
+        $this->assertStringNotContainsString('<Dial', $xml);
+        $this->assertStringNotContainsString('<Record', $xml);
+
+        // The chart says the same thing the call does.
+        $this->assertContains(
+            ['from' => 'menu', 'to' => 'no-key', 'label' => 'No key pressed'],
+            $graph['edges'],
+        );
+    }
+
+    /**
+     * THE CONTROL: a menu saved without the setting behaves as every menu did
+     * before it — plays once, then rings the line.
+     */
+    public function test_a_menu_without_the_setting_still_rings_the_line(): void
+    {
+        [$t, $connection, $group] = $this->connectedCompany();
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+
+        $this->signedInAs($editor)->postJson('/api/v1/phone/flows', [
+            'connection_id' => $connection->id,
+            'name' => 'Main menu',
+            'prompt' => 'Press 1 for the desk.',
+            'options' => [['digit' => '1', 'action' => 'ring_group', 'ring_group_id' => $group->id]],
+        ])->assertCreated();
+
+        [$xml, $graph] = $this->menuLine($t, $connection);
+
+        $this->assertSame(1, substr_count($xml, '<Gather'));
+        $this->assertStringNotContainsString('<Hangup', $xml);
+        $this->assertContains(
+            ['from' => 'menu', 'to' => 'answer', 'label' => 'No key pressed'],
+            $graph['edges'],
+        );
+    }
+
+    /** @return array{0: string, 1: array{nodes: array, edges: array}} */
+    private function menuLine(array $t, PhoneConnection $connection): array
+    {
+        return $this->inTenant($t['org'], function () use ($t, $connection) {
+            $number = PhoneNumber::query()->create([
+                'organization_id' => $t['org']->id,
+                'connection_id' => $connection->id,
+                'scope_type' => PhoneNumber::SCOPE_COMPANY,
+                'scope_id' => $t['company']->id,
+                'twilio_sid' => 'PNnokeynokeynokeynokeynokeynokey',
+                'e164' => '+15615559003',
+                'label' => 'Main',
+                'after_hours' => 'voicemail',
+                'flow_id' => PhoneFlow::query()->first()->id,
+            ]);
+
+            return [
+                (new TwimlRenderer)->inbound($number->fresh()),
+                (new TwimlRenderer)->graph($number->fresh()),
+            ];
+        });
+    }
+
+    /**
      * A key that rings one person, built the way a person builds one.
      *
      * The renderer has dialled an extension from a menu key since extensions
