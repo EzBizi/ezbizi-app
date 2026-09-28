@@ -15,6 +15,7 @@ class VersionHistory {
         'Settings, Notifications: Send email notifications is off unless an administrator turns it on. It was on for every organization; it is now off for all of them.',
         'Social Media, Accounts: someone who works for some branches only sees, manages and posts to the accounts of those branches and their companies, and the organization-wide ones.',
         'One module failing no longer blanks the whole home screen: its card says it could not load, and every other card still shows.',
+        'Automations: Send a notification has no email switch any more, and a notification from an automation is never emailed. To email from a rule, add a Send an email step.',
       ],
     ),
     VersionRelease(
