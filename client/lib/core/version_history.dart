@@ -13,13 +13,8 @@ class VersionHistory {
       items: [
         'Scheduling, Settings: each service area can have its own daily limit for each weekday. Time slots stay locked until you press Edit time slots, and removing one asks you to type REMOVE. The Overview shows the daily totals for everything in view.',
         'Settings, Notifications: Send email notifications is off unless an administrator turns it on. It was on for every organization; it is now off for all of them.',
-      ],
-    ),
-    VersionRelease(
-      version: '0.0.0292',
-      date: '28 Sep 2026',
-      items: [
         'Social Media, Accounts: someone who works for some branches only sees, manages and posts to the accounts of those branches and their companies, and the organization-wide ones.',
+        'One module failing no longer blanks the whole home screen: its card says it could not load, and every other card still shows.',
       ],
     ),
     VersionRelease(

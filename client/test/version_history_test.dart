@@ -79,6 +79,9 @@ void main() {
       266, // pinned at cc0baa54 and stopped in its backend gate:
       // ai_assistance declared an action requirement RolesApiTest did not
       // know. No artefact exists; its notes shipped in 0.0.0267.
+      292, // pinned at cbad3ccd and never started: its social reach fix
+      // turned MarketingGlanceTest red. No artefact exists; its note shipped
+      // in 0.0.0293.
     };
     final holes = [
       for (var n = numbers.first; n <= numbers.last; n++)
