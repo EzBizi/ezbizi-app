@@ -153,6 +153,7 @@ use App\Http\Controllers\Api\VehicleServiceController;
 use App\Http\Controllers\Api\Web\ContentController as WebContentController;
 use App\Http\Controllers\Api\Web\EnquiriesController as WebEnquiriesController;
 use App\Http\Controllers\Api\Web\HoursBatchController as WebHoursBatchController;
+use App\Http\Controllers\Api\Web\SeoHelperController as WebSeoHelperController;
 use App\Http\Controllers\Api\Web\PluginController as WebPluginController;
 use App\Http\Controllers\Api\Web\PublicValuesController as WebPublicValuesController;
 use App\Http\Controllers\Api\Web\SitesController as WebSitesController;
@@ -866,6 +867,13 @@ Route::prefix('v1')
             // as `update`, like the values PUT above.
             Route::post('web/hours/review', [WebHoursBatchController::class, 'review']);
             Route::post('web/hours/apply', [WebHoursBatchController::class, 'apply']);
+            // The SEO Helper: each page's search title, description and keyphrase,
+            // read and written through the site's plugin. Saving authorises
+            // `update` on the site, like the values PUT.
+            Route::get('web/sites/{site}/seo-helper', [WebSeoHelperController::class, 'index']);
+            Route::get('web/sites/{site}/seo-helper/{page}', [WebSeoHelperController::class, 'show'])->whereNumber('page');
+            Route::post('web/sites/{site}/seo-helper/{page}/analyze', [WebSeoHelperController::class, 'analyze'])->whereNumber('page');
+            Route::put('web/sites/{site}/seo-helper/{page}', [WebSeoHelperController::class, 'update'])->whereNumber('page');
             // The pages and posts on the site itself, read live through the account
             // it handed us at pairing. Nothing stored, so nothing to keep in step.
             Route::get('web/sites/{site}/content', [WebContentController::class, 'index']);

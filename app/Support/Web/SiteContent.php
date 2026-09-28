@@ -240,7 +240,7 @@ final class SiteContent
      * the one standing between a stored string and an outbound request, and
      * this is that place.
      */
-    private function restBase(WebSite $site): string
+    public function restBase(WebSite $site): string
     {
         $url = (string) $site->service_rest_url;
         $host = WebSite::normalizeHost((string) parse_url($url, PHP_URL_HOST));
