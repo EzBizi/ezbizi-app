@@ -108,6 +108,16 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// opens on the board.
   bool _asTable = true;
 
+  /// The table's own order, set by clicking a column heading: the column and
+  /// whether it runs ascending. Null follows the server's order, which is the
+  /// Sort picker's - newest first by default. Jose, 2026-09-28: "clicking a
+  /// column sorts by it, and clicking again reverses it". It sorts the page
+  /// already loaded, as A1 Tools' table does.
+  (String, bool)? _columnSort;
+
+  /// The table scrolls sideways when the page is narrower than it.
+  final ScrollController _tableScroll = ScrollController();
+
   /// The server's answer to "may this person reply, here, now".
   bool _replyAvailable = false;
   String? _replyBecause;
@@ -149,6 +159,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   @override
   void dispose() {
     _replyDraft.dispose();
+    _tableScroll.dispose();
     super.dispose();
   }
 
@@ -486,6 +497,9 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         'Replying here needs A-1 Chimney as the company in view.',
     ];
 
+    // Nothing to say is no band, not an info icon beside a blank.
+    if (lines.isEmpty) return const SizedBox.shrink();
+
     return Material(
       color: theme.colorScheme.surfaceContainerHighest,
       child: Padding(
@@ -510,13 +524,26 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
 
   /// Whether any card on this page carries a way to reach the customer.
   ///
-  /// The Contact column is drawn only when one does. Empty everywhere, it
-  /// would read as "these customers have no phone number" when the truth is
-  /// that the feed does not carry it; the note below the table says that.
-  bool get _anyContact => _reviews.any((r) {
-        final c = ((r['board'] as Map?)?['contact'] as Map?) ?? const {};
-        return c['phone'] != null || c['email'] != null;
-      });
+  /// When none does, the note below the table says why: the feed does not
+  /// carry it, which is not the same as "these customers have no phone".
+  bool get _anyContact => _reviews.any((r) => _contactLines(r).isNotEmpty);
+
+  /// The review's customer contact, as A1 Tools' Contact column shows it.
+  ///
+  /// The card's own contact first; its phone is empty on every card A1 Leads
+  /// sends EzBizi (24 September: 0 of 387), so the phone of the customer A1
+  /// Leads MATCHED stands in - the same customer the panel names. The matched
+  /// customer carries no email.
+  static List<String> _contactLines(Map<String, dynamic> review) {
+    final card = (review['board'] as Map?)?.cast<String, dynamic>();
+    final contact = (card?['contact'] as Map?) ?? const {};
+    final customer = (card?['customer'] as Map?) ?? const {};
+
+    return <String>{
+      for (final value in [contact['phone'], customer['phone'], contact['email']])
+        if (value is String && value.trim().isNotEmpty) value.trim(),
+    }.toList();
+  }
 
   /// The band that makes the age of the data impossible to miss.
   Widget _sourceBand(ThemeData theme) {
@@ -621,7 +648,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               SearchOption(value: 'highest', label: 'Highest rated'),
               SearchOption(value: 'lowest', label: 'Lowest rated'),
             ],
-            onChanged: (v) => setState(() => _sort = v ?? 'newest'),
+            // Choosing an order here hands the table back to it.
+            onChanged: (v) => setState(() {
+              _sort = v ?? 'newest';
+              _columnSort = null;
+            }),
           ),
           // Drawn only when the source could name the listings. A dropdown
           // holding nothing but "All locations" is a control that cannot do
@@ -707,58 +738,192 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   /// board with nothing written" are different things.
   Widget _table(ThemeData theme) {
     final more = _reviews.length < _total;
+    final rows = _tableOrder();
     final heading = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
       fontWeight: FontWeight.w700,
       letterSpacing: 0.4,
     );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Material(
-          color: theme.colorScheme.surfaceContainerHighest,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
+    // Narrower than the table - half a desktop screen beside the sidebar -
+    // it scrolls sideways rather than squeezing every column into a sliver
+    // (Jose, 2026-09-28: at 960 the status read "Awaitin…").
+    return LayoutBuilder(
+      builder: (context, constraints) => Scrollbar(
+        controller: _tableScroll,
+        thumbVisibility: constraints.maxWidth < _tableMinWidth,
+        child: SingleChildScrollView(
+          controller: _tableScroll,
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: constraints.maxWidth < _tableMinWidth ? _tableMinWidth : constraints.maxWidth,
+            height: constraints.maxHeight,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(flex: 20, child: Text('CUSTOMER', style: heading)),
-                Expanded(flex: 38, child: Text('REVIEW', style: heading)),
-                if (_anyContact) Expanded(flex: 16, child: Text('CONTACT', style: heading)),
-                Expanded(flex: 11, child: Text('DATE', style: heading)),
-                Expanded(flex: 9, child: Text('RATING', style: heading)),
-                Expanded(flex: 14, child: Text('STATUS', style: heading)),
-                Expanded(flex: 20, child: Text('NOTES', style: heading)),
+                Material(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        // Two facts share these two columns, so each heading
+                        // sorts by either.
+                        _column('customer', Wrap(spacing: 8, children: [
+                          _sortHeading(heading, 'CUSTOMER', 'name'),
+                          _sortHeading(heading, 'LOCATION', 'location'),
+                        ])),
+                        _column('review', Text('REVIEW', style: heading)),
+                        _column('contact', Text('CONTACT', style: heading)),
+                        _column('date', _sortHeading(heading, 'DATE', 'date')),
+                        _column('rating', _sortHeading(heading, 'RATING', 'rating')),
+                        _column('status', Wrap(spacing: 8, children: [
+                          _sortHeading(heading, 'STATUS', 'status'),
+                          _sortHeading(heading, 'REPLY', 'reply'),
+                        ])),
+                        _column('notes', Text('NOTES', style: heading)),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    itemCount: rows.length + 1,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      if (index == rows.length) {
+                        return Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Center(child: _footer(theme, more)),
+                        );
+                      }
+
+                      return _tableRow(theme, rows[index]);
+                    },
+                  ),
+                ),
               ],
             ),
           ),
         ),
-        const Divider(height: 1),
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: _reviews.length + 1,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              if (index == _reviews.length) {
-                return Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Center(child: _footer(theme, more)),
-                );
-              }
-
-              return _tableRow(theme, _reviews[index]);
-            },
-          ),
-        ),
-      ],
+      ),
     );
+  }
+
+  /// The narrowest the table is drawn; below it, it scrolls sideways.
+  ///
+  /// 1140 keeps the prose columns readable (a name, three lines of review)
+  /// beside the fixed ones, and is still under the page at a 1400-wide window
+  /// beside the default sidebar, so a full-width window never scrolls.
+  static const double _tableMinWidth = 1140;
+
+  /// Columns with a width of their own: what they hold is short and must be
+  /// whole - a phone number, a date, a status - so they are never shared out.
+  static const Map<String, double> _fixedColumns = {
+    'contact': 140,
+    'date': 88,
+    'rating': 56,
+    'status': 140,
+  };
+
+  /// The prose columns share what is left.
+  static const Map<String, int> _flexColumns = {'customer': 20, 'review': 38, 'notes': 20};
+
+  /// One table column, the same in the heading and in every row.
+  Widget _column(String column, Widget child) {
+    final padded = column == 'notes'
+        ? child
+        : Padding(padding: const EdgeInsets.only(right: 12), child: child);
+    final fixed = _fixedColumns[column];
+
+    return fixed == null
+        ? Expanded(flex: _flexColumns[column]!, child: padded)
+        : SizedBox(width: fixed + 12, child: padded);
+  }
+
+  /// The order the table is in: the clicked column, or the Sort picker's.
+  (String, bool) get _order =>
+      _columnSort ??
+      switch (_sort) {
+        'oldest' => ('date', true),
+        'highest' => ('rating', false),
+        'lowest' => ('rating', true),
+        _ => ('date', false),
+      };
+
+  /// A heading that sorts by [key]; a second click on it reverses the order.
+  Widget _sortHeading(TextStyle? style, String label, String key) {
+    final (current, ascending) = _order;
+    final active = current == key;
+
+    return InkWell(
+      key: ValueKey('gbp-sort-$key'),
+      onTap: () => setState(() {
+        // A first click puts the newest, the highest-rated, and otherwise A
+        // to Z - for Reply, the unanswered - on top.
+        _columnSort = active ? (key, !ascending) : (key, key != 'date' && key != 'rating');
+      }),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Flexible(
+          child: Text(label,
+              style: active ? style?.copyWith(color: Theme.of(context).colorScheme.primary) : style,
+              overflow: TextOverflow.ellipsis),
+        ),
+        if (active)
+          Icon(ascending ? Icons.arrow_upward : Icons.arrow_downward,
+              size: 12, color: Theme.of(context).colorScheme.primary),
+      ]),
+    );
+  }
+
+  /// The loaded page in the table's order.
+  ///
+  /// Unsorted, it is the server's own order. Sorted, a review with nothing to
+  /// sort by - no status, no place - goes last whichever way round, and ties
+  /// keep the order they had.
+  List<Map<String, dynamic>> _tableOrder() {
+    final sort = _columnSort;
+    if (sort == null) return _reviews;
+    final (key, ascending) = sort;
+
+    Comparable<Object>? value(Map<String, dynamic> review) {
+      String? text(Object? v) {
+        final s = '${v ?? ''}'.trim().toLowerCase();
+        return s.isEmpty ? null : s;
+      }
+
+      return switch (key) {
+        'name' => text(review['reviewer_name']),
+        'location' => text(_placeOf(review)),
+        'date' => DateTime.tryParse('${review['review_created_at'] ?? ''}'),
+        'rating' => review['rating'] as num?,
+        'status' => text((review['board'] as Map?)?['status']),
+        _ => '${_withLiveReply(review)['reply'] ?? ''}'.trim().isEmpty ? 0 : 1,
+      } as Comparable<Object>?;
+    }
+
+    final indexed = [
+      for (var i = 0; i < _reviews.length; i++) (i, value(_reviews[i]), _reviews[i]),
+    ];
+    indexed.sort((a, b) {
+      final (ai, av, _) = a;
+      final (bi, bv, _) = b;
+      if (av == null || bv == null) {
+        return av == bv ? ai.compareTo(bi) : (av == null ? 1 : -1);
+      }
+      final order = ascending ? av.compareTo(bv) : bv.compareTo(av);
+      return order != 0 ? order : ai.compareTo(bi);
+    });
+
+    return [for (final (_, _, review) in indexed) review];
   }
 
   Widget _tableRow(ThemeData theme, Map<String, dynamic> review) {
     review = _withLiveReply(review);
     final card = (review['board'] as Map?)?.cast<String, dynamic>();
-    final contact = (card?['contact'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final contact = _contactLines(review);
     final name = '${review['reviewer_name'] ?? ''}'.trim();
     final comment = '${review['comment'] ?? ''}'.trim();
     final reply = '${review['reply'] ?? ''}'.trim();
@@ -790,7 +955,7 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     ThemeData theme,
     Map<String, dynamic> review,
     Map<String, dynamic>? card,
-    Map<String, dynamic> contact,
+    List<String> contact,
     String name,
     String comment,
     String reply,
@@ -801,9 +966,9 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 20,
-            child: Column(
+          _column(
+            'customer',
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -825,46 +990,37 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               ],
             ),
           ),
-          Expanded(
-            flex: 38,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Text(
-                comment.isEmpty ? 'No comment' : comment,
-                // Three lines, like A1 Tools' board. A column that shows one
-                // line of a five-line complaint is a column nobody can triage
-                // from; one that shows all five is not a table any more.
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall,
-              ),
+          _column(
+            'review',
+            Text(
+              comment.isEmpty ? 'No comment' : comment,
+              // Three lines, like A1 Tools' board. A column that shows one
+              // line of a five-line complaint is a column nobody can triage
+              // from; one that shows all five is not a table any more.
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
             ),
           ),
-          if (_anyContact)
-            Expanded(
-              flex: 16,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final key in ['phone', 'email'])
-                    if (contact[key] != null)
-                      Text('${contact[key]}',
-                          style: theme.textTheme.bodySmall, overflow: TextOverflow.ellipsis),
-                  if (contact['phone'] == null && contact['email'] == null) Text('—', style: quiet),
-                ],
-              ),
+          _column(
+            'contact',
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in contact)
+                  Text(line, style: theme.textTheme.bodySmall, overflow: TextOverflow.ellipsis),
+                if (contact.isEmpty) Text('—', style: quiet),
+              ],
             ),
-          Expanded(
-            flex: 11,
-            child: Text(_short(review['review_created_at']), style: quiet),
           ),
+          _column('date', Text(_short(review['review_created_at']), style: quiet)),
           // A compact "★ 2" rather than five stars: the table's rating column
           // is narrower than five 15px icons at the widths it is offered at,
           // and A1 Tools' board draws it the same way.
-          Expanded(flex: 9, child: _ratingChip(theme, (review['rating'] as num?)?.toInt())),
-          Expanded(
-            flex: 14,
-            child: Column(
+          _column('rating', _ratingChip(theme, (review['rating'] as num?)?.toInt())),
+          _column(
+            'status',
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 card == null || card['status'] == null
@@ -903,9 +1059,9 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               ],
             ),
           ),
-          Expanded(
-            flex: 20,
-            child: Text(
+          _column(
+            'notes',
+            Text(
               '${card?['note'] ?? '—'}',
               maxLines: 3,
               overflow: TextOverflow.ellipsis,

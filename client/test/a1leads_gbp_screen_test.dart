@@ -258,13 +258,14 @@ void main() {
     expect(asked.queryParameters.containsKey('city'), isFalse);
   });
 
-  /// THE TABLE: Status and Notes from A-1's board, and Contact honestly absent.
+  /// THE TABLE: Status and Notes from A-1's board, and Contact honestly empty.
   ///
   /// Rodrigo opened the board feed on 24 September. Measured after install,
   /// Status was filled on 387 of 387 cards and Notes on 354 - and Contact on
   /// NONE, because A1 Leads sends EzBizi only a saved customer match and never
-  /// the name-guessing A1 Tools does. An empty Contact column would read as
-  /// "these customers have no phone", so it is not drawn and the reason is.
+  /// the name-guessing A1 Tools does. The column is drawn - Jose asked for it,
+  /// 2026-09-28 - and with no customer matched it holds dashes, with the
+  /// reason beneath the table so the dashes do not read as "no phone".
   testWidgets('the table shows status and notes, and says why contact is absent', (
     tester,
   ) async {
@@ -284,8 +285,8 @@ void main() {
     // A review with no card says so with a dash, not a blank.
     expect(find.text('—'), findsWidgets);
 
-    // Contact is absent, and the reason is on screen.
-    expect(find.text('CONTACT'), findsNothing);
+    // Contact is empty, and the reason is on screen.
+    expect(find.text('CONTACT'), findsOneWidget);
     expect(find.textContaining('does not send customer phone or email'), findsOneWidget);
     expect(find.textContaining('needs A-1 Chimney as the company in view'), findsOneWidget);
   });
@@ -644,6 +645,121 @@ void main() {
     expect(complaints, isEmpty, reason: 'the editor fits under the row');
   });
 
+  /// HALF A DESKTOP SCREEN - Jose, 2026-09-28: the table did not fit at about
+  /// 960 wide. The window is 960 but the page is not: the shell's sidebar
+  /// (220 by default) takes its share, and the table is chosen from the
+  /// WINDOW's width. So the page is pumped beside a sidebar, with every column
+  /// filled - contact, the tappable status pill, the Reply button.
+  ///
+  /// Measured in a browser with real fonts first: no RenderFlex overflowed.
+  /// What did not fit was the columns - every one a share of 700px, so the
+  /// status pill read "Awaitin…" and the date ran into the rating. So beside
+  /// "no overflow error" this asserts the columns keep their widths, which
+  /// the squeezed table fails whatever font draws it.
+  testWidgets('the table fits half a desktop screen beside the sidebar', (tester) async {
+    final complaints = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) => complaints.add(details.exceptionAsString());
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(
+      tester,
+      _handler(
+        total: 3,
+        withPhone: true,
+        withCustomer: true,
+        opsAvailable: true,
+        manageGranted: true,
+        replyAvailable: true,
+        replyGranted: true,
+      ),
+      size: const Size(960, 900),
+      sidebar: 220,
+    );
+    FlutterError.onError = previous;
+
+    // The control: the table really was drawn, with its rows.
+    expect(find.text('CUSTOMER'), findsOneWidget);
+    expect(find.text('Dana Whitfield'), findsOneWidget);
+    expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
+
+    // A column's width, read from where its heading and the next one start.
+    double column(String heading, String next) =>
+        tester.getTopLeft(find.text(next)).dx - tester.getTopLeft(find.text(heading)).dx;
+
+    expect(column('STATUS', 'NOTES'), greaterThanOrEqualTo(140),
+        reason: 'room for "Awaiting report" and its arrow, not "Awaitin…"');
+    expect(column('DATE', 'RATING'), greaterThanOrEqualTo(88),
+        reason: 'a date that does not run into the rating');
+    expect(column('CONTACT', 'DATE'), greaterThanOrEqualTo(140), reason: 'a whole phone number');
+    // And the squeeze is not merely moved onto the prose columns.
+    expect(column('CUSTOMER', 'REVIEW'), greaterThanOrEqualTo(150));
+    expect(column('REVIEW', 'CONTACT'), greaterThanOrEqualTo(280));
+  });
+
+  /// SORTING - a header sorts the loaded page by it, and a second click
+  /// reverses it. The default is the server's newest first.
+  testWidgets('a column header sorts the table, and again reverses it', (tester) async {
+    await _pump(tester, _handler(total: 3, withCustomer: true));
+
+    // The three reviewers, top to bottom as drawn.
+    double top(String name) => tester.getTopLeft(find.text(name)).dy;
+    List<String> order() =>
+        ['Dana Whitfield', 'Marcus Reed', 'Kevin Ha']..sort((a, b) => top(a).compareTo(top(b)));
+
+    // Newest first, as the server sent it.
+    expect(order(), ['Dana Whitfield', 'Marcus Reed', 'Kevin Ha']);
+
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-rating')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Marcus Reed', 'Dana Whitfield', 'Kevin Ha'], reason: 'highest first');
+
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-rating')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Kevin Ha', 'Dana Whitfield', 'Marcus Reed'], reason: 'reversed');
+
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-name')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Dana Whitfield', 'Kevin Ha', 'Marcus Reed'], reason: 'A to Z');
+
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-date')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Dana Whitfield', 'Marcus Reed', 'Kevin Ha'], reason: 'newest first');
+
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-date')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Kevin Ha', 'Marcus Reed', 'Dana Whitfield'], reason: 'oldest first');
+
+    // Unreplied first: the ones that still need doing.
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-reply')));
+    await tester.pumpAndSettle();
+    expect(order().last, 'Marcus Reed', reason: 'the only replied review goes last');
+
+    // Cards with a status before the ones with none, whichever way round.
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-status')));
+    await tester.pumpAndSettle();
+    expect(order().first, 'Dana Whitfield');
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-status')));
+    await tester.pumpAndSettle();
+    expect(order().first, 'Dana Whitfield', reason: 'no status is last in both directions');
+
+    // By place: Morton Grove, IL before Mt Laurel Township, NJ; no place last.
+    await tester.tap(find.byKey(const ValueKey('gbp-sort-location')));
+    await tester.pumpAndSettle();
+    expect(order(), ['Marcus Reed', 'Dana Whitfield', 'Kevin Ha']);
+  });
+
+  /// CONTACT, as A1 Tools shows it: the matched customer's phone when the
+  /// card's own contact is empty - which it is on every card A1 Leads sends.
+  testWidgets("the contact column shows the matched customer's phone", (tester) async {
+    await _pump(tester, _handler(total: 3, withCustomer: true));
+
+    expect(find.text('CONTACT'), findsOneWidget);
+    expect(find.text('+15555550101'), findsOneWidget, reason: 'from the matched customer');
+    expect(find.textContaining('does not send customer phone or email'), findsNothing);
+  });
+
+
   /// Nothing matching the filters is a different sentence from nothing at all.
   testWidgets('an empty page blames the filters, not the business', (tester) async {
     await _pump(tester, _handler(total: 0));
@@ -663,6 +779,7 @@ Future<void> _pump(
   WidgetTester tester,
   MockClientHandler handler, {
   Size size = const Size(1400, 1600),
+  double sidebar = 0,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -678,7 +795,15 @@ Future<void> _pump(
   await tester.pumpWidget(
     MaterialApp(
       theme: EzBiziTheme.light(),
-      home: Scaffold(body: A1LeadsGbpScreen(api: api, session: session)),
+      // `sidebar` stands in for the shell's navigation beside the page.
+      home: Scaffold(
+        body: sidebar == 0
+            ? A1LeadsGbpScreen(api: api, session: session)
+            : Row(children: [
+                SizedBox(width: sidebar),
+                Expanded(child: A1LeadsGbpScreen(api: api, session: session)),
+              ]),
+      ),
     ),
   );
   await tester.pumpAndSettle();
