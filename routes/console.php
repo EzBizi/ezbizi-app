@@ -132,9 +132,11 @@ Schedule::command('ezbizi:sync-leads')->everyMinute()->withoutOverlapping(10);
  * branch per run. That is what makes a per-minute tick cost less than A1's
  * two-minute one, not more.
  */
-// In its own process: the scheduler runs one minute's commands one after
-// another, and nine accounts of HTTP here held up every command after it.
-Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5)->runInBackground();
+// NOT runInBackground(): the scheduler is a systemd oneshot unit with
+// KillMode=control-group, so a background child is KILLED the moment
+// schedule:run exits. Measured 2026-09-28: with it, this died after three of
+// nine accounts every run for 90 minutes.
+Schedule::command('ezbizi:sync-workiz')->everyMinute()->withoutOverlapping(5);
 
 /*
  * HOURLY, and deliberately not beside the job sweep.
@@ -183,10 +185,9 @@ Schedule::command('ezbizi:import-workiz-leads')->everyMinute()->withoutOverlappi
  * the link is the record of what has been projected, and nothing a person
  * corrected in EzBizi is ever reverted.
  */
-// In its own process, for the same reason: measured 2026-09-28, run in line it
-// began 17, 27, then 36 seconds into successive minutes, and every command
-// defined after it -- the Field sweep's safety alerts among them -- waited.
-Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10)->runInBackground();
+// NOT runInBackground(), for the same reason: killed with schedule:run, it
+// never finished a pass and its own lock stayed held for an hour each time.
+Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10);
 
 /*
  * New zips from new bookings (Jose, 2026-09-28): a job booked in Workiz for
