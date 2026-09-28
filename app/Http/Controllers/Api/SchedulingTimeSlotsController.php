@@ -87,6 +87,18 @@ class SchedulingTimeSlotsController extends Controller
         $this->assertMayEdit($request);
         $row = SchedulingTimeSlot::query()->findOrFail($slot);
 
+        // A REMOVAL MUST NAME WHAT IT REMOVES (Jose, 2026-09-28: "anyone could
+        // click by accident and delete a full time slot"). It deletes every
+        // area's capacity on the window, so the request has to carry the
+        // window's own hours, ?confirm=08:00-11:00. The screen asks for them
+        // typed; a stray click cannot produce them.
+        $window = $this->hm($row->start_time).'-'.$this->hm($row->end_time);
+        if ($request->query('confirm') !== $window) {
+            throw ValidationException::withMessages([
+                'confirm' => "To remove this time slot, confirm it as {$window}.",
+            ]);
+        }
+
         DB::transaction(function () use ($row) {
             ServiceAreaSlot::query()
                 ->where('start_time', $this->hm($row->start_time))
@@ -102,6 +114,14 @@ class SchedulingTimeSlotsController extends Controller
     /** @return array<int, array{id: string, start_time: string, end_time: string}> */
     private function ordered(): array
     {
+        // How many areas have capacity on each window, so a change or a
+        // removal can say what it will touch before anybody confirms it.
+        $used = ServiceAreaSlot::query()
+            ->selectRaw('start_time, end_time, COUNT(DISTINCT service_area_id) as areas')
+            ->groupBy('start_time', 'end_time')
+            ->get()
+            ->mapWithKeys(fn ($r) => [$this->hm($r->start_time).'-'.$this->hm($r->end_time) => (int) $r->areas]);
+
         return SchedulingTimeSlot::query()
             ->orderBy('start_time')
             ->get()
@@ -109,6 +129,7 @@ class SchedulingTimeSlotsController extends Controller
                 'id' => $s->id,
                 'start_time' => $this->hm($s->start_time),
                 'end_time' => $this->hm($s->end_time),
+                'areas' => $used[$this->hm($s->start_time).'-'.$this->hm($s->end_time)] ?? 0,
             ])
             ->all();
     }

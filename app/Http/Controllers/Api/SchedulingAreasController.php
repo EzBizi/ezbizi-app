@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Franchise;
 use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
+use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
 use App\Models\ServiceAreaSlot;
 use App\Models\ServiceAreaZip;
@@ -52,6 +53,11 @@ class SchedulingAreasController extends Controller
 
         $pattern = SlotShape::commonest($shapes->values()->all());
 
+        $areaLimits = ServiceAreaDailyLimit::query()
+            ->whereIn('service_area_id', $areas->pluck('id'))
+            ->get()
+            ->groupBy('service_area_id');
+
         return response()->json([
             'data' => $areas->map(fn (ServiceArea $a) => [
                 'id' => $a->id,
@@ -72,6 +78,9 @@ class SchedulingAreasController extends Controller
                 // the storage deliberately cannot express — the whole module
                 // rests on that distinction.
                 'week' => $this->week($a->slots),
+                // The area's own daily limit, weekday => jobs; the Overview's
+                // totals take the lower of this and the week above.
+                'daily_limits' => (object) ($areaLimits[$a->id] ?? collect())->pluck('max_jobs', 'weekday')->all(),
             ])->all(),
             // Each franchise's daily limit, weekday => jobs, for the franchise
             // Overview. A franchise with none is absent; a weekday with none is
@@ -534,6 +543,41 @@ class SchedulingAreasController extends Controller
     }
 
     /** @return array<string, mixed> */
+    /**
+     * PUT /api/v1/scheduling/areas/{area}/limits {limits: {"0".."6": int|null}}
+     *
+     * The area's own daily limit per weekday (Jose, 2026-09-28). Blank is no
+     * limit; a zero is refused — a day the area does not work is closed by its
+     * time slots, not by a limit of nothing.
+     */
+    public function limits(Request $request, string $area): JsonResponse
+    {
+        $row = $this->reachable($request)->findOrFail($area);
+        $this->authorize('update', $row);
+
+        $data = $request->validate([
+            'limits' => ['present', 'array'],
+            'limits.*' => ['nullable', 'integer', 'min:1', 'max:9999'],
+        ]);
+
+        $limits = [];
+        foreach ($data['limits'] as $weekday => $max) {
+            abort_unless(in_array((string) $weekday, ['0', '1', '2', '3', '4', '5', '6'], true), 422, 'A weekday is 0 (Sunday) to 6.');
+            if ($max !== null) {
+                $limits[(int) $weekday] = (int) $max;
+            }
+        }
+
+        DB::transaction(function () use ($row, $limits) {
+            ServiceAreaDailyLimit::where('service_area_id', $row->id)->delete();
+            foreach ($limits as $weekday => $max) {
+                ServiceAreaDailyLimit::create(['service_area_id' => $row->id, 'weekday' => $weekday, 'max_jobs' => $max]);
+            }
+        });
+
+        return response()->json(['data' => $this->detail($row->fresh(['slots', 'zips']))]);
+    }
+
     private function detail(ServiceArea $area): array
     {
         return [
@@ -541,6 +585,11 @@ class SchedulingAreasController extends Controller
             'name' => $area->name,
             'franchise_id' => $area->franchise_id,
             'available_from' => $area->available_from?->toDateString(),
+            // weekday => jobs; absent is no limit. An object, not a list.
+            'daily_limits' => (object) ServiceAreaDailyLimit::query()
+                ->where('service_area_id', $area->id)
+                ->pluck('max_jobs', 'weekday')
+                ->all(),
             // Upcoming specific dates only — a past one changes nothing, and
             // the editor lists what is still ahead.
             'dates' => ServiceAreaDateOverride::query()

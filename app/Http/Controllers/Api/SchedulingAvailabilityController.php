@@ -278,7 +278,8 @@ class SchedulingAvailabilityController extends Controller
             foreach ($perArea as $areaDays) {
                 $day = $areaDays[$i];
                 $open = $open || $day['windows'] !== [];
-                $capacity += array_sum(array_column($day['windows'], 'capacity'));
+                $own = array_sum(array_column($day['windows'], 'capacity'));
+                $capacity += $day['area_limit'] === null ? $own : min($own, $day['area_limit']);
                 $booked += array_sum(array_column($day['windows'], 'taken')) + $day['no_time'];
                 $remaining += array_sum(array_column($day['windows'], 'remaining'));
                 $limit = $day['franchise_limit'];

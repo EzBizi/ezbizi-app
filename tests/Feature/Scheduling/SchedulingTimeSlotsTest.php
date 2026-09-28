@@ -148,7 +148,17 @@ class SchedulingTimeSlotsTest extends TestCase
         ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 3, 'start_time' => '16:00', 'end_time' => '18:00', 'max_jobs' => 1]);
         ServiceAreaSlot::create(['service_area_id' => $area->id, 'weekday' => 3, 'start_time' => '10:00', 'end_time' => '13:00', 'max_jobs' => 3]);
 
-        $this->signedInAs($owner)->deleteJson("/api/v1/scheduling/time-slots/{$late->id}")->assertOk();
+        // A removal that does not name the window is refused and removes
+        // nothing (Jose: "anyone could click by accident").
+        $this->signedInAs($owner)->deleteJson("/api/v1/scheduling/time-slots/{$late->id}")->assertStatus(422);
+        $this->signedInAs($owner)->deleteJson("/api/v1/scheduling/time-slots/{$late->id}?confirm=10:00-13:00")->assertStatus(422);
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame(2, ServiceAreaSlot::query()->count());
+
+        $this->signedInAs($owner)->getJson('/api/v1/scheduling/time-slots')
+            ->assertJsonPath('data.1.areas', 1);
+
+        $this->signedInAs($owner)->deleteJson("/api/v1/scheduling/time-slots/{$late->id}?confirm=16:00-18:00")->assertOk();
 
         app(TenantContext::class)->set($tenant['org']);
         $this->assertSame(['10:00'], ServiceAreaSlot::query()->pluck('start_time')->map(fn ($t) => substr($t, 0, 5))->all());
