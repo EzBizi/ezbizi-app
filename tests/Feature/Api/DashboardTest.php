@@ -16,6 +16,13 @@ use App\Support\Subscriptions\SubscriptionGuard;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use App\Support\Dashboard\ComingSoonGlance;
+use App\Support\Dashboard\DashboardPeriod;
+use App\Support\Dashboard\Glance;
+use App\Support\Dashboard\GlancePayload;
+use App\Support\Modules\ModuleAvailability;
+use Illuminate\Support\Facades\Exceptions;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -689,5 +696,109 @@ class DashboardTest extends TestCase
         // §13: the owner may still sign in and view everything. A dashboard is
         // the most-visited read in the product.
         $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk();
+    }
+
+    /**
+     * Stand a registry in the container whose available glances are exactly
+     * these, so a test can put a glance that throws beside one that does not.
+     *
+     * @param  Glance[]  $glances
+     */
+    private function registryOf(array $glances): void
+    {
+        $this->app->instance(GlanceRegistry::class, new class($glances, app(ModuleAvailability::class)) extends GlanceRegistry
+        {
+            /** @param  Glance[]  $glances */
+            public function __construct(private array $only, ModuleAvailability $availability)
+            {
+                parent::__construct($availability);
+            }
+
+            public function availableTo(User $user): array
+            {
+                return $this->only;
+            }
+        });
+    }
+
+    /**
+     * A glance whose resolve() throws, as one does when its table is not
+     * migrated yet — which is how UI/UX met this, live, on 2026-09-28.
+     */
+    private function brokenGlance(): Glance
+    {
+        return new class implements Glance
+        {
+            public function key(): string { return 'broken'; }
+            public function label(): string { return 'Broken Module'; }
+            public function permission(): string { return 'dashboard.view'; }
+            public function allowedPresentations(): array { return ['pie', 'text']; }
+            public function defaultPresentation(): string { return 'pie'; }
+            public function snapshot(): bool { return true; }
+
+            public function resolve(User $user, DashboardPeriod $period, array $options): GlancePayload
+            {
+                throw new RuntimeException("SQLSTATE[42S02]: Base table or view not found: 'ads_account_states'");
+            }
+        };
+    }
+
+    /**
+     * ONE GLANCE MUST NOT TAKE THE DASHBOARD DOWN.
+     *
+     * Before 2026-09-28 a throw in any single resolve() became a 500 for the
+     * whole endpoint, and every card vanished behind one error. The broken
+     * module is rarely the one the reader came to see.
+     */
+    public function test_one_failing_glance_leaves_every_other_box_standing(): void
+    {
+        Exceptions::fake();
+        $this->registryOf([
+            new ComingSoonGlance('newsletter', 'Newsletter', 'A healthy box.'),
+            $this->brokenGlance(),
+        ]);
+
+        $glances = collect($this->glancesOf($this->alpha['admin']))->keyBy('key');
+
+        // The healthy box is untouched — the control, without which "200"
+        // could mean the failure was swallowed along with everything else.
+        $this->assertSame('A healthy box.', $glances['newsletter']['data']['sentence']);
+
+        // The broken one is still THERE, saying what happened, with no chart
+        // menu on a box that has nothing to chart.
+        $broken = $glances['broken'];
+        $this->assertSame('Broken Module', $broken['label']);
+        $this->assertTrue($broken['data']['empty']);
+        $this->assertSame('This panel could not load right now.', $broken['data']['sentence']);
+        $this->assertSame([], $broken['allowed_presentations']);
+        $this->assertFalse($broken['coming_soon']);
+
+        // Not silent to us either.
+        Exceptions::assertReported(fn (RuntimeException $e) => str_contains($e->getMessage(), 'ads_account_states'));
+    }
+
+    /**
+     * THE FAILED PANEL MUST NOT ERASE WHAT THIS PERSON CHOSE.
+     *
+     * The client echoes `presentation` and `options` straight back on the next
+     * reorder and `saveLayout` stores them. A failed panel that came back as
+     * `text` would, the moment somebody dragged any card during an outage,
+     * overwrite their chart choice for that box — permanently, over a fault
+     * they did not cause and cannot see. So the person's own value wins even
+     * on a panel that could not be computed.
+     */
+    public function test_a_failed_panel_keeps_the_readers_own_chart_choice(): void
+    {
+        Exceptions::fake();
+        $this->registryOf([$this->brokenGlance()]);
+
+        $this->inTenant(fn () => User::find($this->alpha['admin']->id)
+            ->forceFill(['preferences' => ['dashboard.glances' => [
+                ['key' => 'broken', 'presentation' => 'pie'],
+            ]]])->save());
+
+        $broken = collect($this->glancesOf($this->alpha['admin']))->firstWhere('key', 'broken');
+
+        $this->assertSame('pie', $broken['presentation']);
     }
 }

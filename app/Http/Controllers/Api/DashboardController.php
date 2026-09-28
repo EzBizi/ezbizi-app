@@ -8,10 +8,12 @@ use App\Models\User;
 use App\Support\Dashboard\DashboardPeriod;
 use App\Support\Dashboard\Glance;
 use App\Support\Dashboard\GlanceRegistry;
+use App\Support\Dashboard\GlancePayload;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 /**
  * The dashboard: one glance per reachable sidebar module (spec §4, §11).
@@ -64,7 +66,26 @@ class DashboardController extends Controller
             $presentation = $this->declaredPresentation($glance, $entry['presentation'] ?? null);
             $options = $this->asDeclared($glance, $entry['options'] ?? [], $user);
 
-            $payload = $glance->resolve($user, $period, $options)->toArray();
+            /*
+             * One glance must never take the dashboard down with it.
+             *
+             * Before 2026-09-28 a throw in any single resolve() became a 500 for
+             * the whole endpoint, and the client drew one error and "Try again"
+             * where every card should have been. UI/UX saw it live on a local
+             * database: a peer's not-yet-migrated table made one Ads glance
+             * throw and all nineteen boxes vanished. In production the same
+             * happens after any partial deploy or any single glance's bug, and
+             * the module that broke is rarely the one the reader came to see.
+             *
+             * Reported, so it is not silent to us; drawn as a failed panel, so
+             * it is not silent to the reader either.
+             */
+            try {
+                $payload = $glance->resolve($user, $period, $options)->toArray();
+            } catch (Throwable $e) {
+                report($e);
+                $payload = $this->failedPanel($glance);
+            }
             $payload['presentation'] = $presentation;
 
             /*
@@ -404,6 +425,45 @@ class DashboardController extends Controller
         });
     }
 
+    /**
+     * A box that could not be computed, drawn with fields every shipped client
+     * already understands.
+     *
+     * `empty` + `sentence` is the statement branch the renderer has always
+     * had, so an installed desktop or phone build that predates this draws it
+     * correctly with no client release. A new `failed` flag would be ignored
+     * by exactly those builds, which are the ones still out there when a
+     * partial deploy is the cause.
+     *
+     * `allowed_presentations` is empty so no chart menu sits on a broken box.
+     * What it does NOT do is reset `presentation` or `options`: the caller
+     * overwrites both with the person's own values after this returns, and
+     * that is load-bearing — the client echoes them straight back on the next
+     * reorder, so a failed panel carrying `text` and no options would ERASE
+     * this person's chart choice and saved options for that box because of an
+     * outage they did not cause and cannot see the cause of.
+     *
+     * `key()` and `label()` are constants on every glance, so nothing here can
+     * throw the same way resolve() just did.
+     *
+     * @return array<string, mixed>
+     */
+    private function failedPanel(Glance $glance): array
+    {
+        return (new GlancePayload(
+            key: $glance->key(),
+            label: $glance->label(),
+            presentation: 'text',
+            allowedPresentations: [],
+            snapshot: true,
+            comingSoon: false,
+            options: [],
+            data: [
+                'empty' => true,
+                'sentence' => 'This panel could not load right now.',
+            ],
+        ))->toArray();
+    }
     private function periodFor(User $user): DashboardPeriod
     {
         $key = $user->preferences['dashboard.period'] ?? 'month';
