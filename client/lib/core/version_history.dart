@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Recordings: with no speakers or headphones connected, a recording waits and starts playing as soon as some are connected.',
+        'Web Management, SEO: Edit hours on several websites opens inside the SEO tab instead of a separate page, and has Select all.',
       ],
     ),
     VersionRelease(
