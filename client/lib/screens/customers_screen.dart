@@ -443,12 +443,61 @@ class _CustomersScreenState extends State<CustomersScreen> {
                     },
                   ),
                 ),
+              // Below the table's width there are no column headers to click,
+              // so the same sort is offered here, said in words (UI/UX,
+              // 2026-09-28). A full line: "Created, newest first" does not fit
+              // in half of one.
+              if (!wide)
+                SizedBox(
+                  width: constraints.maxWidth,
+                  child: SearchPickerField<String>(
+                    value: '$_sort:${_ascending ? 'asc' : 'desc'}',
+                    label: 'Sort',
+                    options: [
+                      for (final (key, up, down) in _sortWords(label))
+                        for (final ascending in _firstDirection(key)
+                            ? [true, false]
+                            : [false, true])
+                          SearchOption<String>(
+                            value: '$key:${ascending ? 'asc' : 'desc'}',
+                            label: ascending ? up : down,
+                          ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      final [key, direction] = value.split(':');
+                      setState(() {
+                        _sort = key;
+                        _ascending = direction == 'asc';
+                      });
+                      _load();
+                    },
+                  ),
+                ),
             ],
           );
         },
       ),
     );
   }
+
+  /// Each sortable column in words, ascending then descending. The same keys
+  /// the table headers send, so a phone and a desk sort the same list the same
+  /// way. [owner] is the organization's own word for a franchise.
+  static List<(String, String, String)> _sortWords(String owner) => [
+    ('name', 'Name, A to Z', 'Name, Z to A'),
+    ('created', 'Created, oldest first', 'Created, newest first'),
+    ('jobs', 'Jobs, fewest first', 'Jobs, most first'),
+    ('city', 'City, A to Z', 'City, Z to A'),
+    ('owner', '$owner, A to Z', '$owner, Z to A'),
+    ('email', 'Email, A to Z', 'Email, Z to A'),
+    ('phone', 'Phone, low to high', 'Phone, high to low'),
+    ('number', 'Customer number, low to high', 'Customer number, high to low'),
+  ];
+
+  /// Whether a column's natural first direction is ascending -- the same rule
+  /// a header click follows, so the picker lists the likelier choice first.
+  static bool _firstDirection(String key) => !(key == 'created' || key == 'jobs');
 
   Widget _body(BuildContext context, {required bool wide}) {
     if (_customers.isEmpty) {
@@ -665,7 +714,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
         _ascending = !_ascending;
       } else {
         _sort = key;
-        _ascending = !(key == 'created' || key == 'jobs');
+        _ascending = _firstDirection(key);
       }
     });
     _load();

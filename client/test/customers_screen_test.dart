@@ -4,6 +4,7 @@ import 'package:ezbizi_client/core/api_client.dart';
 import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/customers_screen.dart';
+import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -309,6 +310,49 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(sorts.last, 'created asc');
+  });
+
+
+  /// A phone has no column headers to click, so the same sort is a picker in
+  /// words. It must send the SAME keys the headers do -- a picker that sorted
+  /// some other way would give a phone and a desk two different lists.
+  testWidgets('on a phone, Sort is a picker that asks the server the same way', (
+    tester,
+  ) async {
+    final sorts = <String>[];
+
+    await _pump(
+      tester,
+      size: const Size(375, 812),
+      customers: [_alice],
+      onRequest: (request) {
+        if (request.url.path.endsWith('/customers')) {
+          final q = request.url.queryParameters;
+          sorts.add('${q['sort']} ${q['direction']}');
+        }
+        return null;
+      },
+    );
+
+    // The only non-nullable picker on the screen; Show and the franchise
+    // picker are String?.
+    await tester.tap(find.byType(SearchPickerField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Created, newest first').last);
+    await tester.pumpAndSettle();
+
+    expect(sorts.last, 'created desc');
+  });
+
+  /// And none on a desk, where the headers already are the control -- two
+  /// ways to do one thing, side by side, would each look like it does
+  /// something the other does not.
+  testWidgets('on a desk the headers sort, and there is no Sort picker', (
+    tester,
+  ) async {
+    await _pump(tester, customers: [_alice]);
+
+    expect(find.byType(SearchPickerField<String>), findsNothing);
   });
 
 }
