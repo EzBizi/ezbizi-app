@@ -178,7 +178,7 @@ class NotificationDispatcher
          * switched off — which keeps the answer to "why did I get this email"
          * one switch rather than two places that have to be read together.
          */
-        $emailed = $inAppOnly ? 0 : $this->alsoByEmail($told, $title, $body, $scope);
+        $emailed = $this->mayEmail($source, $inAppOnly) ? $this->alsoByEmail($told, $title, $body, $scope) : 0;
 
         /*
          * AND THE THIRD CHANNEL — the only one that reaches a closed app.
@@ -667,7 +667,13 @@ class NotificationDispatcher
          * this notification makes it worth resolving an audience for. A fourth
          * channel adds a line to the array and nothing else.
          */
-        foreach (['notifications.in_app_enabled', 'notifications.email_enabled'] as $key) {
+        $channels = ['notifications.in_app_enabled'];
+
+        if ($this->mayEmail($source, $inAppOnly)) {
+            $channels[] = 'notifications.email_enabled';
+        }
+
+        foreach ($channels as $key) {
             if ($this->channelOn($key, $scope)) {
                 return true;
             }
@@ -677,6 +683,26 @@ class NotificationDispatcher
         // which the other two do not have: a server with no FCM service account
         // has the setting switched on and no way to act on it.
         return $this->channelOn('notifications.push_enabled', $scope) && $this->push->configured();
+    }
+
+    /**
+     * Whether this notification may be emailed at all — asked by BOTH
+     * dispatch() and allows(), so the two cannot disagree.
+     *
+     * An automation's notification is never emailed. Jose, 2026-09-28: "the
+     * toggle should not exist at all, there is an automation for sending an
+     * email ... if i wanted an automation to send an email i would use send an
+     * email step". Email from a rule is only the "Send an email" step, which
+     * sends its own mail and never comes through here.
+     *
+     * A SOURCE rule, not `$inAppOnly`, because that flag silences PUSH as well:
+     * an automation passing it to stop the email would also stop the phone
+     * buzzing, and a notification that silently never reaches a handset is the
+     * failure this module has spent a month removing.
+     */
+    private function mayEmail(string $source, bool $inAppOnly): bool
+    {
+        return ! $inAppOnly && $source !== 'automation';
     }
 
     /**

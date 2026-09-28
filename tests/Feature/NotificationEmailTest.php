@@ -124,7 +124,7 @@ class NotificationEmailTest extends TestCase
             title: 'A setting changed',
             body: 'Somebody changed the locale.',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         $this->assertSame(1, $told, 'Only the organization-level person hears this.');
@@ -143,7 +143,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         // The row is the control: without it this test would pass just as well
@@ -163,7 +163,7 @@ class NotificationEmailTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         NotificationFacade::assertSentTo(
@@ -193,7 +193,7 @@ class NotificationEmailTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         NotificationFacade::assertSentTo(
@@ -212,12 +212,12 @@ class NotificationEmailTest extends TestCase
         NotificationFacade::fake();
 
         $tenant = $this->provisionTenant('Epsilon');
-        $this->set($tenant, 'notifications.automation_enabled', false);
+        $this->set($tenant, 'notifications.hr_enabled', false);
 
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         $this->assertSame(0, $told);
@@ -249,7 +249,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         // No row.
@@ -296,6 +296,64 @@ class NotificationEmailTest extends TestCase
         $this->assertSame(1, $told, 'The bell must still reach them.');
         $this->assertSame(1, $this->inTenant($tenant['org'], fn () => Notification::where('user_id', $tenant['admin']->id)->count()));
         NotificationFacade::assertNothingSent();
+    }
+
+    /**
+     * An automation's notification is never emailed, whatever the org chose.
+     *
+     * Jose, 2026-09-28: "the toggle should not exist at all, there is an
+     * automation for sending an email ... if i wanted an automation to send an
+     * email i would use send an email step". Email from a rule is only ever the
+     * "Send an email" step, which does not come through this dispatcher.
+     *
+     * The same organization, with email ON, dispatches twice: once as `system`
+     * and once as `automation`. Exactly one mail is the assertion — it is the
+     * number that differs between the source being honoured and email simply
+     * being broken, which would send zero.
+     *
+     * Push is deliberately NOT stopped, and NotificationPushTest's first test —
+     * source `automation`, push asserted — is the proof. That is why this is a
+     * source rule and not the rule passing inAppOnly: that flag also silences
+     * push, and an automation's notification would stop reaching phones.
+     */
+    public function test_an_automation_notice_is_never_emailed_even_with_email_on(): void
+    {
+        NotificationFacade::fake();
+
+        $tenant = $this->provisionTenant();
+
+        $this->inTenant($tenant['org'], function () use ($tenant): void {
+            $this->dispatcher()->dispatch('Trial ends tomorrow', onlyTo: $tenant['admin'], source: 'system');
+            $this->dispatcher()->dispatch('A new lead has arrived', onlyTo: $tenant['admin'], source: 'automation');
+        });
+
+        NotificationFacade::assertSentTimes(NotificationNotice::class, 1);
+        $this->assertSame(2, $this->inTenant($tenant['org'], fn () => Notification::where('user_id', $tenant['admin']->id)->count()),
+            'Both must still reach the bell.');
+    }
+
+    /**
+     * And allows() must agree, or an automation author is told the wrong thing.
+     *
+     * ActionRunner asks allows() to explain a zero, choosing between "nobody
+     * has reach over that record" and "switched off for this company". With
+     * the bell off and email on, an automation notice now reaches nobody — and
+     * an allows() still counting email would answer true and send the author
+     * to audit permissions. `system`, in the same company, is the control: it
+     * CAN still be emailed, so it must still answer true.
+     */
+    public function test_allows_does_not_count_email_as_a_channel_for_an_automation(): void
+    {
+        $tenant = $this->provisionTenant();
+        $this->set($tenant, 'notifications.in_app_enabled', false);
+
+        [$automation, $system] = $this->inTenant($tenant['org'], fn () => [
+            $this->dispatcher()->allows('automation', $tenant['org']),
+            $this->dispatcher()->allows('system', $tenant['org']),
+        ]);
+
+        $this->assertTrue($system, 'Control: email is on, so a system notice can still be told.');
+        $this->assertFalse($automation, 'Bell off, and an automation is never emailed: nothing can carry it.');
     }
 
     /**
@@ -367,7 +425,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         // The bell told all of them — the ceiling is the EMAIL ceiling, and the
@@ -393,7 +451,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         $this->assertSame(50, $told, 'exactly at the ceiling');
@@ -411,7 +469,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             inAppOnly: true,
         ));
 
@@ -434,7 +492,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             inAppOnly: false,
         ));
 
@@ -462,7 +520,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             inAppOnly: true,
         ));
 
@@ -473,7 +531,7 @@ class NotificationEmailTest extends TestCase
         // is the sentence a rule author can act on.
         $this->assertFalse($this->inTenant(
             $tenant['org'],
-            fn () => $this->dispatcher()->allows('automation', $tenant['org'], inAppOnly: true),
+            fn () => $this->dispatcher()->allows('hr', $tenant['org'], inAppOnly: true),
         ));
 
         // And the control: the same organization, a rule that has NOT declined,
@@ -481,7 +539,7 @@ class NotificationEmailTest extends TestCase
         // above passes just as well against an allows() that always said false.
         $this->assertTrue($this->inTenant(
             $tenant['org'],
-            fn () => $this->dispatcher()->allows('automation', $tenant['org']),
+            fn () => $this->dispatcher()->allows('hr', $tenant['org']),
         ));
     }
 
@@ -503,7 +561,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'New Live Chat Lead',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             roleIds: [$sales->role_id],
         ));
 
@@ -522,7 +580,7 @@ class NotificationEmailTest extends TestCase
         $toldWithoutRole = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'New Live Chat Lead',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         $this->assertGreaterThan($told, $toldWithoutRole, 'the role is what narrowed it');
@@ -541,7 +599,7 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'New Live Chat Lead',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             roleIds: [$branch->role_id],
         ));
 
@@ -564,7 +622,7 @@ class NotificationEmailTest extends TestCase
         $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'New Live Chat Lead',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
             roleIds: [(string) Str::uuid7()],
         ));
     }
@@ -584,13 +642,13 @@ class NotificationEmailTest extends TestCase
         $told = $this->inTenant($tenant['org'], fn () => $this->dispatcher()->dispatch(
             title: 'A setting changed',
             subject: $tenant['org'],
-            source: 'automation',
+            source: 'hr',
         ));
 
         $this->assertSame(0, $told);
         $this->assertFalse($this->inTenant(
             $tenant['org'],
-            fn () => $this->dispatcher()->allows('automation', $tenant['org']),
+            fn () => $this->dispatcher()->allows('hr', $tenant['org']),
         ));
         NotificationFacade::assertNothingSent();
     }

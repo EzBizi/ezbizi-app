@@ -644,10 +644,15 @@ class SettingRegistry
                  * the queue worker until abf44c7c. The day that fix went live,
                  * every "A new lead from local_services has arrived" emailed
                  * nine people, about 370 an hour. The bell is the notification;
-                 * mail is something an organization chooses. Automations makes
-                 * the rule's own email toggle opt-in to match, so a mail now
-                 * needs BOTH switches on. Production was set false per
-                 * organization by the deploy desk before this landed.
+                 * mail is something an organization chooses. Production was set
+                 * false per organization by the deploy desk before this landed.
+                 *
+                 * And an AUTOMATION's notification is never emailed, whatever
+                 * this says — Jose, minutes later: "the toggle should not exist
+                 * at all, there is an automation for sending an email". Email
+                 * from a rule is only the "Send an email" step. That rule lives
+                 * in NotificationDispatcher::mayEmail(), so this key now governs
+                 * mail for the other sources (system, hr) only.
                  *
                  * The "unless" clause is not hedging: above the ceiling
                  * NOTHING is emailed, not a subset.
