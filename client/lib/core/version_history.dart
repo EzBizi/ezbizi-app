@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0292',
+      date: '28 Sep 2026',
+      items: [
+        'Social Media, Accounts: someone who works for some branches only sees, manages and posts to the accounts of those branches and their companies, and the organization-wide ones.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0291',
       date: '28 Sep 2026',
       items: [
