@@ -13,6 +13,10 @@ class VersionHistory {
       items: [
         'Leads, Accounts: a certification problem reads plainly, for example Background check: no submission.',
         'Leads: on a phone, the note under a conversation no longer sits under the gesture bar.',
+        'On a phone, the steps of the automation builder and the contract designer put their buttons under the sentence, and Name and What it is for stack instead of cutting the label short.',
+        'Leads: on a phone, the search, the sources and the filters scroll away with the list.',
+        'Suggestions: the back arrow sits at the start of the line, and only shows when there is a list to go back to.',
+        'Customers: the State and ZIP boxes line up.',
       ],
     ),
     VersionRelease(
