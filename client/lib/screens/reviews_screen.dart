@@ -189,7 +189,12 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Row(
+          // Wraps rather than a Row: on a phone the chip, the picker and the
+          // button overflowed the screen by 60px. Same as A1Leads GBP's filters.
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilterChip(
                 label: Text(_unanswered > 0
@@ -201,7 +206,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   _load();
                 },
               ),
-              const SizedBox(width: 12),
               SizedBox(
                 width: 150,
                 child: SearchPickerField<int?>(
@@ -223,7 +227,6 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   },
                 ),
               ),
-              const Spacer(),
               FilledButton.tonalIcon(
                 onPressed: _syncing ? null : _sync,
                 icon: _syncing

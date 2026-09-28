@@ -181,50 +181,44 @@ class InventorySplitScaffold extends StatelessWidget {
         final wide = constraints.maxWidth >= InventoryScreen.splitAbove;
         final paneOnly = !wide && hasPane;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!paneOnly) header,
-            Expanded(
-              child: AsyncBody(
-                loading: loading,
-                error: error,
-                onRetry: onRetry,
-                child: paneOnly
-                    ? pane(showBack: true)
-                    : wide && hasPane
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: KeyedSubtree(
-                              key: const Key('inventory-list'),
-                              child: list,
-                            ),
-                          ),
-                          VerticalDivider(
-                            width: 1,
-                            thickness: 1,
-                            color: EzBiziTheme.edge(context),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: KeyedSubtree(
-                              key: const Key('inventory-pane'),
-                              child: pane(showBack: false),
-                            ),
-                          ),
-                        ],
-                      )
-                    : KeyedSubtree(
+        final body = AsyncBody(
+          loading: loading,
+          error: error,
+          onRetry: onRetry,
+          child: paneOnly
+              ? pane(showBack: true)
+              : wide && hasPane
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: KeyedSubtree(
                         key: const Key('inventory-list'),
                         child: list,
                       ),
-              ),
-            ),
-          ],
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: EzBiziTheme.edge(context),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: KeyedSubtree(
+                        key: const Key('inventory-pane'),
+                        child: pane(showBack: false),
+                      ),
+                    ),
+                  ],
+                )
+              : KeyedSubtree(key: const Key('inventory-list'), child: list),
         );
+
+        // An open record on a phone is the whole screen, with its own back.
+        if (paneOnly) return body;
+
+        return HeaderAboveList(header: header, list: body);
       },
     );
   }

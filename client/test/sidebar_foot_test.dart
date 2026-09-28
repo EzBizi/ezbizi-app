@@ -40,6 +40,22 @@ void main() {
     );
   });
 
+  // Edge to edge on Android 15: the inset used to sit on the header row only,
+  // so once it scrolled away the rows ran up under the clock.
+  testWidgets('the drawer list starts below the status bar', (tester) async {
+    tester.view.padding = const FakeViewPadding(top: 40);
+    await _pump(tester, width: 375);
+
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+
+    final list = find.descendant(
+      of: find.byType(Drawer),
+      matching: find.byType(ListView),
+    );
+    expect(tester.getTopLeft(list).dy, greaterThanOrEqualTo(40));
+  });
+
   testWidgets('rearranging is at the foot, under the modules, not above them', (
     tester,
   ) async {

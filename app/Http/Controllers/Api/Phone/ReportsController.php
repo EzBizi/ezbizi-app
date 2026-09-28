@@ -192,8 +192,9 @@ class ReportsController extends Controller
             ],
 
             // Ids are meaningless on a screen. The names for whatever this
-            // grouping produced, resolved once here.
-            'labels' => $this->labels($input['group_by'] ?? 'day', $report['rows']),
+            // grouping produced, resolved once here. An object even when
+            // empty: a bare [] is a JSON list, and the app reads a map.
+            'labels' => (object) $this->labels($input['group_by'] ?? 'day', $report['rows']),
         ];
     }
 

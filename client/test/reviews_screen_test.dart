@@ -36,6 +36,28 @@ void main() {
     expect(find.text('No Business Profile connected'), findsNothing);
   });
 
+  // The emulator's width. The chip, the rating picker and Fetch new sat in one
+  // Row there and overflowed it by 60px. An overflow paints stripes and passes,
+  // so the only way to see it is to catch what Flutter reports.
+  testWidgets('the filter bar fits a phone', (tester) async {
+    final complaints = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) =>
+        complaints.add(details.exceptionAsString());
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(
+      tester,
+      reviews: [_review(reply: null)],
+      connections: _connected,
+      size: const Size(411, 900),
+    );
+    FlutterError.onError = previous;
+
+    expect(find.text('Fetch new'), findsOneWidget);
+    expect(complaints.where((c) => c.contains('overflowed')), isEmpty);
+  });
+
   testWidgets('Publish is not offered until something is drafted',
       (tester) async {
     await _pump(
@@ -128,8 +150,9 @@ Future<void> _pump(
   required List<Map<String, dynamic>> reviews,
   required List<Map<String, dynamic>> connections,
   bool onlyUnanswered = true,
+  Size size = const Size(1200, 1000),
 }) async {
-  tester.view.physicalSize = const Size(1200, 1000);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
 

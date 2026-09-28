@@ -228,72 +228,73 @@ class _CustomersScreenState extends State<CustomersScreen> {
     required String? refused,
     required bool wide,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PanelHeader(
-          note: (_loading || _error != null)
-              ? 'Shared across the organization — the $label tag shows who is accountable.'
-              : _customers.length < _total
-              ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
-                    'organization. The $label tag shows who is accountable.'
-              : '${formatCount(_total)} shared across the organization. The $label tag shows who is '
-                    'accountable for each relationship.',
-          // A Wrap rather than a Row: on a narrow window — and on a phone, which
-          // is coming — three controls side by side either overflow or squeeze
-          // the labels out. They fall onto a second line instead, in the same
-          // order.
-          action: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              // Deliberately a plain outlined button with no icon. Every icon
-              // that reads as "duplicates" -- merge arrows, a copy glyph --
-              // promises the one thing this does not do: nothing here merges
-              // anything, ever (§5.2), and a control that looks like a merge
-              // button is a worse lie than a wordy one.
-              OutlinedButton(
-                onPressed: _duplicates,
-                child: const Text('Possible duplicates'),
-              ),
-              // Transfer sits before the primary action rather than after it,
-              // so "Add customer" stays the last and most prominent thing in
-              // the header.
-              DataTransfer(
-                api: widget.api,
-                session: widget.session,
-                resource: 'customers',
-                // An import writes rows this list is showing, so it has to be
-                // read again — otherwise the count in the note above is a
-                // number the screen has already been told is wrong.
-                onImported: _load,
-              ),
-              Refused(
-                // The server decides in the end. This decides what is OFFERED,
-                // and a control that cannot be used stays on screen saying why
-                // rather than going dark or disappearing.
-                reason: refused,
-                child: FilledButton.icon(
-                  onPressed: refused == null ? _create : null,
-                  icon: const Icon(Icons.person_add_outlined, size: 18),
-                  label: const Text('Add customer'),
+    return HeaderAboveList(
+      header: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            note: (_loading || _error != null)
+                ? 'Shared across the organization — the $label tag shows who is accountable.'
+                : _customers.length < _total
+                ? 'Showing ${_customers.length} of ${formatCount(_total)} shared across the '
+                      'organization. The $label tag shows who is accountable.'
+                : '${formatCount(_total)} shared across the organization. The $label tag shows who is '
+                      'accountable for each relationship.',
+            // A Wrap rather than a Row: on a narrow window — and on a phone, which
+            // is coming — three controls side by side either overflow or squeeze
+            // the labels out. They fall onto a second line instead, in the same
+            // order.
+            action: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // Deliberately a plain outlined button with no icon. Every icon
+                // that reads as "duplicates" -- merge arrows, a copy glyph --
+                // promises the one thing this does not do: nothing here merges
+                // anything, ever (§5.2), and a control that looks like a merge
+                // button is a worse lie than a wordy one.
+                OutlinedButton(
+                  onPressed: _duplicates,
+                  child: const Text('Possible duplicates'),
                 ),
-              ),
-            ],
+                // Transfer sits before the primary action rather than after it,
+                // so "Add customer" stays the last and most prominent thing in
+                // the header.
+                DataTransfer(
+                  api: widget.api,
+                  session: widget.session,
+                  resource: 'customers',
+                  // An import writes rows this list is showing, so it has to be
+                  // read again — otherwise the count in the note above is a
+                  // number the screen has already been told is wrong.
+                  onImported: _load,
+                ),
+                Refused(
+                  // The server decides in the end. This decides what is OFFERED,
+                  // and a control that cannot be used stays on screen saying why
+                  // rather than going dark or disappearing.
+                  reason: refused,
+                  child: FilledButton.icon(
+                    onPressed: refused == null ? _create : null,
+                    icon: const Icon(Icons.person_add_outlined, size: 18),
+                    label: const Text('Add customer'),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        if (wide) _segmentChips(context),
-        _filters(context, me, wide: wide),
-        Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: _body(context, wide: wide),
-          ),
-        ),
-      ],
+          if (wide) _segmentChips(context),
+          _filters(context, me, wide: wide),
+        ],
+      ),
+      list: AsyncBody(
+        loading: _loading,
+        error: _error,
+        onRetry: _load,
+        child: _body(context, wide: wide),
+      ),
     );
   }
 
@@ -351,85 +352,92 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          SizedBox(
-            width: 360,
-            child: TextField(
-              controller: _search,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Name, email, phone or number',
-                suffixIcon: _search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear),
-                        tooltip: 'Clear the search',
-                        onPressed: () {
-                          _search.clear();
-                          _load();
-                        },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // On a phone the search takes the line and the two pickers split the
+          // next one; at a fixed 160 they left a gap on the right and cut
+          // "Everyone (13)" to "Everyone (1…".
+          final half = wide ? 220.0 : (constraints.maxWidth - 12) / 2;
+
+          return Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: wide ? 360 : constraints.maxWidth,
+                child: TextField(
+                  controller: _search,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: 'Name, email, phone or number',
+                    suffixIcon: _search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'Clear the search',
+                            onPressed: () {
+                              _search.clear();
+                              _load();
+                            },
+                          ),
+                  ),
+                  onSubmitted: (_) => _load(),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              // The chips' choice, as a picker where three chips would wrap.
+              if (!wide)
+                SizedBox(
+                  width: half,
+                  child: SearchPickerField<String?>(
+                    value: _segment,
+                    label: 'Show',
+                    options: [
+                      SearchOption<String?>(
+                        value: null,
+                        label: counted('Everyone', 'all'),
                       ),
-              ),
-              onSubmitted: (_) => _load(),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          // The chips' choice, as a picker where three chips would wrap.
-          if (!wide)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _segment,
-                label: 'Show',
-                options: [
-                  SearchOption<String?>(
-                    value: null,
-                    label: counted('Everyone', 'all'),
+                      SearchOption<String?>(
+                        value: 'repeat',
+                        label: counted('Repeat customers', 'repeat'),
+                      ),
+                      SearchOption<String?>(
+                        value: 'none',
+                        label: counted('No jobs yet', 'none'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _segment = value);
+                      _load();
+                    },
                   ),
-                  SearchOption<String?>(
-                    value: 'repeat',
-                    label: counted('Repeat customers', 'repeat'),
+                ),
+              // Narrowing, not a boundary — customers are shared, see the
+              // controller. One franchise is no choice, so no picker.
+              if (franchises.length > 1)
+                SizedBox(
+                  width: half,
+                  child: SearchPickerField<String?>(
+                    value: _franchiseId,
+                    label: label,
+                    options: [
+                      SearchOption<String?>(
+                        value: null,
+                        label: 'All ${label.toLowerCase()}s',
+                      ),
+                      for (final f in franchises)
+                        SearchOption<String?>(value: f.id, label: f.name),
+                    ],
+                    onChanged: (value) {
+                      setState(() => _franchiseId = value);
+                      _load();
+                    },
                   ),
-                  SearchOption<String?>(
-                    value: 'none',
-                    label: counted('No jobs yet', 'none'),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() => _segment = value);
-                  _load();
-                },
-              ),
-            ),
-          // Narrowing, not a boundary — customers are shared, see the
-          // controller. One franchise is no choice, so no picker.
-          if (franchises.length > 1)
-            SizedBox(
-              // Two to a line at 375, not one each under the search box.
-              width: wide ? 220 : 160,
-              child: SearchPickerField<String?>(
-                value: _franchiseId,
-                label: label,
-                options: [
-                  SearchOption<String?>(
-                    value: null,
-                    label: 'All ${label.toLowerCase()}s',
-                  ),
-                  for (final f in franchises)
-                    SearchOption<String?>(value: f.id, label: f.name),
-                ],
-                onChanged: (value) {
-                  setState(() => _franchiseId = value);
-                  _load();
-                },
-              ),
-            ),
-        ],
+                ),
+            ],
+          );
+        },
       ),
     );
   }

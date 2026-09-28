@@ -188,6 +188,23 @@ class PhoneReportTest extends TestCase
     }
 
     /**
+     * A by-day report has no labels, and an empty PHP array is sent as `[]`,
+     * which the app cannot read as the map it expects: the Reports tab spun
+     * forever on the report it opens with.
+     */
+    public function test_labels_are_an_object_even_when_there_are_none(): void
+    {
+        $t = $this->provisionTenant();
+        $admin = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+
+        $response = $this->signedInAs($admin)
+            ->getJson('/api/v1/phone/reports/run?period=last_7&group_by=day')
+            ->assertOk();
+
+        $this->assertStringContainsString('"labels":{}', $response->getContent());
+    }
+
+    /**
      * An aggregate is still an answer about the underlying rows.
      */
     public function test_a_report_only_counts_lines_this_person_may_read(): void

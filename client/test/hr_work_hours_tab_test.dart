@@ -197,6 +197,29 @@ void main() {
     expect(find.text('Nothing clocked this week.'), findsOneWidget);
   });
 
+  // A 409 is the organization's switch, not a failure. It was drawn as a red
+  // error with Try again, which no number of tries can change.
+  testWidgets('clock in switched off says where it is switched on', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      timeClock: _clock(organizationEnabled: false),
+      onWrite: (request) => request.url.path.endsWith('/hr/time-clock/week')
+          ? _json({
+              'message': 'Clock in is switched off for this organization.',
+            }, 409)
+          : null,
+    );
+
+    expect(
+      find.text('Clock in is switched off for this organization.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Work Hours › Settings'), findsOneWidget);
+    expect(find.text('Try again'), findsNothing);
+  });
+
   testWidgets('the arrows move a WEEK and refetch with on=', (tester) async {
     final ons = <String?>[];
 

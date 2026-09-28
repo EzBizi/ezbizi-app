@@ -119,6 +119,9 @@ class DashboardCard extends StatelessWidget {
                 child: Text(
                   title,
                   style: theme.textTheme.titleMedium,
+                  // Two lines before the ellipsis: beside four controls on a
+                  // phone, one line read "Human Reso…" and "Fleet Manage…".
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

@@ -18,6 +18,9 @@ class EzBiziTheme {
   static const _line = Color(0x1A060808);
   static const _surfaceAlt = Color(0xFFF5F8FA);
 
+  /// The corner of every button, chip and field. Cards are rounder (14).
+  static const double controlRadius = 10;
+
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
 
@@ -131,6 +134,10 @@ class EzBiziTheme {
       onTertiary: Colors.white,
     );
 
+    final control = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(controlRadius),
+    );
+
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
@@ -152,10 +159,29 @@ class EzBiziTheme {
           // brand cyan with white on it — 2.5:1, on the app's main action, in
           // both brightnesses. Inheriting is the fix and the shorter code.
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: control,
           textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
       ),
+
+      // ONE SHAPE FOR EVERY CONTROL. Only the filled button was given one, so
+      // the rest kept Material's pill: "Export" a pill beside "Add job" a
+      // rounded box, and Scheduling's three modes a box and two ovals. Jose,
+      // 2026-09-28: "i also do not like the fact that different shapes are
+      // being used, app needs to be cohesive." The same 10 as the fields.
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(shape: control),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(shape: control),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(shape: control),
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: SegmentedButton.styleFrom(shape: control),
+      ),
+      chipTheme: ChipThemeData(shape: control),
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

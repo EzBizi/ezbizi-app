@@ -83,6 +83,11 @@ class WorkHoursTab extends StatefulWidget {
 class _WorkHoursTabState extends State<WorkHoursTab> {
   bool _loading = true;
   String? _error;
+
+  /// The server's sentence when Clock in is switched off (409). A state of
+  /// the organization rather than a failure: it used to be drawn as a red
+  /// error with Try again, which no number of tries can change.
+  String? _off;
   int _request = 0;
 
   /// Which week is shown, as the server's own date. Null means "this week",
@@ -201,6 +206,7 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
     setState(() {
       _loading = _week == null;
       _error = null;
+      _off = null;
     });
 
     final response = await widget.api.get(
@@ -213,6 +219,11 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
 
     setState(() {
       _loading = false;
+      if (response.statusCode == 409) {
+        _off = response.message;
+
+        return;
+      }
       if (!response.ok) {
         _error = response.reason;
 
@@ -249,6 +260,8 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
 
   @override
   Widget build(BuildContext context) {
+    if (_off != null) return _switchedOff(context, _off!);
+
     return AsyncBody(
       loading: _loading,
       error: _error,
@@ -259,6 +272,38 @@ class _WorkHoursTabState extends State<WorkHoursTab> {
         // about the room here.
         builder: (context, box) =>
             box.maxWidth >= 760 ? _wide(context) : _narrow(context),
+      ),
+    );
+  }
+
+  /// Drawn instead of the week, the way Paid Time Off draws "not set up":
+  /// what is true, and where it is changed.
+  Widget _switchedOff(BuildContext context, String sentence) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(sentence, style: theme.textTheme.titleMedium),
+              const SizedBox(height: 12),
+              Text(
+                'It is switched on under Work Hours › Settings, by somebody '
+                'who can change the organization’s settings. If that is not '
+                'you, this is the whole answer rather than a step you are '
+                'missing.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

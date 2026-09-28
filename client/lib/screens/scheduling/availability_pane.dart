@@ -219,32 +219,39 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
                   style: theme.textTheme.bodySmall?.copyWith(color: muted),
                 ),
                 const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _modeButton(
-                        _Mode.zip,
-                        Icons.location_on_outlined,
-                        'Search by Zip Code',
+                // The labels wrap rather than ellipsize: at phone width all
+                // three read "Search by…", "Search by…", "Calendar…".
+                // IntrinsicHeight keeps the three the same height when only
+                // one of them wraps.
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _modeButton(
+                          _Mode.zip,
+                          Icons.location_on_outlined,
+                          'Search by Zip Code',
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _modeButton(
-                        _Mode.area,
-                        Icons.map_outlined,
-                        'Search by Area',
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _modeButton(
+                          _Mode.area,
+                          Icons.map_outlined,
+                          'Search by Area',
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _modeButton(
-                        _Mode.calendar,
-                        Icons.calendar_month_outlined,
-                        'Calendar View',
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _modeButton(
+                          _Mode.calendar,
+                          Icons.calendar_month_outlined,
+                          'Calendar View',
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
                 switch (_mode) {
@@ -277,15 +284,23 @@ class _AvailabilityPaneState extends State<AvailabilityPane> {
 
   Widget _modeButton(_Mode mode, IconData icon, String label) {
     final selected = _mode == mode;
-    final child = Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 18),
-        const SizedBox(width: 8),
-        Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
-      ],
-    );
+    final text = Text(label, textAlign: TextAlign.center);
+    // On a phone the icon sits above the words so they get the button's whole
+    // width; beside it, "Search by Zip Code" ran to three lines.
+    final child = MediaQuery.sizeOf(context).width < 600
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [Icon(icon, size: 18), const SizedBox(height: 4), text],
+          )
+        : Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18),
+              const SizedBox(width: 8),
+              Flexible(child: text),
+            ],
+          );
     const padding = EdgeInsets.symmetric(vertical: 14, horizontal: 8);
 
     return selected

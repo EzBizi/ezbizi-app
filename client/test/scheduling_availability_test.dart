@@ -5,6 +5,7 @@ import 'package:ezbizi_client/core/session.dart';
 import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/scheduling/availability_pane.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -201,6 +202,40 @@ void main() {
     expect(asked, {'all': '1'});
     expect(find.text('Monday, October 5'), findsOneWidget);
   });
+
+  /// At phone width all three used to read "Search by…", "Search by…",
+  /// "Calendar…": nobody could tell the first two apart.
+  testWidgets(
+    'at phone width the three modes say what they are, at one height',
+    (tester) async {
+      await _pump(tester, width: 375, onRequest: (_) => null);
+
+      const labels = ['Search by Zip Code', 'Search by Area', 'Calendar View'];
+      for (final label in labels) {
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text(label))
+              .didExceedMaxLines,
+          isFalse,
+          reason: '$label is cut short',
+        );
+      }
+      final heights = {
+        for (final label in labels)
+          tester
+              .getSize(
+                find.ancestor(
+                  of: find.text(label),
+                  matching: find.byWidgetPredicate(
+                    (w) => w is ButtonStyleButton,
+                  ),
+                ),
+              )
+              .height,
+      };
+      expect(heights, hasLength(1));
+    },
+  );
 
   /// At phone width the chips stack instead of squeezing. An overflow paints
   /// stripes and still passes a test, so the errors are caught and counted.

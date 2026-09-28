@@ -338,6 +338,10 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                     children: [
                       Text(
                         automation['name'] as String,
+                        // Two lines: on a phone one line cut every rule to
+                        // "Flag a customer with no w…", which is not what it
+                        // does.
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),

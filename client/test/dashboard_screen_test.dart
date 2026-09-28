@@ -50,6 +50,16 @@ void main() {
     expect(find.byIcon(Icons.tune), findsNothing);
   });
 
+  // Refresh used to have a line to itself above the chips: on a phone, 60px
+  // holding one icon.
+  testWidgets("Refresh is on the period chips' line", (tester) async {
+    await _pump(tester, _handler());
+
+    final chip = tester.getRect(find.widgetWithText(ChoiceChip, 'Week'));
+    final refresh = tester.getCenter(find.byTooltip('Refresh'));
+    expect(refresh.dy, inInclusiveRange(chip.top, chip.bottom));
+  });
+
   testWidgets('an empty glance is the sentence, coming soon is tagged', (
     tester,
   ) async {

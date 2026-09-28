@@ -284,30 +284,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       error: _error,
       onRetry: _load,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        // A phone's 16px gutter: 24 took the room a card's title needs.
+        padding: EdgeInsets.all(
+          MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+        ),
         children: [
-          // The title moved to the shell header. Refresh stays, where it was.
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          // The title moved to the shell header. Refresh stays on the right,
+          // on the period chips' line: a line of its own was 60px holding one
+          // icon, which a phone cannot spare.
+          Row(
             children: [
-              for (final (key, label) in _periods)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _period == key,
-                  onSelected: (on) {
-                    if (on) _setPeriod(key);
-                  },
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (key, label) in _periods)
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: _period == key,
+                        onSelected: (on) {
+                          if (on) _setPeriod(key);
+                        },
+                      ),
+                  ],
                 ),
+              ),
+              IconButton(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh',
+              ),
             ],
           ),
           const SizedBox(height: 16),

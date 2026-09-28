@@ -29,6 +29,32 @@ double contrast(Color a, Color b) {
 }
 
 void main() {
+  // Only the filled button had a shape, so every other kind kept Material's
+  // pill: an outlined "Export" beside a boxed "Add job", and a box and two
+  // ovals side by side on Scheduling. Jose: "app needs to be cohesive."
+  for (final entry in {
+    'light': EzBiziTheme.light(),
+    'dark': EzBiziTheme.dark(),
+  }.entries) {
+    test('${entry.key}: every button kind and the chips share one shape', () {
+      final t = entry.value;
+      final shapes = <String, Object?>{
+        'filled': t.filledButtonTheme.style?.shape?.resolve({}),
+        'outlined': t.outlinedButtonTheme.style?.shape?.resolve({}),
+        'text': t.textButtonTheme.style?.shape?.resolve({}),
+        'elevated': t.elevatedButtonTheme.style?.shape?.resolve({}),
+        'segmented': t.segmentedButtonTheme.style?.shape?.resolve({}),
+        'chip': t.chipTheme.shape,
+      };
+      final expected = RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+      );
+      for (final shape in shapes.entries) {
+        expect(shape.value, expected, reason: '${shape.key} button');
+      }
+    });
+  }
+
   group('theme colour contrast', () {
     // 4.5:1 is AA for normal text. Deliberately not 3:1 (AA-large): these
     // tokens carry body text and 12px captions, not just headings.

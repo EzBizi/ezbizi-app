@@ -137,7 +137,7 @@ class _PtoTabState extends State<PtoTab> {
                 // Names the PLACE, not the permission — that is what makes it
                 // actionable for somebody who can. The second sentence is what
                 // stops everybody else hunting for a step they are missing.
-                'It is set under Settings › Human Resources, by somebody who '
+                'It is set under Work Hours › Settings, by somebody who '
                 'can change the organization’s settings. If that is not you, '
                 'this is the whole answer rather than a step you are missing.',
                 style: theme.textTheme.bodySmall?.copyWith(

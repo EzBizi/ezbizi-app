@@ -176,6 +176,32 @@ void main() {
     expect(find.byKey(const Key('fleet-list')), findsOneWidget);
   });
 
+  // The note, search and nine chips used to stand over the rows and take
+  // nearly half of a phone; only the rows below them scrolled.
+  testWidgets('on a phone the search and chips scroll away with the rows', (
+    tester,
+  ) async {
+    await _pumpScreen(
+      tester,
+      size: const Size(411, 800),
+      vehicles: [
+        for (var i = 0; i < 20; i++)
+          {..._van, 'id': 'v-$i', 'label': 'Van $i'},
+      ],
+    );
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Due soon'), findsOneWidget);
+
+    await tester.drag(find.text('Van 2'), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
+    // A finder skips what a viewport has scrolled out of view.
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Due soon'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Cancel leaves nothing', (tester) async {
     await _pumpScreen(tester);
 

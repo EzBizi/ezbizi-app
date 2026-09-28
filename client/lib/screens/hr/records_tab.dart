@@ -890,7 +890,7 @@ class _PersonRecordState extends State<_PersonRecord> {
     if (pto is! Map) {
       return const Text(
         'This organization has not set up paid time off. It is set under '
-        'Settings › Human Resources.',
+        'Work Hours › Settings.',
       );
     }
 
@@ -922,7 +922,7 @@ class _PersonRecordState extends State<_PersonRecord> {
         const SizedBox(height: 12),
         Text(
           'Read only: the allowance is the organization’s policy, set under '
-          'Settings › Human Resources.',
+          'Work Hours › Settings.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.outline,
           ),

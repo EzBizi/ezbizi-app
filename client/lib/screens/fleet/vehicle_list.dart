@@ -80,82 +80,109 @@ class VehicleList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final filters = [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: TextField(
+          controller: search,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: 'Name, plate, VIN, number or driver',
+            suffixIcon: search.text.isEmpty
+                ? null
+                : IconButton(
+                    icon: const Icon(Icons.clear),
+                    tooltip: 'Clear the search',
+                    onPressed: onClearSearch,
+                  ),
+          ),
+          onSubmitted: (_) => onSearch(),
+          onChanged: (_) => onSearchChanged(),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilterChip(
+              label: const Text('Owned'),
+              selected: owned,
+              onSelected: (_) => onToggleOwned(),
+            ),
+            FilterChip(
+              label: const Text('Rented'),
+              selected: rented,
+              onSelected: (_) => onToggleRented(),
+            ),
+            for (final chip in statusChips)
+              FilterChip(
+                label: Text(chip.$2),
+                selected: statuses.contains(chip.$1),
+                onSelected: (_) => onToggleStatus(chip.$1),
+              ),
+            FilterChip(
+              label: const Text('Unassigned'),
+              selected: unassigned,
+              onSelected: (_) => onToggleUnassigned(),
+            ),
+            FilterChip(
+              label: const Text('Due soon'),
+              selected: dueSoon,
+              onSelected: (_) => onToggleDueSoon(),
+            ),
+          ],
+        ),
+      ),
+    ];
+    final count = vehicles.length + (page < lastPage ? 1 : 0);
+
+    Widget item(BuildContext context, int i) => i == vehicles.length
+        ? LoadMore(
+            shown: shown,
+            total: total,
+            busy: fetching,
+            error: pageError,
+            onMore: onMore,
+          )
+        : _row(context, vehicles[i]);
+
+    // On a phone the search and the nine chips scroll with the rows. Standing
+    // above them they took three lines of chips and 200 of the screen's 800
+    // pixels; see HeaderAboveList, which scrolls the header above them away.
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return ListView.builder(
+        padding: const EdgeInsets.only(bottom: 24),
+        itemCount: filters.length + (vehicles.isEmpty ? 1 : count),
+        itemBuilder: (context, i) {
+          if (i < filters.length) return filters[i];
+          if (vehicles.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(child: Text(emptyLabel)),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: item(context, i - filters.length),
+          );
+        },
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: TextField(
-            controller: search,
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Name, plate, VIN, number or driver',
-              suffixIcon: search.text.isEmpty
-                  ? null
-                  : IconButton(
-                      icon: const Icon(Icons.clear),
-                      tooltip: 'Clear the search',
-                      onPressed: onClearSearch,
-                    ),
-            ),
-            onSubmitted: (_) => onSearch(),
-            onChanged: (_) => onSearchChanged(),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilterChip(
-                label: const Text('Owned'),
-                selected: owned,
-                onSelected: (_) => onToggleOwned(),
-              ),
-              FilterChip(
-                label: const Text('Rented'),
-                selected: rented,
-                onSelected: (_) => onToggleRented(),
-              ),
-              for (final chip in statusChips)
-                FilterChip(
-                  label: Text(chip.$2),
-                  selected: statuses.contains(chip.$1),
-                  onSelected: (_) => onToggleStatus(chip.$1),
-                ),
-              FilterChip(
-                label: const Text('Unassigned'),
-                selected: unassigned,
-                onSelected: (_) => onToggleUnassigned(),
-              ),
-              FilterChip(
-                label: const Text('Due soon'),
-                selected: dueSoon,
-                onSelected: (_) => onToggleDueSoon(),
-              ),
-            ],
-          ),
-        ),
+        ...filters,
         Expanded(
           child: vehicles.isEmpty
               ? Center(child: Text(emptyLabel))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  itemCount: vehicles.length + (page < lastPage ? 1 : 0),
+                  itemCount: count,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
-                  itemBuilder: (context, i) {
-                    if (i == vehicles.length) {
-                      return LoadMore(
-                        shown: shown,
-                        total: total,
-                        busy: fetching,
-                        error: pageError,
-                        onMore: onMore,
-                      );
-                    }
-                    return _row(context, vehicles[i]);
-                  },
+                  itemBuilder: item,
                 ),
         ),
       ],

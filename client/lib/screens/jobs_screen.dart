@@ -280,56 +280,57 @@ class _JobsScreenState extends State<JobsScreen> {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _tableFrom;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            PanelHeader(
-              note: _note(me),
-              // A Wrap rather than a Row, for the reason customers_screen
-              // gives: two controls side by side overflow a narrow window.
-              action: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  // No `onImported`: jobs are export-only, so nothing this
-                  // widget does can change the list behind it.
-                  DataTransfer(
-                    api: widget.api,
-                    session: widget.session,
-                    resource: 'jobs',
-                  ),
-                  Refused(
-                    // §4 refuses in two places and they have different
-                    // remedies. The screen used to test only the second, so
-                    // somebody whose role lacks `jobs.create` was offered the
-                    // button and got a 403; and the sentence it did have named
-                    // "franchise" rather than whatever this organization calls
-                    // one (§8).
-                    reason: refused,
-                    child: FilledButton.icon(
-                      onPressed: refused == null ? _create : null,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add job'),
+        return HeaderAboveList(
+          header: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              PanelHeader(
+                note: _note(me),
+                // A Wrap rather than a Row, for the reason customers_screen
+                // gives: two controls side by side overflow a narrow window.
+                action: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // No `onImported`: jobs are export-only, so nothing this
+                    // widget does can change the list behind it.
+                    DataTransfer(
+                      api: widget.api,
+                      session: widget.session,
+                      resource: 'jobs',
                     ),
-                  ),
-                ],
+                    Refused(
+                      // §4 refuses in two places and they have different
+                      // remedies. The screen used to test only the second, so
+                      // somebody whose role lacks `jobs.create` was offered the
+                      // button and got a 403; and the sentence it did have named
+                      // "franchise" rather than whatever this organization calls
+                      // one (§8).
+                      reason: refused,
+                      child: FilledButton.icon(
+                        onPressed: refused == null ? _create : null,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add job'),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Chips on a wide screen, where they fit on a line and double as
-            // the legend for the pills below. On a phone seven of them wrap to
-            // three lines of chrome, so the same choice is a picker there.
-            if (wide && _statusChoices.isNotEmpty) _statusChips(context),
-            _filters(context, me, wide: wide),
-            Expanded(
-              child: AsyncBody(
-                loading: _loading,
-                error: _error,
-                onRetry: _load,
-                child: _body(context, wide: wide),
-              ),
-            ),
-          ],
+              // Chips on a wide screen, where they fit on a line and double as
+              // the legend for the pills below. On a phone seven of them wrap to
+              // three lines of chrome, so the same choice is a picker there.
+              if (wide && _statusChoices.isNotEmpty) _statusChips(context),
+              _filters(context, me, wide: wide),
+            ],
+          ),
+          list: AsyncBody(
+            loading: _loading,
+            error: _error,
+            onRetry: _load,
+            child: _body(context, wide: wide),
+          ),
         );
       },
     );

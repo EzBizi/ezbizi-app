@@ -6,6 +6,7 @@ import 'package:ezbizi_client/core/theme.dart';
 import 'package:ezbizi_client/screens/automations_screen.dart';
 import 'package:ezbizi_client/widgets/search_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -92,6 +93,38 @@ void main() {
     // The fallback means disabled_at did not parse — a green test that showed
     // this would be asserting the failure path.
     expect(find.textContaining('At an unknown time'), findsNothing);
+  });
+
+  // On a phone one line cut every rule to "Flag a customer with no w…".
+  testWidgets('on a phone a rule name reads in full over two lines', (
+    tester,
+  ) async {
+    // Short, because the test font draws every letter 16px wide: at 411 the
+    // name has 207px, so this is two lines here and one cut line before.
+    const name = 'Flag idle customers';
+    await _pump(
+      tester,
+      _handler(list: const [
+        {
+          'id': 'a-1',
+          'name': name,
+          'description': null,
+          'trigger_key': 'job.status_changed',
+          'is_active': false,
+          'is_live': false,
+          'disabled_at': null,
+          'disabled_reason': null,
+          'runs_count': 0,
+          'version': 1,
+        },
+      ]),
+      size: const Size(411, 900),
+    );
+
+    expect(
+      tester.renderObject<RenderParagraph>(find.text(name)).didExceedMaxLines,
+      isFalse,
+    );
   });
 
   /// A MODULE DRAWN INSIDE ANOTHER IS FILED UNDER IT — ONE CATEGORY, NOT TWO.

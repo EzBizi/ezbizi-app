@@ -264,34 +264,38 @@ class _DashboardTabState extends State<DashboardTab> {
       error: _error,
       onRetry: _load,
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        // A phone's 16px gutter: 24 took the room a card's title needs.
+        padding: EdgeInsets.all(
+          MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+        ),
         children: [
           // "At a glance" was here, directly beneath a lit-up "Dashboard" tab
           // chip — the same fact stated twice. The module's name is in the
-          // shell header above; the chip says which pane. Refresh stays.
+          // shell header above; the chip says which pane. Refresh stays, on
+          // the period chips' line rather than 60px of its own.
           Row(
             children: [
-              const Spacer(),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (key, label) in _periods)
+                      ChoiceChip(
+                        label: Text(label),
+                        selected: _period == key,
+                        onSelected: (on) {
+                          if (on) _setPeriod(key);
+                        },
+                      ),
+                  ],
+                ),
+              ),
               IconButton(
                 onPressed: _load,
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final (key, label) in _periods)
-                ChoiceChip(
-                  label: Text(label),
-                  selected: _period == key,
-                  onSelected: (on) {
-                    if (on) _setPeriod(key);
-                  },
-                ),
             ],
           ),
           const SizedBox(height: 16),

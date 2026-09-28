@@ -165,69 +165,64 @@ class _FleetScreenState extends State<FleetScreen> {
         final wide = constraints.maxWidth >= FleetScreen.splitAbove;
         final paneOnly = !wide && _hasPane;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (!paneOnly)
-              PanelHeader(
-                note: (_loading || _error != null)
-                    ? 'The company\'s vehicles, who has the keys, and what is due.'
-                    : _vehicles.length < _total
-                    ? 'Showing ${_vehicles.length} of $_total.'
-                    : _total == 1
-                    ? '1 vehicle in the register.'
-                    : '$_total in the register.',
-                action: canCreate
-                    ? Refused(
-                        reason: refused,
-                        child: FilledButton.icon(
-                          onPressed: refused == null ? _add : null,
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Add vehicle'),
-                        ),
-                      )
-                    : null,
-              ),
-            Expanded(
-              child: AsyncBody(
-                loading: _loading,
-                error: _error,
-                onRetry: _load,
-                child: paneOnly
-                    ? _pane(showBack: true)
-                    : wide && _hasPane
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: KeyedSubtree(
-                              key: const Key('fleet-list'),
-                              child: _list(),
-                            ),
-                          ),
-                          VerticalDivider(
-                            width: 1,
-                            thickness: 1,
-                            color: EzBiziTheme.edge(context),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: KeyedSubtree(
-                              key: const Key('fleet-pane'),
-                              child: _pane(showBack: false),
-                            ),
-                          ),
-                        ],
-                      )
-                    : KeyedSubtree(
+        final header = PanelHeader(
+          note: (_loading || _error != null)
+              ? 'The company\'s vehicles, who has the keys, and what is due.'
+              : _vehicles.length < _total
+              ? 'Showing ${_vehicles.length} of $_total.'
+              : _total == 1
+              ? '1 vehicle in the register.'
+              : '$_total in the register.',
+          action: canCreate
+              ? Refused(
+                  reason: refused,
+                  child: FilledButton.icon(
+                    onPressed: refused == null ? _add : null,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add vehicle'),
+                  ),
+                )
+              : null,
+        );
+
+        final body = AsyncBody(
+          loading: _loading,
+          error: _error,
+          onRetry: _load,
+          child: paneOnly
+              ? _pane(showBack: true)
+              : wide && _hasPane
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: KeyedSubtree(
                         key: const Key('fleet-list'),
                         child: _list(),
                       ),
-              ),
-            ),
-          ],
+                    ),
+                    VerticalDivider(
+                      width: 1,
+                      thickness: 1,
+                      color: EzBiziTheme.edge(context),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: KeyedSubtree(
+                        key: const Key('fleet-pane'),
+                        child: _pane(showBack: false),
+                      ),
+                    ),
+                  ],
+                )
+              : KeyedSubtree(key: const Key('fleet-list'), child: _list()),
         );
+
+        // An open vehicle on a phone is the whole screen, with its own back.
+        if (paneOnly) return body;
+
+        return HeaderAboveList(header: header, list: body);
       },
     );
   }

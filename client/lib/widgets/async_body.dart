@@ -67,6 +67,50 @@ class AsyncBody extends StatelessWidget {
   }
 }
 
+/// A list screen's header over its list. On a phone the header scrolls away
+/// with the list; on anything larger it stays put above it.
+///
+/// Measured on a 411px Android phone: Customers' note, buttons, search and
+/// filters stood over the list and took 470 of the 800 pixels under the app
+/// bar, and Fleet's nine chips took 370. Only what was left scrolled.
+///
+/// [list] must not bring its own ScrollController: NestedScrollView reaches it
+/// through the PrimaryScrollController, which is re-offered below for every
+/// platform because Flutter only hands it down automatically on mobile ones,
+/// and a narrow desktop window takes this path too.
+class HeaderAboveList extends StatelessWidget {
+  const HeaderAboveList({super.key, required this.header, required this.list});
+
+  final Widget header;
+  final Widget list;
+
+  @override
+  Widget build(BuildContext context) {
+    // The window's width, not this widget's: a desktop screen beside the
+    // navigation rail is narrower than 600 and is not short of height.
+    if (MediaQuery.sizeOf(context).width >= 600) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          header,
+          Expanded(child: list),
+        ],
+      );
+    }
+
+    return NestedScrollView(
+      headerSliverBuilder: (context, _) => [SliverToBoxAdapter(child: header)],
+      body: Builder(
+        builder: (context) => PrimaryScrollController(
+          controller: PrimaryScrollController.of(context),
+          automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+          child: list,
+        ),
+      ),
+    );
+  }
+}
+
 /// A screen heading with an optional action on the right.
 ///
 /// ── Why the action drops below on a narrow screen ────────────────

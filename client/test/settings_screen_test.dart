@@ -158,6 +158,43 @@ void main() {
     expect(find.byType(DropdownButton<String>), findsNothing);
   });
 
+  testWidgets('on a phone a row reads across, with its control underneath', (
+    tester,
+  ) async {
+    // The Android emulator's width. Here the picker and the reset slot used to
+    // take the row and leave the label about one letter wide, so every word on
+    // the screen ran downwards a character at a time.
+    tester.view.physicalSize = const Size(411, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpSettings(tester, (request) async {
+      if (request.url.path.endsWith('/me')) return _json({'data': _me});
+
+      return _json({
+        'data': [
+          _row(
+            'locale',
+            label: 'Language',
+            type: 'enum',
+            value: 'en',
+            options: const [
+              {'value': 'en', 'label': 'English'},
+            ],
+            source: null,
+          ),
+        ],
+      });
+    });
+
+    final label = find.text('Language');
+    expect(tester.getSize(label).height, lessThan(30));
+    expect(
+      tester.getTopLeft(find.byType(SearchPickerField<Object>)).dy,
+      greaterThan(tester.getBottomLeft(label).dy),
+    );
+  });
+
   testWidgets('a subset is ticked from the words, and saved as the values', (
     tester,
   ) async {

@@ -1253,130 +1253,145 @@ class _SettingRow extends StatelessWidget {
                   'edit roles, or an administrator, can say why.'
         : null;
 
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(setting['label'] as String, style: theme.textTheme.titleMedium),
+        const SizedBox(height: 2),
+
+        // Where the value came from — always, whatever else is true of
+        // the row. The whole reason the API returns `source` is that an
+        // admin who cannot see it changes the wrong level.
+        //
+        // The sentence itself now lives beside the sending-identity
+        // card, which asks the same question about the same cascade and
+        // would otherwise have grown a second wording of it.
+        Text(
+          provenanceSentence(source),
+          style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+        ),
+
+        if (locked != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            locked,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+
+        // Not the same thing as read-only, and it must not look like
+        // it. A locked row is one you may not change. This is one you
+        // MAY change and that will change nothing: the control is live,
+        // the save is real, the value is stored, audited and inherited
+        // exactly as any other, and no code reads it yet. Greying it
+        // would say "not for you", which is a different lie — and the
+        // sentence comes from the server, which is the only end that
+        // knows what the setting is waiting for.
+        if (pending != null) ...[
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.schedule, size: 14, color: theme.colorScheme.tertiary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  notInEffectSentence(pending),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.tertiary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+
+        // The server sends `help` for every setting and nothing showed
+        // it, so the reasoning behind each one lived only in the code.
+        if ((setting['help'] as String?)?.isNotEmpty ?? false) ...[
+          const SizedBox(height: 4),
+          Text(setting['help'] as String, style: theme.textTheme.bodySmall),
+        ],
+
+        // A value the server accepts and this bundle cannot draw.
+        //
+        // Only reachable when the registry has gained an option since
+        // this build was compiled — one deploy landing before the
+        // other. Said out loud, and here, because the alternative is a
+        // setting that saves, audits, and visibly does nothing, which
+        // is the exact complaint this whole change answers. Somebody
+        // looking at this row deserves to know it is the app that is
+        // behind, not their choice that was ignored.
+        if (unsupported != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            unsupported,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        ],
+      ],
+    );
+
+    final control = _control(context, key, type, editable);
+
+    // A slot of the same width whether or not there is a button in it.
+    // Without one, the controls down a card sat at different distances
+    // from the right edge depending on which rows happened to be
+    // overridden — a ragged column that read as a rendering fault.
+    final reset = SizedBox(
+      width: 48,
+      child: editable && !inherited && source != null
+          ? IconButton(
+              icon: const Icon(Icons.settings_backup_restore, size: 18),
+              // At organization scope there is nothing above to inherit
+              // FROM — it is the top of the cascade. Clearing the value
+              // there still does something useful, it just falls back to
+              // the platform's default rather than to a parent, and the
+              // label should say which.
+              tooltip: scopeType == 'organization'
+                  ? 'Reset to the EzBizi default'
+                  : 'Reset to inherited',
+              onPressed: () => onReset(key),
+            )
+          : null,
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  setting['label'] as String,
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 2),
-
-                // Where the value came from — always, whatever else is true of
-                // the row. The whole reason the API returns `source` is that an
-                // admin who cannot see it changes the wrong level.
-                //
-                // The sentence itself now lives beside the sending-identity
-                // card, which asks the same question about the same cascade and
-                // would otherwise have grown a second wording of it.
-                Text(
-                  provenanceSentence(source),
-                  style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                ),
-
-                if (locked != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    locked,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-
-                // Not the same thing as read-only, and it must not look like
-                // it. A locked row is one you may not change. This is one you
-                // MAY change and that will change nothing: the control is live,
-                // the save is real, the value is stored, audited and inherited
-                // exactly as any other, and no code reads it yet. Greying it
-                // would say "not for you", which is a different lie — and the
-                // sentence comes from the server, which is the only end that
-                // knows what the setting is waiting for.
-                if (pending != null) ...[
-                  const SizedBox(height: 4),
+      child: LayoutBuilder(
+        // On a phone the text, a 260px picker and the reset slot cannot share
+        // one line: the Expanded text got what was left, about one letter, and
+        // every label ran down the screen a character at a time. Below 520 the
+        // control drops under the text, as _dataRow's does. A switch is narrow
+        // enough to stay beside it.
+        builder: (context, constraints) =>
+            constraints.maxWidth < 520 && type != 'bool'
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  text,
+                  const SizedBox(height: 8),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        Icons.schedule,
-                        size: 14,
-                        color: theme.colorScheme.tertiary,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          notInEffectSentence(pending),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.tertiary,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
+                      Flexible(child: control),
+                      reset,
                     ],
                   ),
                 ],
-
-                // The server sends `help` for every setting and nothing showed
-                // it, so the reasoning behind each one lived only in the code.
-                if ((setting['help'] as String?)?.isNotEmpty ?? false) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    setting['help'] as String,
-                    style: theme.textTheme.bodySmall,
-                  ),
+              )
+            : Row(
+                children: [
+                  Expanded(child: text),
+                  const SizedBox(width: 16),
+                  control,
+                  reset,
                 ],
-
-                // A value the server accepts and this bundle cannot draw.
-                //
-                // Only reachable when the registry has gained an option since
-                // this build was compiled — one deploy landing before the
-                // other. Said out loud, and here, because the alternative is a
-                // setting that saves, audits, and visibly does nothing, which
-                // is the exact complaint this whole change answers. Somebody
-                // looking at this row deserves to know it is the app that is
-                // behind, not their choice that was ignored.
-                if (unsupported != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    unsupported,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          _control(context, key, type, editable),
-
-          // A slot of the same width whether or not there is a button in it.
-          // Without one, the controls down a card sat at different distances
-          // from the right edge depending on which rows happened to be
-          // overridden — a ragged column that read as a rendering fault.
-          SizedBox(
-            width: 48,
-            child: editable && !inherited && source != null
-                ? IconButton(
-                    icon: const Icon(Icons.settings_backup_restore, size: 18),
-                    // At organization scope there is nothing above to inherit
-                    // FROM — it is the top of the cascade. Clearing the value
-                    // there still does something useful, it just falls back to
-                    // the platform's default rather than to a parent, and the
-                    // label should say which.
-                    tooltip: scopeType == 'organization'
-                        ? 'Reset to the EzBizi default'
-                        : 'Reset to inherited',
-                    onPressed: () => onReset(key),
-                  )
-                : null,
-          ),
-        ],
+              ),
       ),
     );
   }

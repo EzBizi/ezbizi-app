@@ -1877,103 +1877,103 @@ class _HomeShellState extends State<HomeShell> {
     ValueChanged<List<String>> onArranged,
   ) {
     return Drawer(
-      child: Builder(
-        builder: (context) {
-          Widget tile(Destination d, _Rail rail) => ListTile(
-            leading: Icon(d.icon),
-            title: Text(d.label),
-            selected: _rail == rail && _selected == d.id,
-            onTap: () {
-              Navigator.of(context).pop();
-              _show(rail, d.id);
-            },
-          );
+      // Around the whole drawer, not just its header: from Android 15 an app
+      // targeting SDK 35+ draws edge to edge, and with the inset on the header
+      // alone the rows scrolled up under the clock once the header had gone.
+      child: SafeArea(
+        bottom: false,
+        child: Builder(
+          builder: (context) {
+            Widget tile(Destination d, _Rail rail) => ListTile(
+              leading: Icon(d.icon),
+              title: Text(d.label),
+              selected: _rail == rail && _selected == d.id,
+              onTap: () {
+                Navigator.of(context).pop();
+                _show(rail, d.id);
+              },
+            );
 
-          // SafeArea rather than a bare list: from Android 15 an app targeting
-          // SDK 35+ draws edge to edge by default, so without this the first
-          // row sits under the status bar and the last under the gesture bar.
-          final header = SafeArea(
-            bottom: false,
-            child: Padding(
+            final header = Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
               child: EzBiziTheme.wordmark(context, size: 20),
-            ),
-          );
+            );
 
-          // The phone has the easy half of this problem: its sidebar is
-          // already a list of rows, so arranging it is the same list with
-          // handles on. Nothing here is rebuilt to make dragging possible.
-          if (_arrangingDrawer) {
-            return Column(
+            // The phone has the easy half of this problem: its sidebar is
+            // already a list of rows, so arranging it is the same list with
+            // handles on. Nothing here is rebuilt to make dragging possible.
+            if (_arrangingDrawer) {
+              return Column(
+                children: [
+                  header,
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _SidebarArranger(
+                      destinations: destinations,
+                      divideAfter: divideAfter,
+                      onDone: (order) {
+                        setState(() => _arrangingDrawer = false);
+                        if (order != null) onArranged(order);
+                      },
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            return ListView(
+              padding: EdgeInsets.zero,
               children: [
                 header,
                 const Divider(height: 1),
-                Expanded(
-                  child: _SidebarArranger(
-                    destinations: destinations,
-                    divideAfter: divideAfter,
-                    onDone: (order) {
-                      setState(() => _arrangingDrawer = false);
-                      if (order != null) onArranged(order);
-                    },
+                for (var i = 0; i < destinations.length; i++) ...[
+                  tile(destinations[i], _Rail.modules),
+                  // Their own rule, nameless, exactly where they put it. The
+                  // last position can never be in the set, so this cannot draw
+                  // a second line immediately above the pinned group's one.
+                  if (divideAfter.contains(i)) const Divider(),
+                ],
+                if (pinned.isNotEmpty) const Divider(),
+                for (final d in pinned) tile(d, _Rail.pinned),
+                if (staffOnly.isNotEmpty) const Divider(),
+                for (final d in staffOnly) tile(d, _Rail.staff),
+
+                // The foot, and the same two things the sidebar's foot carries
+                // (Jose, 2026-09-14: mobile layout 1, and "move it next to the
+                // version number").
+                //
+                // A phone had the version NOWHERE: `BuildStamp` was used at the
+                // foot of the sidebar and on the sign-in screen, and a phone has
+                // no sidebar and is signed in. Its own docblock called those
+                // "the two places somebody already is when they wonder whether
+                // the app has updated" — true when written, false the day this
+                // drawer shipped.
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () =>
+                            setState(() => _arrangingDrawer = true),
+                        icon: const Icon(Icons.swap_vert, size: 16),
+                        label: Text(UiStrings.t('shell.rearrange')),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          textStyle: Theme.of(context).textTheme.labelMedium,
+                        ),
+                      ),
+                      const BuildStamp(),
+                    ],
                   ),
                 ),
+                SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
               ],
             );
-          }
-
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              header,
-              const Divider(height: 1),
-              for (var i = 0; i < destinations.length; i++) ...[
-                tile(destinations[i], _Rail.modules),
-                // Their own rule, nameless, exactly where they put it. The
-                // last position can never be in the set, so this cannot draw
-                // a second line immediately above the pinned group's one.
-                if (divideAfter.contains(i)) const Divider(),
-              ],
-              if (pinned.isNotEmpty) const Divider(),
-              for (final d in pinned) tile(d, _Rail.pinned),
-              if (staffOnly.isNotEmpty) const Divider(),
-              for (final d in staffOnly) tile(d, _Rail.staff),
-
-              // The foot, and the same two things the sidebar's foot carries
-              // (Jose, 2026-09-14: mobile layout 1, and "move it next to the
-              // version number").
-              //
-              // A phone had the version NOWHERE: `BuildStamp` was used at the
-              // foot of the sidebar and on the sign-in screen, and a phone has
-              // no sidebar and is signed in. Its own docblock called those
-              // "the two places somebody already is when they wonder whether
-              // the app has updated" — true when written, false the day this
-              // drawer shipped.
-              const Divider(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 8, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _arrangingDrawer = true),
-                      icon: const Icon(Icons.swap_vert, size: 16),
-                      label: Text(UiStrings.t('shell.rearrange')),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        textStyle: Theme.of(context).textTheme.labelMedium,
-                      ),
-                    ),
-                    const BuildStamp(),
-                  ],
-                ),
-              ),
-              SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
-            ],
-          );
-        },
+          },
+        ),
       ),
     );
   }
@@ -2202,7 +2202,11 @@ class _ClockButtonState extends State<_ClockButton>
               minimumSize: const Size(0, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
-              shape: const StadiumBorder(),
+              // The shape every other button has (theme.dart); it was the one
+              // pill left once the rest stopped being pills.
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
+              ),
             ),
           ),
           builder: (context, child) {
@@ -2215,9 +2219,8 @@ class _ClockButtonState extends State<_ClockButton>
             return DecoratedBox(
               key: const Key('clock-pulse'),
               decoration: BoxDecoration(
-                // The button is a StadiumBorder; anything past half its height
-                // is the same shape.
-                borderRadius: BorderRadius.circular(999),
+                // The button's own corner, so the glow follows its outline.
+                borderRadius: BorderRadius.circular(EzBiziTheme.controlRadius),
                 // Never falls to nothing while a shift is open, so the chip
                 // still reads as live in a still frame — a screenshot, or
                 // somebody running with animations switched off.

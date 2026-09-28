@@ -258,6 +258,31 @@ void main() {
     });
   });
 
+  group('Jobs, on a phone, scrolled', () {
+    // The note, buttons, search and filters used to stand over the list and
+    // take nearly half of a phone; only the rows below them scrolled.
+    testWidgets('the header scrolls away with the list', (tester) async {
+      await _pumpJobs(
+        tester,
+        jobs: [
+          for (var i = 0; i < 30; i++)
+            _job('j-$i', at: _wall(i ~/ 5, '08:00'), title: 'Sweep $i'),
+        ],
+        size: const Size(411, 800),
+      );
+
+      final search = find.byType(TextField);
+      expect(search, findsWidgets);
+
+      await tester.drag(find.text('Sweep 3'), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      // Off screen: a finder skips what a viewport has scrolled out of view.
+      expect(search, findsNothing);
+      expect(find.text('Sweep 8'), findsOneWidget);
+    });
+  });
+
   group('Customers, wide', () {
     testWidgets('a table divided by letter, with the city', (tester) async {
       await _pumpCustomers(tester);

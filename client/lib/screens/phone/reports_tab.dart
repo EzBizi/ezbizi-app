@@ -145,14 +145,19 @@ class _ReportsTabState extends State<ReportsTab> {
     }
 
     final data = response.body['data'] as Map<String, dynamic>? ?? const {};
+    // A grouping with no names — by day, the one this tab opens on — comes
+    // back as `[]`, PHP's empty array. Cast to a map it threw here, after
+    // the answer had arrived, and the spinner never stopped.
+    final labels = data['labels'];
 
     setState(() {
       _running = false;
       _totals = data['totals'] as Map<String, dynamic>? ?? const {};
       _rows = _Row.listFrom(data['rows']);
       _labels = {
-        for (final entry in (data['labels'] as Map? ?? const {}).entries)
-          entry.key.toString(): entry.value.toString(),
+        if (labels is Map)
+          for (final entry in labels.entries)
+            entry.key.toString(): entry.value.toString(),
       };
     });
   }

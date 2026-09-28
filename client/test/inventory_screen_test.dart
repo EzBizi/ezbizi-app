@@ -13,6 +13,44 @@ import 'package:http/testing.dart';
 
 /// Inventory is a register, not a placeholder: chips, 25/75, receive, no modal.
 void main() {
+  // Every Inventory list, both Services lists and Training's dashboard stand
+  // on this scaffold. On a phone its header used to stand over the rows.
+  testWidgets('on a phone the scaffold scrolls its header away', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(411, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: InventorySplitScaffold(
+            hasPane: false,
+            loading: false,
+            error: null,
+            onRetry: () {},
+            header: const SizedBox(height: 300, child: Text('The header')),
+            list: ListView(
+              children: [
+                for (var i = 0; i < 40; i++)
+                  SizedBox(height: 60, child: Text('Row $i')),
+              ],
+            ),
+            pane: ({required showBack}) => const SizedBox(),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('The header'), findsOneWidget);
+
+    await tester.drag(find.text('Row 2'), const Offset(0, -500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('The header'), findsNothing);
+  });
+
   testWidgets('a granted Inventory tab shows chips, not Coming soon', (
     tester,
   ) async {

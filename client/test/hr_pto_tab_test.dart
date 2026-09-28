@@ -25,7 +25,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Settings › Human Resources'),
+      find.textContaining('Work Hours › Settings'),
       findsOneWidget,
       reason: 'Naming the place is what makes it actionable for somebody who can.',
     );
