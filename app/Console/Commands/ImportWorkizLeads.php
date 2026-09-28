@@ -226,10 +226,12 @@ class ImportWorkizLeads extends Command
              * rows from earlier the same morning. On a first run that is the
              * difference between importing nothing and importing today's book.
              *
-             * It does NOT gate an UPDATE. `LeadDateTime` is when the lead was
-             * created and never moves, so a row whose status changed today
-             * still arrives with its original date; gating on that would freeze
-             * `source_status` at whatever it was the night we first saw it.
+             * It does NOT gate an UPDATE. The date is `CreatedDate`, when the
+             * lead was created, and it never moves (`LeadDateTime` is the
+             * appointment - measured by the Workiz session, 2026-09-28), so a
+             * row whose status changed today still arrives with its original
+             * date; gating on that would freeze `source_status` at whatever it
+             * was the night we first saw it.
              *
              * A row with no date at all is kept: it cannot be placed against
              * the watermark, and missing a real enquiry is the worse error.

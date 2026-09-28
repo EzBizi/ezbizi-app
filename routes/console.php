@@ -313,3 +313,7 @@ Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutO
 // Recorded Local Services calls, transcribed a few at a time so each lead can
 // be sorted from what was said. Does nothing until GOOGLE_SPEECH_KEY is set.
 Schedule::command('ezbizi:transcribe-lead-calls')->everyFiveMinutes()->withoutOverlapping(15);
+
+// Is every Local Services campaign still showing? Hourly and read-only; a stop
+// raises ads.campaign_stopped with who paused it.
+Schedule::command('ezbizi:ads-campaign-watch')->hourlyAt(20)->withoutOverlapping(30);

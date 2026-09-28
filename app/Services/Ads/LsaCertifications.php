@@ -217,7 +217,7 @@ class LsaCertifications
     }
 
     /** @return list<array<string, mixed>> */
-    private function search(SocialConnection $connection, string $token, string $query): array
+    public function search(SocialConnection $connection, string $token, string $query): array
     {
         $customerId = preg_replace('/\D/', '', (string) $connection->remote_id) ?? '';
 

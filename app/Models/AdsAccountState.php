@@ -28,7 +28,7 @@ class AdsAccountState extends Model implements CarriesAutomationScope, StatesRet
     protected $fillable = [
         'organization_id', 'connection_id', 'certification_statuses', 'certification_documents',
         'certification_problems', 'certification_problem_count', 'certification_soonest_expiry',
-        'certification_checked_at', 'certification_failed',
+        'certification_checked_at', 'certification_failed', 'campaigns', 'campaigns_checked_at',
     ];
 
     protected function casts(): array
@@ -40,6 +40,8 @@ class AdsAccountState extends Model implements CarriesAutomationScope, StatesRet
             'certification_problem_count' => 'integer',
             'certification_soonest_expiry' => 'datetime',
             'certification_checked_at' => 'datetime',
+            'campaigns' => 'array',
+            'campaigns_checked_at' => 'datetime',
         ];
     }
 

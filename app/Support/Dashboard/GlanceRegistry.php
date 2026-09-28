@@ -18,6 +18,7 @@ use App\Support\Dashboard\Glances\MarketingGlance;
 use App\Support\Dashboard\Glances\PhoneGlance;
 use App\Support\Dashboard\Glances\ReportsGlance;
 use App\Support\Dashboard\Glances\A1LeadsGbpGlance;
+use App\Support\Dashboard\Glances\AdsPerformanceGlance;
 use App\Support\Dashboard\Glances\ReviewsGlance;
 use App\Support\Dashboard\Glances\SchedulingGlance;
 use App\Support\Dashboard\Glances\ServicesGlance;
@@ -165,10 +166,6 @@ class GlanceRegistry
                 .'summarised here: the figures are not stored, and a week where the sheet does '
                 .'not add up is worth seeing beside the categories rather than behind a total.',
         ],
-        'ads_performance' => [
-            'label' => 'Google Ads',
-            'sentence' => 'Google Ads spend, clicks and conversions are in the Google Ads tab under Reports, per account and per campaign. They are read from Google when you open it, so they are not summarised here.',
-        ],
         // A container: Reviews and Business Profile each have a live box of
         // their own, so a summary here would restate them (2026-09-25).
         'customer_experience' => [
@@ -208,6 +205,9 @@ class GlanceRegistry
         BusinessProfileGlance::class,
         ReviewsGlance::class,
         A1LeadsGbpGlance::class,
+        // Live since 2026-09-28: certification and paused campaigns, from
+        // what the watchers stored. Spend stays in the tab.
+        AdsPerformanceGlance::class,
         SchedulingGlance::class,
         EmailGlance::class,
         AutomationsGlance::class,

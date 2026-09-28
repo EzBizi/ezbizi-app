@@ -3602,6 +3602,14 @@ class ModuleServiceProvider extends ServiceProvider
                             .'days - and Google may stop showing its ads. Raised when the problems '
                             .'change, not every day they last.',
                     ),
+                    new TriggerDefinition(
+                        key: 'ads.campaign_stopped',
+                        label: 'Ads stopped showing',
+                        description: 'A Local Services campaign that was showing stopped - paused, '
+                            .'ended or no longer eligible - checked every hour. Names who paused it: '
+                            .'the person, when it was paused in EzBizi; the Google user, when '
+                            .'Google change history has one; nobody, when neither does.',
+                    ),
                 ],
             ),
 
