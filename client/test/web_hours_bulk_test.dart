@@ -87,6 +87,8 @@ void main() {
     WidgetTester tester, {
     Size size = const Size(1200, 1000),
     http.Response Function()? apply,
+    List<Map<String, Object?>> sites = sites,
+    VoidCallback? onClose,
   }) async {
     final posted = <String, Map<String, dynamic>>{};
     http.Response json(Object body, [int status = 200]) => http.Response(
@@ -127,16 +129,21 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
+    // The Scaffold is this test's: the pane draws in the SEO tab and brings
+    // none of its own.
     await tester.pumpWidget(
       MaterialApp(
         theme: EzBiziTheme.light(),
-        home: HoursBulkScreen(
-          api: ApiClient(client: client),
-          formats: const DisplayFormats(
-            dateFormat: 'M/D/YYYY',
-            timeFormat: '12h',
+        home: Scaffold(
+          body: HoursBulkPane(
+            api: ApiClient(client: client),
+            formats: const DisplayFormats(
+              dateFormat: 'M/D/YYYY',
+              timeFormat: '12h',
+            ),
+            startWith: 'site-a',
+            onClose: onClose ?? () {},
           ),
-          startWith: 'site-a',
         ),
       ),
     );
@@ -161,6 +168,12 @@ void main() {
     tester,
   ) async {
     final posted = await pump(tester);
+
+    // At the bar's right edge, not adrift in the middle of it.
+    expect(
+      tester.getRect(find.byKey(const Key('hours-bulk-review'))).right,
+      closeTo(1200 - 16, 1),
+    );
 
     await tap(tester, find.widgetWithText(FilterChip, 'b.com'));
     await tap(tester, segment(5, 'Closed all day'));
@@ -295,5 +308,51 @@ void main() {
       findsOneWidget,
     );
     expect(overflows, isEmpty);
+  });
+
+  // Jose, the day it shipped as a pushed page: "u broke the containment rule".
+  testWidgets('it is a pane in the tab, with its own way back', (tester) async {
+    var closed = false;
+    await pump(tester, onClose: () => closed = true);
+
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+
+    await tap(tester, find.byTooltip('Back to the website'));
+    expect(closed, isTrue);
+  });
+
+  // "a1chimney has like 50 websites u cant expect a person to click 50 times"
+  testWidgets('Select all picks every website, and a search narrows it', (
+    tester,
+  ) async {
+    final many = [
+      for (var i = 0; i < 11; i++)
+        {'id': 'chim-$i', 'host': 'c$i.a-1chimney.com', 'is_primary': i == 0},
+      for (var i = 0; i < 3; i++)
+        {'id': 'roof-$i', 'host': 'r$i.roofirst.com', 'is_primary': false},
+    ];
+    final posted = await pump(tester, sites: many);
+
+    await tap(tester, find.byKey(const Key('hours-bulk-select-all')));
+    expect(find.text('14 of 14 selected'), findsOneWidget);
+
+    await tap(tester, find.byKey(const Key('hours-bulk-clear')));
+    expect(find.text('0 of 14 selected'), findsOneWidget);
+
+    // One brand: find it, then select what is shown and nothing else.
+    await tester.enterText(find.byKey(const Key('hours-bulk-find')), 'roof');
+    await tester.pumpAndSettle();
+    expect(find.text('Select the 3 shown'), findsOneWidget);
+    await tap(tester, find.byKey(const Key('hours-bulk-select-all')));
+    expect(find.text('3 of 14 selected'), findsOneWidget);
+
+    await tap(tester, segment(5, 'Closed all day'));
+    await tap(tester, find.byKey(const Key('hours-bulk-review')));
+    expect((posted['/web/hours/review']!['site_ids'] as List).toSet(), {
+      'roof-0',
+      'roof-1',
+      'roof-2',
+    });
   });
 }

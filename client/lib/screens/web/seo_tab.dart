@@ -130,6 +130,14 @@ class _SeoTabState extends State<SeoTab> {
   /// falls back to the first site rather than an empty pane.
   String? _selectedId;
 
+  /// The hours editor for several websites, open in this tab, and the site it
+  /// was opened from. Null when the tab shows its websites.
+  String? _bulkFrom;
+
+  /// A phone's pushed site page, closed before the editor opens in the tab so
+  /// the editor does not open behind it.
+  Route<void>? _pushedSite;
+
   bool get _canEdit => widget.session.me!.can('web_management.edit');
 
   @override
@@ -248,6 +256,20 @@ class _SeoTabState extends State<SeoTab> {
 
   @override
   Widget build(BuildContext context) {
+    // In the tab, never over it: a full-screen page breaks containment.
+    final bulkFrom = _bulkFrom;
+    if (bulkFrom != null) {
+      return HoursBulkPane(
+        api: widget.api,
+        formats: widget.session.me!.display,
+        startWith: bulkFrom,
+        onClose: () {
+          setState(() => _bulkFrom = null);
+          _load();
+        },
+      );
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -335,16 +357,17 @@ class _SeoTabState extends State<SeoTab> {
       onOpen: (site) async {
         setState(() => _selectedId = site['id'] as String);
 
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => Scaffold(
-              appBar: AppBar(title: Text(site['host'] as String)),
-              body: SafeArea(
-                child: _paneFor(site),
-              ),
+        final page = MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: Text(site['host'] as String)),
+            body: SafeArea(
+              child: _paneFor(site),
             ),
           ),
         );
+        _pushedSite = page;
+        await Navigator.of(context).push(page);
+        _pushedSite = null;
 
         // The detail can rename, remove or reconnect a site, so the list it
         // came back to has to be re-read rather than trusted.
@@ -480,15 +503,11 @@ class _SeoTabState extends State<SeoTab> {
             setState(() => _freshTokens[site['id'] as String] = token),
         onChanged: _load,
         onBulkHours: _canEdit
-            ? () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => HoursBulkScreen(
-                      api: widget.api,
-                      formats: widget.session.me!.display,
-                      startWith: site['id'] as String,
-                    ),
-                  ),
-                )
+            ? () {
+                final pushed = _pushedSite;
+                if (pushed != null) Navigator.of(context).removeRoute(pushed);
+                setState(() => _bulkFrom = site['id'] as String);
+              }
             : null,
       );
 }
@@ -795,7 +814,7 @@ class _SiteDetail extends StatefulWidget {
   final Future<void> Function() onChanged;
 
   /// Opens the several-websites hours editor; null without edit rights.
-  final Future<void> Function()? onBulkHours;
+  final VoidCallback? onBulkHours;
 
   @override
   State<_SiteDetail> createState() => _SiteDetailState();
@@ -1137,17 +1156,16 @@ class _SiteDetailState extends State<_SiteDetail> {
                 inherited: _inherited['hours'] ?? '',
                 inheritedFrom: _primaryHost,
               ),
-              if (widget.onBulkHours case final open?)
+              if (widget.onBulkHours != null)
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: TextButton.icon(
                     key: const Key('seo-bulk-hours'),
                     icon: const Icon(Icons.edit_calendar_outlined, size: 18),
                     label: const Text('Edit hours on several websites'),
-                    // The editor may have written this site's hours too.
-                    onPressed: () => open().then((_) {
-                      if (mounted) _loadValues();
-                    }),
+                    // This detail is rebuilt when the editor closes, so it
+                    // reads the hours again, including any the editor wrote.
+                    onPressed: widget.onBulkHours,
                   ),
                 ),
               const SizedBox(height: 10),

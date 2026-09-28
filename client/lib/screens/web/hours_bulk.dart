@@ -17,22 +17,33 @@ import '../../widgets/tab_bar_like.dart';
 /// (`POST /web/hours/review`), which reads every site's live hours and answers
 /// per site and per day; Update applies exactly that review by its token
 /// (`/web/hours/apply`), and a review over 30 minutes old is refused.
-class HoursBulkScreen extends StatefulWidget {
-  const HoursBulkScreen({
+///
+/// ── A pane, not a screen ──
+///
+/// It draws in the SEO tab, under the module's own tabs and beside the app's
+/// sidebar, with a back control of its own. It shipped as a pushed full-screen
+/// page and Jose named it the same day: "u broke the containment rule", the
+/// rule he set on 2026-09-23 for the integration cards and the page editor.
+class HoursBulkPane extends StatefulWidget {
+  const HoursBulkPane({
     super.key,
     required this.api,
     required this.formats,
+    required this.onClose,
     this.startWith,
   });
 
   final ApiClient api;
   final DisplayFormats formats;
 
+  /// Back to the website it was opened from.
+  final VoidCallback onClose;
+
   /// The website the editor was opened from, ticked to begin with.
   final String? startWith;
 
   @override
-  State<HoursBulkScreen> createState() => _HoursBulkScreenState();
+  State<HoursBulkPane> createState() => _HoursBulkPaneState();
 }
 
 enum _Act { keep, hours, closed }
@@ -71,9 +82,14 @@ const _zones = <(String, String)>[
   ('Pacific/Honolulu', 'Hawaii Time (HT)'),
 ];
 
-class _HoursBulkScreenState extends State<HoursBulkScreen> {
+class _HoursBulkPaneState extends State<HoursBulkPane> {
   List<Map<String, dynamic>> _sites = const [];
   final Set<String> _picked = {};
+
+  /// What the website list is narrowed to. A-1 Chimney runs about a hundred
+  /// sites under several brands; typing "roofirst" and Select all is how one
+  /// brand is picked without a hundred clicks.
+  String _find = '';
   final List<_Day> _week = [for (var i = 0; i < 7; i++) _Day()];
   String? _zone;
   TimeOfDay? _notBefore;
@@ -194,22 +210,48 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final title = _result != null
-        ? 'Done'
+        ? 'Hours on several websites · done'
         : _review != null
-        ? 'Review'
+        ? 'Hours on several websites · review'
         : 'Hours on several websites';
 
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _result != null
-          ? _done(context)
-          : _review != null
-          ? _reviewBody(context)
-          : _form(context),
-      bottomNavigationBar: _loading ? null : _bar(context),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+          child: Row(
+            children: [
+              // The way back, and what Android's Back presses.
+              IconButton(
+                tooltip: 'Back to the website',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: widget.onClose,
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _result != null
+              ? _done(context)
+              : _review != null
+              ? _reviewBody(context)
+              : _form(context),
+        ),
+        if (!_loading) _bar(context),
+      ],
     );
   }
 
@@ -226,10 +268,7 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
     if (_result != null) {
       note = '';
       actions = [
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Done'),
-        ),
+        FilledButton(onPressed: widget.onClose, child: const Text('Done')),
       ];
     } else if (_review != null) {
       note = 'Reviewed ${_clock(_reviewedAt!)} · good for 30 minutes';
@@ -255,10 +294,7 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
           '${_daysAsked == 1 ? '1 day' : '$_daysAsked days'}';
       actions = [
         if (!narrow)
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: widget.onClose, child: const Text('Cancel')),
         FilledButton(
           key: const Key('hours-bulk-review'),
           onPressed: _busy || sites == 0 || _daysAsked == 0 ? null : _askReview,
@@ -272,19 +308,13 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
       style: theme.textTheme.bodySmall,
       overflow: TextOverflow.ellipsis,
     );
-    final buttons = [
-      if (_busy) ...[
+    final spinner = [
+      if (_busy)
         const SizedBox(
           width: 18,
           height: 18,
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
-        const SizedBox(width: 12),
-      ],
-      for (final (i, action) in actions.indexed) ...[
-        if (i > 0) const SizedBox(width: 8),
-        Flexible(child: action),
-      ],
     ];
 
     return Material(
@@ -299,6 +329,8 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
             ),
           ),
           child: narrow
+              // A Wrap, so two buttons too wide for a phone take two lines
+              // rather than squeezing "Update 2 websites" onto two inside one.
               ? Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -307,16 +339,22 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
                       noteText,
                       const SizedBox(height: 6),
                     ],
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: buttons,
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [...spinner, ...actions],
                     ),
                   ],
                 )
               : Row(
                   children: [
                     Expanded(child: noteText),
-                    ...buttons,
+                    for (final control in [...spinner, ...actions]) ...[
+                      const SizedBox(width: 8),
+                      control,
+                    ],
                   ],
                 ),
         ),
@@ -358,21 +396,7 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
                   'This company has no websites yet. Add one under SEO first.',
                   style: theme.textTheme.bodyMedium,
                 )
-              : Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final site in _sites)
-                      FilterChip(
-                        label: Text(site['host'] as String? ?? ''),
-                        selected: _picked.contains(site['id']),
-                        onSelected: (on) => setState(() {
-                          final id = site['id'] as String;
-                          on ? _picked.add(id) : _picked.remove(id);
-                        }),
-                      ),
-                  ],
-                ),
+              : _websites(context),
         ),
         const SizedBox(height: 24),
         NumberedStep(
@@ -398,6 +422,113 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
           title: 'Time zone and earliest opening',
           note: 'Both optional.',
           child: _options(context),
+        ),
+      ],
+    );
+  }
+
+  /// The websites, found by typing, picked a few or all at once. Jose, on
+  /// A-1 Chimney's hundred: "u cant expect a person to click 50 times".
+  Widget _websites(BuildContext context) {
+    final theme = Theme.of(context);
+    final needle = _find.trim().toLowerCase();
+    final shown = [
+      for (final site in _sites)
+        if ('${site['host'] ?? ''}'.toLowerCase().contains(needle)) site,
+    ];
+    final shownIds = {for (final site in shown) site['id'] as String};
+    final allShown = shownIds.isNotEmpty && _picked.containsAll(shownIds);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              '${_picked.length} of ${_sites.length} selected',
+              style: theme.textTheme.bodySmall,
+            ),
+            TextButton(
+              key: const Key('hours-bulk-select-all'),
+              onPressed: allShown
+                  ? null
+                  : () => setState(() => _picked.addAll(shownIds)),
+              child: Text(
+                needle.isEmpty
+                    ? 'Select all'
+                    : shown.length == 1
+                    ? 'Select the 1 shown'
+                    : 'Select the ${shown.length} shown',
+              ),
+            ),
+            TextButton(
+              key: const Key('hours-bulk-clear'),
+              onPressed: _picked.isEmpty ? null : () => setState(_picked.clear),
+              child: const Text('Clear'),
+            ),
+          ],
+        ),
+        // ponytail: twelve, below which a list is short enough to look at.
+        if (_sites.length > 12) ...[
+          const SizedBox(height: 4),
+          // Aligned, or the column's stretch overrides the width limit.
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: TextField(
+                key: const Key('hours-bulk-find'),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Find a website',
+                ),
+                onChanged: (value) => setState(() => _find = value),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 10),
+        // Held in a box of its own that scrolls, so a hundred websites do not
+        // push the week off the page.
+        Container(
+          constraints: const BoxConstraints(maxHeight: 260),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            border: Border.all(color: theme.colorScheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: shown.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    'No website matches that.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                )
+              : Scrollbar(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(12),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final site in shown)
+                          FilterChip(
+                            label: Text(site['host'] as String? ?? ''),
+                            selected: _picked.contains(site['id']),
+                            onSelected: (on) => setState(() {
+                              final id = site['id'] as String;
+                              on ? _picked.add(id) : _picked.remove(id);
+                            }),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
         ),
       ],
     );
@@ -764,14 +895,19 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
     final head = theme.textTheme.labelSmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    final quiet = theme.textTheme.bodySmall?.copyWith(
+    // One size for every row: an untouched day is greyed, not shrunk.
+    final quiet = theme.textTheme.bodyMedium?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
 
     TableRow row(Map<String, dynamic> day) {
       final changed = day['changed'] == true;
       final note = _noteFor(day);
-      final style = changed ? theme.textTheme.bodyMedium : quiet;
+      final style = changed
+          ? theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface,
+            )
+          : quiet;
 
       Widget cell(String text, {TextStyle? s}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 6),
@@ -786,11 +922,7 @@ class _HoursBulkScreenState extends State<HoursBulkScreen> {
           cell(_pair(day['converted'])),
           cell(
             _span(day['final'] as Map?),
-            s: changed
-                ? theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  )
-                : quiet,
+            s: changed ? style?.copyWith(fontWeight: FontWeight.w700) : quiet,
           ),
           cell(
             note ?? '',

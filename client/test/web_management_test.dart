@@ -386,6 +386,37 @@ void main() {
 
     expect(find.text('Hours on several websites'), findsOneWidget);
     expect(find.text('Which websites'), findsOneWidget);
+
+    // In the tab, beside the app's sidebar: a pushed full-screen page broke
+    // containment the day it shipped.
+    expect(find.byType(NavigationSidebar), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Back to the website'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('seo-bulk-hours')), findsOneWidget);
+  });
+
+  testWidgets('on a phone the editor opens in the tab, not behind the site', (
+    tester,
+  ) async {
+    await _pumpSeoTab(
+      tester,
+      permissions: ['web_management.view', 'web_management.edit', 'web_management.seo.view', 'web_management.widgets.view'],
+      size: const Size(390, 844),
+    );
+
+    // A phone pushes the site's own page first.
+    await tester.tap(find.text('a-1chimney.com'));
+    await tester.pumpAndSettle();
+    final open = find.byKey(const Key('seo-bulk-hours'));
+    await tester.ensureVisible(open);
+    await tester.pumpAndSettle();
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+
+    // That page is gone, so the editor is what is on screen.
+    expect(find.byType(AppBar), findsNothing);
+    expect(find.text('Which websites'), findsOneWidget);
   });
 
   testWidgets('view alone is not offered the several-websites editor', (
