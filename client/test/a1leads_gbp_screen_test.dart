@@ -424,6 +424,70 @@ void main() {
     expect(find.textContaining('Snapshot captured'), findsNothing);
   });
 
+  /// Clicking a review opens the right-hand panel - Jose, 2026-09-28, as in
+  /// A1 Tools - with the review whole and our reply beneath it.
+  testWidgets('clicking a review opens the panel with its history', (tester) async {
+    await _pump(tester, _handler(total: 2));
+    expect(find.byKey(const ValueKey('gbp-panel')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('gbp-row-accounts/a/locations/l/reviews/r-2')));
+    await tester.pumpAndSettle();
+
+    final panel = find.byKey(const ValueKey('gbp-panel'));
+    expect(panel, findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Our reply')), findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Glad we could help, Marcus.')), findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('REVIEW DETAILS')), findsOneWidget);
+
+    await tester.tap(find.descendant(of: panel, matching: find.byTooltip('Close')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('gbp-panel')), findsNothing);
+  });
+
+  /// The table's status pill changes the card's status, as A1 Tools' does,
+  /// through the app's search picker rather than a popup menu.
+  testWidgets('the table status pill changes the status', (tester) async {
+    final requests = <http.Request>[];
+    await _pump(tester, _handler(opsAvailable: true, manageGranted: true, requests: requests));
+
+    await tester.tap(find.byKey(const ValueKey('gbp-status-pill-accounts/a/locations/l/reviews/r-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done').last);
+    await tester.pumpAndSettle();
+
+    final mark = requests.singleWhere((r) => r.url.path.endsWith('/a1leads-gbp/cards/mark'));
+    expect(jsonDecode(mark.body), {'ref': 'accounts/a/locations/l/reviews/r-1', 'status': 'Done'});
+    expect(find.byKey(const ValueKey('gbp-panel')), findsNothing, reason: 'the pill changes status; it does not open the panel');
+  });
+
+  testWidgets('without the manage permission the status pill is only a label', (tester) async {
+    await _pump(tester, _handler(opsAvailable: true));
+    expect(find.byKey(const ValueKey('gbp-status-pill-accounts/a/locations/l/reviews/r-1')), findsNothing);
+    expect(find.text('Working on it'), findsOneWidget, reason: 'the control: the status is still shown');
+  });
+
+  /// The panel fits a phone: it takes the whole width there.
+  testWidgets('the panel fits at phone width', (tester) async {
+    final complaints = <String>[];
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) => complaints.add(details.exceptionAsString());
+    addTearDown(() => FlutterError.onError = previous);
+
+    await _pump(tester, _handler(total: 2, withCustomer: true, opsAvailable: true, manageGranted: true, replyAvailable: true, replyGranted: true),
+        size: const Size(375, 900));
+    // The name, not the card's centre: the centre of a card with actions on
+    // it is a button.
+    await tester.tap(find.descendant(
+      of: find.byKey(const ValueKey('gbp-card-accounts/a/locations/l/reviews/r-1')),
+      matching: find.text('Dana Whitfield'),
+    ));
+    await tester.pumpAndSettle();
+    FlutterError.onError = previous;
+
+    expect(find.byKey(const ValueKey('gbp-panel')), findsOneWidget);
+    expect(complaints, isEmpty);
+  });
+
   /// A card that DOES carry a phone brings the Contact column back.
   ///
   /// The discriminating half of the test above: without it, a table that had

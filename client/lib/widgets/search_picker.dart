@@ -201,6 +201,29 @@ class SearchPickerField<T> extends StatelessWidget {
   }
 }
 
+/// The picker opened from any tap target, for a choice that is not a form
+/// field - a status pill in a table row, for one. Null when dismissed.
+Future<T?> showSearchPicker<T>(
+  BuildContext context, {
+  String? title,
+  required List<SearchOption<T>> options,
+  T? value,
+  int searchFrom = 8,
+}) async {
+  final picked = await showDialog<_Picked<T>>(
+    context: context,
+    builder: (context) => _SearchPickerDialog<T>(
+      title: title,
+      options: options,
+      value: value,
+      allowClear: false,
+      searchFrom: searchFrom,
+    ),
+  );
+
+  return picked?.value;
+}
+
 /// One choosable row.
 ///
 /// ── Why this is not a bare ListTile any more ───────────────────────

@@ -116,6 +116,11 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   bool _opsAvailable = false;
   bool _drafting = false;
 
+  /// The review open in the right-hand panel, by its Google name. Jose,
+  /// 2026-09-28: "clicking on any review should open up the right sidebar",
+  /// as A1 Tools' does.
+  String? _panelName;
+
   /// The review whose reply editor is open, by its Google name.
   String? _activeReplyName;
 
@@ -417,15 +422,38 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
         _filters(theme),
         const Divider(height: 1),
         Expanded(
-          child: AsyncBody(
-            loading: _loading,
-            error: _error,
-            onRetry: _load,
-            child: _reviews.isEmpty
-                ? _empty(theme)
-                : (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom
-                    ? _table(theme)
-                    : _list(theme)),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: AsyncBody(
+                  loading: _loading,
+                  error: _error,
+                  onRetry: _load,
+                  child: _reviews.isEmpty
+                      ? _empty(theme)
+                      : (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom
+                          ? _table(theme)
+                          : _list(theme)),
+                ),
+              ),
+              if (_panelReview != null) ...[
+                // The list dims behind the panel; a tap on it closes the panel.
+                Positioned.fill(
+                  child: GestureDetector(
+                    key: const ValueKey('gbp-panel-scrim'),
+                    onTap: () => setState(() => _panelName = null),
+                    child: ColoredBox(color: Colors.black.withValues(alpha: 0.35)),
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: MediaQuery.sizeOf(context).width < 520 ? MediaQuery.sizeOf(context).width : 460,
+                  child: _panel(theme, _panelReview!),
+                ),
+              ],
+            ],
           ),
         ),
         if (_asTable && MediaQuery.sizeOf(context).width >= _tableFrom)
@@ -739,16 +767,21 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     final quiet = theme.textTheme.bodySmall
         ?.copyWith(color: theme.colorScheme.onSurfaceVariant);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _tableCells(theme, review, card, contact, name, comment, reply, matched, customer, quiet),
-          // Replying opens here, under its own row, rather than moving the
-          // reader to the board.
-          if (_activeReplyName == review['google_review_name']) _replyEditor(theme),
-        ],
+    return InkWell(
+      key: ValueKey('gbp-row-${review['google_review_name']}'),
+      onTap: () => setState(() => _panelName = '${review['google_review_name']}'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _tableCells(theme, review, card, contact, name, comment, reply, matched, customer, quiet),
+            // Replying opens here, under its own row, rather than moving the
+            // reader to the board - unless the panel holds it.
+            if (_activeReplyName == review['google_review_name'] && _panelName != _activeReplyName)
+              _replyEditor(theme),
+          ],
+        ),
       ),
     );
   }
@@ -836,7 +869,18 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               children: [
                 card == null || card['status'] == null
                     ? Text('—', style: quiet)
-                    : _statusPill(theme, '${card['status']}'),
+                    : _canChangeStatus(review, card)
+                        // Tap to change, as in A1 Tools (Jose, 2026-09-28).
+                        ? InkWell(
+                            key: ValueKey('gbp-status-pill-${review['google_review_name']}'),
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => unawaited(_pickStatus(review, card)),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Flexible(child: _statusPill(theme, '${card['status']}')),
+                              Icon(Icons.arrow_drop_down, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                            ]),
+                          )
+                        : _statusPill(theme, '${card['status']}'),
                 const SizedBox(height: 4),
                 // The reply state stays visible beside the board status: it is
                 // Google's fact, where the status is A-1's process.
@@ -1085,6 +1129,149 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
     if (response.ok) unawaited(_load());
   }
 
+  /// The review shown in the panel, from the page as it stands now.
+  Map<String, dynamic>? get _panelReview {
+    final name = _panelName;
+    if (name == null) return null;
+    for (final r in _reviews) {
+      if (r['google_review_name'] == name) return _withLiveReply(r);
+    }
+    return null;
+  }
+
+  bool _canChangeStatus(Map<String, dynamic> review, Map<String, dynamic> card) =>
+      _opsAvailable &&
+      widget.session.me?.can('a1leads_gbp.manage') == true &&
+      review['deleted_at'] == null &&
+      // Removed and Reported are A1 Leads' own stages, never an operator's.
+      card['status'] != 'Removed';
+
+  Future<void> _pickStatus(Map<String, dynamic> review, Map<String, dynamic> card) async {
+    const statuses = ["Can't locate", 'Working on it', 'Awaiting report', 'Done'];
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Status',
+      value: statuses.contains(card['status']) ? card['status'] as String : null,
+      options: [for (final s in statuses) SearchOption<String>(value: s, label: s)],
+    );
+    if (picked == null || picked == card['status']) return;
+    await _changeCard('${review['google_review_name']}', {'status': picked});
+  }
+
+  /// The right-hand panel: one review, whole, with everything that can be
+  /// done to it. Jose, 2026-09-28, pointing at A1 Tools' own.
+  Widget _panel(ThemeData theme, Map<String, dynamic> review) {
+    final name = '${review['reviewer_name'] ?? ''}'.trim();
+    final comment = '${review['comment'] ?? ''}'.trim();
+    final reply = '${review['reply'] ?? ''}'.trim();
+    final card = (review['board'] as Map?)?.cast<String, dynamic>();
+    final reviewName = '${review['google_review_name']}';
+    final quiet = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final heading = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.4,
+    );
+
+    Widget fact(String label, String value) => Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 90, child: Text(label, style: quiet)),
+            Expanded(child: Text(value, style: theme.textTheme.bodySmall)),
+          ]),
+        );
+
+    Widget bubble({required String title, required String body, String? when, bool ours = false}) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: ours ? theme.colorScheme.primaryContainer : theme.colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: theme.textTheme.titleSmall),
+            const SizedBox(height: 6),
+            Text(body, style: theme.textTheme.bodyMedium),
+            if (when != null) ...[const SizedBox(height: 6), Text(when, style: quiet)],
+          ]),
+        );
+
+    return Material(
+      key: const ValueKey('gbp-panel'),
+      elevation: 8,
+      color: theme.colorScheme.surface,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Text(name.isEmpty ? 'A Google user' : name, style: theme.textTheme.titleLarge),
+            ),
+            IconButton(
+              tooltip: 'Close',
+              icon: const Icon(Icons.close),
+              onPressed: () => setState(() => _panelName = null),
+            ),
+          ]),
+          Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            _ratingChip(theme, (review['rating'] as num?)?.toInt()),
+            if (card?['status'] != null)
+              _canChangeStatus(review, card!)
+                  ? InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => unawaited(_pickStatus(review, card)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        _statusPill(theme, '${card['status']}'),
+                        Icon(Icons.arrow_drop_down, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      ]),
+                    )
+                  : _statusPill(theme, '${card['status']}'),
+          ]),
+          const SizedBox(height: 16),
+          Text('REVIEW DETAILS', style: heading),
+          const SizedBox(height: 6),
+          fact('Date', _short(review['review_created_at'])),
+          if (_placeOf(review).isNotEmpty) fact('Location', _placeOf(review)),
+          if (review['deleted_at'] != null) fact('Google', 'Removed from Google'),
+          const SizedBox(height: 12),
+          Text('CUSTOMER', style: heading),
+          _matchLine(theme, review),
+          _customerContext(theme, review),
+          _opsActions(theme, review),
+          const SizedBox(height: 16),
+          Text('HISTORY', style: heading),
+          const SizedBox(height: 8),
+          bubble(
+            title: name.isEmpty ? 'The review' : name,
+            body: comment.isEmpty ? '(A rating with no words.)' : comment,
+            when: _short(review['review_created_at']),
+          ),
+          if (reply.isNotEmpty)
+            bubble(
+              title: 'Our reply',
+              body: reply,
+              when: review['reply_at'] == null ? null : _short(review['reply_at']),
+              ours: true,
+            ),
+          if (card?['note'] != null) bubble(title: 'Note', body: '${card!['note']}'),
+          if (_activeReplyName == reviewName)
+            _replyEditor(theme)
+          else if (_replyAvailable && reply.isEmpty && review['deleted_at'] == null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: FilledButton.icon(
+                key: const ValueKey('gbp-panel-reply'),
+                onPressed: () => unawaited(_openReply(review)),
+                icon: const Icon(Icons.reply_outlined, size: 18),
+                label: const Text('Reply on Google'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   /// The customer's last job and who has the card, in one line.
   static String _jobLine(Map<String, dynamic>? card) {
     final customer = (card?['customer'] as Map?)?.cast<String, dynamic>();
@@ -1249,6 +1436,14 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
   }
 
   Widget _row(ThemeData theme, Map<String, dynamic> review) {
+    return InkWell(
+      key: ValueKey('gbp-card-${review['google_review_name']}'),
+      onTap: () => setState(() => _panelName = '${review['google_review_name']}'),
+      child: _rowBody(theme, review),
+    );
+  }
+
+  Widget _rowBody(ThemeData theme, Map<String, dynamic> review) {
     review = _withLiveReply(review);
     final reply = '${review['reply'] ?? ''}'.trim();
     final comment = '${review['comment'] ?? ''}'.trim();
@@ -1311,7 +1506,8 @@ class _A1LeadsGbpScreenState extends State<A1LeadsGbpScreen> {
               label: const Text('Reply on Google'),
             ),
           ],
-          if (_activeReplyName == review['google_review_name']) _replyEditor(theme),
+          if (_activeReplyName == review['google_review_name'] && _panelName != _activeReplyName)
+            _replyEditor(theme),
           if (reply.isNotEmpty) ...[
             const SizedBox(height: 10),
             Container(
