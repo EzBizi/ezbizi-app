@@ -8,8 +8,10 @@ use App\Models\Customer;
 use App\Models\Job;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
+use App\Models\User;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
 use App\Support\Settings\SettingsResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -414,6 +416,159 @@ class ProjectWorkizRecordsTest extends TestCase
         $this->workizSays($tenant, ['service_area' => 'Stamford']);
         $this->artisan('ezbizi:project-workiz')->assertSuccessful();
         $this->assertSame($stamford->id, $this->areaOfTheJob($tenant), 'and a real change after it still moves the job');
+    }
+
+    /** A Workiz technician in the tenant's branch, linked to $user when given. */
+    private function technician(array $tenant, string $remoteId, string $name, ?User $user = null): WorkizTeamMember
+    {
+        return $this->inTenant($tenant['org'], fn () => WorkizTeamMember::create([
+            'franchise_id' => $tenant['franchise']->id,
+            'remote_id' => $remoteId,
+            'name' => $name,
+            'is_active' => true,
+            'user_id' => $user?->id,
+            'payload' => [],
+            'synced_at' => now(),
+        ]));
+    }
+
+    private function performerOfTheJob(array $tenant): ?string
+    {
+        return $this->inTenant($tenant['org'], fn () => Job::query()->value('performed_by_user_id'));
+    }
+
+    /**
+     * The Field session's ask: arrival, routes and geocoding read
+     * `performed_by_user_id`, and it was empty on all 8,685 jobs. Workiz's
+     * first team member, through the technician link, fills it.
+     */
+    public function test_a_job_is_performed_by_its_linked_workiz_technician(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $moses = $this->userWithRole($tenant, 'Tech Moses');
+        $this->technician($tenant, '367907', 'Moses Hai Zion', $moses);
+        $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($moses->id, $this->performerOfTheJob($tenant));
+    }
+
+    /** A technician nobody has linked to a user places the job with nobody. */
+    public function test_an_unlinked_technician_leaves_the_job_with_no_performer(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->technician($tenant, '367907', 'Moses Hai Zion');
+        $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertNull($this->performerOfTheJob($tenant));
+    }
+
+    public function test_a_reassignment_in_workiz_reaches_the_job(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $moses = $this->userWithRole($tenant, 'Tech Moses');
+        $raz = $this->userWithRole($tenant, 'Tech Raz');
+        $this->technician($tenant, '367907', 'Moses Hai Zion', $moses);
+        $this->technician($tenant, '461281', 'Raz Eliezer', $raz);
+        $row = $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => $row->forceFill(['payload' => ['Team' => [['id' => 461281, 'Name' => 'Raz Eliezer']]] + $row->payload])->save());
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($raz->id, $this->performerOfTheJob($tenant));
+    }
+
+    /** THE HOUSE RULE: a performer a person chose in EzBizi is never reverted. */
+    public function test_a_performer_a_person_chose_is_never_reverted(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $moses = $this->userWithRole($tenant, 'Tech Moses');
+        $raz = $this->userWithRole($tenant, 'Tech Raz');
+        $kim = $this->userWithRole($tenant, 'Tech Kim');
+        $this->technician($tenant, '367907', 'Moses Hai Zion', $moses);
+        $this->technician($tenant, '461281', 'Raz Eliezer', $raz);
+        $row = $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], fn () => Job::query()->first()->forceFill(['performed_by_user_id' => $kim->id])->save());
+        $this->inTenant($tenant['org'], fn () => $row->forceFill(['payload' => ['Team' => [['id' => 461281, 'Name' => 'Raz Eliezer']]] + $row->payload])->save());
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($kim->id, $this->performerOfTheJob($tenant));
+    }
+
+    /**
+     * Only 4 of 430 technicians were linked when this shipped. Linking one
+     * later, in Scheduling > Settings > Schedule, reaches the jobs they
+     * already hold.
+     */
+    public function test_linking_a_technician_later_reaches_the_jobs_they_hold(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $moses = $this->userWithRole($tenant, 'Tech Moses');
+        $member = $this->technician($tenant, '367907', 'Moses Hai Zion');
+        $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+        $this->assertNull($this->performerOfTheJob($tenant));
+
+        $this->inTenant($tenant['org'], fn () => $member->forceFill(['user_id' => $moses->id])->save());
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($moses->id, $this->performerOfTheJob($tenant));
+    }
+
+    /**
+     * A job projected before this change has no performer recorded as ours.
+     * A value it already holds was put there by a person, and stays.
+     */
+    public function test_a_performer_set_before_this_change_is_kept(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $moses = $this->userWithRole($tenant, 'Tech Moses');
+        $kim = $this->userWithRole($tenant, 'Tech Kim');
+        $this->technician($tenant, '367907', 'Moses Hai Zion', $moses);
+        $row = $this->mirror($tenant);
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->inTenant($tenant['org'], function () use ($row, $kim) {
+            $row->refresh();
+            $row->projected = array_diff_key($row->projected, ['performed_by_user_id' => true]);
+            $row->payload = ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]] + $row->payload;
+            $row->save();
+            Job::query()->first()->forceFill(['performed_by_user_id' => $kim->id])->save();
+        });
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertSame($kim->id, $this->performerOfTheJob($tenant));
+    }
+
+    /**
+     * Each branch is its own Workiz account with its own ids: a technician is
+     * found in the JOB's branch only, never another one's with the same number.
+     */
+    public function test_a_technician_is_found_only_in_the_jobs_own_branch(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $other = $this->extraFranchise($tenant, 'Connecticut');
+        $stranger = $this->userWithRole($tenant, 'Tech Elsewhere');
+        $this->inTenant($tenant['org'], fn () => WorkizTeamMember::create([
+            'franchise_id' => $other->id,
+            'remote_id' => '367907',
+            'name' => 'Someone Else',
+            'is_active' => true,
+            'user_id' => $stranger->id,
+            'payload' => [],
+            'synced_at' => now(),
+        ]));
+        $this->mirror($tenant, [], ['Team' => [['id' => 367907, 'Name' => 'Moses Hai Zion']]]);
+
+        $this->artisan('ezbizi:project-workiz')->assertSuccessful();
+
+        $this->assertNull($this->performerOfTheJob($tenant));
     }
 
     public function test_a_dry_run_writes_nothing(): void

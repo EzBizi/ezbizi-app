@@ -8,6 +8,7 @@ use App\Models\Job;
 use App\Models\Organization;
 use App\Models\WorkizClient;
 use App\Models\WorkizJob;
+use App\Models\WorkizTeamMember;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Jobs\EarnedStatuses;
@@ -449,7 +450,7 @@ class ProjectWorkizRecords extends Command
      * invoiced — most imported jobs read USD 0.00 because A1 Tools last saw
      * them before they were priced.
      */
-    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor'];
+    private const FOLLOWED = ['status', 'scheduled_for', 'amount_minor', 'performed_by_user_id'];
 
     /**
      * Keep projected jobs following Workiz — per field, and only where nobody
@@ -490,6 +491,12 @@ class ProjectWorkizRecords extends Command
         WorkizJob::query()
             ->select('workiz_jobs.*')
             ->join('jobs', 'jobs.id', '=', 'workiz_jobs.job_id')
+            // Workiz's first technician, through the link to a user: performer()
+            // below, in SQL. (franchise, remote_id) is unique, so one row at most.
+            ->leftJoin('workiz_team_members', function ($j) {
+                $j->on('workiz_team_members.franchise_id', '=', 'workiz_jobs.franchise_id')
+                    ->whereRaw("workiz_team_members.remote_id = JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.Team[0].id'))");
+            })
             ->where(function ($q) {
                 $q->whereColumn('workiz_jobs.status', '<>', 'jobs.status')
                     ->orWhereRaw('NOT (workiz_jobs.scheduled_for <=> jobs.scheduled_for)')
@@ -497,7 +504,8 @@ class ProjectWorkizRecords extends Command
                     // Workiz's area inputs moved since they were recorded, or
                     // were never recorded: areaInputs() below, in SQL. Measured
                     // to agree with PHP's strict test, null against '' included.
-                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))");
+                    ->orWhereRaw("NOT (JSON_EXTRACT(workiz_jobs.projected, '$.area_inputs') <=> JSON_ARRAY(workiz_jobs.service_area, workiz_jobs.postal_code))")
+                    ->orWhereRaw('NOT (workiz_team_members.user_id <=> jobs.performed_by_user_id)');
             })
             ->chunkById(500, function ($mirrored) use (&$followed, &$announce, $dryRun) {
                 $jobs = Job::query()->whereIn('id', $mirrored->pluck('job_id'))->get()->keyBy('id');
@@ -509,12 +517,16 @@ class ProjectWorkizRecords extends Command
                         continue;
                     }
 
-                    $last = $row->projected ?? $this->followedValues($job);
+                    // A row projected before the performer was followed has none
+                    // recorded as ours: a performer it holds was put there by a
+                    // person, and a null one is free to fill.
+                    $last = ($row->projected ?? $this->followedValues($job)) + ['performed_by_user_id' => null];
                     $now = $this->followedValues($job);
                     $workiz = [
                         'status' => $row->status,
                         'scheduled_for' => $row->scheduled_for?->format('Y-m-d H:i:s'),
                         'amount_minor' => $this->minor($row->payload['JobTotalPrice'] ?? null),
+                        'performed_by_user_id' => $this->performer($row),
                     ];
 
                     $changes = [];
@@ -745,6 +757,27 @@ class ProjectWorkizRecords extends Command
     }
 
     /**
+     * Who does the job, in EzBizi's terms: Workiz's FIRST team member, through
+     * the technician link (Scheduling > Settings > Schedule, or the team sync's
+     * email match), in the job's own branch. Nobody when that member is not
+     * linked to a user. The Field session reads it for arrival, routes and
+     * geocoding.
+     */
+    private function performer(WorkizJob $row): ?string
+    {
+        $id = $row->payload['Team'][0]['id'] ?? null;
+
+        if ($id === null || $id === '') {
+            return null;
+        }
+
+        return WorkizTeamMember::query()
+            ->where('franchise_id', $row->franchise_id)
+            ->where('remote_id', (string) $id)
+            ->value('user_id');
+    }
+
+    /**
      * What Workiz says that places a job in a service area: its area name and
      * the job's own zip. Compared strictly, like the SQL in followWorkiz().
      *
@@ -768,6 +801,7 @@ class ProjectWorkizRecords extends Command
             'status' => $job->status,
             'scheduled_for' => $job->getRawOriginal('scheduled_for'),
             'amount_minor' => $job->amount_minor,
+            'performed_by_user_id' => $job->performed_by_user_id,
         ];
     }
 
