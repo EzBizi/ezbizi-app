@@ -1676,6 +1676,7 @@ Route::prefix('v1')
 
         Route::get('social/posts', [SocialPostsController::class, 'index']);
         Route::post('social/posts', [SocialPostsController::class, 'store']);
+        Route::post('social/posts/{post}/targets/{target}/retry', [SocialPostsController::class, 'retry']);
         Route::patch('social/connections/{connection}/leads-franchise', [SocialConnectionsController::class, 'placeLeads']);
         Route::patch('social/connections/{connection}/label', [SocialConnectionsController::class, 'rename']);
         Route::delete('social/connections/{connection}', [SocialConnectionsController::class, 'destroy']);

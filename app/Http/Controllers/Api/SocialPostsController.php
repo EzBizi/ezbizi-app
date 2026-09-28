@@ -277,6 +277,54 @@ class SocialPostsController extends Controller
     }
 
     /**
+     * POST /api/v1/social/posts/{post}/targets/{target}/retry
+     *
+     * Send one failed account again. The job never retries on its own (see
+     * PublishSocialTarget: an unknown outcome might already be live), so this is
+     * the person deciding it did not land. Only a FAILED target: the flip from
+     * failed to queued is one conditional UPDATE, so a double click queues one
+     * send, and a sent post can never be pushed out twice from here.
+     */
+    public function retry(Request $request, SocialPost $post, SocialPostTarget $target): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user->hasPermission('marketing.edit'),
+            Status::HTTP_FORBIDDEN,
+            Refusal::permission('publish to a social account')->message(),
+        );
+
+        $connection = $target->connection;
+
+        abort_if(
+            $target->social_post_id !== $post->getKey()
+                || $connection === null
+                || ! $this->access->inView($user, $connection),
+            Status::HTTP_NOT_FOUND,
+        );
+
+        $flipped = SocialPostTarget::query()
+            ->whereKey($target->getKey())
+            ->where('status', SocialPostTarget::STATUS_FAILED)
+            ->update(['status' => SocialPostTarget::STATUS_QUEUED, 'failure' => null]);
+
+        if ($flipped === 0) {
+            throw ValidationException::withMessages([
+                'target' => 'Only a post that failed can be sent again. This one is '.$target->status.'.',
+            ]);
+        }
+
+        PublishSocialTarget::dispatch($target->getKey());
+
+        $this->audit->log('social.post_retried', $post, [
+            'account' => $connection->display_name,
+        ], actor: $user);
+
+        return response()->json(['data' => $this->presentTarget($target->fresh(), $connection)]);
+    }
+
+    /**
      * The time this post is promised for, and the clock that promise is in.
      *
      * ── Why the server names the timezone ────────────────────────

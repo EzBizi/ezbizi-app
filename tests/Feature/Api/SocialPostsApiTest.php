@@ -540,6 +540,87 @@ class SocialPostsApiTest extends TestCase
             ->assertJsonPath('data.targets.0.url', null);
     }
 
+    public function test_a_failed_account_can_be_sent_again_and_lands(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id, remoteId: 'page-1', provider: 'facebook_page');
+
+        Http::fake([
+            'graph.facebook.com/*/feed' => Http::sequence()
+                ->push(['error' => ['message' => 'Temporarily down']], 500)
+                ->push(['id' => 'page-1_post-3']),
+            'graph.facebook.com/*/page-1_post-3*' => Http::response(['permalink_url' => 'https://www.facebook.com/a1chimney/posts/3']),
+        ]);
+
+        $sent = $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Chimney season is here.'])
+            ->assertJsonPath('data.targets.0.status', SocialPostTarget::STATUS_FAILED);
+
+        $this->signedInAs($t['admin'])
+            ->postJson($this->retryUrl($sent->json('data.id'), $sent->json('data.targets.0.id')))
+            ->assertOk()
+            ->assertJsonPath('data.status', SocialPostTarget::STATUS_SENT)
+            ->assertJsonPath('data.failure', null)
+            ->assertJsonPath('data.url', 'https://www.facebook.com/a1chimney/posts/3');
+    }
+
+    public function test_a_sent_account_cannot_be_sent_twice(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id, remoteId: 'page-1', provider: 'facebook_page');
+
+        Http::fake([
+            'graph.facebook.com/*/feed' => Http::response(['id' => 'page-1_post-2']),
+            'graph.facebook.com/*/page-1_post-2*' => Http::response(['permalink_url' => 'https://www.facebook.com/a1chimney/posts/2']),
+        ]);
+
+        $sent = $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Chimney season is here.'])
+            ->assertJsonPath('data.targets.0.status', SocialPostTarget::STATUS_SENT);
+
+        $this->signedInAs($t['admin'])
+            ->postJson($this->retryUrl($sent->json('data.id'), $sent->json('data.targets.0.id')))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('target');
+
+        Http::assertSentCount(2); // the one post and its link, nothing more
+    }
+
+    public function test_a_retry_is_refused_to_a_reader_and_hidden_from_a_sibling(): void
+    {
+        $t = $this->provisionTenant('A1-Group');
+        $row = $this->connection($t, 'company', $t['company']->id, remoteId: 'page-1', provider: 'facebook_page');
+        Http::fake(['graph.facebook.com/*/feed' => Http::response(['error' => ['message' => 'down']], 500)]);
+
+        $sent = $this->signedInAs($t['admin'])
+            ->post(self::ENDPOINT, ['connections' => [$row->getKey()], 'body' => 'Hello']);
+        $url = $this->retryUrl($sent->json('data.id'), $sent->json('data.targets.0.id'));
+
+        $this->signedInAs($this->userWithRole($t, 'Reader', ['marketing.view']))
+            ->postJson($url)
+            ->assertForbidden();
+
+        $premier = $this->inTenant($t['org'], fn () => Company::create([
+            'organization_id' => $t['org']->id,
+            'name' => 'Premier Garage Repair',
+        ]));
+        $this->lookingAt($t['admin'], 'company', $premier->id);
+
+        $this->signedInAs($t['admin']->fresh())
+            ->postJson($url)
+            ->assertNotFound();
+
+        $this->inTenant($t['org'], fn () => $this->assertSame(
+            SocialPostTarget::STATUS_FAILED,
+            SocialPostTarget::query()->sole()->status,
+        ));
+    }
+
+    private function retryUrl(string $post, string $target): string
+    {
+        return self::ENDPOINT."/{$post}/targets/{$target}/retry";
+    }
+
     private function assertNothingWasWritten(array $t): void
     {
         $this->inTenant($t['org'], function () {
