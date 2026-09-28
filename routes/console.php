@@ -105,16 +105,18 @@ Schedule::command('ezbizi:sync-thumbtack-phone-numbers')->dailyAt('04:40')->with
 // only ever finds files that already stopped working, so racing it against a
 // live post would be the only way to make it dangerous.
 /*
- * Every five minutes, and that number is a quota decision.
+ * Every minute - Jose, 2026-09-28: "set it to 1 minute then", matching A1
+ * Leads, which polls LSA every minute since its own Standard Access.
  *
- * Google Ads Basic Access is 15,000 operations a day against a ceiling owned by
- * the whole Cloud project - one number shared by every tenant, not one each. At
- * one minute an account costs 1,440 calls a day, so the platform could carry
- * ten accounts; A-1 Chimney alone connected 22 in a single action. Five minutes
- * is 288 an account, which supports 52 and leaves room for somebody pressing
- * Fetch new and for Reviews once its own approval lands.
+ * It was every five minutes while Google Ads Basic Access capped the whole
+ * Cloud project at 15,000 operations a day: at one minute an account costs
+ * 1,440 calls a day, so Basic could carry about ten. Standard Access (approved
+ * 2026-09-26) has no daily ceiling; the per-second limits still apply, and the
+ * command still stops a run after three quota refusals in a row.
+ *
+ * A run that outlasts its minute is not overlapped - the next one skips.
  */
-Schedule::command('ezbizi:sync-leads')->everyFiveMinutes()->withoutOverlapping(10);
+Schedule::command('ezbizi:sync-leads')->everyMinute()->withoutOverlapping(10);
 
 /*
  * EVERY MINUTE, because Jose asked for constant sync — and affordable only

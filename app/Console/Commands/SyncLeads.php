@@ -144,72 +144,30 @@ class SyncLeads extends Command
         $fetched  = 0;
         $messages = 0;
         $failed   = 0;
-        $rested   = 0;
 
         // Accounts actually reached, so the "not read" count in the log is the
         // remainder rather than a guess.
         $fetchedAccounts = 0;
 
         /*
-         * Tiered, because Basic Access is 15,000 operations a day for the
-         * whole project and Standard was refused on 2026-09-09 for not yet
-         * needing it. Connecting every client of A-1 Chimney's manager takes
-         * the fleet from 22 accounts to 45, and 45 lead reads plus their
-         * conversation reads every five minutes is past the ceiling - and a
-         * day over it drops the evening's leads, which is the one outcome
-         * this command exists to prevent.
+         * EVERY ACCOUNT, EVERY TICK - since Standard Access, 2026-09-26.
          *
-         * So: an account that has produced a lead in the last thirty days is
-         * read every tick, its conversations every other tick (ten minutes);
-         * an account that has produced nothing in thirty days is read once
-         * per half hour and its conversations not at all, since it has no
-         * lead to hang one on. With --days everything is read, every time.
-         * The quiet cadence was a quarter hour from 2026-09-11 to 2026-09-16;
-         * see the block below it for why it was raised and why it came back.
+         * From 2026-09-10 to 2026-09-28 this was tiered, because Basic Access
+         * gave the whole project 15,000 operations a day and sixty accounts
+         * every five minutes was past it: a quiet account (no lead in thirty
+         * days) was read once per half hour, and a producing account's
+         * conversations every ten minutes. Google approved Standard Access on
+         * 2026-09-26 - "Unlimited Daily Operations" - so the tiers bought
+         * nothing and cost a dormant account up to half an hour before its
+         * first new enquiry showed, and a reply up to ten minutes.
+         *
+         * Now: every account's leads every tick; conversations every tick for
+         * an account with a lead in the last thirty days (a quiet one has no
+         * lead to hang a conversation on). The quota guards below stay: the
+         * per-second and concurrency limits still apply, and three refusals in
+         * a row are still a fact about the token.
          */
-        $minute   = now()->minute;
-        $forced   = is_numeric($this->option('days'));
-
-        /*
-         * A QUIET ACCOUNT IS ASKED EVERY HALF HOUR. Back to it, 2026-09-16.
-         *
-         * ── What the quarter hour was for, and why it is over ────
-         *
-         * Measured 2026-09-11 at sixty accounts: Google's own counter read
-         * 14,889 requests, 99.3% of the 15,000 Basic Access ceiling, with no
-         * refusal. Standard Access had been refused on 2026-09-09 for not
-         * exceeding the limit, so sitting just under it earned nothing. The
-         * quiet cadence was raised to a quarter hour on purpose — about 1,150
-         * requests a day, roughly 107% of the ceiling — as the smallest lever
-         * that would cross the line the application needed crossed.
-         *
-         * It crossed. 2026-09-16, production: 2,033 refusals between 09:25 and
-         * 12:35, unbroken, ~690 an hour against a call rate of ~10.2 a minute.
-         * The evidence the application wanted now exists in Google's own logs,
-         * and the argument no longer needs the cadence holding it up.
-         *
-         * Jose, 2026-09-16: "Reverse this so we have some leway, we already
-         * went over the threshhold so we are good with stepping back on it
-         * now."
-         *
-         * ── What going back buys ─────────────────────────────────
-         *
-         * About 1,150 requests a day of headroom, which is what the reporting
-         * screen and a person looking at it have to come out of. Sitting at
-         * 107% meant every operation the day had was already promised to the
-         * sync, and the Ads report could not get a call through — which is how
-         * an afternoon was lost to filming a demo video for Google.
-         *
-         * ── What it costs ───────────────────────────────────────
-         *
-         * A dormant account that starts producing is noticed in thirty minutes
-         * rather than fifteen. Nothing is LOST either way: the lead read asks
-         * for everything since the newest lead already held, not since a
-         * cursor, so a later run collects what arrived meanwhile. Delay, not
-         * absence.
-         */
-        $quietTick = $minute % 30 < 5;
-        $tenMin    = $minute % 10 < 5;
+        $forced = is_numeric($this->option('days'));
 
         /*
          * TWO PASSES, AND THE ORDER IS THE POINT.
@@ -254,16 +212,11 @@ class SyncLeads extends Command
             $fresh = $connection->created_at !== null
                 && $connection->created_at->gte(now()->subMinutes(30));
 
-            if (! $forced && ! $producing && ! $quietTick && ! $fresh) {
-                $rested++;
-
-                continue;
-            }
 
             $due[] = [
                 'connection'    => $connection,
                 'organization'  => $organization,
-                'conversations' => $forced || $fresh || ($producing && $tenMin),
+                'conversations' => $forced || $fresh || $producing,
             ];
         }
 
@@ -426,7 +379,7 @@ class SyncLeads extends Command
             }
         }
 
-        $this->info("Synced {$connections->count()} connection(s) ({$rested} quiet ones rested): {$fetched} lead(s), {$messages} new call(s)/message(s), {$failed} failed.");
+        $this->info("Synced {$connections->count()} connection(s): {$fetched} lead(s), {$messages} new call(s)/message(s), {$failed} failed.");
 
         return self::SUCCESS;
     }

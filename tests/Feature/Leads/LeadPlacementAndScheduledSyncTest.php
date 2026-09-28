@@ -694,20 +694,25 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
     }
 
     /**
-     * Quota tiering. Forty-five accounts every five minutes is past Basic
-     * Access's 15,000 a day and a day over the limit drops the evening's
-     * leads. A quiet account (no lead in thirty days) is read once per half
-     * hour; a producing one every tick, with conversations every other tick.
+     * Every account, every tick - since Standard Access (2026-09-26).
+     *
+     * Until then a quiet account (no lead in thirty days) was read once per
+     * half hour and a producing account's conversations every ten minutes, to
+     * stay under Basic Access's 15,000 a day. Standard lifted the ceiling, so
+     * the tiers now only delayed enquiries.
+     *
+     * 12:07 is the clock that discriminates: neither a half hour nor a
+     * ten-minute mark, so under the old rule the quiet account rested and the
+     * producing account's conversations were skipped. Both must be read now.
      */
-    public function test_quiet_accounts_rest_between_half_hours_and_conversations_read_every_ten_minutes(): void
+    public function test_every_account_is_read_every_tick_and_a_producing_ones_conversations_too(): void
     {
         $t = $this->provisionTenant('A1-Chimney');
         $producing = $this->connection($t, '4941850746');
         $quiet     = $this->connection($t, '3747134697');
 
-        // Both connected yesterday; a connection made in the last half hour is
-        // due at once whatever the clock, and the clock below moves to a
-        // fixed morning, so the stamp must sit well before it.
+        // Both connected yesterday, so neither is "fresh" (a connection made in
+        // the last half hour is read at once under any rule).
         $this->inTenant($t['org'], function () use ($producing, $quiet) {
             $producing->forceFill(['created_at' => '2026-09-08 09:00:00'])->save();
             $quiet->forceFill(['created_at' => '2026-09-08 09:00:00'])->save();
@@ -716,7 +721,7 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         $this->inTenant($t['org'], fn () => Lead::create([
             'organization_id' => $t['org']->id, 'company_id' => $t['company']->id,
             'connection_id' => $producing->getKey(), 'source' => Lead::SOURCE_LOCAL_SERVICES,
-            'remote_id' => 'L-1', 'status' => Lead::STATUS_NEW, 'received_at' => now()->subDay(),
+            'remote_id' => 'L-1', 'status' => Lead::STATUS_NEW, 'received_at' => '2026-09-08 12:00:00',
         ]));
 
         $this->fakeGoogle();
@@ -724,49 +729,14 @@ class LeadPlacementAndScheduledSyncTest extends TestCase
         $isLeadRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead ');
         $isConvRead = fn ($r, string $id) => str_contains($r->url(), "/customers/{$id}/") && str_contains((string) ($r->data()['query'] ?? ''), 'FROM local_services_lead_conversation');
 
-        // 12:07 - neither a quarter hour nor a ten-minute mark.
         \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:07:00');
         $this->artisan('ezbizi:sync-leads')->assertSuccessful();
+
         Http::assertSent(fn ($r) => $isLeadRead($r, '4941850746'));
-        Http::assertNotSent(fn ($r) => $isConvRead($r, '4941850746'));
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
-
-        // 12:10 - a ten-minute mark: the producing account's conversations too.
-        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:10:00');
-        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
-        Http::assertSent(fn ($r) => $isConvRead($r, '4941850746'));
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
-
-        /*
-         * 12:15 - a quarter hour but NOT a half, which is the case that
-         * discriminates, and it must now REST.
-         *
-         * Every other clock in this test passes under either rule: 12:07 rests
-         * both ways, 12:30 is read both ways. Only a quarter-hour mark that is
-         * not a half-hour one can tell them apart, so without this the cadence
-         * could be moved either direction with nothing going red. It asserted
-         * the opposite between 2026-09-11 and 2026-09-16, when the quarter
-         * hour was deliberate; see SyncLeads for why it was raised and why it
-         * came back.
-         *
-         * Ordering matters: nothing has read the quiet account yet, so this
-         * assertNotSent is about THIS tick rather than about the fake's
-         * whole history.
-         */
-        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:15:00');
-        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
-        Http::assertNotSent(fn ($r) => str_contains($r->url(), '/customers/3747134697/'));
-
-        // 12:30 - a half hour: the quiet account is read, once.
-        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:30:00');
-        $this->artisan('ezbizi:sync-leads')->assertSuccessful();
-        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
+        Http::assertSent(fn ($r) => $isConvRead($r, '4941850746'), 'a producing account conversations, every tick');
+        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'), 'a quiet account is read every tick');
+        // A quiet account has no lead to hang a conversation on.
         Http::assertNotSent(fn ($r) => $isConvRead($r, '3747134697'));
-
-        // --days reads everything, every time.
-        \Illuminate\Support\Carbon::setTestNow('2026-09-09 12:37:00');
-        $this->artisan('ezbizi:sync-leads', ['--days' => 3])->assertSuccessful();
-        Http::assertSent(fn ($r) => $isLeadRead($r, '3747134697'));
     }
 
     /**
