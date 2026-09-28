@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0301',
+      date: '28 Sep 2026',
+      items: [
+        'Automations: a rule that runs on a schedule can be saved and edited again; opening it shows its schedule and time zone, where before the form had none and refused to save.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0300',
       date: '28 Sep 2026',
       items: [
