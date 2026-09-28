@@ -37,12 +37,12 @@ class BuildZipMapTest extends TestCase
         return [$tenant, $area];
     }
 
-    private function job(array $tenant, string $serviceArea, string $zip, ?string $city = null): void
+    private function job(array $tenant, string $serviceArea, string $zip, ?string $city = null, ?Franchise $franchise = null): void
     {
         app(TenantContext::class)->set($tenant['org']);
 
         WorkizJob::create([
-            'franchise_id' => $tenant['franchise']->id,
+            'franchise_id' => ($franchise ?? $tenant['franchise'])->id,
             'remote_id' => strtoupper(bin2hex(random_bytes(4))),
             'service_area' => $serviceArea,
             'postal_code' => $zip,
@@ -207,7 +207,7 @@ class BuildZipMapTest extends TestCase
         }
 
         $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])
-            ->expectsOutputToContain('46410  on Chicago; the evidence says Indiana')
+            ->expectsOutputToContain("46410  on {$tenant['franchise']->name} › Chicago; the evidence says {$tenant['franchise']->name} › Indiana")
             ->assertSuccessful();
 
         app(TenantContext::class)->set($tenant['org']);
@@ -235,7 +235,7 @@ class BuildZipMapTest extends TestCase
         ]);
         ServiceArea::create(['franchise_id' => $nationwide->id, 'name' => 'New York']);
 
-        $this->job($tenant, 'New York', '08753');
+        $this->job($tenant, 'New York', '08753', franchise: $nationwide);
         foreach (range(1, 3) as $ignored) {
             $this->job($tenant, 'New Jersey', '08753');
         }
@@ -247,6 +247,34 @@ class BuildZipMapTest extends TestCase
 
         $this->assertCount(1, $rows, 'One zip, one area, across the whole organization.');
         $this->assertSame($newJersey->id, $rows->first()->service_area_id);
+    }
+
+    /**
+     * A NAME IS ONLY UNIQUE WITHIN ITS BRANCH'S WORKIZ ACCOUNT. On 2026-09-28
+     * Nationwide gained its own Austin beside Texas's, and a dry run keyed on
+     * the name alone credited Texas's Austin zips to Nationwide's. A job
+     * matches only an area of its own franchise.
+     */
+    public function test_a_name_shared_by_two_branches_maps_each_jobs_zip_to_its_own_branch(): void
+    {
+        [$tenant, $texasAustin] = $this->tenantWithArea('Austin');
+
+        app(TenantContext::class)->set($tenant['org']);
+        $nationwide = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Nationwide',
+        ]);
+        $nationwideAustin = ServiceArea::create(['franchise_id' => $nationwide->id, 'name' => 'Austin']);
+
+        $this->job($tenant, 'Austin', '78701');
+        $this->job($tenant, 'Austin', '78613', franchise: $nationwide);
+
+        $this->artisan('scheduling:build-zip-map', ['--organization' => 'Alpha'])->assertSuccessful();
+
+        app(TenantContext::class)->set($tenant['org']);
+        $this->assertSame($texasAustin->id, ServiceAreaZip::query()->where('zip', '78701')->value('service_area_id'));
+        $this->assertSame($nationwideAustin->id, ServiceAreaZip::query()->where('zip', '78613')->value('service_area_id'));
     }
 
     public function test_dry_run_writes_nothing(): void

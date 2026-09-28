@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Franchise;
 use App\Models\Organization;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaZip;
@@ -113,13 +114,23 @@ class SchedulingBuildZipMap extends Command
         $dryRun = (bool) $this->option('dry-run');
 
         /*
-         * Areas by lowercased name. The name is what Workiz reports and what
-         * the areas were matched on when 19 of them were created on
-         * 2026-09-23 — 26 of 26 already matched exactly, so nothing cleverer
-         * than a trim and a case fold has ever been needed.
+         * Areas by FRANCHISE and lowercased name. The name is what Workiz
+         * reports, trimmed and case-folded — but a name is only unique within
+         * its branch's Workiz account. On 2026-09-28 Nationwide gained Austin,
+         * Houston and San Antonio beside Texas's own, and a name-only lookup
+         * (what this was) credited Texas's zips to Nationwide's Austin. A job
+         * from the live table carries its franchise, so it matches only its
+         * own branch's area.
+         *
+         * The A1 export (--file) carries no franchise: a name there matches
+         * only when exactly one area has it, and is reported otherwise.
          */
         $areas = ServiceArea::query()->get();
-        $byName = $areas->keyBy(fn (ServiceArea $a) => mb_strtolower(trim($a->name)));
+        $fold = fn (?string $name) => mb_strtolower(trim((string) $name));
+        $byBranch = $areas->keyBy(fn (ServiceArea $a) => $a->franchise_id.'|'.$fold($a->name));
+        $byName = $areas->groupBy(fn (ServiceArea $a) => $fold($a->name));
+        $branchNames = Franchise::query()->whereIn('id', $areas->pluck('franchise_id'))->pluck('name', 'id');
+        $label = fn (ServiceArea $a) => ($branchNames[$a->franchise_id] ?? '?').' › '.$a->name;
 
         $file = $this->option('file');
         $source = $file === null ? self::SOURCE : self::SOURCE_A1;
@@ -150,8 +161,8 @@ class SchedulingBuildZipMap extends Command
                 ->where('organization_id', $organization->getKey())
                 ->whereNotNull('service_area')
                 ->whereNotNull('postal_code')
-                ->selectRaw('service_area, postal_code, COUNT(*) as jobs, MAX(city) as city')
-                ->groupBy('service_area', 'postal_code')
+                ->selectRaw('franchise_id, service_area, postal_code, COUNT(*) as jobs, MAX(city) as city')
+                ->groupBy('franchise_id', 'service_area', 'postal_code')
                 ->get();
         }
 
@@ -172,7 +183,10 @@ class SchedulingBuildZipMap extends Command
                 continue;
             }
 
-            $area = $byName->get(mb_strtolower(trim((string) $row->service_area)));
+            $name = $fold($row->service_area);
+            $area = isset($row->franchise_id)
+                ? $byBranch->get($row->franchise_id.'|'.$name)
+                : (($byName->get($name)?->count() ?? 0) === 1 ? $byName->get($name)->first() : null);
 
             if ($area === null) {
                 $name = trim((string) $row->service_area);
@@ -199,14 +213,14 @@ class SchedulingBuildZipMap extends Command
             }
 
             if ($claim['jobs'] > $best[$key]['jobs']) {
-                $best[$key]['lost'][] = $best[$key]['area']->name.' ('.$best[$key]['jobs'].')';
+                $best[$key]['lost'][] = $label($best[$key]['area']).' ('.$best[$key]['jobs'].')';
                 $lost = $best[$key]['lost'];
                 $best[$key] = $claim + ['lost' => $lost];
 
                 continue;
             }
 
-            $best[$key]['lost'][] = $area->name.' ('.$claim['jobs'].')';
+            $best[$key]['lost'][] = $label($area).' ('.$claim['jobs'].')';
         }
 
         $written = 0;
@@ -241,8 +255,8 @@ class SchedulingBuildZipMap extends Command
                     $disputed[] = sprintf(
                         '%s  on %s; the evidence says %s (%d jobs)',
                         $claim['zip'],
-                        $existing->serviceArea?->name ?? '?',
-                        $claim['area']->name,
+                        $existing->serviceArea === null ? '?' : $label($existing->serviceArea),
+                        $label($claim['area']),
                         $claim['jobs'],
                     );
                 }
