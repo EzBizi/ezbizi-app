@@ -12,6 +12,7 @@ class VersionHistory {
       date: '28 Sep 2026',
       items: [
         'Web Management: the SEO Helper server side also groups pages that share a keyphrase, title or description, names the other pages behind a shared problem, and can fix a site title template stuck on an old year. Its screen follows.',
+        'Leads: when the number of a lead already belongs to a customer, the list shows the customer name with a Customer badge, and the lead shows their address, their jobs and what those came to, with Open customer.',
       ],
     ),
     VersionRelease(
