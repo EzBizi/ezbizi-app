@@ -446,6 +446,41 @@ class SchedulingAvailabilityTest extends TestCase
         $this->assertSame([3, 0, 1], [$one['capacity'], $one['booked'], $one['remaining']]);
     }
 
+    /** "All areas" (Jose, 2026-09-28): every area in view, franchise by franchise, in both the search and the calendar. */
+    public function test_all_areas_searches_every_area_and_sums_every_franchise_month(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        app(TenantContext::class)->set($tenant['org']);
+        $georgia = Franchise::create([
+            'organization_id' => $tenant['org']->id,
+            'company_id' => $tenant['company']->id,
+            'name' => 'Georgia',
+        ]);
+        $atlanta = ServiceArea::create(['franchise_id' => $georgia->id, 'name' => 'Atlanta']);
+        $this->signedInAs($tenant['admin'])
+            ->putJson("/api/v1/scheduling/areas/{$atlanta->id}/slots", ['slots' => [
+                ['weekday' => 1, 'start_time' => '08:00', 'end_time' => '11:00', 'max_jobs' => 4],
+            ]])->assertOk();
+        $this->booked($tenant, '2026-10-05 08:00:00', area: 'Atlanta', franchise: $georgia);
+
+        $areas = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability?all=1')
+            ->assertOk()
+            ->json('data.areas');
+        $this->assertEqualsCanonicalizing(['Dallas', 'Atlanta'], array_column($areas, 'area_name'));
+
+        $monday = collect($this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/availability/calendar?month=2026-10')
+            ->assertOk()
+            ->assertJsonPath('data.franchise', null)
+            ->json('data.days'))->firstWhere('date', '2026-10-05');
+
+        // Dallas 3 + Atlanta 4 capacity; one Atlanta job.
+        $this->assertSame([7, 1, 6, false], [$monday['capacity'], $monday['booked'], $monday['remaining'], $monday['closed']]);
+    }
+
     /**
      * An area nobody has configured says so — not "closed", not "full", and
      * never a date. The client turns it into "check Workiz".

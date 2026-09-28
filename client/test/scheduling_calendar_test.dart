@@ -78,6 +78,25 @@ void main() {
     expect(asked.last.queryParameters['area_id'], 'a-md');
   });
 
+  /// "All areas" (Jose, 2026-09-28): every franchise's month added up, asked
+  /// for by naming no franchise; there are no area chips under it.
+  testWidgets('all areas asks for the month of every franchise', (
+    tester,
+  ) async {
+    final asked = <Uri>[];
+    await _pump(tester, asked);
+
+    await tester.tap(find.text('All areas'));
+    await tester.pumpAndSettle();
+
+    expect(asked.last.queryParameters.containsKey('franchise_id'), isFalse);
+    expect(asked.last.queryParameters['month'], '2026-10');
+    expect(
+      find.byKey(const ValueKey('calendar-day-2026-10-05')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('a phone-width month draws without overflowing', (tester) async {
     final errors = <FlutterErrorDetails>[];
     final previous = FlutterError.onError;
