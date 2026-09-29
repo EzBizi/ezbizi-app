@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'The dashboard no longer shows any money: no revenue on Jobs and no stock value on Inventory. Stock value stays on the Inventory tab, and each job still shows its own amount.',
         'Human Resources, Records: new sections for pay rates, emergency contacts, notes and the equipment a person holds. Pay rates show only to administrators and to roles given See pay rates.',
+        'Web Management: widget, list and SEO Helper changes also show on the website at once.',
       ],
     ),
     VersionRelease(
