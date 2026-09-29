@@ -15,6 +15,7 @@ class VersionHistory {
         'Communication, Dial pad: an Availability button opens availability in a side panel without leaving the call, on the zip of the caller when the caller is a customer on file.',
         'Website widgets: the form can take photos, show questions only when they apply, email each enquiry and stop robots; Contact Details can list more numbers with a chosen icon per section; Social Links can add any platform. Each is off until switched on.',
         'Scheduling, Overbooking: a Pick a date chip beside 7, 14, 30 and 60 days shows what is overbooked on that one day; clearing it goes back to the span.',
+        'Customers: the Possible duplicates panel now says that only a customer with no jobs can be removed, instead of suggesting a removal EzBizi refuses.',
       ],
     ),
     VersionRelease(
