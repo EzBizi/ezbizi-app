@@ -198,6 +198,13 @@ Schedule::command('ezbizi:project-workiz')->everyMinute()->withoutOverlapping(10
  */
 Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverlapping(10);
 
+/*
+ * The overbooking warning (Jose, 2026-09-29): each morning, raise
+ * `scheduling.overbooking_found` where a service area is overbooked or fully
+ * booked in the next 7 days. The email itself is an automation on it.
+ */
+Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

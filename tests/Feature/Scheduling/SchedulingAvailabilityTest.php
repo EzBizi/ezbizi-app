@@ -10,6 +10,7 @@ use App\Models\WorkizJob;
 use App\Support\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
@@ -544,6 +545,83 @@ class SchedulingAvailabilityTest extends TestCase
 
         $this->signedInAs($tenant['admin'])->getJson('/api/v1/scheduling/areas')
             ->assertJsonPath('data.0.daily_limits', ['1' => 2]);
+    }
+
+    /**
+     * Scheduling › Overbooking (Jose, 2026-09-29). Dallas takes 3 on a Monday;
+     * four booked is one over, and a job on a closed Tuesday is over by all of
+     * it. The franchise, limited to 4, is over too once a Houston job lands.
+     */
+    public function test_the_overbooking_tab_lists_days_booked_past_what_they_take(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+        $this->limit($tenant, ['1' => 4]);
+
+        foreach (['07:00', '08:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+        $this->booked($tenant, '2026-10-06 09:00:00');
+        $this->booked($tenant, '2026-10-05 09:00:00', area: 'Houston');
+
+        $body = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/overbooking')
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('2026-09-30', $body['from'], 'Today counts: an overbooked today still needs solving.');
+
+        $rows = collect($body['overbooked'])->map(fn ($r) => [$r['date'], $r['level'], $r['name'], $r['booked'], $r['capacity'], $r['over'], $r['closed']])->all();
+        $this->assertContains(['2026-10-05', 'area', 'Dallas', 4, 3, 1, false], $rows);
+        $this->assertContains(['2026-10-05', 'franchise', $tenant['franchise']->name, 5, 4, 1, false], $rows);
+        $this->assertContains(['2026-10-06', 'area', 'Dallas', 1, 0, 1, true], $rows);
+    }
+
+    /** Fully booked: works in the next 7 days and has no spot left in any of them. */
+    public function test_an_area_with_no_spot_in_the_next_seven_days_is_fully_booked(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        foreach (['07:00', '08:00', '11:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+
+        $full = $this->signedInAs($tenant['admin'])
+            ->getJson('/api/v1/scheduling/overbooking')
+            ->assertOk()
+            ->json('data.fully_booked');
+
+        $this->assertSame([['Dallas', '2026-10-12']], array_map(fn ($r) => [$r['name'], $r['next_opening']], $full));
+
+        $viewer = $this->userWithRole($tenant, 'Caller', ['scheduling.view', 'scheduling.availability.view']);
+        $this->signedInAs($viewer)->getJson('/api/v1/scheduling/overbooking')->assertForbidden();
+    }
+
+    /**
+     * The morning warning raises `scheduling.overbooking_found` with a summary
+     * an automation emails as written — and raises nothing on a quiet morning.
+     */
+    public function test_the_morning_check_raises_the_trigger_only_when_something_is_wrong(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->dallas($tenant);
+
+        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+        $this->assertSame(0, DB::table('automation_events')->where('event_key', 'scheduling.overbooking_found')->count());
+
+        foreach (['07:00', '08:00', '11:00', '12:00'] as $t) {
+            $this->booked($tenant, "2026-10-05 {$t}:00");
+        }
+
+        $this->artisan('scheduling:warn-overbooking')->assertSuccessful();
+
+        $event = DB::table('automation_events')->where('event_key', 'scheduling.overbooking_found')->first();
+        $this->assertNotNull($event);
+        $summary = json_decode($event->payload, true)['after']['summary'];
+        $this->assertStringContainsString('Mon Oct 5', $summary);
+        $this->assertStringContainsString('Dallas: 4 booked of 3 (1 over)', $summary);
+        $this->assertStringContainsString('FULLY BOOKED', $summary);
     }
 
     /**
