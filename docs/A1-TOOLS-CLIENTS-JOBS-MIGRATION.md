@@ -342,7 +342,11 @@ The deploy desk ran it on release 54e37fec (0.0.0313), 18:30:46 to 18:37:10 UTC.
 **Inspection reports.** `inspection:import-a1-reports` on 0.0.0315: 7 attached to their jobs, report 28 held in the archive. All 8 archived PDFs match the manifest's sha256.
 
 **Twins found after the backfill** (Workiz's check): 696 of the projection's new customers share a phone and name with an older customer.
-- The 426 cross-franchise pairs are left alone (desk and Customers): a customer has one owning franchise, as in Workiz.
-- The roughly 270 same-franchise pairs are to be merged by Workiz's command, on Customers' conditions: dump, manifest, soft-delete only, one audit row, skip anything a person has touched.
+- At first the desk and Customers ruled to leave the cross-franchise pairs alone. Customers then reversed that under Jose's decided rule in docs/EZBIZI-BUILD-PLAN.md §5.2: "A customer served by NJ and PA is one person". The desk's objection had been wrong: customers are readable across the organization, and jobs keep their own franchise.
+- Merged on 0.0.0318, 22:40 UTC, by `ezbizi:workiz-merge-twins "2026-09-29 18:44:00" "2026-09-29 21:17:30"` (133d3cb0).
+  - The rule: same phone, name and postal code, in any franchise, with a tie-break toward the twin's own branch. Skipped: placeholder addresses, twins a person has touched, and twins anything else names.
+  - Result: 615 merged (216 in the same franchise, 399 in another) into 579 kept customers. 695 jobs and 615 Workiz keys moved. The twins were soft-deleted.
+  - Left alone: 79 at a different address, and 2 that match several customers (for Customers to decide).
+  - Manifest: `workiz-twins/merged-20260929-224045.jsonl`. Dump: `before-workiz-twin-merge-20260929T224000Z`. Audit row: `customer.twins_merged`.
 
 **Staging deleted.** `/var/lib/a1-clients-export` is gone. The manifests and dumps named above are kept.
