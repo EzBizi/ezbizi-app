@@ -224,4 +224,24 @@ class WorkizRawReadTest extends TestCase
             return (string) ($query['records'] ?? '') !== (string) WorkizJobs::PAGE;
         });
     }
+
+    /**
+     * The minute sweep keeps Laravel's 30 seconds a page. The projection runs
+     * after it in the same minute, so only the backfill may wait longer.
+     */
+    public function test_the_minute_sweep_waits_no_longer_than_thirty_seconds_a_page(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $timeouts = [];
+
+        Http::fake(function (Request $request, array $options) use (&$timeouts) {
+            $timeouts[] = $options['timeout'] ?? null;
+
+            return Http::response(['flag' => true, 'data' => []]);
+        });
+
+        app(WorkizJobs::class)->raw($this->connect($tenant, $tenant['franchise'], 'api_good'));
+
+        $this->assertSame([30], $timeouts);
+    }
 }

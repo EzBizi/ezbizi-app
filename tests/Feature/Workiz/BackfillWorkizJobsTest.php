@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Workiz;
 
+use App\Console\Commands\BackfillWorkizJobs;
 use App\Models\AutomationEvent;
 use App\Models\Customer;
 use App\Models\Franchise;
@@ -43,6 +44,9 @@ class BackfillWorkizJobsTest extends TestCase
     /** The page numbers asked for, in order. */
     private array $asked = [];
 
+    /** The timeout each request was sent with, in seconds. */
+    private array $timeouts = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -52,9 +56,10 @@ class BackfillWorkizJobsTest extends TestCase
         $this->t = $this->provisionTenant('Alpha');
         $this->connection = $this->connect($this->t['franchise']);
 
-        Http::fake(function (Request $request) {
+        Http::fake(function (Request $request, array $options) {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
             $this->asked[] = (int) $query['offset'];
+            $this->timeouts[] = $options['timeout'] ?? null;
             $page = $this->pages[(int) $query['offset']] ?? [];
 
             return is_int($page)
@@ -118,6 +123,10 @@ class BackfillWorkizJobsTest extends TestCase
 
         // Paced: a pause between pages, to leave the minute sync its quota.
         Sleep::assertSleptTimes(1);
+
+        // And patient: a big account's first page from 2023 took over 30 s.
+        $this->assertSame([BackfillWorkizJobs::PAGE_TIMEOUT, BackfillWorkizJobs::PAGE_TIMEOUT], $this->timeouts);
+        $this->assertGreaterThan(30, BackfillWorkizJobs::PAGE_TIMEOUT);
     }
 
     public function test_it_stops_on_the_first_refusal_and_resumes_a_page_back(): void

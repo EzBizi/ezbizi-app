@@ -57,6 +57,14 @@ class BackfillWorkizJobs extends Command
 
     private const FRESH = ['page' => 0, 'done' => false, 'jobs' => 0, 'new' => 0, 'attach' => 0, 'clients' => []];
 
+    /**
+     * Seconds to wait for one page. A big account's FIRST page from an old date
+     * is slow while Workiz builds the list: New Jersey's page 0 since 2023 ran
+     * past Laravel's default 30 s twice on 2026-09-29, and answered in 2.3 s
+     * once warm (the desk's probe).
+     */
+    public const PAGE_TIMEOUT = 120;
+
     public function handle(WorkizJobs $workiz, TenantContext $tenant): int
     {
         $since = (string) $this->option('since');
@@ -109,7 +117,7 @@ class BackfillWorkizJobs extends Command
                     Sleep::for(max(0, (int) $this->option('pause')))->seconds();
                 }
 
-                $page = $workiz->page($connection, $since, $at['page']);
+                $page = $workiz->page($connection, $since, $at['page'], self::PAGE_TIMEOUT);
                 $read++;
 
                 if ($page['failed'] !== null) {

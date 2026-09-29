@@ -394,9 +394,13 @@ final class WorkizJobs
      * Georgia: since 2025-01-01 paged 25 pages back to October 2025 and still
      * had more). That is what reaches a job from before the mirror began.
      *
+     * `$timeout` is Laravel's own 30 seconds unless a caller can afford more:
+     * the minute sweep cannot, because the projection runs after it in the
+     * same minute.
+     *
      * @return array{jobs: list<array<string, mixed>>, failed: ?string}
      */
-    public function page(SocialConnection $connection, string $since, int $page): array
+    public function page(SocialConnection $connection, string $since, int $page, int $timeout = 30): array
     {
         $token = (string) ($connection->credentials['api_token'] ?? '');
 
@@ -405,7 +409,7 @@ final class WorkizJobs
         }
 
         try {
-            $response = Http::acceptJson()->get(
+            $response = Http::acceptJson()->timeout($timeout)->get(
                 'https://api.workiz.com/api/v1/'.$token.'/job/all/',
                 [
                     'start_date' => $since,
