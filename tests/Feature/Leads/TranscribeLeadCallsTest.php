@@ -156,6 +156,27 @@ class TranscribeLeadCallsTest extends TestCase
         $this->assertCount(1, $this->speechCalls);
     }
 
+    /**
+     * Whisper on this server, when it is installed: the call is transcribed in
+     * the same run, and nothing goes to Google. A PHP stand-in plays Whisper
+     * here, printing the words the real script would.
+     */
+    public function test_on_this_server_the_words_arrive_in_the_same_run(): void
+    {
+        $script = tempnam(sys_get_temp_dir(), 'whisper').'.php';
+        file_put_contents($script, '<?php echo "Hi, my fireplace smokes.", PHP_EOL, file_exists($argv[1]) ? "" : "no audio";');
+        config(['services.whisper.python' => PHP_BINARY, 'services.whisper.script' => $script]);
+
+        $answered = $this->recordedCall('a', '2026-09-27T15:00:00Z', 95000);
+        $this->artisan('ezbizi:transcribe-lead-calls')->assertSuccessful();
+        @unlink($script);
+
+        $row = $this->fresh($answered);
+        $this->assertSame('Hi, my fireplace smokes.', $row->transcript);
+        $this->assertNotNull($row->transcribed_at);
+        $this->assertSame([], $this->speechCalls, 'nothing is sent to Google');
+    }
+
     public function test_a_refused_recording_is_given_up_on_not_retried(): void
     {
         config(['services.google_speech.key' => 'speech-key']);

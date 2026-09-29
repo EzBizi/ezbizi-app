@@ -312,9 +312,9 @@ Schedule::command('ezbizi:ads-certifications')->dailyAt('07:45')->timezone('Amer
 // every minute; a quarter-hour is soon enough for a revenue figure.
 Schedule::command('ezbizi:match-leads-to-jobs')->everyFifteenMinutes()->withoutOverlapping(30);
 
-// Recorded Local Services calls, transcribed a few at a time so each lead can
-// be sorted from what was said. Does nothing until GOOGLE_SPEECH_KEY is set.
-Schedule::command('ezbizi:transcribe-lead-calls')->everyFiveMinutes()->withoutOverlapping(15);
+// Call transcription is NOT scheduled here: a run takes minutes and schedule:run
+// runs a minute's commands in sequence, so it would hold the lead sync behind
+// it. deploy/ezbizi-transcribe.timer runs `ezbizi:transcribe-lead-calls` instead.
 
 // Is every Local Services campaign still showing? Hourly and read-only; a stop
 // raises ads.campaign_stopped with who paused it.

@@ -581,6 +581,15 @@ return [
         'key' => env('GOOGLE_SPEECH_KEY', ''),
     ],
 
+    // Whisper on this server instead (Jose, 2026-09-29: "i don't want to rely
+    // on any physical computers"; free, and the audio never leaves the box).
+    // Used when this interpreter exists - /opt/whisper, see
+    // deploy/ezbizi-transcribe.service. It wins over Google when both are set.
+    'whisper' => [
+        'python' => env('WHISPER_PYTHON', '/opt/whisper/venv/bin/python'),
+        'script' => base_path('deploy/whisper-transcribe.py'),
+    ],
+
     // Web Management's bulk hours editor can write a listing's regularHours.
     // Off until EzBizi has Business Profile write access of its own (Jose,
     // 2026-09-28); until then that destination answers "not switched on".

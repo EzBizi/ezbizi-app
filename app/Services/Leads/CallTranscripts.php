@@ -33,15 +33,50 @@ class CallTranscripts
 
     public function enabled(): bool
     {
-        return (string) config('services.google_speech.key') !== '';
+        return $this->local() || (string) config('services.google_speech.key') !== '';
     }
 
     /**
-     * Start transcribing one call; the name of Google's job, to ask after.
-     *
-     * @throws RuntimeException with a sentence, when it cannot be started
+     * Whisper on this server (deploy/whisper-transcribe.py): free, and the
+     * audio never leaves the box. Measured 2026-09-29 at 9x faster than the
+     * call on four cores. Preferred whenever it is installed.
      */
-    public function start(LeadConversation $row, SocialConnection $connection): string
+    public function local(): bool
+    {
+        $python = (string) config('services.whisper.python');
+
+        return $python !== '' && is_executable($python);
+    }
+
+    /**
+     * The words of one call, transcribed here and now; '' for a call with
+     * nothing said.
+     *
+     * @throws RuntimeException with a sentence, when it cannot be done
+     */
+    public function transcribeHere(LeadConversation $row, SocialConnection $connection): string
+    {
+        $audio = $this->recording($row, $connection);
+        $file = tempnam(sys_get_temp_dir(), 'call-');
+        file_put_contents($file, $audio);
+
+        try {
+            $process = new Process([(string) config('services.whisper.python'), (string) config('services.whisper.script'), $file]);
+            $process->setTimeout(600);
+            $process->run();
+        } finally {
+            @unlink($file);
+        }
+
+        if (! $process->isSuccessful()) {
+            throw new RuntimeException('Whisper could not transcribe the call.');
+        }
+
+        return trim($process->getOutput());
+    }
+
+    /** @throws RuntimeException */
+    private function recording(LeadConversation $row, SocialConnection $connection): string
     {
         try {
             $audio = Http::withToken(GoogleToken::forConnection($connection, 'google_ads'))
@@ -55,7 +90,17 @@ class CallTranscripts
             throw new RuntimeException('Google refused the recording (HTTP '.$audio->status().').');
         }
 
-        $flac = self::flac($audio->body());
+        return $audio->body();
+    }
+
+    /**
+     * Start transcribing one call; the name of Google's job, to ask after.
+     *
+     * @throws RuntimeException with a sentence, when it cannot be started
+     */
+    public function start(LeadConversation $row, SocialConnection $connection): string
+    {
+        $flac = self::flac($this->recording($row, $connection));
         if (strlen($flac) > self::MAX_BYTES) {
             throw new RuntimeException('The call is too long to transcribe inline.');
         }

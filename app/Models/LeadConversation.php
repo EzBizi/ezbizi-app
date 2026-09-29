@@ -70,9 +70,9 @@ class LeadConversation extends Model implements HoldsPersonalData, StatesRetenti
                 .'they chose to write — an address, a name, a reason for the work.',
                 Erasure::erase()),
             new PersonalDataEntry('transcript', PersonalDataEntry::CONTENT,
-                'The words of a recorded call, read off the recording Google keeps, by Google Cloud '
-                .'Speech-to-Text. The audio is sent there once to be transcribed and kept by '
-                .'neither side; the words are kept here, with the enquiry.',
+                'The words of a recorded call, transcribed on EzBizi\'s own server from the '
+                .'recording Google keeps. The audio is fetched once, transcribed and deleted; '
+                .'the words are kept here, with the enquiry.',
                 Erasure::erase()),
             new PersonalDataEntry('recording_url', PersonalDataEntry::CONTENT,
                 'Where Google keeps the recording of a call with this person — their voice. '

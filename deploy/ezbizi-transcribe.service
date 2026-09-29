@@ -1,0 +1,30 @@
+# Transcribes recorded Local Services calls with Whisper, on this box.
+#
+# Its own unit, not a line in routes/console.php: a transcription run takes
+# minutes, and schedule:run runs a minute's commands one after another, so it
+# would hold the every-minute lead sync behind it (see the scheduler unit).
+# Lowest CPU priority and at most four cores: the box has sixteen and uses about
+# two, and the app must never wait for a transcript.
+#
+# Install (once; deploy.sh refreshes it after that):
+#   sudo cp deploy/ezbizi-transcribe.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ezbizi-transcribe.timer
+
+[Unit]
+Description=EzBizi call transcription
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/ezbizi-current
+ExecStart=/usr/bin/php8.4 /var/www/ezbizi-current/artisan ezbizi:transcribe-lead-calls --minutes=4
+Nice=19
+CPUQuota=400%
+TimeoutStartSec=900
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true

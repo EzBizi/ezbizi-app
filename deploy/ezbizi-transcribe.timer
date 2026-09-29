@@ -1,0 +1,10 @@
+[Unit]
+Description=Transcribe new EzBizi call recordings every five minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+Unit=ezbizi-transcribe.service
+
+[Install]
+WantedBy=timers.target

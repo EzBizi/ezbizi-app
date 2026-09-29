@@ -25,7 +25,7 @@ use RuntimeException;
  */
 class TranscribeLeadCalls extends Command
 {
-    protected $signature = 'ezbizi:transcribe-lead-calls {--limit=40 : calls to start per run} {--days=7}';
+    protected $signature = 'ezbizi:transcribe-lead-calls {--limit=40 : calls to start per run} {--days=7} {--minutes=4 : how long a run on this server may take}';
 
     protected $description = 'Transcribe recorded Local Services calls and sort their leads';
 
@@ -38,6 +38,10 @@ class TranscribeLeadCalls extends Command
         }
 
         $finished = $started = $failed = 0;
+
+        if ($transcripts->local()) {
+            return $this->transcribeHere($transcripts, $tenant, $thread);
+        }
 
         $pending = LeadConversation::query()->withoutGlobalScopes()
             ->whereNotNull('transcript_operation')->whereNull('transcribed_at')
@@ -92,6 +96,62 @@ class TranscribeLeadCalls extends Command
         $this->info("Finished {$finished}, started {$started}, gave up on {$failed}.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Whisper on this server: one call at a time, newest first, until the
+     * run's time is spent - the timer starts the next run five minutes after
+     * this one ends (deploy/ezbizi-transcribe.timer), so the box never runs
+     * two at once.
+     */
+    private function transcribeHere(CallTranscripts $transcripts, TenantContext $tenant, LeadThread $thread): int
+    {
+        $until = now()->addMinutes((int) $this->option('minutes'));
+        $done = $failed = 0;
+
+        foreach ($this->untranscribed((int) $this->option('limit') * 10) as $row) {
+            if (now()->gte($until)) {
+                break;
+            }
+            $this->perOrganization(collect([$row]), $tenant, function (LeadConversation $row) use ($transcripts, $thread, &$done, &$failed) {
+                $lead = Lead::query()->find($row->lead_id);
+                try {
+                    if ($lead?->connection === null) {
+                        throw new RuntimeException('The account is no longer connected.');
+                    }
+                    $words = $transcripts->transcribeHere($row, $lead->connection);
+                } catch (RuntimeException) {
+                    $row->forceFill(['transcribed_at' => now()])->save();
+                    $failed++;
+
+                    return;
+                }
+                $row->forceFill(['transcript' => $words === '' ? null : $words, 'transcribed_at' => now()])->save();
+                $done++;
+                if ($words !== '') {
+                    $thread->refresh($lead);
+                }
+            });
+        }
+
+        $this->info("Transcribed {$done} here, gave up on {$failed}.");
+
+        return self::SUCCESS;
+    }
+
+    /** @return Collection<int, LeadConversation> answered calls with a recording, newest first */
+    private function untranscribed(int $limit): Collection
+    {
+        return LeadConversation::query()->withoutGlobalScopes()
+            ->where('channel', LeadConversation::CHANNEL_PHONE_CALL)
+            ->where('participant', LeadConversation::FROM_CONSUMER)
+            ->whereNotNull('recording_url')
+            ->whereNotNull('duration_ms')
+            ->whereNull('transcript_operation')->whereNull('transcribed_at')
+            ->where('occurred_at', '>=', now()->subDays((int) $this->option('days')))
+            ->orderByDesc('occurred_at')
+            ->limit($limit)
+            ->get();
     }
 
     /** @param Collection<int, LeadConversation> $rows */
