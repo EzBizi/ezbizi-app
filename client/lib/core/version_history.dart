@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0306',
+      date: '29 Sep 2026',
+      items: [
+        'Leads: every source has its own colour, the Google tag says LS Call, LS Text or LS Booking, and a lead shows its Google Ads account and Google status in colour. Leads from Workiz are no longer tagged Google.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0305',
       date: '29 Sep 2026',
       items: [
