@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Role;
 use App\Models\TimeClockReport;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\ReportSenders;
 use App\Support\Mail\CannotSendMail;
 use App\Support\TimeClock\TimeClock;
 use App\Support\TimeClock\TimeClockReports;
@@ -32,9 +33,19 @@ class TimeClockReportsController extends Controller
     public function index(Request $request): JsonResponse
     {
         $actor = $request->user();
+        $saved = TimeClockReport::query()->orderBy('name')->get();
+
+        // Which automation rules send each report (UI/UX + Reports, 2026-09-29).
+        // Rule names and schedules are Automations' to show: without
+        // automations.view the reader learns only whether one does.
+        $senders = ReportSenders::for(ReportSenders::REPORT_WORK_HOURS, $saved->pluck('id')->all());
+        $seesRules = $actor->hasPermission('automations.view');
 
         return response()->json([
-            'data' => TimeClockReport::query()->orderBy('name')->get()->map(fn ($r) => $this->present($r))->all(),
+            'data' => $saved->map(fn ($r) => $this->present($r) + [
+                'sent_automatically' => isset($senders[$r->id]),
+                'sent_by' => $seesRules ? ($senders[$r->id] ?? []) : null,
+            ])->all(),
             'roles' => Role::query()->orderBy('name')->get(['id', 'name'])
                 ->map(fn ($r) => ['id' => $r->id, 'name' => $r->name])->all(),
             // Only people the reader can already see on Work Hours: the picker
