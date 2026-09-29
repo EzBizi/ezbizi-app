@@ -411,3 +411,19 @@ the run carries on; files copied for a person whose transaction rolled back are
 deleted again. `--dry-run` reads everything, validates everything and writes
 nothing, and prints per-person counts and a total the desk can hold against the
 inventory. No personal value is ever printed: people are named by their A1 account ids, which is also how the inventory is keyed.
+
+## Phase 1 result (deploy desk, 2026-09-29)
+
+- **Export:** 76 people, 330 files (305.6 MB). The HR dry run matched it: 64 new, 12 matched.
+- **Dump:** `/home/ubuntu/manual-dumps/hr-before-a1-people-import-20260929T155356Z.sql.gz` (13 tables).
+- **First run:** 23 created, 10 updated, 43 failed, every one of them `League\Flysystem\UnableToCreateDirectory`. `storage/app/private/attachments` was `ubuntu:ubuntu 0700`, created on Aug 11 by a process running as ubuntu, and it held 9 older files the app could not read either. It was chowned to www-data like its siblings. Each failure had rolled back whole.
+- **Re-run:** 41 created, 2 updated, 0 failed.
+- **Verified:**
+  - 77 A1-Group users (64 new, all active). New by role: Dispatcher 29, Technician 20, Training 7, Local Manager 6, Accounting 1, Recruiter 1.
+  - All 64 new users have an assignment (33 company, 31 franchise).
+  - 76 onboardings, 681 answers, 1 archived contract.
+  - 328 attachments, all on disk with matching checksums (320.8 MB).
+  - 35 pay rates, 3 emergency contacts, 52 notes, 294 equipment items.
+  - 0 failed jobs, and no notifications from the import.
+- **Welcome:** 64 sent (`hr:send-a1-welcome --send`). 64 unused links, valid until 2026-10-06.
+- **A1 clock-in:** Jose, asked when it should stop: "Now". The Dismantler retires it, runs phase 2 (worktime only), and the desk imports the hours.
