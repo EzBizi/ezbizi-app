@@ -12,6 +12,7 @@ class VersionHistory {
       date: '29 Sep 2026',
       items: [
         'Leads: opening a lead shows its newest message, the way a chat does.',
+        'Leads: you can see who else has a lead open, and every reply says who sent it.',
       ],
     ),
     VersionRelease(
