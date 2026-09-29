@@ -197,8 +197,12 @@ class HrOnboardingsController extends Controller
         $input = $request->validate([
             'invitation_id' => ['required', 'uuid', Rule::exists('invitations', 'id')
                 ->where('organization_id', $this->tenant->idOrFail())],
+            // Not an archived one: the list no longer offers it, and a request
+            // that names it anyway is starting new paperwork on a record of the
+            // past — the A1 Tools import's contract is the case this exists for.
             'contract_id' => ['required', 'uuid', Rule::exists('contracts', 'id')
-                ->where('organization_id', $this->tenant->idOrFail())],
+                ->where('organization_id', $this->tenant->idOrFail())
+                ->whereNull('archived_at')],
         ]);
 
         $invitation = Invitation::findOrFail($input['invitation_id']);

@@ -4,6 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Assignment;
 use App\Models\EmploymentEvent;
+use App\Models\EmergencyContact;
+use App\Models\HeldEquipment;
+use App\Models\HrNote;
+use App\Models\PayRate;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Access\AdministratorFloor;
@@ -11,6 +15,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Hr\PtoPolicy;
+use App\Support\Hr\StartDate;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
 use App\Support\Privacy\SensitiveValues;
@@ -512,6 +517,24 @@ class HrPeopleController extends Controller
             'date_of_birth' => $user->date_of_birth?->toDateString(),
             'started_on'    => $answer['started_on'],
 
+            // The four lists of 2026-09-29. Pay is null — not an empty list —
+            // for somebody without `hr.pay.view`: "no rate recorded" and "you
+            // may not see it" must not look the same on the screen.
+            'emergency_contacts' => EmergencyContact::query()->where('user_id', $user->id)
+                ->orderBy('created_at')->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'notes' => HrNote::query()->with('author:id,name')->where('user_id', $user->id)
+                ->latest()->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'equipment' => HeldEquipment::query()->where('user_id', $user->id)
+                ->orderByRaw('returned_on is not null')->orderBy('name')->get()
+                ->map(fn ($row) => HrPersonDetailsController::present($row))->all(),
+            'pay_rates' => $actor->hasPermission('hr.pay.view')
+                ? PayRate::query()->where('user_id', $user->id)
+                    ->orderByDesc('effective_on')->get()
+                    ->map(fn ($row) => HrPersonDetailsController::present($row))->all()
+                : null,
+
             // Null rather than a zero allowance when the organization has not
             // set paid time off up: "not set up" and "none" read the same as a
             // number and are not the same thing.
@@ -538,34 +561,16 @@ class HrPeopleController extends Controller
      */
     private function recordStartDate(User $user, string $on, User $actor): void
     {
-        $date = Carbon::parse($on)->toDateString();
+        // Which row moves is StartDate's to decide, shared with the A1 import.
+        $result = StartDate::record($user, $on);
 
-        $first = EmploymentEvent::query()
-            ->where('user_id', $user->getKey())
-            ->where('kind', EmploymentEvent::STARTED)
-            ->orderBy('occurred_on')
-            ->first();
-
-        $before = $first?->occurred_on?->toDateString();
-
-        if ($before === $date) {
+        if (! $result['changed']) {
             return;
         }
 
-        if ($first !== null) {
-            $first->update(['occurred_on' => $date]);
-        } else {
-            EmploymentEvent::create([
-                'organization_id' => $user->organization_id,
-                'user_id'         => $user->getKey(),
-                'kind'            => EmploymentEvent::STARTED,
-                'occurred_on'     => $date,
-            ]);
-        }
-
         $this->audit->log('user.start_date_changed', $user, changes: [
-            'before' => ['started_on' => $before],
-            'after'  => ['started_on' => $date],
+            'before' => ['started_on' => $result['before']],
+            'after'  => ['started_on' => $result['after']],
         ], actor: $actor);
     }
 

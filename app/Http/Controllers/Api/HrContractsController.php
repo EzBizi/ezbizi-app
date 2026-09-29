@@ -645,6 +645,11 @@ class HrContractsController extends Controller
         $contracts = Contract::query()
             ->with('currentVersion')
             ->withCount('versions')
+            // An archived contract is history, not something to design or start
+            // an onboarding from. The first one is the A1 Tools record the
+            // people import creates (2026-09-29); its onboardings still open,
+            // because they are reached from the person, not from this list.
+            ->whereNull('archived_at')
             ->orderBy('name')
             ->get()
             ->reject(function (Contract $c) {

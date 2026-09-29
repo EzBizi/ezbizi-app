@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\HrDashboardController;
 use App\Http\Controllers\Api\HrInvitationsController;
 use App\Http\Controllers\Api\HrOnboardingsController;
 use App\Http\Controllers\Api\HrPeopleController;
+use App\Http\Controllers\Api\HrPersonDetailsController;
 use App\Http\Controllers\Api\InspectionCodesController;
 use App\Http\Controllers\Api\InspectionDefinitionsController;
 use App\Http\Controllers\Api\InspectionReportsController;
@@ -1490,6 +1491,15 @@ Route::prefix('v1')
         // Declared AFTER scope-options, or `{user}` would swallow that path.
         Route::middleware('permission:hr.records.view')
             ->get('hr/people/{user}', [HrPeopleController::class, 'show']);
+
+        // The four lists on a record (2026-09-29): pay rates, emergency contacts,
+        // HR notes, tools and equipment. Records is their only consumer. The
+        // controller adds UserPolicy::update, and `hr.pay.edit` for pay.
+        Route::middleware('permission:hr.records.view')->group(function () {
+            Route::post('hr/people/{user}/details/{kind}', [HrPersonDetailsController::class, 'store']);
+            Route::patch('hr/people/{user}/details/{kind}/{id}', [HrPersonDetailsController::class, 'update']);
+            Route::delete('hr/people/{user}/details/{kind}/{id}', [HrPersonDetailsController::class, 'destroy']);
+        });
 
         // Deliberately NOT behind the hr.view policy the rest of this group
         // leans on: everybody may read their own paid time off, and `hr.view`
