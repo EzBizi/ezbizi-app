@@ -294,53 +294,38 @@ class DashboardTest extends TestCase
 
     // ── money ────────────────────────────────────────────────────
 
-    public function test_currencies_are_never_added_together(): void
+    /**
+     * No money on the dashboard, from any glance (Jose, 2026-09-29: "do not
+     * show any financial info on the dashboard widgets, for example
+     * dispatchers may have access to jobs so they would see the widget").
+     *
+     * Derived, not enumerated: the administrator holds every permission, so
+     * every registered glance resolves into this one response, and the needle
+     * is searched in the raw body — a glance added next month under a key
+     * nobody has heard of is caught too. The client draws no money either, but
+     * the response is readable whatever the client draws, so this is the guard.
+     */
+    public function test_no_glance_sends_money_to_the_dashboard(): void
     {
         $this->earnedStatuses(['completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
+        $job = $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
 
-        $rows = collect(
-            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances')
-        )->firstWhere('key', 'jobs')['data']['revenue'];
-
-        // Two rows, not one total. Adding 100 USD to 200 CAD gives a number that
-        // is wrong in a way nobody notices until a client reconciles it.
-        $this->assertCount(2, $rows);
-        $this->assertSame(['CAD', 'USD'], array_column($rows, 'currency'));
-        $this->assertSame([20000, 10000], array_column($rows, 'amount_minor'));
-    }
-
-    public function test_revenue_counts_nothing_until_the_statuses_are_chosen(): void
-    {
-        $this->job($this->alpha['franchise'], ['amount_minor' => 50000, 'status' => 'cancelled']);
-
-        $data = collect(
-            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances')
-        )->firstWhere('key', 'jobs')['data'];
-
-        // Counting everything by default would put cancelled work in a revenue
-        // figure. A blank number somebody has to configure is better than a
-        // confident wrong one.
-        $this->assertContains(
-            'Choose which of your job statuses count as earned.',
-            $data['sentences'] ?? [],
+        // Control: the money exists and this person may read it elsewhere.
+        $this->assertStringContainsString(
+            '987654',
+            $this->as($this->alpha['admin'])->getJson("/api/v1/jobs/{$job->id}")->assertOk()->getContent(),
         );
-        $this->assertArrayNotHasKey('revenue', $data);
-    }
 
-    public function test_amounts_stay_in_minor_units(): void
-    {
-        $this->earnedStatuses(['completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 12345, 'status' => 'completed'], earned: true);
+        $response = $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk();
+        $jobs = collect($response->json('glances'))->firstWhere('key', 'jobs');
+        $this->assertSame(1, array_sum(array_column($jobs['data']['slices'], 'total')), 'the job is on the dashboard');
 
-        $rows = collect(
-            $this->as($this->alpha['admin'])->getJson('/api/v1/dashboard')->assertOk()->json('glances')
-        )->firstWhere('key', 'jobs')['data']['revenue'];
-
-        // Dividing by 100 on the server assumes two decimal places, which is
-        // wrong for JPY and wrong for the day this sells abroad.
-        $this->assertSame(12345, $rows[0]['amount_minor']);
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('987654', $body);
+        $this->assertStringNotContainsString('9876.54', $body);
+        $this->assertStringNotContainsString('amount_minor', $body);
+        $this->assertStringNotContainsString('"revenue"', $body);
+        $this->assertStringNotContainsString('"stock_value"', $body);
     }
 
     // ── catalogue ────────────────────────────────────────────────

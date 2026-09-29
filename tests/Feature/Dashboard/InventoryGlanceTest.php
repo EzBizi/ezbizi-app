@@ -242,7 +242,12 @@ class InventoryGlanceTest extends TestCase
         $this->assertContains('2 open purchase orders.', $payload['data']['sentences']);
     }
 
-    public function test_stock_value_is_omitted_without_financials_and_is_minor_units_with_it(): void
+    /**
+     * No stock value, even with inventory.financials (Jose, 2026-09-29: no
+     * financial information on the dashboard). The figure is still computed
+     * for the Inventory tab — InventorySummaryTest pins it there.
+     */
+    public function test_no_stock_value_even_with_financials(): void
     {
         $location = $this->taggedLocation($this->alpha['franchise']);
         $item = $this->taggedItem($this->alpha['franchise'], [
@@ -254,47 +259,16 @@ class InventoryGlanceTest extends TestCase
             ['inventory.view', 'inventory.financials'],
             'money@alpha.test',
         );
-        $viewer = $this->userWithPermissions(['inventory.view'], 'viewer@alpha.test');
-
-        $withMoney = app(InventoryGlance::class)->resolve(
-            $money, DashboardPeriod::for($money), []
-        )->toArray();
-
-        $this->assertSame(
-            [['currency' => 'USD', 'amount_minor' => 500]],
-            $withMoney['data']['stock_value'],
-        );
-        foreach ($withMoney['data']['sentences'] as $sentence) {
-            $this->assertStringNotContainsString('500', $sentence);
-            $this->assertStringNotContainsString('$', $sentence);
-            $this->assertStringNotContainsString('USD', $sentence);
-        }
-
-        $without = app(InventoryGlance::class)->resolve(
-            $viewer, DashboardPeriod::for($viewer), []
-        )->toArray();
-
-        $this->assertArrayNotHasKey('stock_value', $without['data']);
-    }
-
-    public function test_stock_value_rounds_fractional_on_hand_not_truncated_qty(): void
-    {
-        $location = $this->taggedLocation($this->alpha['franchise']);
-        $item = $this->taggedItem($this->alpha['franchise'], [
-            'last_cost_minor' => 250,
-        ]);
-        $this->setOnHand($item, $location, '1.500');
-
-        $money = $this->userWithPermissions(
-            ['inventory.view', 'inventory.financials'],
-            'frac-money@alpha.test',
-        );
 
         $payload = app(InventoryGlance::class)->resolve(
             $money, DashboardPeriod::for($money), []
         )->toArray();
 
-        $this->assertSame(375, $payload['data']['stock_value'][0]['amount_minor']);
+        $this->assertSame(1, $payload['data']['slices'][0]['total']);
+        $json = json_encode($payload);
+        $this->assertStringNotContainsString('amount_minor', $json);
+        $this->assertStringNotContainsString('500', $json);
+        $this->assertStringNotContainsString('USD', $json);
     }
 
     public function test_the_stock_slices_ignore_the_dashboard_period(): void

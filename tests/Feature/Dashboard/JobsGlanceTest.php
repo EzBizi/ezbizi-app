@@ -17,11 +17,9 @@ use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
- * Jobs dashboard glance (spec § Jobs — pie, plus a revenue line).
- *
- * Pie of statuses under the caller's reach (snapshot), revenue as sentences
- * and a per-currency line over the dashboard period, plus today / upcoming
- * when something is scheduled.
+ * Jobs dashboard glance: pie of statuses under the caller's reach (snapshot),
+ * plus today / upcoming when something is scheduled. No money (Jose,
+ * 2026-09-29).
  */
 class JobsGlanceTest extends TestCase
 {
@@ -161,34 +159,6 @@ class JobsGlanceTest extends TestCase
         $this->assertSame('No jobs to show.', $payload['data']['sentence']);
     }
 
-    public function test_revenue_is_not_added_across_currencies(): void
-    {
-        $this->earnedStatuses(['completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
-        $payload = app(JobsGlance::class)->resolve(
-            $this->alpha['admin'],
-            DashboardPeriod::for($this->alpha['admin'], 'year'),
-            [],
-        )->toArray();
-        $this->assertCount(2, $payload['data']['revenue']);
-        $this->assertSame(['CAD', 'USD'], array_column($payload['data']['revenue'], 'currency'));
-        $this->assertSame([20000, 10000], array_column($payload['data']['revenue'], 'amount_minor'));
-        $this->assertCount(2, $payload['data']['sentences']);
-    }
-
-    public function test_unconfigured_revenue_asks_for_statuses(): void
-    {
-        $this->job($this->alpha['franchise']);
-        $payload = app(JobsGlance::class)->resolve($this->alpha['admin'], DashboardPeriod::for($this->alpha['admin']), [])->toArray();
-        $this->assertContains(
-            'Choose which of your job statuses count as earned.',
-            $payload['data']['sentences'] ?? [],
-        );
-        $this->assertContains('scheduled', $payload['data']['status_choices'] ?? []);
-        $this->assertContains('completed', $payload['data']['status_choices'] ?? []);
-    }
-
     public function test_the_pie_ignores_the_dashboard_period(): void
     {
         $this->job($this->alpha['franchise']);
@@ -236,45 +206,16 @@ class JobsGlanceTest extends TestCase
         $this->assertContains('1 job today.', $payload['data']['sentences'] ?? []);
     }
 
-    public function test_earned_sentences_use_the_utc_period_start(): void
-    {
-        // View TZ is Etc/GMT+5 (UTC−5). Month starts 2026-08-01 00:00 there,
-        // which is 05:00 UTC. A completed job at 02:00 UTC is still July and
-        // must not count; one at 06:00 UTC is in the month.
-        $this->earnedStatuses(['completed']);
-
-        Carbon::setTestNow(Carbon::parse('2026-08-01 02:00:00', 'UTC'));
-        $this->job($this->alpha['franchise'], [
-            'amount_minor' => 10000,
-            'currency' => 'USD',
-            'status' => 'completed',
-        ], earned: true);
-
-        Carbon::setTestNow(Carbon::parse('2026-08-01 06:00:00', 'UTC'));
-        $this->job($this->alpha['franchise'], [
-            'amount_minor' => 2500,
-            'currency' => 'USD',
-            'status' => 'completed',
-        ], earned: true);
-
-        Carbon::setTestNow(Carbon::parse('2026-08-24 16:00:00', 'Etc/GMT+5'));
-
-        $payload = app(JobsGlance::class)->resolve(
-            $this->alpha['admin'],
-            DashboardPeriod::for($this->alpha['admin'], 'month'),
-            [],
-        )->toArray();
-
-        $this->assertSame([2500], array_column($payload['data']['revenue'] ?? [], 'amount_minor'));
-        $this->assertContains('1 job earned in USD.', $payload['data']['sentences'] ?? []);
-    }
-
-    public function test_line_series_is_revenue_minor_units_per_currency(): void
+    /**
+     * No money reaches this box (Jose, 2026-09-29): a dispatcher who can open
+     * Jobs sees it. The job is earned, in reach and on the pie — the control —
+     * and its amount is nowhere in the payload, whichever key it might hide
+     * under, and there is no line to draw it with.
+     */
+    public function test_no_money_reaches_the_box(): void
     {
         $this->earnedStatuses(['completed']);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 10000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 20000, 'currency' => 'USD', 'status' => 'completed'], earned: true);
-        $this->job($this->alpha['franchise'], ['amount_minor' => 5000, 'currency' => 'CAD', 'status' => 'completed'], earned: true);
+        $this->job($this->alpha['franchise'], ['amount_minor' => 987654, 'currency' => 'USD', 'status' => 'completed'], earned: true);
 
         $payload = app(JobsGlance::class)->resolve(
             $this->alpha['admin'],
@@ -282,27 +223,13 @@ class JobsGlanceTest extends TestCase
             [],
         )->toArray();
 
-        $series = $payload['data']['series'] ?? [];
-        $this->assertSame(['CAD', 'USD'], array_column($series, 'label'));
-
-        $sums = [];
-        foreach ($series as $row) {
-            $sums[$row['label']] = array_sum(array_column($row['points'], 'value'));
-        }
-        $this->assertSame(30000, $sums['USD']);
-        $this->assertSame(5000, $sums['CAD']);
-    }
-
-    public function test_allowed_presentations_include_line(): void
-    {
-        $this->job($this->alpha['franchise']);
-        $payload = app(JobsGlance::class)->resolve(
-            $this->alpha['admin'],
-            DashboardPeriod::for($this->alpha['admin']),
-            [],
-        )->toArray();
-
-        $this->assertContains('line', $payload['allowed_presentations']);
+        $this->assertContains(['label' => 'completed', 'total' => 1], $payload['data']['slices']);
+        $json = json_encode($payload);
+        $this->assertStringNotContainsString('987654', $json);
+        $this->assertStringNotContainsString('9876.54', $json);
+        $this->assertStringNotContainsString('amount_minor', $json);
+        $this->assertStringNotContainsString('USD', $json);
+        $this->assertNotContains('line', $payload['allowed_presentations']);
         $this->assertSame('pie', $payload['presentation']);
     }
 }

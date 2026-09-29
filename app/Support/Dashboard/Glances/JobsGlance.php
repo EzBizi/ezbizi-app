@@ -11,22 +11,24 @@ use App\Support\Dashboard\Widgets\JobsByStatus;
 use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Scoping\ViewScope;
 use App\Support\Tenancy\TenantContext;
-use Illuminate\Support\Carbon;
 
 /**
- * Jobs box: status pie (snapshot) plus a per-currency revenue line.
+ * Jobs box: status pie (snapshot), with today and upcoming as sentences.
  *
  * Slices reuse JobsByStatus so the vocabulary stays the organization's own.
- * Revenue is never summed across currencies and never divided; unconfigured
- * statuses stay a prompt rather than a silent zero. Today and upcoming are
- * sentences on the same box.
+ *
+ * No money, deliberately: Jose ruled on 2026-09-29 that the dashboard shows no
+ * financial information, because anybody who can open Jobs — a dispatcher —
+ * sees this box. Revenue used to be a list and a per-currency line here; it
+ * lives in Jobs and Reports now, behind their own gates. `line` left the
+ * presentations with it, since the revenue series was the only thing it drew.
  */
 final class JobsGlance extends DescribedGlance
 {
     protected const KEY = 'jobs';
     protected const LABEL = 'Jobs';
     protected const PERMISSION = 'jobs.view';
-    protected const PRESENTATIONS = ['pie', 'bar', 'line', 'text'];
+    protected const PRESENTATIONS = ['pie', 'bar', 'text'];
     protected const DEFAULT_PRESENTATION = 'pie';
     protected const SNAPSHOT = true;
 
@@ -46,10 +48,10 @@ final class JobsGlance extends DescribedGlance
             $byStatus = $this->jobsByStatus->resolve($user, ['include_finished' => true]);
             $total = (int) ($byStatus['total'] ?? 0);
 
-            // One read, used by the prompt, the series and the wire. The
-            // $options argument is no longer consulted for it at all — which is
-            // why it is not even captured by this closure. See the call site
-            // below for why.
+            // Used only for the wire now — the prompt and the revenue series it
+            // once also fed left the dashboard on 2026-09-29 (no money here).
+            // The $options argument is not consulted for it at all, which is
+            // why it is not even captured by this closure.
             $earned = $this->revenue->earnedStatuses($user);
 
             $statusChoices = array_column($byStatus['rows'], 'status');
@@ -83,40 +85,13 @@ final class JobsGlance extends DescribedGlance
             ];
             $sentences = [];
 
-            // $earned is the ORGANIZATION's list, resolved above, not
-            // $options['earned_statuses'] — see Revenue's docblock. The
-            // dashboard layout still carries that key and it is deliberately
-            // not read: a personal choice cannot decide a company figure, and
-            // `earned_at` was stamped from this list, so any second source
-            // disagrees with the history it is reporting.
-            if ($earned === []) {
-                $sentences[] = 'Choose which of your job statuses count as earned.';
-            } else {
-                // startsOn is a view-TZ wall; earned_at is UTC. Same bind as
-                // revenueSeries — a naive clock string would count jobs still
-                // in the previous calendar day at the franchise.
-                $revenue = $this->revenue->resolve($user, [
-                    'since' => $period->startsOn->copy()->utc(),
-                ]);
-                // Stale or renamed statuses intersect to nothing — same prompt as
-                // leaving the control empty; never ship an empty revenue key.
-                if (! empty($revenue['needs_configuring'])) {
-                    $sentences[] = 'Choose which of your job statuses count as earned.';
-                } else {
-                    // amount_minor stays on data.revenue only — never ÷100 into a
-                    // sentence (JPY and other non-cent currencies would lie).
-                    $data['revenue'] = $revenue['rows'];
-                    foreach ($revenue['rows'] as $row) {
-                        $jobs = (int) $row['jobs'];
-                        $currency = $row['currency'];
-                        $sentences[] = $jobs === 1
-                            ? "1 job earned in {$currency}."
-                            : "{$jobs} jobs earned in {$currency}.";
-                    }
-                    // Line reads series; pie/bar keep the status slices above.
-                    $data['series'] = $this->revenueSeries($user, $period);
-                }
-            }
+            // NO MONEY ON THE DASHBOARD — Jose, 2026-09-29: "do not show any
+            // financial info on the dashboard widgets, for example dispatchers
+            // may have access to jobs so they would see the widget." The box
+            // is operational: status, today, coming up. Revenue, its line and
+            // the "earned" lines were removed rather than hidden behind a
+            // permission, because the ruling names the surface, not a role.
+            // Revenue still lives in Jobs and Reports, where it is gated.
 
             $today = 0;
             $upcoming = 0;
@@ -233,93 +208,5 @@ final class JobsGlance extends DescribedGlance
         $wall = $job->scheduled_for;
 
         return $wall !== null && $wall->gte(now($tz));
-    }
-
-    /**
-     * One series per currency; value is the sum of amount_minor in each
-     * DashboardPeriod bucket. Currencies are never added together.
-     *
-     * Reads `earned_at` for the same reason `Revenue` does, and it matters MORE
-     * here: this is the line chart, so a job in the wrong bucket is not a wrong
-     * total, it is a wrong SHAPE — a peak drawn in the month the work was sold
-     * rather than the month it was done. It carried the identical
-     * created_at-plus-current-status defect until 2026-09-23 and was missed by
-     * the plan, because the total and the series are two queries and only one
-     * of them was named.
-     *
-     * No status argument: `earned_at` is stamped from the organization's list
-     * at the moment of the transition, so filtering by today's status as well
-     * would drop a job whose status was corrected afterwards — revenue the
-     * business really earned, vanishing from a closed month.
-     *
-     * @return list<array{label: string, points: list<array{at: string, value: int}>}>
-     */
-    private function revenueSeries(User $user, DashboardPeriod $period): array
-    {
-        // Period bounds are wall times in the view timezone; earned_at is
-        // stored UTC. Bind UTC instants so "now" is not compared as a naive
-        // clock string earlier than the row.
-        $from = $period->startsOn->copy()->utc();
-        $to = $period->endsOn->copy()->utc();
-
-        $jobs = Job::query()
-            ->whereIn('franchise_id', ViewScope::forUser($user)->franchiseIds())
-            ->whereNotNull('earned_at')
-            ->where('earned_at', '>=', $from)
-            ->where('earned_at', '<=', $to)
-            ->get(['earned_at', 'currency', 'amount_minor']);
-
-        $empty = $this->emptyBuckets($period);
-        $byCurrency = [];
-
-        foreach ($jobs as $job) {
-            $at = $job->earned_at;
-            if (! $at instanceof Carbon) {
-                continue;
-            }
-            $currency = (string) $job->currency;
-            if (! isset($byCurrency[$currency])) {
-                $byCurrency[$currency] = $empty;
-            }
-            $bucket = $period->bucket($at);
-            $byCurrency[$currency][$bucket] = ($byCurrency[$currency][$bucket] ?? 0)
-                + (int) $job->amount_minor;
-        }
-
-        ksort($byCurrency);
-
-        $series = [];
-        foreach ($byCurrency as $currency => $buckets) {
-            $points = [];
-            foreach ($buckets as $at => $value) {
-                $points[] = ['at' => $at, 'value' => $value];
-            }
-            $series[] = [
-                'label' => $currency,
-                'points' => $points,
-            ];
-        }
-
-        return $series;
-    }
-
-    /**
-     * Every axis key from startsOn through endsOn, zeros included so the line
-     * does not skip quiet days / weeks / months.
-     *
-     * @return array<string, int>
-     */
-    private function emptyBuckets(DashboardPeriod $period): array
-    {
-        $out = [];
-        $cursor = $period->startsOn->copy()->startOfDay();
-        $end = $period->endsOn->copy()->startOfDay();
-
-        while ($cursor->lte($end)) {
-            $out[$period->bucket($cursor)] = 0;
-            $cursor->addDay();
-        }
-
-        return $out;
     }
 }

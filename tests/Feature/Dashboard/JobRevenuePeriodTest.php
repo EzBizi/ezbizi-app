@@ -5,8 +5,6 @@ namespace Tests\Feature\Dashboard;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Models\Organization;
-use App\Support\Dashboard\DashboardPeriod;
-use App\Support\Dashboard\Glances\JobsGlance;
 use App\Support\Dashboard\Widgets\Revenue;
 use App\Support\Settings\SettingsResolver;
 use App\Support\Tenancy\TenantContext;
@@ -33,8 +31,9 @@ use Tests\TestCase;
  * job was revenue, and `earned_at` — stamped from the SETTING — has room for
  * only one answer, so the widget and the stamping could not both be right.
  *
- * The second test is deliberately an integration test through `JobsGlance`
- * rather than a unit test on `EarnedStatuses`: `JobEarnedStatusesTest` was green
+ * The setting tests go through `Revenue` rather than a unit test on
+ * `EarnedStatuses` (they went through `JobsGlance` until the dashboard stopped
+ * showing money, Jose 2026-09-29): `JobEarnedStatusesTest` was green
  * for three weeks against a class nothing in production called. It proved the
  * class worked and proved nothing about the feature.
  */
@@ -140,18 +139,17 @@ class JobRevenuePeriodTest extends TestCase
 
         $admin = $alpha['admin']->fresh();
 
-        // The personal layout names a status this job never held. Under the old
-        // rule it decided the answer, and the figure was 0.
-        $payload = app(JobsGlance::class)->resolve(
+        // The caller names a status this job never held. Under the old rule it
+        // decided the answer, and the figure was 0.
+        $result = app(TenantContext::class)->run($admin->organization, fn () => app(Revenue::class)->resolve(
             $admin,
-            DashboardPeriod::for($admin, 'year'),
-            ['earned_statuses' => ['cancelled']],
-        )->toArray();
+            ['statuses' => ['cancelled'], 'since' => Carbon::now()->subYear()],
+        ));
 
         $this->assertSame(
             [12500],
-            array_column($payload['data']['revenue'] ?? [], 'amount_minor'),
-            'The organization setting decides what is earned, not the dashboard layout.',
+            array_column($result['rows'], 'amount_minor'),
+            'The organization setting decides what is earned, not the caller.',
         );
     }
 
@@ -173,17 +171,13 @@ class JobRevenuePeriodTest extends TestCase
 
         $admin = $alpha['admin']->fresh();
 
-        $payload = app(JobsGlance::class)->resolve(
+        $result = app(TenantContext::class)->run($admin->organization, fn () => app(Revenue::class)->resolve(
             $admin,
-            DashboardPeriod::for($admin, 'year'),
-            ['earned_statuses' => ['completed']],
-        )->toArray();
+            ['statuses' => ['completed'], 'since' => Carbon::now()->subYear()],
+        ));
 
-        $this->assertContains(
-            'Choose which of your job statuses count as earned.',
-            $payload['data']['sentences'] ?? [],
-        );
-        $this->assertArrayNotHasKey('revenue', $payload['data']);
+        $this->assertTrue($result['needs_configuring']);
+        $this->assertSame([], $result['rows']);
     }
 
     /** @param  list<string>  $statuses */

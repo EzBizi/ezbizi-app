@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api_client.dart';
 import '../core/dashboard_panels.dart';
-import '../core/money.dart';
 import '../core/session.dart';
 import '../widgets/async_body.dart';
 import '../widgets/dashboard_card.dart';
@@ -413,49 +412,14 @@ class _GlanceBody extends StatelessWidget {
           series: data['series'] is List ? data['series'] as List : null,
         ),
       ..._sentences(data),
-      ..._money(data),
-    ];
-  }
-
-  /// Every money list the payload carries, whatever the glance called it.
-  ///
-  /// This read exactly two keys — `revenue` and `stock_value` — which are the
-  /// two that existed when it was written, Jobs' and Inventory's. Nothing
-  /// documented the allowlist and nothing complained about a key outside it:
-  /// a glance sending money under any third name would have rendered NOTHING,
-  /// with no error and no gap on screen.
-  ///
-  /// That is the shape the deploy desk asked me to hunt for after the empty
-  /// box lost two of its three sentences for three weeks — producer sends,
-  /// consumer silently does not draw. It was not live (only Jobs and
-  /// Inventory send `amount_minor` today, and both names were listed) but it
-  /// was waiting for the next glance that wanted to show a figure.
-  ///
-  /// So the shape decides, not the name: any list whose entries carry an
-  /// `amount_minor` and a currency is money and gets drawn, in payload order.
-  /// A glance cannot now hand over a figure this fails to notice.
-  static List<Widget> _money(Map<String, dynamic> data) => [
-        for (final entry in data.entries) ..._moneyOf(entry.value),
-      ];
-
-  static List<Widget> _moneyOf(dynamic raw) {
-    if (raw is! List) return const [];
-
-    return [
-      for (final item in raw)
-        if (item is Map &&
-            item['amount_minor'] is num &&
-            item['currency'] is String &&
-            (item['currency'] as String).isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Text(
-              formatMinor(
-                (item['amount_minor'] as num).toInt(),
-                item['currency'] as String,
-              ),
-            ),
-          ),
+      // No money line, ever. Jose, 2026-09-29: "do not show any financial
+      // info on the dashboard widgets" — anybody who can open a module sees
+      // its box, dispatchers included. There used to be a renderer here that
+      // drew any {amount_minor, currency} list; it is deleted rather than
+      // left in place, so a glance that starts sending money again draws
+      // nothing instead of drawing it. The server test
+      // `test_no_glance_sends_money_to_the_dashboard` is the real guard,
+      // because the response is readable whether or not it is drawn.
     ];
   }
 

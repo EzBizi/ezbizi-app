@@ -192,43 +192,29 @@ void main() {
     expect(find.text('1 person on the books.'), findsOneWidget);
   });
 
-  testWidgets('stock_value of 500 USD is drawn as USD 5.00', (tester) async {
-    await _pump(tester, _handler(stockValue: [
-      {'currency': 'USD', 'amount_minor': 500},
-    ]));
-
-    expect(find.text('USD 5.00'), findsOneWidget);
-    expect(find.text('No new customers this month.'), findsOneWidget);
-  });
-
-  testWidgets('a JSON number for amount_minor still draws', (tester) async {
-    await _pump(tester, _handler(stockValue: [
-      {'currency': 'USD', 'amount_minor': 500.0},
-    ]));
-
-    expect(find.text('USD 5.00'), findsOneWidget);
-  });
-
-  /// Money is recognised by its SHAPE, not by a list of blessed key names.
+  /// NO MONEY ON THE DASHBOARD, under any key (Jose, 2026-09-29).
   ///
-  /// `_money` read exactly `revenue` and `stock_value` — Jobs' key and
-  /// Inventory's, the two that existed when it was written. Nothing
-  /// documented that and nothing complained: a glance sending a figure under
-  /// any third name drew NOTHING, with no error and no gap on screen. Not
-  /// live, because those were the only two senders, but waiting for the next
-  /// glance that wanted to show money.
+  /// "Do not show any financial info on the dashboard widgets — dispatchers
+  /// may have access to jobs so they would see the widget." This used to be
+  /// four tests proving money DID draw: Inventory's `stock_value`, a JSON
+  /// double for `amount_minor`, and a money list under a key no glance used,
+  /// because the renderer recognised money by its shape. The renderer is
+  /// deleted, and this inverts them: the same two payloads, and neither
+  /// figure may appear.
   ///
-  /// This is the same family as the empty box that lost two of three
-  /// sentences for three weeks — producer sends, consumer silently does not
-  /// draw — which is what the deploy desk asked me to sweep for. The fixture
-  /// uses a key no glance sends today on purpose: if the allowlist ever comes
-  /// back, this is what goes red.
-  testWidgets('a money list under an unknown key is still drawn', (
+  /// The server test `test_no_glance_sends_money_to_the_dashboard` is the
+  /// real guard — a response is readable whether or not it is drawn — and
+  /// this one covers an installed client that meets money from an older
+  /// server or a regressed glance.
+  testWidgets('no money is drawn, whatever key it arrives under', (
     tester,
   ) async {
     await _pump(
       tester,
       _handler(
+        stockValue: [
+          {'currency': 'USD', 'amount_minor': 500},
+        ],
         extraGlanceData: {
           'outstanding_balance': [
             {'currency': 'CAD', 'amount_minor': 12345},
@@ -237,26 +223,13 @@ void main() {
       ),
     );
 
-    expect(find.text('CAD 123.45'), findsOneWidget);
-  });
+    // The control: the boxes did render, so an absence below means the
+    // figure was not drawn rather than that nothing was drawn at all.
+    expect(find.text('No new customers this month.'), findsOneWidget);
 
-  /// The control: the sweep must not start drawing things that are not money.
-  /// `slices` and `sentences` are lists on every payload, and neither carries
-  /// an `amount_minor`, so neither may produce a money line.
-  testWidgets('lists that are not money draw no money line', (tester) async {
-    await _pump(
-      tester,
-      _handler(
-        extraGlanceData: {
-          'not_money': [
-            {'label': 'Active', 'total': 3},
-            {'currency': 'CAD'},
-            'a bare string',
-          ],
-        },
-      ),
-    );
-
+    expect(find.textContaining('5.00'), findsNothing);
+    expect(find.textContaining('123.45'), findsNothing);
+    expect(find.textContaining('USD'), findsNothing);
     expect(find.textContaining('CAD'), findsNothing);
   });
 }
