@@ -110,8 +110,11 @@ void main() {
 /// may only shrink: a module here that starts agreeing fails until removed.
 const _knownDrift = {
   'phone': 'Communication draws 5 tabs the registry lacks — Communication',
-  'jobs':
-      'registry Work/Materials; screen draws "Jobs" and no Materials — Jobs',
+  // Not drift: Work and Materials are the job detail panel's panes (0051),
+  // drawn as sections of the panel, not as a strip. The screen's own strip is
+  // Jobs · Estimates, and Estimates is a child module. jobs_materials_test.dart
+  // covers the Materials pane, which is drawn on the key the server sends.
+  'jobs': 'panel panes, not a strip — see jobs_materials_test.dart',
   // Not drift: the strip is built from the sources the server sends, so it
   // is empty with no data. leads_screen_test.dart covers its chips.
   'leads': 'data-driven strip, not checkable here',
