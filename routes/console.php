@@ -205,6 +205,14 @@ Schedule::command('scheduling:build-zip-map')->everyFiveMinutes()->withoutOverla
  */
 Schedule::command('scheduling:warn-overbooking')->dailyAt('07:00')->timezone('America/New_York');
 
+/*
+ * Scheduled weekly patterns become the area's pattern on the day they start
+ * (Eve, 2026-09-29). Hourly, so a date that turns at midnight in any
+ * organization's clock is picked up within the hour; availability already
+ * reads the version before this runs. No Workiz calls.
+ */
+Schedule::command('scheduling:apply-scheduled-changes')->hourly()->withoutOverlapping(10);
+
 Schedule::command('ezbizi:expire-social-handoffs')->hourly()->withoutOverlapping(10);
 
 // Watching the shared inboxes, so `email.received` can fire (§5.5).

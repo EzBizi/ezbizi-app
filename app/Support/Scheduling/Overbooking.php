@@ -37,7 +37,8 @@ final class Overbooking
         $rows = [];
         $franchiseDays = [];
 
-        foreach ($areas as $area) {
+        // A shared pool is reported once, under its lead.
+        foreach ($areas->whereNull('shares_with_id') as $area) {
             foreach ($openings->days($area, $from, $days) as $day) {
                 $booked = array_sum(array_column($day['windows'], 'taken')) + $day['no_time'];
                 $capacity = array_sum(array_column($day['windows'], 'capacity'));
@@ -101,7 +102,8 @@ final class Overbooking
         $franchises = Franchise::whereIn('id', $areas->pluck('franchise_id')->unique())->pluck('name', 'id');
         $rows = [];
 
-        foreach ($areas as $area) {
+        // A shared pool is reported once, under its lead.
+        foreach ($areas->whereNull('shares_with_id') as $area) {
             if (! Openings::hasCapacity($area)) {
                 continue;
             }

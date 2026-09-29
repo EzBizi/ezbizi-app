@@ -6,6 +6,7 @@ use App\Models\FranchiseDailyLimit;
 use App\Models\ServiceArea;
 use App\Models\ServiceAreaDailyLimit;
 use App\Models\ServiceAreaDateOverride;
+use App\Models\ServiceAreaScheduledSlot;
 use App\Models\ServiceAreaSlot;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -105,11 +106,32 @@ final class Openings
      */
     public function days(ServiceArea $area, CarbonImmutable $from, int $days): array
     {
+        // A shared pool (Eve, 2026-09-29): an area that shares reads its lead's
+        // week, dates and limits, and taken() counts every area of the pool.
+        // So a member and its lead answer the same days.
+        if ($area->shares_with_id !== null) {
+            $area = ServiceArea::find($area->shares_with_id) ?? $area;
+        }
+
         $slots = ServiceAreaSlot::query()
             ->where('service_area_id', $area->id)
             ->orderBy('start_time')
             ->get()
             ->groupBy('weekday');
+
+        // Weekly patterns scheduled to take over from a date (Eve, 2026-09-29).
+        // Each day uses the latest one that has started by then, or the
+        // area's own pattern when none has. On its start date a version is
+        // folded into service_area_slots by scheduling:apply-scheduled-changes,
+        // so this only ever sees versions still ahead of that sweep.
+        $versions = ServiceAreaScheduledSlot::query()
+            ->where('service_area_id', $area->id)
+            ->where('starts_on', '<', $from->addDays($days)->toDateString())
+            ->orderBy('start_time')
+            ->get()
+            ->groupBy(fn (ServiceAreaScheduledSlot $s) => $s->starts_on->toDateString())
+            ->map(fn ($rows) => $rows->groupBy('weekday'))
+            ->sortKeys();
 
         $taken = $this->taken($area, $from, $from->addDays($days));
 
@@ -156,7 +178,7 @@ final class Openings
                 $overrides->has($key) => $overrides[$key]->contains(fn ($o) => $o->start_time === null)
                     ? collect()
                     : $overrides[$key],
-                default => $slots->get($date->dayOfWeek, collect()),
+                default => $this->versionOn($versions, $key, $slots)->get($date->dayOfWeek, collect()),
             };
 
             foreach ($pattern as $slot) {
@@ -252,9 +274,13 @@ final class Openings
         $start = $from->toDateString().' 00:00:00';
         $end = $to->toDateString().' 00:00:00';
 
+        // The pool: the area and every area sharing its availability.
+        $pool = ServiceArea::query()->where('shares_with_id', $area->id)->get()->push($area);
+        $names = $pool->map(fn (ServiceArea $a) => mb_strtolower(trim($a->name)))->unique()->values()->all();
+
         $placed = DB::table('jobs')
             ->leftJoin('workiz_jobs', 'workiz_jobs.job_id', '=', 'jobs.id')
-            ->where('jobs.service_area_id', $area->id)
+            ->whereIn('jobs.service_area_id', $pool->pluck('id'))
             ->whereNull('jobs.deleted_at')
             ->where('jobs.scheduled_for', '>=', $start)
             ->where('jobs.scheduled_for', '<', $end)
@@ -265,7 +291,7 @@ final class Openings
             ->whereNull('job_id')
             ->where('organization_id', $area->organization_id)
             ->where('franchise_id', $area->franchise_id)
-            ->whereRaw('LOWER(TRIM(service_area)) = ?', [mb_strtolower(trim($area->name))])
+            ->whereIn(DB::raw('LOWER(TRIM(service_area))'), $names)
             ->where('scheduled_for', '>=', $start)
             ->where('scheduled_for', '<', $end)
             ->get(['scheduled_for', 'status', 'payload']);
@@ -364,10 +390,32 @@ final class Openings
         }
     }
 
+    /**
+     * The weekly pattern in force on $date: the latest scheduled version that
+     * has started, else the area's own.
+     */
+    private function versionOn(Collection $versions, string $date, Collection $base): Collection
+    {
+        $current = $base;
+        foreach ($versions as $startsOn => $week) {
+            if ($startsOn > $date) {
+                break;
+            }
+            $current = $week;
+        }
+
+        return $current;
+    }
+
     /** Whether anybody has stated any capacity for this area at all. */
     public static function hasCapacity(ServiceArea $area): bool
     {
+        if ($area->shares_with_id !== null) {
+            $area = ServiceArea::find($area->shares_with_id) ?? $area;
+        }
+
         return ServiceAreaSlot::query()->where('service_area_id', $area->id)->exists()
+            || ServiceAreaScheduledSlot::query()->where('service_area_id', $area->id)->exists()
             || ServiceAreaDateOverride::query()->where('service_area_id', $area->id)
                 ->whereNotNull('start_time')->exists();
     }

@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * A named region a franchise works in — "Dallas", "Houston"
  * (docs/superpowers/specs/2026-08-31-scheduling-availability-design.md §2).
  */
-#[Fillable(['organization_id', 'franchise_id', 'name', 'available_from'])]
+#[Fillable(['organization_id', 'franchise_id', 'name', 'available_from', 'shares_with_id'])]
 class ServiceArea extends Model implements StatesRetention
 {
     public static function retention(): RetentionPolicy
@@ -33,6 +33,18 @@ class ServiceArea extends Model implements StatesRetention
     public function franchise(): BelongsTo
     {
         return $this->belongsTo(Franchise::class);
+    }
+
+    /** The area whose availability pool this one books into; null is its own. */
+    public function sharesWith(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'shares_with_id');
+    }
+
+    /** Areas booking into this one's pool. */
+    public function sharers(): HasMany
+    {
+        return $this->hasMany(self::class, 'shares_with_id');
     }
 
     public function zips(): HasMany
