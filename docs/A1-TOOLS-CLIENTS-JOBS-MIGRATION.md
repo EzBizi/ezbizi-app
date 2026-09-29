@@ -75,6 +75,11 @@ His answers, 2026-09-29:
 - Workiz builds a paced, resumable backfill that stops on the first 429.
 - It runs AFTER the clients import, so old jobs attach to the imported customers.
 - Hard rule: no automation events and no customer-facing side effects. Old jobs landing as Done must not send review requests, texts, emails or notifications.
+- Built: `ezbizi:backfill-workiz [--since=2023-01-01] [--pages=100] [--pause=10] [--restart]` (Workiz).
+  - It reads each branch's pages from the farthest future back to `--since`, with a pause between pages and a page budget per run.
+  - It stops on the first refusal. The next page per branch is saved after every page, and a resumed branch starts one page back.
+  - It lands only jobs the mirror does not have, and writes nothing but the mirror. The projection then creates the jobs, and creating a job raises no event.
+  - Run it again until it prints "Every branch is done." The projection creates up to 500 jobs a minute from what lands.
 
 **Billing, Jobs' sketch.** Jobs measured that EzBizi's Workiz mirror already carries every A-1 job's money and refreshes it every minute ($5.09M total, $718,506 open). Jose's answers:
 

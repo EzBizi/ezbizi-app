@@ -360,12 +360,6 @@ final class WorkizJobs
      */
     public function raw(SocialConnection $connection, int $limit = 1000, ?string $since = null): array
     {
-        $token = (string) ($connection->credentials['api_token'] ?? '');
-
-        if ($token === '') {
-            return ['jobs' => [], 'failed' => 'This branch has no stored token.'];
-        }
-
         $jobs = [];
 
         // `offset` is a PAGE NUMBER, not a row count. Measured 2026-09-28 on
@@ -375,39 +369,16 @@ final class WorkizJobs
         // every account with more than 100 upcoming jobs had its next days
         // unswept, and a booking for them was never seen at all.
         for ($page = 0; count($jobs) < $limit; $page++) {
-            try {
-                $response = Http::acceptJson()->get(
-                    'https://api.workiz.com/api/v1/'.$token.'/job/all/',
-                    [
-                        'start_date' => $since ?? now()->subYears(5)->toDateString(),
-                        'offset' => $page,
-                        // Always a full page: if Workiz starts page N at
-                        // N x records, a smaller last one would move it.
-                        'records' => self::PAGE,
-                        'only_open' => 'false',
-                    ],
-                );
-            } catch (ConnectionException) {
-                // Never the exception's message: cURL composes it from the
-                // request, and the token is in the URL.
-                return ['jobs' => $jobs, 'failed' => 'Workiz could not be reached.'];
-            }
+            $read = $this->page($connection, $since ?? now()->subYears(5)->toDateString(), $page);
+            array_push($jobs, ...$read['jobs']);
 
-            if ($response->failed()) {
-                return ['jobs' => $jobs, 'failed' => 'Workiz refused the job list ('.$response->status().').'];
-            }
-
-            $rows = $response->json('data') ?? [];
-
-            foreach ($rows as $job) {
-                if (is_array($job)) {
-                    $jobs[] = $job;
-                }
+            if ($read['failed'] !== null) {
+                return ['jobs' => $jobs, 'failed' => $read['failed']];
             }
 
             // A short page is the last page. `$limit` bounds the loop against an
             // API that ignored the offset and answered the same page for ever.
-            if (count($rows) < self::PAGE) {
+            if (count($read['jobs']) < self::PAGE) {
                 break;
             }
         }
@@ -416,16 +387,60 @@ final class WorkizJobs
     }
 
     /**
+     * One page of `/job/all/`: the jobs dated `$since` or later, farthest first.
+     *
+     * Page 0 is the farthest future, and each page after it is older, down to
+     * `$since` -- the LOWER bound on the job date (measured 2026-09-29 on
+     * Georgia: since 2025-01-01 paged 25 pages back to October 2025 and still
+     * had more). That is what reaches a job from before the mirror began.
+     *
+     * @return array{jobs: list<array<string, mixed>>, failed: ?string}
+     */
+    public function page(SocialConnection $connection, string $since, int $page): array
+    {
+        $token = (string) ($connection->credentials['api_token'] ?? '');
+
+        if ($token === '') {
+            return ['jobs' => [], 'failed' => 'This branch has no stored token.'];
+        }
+
+        try {
+            $response = Http::acceptJson()->get(
+                'https://api.workiz.com/api/v1/'.$token.'/job/all/',
+                [
+                    'start_date' => $since,
+                    'offset' => $page,
+                    // Always a full page: if Workiz starts page N at
+                    // N x records, a smaller last one would move it.
+                    'records' => self::PAGE,
+                    'only_open' => 'false',
+                ],
+            );
+        } catch (ConnectionException) {
+            // Never the exception's message: cURL composes it from the
+            // request, and the token is in the URL.
+            return ['jobs' => [], 'failed' => 'Workiz could not be reached.'];
+        }
+
+        if ($response->failed()) {
+            return ['jobs' => [], 'failed' => 'Workiz refused the job list ('.$response->status().').'];
+        }
+
+        return ['jobs' => array_values(array_filter($response->json('data') ?? [], 'is_array')), 'failed' => null];
+    }
+
+    /**
      * One job, by its Workiz id, as Workiz holds it NOW.
      *
      * ── WHY THE SWEEP ALONE CANNOT KEEP THE MIRROR TRUE ─────────
      *
-     * `/job/all/` answers only for upcoming appointments — measured against the
-     * live API: it ignores `start_date` and does not page. So once a job's date
-     * passes, the sweep never sees it again, and it stays at whatever status it
-     * last had. On production 2026-09-24, 1,323 past-dated mirror rows still
-     * read as open; asked about three, Workiz said Done, done pending approval,
-     * and — only one of them — still Submitted.
+     * The sweep reads `/job/all/` from a date two days back, so once a job's
+     * date passes that window the sweep never sees it again, and it stays at
+     * whatever status it last had. (`/job/all/` itself can reach the past: see
+     * page(). The sweep's window is the choice, made for the quota.) On
+     * production 2026-09-24, 1,323 past-dated mirror rows still read as open;
+     * asked about three, Workiz said Done, done pending approval, and — only
+     * one of them — still Submitted.
      *
      * `/job/get/{UUID}/` answers for a past job, which makes it the only way to
      * learn that one has closed.
