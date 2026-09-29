@@ -57,6 +57,21 @@ class JobsController extends Controller
     /** Jose, 2026-09-29: money in Jobs is a financials toggle on the role. */
     private const MONEY_HIDDEN = 'Money on jobs is hidden for your role.';
 
+    // Workiz's money in its mirror row: dollars as JSON numbers, and the due
+    // date as a naive 'Y-m-d 00:00:00' wall date. See WorkizMoney.
+    private const DUE    = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobAmountDue')) AS DECIMAL(12,2))";
+    private const TOTAL  = "CAST(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.JobTotalPrice')) AS DECIMAL(12,2))";
+    private const DUE_ON = "LEFT(JSON_UNQUOTE(JSON_EXTRACT(workiz_jobs.payload, '$.PaymentDueDate')), 10)";
+
+    /** WorkizMoney::state(), in SQL, plus `overdue`, which takes the reader's today. */
+    private const MONEY_STATES = [
+        'credit'  => self::DUE.' < 0',
+        'paid'    => self::TOTAL.' > 0 AND '.self::DUE.' = 0',
+        'partial' => self::DUE.' > 0 AND '.self::DUE.' < '.self::TOTAL,
+        'unpaid'  => self::DUE.' > 0 AND '.self::DUE.' >= '.self::TOTAL,
+        'overdue' => self::DUE.' > 0 AND '.self::DUE_ON.' < ?',
+    ];
+
     /**
      * Whether this reader holds the Financials toggle. Asked once per request
      * and passed down, never kept on the controller: a route keeps its
@@ -79,8 +94,11 @@ class JobsController extends Controller
             // REQUIRED with a window, never defaulted. The server's own date is
             // UTC, and from about 8pm Eastern that is already tomorrow — a job
             // at 10pm tonight would file as Past while it is still ahead.
-            'today' => ['nullable', 'required_if:when,upcoming,past', 'date_format:Y-m-d'],
+            'today' => ['nullable', 'required_if:when,upcoming,past', 'required_if:money,overdue', 'date_format:Y-m-d'],
+            'money' => ['nullable', Rule::in(array_keys(self::MONEY_STATES))],
         ]);
+
+        abort_if($request->filled('money') && ! $money, Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
 
         // The current view, already narrowed to what §4 allows.
         $reachable = collect(\App\Support\Scoping\ViewScope::forUser($request->user())->franchiseIds());
@@ -118,7 +136,7 @@ class JobsController extends Controller
          * lit one. The Upcoming/Past counts do the same for the window, and the
          * Where picker's unplaced count for the Where pair.
          */
-        $filtered = function (?string $status, string $window, bool $where = true) use ($request, $reachable, $midnight) {
+        $filtered = function (?string $status, string $window, bool $where = true, bool $withMoney = true) use ($request, $reachable, $midnight, $today) {
             return Job::query()
                 // The roll-up, and the boundary. whereIn on an empty list matches
                 // nothing, which is the correct answer for a user with no
@@ -132,6 +150,13 @@ class JobsController extends Controller
                 ->when($where ? $request->query('service_area_id') : null, fn ($q, $id) => $id === 'none'
                     ? $q->whereNull('service_area_id')
                     : $q->where('service_area_id', $id))
+                // Correlated, not a join: workiz_jobs has its own franchise_id,
+                // status and scheduled_for, which the filters here name unqualified.
+                ->when($withMoney ? $request->query('money') : null, fn ($q, $state) => $q->whereExists(
+                    fn ($w) => $w->selectRaw('1')->from('workiz_jobs')
+                        ->whereColumn('workiz_jobs.job_id', 'jobs.id')
+                        ->whereRaw(self::MONEY_STATES[$state], $state === 'overdue' ? [$today] : []),
+                ))
                 ->when(filled($request->query('search')), function ($q) use ($request) {
                     $term = trim((string) $request->query('search'));
                     $like = '%'.$term.'%';
@@ -166,6 +191,8 @@ class JobsController extends Controller
                 'customer:id,name,number,owning_franchise_id',
                 'assignedRole:id,name',
                 'serviceArea',
+                // The row's money, with the toggle only: loaded per row otherwise.
+                ...($money ? ['workizJob'] : []),
             ]);
 
         match ($when) {
@@ -224,6 +251,30 @@ class JobsController extends Controller
                 ->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name, 'franchise_id' => $a->franchise_id])
                 ->values()->all();
             $meta['unplaced_count'] = $filtered($status, $when, where: false)->whereNull('service_area_id')->count();
+
+            // Workiz's money over the same jobs, per currency and never summed
+            // across them, with the money filter left out of its own totals.
+            if ($money) {
+                $overdue = $today === null ? '0'
+                    : 'SUM(CASE WHEN '.self::DUE.' > 0 AND '.self::DUE_ON.' < ? THEN '.self::DUE.' ELSE 0 END)';
+
+                // An OBJECT even when empty: an empty PHP array encodes as [].
+                $meta['money_totals'] = (object) DB::table('workiz_jobs')
+                    ->joinSub($filtered($status, $when, withMoney: false)->toBase()->select('jobs.id', 'jobs.currency'),
+                        'j', 'j.id', '=', 'workiz_jobs.job_id')
+                    ->selectRaw('j.currency, ROUND(SUM(GREATEST('.self::TOTAL.', 0)) * 100) AS total, '
+                        .'ROUND(SUM(GREATEST('.self::DUE.', 0)) * 100) AS due, ROUND('.$overdue.' * 100) AS overdue',
+                        $today === null ? [] : [$today])
+                    ->groupBy('j.currency')
+                    ->get()
+                    ->mapWithKeys(fn ($r) => [$r->currency => [
+                        'total' => (int) $r->total,
+                        'paid' => max((int) $r->total - (int) $r->due, 0),
+                        'due' => (int) $r->due,
+                        'overdue' => (int) $r->overdue,
+                    ]])
+                    ->all();
+            }
         }
 
         /*
@@ -579,6 +630,15 @@ class JobsController extends Controller
         ];
     }
 
+    /** @return array{total: int, due: int, state: string, due_on: ?string}|null */
+    private function moneySummary(Job $job): ?array
+    {
+        $m = WorkizMoney::for($job);
+
+        return $m === null ? null
+            : ['total' => $m['total'], 'due' => $m['due'], 'state' => $m['state'], 'due_on' => $m['due_on']];
+    }
+
     private function present(Job $job, bool $detailed = false, bool $money = false): array
     {
         // Only what the BASE payload reads. `lines` and `performedBy` are
@@ -612,6 +672,9 @@ class JobsController extends Controller
                 'owned_by_this_franchise' =>
                     $job->customer?->owning_franchise_id === $job->franchise_id,
             ],
+            // A list row's view of Workiz's money; the detail carries all of it
+            // below. Not on the detail: `$base + [...]` would keep this one.
+            ...($money && ! $detailed ? ['money' => $this->moneySummary($job)] : []),
             // Only with the Financials toggle: ABSENT without it, never null,
             // so the client draws nothing rather than a zero.
             ...($money ? ['amount' => [
