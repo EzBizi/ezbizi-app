@@ -89,9 +89,10 @@ Jose can change either in Settings.
   Jose, 2026-09-29: "yes, it should be tracked too". So `field.tracked` and `field.view` were added the same way, making 15 permissions.
 - **Training** (7 people): a copy of Technician's 15 permissions, `field.tracked` included.
 
-The export writes a manifest (path, sha256, size) to `/root/a1-people-export/`
-instead of copying the files. The importer reads each file in place on the same
-box and checks its sha256.
+The export is a bundle in HR's format: `people.json` plus `files/<sha256>.<ext>`,
+the files copied in and named by content hash. It goes in `/var/lib/a1-people-export`
+(see the Run plan). This supersedes an earlier manifest-only note: the importer
+refuses any path outside `files/`.
 
 The rest of the mapping:
 
