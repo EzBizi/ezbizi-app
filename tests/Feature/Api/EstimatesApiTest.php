@@ -56,6 +56,37 @@ class EstimatesApiTest extends TestCase
         $this->assertSame([$here], $ids);
     }
 
+    /**
+     * The list's header (queue 32): counts per status and money per currency,
+     * faceted like the jobs chips -- the status filter is left out, so the
+     * chips say what tapping each would show and the sums describe the list.
+     */
+    public function test_the_first_page_counts_each_status_and_sums_the_money(): void
+    {
+        $line = fn (int $minor) => ['lines' => [['name' => 'Sweep', 'quantity' => 1, 'unit_price_minor' => $minor]]];
+        $this->create($line(10000));
+        $this->create($line(20000));
+        $sent = $this->create($line(30000))->json('data.id');
+        $this->amend($sent, ['status' => 'sent'])->assertOk();
+        $won = $this->create($line(40000))->json('data.id');
+        $this->amend($won, ['status' => 'sent'])->assertOk();
+        $this->amend($won, ['status' => 'accepted'])->assertOk();
+
+        $meta = $this->signedInAs($this->alpha['admin'])->getJson('/api/v1/estimates?status=draft')
+            ->assertOk()->json('meta');
+
+        $this->assertSame(['draft' => 2, 'sent' => 1, 'accepted' => 1, 'declined' => 0, 'archived' => 0], $meta['status_counts']);
+        $this->assertSame(['USD' => ['quoted' => 100000, 'accepted' => 40000]], $meta['totals']);
+    }
+
+    public function test_the_header_is_an_object_even_when_nothing_matches(): void
+    {
+        $raw = $this->signedInAs($this->alpha['admin'])
+            ->getJson('/api/v1/estimates?customer_id=00000000-0000-0000-0000-000000000000')->assertOk()->getContent();
+
+        $this->assertStringContainsString('"totals":{}', $raw);
+    }
+
     public function test_the_transitions_are_the_documented_ones(): void
     {
         $id = $this->create()->json('data.id');

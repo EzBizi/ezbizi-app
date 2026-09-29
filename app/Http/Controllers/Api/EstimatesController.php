@@ -57,24 +57,49 @@ class EstimatesController extends Controller
             'status'      => ['nullable', Rule::in(Estimate::STATUSES)],
         ]);
 
-        $page = Estimate::query()
+        $reach = ViewScope::forUser($request->user())->franchiseIds();
+
+        // Every filter, the status OPTIONAL: the header below leaves it out, the
+        // way the jobs chips do, so a chip says what tapping it would show.
+        $filtered = fn (bool $withStatus = true) => Estimate::query()
             // Reach and the current view, as for jobs: an estimate is one
             // franchise's, and whereIn on nothing is nothing.
-            ->whereIn('franchise_id', ViewScope::forUser($request->user())->franchiseIds())
+            ->whereIn('franchise_id', $reach)
             ->when($request->query('customer_id'), fn ($q, $id) => $q->where('customer_id', $id))
             ->when($request->query('job_id'), fn ($q, $id) => $q->where('job_id', $id))
-            ->when($request->query('status'), fn ($q, $s) => $q->where('status', $s))
+            ->when($withStatus ? $request->query('status') : null, fn ($q, $s) => $q->where('status', $s));
+
+        $page = $filtered()
             ->with(['franchise', 'customer', 'job'])
             ->orderByDesc('created_at')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
+        $meta = [
+            'total'        => $page->total(),
+            'current_page' => $page->currentPage(),
+            'last_page'    => $page->lastPage(),
+        ];
+
+        // The list's header, on the first page only (queue 32): each status's
+        // count, and what was quoted and accepted per currency -- never summed
+        // across currencies, and OBJECTS even when empty (an empty PHP array
+        // encodes as []).
+        if ($page->currentPage() === 1) {
+            $counts = $filtered(withStatus: false)->toBase()
+                ->select('status', DB::raw('count(*) as n'))->groupBy('status')->pluck('n', 'status');
+            $meta['status_counts'] = array_combine(Estimate::STATUSES,
+                array_map(fn (string $s) => (int) ($counts[$s] ?? 0), Estimate::STATUSES));
+
+            $meta['totals'] = (object) $filtered(withStatus: false)->toBase()
+                ->selectRaw("currency, SUM(total_minor) AS quoted, SUM(CASE WHEN status = 'accepted' THEN total_minor ELSE 0 END) AS accepted")
+                ->groupBy('currency')->get()
+                ->mapWithKeys(fn ($r) => [$r->currency => ['quoted' => (int) $r->quoted, 'accepted' => (int) $r->accepted]])
+                ->all();
+        }
+
         return response()->json([
             'data' => collect($page->items())->map(fn (Estimate $e) => $this->present($e)),
-            'meta' => [
-                'total'        => $page->total(),
-                'current_page' => $page->currentPage(),
-                'last_page'    => $page->lastPage(),
-            ],
+            'meta' => $meta,
         ]);
     }
 
