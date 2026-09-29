@@ -4,10 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
-import '../../core/theme.dart';
 import '../../core/session.dart';
 import '../../widgets/address_lookup.dart';
 import '../../widgets/async_body.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/search_picker.dart';
 import 'cities_pane.dart';
 import 'content_tab.dart';
@@ -561,7 +561,6 @@ class _SiteTile extends StatelessWidget {
     final theme = Theme.of(context);
     final connected = site['connected_at'] != null;
     final missing = (site['missing'] as num?)?.toInt() ?? 0;
-    final caution = StateColour.of(context).caution;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -615,24 +614,10 @@ class _SiteTile extends StatelessWidget {
                 if (missing > 0)
                   Padding(
                     padding: const EdgeInsets.only(left: 8, top: 2),
-                    child: Tooltip(
-                      message: '$missing general '
+                    child: MissingCount(
+                      missing,
+                      tooltip: '$missing general '
                           '${missing == 1 ? 'field' : 'fields'} not filled in',
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: caution.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$missing',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: caution,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
                     ),
                   ),
               ],
@@ -1290,46 +1275,37 @@ class _SiteDetailState extends State<_SiteDetail> {
     final inherited = _inherited[key] ?? '';
     final isInheriting = controller.text.trim().isEmpty && inherited.isNotEmpty;
     final isMissing = _isMissing(field);
-    final caution = StateColour.of(context).caution;
 
     final input = TextField(
       controller: controller,
       enabled: widget.canEdit,
       style: theme.textTheme.bodyMedium,
       onChanged: (_) => setState(() {}),
-      decoration: InputDecoration(
-        labelText: field['label'] as String,
-        isDense: true,
-        // Always above the box. Jose, 2026-09-25: an empty box showed its
-        // label inside, in the same place a value sits, and "it's still hard
-        // to differentiate what is a filled field vs what is a placeholder".
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        // The inherited value sits in the box as a hint, so what the site
-        // publishes is legible without pretending somebody typed it — in
-        // italics, which nothing typed ever is.
-        hintText: isInheriting
-            ? inherited
-            : isMissing
-                ? 'Not filled in'
-                : null,
-        hintStyle: theme.textTheme.bodyMedium?.copyWith(
-          fontStyle: FontStyle.italic,
-          color: isMissing ? caution : theme.colorScheme.outline,
+      // Empty and inheriting nothing: amber, "Not filled in", label above
+      // (Jose, 2026-09-25: "it's still hard to differentiate what is a filled
+      // field vs what is a placeholder"). HR's record draws the same.
+      decoration: notFilledIn(
+        context,
+        InputDecoration(
+          labelText: field['label'] as String,
+          isDense: true,
+          // The inherited value sits in the box as a hint, so what the site
+          // publishes is legible without pretending somebody typed it — in
+          // italics, which nothing typed ever is.
+          hintText: isInheriting ? inherited : null,
+          hintStyle: theme.textTheme.bodyMedium?.copyWith(
+            fontStyle: FontStyle.italic,
+            color: theme.colorScheme.outline,
+          ),
+          filled: false,
+          helperText: isInheriting
+              ? 'From ${_primaryHost ?? 'the primary site'}'
+              : (field['hint'] as String).isEmpty
+                  ? null
+                  : field['hint'] as String,
+          helperMaxLines: 2,
         ),
-        filled: isMissing,
-        fillColor: isMissing ? caution.withValues(alpha: 0.07) : null,
-        enabledBorder: isMissing
-            ? OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: caution.withValues(alpha: 0.7)),
-              )
-            : null,
-        helperText: isInheriting
-            ? 'From ${_primaryHost ?? 'the primary site'}'
-            : (field['hint'] as String).isEmpty
-                ? null
-                : field['hint'] as String,
-        helperMaxLines: 2,
+        empty: isMissing,
       ),
     );
 

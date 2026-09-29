@@ -851,6 +851,95 @@ void main() {
     expect(find.textContaining('They sign in with this'), findsOneWidget);
   });
 
+  /// Jose, 2026-09-29: "i also want all the missing field to light up like we
+  /// do on marketing SEO with the counters on the list as well".
+  testWidgets('an empty box lights up, and the list counts them', (
+    tester,
+  ) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+
+    // The server's count beside Bea; nothing at all beside a zero.
+    expect(find.byTooltip('4 fields not filled in'), findsOneWidget);
+    expect(find.byTooltip('0 fields not filled in'), findsNothing);
+
+    await _openPerson(tester, 'Bea Okafor');
+
+    TextField box(String label) =>
+        tester.widget<TextField>(find.widgetWithText(TextField, label));
+
+    expect(box('Middle name').decoration?.hintText, 'Not filled in');
+    expect(box('Middle name').decoration?.filled, isTrue);
+    expect(
+      box('Middle name').decoration?.floatingLabelBehavior,
+      FloatingLabelBehavior.always,
+    );
+    // The control: a box with something in it is not amber.
+    expect(box('Phone').decoration?.hintText, isNull);
+
+    // The date of birth is a picker rather than a TextField, and says the same.
+    final born = tester.widget<InputDecorator>(
+      find.ancestor(
+        of: find.text('Date of birth'),
+        matching: find.byType(InputDecorator),
+      ),
+    );
+    expect(born.isEmpty, isTrue);
+    expect(born.decoration.hintText, 'Not filled in');
+
+    // Where the four are: three under Personal, the start date under
+    // Employment, so the number on the list can be found.
+    expect(
+      find.descendant(of: _section('Personal'), matching: find.text('3')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _section('Employment'), matching: find.text('1')),
+      findsOneWidget,
+    );
+
+    // Typing takes a box out of amber there and then.
+    await tester.enterText(find.widgetWithText(TextField, 'Middle name'), 'Ada');
+    await tester.pump();
+    expect(box('Middle name').decoration?.hintText, isNull);
+  });
+
+  /// Jose, 2026-09-29: "I want to be able to resize the sidebar here on human
+  /// resources".
+  testWidgets('the list resizes by its edge, within limits', (tester) async {
+    await _pump(tester, _handler());
+    await _tap(tester, _tab('Records'));
+
+    final edge = find.byKey(const ValueKey('hr-list-edge'));
+    double list() =>
+        tester.getTopLeft(edge).dx - tester.getTopLeft(find.byType(RecordsTab)).dx;
+
+    expect(list(), 300);
+
+    await tester.drag(edge, const Offset(150, 0));
+    await tester.pumpAndSettle();
+    expect(list(), greaterThan(400));
+
+    await tester.drag(edge, const Offset(-2000, 0));
+    await tester.pumpAndSettle();
+    expect(list(), 240, reason: 'It narrows; it cannot be dragged away.');
+
+    await tester.drag(edge, const Offset(4000, 0));
+    await tester.pumpAndSettle();
+    expect(
+      list(),
+      tester.getSize(find.byType(RecordsTab)).width - 420,
+      reason: 'Nor can it push the record out.',
+    );
+
+    // A double-click puts it back, which also leaves the next test at 300.
+    await tester.tap(edge);
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(edge);
+    await tester.pumpAndSettle();
+    expect(list(), 300);
+  });
+
   /// What onboarding collected still opens full page, and comes back to the
   /// person rather than to an empty list.
   testWidgets('an onboarding opens full page and returns to the person', (
@@ -1491,6 +1580,7 @@ const _people = [
     'last_name': 'Silva',
     'email': 'jose@example.com',
     'is_active': true,
+    'missing': 0,
     'role': {'id': 'role-1', 'name': 'Administrator'},
     'assignments': [
       {
@@ -1509,6 +1599,9 @@ const _people = [
     'last_name': 'Okafor',
     'email': 'bea@example.com',
     'is_active': true,
+    // HrPeopleController::missing: her record below is missing middle name,
+    // gender, date of birth and a start date.
+    'missing': 4,
     // The state this whole module exists to close: the row exists, the roles
     // exist, and nothing has ever joined the two.
     'role': {'id': null, 'name': null},

@@ -67,6 +67,42 @@ class HrPersonRecordTest extends TestCase
         $this->assertArrayNotHasKey('address', $row);
     }
 
+    /**
+     * The list says how many boxes on a record are empty, and not what is in
+     * the full ones (Jose, 2026-09-29, the counter Web Management has).
+     */
+    public function test_the_list_counts_the_empty_boxes_without_showing_the_full_ones(): void
+    {
+        $t = $this->provisionTenant('Alpha');
+        $person = $this->userWithRole($t, 'Technician', ['customers.view']);
+
+        // Empty: middle name, address, gender, and no start date.
+        $this->inTenant($t['org'], fn () => $person->forceFill([
+            'first_name' => 'Bea',
+            'middle_name' => null,
+            'last_name' => 'Ortiz',
+            'phone' => '(203) 555-0148',
+            'address' => '  ',
+            'gender' => null,
+            'date_of_birth' => '1991-03-04',
+        ])->save());
+
+        $row = fn () => collect($this->signedInAs($t['admin'])->getJson('/api/v1/hr/people')->json('data'))
+            ->firstWhere('id', $person->id);
+
+        $this->assertSame(4, $row()['missing']);
+        $this->assertArrayNotHasKey('phone', $row());
+
+        $this->inTenant($t['org'], fn () => EmploymentEvent::create([
+            'organization_id' => $t['org']->id,
+            'user_id' => $person->id,
+            'kind' => EmploymentEvent::STARTED,
+            'occurred_on' => '2024-02-05',
+        ]));
+
+        $this->assertSame(3, $row()['missing'], 'A start date is one box fewer.');
+    }
+
     /** Opening somebody's personal details is itself recorded (§9). */
     public function test_reading_a_record_is_audited(): void
     {

@@ -133,8 +133,19 @@ class HrPeopleController extends Controller
             ->orderBy('name')
             ->paginate(perPage: min((int) $request->query('per_page', 50), 200));
 
+        // Who on this page has a start date: one query for the page rather
+        // than PtoPolicy's one per person.
+        $started = EmploymentEvent::query()
+            ->where('kind', EmploymentEvent::STARTED)
+            ->whereIn('user_id', collect($people->items())->map->getKey())
+            ->distinct()
+            ->pluck('user_id')
+            ->flip();
+
         return response()->json([
-            'data' => collect($people->items())->map(fn (User $p) => $this->present($p, $actor)),
+            'data' => collect($people->items())->map(fn (User $p) => $this->present($p, $actor) + [
+                'missing' => $this->missing($p, $started->has($p->getKey())),
+            ]),
             'meta' => [
                 'total'        => $people->total(),
                 'per_page'     => $people->perPage(),
@@ -723,6 +734,24 @@ class HrPeopleController extends Controller
         return response()->json([
             'data' => $this->present($user->fresh(['role', 'assignments']), $request->user()),
         ]);
+    }
+
+    /**
+     * How many boxes on somebody's record are empty, for the counter beside
+     * them on the list (Jose, 2026-09-29: "like we do on marketing SEO with
+     * the counters on the list"). The rule the record lights its boxes amber
+     * by, in records_tab.dart `_blank`: the seven personal fields and the
+     * start date. Email is never empty, and no role already says so on the row.
+     *
+     * A count, never the values: the row stays short for show()'s reason.
+     */
+    private function missing(User $person, bool $started): int
+    {
+        $empty = collect(['first_name', 'middle_name', 'last_name', 'phone', 'address', 'gender', 'date_of_birth'])
+            ->filter(fn (string $field) => blank($person->getAttribute($field)))
+            ->count();
+
+        return $empty + ($started ? 0 : 1);
     }
 
     private function present(User $person, User $actor): array

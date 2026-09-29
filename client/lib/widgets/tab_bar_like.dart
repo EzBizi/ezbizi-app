@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'not_filled_in.dart';
+
 /// A simple segmented row of destinations.
 ///
 /// Not a real TabBar: that needs a TabController and a DefaultTabController
@@ -16,11 +18,16 @@ class TabBarLike extends StatelessWidget {
     required this.labels,
     required this.selected,
     required this.onSelected,
+    this.missing,
   });
 
   final List<(String, IconData)> labels;
   final int selected;
   final ValueChanged<int> onSelected;
+
+  /// How many boxes under each tab are empty, as the amber count beside its
+  /// label (HR's record, 2026-09-29). None drawn at zero or when null.
+  final List<int>? missing;
 
   @override
   Widget build(BuildContext context) {
@@ -72,7 +79,22 @@ class TabBarLike extends StatelessWidget {
               padding: const EdgeInsets.only(right: 8),
               child: ChoiceChip(
                 avatar: Icon(labels[i].$2, size: 16),
-                label: Text(labels[i].$1),
+                label: switch (missing?[i] ?? 0) {
+                  0 => Text(labels[i].$1),
+                  final count => Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(labels[i].$1),
+                      const SizedBox(width: 6),
+                      MissingCount(
+                        count,
+                        tooltip:
+                            '$count ${count == 1 ? 'field' : 'fields'} '
+                            'not filled in',
+                      ),
+                    ],
+                  ),
+                },
                 selected: i == selected,
                 // No checkmark, because it is not drawn BESIDE the icon — it
                 // is drawn ON it.

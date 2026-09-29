@@ -13,6 +13,7 @@ import '../../core/ui_strings.dart';
 import '../../widgets/async_body.dart';
 import '../../widgets/error_note.dart';
 import '../../widgets/load_more.dart';
+import '../../widgets/not_filled_in.dart';
 import '../../widgets/search_picker.dart';
 import '../../widgets/side_panel.dart';
 import '../../widgets/tab_bar_like.dart';
@@ -105,6 +106,13 @@ class _RecordsTabState extends State<RecordsTab> {
 
   /// Whose record is open.
   String? _selected;
+
+  /// The list's width, dragged by its edge (Jose, 2026-09-29: "I want to be
+  /// able to resize the sidebar"). Static, so it is where it was left after a
+  /// visit to another module. ponytail: forgotten when the app closes; a
+  /// PreferenceRegistry key, like navigation.width, if that turns out to
+  /// matter.
+  static double _listWidth = 300;
 
   /// Which onboarding of theirs is being read, full page. Replaces the record
   /// rather than opening beside it: a page of collected answers is not a pane.
@@ -269,11 +277,33 @@ class _RecordsTabState extends State<RecordsTab> {
       // window measurement would put a sidebar into a column too narrow for it.
       builder: (context, constraints) {
         if (constraints.maxWidth >= 760) {
+          // At least 240 for the list and 420 for the record, whatever the
+          // window: the handle cannot squeeze either of them out.
+          final widest = constraints.maxWidth - 420;
+          final width = _listWidth.clamp(240.0, widest);
+
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(width: 300, child: _sidebar(context)),
-              const VerticalDivider(width: 1),
+              SizedBox(width: width, child: _sidebar(context)),
+              // The edge is the handle, as on Leads: an 8px target drawn as
+              // the 1px line. A double-click puts it back.
+              MouseRegion(
+                cursor: SystemMouseCursors.resizeLeftRight,
+                child: GestureDetector(
+                  key: const ValueKey('hr-list-edge'),
+                  behavior: HitTestBehavior.opaque,
+                  onHorizontalDragUpdate: (d) => setState(
+                    () => _listWidth =
+                        _listWidth.clamp(240.0, widest) + d.delta.dx,
+                  ),
+                  onDoubleTap: () => setState(() => _listWidth = 300),
+                  child: const SizedBox(
+                    width: 8,
+                    child: Center(child: VerticalDivider(width: 1)),
+                  ),
+                ),
+              ),
               Expanded(child: _record(context, narrow: false)),
             ],
           );
@@ -371,6 +401,7 @@ class _RecordsTabState extends State<RecordsTab> {
     final id = person['id']?.toString();
     final roleName = (person['role'] as Map<String, dynamic>?)?['name'];
     final active = person['is_active'] != false;
+    final missing = (person['missing'] as num?)?.toInt() ?? 0;
 
     return Material(
       color: id == _selected
@@ -388,12 +419,27 @@ class _RecordsTabState extends State<RecordsTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      person['name'] as String? ?? '',
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: active ? null : theme.colorScheme.outline,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            person['name'] as String? ?? '',
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: active ? null : theme.colorScheme.outline,
+                            ),
+                          ),
+                        ),
+                        // The amber boxes on their record, counted by the
+                        // server (HrPeopleController::missing), as each
+                        // website counts on Web Management (Jose, 2026-09-29).
+                        MissingCount(
+                          missing,
+                          tooltip:
+                              '$missing ${missing == 1 ? 'field' : 'fields'} '
+                              'not filled in',
+                        ),
+                      ],
                     ),
                     Text(
                       [
@@ -514,6 +560,21 @@ class _Initials extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // One person's record
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// The personal boxes counted when empty, by the rule
+/// HrPeopleController::missing counts the list's number by. With the start
+/// date, under Employment, they are every box that number covers.
+const _personalBoxes = [
+  'first_name',
+  'middle_name',
+  'last_name',
+  'phone',
+  'address',
+  'gender',
+  'date_of_birth',
+];
+
+bool _blank(Object? value) => (value?.toString() ?? '').trim().isEmpty;
 
 /// The sections, in the order the record's tab strip draws them.
 const _sections = [
@@ -689,6 +750,7 @@ class _PersonRecordState extends State<_PersonRecord> {
                 // own module chips above it, and "Onboarding" is on both.
                 key: _RecordsTabState.sectionsKey,
                 labels: [for (final s in _sections) (s.$2, s.$3)],
+                missing: [for (final s in _sections) _emptyIn(s.$1)],
                 selected: _sections.indexWhere((s) => s.$1 == _section),
                 onSelected: (i) => setState(() => _section = _sections[i].$1),
               ),
@@ -710,6 +772,14 @@ class _PersonRecordState extends State<_PersonRecord> {
       ),
     );
   }
+
+  /// The empty boxes in one section of the saved record, for its tab, so the
+  /// number on the list can be found.
+  int _emptyIn(String section) => switch (section) {
+    'personal' => _personalBoxes.where((key) => _blank(_person[key])).length,
+    'employment' => _blank(_person['started_on']) ? 1 : 0,
+    _ => 0,
+  };
 
   Widget _header(BuildContext context) {
     final theme = Theme.of(context);
@@ -1163,7 +1233,6 @@ class _DateField extends StatelessWidget {
     required this.onChanged,
     this.helper,
     this.lastDate,
-    this.empty = 'Not recorded',
   });
 
   final String label;
@@ -1172,7 +1241,6 @@ class _DateField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final String? helper;
   final DateTime? lastDate;
-  final String empty;
 
   @override
   Widget build(BuildContext context) {
@@ -1196,15 +1264,20 @@ class _DateField extends StatelessWidget {
               );
             },
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          helperText: helper,
-          helperMaxLines: 3,
-          border: const OutlineInputBorder(),
-          suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
-          enabled: onChanged != null,
+        isEmpty: at == null,
+        decoration: notFilledIn(
+          context,
+          InputDecoration(
+            labelText: label,
+            helperText: helper,
+            helperMaxLines: 3,
+            border: const OutlineInputBorder(),
+            suffixIcon: const Icon(Icons.calendar_today_outlined, size: 18),
+            enabled: onChanged != null,
+          ),
+          empty: at == null,
         ),
-        child: Text(at == null ? empty : formats.formatDate(at)),
+        child: Text(at == null ? '' : formats.formatDate(at)),
       ),
     );
   }
@@ -1287,9 +1360,12 @@ class _PersonalSectionState extends State<_PersonalSection> {
       controller: _fields[key],
       enabled: editable,
       maxLines: lines,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
+      // Amber and saying so when empty, label above: as Web Management's
+      // fields (Jose, 2026-09-29, "like we do on marketing SEO").
+      decoration: notFilledIn(
+        context,
+        InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        empty: _blank(_fields[key]!.text),
       ),
     );
 
@@ -1315,7 +1391,6 @@ class _PersonalSectionState extends State<_PersonalSection> {
             value: _born,
             formats: widget.formats,
             lastDate: DateTime.now().subtract(const Duration(days: 1)),
-            empty: 'Not given',
             onChanged: editable ? (v) => setState(() => _born = v) : null,
           ),
           text('gender', 'Gender'),
