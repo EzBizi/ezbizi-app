@@ -352,29 +352,38 @@ class ImportA1ToolsClientsTest extends TestCase
 
     // ── refusals ─────────────────────────────────────────────────
 
+    /**
+     * Each defect with the one sentence only it produces. A refusal is otherwise
+     * indistinguishable from a refusal for some other reason: on 2026-09-29, in a
+     * suite that left three "Alpha" organizations behind, every one of these
+     * passed while the import was refusing every row for a missing franchise.
+     */
     public static function defects(): array
     {
         return [
-            'an unknown key' => [['middle_name' => 'Q']],
-            'an unknown franchise' => [['franchise' => 'FL']],
-            'no franchise' => [['franchise' => null]],
-            'a key in an unknown franchise' => [['workiz' => [['franchise' => 'Full', 'client_id' => 9]]]],
-            'a key that is not a number' => [['workiz' => [['franchise' => 'NJ', 'client_id' => '45x']]]],
-            'a date that is not one' => [['client_since' => '2025-13-45']],
-            'a value too long' => [['city' => str_repeat('x', 256)]],
-            'a repeated a1 id' => [['a1_id' => 1]],
+            'an unknown key' => [['middle_name' => 'Q'], 'client 2 (A1 id 2): unknown key middle_name.'],
+            'an unknown franchise' => [['franchise' => 'FL'], 'client 2 (A1 id 2): franchise is not an A1 franchise code'],
+            'no franchise' => [['franchise' => null], 'client 2 (A1 id 2): franchise is not an A1 franchise code'],
+            'a key in an unknown franchise' => [['workiz' => [['franchise' => 'Full', 'client_id' => 9]]], 'client 2 (A1 id 2): a workiz key needs'],
+            'a key that is not a number' => [['workiz' => [['franchise' => 'NJ', 'client_id' => '45x']]], 'client 2 (A1 id 2): a workiz key needs'],
+            'a date that is not one' => [['client_since' => '2025-13-45'], 'client 2 (A1 id 2): client_since is not a YYYY-MM-DD date.'],
+            'a value too long' => [['city' => str_repeat('x', 256)], 'client 2 (A1 id 2): city is longer than 255 characters.'],
+            'a repeated a1 id' => [['a1_id' => 1], 'client 2 (A1 id 1): the same a1_id as client 1.'],
         ];
     }
 
     #[DataProvider('defects')]
-    public function test_a_defect_anywhere_refuses_the_whole_run(array $defect): void
+    public function test_a_defect_anywhere_refuses_the_whole_run(array $defect, string $because): void
     {
         $this->bundle([
             $this->client(['a1_id' => 1]),
             $this->client(array_replace(['a1_id' => 2, 'workiz' => [['franchise' => 'NJ', 'client_id' => 777]]], $defect)),
         ]);
 
-        $this->import()->assertFailed()->expectsOutputToContain('Refused. Nothing was written.');
+        // One problem, and it is this one: client 1 is clean, so the refusal is for the defect.
+        $this->import()->assertFailed()
+            ->expectsOutputToContain('Refused. Nothing was written. 1 problem(s):')
+            ->expectsOutputToContain($because);
 
         $this->assertCount(0, $this->customers());
         $this->assertCount(0, $this->links());
@@ -384,9 +393,24 @@ class ImportA1ToolsClientsTest extends TestCase
     {
         $this->bundle([$this->client()], ['format' => 'ezbizi.a1-people/1']);
 
-        $this->import()->assertFailed();
+        $this->import()->assertFailed()
+            ->expectsOutputToContain('1 problem(s):')
+            ->expectsOutputToContain('The file is not format ezbizi.a1-clients/1.');
 
         $this->assertCount(0, $this->customers());
+    }
+
+    public function test_a_name_two_organizations_share_is_refused_not_guessed(): void
+    {
+        // A second organization with the same name: whichever one first() came
+        // back with, the import would have guessed.
+        $this->provisionTenant($this->t['org']->name, 'twin@example.test');
+        $this->bundle([$this->client()]);
+
+        $this->import()->assertFailed()
+            ->expectsOutputToContain('More than one organization has the name the file gives');
+
+        $this->assertSame(0, Customer::query()->withoutGlobalScopes()->count());
     }
 
     // ── the run ──────────────────────────────────────────────────

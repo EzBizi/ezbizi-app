@@ -6,12 +6,16 @@ use App\Support\Modules\ModuleDefinition;
 use App\Support\Modules\ModuleRegistry;
 use App\Support\Settings\SettingDefinition;
 use App\Support\Settings\SettingRegistry;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
 
 class TimeClockModuleTest extends TestCase
 {
+    // Three of these tests provision a tenant. Without RefreshDatabase each one
+    // COMMITS an "Alpha" organization that every later test in the process sees.
     use BuildsTenants;
+    use RefreshDatabase;
 
     public function test_the_module_is_grantable_and_not_a_sidebar_tab(): void
     {
