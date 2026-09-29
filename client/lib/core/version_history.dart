@@ -13,6 +13,7 @@ class VersionHistory {
       items: [
         'Jobs: estimates are now records in EzBizi, numbered EST-. They need the new Estimates permissions in Settings, Roles, plus the Jobs Financials toggle. The screens to see them are being designed.',
         'Communication, Dial pad: with no microphone connected, Call now says so (connect a headset or microphone, then press Call again) instead of doing nothing.',
+        'Jobs: for roles with Financials, the list has money chips (Unpaid, Partly paid, Overdue, Paid, Credit) with their counts and a line of totals, each row shows its money state, and an open job shows its money first, live from Workiz.',
       ],
     ),
     VersionRelease(
