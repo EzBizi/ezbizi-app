@@ -258,7 +258,7 @@ Rules for the exporter:
   - `created_at` is the true instant. A1's midnight-only values (2,365 of them) are local dates. Each goes out as that local midnight in UTC in A1's timezone (04:00Z or 05:00Z for Eastern), so it stays on its own day. A `T00:00:00Z` would show as the evening before.
 - **`currency`** is ISO 4217, uppercase. A1 is `USD` throughout.
 - **`total_minor`** is A1's total in integer cents, rounded and never truncated (1.15 dollars is 115). It is the stored total. The importer does not re-add the lines: most A1 estimates have none (26 lines on 12 of the 2,383 exported).
-- **`note`** is A1's notes, unchanged, or null. When A1 has an inspection report link (18 do), it is appended as a final line: `Inspection report: <link>`.
+- **`note`** is A1's notes, unchanged, or null. A1's inspection report links (18) are left out. Each carries a live access token and points into A1, which is going away. The 8 reports that still exist are exported as PDFs for the Inspection module, which decides where they go.
 - **`job_workiz_uuid`** is the A1 job's `external_workiz_uuid` for the 6 estimates that have a job, and null otherwise.
 - **`lines`** is `[]` when there are none, and in A1's own order: the array order becomes each line's position. Each line has:
   - `name`, a string. A line with no name in A1 is named `(No description in A1)`, which states the absence rather than inventing an item;
