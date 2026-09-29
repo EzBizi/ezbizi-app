@@ -25,16 +25,19 @@ use Illuminate\Support\Facades\Storage;
  * older live customer: Workiz's own duplicate client records (270 in the same
  * franchise) and keys the A1 export dropped as other people (426 in another).
  *
- * ── WHAT IT DOES, AND ONLY WITH CUSTOMERS' AND JOSE'S WORD ─────────
+ * ── WHAT IT DOES, AND ONLY WITHIN ONE FRANCHISE ─────────────────────
  *
  * A twin is a customer made inside the window, holding a Workiz key, whose
  * phone and name (case and spacing ignored) match exactly ONE live customer
- * made before it. Its jobs and its Workiz keys move to that customer, and it is
- * soft-deleted: one transaction per pair, under the projection's lock, every
- * move in a manifest and every pair in one audit row, so a wrong one can be
- * undone. Customers approved the same-franchise pairs (2026-09-29). A pair in
- * another franchise also moves a branch's numbers, which is Jose's call:
- * `--cross-franchise` includes them, and nothing else does.
+ * made before it IN THE SAME FRANCHISE. Its jobs and its Workiz keys move to
+ * that customer, and it is soft-deleted: one transaction per pair, under the
+ * projection's lock, every move in a manifest and every pair in one audit row,
+ * so a wrong one can be undone. Customers approved these (2026-09-29).
+ *
+ * A match owned by ANOTHER franchise is left alone, by Customers' and the
+ * desk's ruling: Workiz keeps one client per account, so one person served by
+ * two branches is two records, each on its own branch's books. Folding one
+ * under the other would hide the person from the branch that serves them.
  *
  * ── WHAT IT WILL NOT TOUCH, CHECKED WHEN IT RUNS ─────────────────
  *
@@ -54,7 +57,6 @@ class MergeWorkizTwins extends Command
     protected $signature = 'ezbizi:workiz-merge-twins
         {from : Twins were made at or after this moment, UTC (Y-m-d H:i:s)}
         {to : ... and at or before this one}
-        {--cross-franchise : Also fold twins owned by another franchise (Jose\'s call)}
         {--dry-run : Report what would be merged and change nothing}
         {--wait=120 : Seconds to wait for a running Workiz projection}';
 
@@ -101,7 +103,6 @@ class MergeWorkizTwins extends Command
     private function mergeIn(array $window, AuditLogger $audit): void
     {
         $dryRun = (bool) $this->option('dry-run');
-        $crossFranchise = (bool) $this->option('cross-franchise');
         $norm = fn (?string $name) => mb_strtolower(preg_replace('/\s+/u', ' ', trim((string) $name)));
 
         $older = [];
@@ -119,7 +120,7 @@ class MergeWorkizTwins extends Command
 
         $named = $this->namedElsewhere($twins->modelKeys());
         $pairs = [];
-        $report = ['several' => [], 'touched' => [], 'named' => [], 'held' => 0];
+        $report = ['several' => [], 'touched' => [], 'named' => [], 'other franchise' => 0];
 
         foreach ($twins as $twin) {
             $matches = $older[$twin->phone.'|'.$norm($twin->name)] ?? [];
@@ -134,17 +135,17 @@ class MergeWorkizTwins extends Command
                 $report['touched'][] = $twin->getKey();
             } elseif (isset($named[$twin->getKey()])) {
                 $report['named'][] = $twin->getKey();
-            } elseif ($matches[0]->owning_franchise_id !== $twin->owning_franchise_id && ! $crossFranchise) {
-                $report['held']++;
+            } elseif ($matches[0]->owning_franchise_id !== $twin->owning_franchise_id) {
+                $report['other franchise']++;
             } else {
                 $pairs[] = [$twin, $matches[0]];
             }
         }
 
         $this->info(sprintf(
-            '%s%d twins: %d to merge%s, %d in another franchise held for Jose, %d match several customers, %d changed by a person, %d named by something else.',
-            $dryRun ? '[dry run] ' : '', count($pairs) + $report['held'] + count($report['several']) + count($report['touched']) + count($report['named']),
-            count($pairs), $crossFranchise ? ' (other franchises included)' : '', $report['held'],
+            '%s%d twins: %d to merge, %d in another franchise left alone, %d match several customers, %d changed by a person, %d named by something else.',
+            $dryRun ? '[dry run] ' : '', count($pairs) + $report['other franchise'] + count($report['several']) + count($report['touched']) + count($report['named']),
+            count($pairs), $report['other franchise'],
             count($report['several']), count($report['touched']), count($report['named']),
         ));
 
@@ -187,7 +188,6 @@ class MergeWorkizTwins extends Command
         $audit->log('customer.twins_merged', metadata: [
             'source' => 'workiz backfill',
             'window' => $window,
-            'cross_franchise' => $crossFranchise,
             'merged' => $listed,
             'manifest' => $path,
         ]);

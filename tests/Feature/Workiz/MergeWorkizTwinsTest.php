@@ -109,16 +109,16 @@ class MergeWorkizTwinsTest extends TestCase
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->count()));
     }
 
-    public function test_a_twin_in_another_franchise_waits_for_jose(): void
+    public function test_a_twin_in_another_franchise_is_left_on_its_own_branch(): void
     {
-        $kept = $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
-        $twin = $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [77], jobs: 1, franchise: $this->other);
+        // One person served by two branches is two records, one per Workiz
+        // account, each on its own branch's books (Customers and the desk).
+        $this->customer('2026-09-29 18:35:00', 'Ann Lee', '+12015550100', [4512]);
+        $this->customer('2026-09-29 19:10:00', 'Ann Lee', '+12015550100', [77], jobs: 1, franchise: $this->other);
 
-        $this->merge()->assertSuccessful()->expectsOutputToContain('1 in another franchise held for Jose');
+        $this->merge()->assertSuccessful()->expectsOutputToContain('0 to merge, 1 in another franchise left alone');
+
         $this->assertCount(2, $this->live());
-
-        $this->merge(['--cross-franchise' => true])->assertSuccessful();
-        $this->assertEquals([$kept->id], $this->live()->all());
     }
 
     public function test_what_is_not_certain_is_left_alone_and_reported(): void
