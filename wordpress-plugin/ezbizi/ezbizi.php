@@ -3,7 +3,7 @@
  * Plugin Name:       EzBizi
  * Plugin URI:        https://ezbizi.com
  * Description:       Publishes your company details — phone, address, licence, hours — from EzBizi, so one change updates every page of this site.
- * Version:           1.22.0
+ * Version:           1.22.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            EzBizi
@@ -46,7 +46,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-const EZBIZI_VERSION = '1.22.0';
+const EZBIZI_VERSION = '1.22.1';
 const EZBIZI_CACHE_KEY = 'ezbizi_payload';
 const EZBIZI_LAST_GOOD = 'ezbizi_last_good';
 const EZBIZI_CACHE_TTL = 300;
@@ -383,7 +383,75 @@ function ezbizi_purge_page_cache() {
          */
         do_action('ezbizi_payload_changed');
     }
+
+    ezbizi_queue_nginx_purge();
 }
+
+/**
+ * Ask the web host to drop this site's cached pages.
+ *
+ * The estate's nginx keeps pages for two hours and has no purge module; a
+ * root job purges a host when a marker named after it appears in
+ * <webspace>/.purge-queue (the one place PHP may write under Plesk's
+ * open_basedir). Until 2026-09-29 only A1 Tools' updates dropped a marker, so
+ * an hours change made in EzBizi took up to two hours to show (Jose, testing
+ * Rodrigo's hours editor on aus.a-1chimney.com).
+ *
+ * Silently nothing on a host without that layout.
+ */
+function ezbizi_queue_nginx_purge() {
+    if (! defined('ABSPATH') || ! function_exists('home_url')) {
+        return;
+    }
+
+    $host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
+    $dir = rtrim(ABSPATH, '/');
+
+    for ($i = 0; $i < 6 && dirname($dir) !== '/var/www/vhosts'; $i++) {
+        $up = dirname($dir);
+
+        if ($up === $dir) {
+            return;
+        }
+
+        $dir = $up;
+    }
+
+    if (dirname($dir) !== '/var/www/vhosts' || preg_match('/^[a-z0-9.-]+$/i', $host) !== 1) {
+        return;
+    }
+
+    $queue = $dir . '/.purge-queue';
+
+    if (! is_dir($queue)) {
+        @mkdir($queue, 0775, true);
+    }
+
+    if (is_dir($queue) && is_writable($queue)) {
+        @touch($queue . '/' . strtolower($host));
+    }
+}
+
+/*
+ * POST /wp-json/ezbizi/v1/refresh — EzBizi says "something changed, read it now".
+ *
+ * Called with the service account right after a save (an hours change, a
+ * value), so the site does not wait up to five minutes for its own refresh.
+ * Reads the payload at once; a real change purges the page cache as above.
+ */
+add_action('rest_api_init', function () {
+    register_rest_route('ezbizi/v1', '/refresh', array(
+        'methods' => 'POST',
+        'callback' => function () {
+            $payload = ezbizi_fetch();
+
+            return new WP_REST_Response(array('fetched_at' => isset($payload['fetched_at']) ? (int) $payload['fetched_at'] : null));
+        },
+        'permission_callback' => function () {
+            return current_user_can('edit_pages');
+        },
+    ));
+});
 
 /** One value, preferring this page's override over the site's answer. */
 function ezbizi_value($key) {

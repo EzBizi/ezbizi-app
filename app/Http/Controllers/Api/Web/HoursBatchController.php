@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Support\Web\Hours\HoursBatch;
 use App\Support\Web\Hours\WeekEdit;
+use App\Support\Web\SiteRefresh;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -100,6 +101,10 @@ class HoursBatchController extends Controller
         if ($result === null) {
             return response()->json(['message' => 'That review has expired or is not yours. Review the changes again.'], 409);
         }
+
+        // The websites that changed read their new hours now, not in five minutes.
+        $changed = array_column(array_filter($result['results'], fn (array $r) => $r['status'] === 'changed' && $r['destination'] === 'website'), 'site_id');
+        SiteRefresh::later(...WebSite::query()->whereIn('id', $changed)->get()->all());
 
         return response()->json(['data' => $result]);
     }

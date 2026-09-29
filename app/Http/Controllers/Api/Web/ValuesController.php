@@ -7,6 +7,7 @@ use App\Models\WebSite;
 use App\Models\WebValue;
 use App\Support\Web\PageFields;
 use App\Support\Web\SeoFields;
+use App\Support\Web\SiteRefresh;
 use App\Support\Web\ValueResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -139,6 +140,12 @@ class ValuesController extends Controller
                 );
             }
         });
+
+        // The website reads its new values now rather than at its next five-minute
+        // refresh — and when it is the primary, so do the sites that inherit from it.
+        SiteRefresh::later(...($site->is_primary
+            ? WebSite::query()->where('company_id', $site->company_id)->get()->all()
+            : [$site]));
 
         return response()->json([
             'data' => $this->editorPayload($site),

@@ -156,6 +156,21 @@ class HoursBatchTest extends TestCase
         $this->assertSame('unchanged', $again['results'][0]['status']);
     }
 
+    public function test_a_changed_website_is_told_to_read_its_hours_now(): void
+    {
+        [$editor, $site, $tenant] = $this->siteWithHours();
+        \Illuminate\Support\Facades\Http::fake(['nj.a-1chimney.com/*' => \Illuminate\Support\Facades\Http::response(['fetched_at' => 1])]);
+        $this->inTenant($tenant['org'], fn () => \App\Models\WebSite::query()->findOrFail($site)
+            ->forceFill(['service_user_login' => 'ezbizi-service', 'service_password' => 'secret', 'service_rest_url' => 'https://nj.a-1chimney.com/wp-json/'])->save());
+
+        $review = $this->signedInAs($editor)->postJson('/api/v1/web/hours/review', [
+            'site_ids' => [$site], 'destinations' => ['website'], 'schedule' => ['monday' => ['action' => 'closed']],
+        ])->json('data.token');
+        $this->signedInAs($editor)->postJson('/api/v1/web/hours/apply', ['token' => $review])->assertOk();
+
+        \Illuminate\Support\Facades\Http::assertSent(fn ($r) => $r->method() === 'POST' && $r->url() === 'https://nj.a-1chimney.com/wp-json/ezbizi/v1/refresh');
+    }
+
     public function test_a_review_that_went_stale_is_not_applied(): void
     {
         [$editor, $site] = $this->siteWithHours();
