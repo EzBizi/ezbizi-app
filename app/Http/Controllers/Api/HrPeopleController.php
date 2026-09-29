@@ -15,6 +15,7 @@ use App\Support\Access\ScopeReach;
 use App\Support\Audit\AuditLogger;
 use App\Support\Automations\EventEmitter;
 use App\Support\Hr\PtoPolicy;
+use App\Support\Hr\StartDate;
 use App\Support\Modules\PermissionCatalogue;
 use App\Support\Privacy\ConsentLedger;
 use App\Support\Privacy\SensitiveValues;
@@ -560,34 +561,16 @@ class HrPeopleController extends Controller
      */
     private function recordStartDate(User $user, string $on, User $actor): void
     {
-        $date = Carbon::parse($on)->toDateString();
+        // Which row moves is StartDate's to decide, shared with the A1 import.
+        $result = StartDate::record($user, $on);
 
-        $first = EmploymentEvent::query()
-            ->where('user_id', $user->getKey())
-            ->where('kind', EmploymentEvent::STARTED)
-            ->orderBy('occurred_on')
-            ->first();
-
-        $before = $first?->occurred_on?->toDateString();
-
-        if ($before === $date) {
+        if (! $result['changed']) {
             return;
         }
 
-        if ($first !== null) {
-            $first->update(['occurred_on' => $date]);
-        } else {
-            EmploymentEvent::create([
-                'organization_id' => $user->organization_id,
-                'user_id'         => $user->getKey(),
-                'kind'            => EmploymentEvent::STARTED,
-                'occurred_on'     => $date,
-            ]);
-        }
-
         $this->audit->log('user.start_date_changed', $user, changes: [
-            'before' => ['started_on' => $before],
-            'after'  => ['started_on' => $date],
+            'before' => ['started_on' => $result['before']],
+            'after'  => ['started_on' => $result['after']],
         ], actor: $actor);
     }
 
