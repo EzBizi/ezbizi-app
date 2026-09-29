@@ -216,6 +216,43 @@ void main() {
     );
   });
 
+  /// Design 30: each source in the rail carries its unread count, All the
+  /// sum of what it holds, and a red mark when its accounts stop delivering.
+  testWidgets('the rail counts unread leads per source and marks a broken one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: const [
+        {
+          'provider': 'google_ads',
+          'display_name': 'A1 Chimney - Cleveland',
+          'status': 'connected',
+        },
+        {
+          'provider': 'thumbtack',
+          'display_name': 'A1 Chimney',
+          'status': 'broken',
+        },
+      ],
+      unreadBySource: const {'ls_text': 9, 'website_chat': 2, 'ls_call': 4},
+    );
+
+    Finder inTab(String key, String text) => find.descendant(
+      of: find.byKey(ValueKey('source-tab-$key')),
+      matching: find.text(text),
+    );
+
+    expect(inTab('ls_text', '9'), findsOneWidget);
+    expect(inTab('website_chat', '2'), findsOneWidget);
+    // All holds everything but LS Call until it is switched on: 9 + 2.
+    expect(inTab('all', '11'), findsOneWidget);
+    expect(find.byKey(const ValueKey('source-failing-thumbtack')), findsOneWidget);
+    // The control: a connected source is not marked.
+    expect(find.byKey(const ValueKey('source-failing-ls_text')), findsNothing);
+  });
+
   testWidgets('the divider drags the panes, within limits', (tester) async {
     await _pump(
       tester,
@@ -250,8 +287,13 @@ void main() {
     );
 
     final divider = find.byKey(const ValueKey('pane-divider'));
+    // Of what the source rail leaves (design 30), the rail and its line.
+    final left = _railRight(tester);
     final width = tester.getSize(find.byType(LeadsScreen)).width;
-    expect(tester.getTopLeft(divider).dx, closeTo(width * 0.3, 1));
+    expect(
+      tester.getTopLeft(divider).dx,
+      closeTo(left + (width - left) * 0.3, 1),
+    );
     expect(_preferences, isEmpty, reason: 'nothing is saved before a drag');
 
     await tester.drag(divider, const Offset(150, 0));
@@ -269,10 +311,11 @@ void main() {
       preferences: {'leads.list_percent': 45},
     );
 
+    final left = _railRight(tester);
     final width = tester.getSize(find.byType(LeadsScreen)).width;
     expect(
       tester.getTopLeft(find.byKey(const ValueKey('pane-divider'))).dx,
-      closeTo(width * 0.45, 1),
+      closeTo(left + (width - left) * 0.45, 1),
     );
   });
 
@@ -519,12 +562,17 @@ void main() {
       ],
     );
 
+    // The count moved from a band over the list to the top of the panel
+    // Manage opens (design 30), and to Manage's own tooltip.
+    await tester.tap(find.byKey(const ValueKey('sources-manage')));
+    await tester.pumpAndSettle();
+
     expect(
       find.textContaining('Google Ads · 3 accounts'),
       findsOneWidget,
       reason:
-          'The band states how many accounts exist. Naming one of them was the '
-          'defect: it looked correct and was arbitrary.',
+          'The panel states how many accounts exist. Naming one of them was '
+          'the defect: it looked correct and was arbitrary.',
     );
 
     // And the second line carries the fact that actually changes.
@@ -722,11 +770,11 @@ void main() {
       'has a tab', (tester) async {
     await _pump(tester, leads: const [], connections: const []);
 
-    expect(find.text('Connected sources'), findsOneWidget);
+    expect(find.byKey(const ValueKey('sources-manage')), findsOneWidget);
     expect(find.byKey(const ValueKey('source-tabs')), findsOneWidget);
 
-    // Every source reachable, Thumbtack included. The drawn mobile option had
-    // it pushed off the end; the strip scrolls, so it is here.
+    // Every source reachable, Thumbtack included: the rail scrolls when a
+    // window is too short for all of them.
     for (final word in ['LS Call', 'LS Text', 'Thumbtack', 'Chat', 'Forms']) {
       expect(
         find.widgetWithText(ChoiceChip, word),
@@ -815,8 +863,9 @@ void main() {
     expect(_lastListQuery.containsKey('source'), isFalse);
   });
 
-  testWidgets('a source tab narrows the list, and clearing the filters puts '
-      'the strip back to All', (tester) async {
+  testWidgets('a source tab narrows the list, and All widens it again', (
+    tester,
+  ) async {
     await _pump(tester, leads: const [], connections: const []);
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'Chat'));
@@ -829,10 +878,9 @@ void main() {
       isTrue,
     );
 
-    // There are two Alls -- the strip's tab and the filter row's chip -- and
-    // both mean the unfiltered list. Clearing the filters must move the strip
-    // too, or a tab stays lit describing something that is no longer on screen.
-    await tester.tap(find.byKey(const ValueKey('filter-all')));
+    // One All now, the rail's (design 30): the filter row's second one went
+    // with the strip it had to be kept in step with.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'All'));
     await tester.pumpAndSettle();
     expect(_lastListQuery.containsKey('source'), isFalse);
     expect(
@@ -840,7 +888,7 @@ void main() {
           .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Chat'))
           .selected,
       isFalse,
-      reason: 'The Chat tab is still lit after All cleared the source.',
+      reason: 'The Chat tab is still lit after All widened the list.',
     );
   });
 
@@ -912,8 +960,8 @@ void main() {
     expect(find.text('Call'), findsOneWidget);
     expect(
       find.text('Chat'),
-      findsNWidgets(3),
-      reason: "the tab, All's toggle and one badge, not a second badge",
+      findsNWidgets(2),
+      reason: 'the rail\'s tab and one badge, not a second badge',
     );
   });
 
@@ -1029,11 +1077,10 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Thumbtack · 12'), findsOneWidget);
-
     await tester.tap(find.byKey(const ValueKey('sources-manage')));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('Thumbtack · 12'), findsOneWidget);
     expect(find.byType(LeadsAccountsList), findsOneWidget);
     expect(find.text('Thumbtack · A1 Chimney'), findsNothing);
   });
@@ -1158,22 +1205,25 @@ Map<String, dynamic> _lead(
 /// the top of the list.
 void _triageTests() {
   // Design 28 (Jose: "the manage, mark all leads ... like floating in the
-  // air"): each control sits beside what it acts on, not at the far right.
-  testWidgets('Manage sits after the sources, Mark all read after the chips', (
+  // air"): each control sits beside what it acts on. Design 30 put Manage at
+  // the foot of the sources it manages.
+  testWidgets('Manage sits under the sources, Mark all read after the chips', (
     tester,
   ) async {
+    // Wide enough that the three chips and the button share a line in the
+    // test font, which is half again as wide as the app's.
     await _pump(
       tester,
       leads: [_lead('lead-1', 'Marcus Bell')],
       connections: _connected,
-      size: const Size(1600, 900),
+      size: const Size(1900, 900),
     );
 
-    final summary = tester.getRect(
-      find.byKey(const ValueKey('sources-summary')),
-    );
+    final tabs = tester.getRect(find.byKey(const ValueKey('source-tabs')));
+    final rail = tester.getRect(find.byKey(const ValueKey('source-rail')));
     final manage = tester.getRect(find.byKey(const ValueKey('sources-manage')));
-    expect(manage.left - summary.right, lessThan(60));
+    expect(manage.top, greaterThanOrEqualTo(tabs.bottom));
+    expect(manage.center.dx, closeTo(rail.center.dx, 8));
 
     final starred = tester.getRect(
       find.byKey(const ValueKey('filter-starred')),
@@ -1454,19 +1504,22 @@ void _conversationRowTests() {
       size: const Size(375, 812),
     );
 
-    final search = find.byType(TextField);
+    final search = find.byKey(const ValueKey('source-button'));
     expect(tester.getTopLeft(search).dy, greaterThanOrEqualTo(0));
 
     await tester.drag(find.text('Caller 0'), const Offset(0, -500));
     await tester.pumpAndSettle();
 
-    // Above the top of the screen. (Still found: it is within the scroll
-    // cache, so a finder counts it.)
-    expect(tester.getBottomLeft(search).dy, lessThan(0));
+    // Scrolled off the top: past the scroll cache it leaves the tree, and
+    // inside it sits above the screen.
+    expect(
+      search.evaluate().isEmpty || tester.getBottomLeft(search).dy < 0,
+      isTrue,
+    );
   });
 
-  /// Mobile layout 4: the row states its value, tapping opens the thread
-  /// full screen with a back bar.
+  /// Tapping a row opens the thread in place, with a way back: never a page
+  /// pushed over the app (the containment rule; design 30).
   testWidgets('on a phone, tapping a row opens the thread with a back bar', (
     tester,
   ) async {
@@ -1490,8 +1543,8 @@ void _conversationRowTests() {
     await tester.tap(find.text('Marcus Bell'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(AppBar), findsOneWidget);
-    expect(find.byType(BackButton), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing, reason: 'no page pushed over it');
+    expect(find.byKey(const ValueKey('thread-back')), findsOneWidget);
     // NOT "Google has not recorded a call or message on this enquiry": a
     // claim about Google's records made from ours, and false in the ordinary
     // case, because conversations are read on a slower tick than leads. It
@@ -1501,6 +1554,64 @@ void _conversationRowTests() {
       find.text(
         'Nothing has reached EzBizi on this enquiry yet. A call or message '
         'usually appears within a few minutes of the enquiry itself.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('on a phone, the way back returns to the list', (tester) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      size: const Size(375, 812),
+    );
+
+    await tester.tap(find.text('Marcus Bell'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('thread-back')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('source-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('thread-back')), findsNothing);
+  });
+
+  /// Design 30, phone 5: one button says the source, and opens a page of
+  /// them in place; picking one narrows the list and comes back to it.
+  testWidgets('on a phone, the source button opens the sources and picks one', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      leads: [_lead('lead-1', 'Marcus Bell')],
+      connections: _connected,
+      size: const Size(375, 812),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-button')),
+        matching: find.text('All sources'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('source-button')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sources-page')), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing, reason: 'in place, not pushed');
+    // What stands behind a source, said under its name.
+    expect(find.text('1 Google Ads account'), findsWidgets);
+
+    await tester.tap(find.byKey(const ValueKey('source-row-website_chat')));
+    await tester.pumpAndSettle();
+
+    expect(_lastListQuery['source'], 'website_chat');
+    expect(find.byKey(const ValueKey('sources-page')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('source-button')),
+        matching: find.text('Chat'),
       ),
       findsOneWidget,
     );
@@ -1551,6 +1662,10 @@ final _patches = <String, Map<String, dynamic>>{};
 final _preferences = <Map<String, dynamic>>[];
 Map<String, String> _lastListQuery = const {};
 
+/// Where the two panes start: the right edge of the source rail, and its line.
+double _railRight(WidgetTester tester) =>
+    tester.getTopRight(find.byKey(const ValueKey('source-rail'))).dx + 1;
+
 Future<void> _pump(
   WidgetTester tester, {
   required List<Map<String, dynamic>> leads,
@@ -1572,6 +1687,7 @@ Future<void> _pump(
   String? initialSource,
   String? initialLeadId,
   Map<String, dynamic> preferences = const {},
+  Map<String, int> unreadBySource = const {},
 }) async {
   _posts.clear();
   _patches.clear();
@@ -1728,6 +1844,7 @@ Future<void> _pump(
               'last_page': 1,
               'connections': connections,
               'sync_delayed_since': delayedSince,
+              'unread_by_source': unreadBySource,
             },
           }),
           200,
