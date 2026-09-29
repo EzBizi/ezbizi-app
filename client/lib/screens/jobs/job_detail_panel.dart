@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/job_money.dart';
 import '../../core/job_status.dart';
 import '../../core/session.dart';
+import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/calendar_day_field.dart';
 import '../../widgets/error_note.dart';
@@ -336,6 +338,11 @@ class _JobDetailPanelState extends State<JobDetailPanel> {
                       ],
                     ),
                   ),
+                // Workiz's money, first after the status it sits beside
+                // (queue 31): only when the payload carries it, which is
+                // only for a role with the Financials toggle.
+                if (JobMoney.of(row?['money']) case final money?)
+                  _MoneyCard(money, formats: _me.display),
                 TextField(
                   controller: _title,
                   decoration: const InputDecoration(
@@ -648,4 +655,216 @@ String _firstError(ApiResponse response) {
   }
 
   return response.message;
+}
+
+/// Workiz's money on this job (queue 31, Jose's 1): total, paid and due, a
+/// bar between paid and total, when it is due, and the lines folded under.
+///
+/// Read only, and said so on the card: Workiz is the truth for A-1's
+/// invoices (Jose, 2026-09-29), so nothing here is a field. A Canceled job
+/// with money due shows that money, because that is what Workiz says; its
+/// status is the pill right above, for somebody to judge.
+class _MoneyCard extends StatelessWidget {
+  const _MoneyCard(this.money, {required this.formats});
+
+  final JobMoney money;
+  final DisplayFormats formats;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+    final today = DateTime.now();
+    final pill = money.pill(today);
+    final late = money.overdue(today);
+    final lines = money.lines;
+    final tax = money.total - money.subtotal;
+    String amount(int minor) => formatMinor(minor, currency: money.currency);
+
+    Widget figure(String label, String value, {Tone? tone}) => Expanded(
+      child: Container(
+        key: ValueKey('job-money-${label.toLowerCase()}'),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border.all(color: theme.colorScheme.outlineVariant),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 2),
+            // One size for the three: a long figure shrinks to its box
+            // rather than wrapping under its neighbours.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                value,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: tone == null ? null : ToneColours.of(context, tone).ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final dueOn = money.dueOn;
+    final when = money.credit > 0
+        ? '${amount(money.credit)} is owed back to the customer.'
+        : money.due <= 0
+        ? (money.total > 0 ? 'Paid in full.' : 'Nothing billed yet.')
+        : dueOn == null
+        ? 'Workiz has no due date for it.'
+        : late
+        ? 'Was due ${formats.formatDate(dueOn)}.'
+        : 'Due by ${formats.formatDate(dueOn)}.';
+
+    String quantity(Object? q) {
+      final n = (q as num?) ?? 1;
+      return n == n.roundToDouble() ? '${n.round()}' : '$n';
+    }
+
+    return Container(
+      key: const Key('job-money'),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLowest,
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Money',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              if (pill != null) ...[
+                const SizedBox(width: 8),
+                StatusPill(pill.$1, tone: pill.$2),
+              ],
+              const Spacer(),
+              const Flexible(child: Tag('From Workiz · read only')),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              figure('Total', amount(money.total)),
+              const SizedBox(width: 8),
+              figure('Paid', amount(money.paid), tone: Tone.ok),
+              const SizedBox(width: 8),
+              money.credit > 0
+                  ? figure('Credit', amount(money.credit), tone: Tone.info)
+                  : figure(
+                      'Due',
+                      amount(money.due > 0 ? money.due : 0),
+                      tone: late ? Tone.bad : null,
+                    ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              key: const Key('job-money-paid-bar'),
+              value: money.total <= 0
+                  ? 0
+                  : (money.paid / money.total).clamp(0.0, 1.0),
+              minHeight: 8,
+              color: ToneColours.of(context, Tone.ok).ink,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            when,
+            key: const Key('job-money-when'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: late ? ToneColours.of(context, Tone.bad).ink : muted,
+              fontWeight: late ? FontWeight.w700 : null,
+            ),
+          ),
+          if (lines.isNotEmpty)
+            ExpansionTile(
+              key: const Key('job-money-lines'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(bottom: 6),
+              shape: const Border(),
+              collapsedShape: const Border(),
+              title: Text(
+                [
+                  '${lines.length} ${lines.length == 1 ? 'line' : 'lines'}',
+                  'subtotal ${amount(money.subtotal)}',
+                  if (tax > 0) 'tax ${amount(tax)}',
+                ].join(' · '),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              children: [
+                for (final line in lines)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${line['name'] ?? ''}',
+                                style: theme.textTheme.bodyMedium,
+                              ),
+                              if ((line['description'] as String?)
+                                          ?.isNotEmpty ==
+                                      true ||
+                                  line['taxable'] == true)
+                                Text(
+                                  [
+                                    if ((line['description'] as String?)
+                                            ?.isNotEmpty ==
+                                        true)
+                                      line['description'] as String,
+                                    if (line['taxable'] == true) 'taxable',
+                                  ].join(' · '),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: muted,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          '${quantity(line['quantity'])} × '
+                          '${amount((line['unit_price'] as num?)?.toInt() ?? 0)}',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 }

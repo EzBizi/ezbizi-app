@@ -111,7 +111,7 @@ void main() {
 
       expect(find.text('Today'), findsOneWidget);
       expect(find.text('Tomorrow'), findsOneWidget);
-      expect(find.text('Amount'), findsOneWidget);
+      expect(find.text('Money'), findsOneWidget);
       expect(find.text('38 jobs'), findsOneWidget);
       // No lines, no price: a dash, not "USD 0.00".
       expect(find.text('USD 0.00'), findsNothing);
@@ -149,14 +149,14 @@ void main() {
       expect(find.text('Scheduled for'), findsOneWidget);
       expect(tester.widget<SidePanel>(find.byType(SidePanel)).docked, isTrue);
       // The table's header is gone; its rows are still there, as the list.
-      expect(find.text('Amount'), findsNothing);
+      expect(find.text('Money'), findsNothing);
       expect(find.text('Crown Repair'), findsOneWidget);
       expect(find.byType(AlertDialog), findsNothing);
 
       await tester.tap(find.byTooltip('Close Chimney Sweep'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Amount'), findsOneWidget);
+      expect(find.text('Money'), findsOneWidget);
       expect(find.byType(SidePanel), findsNothing);
     });
 
@@ -248,7 +248,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Amount'), findsNothing);
+      expect(find.text('Money'), findsNothing);
 
       await tester.tap(find.text('Chimney Sweep'));
       await tester.pumpAndSettle();
@@ -274,7 +274,8 @@ void main() {
       final search = find.byType(TextField);
       expect(search, findsWidgets);
 
-      await tester.drag(find.text('Sweep 3'), const Offset(0, -400));
+      // Far enough for the money chips and totals over it too (queue 31).
+      await tester.drag(find.text('Sweep 3'), const Offset(0, -560));
       await tester.pumpAndSettle();
 
       // Off screen: a finder skips what a viewport has scrolled out of view.
@@ -423,7 +424,8 @@ Future<void> _pumpJobs(
   await _pump(
     tester,
     size: size,
-    // Sees money: the Amount column is part of what this layout test lines up.
+    // Sees money: the Money and Due columns (queue 31) are part of what this
+    // layout test lines up.
     permissions: const [
       'jobs.view',
       'jobs.create',

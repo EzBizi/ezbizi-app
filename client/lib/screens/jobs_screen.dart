@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_client.dart';
+import '../core/job_money.dart';
 import '../core/job_status.dart';
 import '../core/numbers.dart';
 import '../core/session.dart';
@@ -55,6 +56,17 @@ class _JobsScreenState extends State<JobsScreen> {
   List<Map<String, dynamic>> _jobs = [];
   List<JobStatus> _statusChoices = const [];
   String? _status;
+
+  /// The money filter (queue 31): null is any. Only with Financials.
+  String? _money;
+
+  /// What each money chip would show, and Workiz's totals per currency, from
+  /// the first page. Empty from a server that sent none: no numbers rather
+  /// than zeros.
+  Map<String, int> _moneyCounts = const {};
+  Map<String, Map<String, int>> _moneyTotals = const {};
+
+  bool get _seesMoney => widget.session.me?.can('jobs.financials') ?? false;
   // Discovered from the rows themselves rather than fetched, because every
   // job already carries its role (Task 5) and a catalogue call would only
   // duplicate data already on the page. Accumulated across loads: narrowing
@@ -197,6 +209,7 @@ class _JobsScreenState extends State<JobsScreen> {
       'today': formatCalendarDay(DateTime.now()),
       if (_search.text.trim().isNotEmpty) 'search': _search.text.trim(),
       'status': ?_status,
+      if (_seesMoney && _money != null) 'money': _money!,
       'assigned_role_id': ?_roleId,
       'franchise_id': ?_whereFranchise,
       'service_area_id': ?_whereArea,
@@ -238,6 +251,11 @@ class _JobsScreenState extends State<JobsScreen> {
       if (page == 1) {
         _statusCounts = _counts(meta?['status_counts']);
         _whenCounts = _counts(meta?['when_counts']);
+        _moneyCounts = _counts(meta?['money_counts']);
+        _moneyTotals = {
+          for (final e in ((meta?['money_totals'] as Map?) ?? const {}).entries)
+            if (e.value is Map) '${e.key}': _counts(e.value),
+        };
         _dayCounts.clear();
 
         final areas = meta?['service_areas'];
@@ -322,7 +340,10 @@ class _JobsScreenState extends State<JobsScreen> {
               // the legend for the pills below. On a phone seven of them wrap to
               // three lines of chrome, so the same choice is a picker there.
               if (wide && _statusChoices.isNotEmpty) _statusChips(context),
+              if (_seesMoney) _moneyChips(context, wide: wide),
               _filters(context, me, wide: wide),
+              if (_seesMoney && _moneyTotals.isNotEmpty)
+                _moneyTotalsLine(context, wide: wide),
             ],
           ),
           list: AsyncBody(
@@ -418,6 +439,193 @@ class _JobsScreenState extends State<JobsScreen> {
         ],
       ),
     );
+  }
+
+  /// The money states beside the status chips they narrow with, each with
+  /// its count (queue 31, Jose's 1 and 4). A desk wraps them; a phone swipes
+  /// them, as it swipes nothing else here, because six chips wrap to three
+  /// lines of chrome at 375.
+  Widget _moneyChips(BuildContext context, {required bool wide}) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    Widget chip(String? value, String label, {Tone? tone, int? count}) =>
+        ChoiceChip(
+          key: ValueKey('money-chip-${value ?? 'any'}'),
+          avatar: tone == null ? null : ToneDot(tone),
+          showCheckmark: false,
+          selected: _money == value,
+          label: Text.rich(
+            TextSpan(
+              text: label,
+              children: [
+                if (count != null)
+                  TextSpan(
+                    text: '  ${formatCount(count)}',
+                    style: TextStyle(
+                      color: muted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          onSelected: (_) {
+            setState(() => _money = value);
+            _load();
+          },
+        );
+
+    final chips = [
+      Text(
+        'MONEY',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: muted,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+        ),
+      ),
+      chip(null, 'Any'),
+      for (final (value, label, tone) in moneyStates)
+        chip(value, label, tone: tone, count: _moneyCounts[value]),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      child: wide
+          ? Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: chips,
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final c in chips)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: c,
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  /// Billed, paid, due and overdue over the jobs the other filters leave,
+  /// per currency and never added across them (queue 31).
+  Widget _moneyTotalsLine(BuildContext context, {required bool wide}) {
+    final theme = Theme.of(context);
+    final muted = theme.colorScheme.onSurfaceVariant;
+
+    Widget figure(String label, int minor, String currency, {Tone? tone}) =>
+        Text.rich(
+          TextSpan(
+            text: '$label ',
+            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+            children: [
+              TextSpan(
+                text: wide
+                    ? formatMinor(minor, currency: currency, cents: false)
+                    : shortMinor(minor, currency: currency),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: tone == null ? null : ToneColours.of(context, tone).ink,
+                ),
+              ),
+            ],
+          ),
+          key: ValueKey('money-total-${label.toLowerCase()}-$currency'),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final MapEntry(key: currency, value: t) in _moneyTotals.entries)
+            Wrap(
+              spacing: 18,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                figure('Billed', t['total'] ?? 0, currency),
+                figure('Paid', t['paid'] ?? 0, currency, tone: Tone.ok),
+                figure('Due', t['due'] ?? 0, currency),
+                figure('Overdue', t['overdue'] ?? 0, currency, tone: Tone.bad),
+                if (wide)
+                  Text(
+                    'From Workiz · read only',
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A job's money state as a pill, or null for one with nothing billed.
+  Widget? _moneyPill(Map<String, dynamic> job) {
+    final pill = JobMoney.of(job['money'])?.pill(DateTime.now());
+
+    return pill == null ? null : StatusPill(pill.$1, tone: pill.$2);
+  }
+
+  static String _currencyOf(Map<String, dynamic> job) =>
+      '${(job['amount'] as Map?)?['currency'] ?? job['currency'] ?? 'USD'}';
+
+  /// What is still due: red once it is late, a credit as the negative it is.
+  Widget _dueCell(BuildContext context, Map<String, dynamic> job) {
+    final money = JobMoney.of(job['money']);
+    if (money == null || money.due == 0) return const Text('—');
+
+    final tone = money.due < 0
+        ? Tone.info
+        : money.overdue(DateTime.now())
+        ? Tone.bad
+        : null;
+
+    return Text(
+      formatMinor(money.due, currency: _currencyOf(job)),
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        color: tone == null ? null : ToneColours.of(context, tone).ink,
+      ),
+    );
+  }
+
+  /// The money a tile says after its title, in its tone: due, late, paid or
+  /// owed back (queue 31, phone 4). A shared customer's tag stays beside it.
+  Widget? _tileBadge(Map<String, dynamic> job) {
+    const shared = Tag('Shared customer', warn: true);
+    final isShared = !_ownedHere(job);
+    final money = _seesMoney ? JobMoney.of(job['money']) : null;
+    final pill = money?.pill(DateTime.now());
+    if (money == null || pill == null) return isShared ? shared : null;
+
+    final currency = _currencyOf(job);
+    String whole(int minor) =>
+        formatMinor(minor, currency: currency, cents: false);
+    final words = switch (pill.$1) {
+      'Paid' => 'Paid',
+      'Credit' => '${whole(money.credit)} credit',
+      'Overdue' => '${whole(money.due)} overdue',
+      _ => '${whole(money.due)} due',
+    };
+    final mark = Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: StatusPill(words, key: ValueKey('tile-money-${job['id']}'), tone: pill.$2),
+    );
+
+    return isShared
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [mark, const SizedBox(width: 4), shared],
+          )
+        : mark;
   }
 
   Widget _chip(
@@ -719,13 +927,26 @@ class _JobsScreenState extends State<JobsScreen> {
       ),
       // Only with the Financials toggle (Jose, 2026-09-29). Without it the
       // server sends no amount, and a column of dashes would read as "free".
-      if (widget.session.me!.can('jobs.financials'))
+      // Workiz's money where the job has it (queue 31): its state and what is
+      // still due; a job EzBizi priced itself shows its own amount instead.
+      if (_seesMoney) ...[
         TableColumn(
-          'Amount',
+          'Money',
+          width: 120,
+          cell: (_, job) =>
+              _moneyPill(job) ??
+              Text(
+                listAmount(job['amount']) ?? '',
+                style: TextStyle(color: muted),
+              ),
+        ),
+        TableColumn(
+          'Due',
           width: 110,
           numeric: true,
-          cell: (_, job) => Text(listAmount(job['amount']) ?? '—'),
+          cell: (context, job) => _dueCell(context, job),
         ),
+      ],
     ];
   }
 
@@ -758,7 +979,7 @@ class _JobsScreenState extends State<JobsScreen> {
 
     return TwoLineTile(
       title: '${job['title'] ?? ''}',
-      badge: _ownedHere(job) ? null : const Tag('Shared customer', warn: true),
+      badge: _tileBadge(job),
       topRight: _time(job),
       subtitle: [
         _customer(job)['name'],
