@@ -274,6 +274,32 @@ class JobsController extends Controller
                         'overdue' => (int) $r->overdue,
                     ]])
                     ->all();
+
+                // The money chips' counts, faceted the same way. Counts, unlike
+                // money, may be added across currencies. `overdue` overlaps
+                // `unpaid` and `partial`: it is a date on top of a state.
+                $counts = [];
+                $bindings = [];
+                foreach (self::MONEY_STATES as $state => $sql) {
+                    if ($state === 'overdue' && $today === null) {
+                        $counts[] = '0 AS overdue';
+
+                        continue;
+                    }
+                    $counts[] = "SUM(CASE WHEN {$sql} THEN 1 ELSE 0 END) AS {$state}";
+                    if ($state === 'overdue') {
+                        $bindings[] = $today;
+                    }
+                }
+                $row = DB::table('workiz_jobs')
+                    ->joinSub($filtered($status, $when, withMoney: false)->toBase()->select('jobs.id'),
+                        'j', 'j.id', '=', 'workiz_jobs.job_id')
+                    ->selectRaw(implode(', ', $counts), $bindings)
+                    ->first();
+                $meta['money_counts'] = array_map(
+                    fn (string $state) => (int) ($row->{$state} ?? 0),
+                    ['unpaid' => 'unpaid', 'partial' => 'partial', 'overdue' => 'overdue', 'paid' => 'paid', 'credit' => 'credit'],
+                );
             }
         }
 
