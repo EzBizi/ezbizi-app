@@ -720,10 +720,12 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('general', 'General'),
                     new TabDefinition('pto', 'Paid Time Off'),
-                    new TabDefinition('settings', 'Settings'),
                     // Saved weekly hours reports (2026-09-28): sent by hand here,
                     // or on a schedule by the action below.
                     new TabDefinition('reports', 'Reports'),
+                    // Registry order is the roles editor's order: keep it the
+                    // screen's (work_hours_screen.dart).
+                    new TabDefinition('settings', 'Settings'),
                 ],
                 auditActionPrefixes: ['time_clock'],
                 /*
