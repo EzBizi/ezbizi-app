@@ -327,6 +327,8 @@ final class WidgetPresets
                 'colors' => 'single',
                 'new_tab' => true,
                 'hover' => 'none',
+                // Toula's custom platforms: "Name | link | icon image link; …".
+                'custom' => '',
             ],
             /*
              * The accordion is A1's most-used arrangement — 17 of them on
@@ -437,6 +439,14 @@ final class WidgetPresets
                 'underline' => false,
                 'dividers' => false,
                 'divider_color' => '',
+                // Toula: more numbers than two ("Label | number; …"), and an
+                // icon of each section's choosing.
+                'extra_phones' => '',
+                'phone_icon' => 'auto',
+                'email_icon' => 'auto',
+                'address_icon' => 'auto',
+                'hours_icon' => 'auto',
+                'license_icon' => 'auto',
             ],
             /*
              * A1's sticky yellow "CALL US TODAY" bar, and Everdoors' popup.
@@ -609,6 +619,9 @@ final class WidgetPresets
         ];
     }
 
+    /** The icons a Contact details section may wear; the plugin draws each. */
+    private const CONTACT_ICONS = ['auto', 'phone', 'mobile', 'email', 'address', 'home', 'hours', 'calendar', 'license', 'star', 'chat', 'globe', 'arrow', 'none'];
+
     /** The values each option may take. Anything else becomes the default. */
     private const CHOICES = [
         'city_list' => [
@@ -623,6 +636,11 @@ final class WidgetPresets
         ],
         'contact_info' => [
             'layout' => ['stack', 'row', 'compact', 'grid', 'inline'],
+            'phone_icon' => self::CONTACT_ICONS,
+            'email_icon' => self::CONTACT_ICONS,
+            'address_icon' => self::CONTACT_ICONS,
+            'hours_icon' => self::CONTACT_ICONS,
+            'license_icon' => self::CONTACT_ICONS,
         ],
         'cta' => [
             // `bar` is fixed to the bottom of the window, `popup` opens over
@@ -695,10 +713,10 @@ final class WidgetPresets
         'hours_table' => ['title' => 80, 'closed_text' => 30, 'open_text' => 30, 'shut_text' => 30],
         'google_map' => ['directions_text' => 40],
         'post_title' => ['prefix' => 80, 'suffix' => 80, 'fallback' => 120],
-        'social_links' => ['networks' => 300],
+        'social_links' => ['networks' => 300, 'custom' => 1000],
         'contact_info' => [
             'phone_title' => 40, 'email_title' => 40, 'address_title' => 40, 'hours_title' => 40,
-            'license_title' => 40, 'closed_text' => 30, 'order' => 60,
+            'license_title' => 40, 'closed_text' => 30, 'order' => 60, 'extra_phones' => 500,
         ],
         'review_faces' => [
             'title' => 80, 'text' => 160, 'happy_label' => 30, 'sad_label' => 30,

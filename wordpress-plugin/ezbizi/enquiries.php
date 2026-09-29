@@ -285,7 +285,10 @@ function ezbizi_form_shortcode($atts) {
             continue;
         }
 
-        $out .= '<div class="ezbizi-field" style="flex:0 0 calc(' . $width . '% - ' . $gap . 'px);max-width:' . $width . '%">';
+        // Shown only when another field's answer matches (Toula); the script below toggles it.
+        $if = isset($field['show_if']['field']) ? ' data-if-field="' . esc_attr((string) $field['show_if']['field']) . '"'
+            . ' data-if-value="' . esc_attr(isset($field['show_if']['value']) ? (string) $field['show_if']['value'] : '') . '"' : '';
+        $out .= '<div class="ezbizi-field"' . $if . ' style="flex:0 0 calc(' . $width . '% - ' . $gap . 'px);max-width:' . $width . '%">';
         $mark = $required ? ' <span class="ezbizi-required" style="color:var(--ezbizi-accent)" aria-hidden="true">*</span>' : '';
         $common = 'name="' . esc_attr($label) . '"' . ($required ? ' required' : '');
 
@@ -317,6 +320,9 @@ function ezbizi_form_shortcode($atts) {
                 }
 
                 $out .= '</select>';
+            } elseif ($type === 'file') {
+                // Photos and documents, 10 MB each: what EzBizi accepts.
+                $out .= '<input type="file" ' . $attrs . ' accept="image/*,.heic,.pdf,.doc,.docx,.txt" />';
             } else {
                 $html_type = in_array($type, array('email', 'tel', 'number', 'date', 'time'), true) ? $type : 'text';
                 $out .= '<input type="' . esc_attr($html_type) . '" ' . $attrs . ' />';
@@ -361,16 +367,34 @@ function ezbizi_form_shortcode($atts) {
 var f=document.getElementById(" . wp_json_encode($id) . ");
 if(!f)return;
 var note=f.querySelector('.ezbizi-form-note');
+var api=" . wp_json_encode(ezbizi_api_base()) . ",captcha=" . (! empty($config['captcha']) ? 'true' : 'false') . ";
+function answer(n){var out=[];Array.prototype.forEach.call(f.querySelectorAll('[name]'),function(i){
+  if(i.name!==n||i.disabled)return;if((i.type==='checkbox'||i.type==='radio')&&!i.checked)return;if(i.value)out.push(i.value);});return out.join(', ');}
+function sync(){Array.prototype.forEach.call(f.querySelectorAll('[data-if-field]'),function(w){
+  var a=answer(w.getAttribute('data-if-field')).toLowerCase(),want=w.getAttribute('data-if-value').toLowerCase();
+  var on=want===''?a!=='':a.split(', ').indexOf(want)>=0;w.style.display=on?'':'none';
+  Array.prototype.forEach.call(w.querySelectorAll('input,textarea,select'),function(i){i.disabled=!on;});});}
+f.addEventListener('change',sync);f.addEventListener('input',sync);sync();
+function hex(b){return Array.prototype.map.call(new Uint8Array(b),function(x){return('0'+x.toString(16)).slice(-2);}).join('');}
+function solve(){return fetch(api+'/api/v1/web/form/challenge').then(function(r){return r.json();}).then(function(c){
+  var enc=new TextEncoder(),n=0;
+  function step(){var batch=[];for(var k=0;k<500&&n+k<=c.max;k++)batch.push(n+k);
+    return Promise.all(batch.map(function(x){return crypto.subtle.digest('SHA-256',enc.encode(c.salt+x)).then(function(h){return hex(h)===c.challenge?x:-1;});}))
+    .then(function(rs){var hit=rs.filter(function(x){return x>=0;});
+      if(hit.length)return JSON.stringify({salt:c.salt,number:hit[0],challenge:c.challenge,signature:c.signature});
+      n+=500;if(n>c.max)throw new Error('captcha');return step();});}
+  return step();});}
 f.addEventListener('submit',function(e){
   e.preventDefault();
   var bot=f.querySelector('.ezbizi-antibot-box');
   if(bot&&!bot.checked){note.textContent=" . wp_json_encode(__('Please tick the box to show you are not a robot.', 'ezbizi')) . ";return;}
   if(!f.checkValidity()){f.reportValidity();return;}
   var b=f.querySelector('button');b.disabled=true;
-  var fields={},v={},first='',last='';
+  var fields={},files={},v={},first='',last='';
   Array.prototype.forEach.call(f.querySelectorAll('input,textarea,select'),function(i){
-    if(i.classList.contains('ezbizi-consent-box')||i.classList.contains('ezbizi-antibot-box'))return;
+    if(i.disabled||i.classList.contains('ezbizi-consent-box')||i.classList.contains('ezbizi-antibot-box'))return;
     var n=i.name,low=n.toLowerCase(),val=i.value;
+    if(i.type==='file'){if(i.files&&i.files[0])files[n]=i.files[0];return;}
     if(i.type==='checkbox'||i.type==='radio'){
       if(!i.checked){if(!(n in fields))fields[n]='';return;}
       fields[n]=fields[n]?fields[n]+', '+val:val;return;
@@ -385,12 +409,19 @@ f.addEventListener('submit',function(e){
   if(!v.name&&(first||last))v.name=(first+' '+last).trim();
   v.key=" . wp_json_encode($key) . ";v.fields=fields;v.page_url=location.href;
   var c=f.querySelector('.ezbizi-consent-box');if(c&&c.checked){v.marketing_consent=true;v.marketing_consent_text=c.parentNode.textContent.trim();}
-  fetch(" . wp_json_encode(ezbizi_api_base() . '/api/v1/web/form') . ",{
-    method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},
-    body:JSON.stringify(v)
+  (captcha?solve():Promise.resolve(null)).then(function(sol){
+    if(sol)v.captcha=sol;
+    var h={'Accept':'application/json'},body;
+    // A file goes as a multipart form; everything else as it always has.
+    if(Object.keys(files).length){body=new FormData();
+      Object.keys(v).forEach(function(k){if(k!=='fields')body.append(k,v[k]===true?'1':v[k]);});
+      Object.keys(fields).forEach(function(k){body.append('fields['+k+']',fields[k]);});
+      Object.keys(files).forEach(function(k){body.append('files['+k+']',files[k]);});
+    }else{h['Content-Type']='application/json';body=JSON.stringify(v);}
+    return fetch(api+'/api/v1/web/form',{method:'POST',headers:h,body:body});
   }).then(function(r){
     if(!r.ok)throw new Error(r.status);
-    f.reset();note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'thanks', 'Thank you.')) . ";
+    f.reset();sync();note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'thanks', 'Thank you.')) . ";
     " . ($redirect !== '' ? 'location.href=' . wp_json_encode($redirect) . ';' : '') . "
   }).catch(function(){
     note.textContent=" . wp_json_encode(ezbizi_widget_text($config, 'error', 'That did not send.')) . ";

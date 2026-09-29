@@ -919,6 +919,19 @@ class _WidgetEditorState extends State<_WidgetEditor> {
       if (form['antibot'] == true)
         _text(theme, 'Robot check wording', form['antibot_label'],
             (v) => _set('form', 'antibot_label', v)),
+      // Toula's "real CAPTCHA": the visitor's browser solves a puzzle EzBizi
+      // checks — nothing to click, no Google or Cloudflare account.
+      SwitchListTile(
+        key: const Key('form-captcha'),
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        title: const Text('Stop robots with a CAPTCHA'),
+        subtitle: const Text('Checked by EzBizi. Visitors see nothing to solve.'),
+        value: form['captcha'] == true,
+        onChanged: widget.canEdit ? (on) => _set('form', 'captcha', on) : null,
+      ),
+      _text(theme, 'Also email each enquiry to (up to 5, commas between)',
+          form['notify'], (v) => _set('form', 'notify', v)),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         dense: true,
@@ -1966,11 +1979,19 @@ class _QuestionRow {
     String help = '',
     String options = '',
     String value = '',
+    this.showIfField = '',
+    String showIfValue = '',
   })  : label = TextEditingController(text: label),
         placeholder = TextEditingController(text: placeholder),
         help = TextEditingController(text: help),
         options = TextEditingController(text: options),
-        value = TextEditingController(text: value);
+        value = TextEditingController(text: value),
+        showIfValue = TextEditingController(text: showIfValue);
+
+  /// Shown only when this question (by its wording) is answered with
+  /// [showIfValue], or answered at all when that is empty (Toula).
+  String showIfField;
+  final TextEditingController showIfValue;
 
   final TextEditingController label;
   final TextEditingController placeholder;
@@ -2003,9 +2024,12 @@ class _QuestionRow {
           if (line.trim().isNotEmpty) line.trim(),
       ],
     if (type == 'hidden') 'value': value.text,
+    if (showIfField.isNotEmpty)
+      'show_if': {'field': showIfField, 'value': showIfValue.text},
   };
 
   void dispose() {
+    showIfValue.dispose();
     label.dispose();
     placeholder.dispose();
     help.dispose();
@@ -2081,6 +2105,8 @@ class _FieldListState extends State<_FieldList> {
         help: '${field['help'] ?? ''}',
         options: (field['options'] as List? ?? const []).join('\n'),
         value: '${field['value'] ?? ''}',
+        showIfField: '${(field['show_if'] as Map?)?['field'] ?? ''}',
+        showIfValue: '${(field['show_if'] as Map?)?['value'] ?? ''}',
       ),
   ];
 
@@ -2167,6 +2193,38 @@ class _FieldListState extends State<_FieldList> {
               controller: row.value,
               enabled: widget.canEdit,
               decoration: box('Value it always sends'),
+              onChanged: (_) => _publish(),
+            ),
+          ],
+          const SizedBox(height: 8),
+          SearchPickerField<String>(
+            key: ValueKey('show-if-${row.key}'),
+            value: row.showIfField,
+            label: 'Show only when',
+            isDense: true,
+            options: [
+              const SearchOption(value: '', label: 'Always shown'),
+              for (final other in _rows)
+                if (other != row && other.label.text.trim().isNotEmpty)
+                  SearchOption(
+                    value: other.label.text.trim(),
+                    label: other.label.text.trim(),
+                  ),
+            ],
+            onChanged: widget.canEdit
+                ? (field) {
+                    setState(() => row.showIfField = field ?? '');
+                    _publish();
+                  }
+                : null,
+          ),
+          if (row.showIfField.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: row.showIfValue,
+              enabled: widget.canEdit,
+              decoration: box('…is answered',
+                  hint: 'e.g. Chimney — empty means any answer'),
               onChanged: (_) => _publish(),
             ),
           ],
@@ -2541,6 +2599,9 @@ class _Rendered {
 /// offered a value outside these bounds would save something other than what
 /// it showed and say nothing — the failure that has no symptom. An option
 /// added there has to be added here or it cannot be set at all.
+/// The icons a Contact details section may wear (WidgetPresets::CONTACT_ICONS).
+const _contactIcons = ['auto', 'phone', 'mobile', 'email', 'address', 'home', 'hours', 'calendar', 'license', 'star', 'chat', 'globe', 'arrow', 'none'];
+
 const List<_Rendered> _renderedCatalogue = [
   _Rendered(
     'social_links',
@@ -2558,6 +2619,9 @@ const List<_Rendered> _renderedCatalogue = [
       _Choice('colors', 'Colours', ['single', 'brand']),
       _Flag('new_tab', 'Open in a new tab', true),
       _Choice('hover', 'On hover', ['none', 'fade', 'grow', 'lift']),
+      _Text('custom', 'Other platforms',
+          hint: 'Name | link | icon image link, separated by ; — the icon is optional',
+          max: 1000),
     ],
   ),
   _Rendered(
@@ -2635,6 +2699,14 @@ const List<_Rendered> _renderedCatalogue = [
       _Flag('underline', 'Underline links', false),
       _Flag('dividers', 'Lines between items', false),
       _Colour('divider_color', 'Line colour'),
+      _Text('extra_phones', 'More phone numbers',
+          hint: 'Label | number, separated by ; — e.g. Fax | 555-0101; Office | 555-0102',
+          max: 500),
+      _Choice('phone_icon', 'Phone icon', _contactIcons),
+      _Choice('email_icon', 'Email icon', _contactIcons),
+      _Choice('address_icon', 'Address icon', _contactIcons),
+      _Choice('hours_icon', 'Hours icon', _contactIcons),
+      _Choice('license_icon', 'Licence icon', _contactIcons),
     ],
   ),
   _Rendered(

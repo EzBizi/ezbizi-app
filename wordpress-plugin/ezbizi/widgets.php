@@ -49,6 +49,25 @@ if (! defined('ABSPATH')) {
  * guarantee `WidgetPresets::resolve()` makes at the other end, restated here
  * because the payload can be older than the server that is running.
  */
+/**
+ * A text option written one entry per line (or `;`), each entry `a | b | c`.
+ *
+ * @return list<list<string>> entries, each its trimmed parts; blank lines dropped
+ */
+function ezbizi_preset_lines($preset, $key) {
+    $out = array();
+
+    foreach (preg_split('/[\r\n;]+/', isset($preset[$key]) ? (string) $preset[$key] : '') as $line) {
+        $parts = array_map('trim', explode('|', $line));
+
+        if ($parts[0] !== '') {
+            $out[] = $parts;
+        }
+    }
+
+    return $out;
+}
+
 function ezbizi_preset($widget, $atts) {
     // Kept whole for the overrides; `shortcode_atts` below keeps only `preset`.
     $given = is_array($atts) ? $atts : array();
@@ -460,6 +479,16 @@ function ezbizi_social_links_shortcode($atts) {
         $links[] = array('key' => $key, 'label' => $label, 'href' => $href);
     }
 
+    // Toula's custom platforms: "Name | link | icon image" per line, the icon optional.
+    foreach (ezbizi_preset_lines($preset, 'custom') as $i => $parts) {
+        $href = esc_url(isset($parts[1]) ? $parts[1] : '');
+
+        if ($parts[0] !== '' && $href !== '') {
+            $links[] = array('key' => 'custom-' . ($i + 1), 'label' => $parts[0], 'href' => $href,
+                'icon' => esc_url(isset($parts[2]) ? $parts[2] : ''));
+        }
+    }
+
     if ($links === array()) {
         return '';
     }
@@ -483,7 +512,9 @@ function ezbizi_social_links_shortcode($atts) {
             // The only name a screen reader gets when `labels` is off.
             . ' aria-label="' . esc_attr($link['label']) . '"'
             . ' title="' . esc_attr($link['label']) . '">'
-            . ezbizi_social_icon($link['key'], $link['label'])
+            . (! empty($link['icon'])
+                ? '<img src="' . $link['icon'] . '" alt="" loading="lazy" />'
+                : ezbizi_social_icon($link['key'], $link['label']))
             . ($labels ? '<span class="ezbizi-social-label">' . esc_html($link['label']) . '</span>' : '')
             . '</a>';
     }
@@ -682,7 +713,7 @@ function ezbizi_social_style($id, $preset) {
         . 'height:' . $size . 'px;border-radius:' . $radius . ';'
         . 'box-shadow:none;text-decoration:none;font:inherit;line-height:1;' . $chip . '}'
         . $s . ' .ezbizi-social-link:hover{opacity:.82}'
-        . $s . ' .ezbizi-social-link svg{display:block;flex:0 0 auto;'
+        . $s . ' .ezbizi-social-link svg,' . $s . ' .ezbizi-social-link img{display:block;flex:0 0 auto;object-fit:contain;'
         . 'width:' . $glyph . 'px;height:' . $glyph . 'px}'
         // Stated only when there is a label to state it about, so the markup
         // says which row this is: a rule for an element that is never drawn is
@@ -1317,6 +1348,12 @@ function ezbizi_contact_info_shortcode($atts) {
             foreach (array_unique(array_filter(array(ezbizi_value('phone'), $secondary ? ezbizi_value('phone_secondary') : ''))) as $i => $value) {
                 $rows[] = array('phone', $i === 0 ? $title('phone_title', 'Phone') : '', $value, 'tel:' . ezbizi_dial($value), false);
             }
+
+            // Toula: more than two numbers. "Label | number" per line, the label optional.
+            foreach (ezbizi_preset_lines($preset, 'extra_phones') as $parts) {
+                $value = isset($parts[1]) ? $parts[1] : $parts[0];
+                $rows[] = array('phone', isset($parts[1]) ? $parts[0] : '', $value, 'tel:' . ezbizi_dial($value), false);
+            }
         } elseif ($what === 'email') {
             foreach (array_unique(array_filter(array(ezbizi_value('email'), $secondary ? ezbizi_value('email_secondary') : ''))) as $i => $value) {
                 $rows[] = array('email', $i === 0 ? $title('email_title', 'Email') : '', $value, 'mailto:' . $value, false);
@@ -1354,9 +1391,12 @@ function ezbizi_contact_info_shortcode($atts) {
 
         $out .= '<div class="ezbizi-contact-item ezbizi-contact-' . esc_attr($kind) . '">';
 
-        if ($icons) {
+        // Each section's own icon when one was chosen (Toula), else its usual one.
+        $icon = isset($preset[$kind . '_icon']) && $preset[$kind . '_icon'] !== 'auto' ? (string) $preset[$kind . '_icon'] : $kind;
+
+        if ($icons && $icon !== 'none') {
             $out .= '<span class="ezbizi-contact-icon" aria-hidden="true">'
-                . ezbizi_contact_icon($kind) . '</span>';
+                . ezbizi_contact_icon($icon) . '</span>';
         }
 
         $out .= '<div class="ezbizi-contact-text">';
@@ -1437,6 +1477,9 @@ function ezbizi_contact_icon($kind) {
         'chat' => 'M4 3h16a2 2 0 012 2v11a2 2 0 01-2 2H8l-5 4V5a2 2 0 011-2z',
         'hours' => 'M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm-1 3v6l5 3 1-1.7-4-2.4V7z',
         'license' => 'M12 2l8 3v6c0 5-3.4 9.7-8 11-4.6-1.3-8-6-8-11V5zm-1.2 13.2l6-6-1.4-1.4-4.6 4.6-2.2-2.2-1.4 1.4z',
+        'mobile' => 'M7 1h10a2 2 0 012 2v18a2 2 0 01-2 2H7a2 2 0 01-2-2V3a2 2 0 012-2zm0 4v14h10V5zm5 15.5a1 1 0 100-2 1 1 0 000 2z',
+        'home' => 'M12 3l9 8h-3v9h-5v-6h-2v6H6v-9H3z',
+        'globe' => 'M12 2a10 10 0 100 20 10 10 0 000-20zm6.9 6h-2.9a15.7 15.7 0 00-1.4-3.6A8 8 0 0118.9 8zM12 4c.8 1.2 1.5 2.5 1.9 4h-3.8c.4-1.5 1.1-2.8 1.9-4zM4.3 14a8.2 8.2 0 010-4h3.4a16.5 16.5 0 000 4zm.8 2h2.9c.3 1.3.8 2.5 1.4 3.6A8 8 0 015.1 16zM8 8H5.1a8 8 0 014.3-3.6C8.8 5.5 8.3 6.7 8 8zm4 12c-.8-1.2-1.5-2.5-1.9-4h3.8c-.4 1.5-1.1 2.8-1.9 4zm2.3-6H9.7a14.7 14.7 0 010-4h4.6a14.7 14.7 0 010 4zm.3 5.6c.6-1.1 1.1-2.3 1.4-3.6h2.9a8 8 0 01-4.3 3.6zm1.7-5.6a16.5 16.5 0 000-4h3.4a8.2 8.2 0 010 4z',
     );
 
     $d = isset($paths[$kind]) ? $paths[$kind] : $paths['address'];

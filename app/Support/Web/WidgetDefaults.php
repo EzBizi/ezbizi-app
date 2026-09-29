@@ -25,7 +25,7 @@ use App\Support\Branding\Branding;
 final class WidgetDefaults
 {
     /** The field types a form may ask for. Anything else is not rendered. */
-    public const FIELD_TYPES = ['text', 'textarea', 'email', 'tel', 'select', 'number', 'date', 'time', 'checkbox', 'radio', 'hidden'];
+    public const FIELD_TYPES = ['text', 'textarea', 'email', 'tel', 'select', 'number', 'date', 'time', 'checkbox', 'radio', 'hidden', 'file'];
 
     /** How wide a field may be, in percent of the form's width. */
     public const FIELD_WIDTHS = [100, 75, 66, 50, 33, 25];
@@ -422,6 +422,13 @@ final class WidgetDefaults
                 'title' => self::text($form['title'] ?? '', 120),
                 'subtitle' => self::text($form['subtitle'] ?? '', 300),
                 'antibot' => self::flag($form['antibot'] ?? false, false),
+                // Toula's "real CAPTCHA": a proof of work the server checks (FormChallenge).
+                'captcha' => self::flag($form['captcha'] ?? false, false),
+                // Who is emailed each enquiry, beside it landing in Leads (Toula).
+                'notify' => implode(', ', array_slice(array_values(array_filter(
+                    array_map('trim', explode(',', str_replace(';', ',', (string) ($form['notify'] ?? '')))),
+                    fn (string $e) => filter_var($e, FILTER_VALIDATE_EMAIL) !== false,
+                )), 0, 5)),
                 'antibot_label' => self::text($form['antibot_label'] ?? '', 80),
                 'consent_on' => self::flag($form['consent_on'] ?? true, true),
                 'consent' => self::text($form['consent'] ?? '', 1000),
@@ -492,6 +499,10 @@ final class WidgetDefaults
             unset($resolved['chat']);
         }
 
+        // Who is emailed is EzBizi's to know, not the website's: a page that
+        // carried the addresses would hand them to every scraper that reads it.
+        unset($resolved['form']['notify']);
+
         return $resolved;
     }
 
@@ -552,6 +563,17 @@ final class WidgetDefaults
                 'help' => self::text($field['help'] ?? '', 200),
                 'width' => in_array($width, self::FIELD_WIDTHS, true) ? $width : 100,
             ];
+
+            /*
+             * Shown only when another field's answer matches (Toula): "Which
+             * chimney?" appears once "Service" says Chimney. An empty value
+             * means "once it has any answer".
+             */
+            $when = self::text($field['show_if']['field'] ?? '', 80);
+
+            if ($when !== '' && $when !== $label) {
+                $one['show_if'] = ['field' => $when, 'value' => self::text($field['show_if']['value'] ?? '', 80)];
+            }
 
             if ($type === 'hidden') {
                 // Sent with every enquiry and never shown: a campaign name, say.

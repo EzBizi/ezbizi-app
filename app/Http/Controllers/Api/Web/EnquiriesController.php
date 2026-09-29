@@ -8,10 +8,16 @@ use App\Models\WebChat;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Web\FormChallenge;
 use App\Support\Web\WebsiteEnquiries;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The chat widget and the contact form on a customer's website.
@@ -188,11 +194,38 @@ class EnquiriesController extends Controller
             // Optional: an older widget sends neither, which records no consent.
             'marketing_consent' => ['nullable', 'boolean'],
             'marketing_consent_text' => ['nullable', 'string', 'max:500'],
+            // A file field's uploads, by the field's label (Toula). Photos of
+            // a chimney, mostly, and the odd PDF quote.
+            'files' => ['sometimes', 'array', 'max:5'],
+            'files.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,gif,heic,heif,pdf,doc,docx,txt'],
+            'captcha' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $organization = $this->tenant->runWithoutTenant(fn () => $site->organization);
 
-        return $this->tenant->run($organization, function () use ($site, $input): JsonResponse {
+        return $this->tenant->run($organization, function () use ($site, $input, $request): JsonResponse {
+            $form = WebWidget::resolvedFor($site)['form'] ?? [];
+
+            if (! empty($form['captcha']) && ! FormChallenge::passes($input['captcha'] ?? null)) {
+                return response()->json(['message' => 'The form could not confirm you are a person. Please try again.'],
+                    Response::HTTP_UNPROCESSABLE_ENTITY)->withHeaders($this->browserHeaders());
+            }
+
+            /*
+             * Kept by EzBizi, linked from the enquiry with a signed address:
+             * the Leads thread shows attachments as links, as it does Google's.
+             * ponytail: an erased enquiry drops the link, not the file; sweep
+             * web-form/ for unreferenced files if that ever matters.
+             */
+            $attachments = [];
+
+            foreach ($request->file('files', []) as $label => $file) {
+                $name = Str::uuid()->toString().'.'.strtolower($file->getClientOriginalExtension() ?: 'bin');
+                $file->storeAs('web-form', $name, 'local');
+                $attachments[] = URL::signedRoute('web.form.file', ['name' => $name]);
+                $input['fields'][(string) $label] = $file->getClientOriginalName();
+            }
+
             $this->enquiries->submitForm($site, $input['fields'], [
                 'name' => $input['name'] ?? null,
                 'email' => $input['email'] ?? null,
@@ -200,7 +233,9 @@ class EnquiriesController extends Controller
                 'page_url' => $input['page_url'] ?? null,
                 'marketing_consent' => (bool) ($input['marketing_consent'] ?? false),
                 'marketing_consent_text' => $input['marketing_consent_text'] ?? null,
-            ]);
+            ], $attachments);
+
+            $this->notify($site, (string) ($form['notify'] ?? ''), $input['fields'], $attachments);
 
             /*
              * No lead id in the body. The visitor has no use for it, and handing
@@ -210,6 +245,53 @@ class EnquiriesController extends Controller
             return response()->json(['received' => true], Response::HTTP_CREATED)
                 ->withHeaders($this->browserHeaders());
         });
+    }
+
+    /** GET /api/v1/web/form/challenge — the puzzle a CAPTCHA'd form solves first. */
+    public function challenge(): JsonResponse
+    {
+        return response()->json(FormChallenge::issue())->withHeaders($this->browserHeaders());
+    }
+
+    /** GET /api/v1/web/form/files/{name} — an uploaded file, behind its signed link. */
+    public function file(string $name): StreamedResponse
+    {
+        abort_unless(preg_match('/^[0-9a-f-]{36}\.[a-z0-9]{1,5}$/', $name) === 1
+            && Storage::disk('local')->exists('web-form/'.$name), Response::HTTP_NOT_FOUND);
+
+        return Storage::disk('local')->response('web-form/'.$name);
+    }
+
+    /**
+     * The form's own recipients, emailed the enquiry — after the response, and
+     * never the visitor's problem when mail is down: the lead is already saved.
+     *
+     * @param  array<string, ?string>  $fields
+     * @param  list<string>  $attachments
+     */
+    private function notify(WebSite $site, string $to, array $fields, array $attachments): void
+    {
+        $to = array_values(array_filter(array_map('trim', explode(',', $to))));
+
+        if ($to === []) {
+            return;
+        }
+
+        $body = "A new enquiry from {$site->host}:\n\n";
+
+        foreach ($fields as $label => $value) {
+            if (trim((string) $value) !== '') {
+                $body .= $label.': '.trim((string) $value)."\n";
+            }
+        }
+
+        $body .= ($attachments === [] ? '' : "\nFiles:\n".implode("\n", $attachments)."\n")
+            ."\nIt is also in EzBizi, under Leads.";
+        $subject = 'New enquiry from '.$site->host;
+
+        dispatch(function () use ($to, $body, $subject) {
+            Mail::raw($body, fn ($m) => $m->to($to)->subject($subject));
+        })->afterResponse();
     }
 
     /** The site a public key names, or the refusal to send instead. */

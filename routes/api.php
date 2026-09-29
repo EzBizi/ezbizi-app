@@ -506,6 +506,15 @@ Route::post('v1/web/form', [WebEnquiriesController::class, 'submitForm'])
     ->middleware('throttle:web-enquiry')
     ->name('web.form.submit');
 
+Route::get('v1/web/form/challenge', [WebEnquiriesController::class, 'challenge'])
+    ->middleware('throttle:web-enquiry')
+    ->name('web.form.challenge');
+
+// A form upload, by the signed link in its enquiry — never guessable.
+Route::get('v1/web/form/files/{name}', [WebEnquiriesController::class, 'file'])
+    ->middleware('signed')
+    ->name('web.form.file');
+
 /*
 |--------------------------------------------------------------------------
 | What a BROWSER may read — for sites with nowhere to keep a secret

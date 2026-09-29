@@ -190,7 +190,7 @@ final class WebsiteEnquiries
      * @param  array<string, string>  $fields
      * @param  array{name?: ?string, email?: ?string, phone?: ?string, page_url?: ?string}  $visitor
      */
-    public function submitForm(WebSite $site, array $fields, array $visitor = []): Lead
+    public function submitForm(WebSite $site, array $fields, array $visitor = [], array $attachments = []): Lead
     {
         $remoteId = 'form_'.Str::uuid()->toString();
         $lead = $this->lead($site, Lead::SOURCE_WEBSITE_FORM, $remoteId, $visitor);
@@ -210,6 +210,7 @@ final class WebsiteEnquiries
             'participant' => LeadConversation::FROM_CONSUMER,
             'occurred_at' => now(),
             'text' => implode("\n", $lines),
+            'attachments' => $attachments === [] ? null : $attachments,
         ]);
 
         $this->thread->refresh($lead);

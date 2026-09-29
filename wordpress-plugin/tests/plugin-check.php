@@ -382,6 +382,9 @@ function widget_payload($enabled = true) {
                 ['label' => 'What needs doing?', 'type' => 'textarea', 'required' => true],
                 ['label' => 'Service', 'type' => 'select', 'required' => false,
                     'options' => ['Sweep', 'Repair']],
+                ['label' => 'What is broken?', 'type' => 'text',
+                    'show_if' => ['field' => 'Service', 'value' => 'Repair']],
+                ['label' => 'Photo', 'type' => 'file'],
             ],
         ],
         'style' => [
@@ -868,7 +871,10 @@ check('a select renders its options', str_contains($form, '<option value="Sweep"
 check('required is marked', str_contains($form, 'required'), true);
 check('the accent colour is applied', str_contains($form, '--ezbizi-accent:#aa0000'), true);
 check('the button says what EzBizi says', str_contains($form, '>Send it<'), true);
-check('the form posts to the form endpoint', str_contains($form, 'web' . chr(92) . '/form'), true);
+check('the form posts to the form endpoint', str_contains($form, "'/api/v1/web/form'"), true);
+check('a file question is a file picker', str_contains($form, '<input type="file"'), true);
+check('a question can wait for another answer', str_contains($form, 'data-if-field="Service" data-if-value="Repair"'), true);
+check('no CAPTCHA unless EzBizi asks for one', str_contains($form, 'captcha=false'), true);
 
 $chat = $GLOBALS['sc']['ezbizi_chat']([]);
 check('the chat title comes from EzBizi', str_contains($chat, 'Talk to A-1'), true);
@@ -1326,6 +1332,7 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'label_font_family' => ['type' => 'text', 'max' => 60, 'font' => true, 'part' => 'label', 'prop' => 'font_family'],
                     'box_devices' => ['type' => 'choice', 'choices' => ['', 'desktop', 'mobile'], 'part' => 'box', 'prop' => 'devices'],
                     'networks' => ['type' => 'text', 'max' => 300],
+                    'custom' => ['type' => 'text', 'max' => 1000],
                     'colors' => ['type' => 'choice', 'choices' => ['single', 'brand']],
                     'new_tab' => ['type' => 'bool'],
                 ],
@@ -1358,6 +1365,9 @@ function preset_payload(array $values = [], array $pages = [], array $extra = []
                     'show_closed' => ['type' => 'bool'],
                 ],
                 'contact_info' => [
+                    'extra_phones' => ['type' => 'text', 'max' => 500],
+                    'labels' => ['type' => 'bool'],
+                    'phone_icon' => ['type' => 'choice', 'choices' => ['auto', 'mobile', 'none']],
                     'hours' => ['type' => 'bool'],
                     'secondary' => ['type' => 'bool'],
                     'links' => ['type' => 'bool'],
@@ -1418,6 +1428,10 @@ $social = $GLOBALS['sc']['ezbizi_social_links']([]);
 // this company is not on.
 check('three links, because three are set', substr_count($social, '<a class="ezbizi-social-link'), 3);
 check('facebook among them', str_contains($social, 'facebook.com/a1chimney'), true);
+$custom = $GLOBALS['sc']['ezbizi_social_links'](['custom' => 'Angi | https://angi.com/a1 | https://x.test/angi.png; Porch | https://porch.com/a1']);
+check('custom platforms join the row', substr_count($custom, '<a class="ezbizi-social-link'), 5);
+check('with their own icon', str_contains($custom, '<img src="https://x.test/angi.png"'), true);
+check('or their initial', str_contains($custom, '>P</text>'), true);
 check('and nothing for a network with no value', str_contains($social, 'pinterest'), false);
 check('each opens away from the site safely', substr_count($social, 'rel="noopener noreferrer"'), 3);
 check('in a new tab', substr_count($social, 'target="_blank"'), 3);
@@ -2082,6 +2096,10 @@ check('in the order asked for', strpos($ordered, 'office@a1.test') < strpos($ord
 check('the second number when asked', str_contains($contact(['secondary' => 'yes']), '111-2222'), true);
 check('and not otherwise', str_contains($contact([]), '111-2222'), false);
 check('links can be switched off', str_contains($contact(['links' => 'no']), 'mailto:'), false);
+$more = $contact(['labels' => 'yes', 'extra_phones' => 'Fax | 555-0101; 555-0102', 'phone_icon' => 'none']);
+check('more numbers than two', str_contains($more, 'tel:5550101') && str_contains($more, 'tel:5550102'), true);
+check('each with its own label', str_contains($more, '>Fax<'), true);
+check('a section can drop its icon', substr_count($more, 'ezbizi-contact-phone"><span class="ezbizi-contact-icon"'), 0);
 
 echo PHP_EOL . "The call to action does what Toula's list asks" . PHP_EOL;
 reset_site();
