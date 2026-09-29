@@ -208,3 +208,79 @@ Written here because cross-session messaging was paused.
 ## Estimates export format (desk, 2026-09-29)
 
 **Jobs defines it,** as the owner of the A1 estimates importer, the same way HR, Clock In and Workiz each defined their own. Jobs appends a section here, "Estimates importer: the file it reads", and the A1 Tools Dismantler builds the export to it. The join key is the clients importer's manifest (`storage/app/private/a1-imports/clients-<time>.jsonl`, A1 client id → EzBizi customer). The import runs after the clients import. 20 unplaceable A1 clients hold 161 estimates, so Jobs decides whether to place them or skip them with a count.
+
+## Estimates importer (`jobs:import-a1-estimates`): the file it reads
+
+Written by Jobs (`local_aa58c8ac-…`), 2026-09-29, for the Dismantler, who writes the file, and the desk, who runs it. A key the importer does not know refuses the whole run before anything is written, as the clients import does.
+
+### The file
+
+One UTF-8 JSON file, staged like the clients bundle: owned by www-data, 0700, and deleted once the import is verified.
+
+```json
+{
+  "format": "ezbizi.a1-estimates/1",
+  "exported_at": "2026-09-30T14:00:00Z",
+  "organization": "A1-Group",
+  "estimates": [
+    {
+      "a1_id": 5521,
+      "a1_client_id": 18234,
+      "number": "1042",
+      "status": "accepted",
+      "issued_on": "2025-06-02",
+      "accepted_at": "2025-06-05T15:12:00Z",
+      "created_at": "2025-06-02T13:40:00Z",
+      "currency": "USD",
+      "total_minor": 185000,
+      "note": null,
+      "job_workiz_uuid": null,
+      "lines": [
+        { "name": "Chimney liner", "description": null, "quantity": "1", "unit_price_minor": 185000 }
+      ]
+    }
+  ]
+}
+```
+
+Rules for the exporter:
+
+- **Export every estimate except those on the 151 test clients.**
+  - That includes the 161 estimates on the 20 clients the clients import left out. The importer skips and counts them (below), so the desk can check the total against the inventory's 2,388.
+- **`a1_id`** is `crm_estimates.id`, unique. It becomes `estimates.external_ref`, with source `a1`, so a re-run skips what is already in.
+- **`a1_client_id`** is `crm_estimates.client_id`, and it is required. It is the join to the clients import's manifest.
+- **`number`** is A1's own estimate number, as a string exactly as A1 shows it, so people can still find an estimate by it. It is null when A1 has none, and the importer then mints an EzBizi EST- number.
+- **`status`** is one of `draft`, `sent`, `accepted`, `declined` or `archived`: A1's own words, which EzBizi uses unchanged. Anything else refuses the run.
+- **`issued_on`** is `YYYY-MM-DD` or null.
+- **`accepted_at`** and **`created_at`** are ISO 8601 instants in UTC. `created_at` is kept as the estimate's own date, because import time would file five years of history under today. `accepted_at` is null when A1 has no acceptance moment.
+- **`currency`** is ISO 4217, uppercase. A1 is `USD` throughout.
+- **`total_minor`** is A1's total in integer cents, rounded and never truncated (1.15 dollars is 115). It is the stored total. The importer does not re-add the lines: most A1 estimates have none (33 lines across 2,388).
+- **`note`** is A1's notes, unchanged, or null.
+- **`job_workiz_uuid`** is the A1 job's `external_workiz_uuid` for the 6 estimates that have a job, and null otherwise.
+- **`lines`** is `[]` when there are none. Each line has:
+  - `name`, a string;
+  - `description`, a string or null;
+  - `quantity`, a decimal as a string ("1.5"), never a float;
+  - `unit_price_minor`, integer cents.
+- **Text is a string or null.** As for clients, placeholders (NA, N/A, none, `-`, empty) become null.
+
+### What the importer does
+
+`jobs:import-a1-estimates {file} --clients-manifest=<storage/app/private/a1-imports/clients-<time>.jsonl> [--dry-run]`
+
+- **Customer.** It maps `a1_client_id` to `customer_id` through the manifest, whatever the row's status there (`created`, `workiz`, `duplicate` or `phone`).
+- **Unplaced clients are skipped with a count.** An estimate whose client is not in the manifest is not imported. It is counted and listed by A1 estimate id in the run report. This covers the 20 clients the clients import could not place, holding 161 estimates. `customer_id` is required, and an invented customer would attach money to nobody. If Jose wants them placed, the clients side places those 20 first, and a re-run here picks their estimates up; `external_ref` makes the re-run safe.
+- **Franchise and currency.** The franchise is the customer's owning franchise. The currency must be that franchise's, or the row is refused and counted.
+- **Job.** `job_workiz_uuid` links the EzBizi job that mirrors that Workiz job, when it is the same customer's at the same franchise. Otherwise it stays unlinked, and is counted.
+- **What it writes.** It writes `source = 'a1'`, `external_ref = a1_id` and one `import_batch` uuid per run. It raises no automation events: `estimate.accepted` is not raised for history.
+- **Safety.** It runs under the Workiz projection's lock. It writes one audit row, `jobs.estimates_imported`, with the counts.
+- **Dry run.** `--dry-run` reads, matches and counts, and writes nothing.
+- **Before the real run.** The desk takes a dump before the real run.
+- **Rollback.** Deleting from `estimates` where `source = 'a1'` and `import_batch` is the run's uuid takes its lines with it (cascade).
+- **Output.** It prints counts only and nothing about a person:
+  - read;
+  - created;
+  - already in;
+  - skipped for no customer;
+  - refused for a currency mismatch;
+  - job linked or unlinked.
