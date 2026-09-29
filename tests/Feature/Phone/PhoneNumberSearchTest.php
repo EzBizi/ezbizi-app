@@ -33,7 +33,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_every_filter_reaches_twilio_in_its_own_spelling(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         /** @var FakeTwilioGateway $gateway */
@@ -73,7 +73,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_a_hit_says_what_it_can_do_and_what_it_would_need(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         $response = $this->signedInAs($editor)->getJson('/api/v1/phone/numbers/available?'.http_build_query([
@@ -92,7 +92,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_toll_free_reads_the_toll_free_list_not_the_local_one(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         $response = $this->signedInAs($editor)->getJson('/api/v1/phone/numbers/available?'.http_build_query([
@@ -107,7 +107,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_a_rate_center_without_its_lata_is_refused_here_not_by_twilio(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         $this->signedInAs($editor)->getJson('/api/v1/phone/numbers/available?'.http_build_query([
@@ -120,7 +120,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_searching_needs_the_authority_to_buy(): void
     {
         $t = $this->provisionTenant();
-        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view', 'phone.settings.view']);
         $this->connect($t);
 
         $this->signedInAs($viewer)->getJson('/api/v1/phone/numbers/available?'.http_build_query([
@@ -133,7 +133,7 @@ class PhoneNumberSearchTest extends TestCase
     public function test_twilio_being_unreachable_is_a_sentence_not_a_500(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
         $this->connect($t);
 
         /** @var FakeTwilioGateway $gateway */

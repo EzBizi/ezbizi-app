@@ -56,7 +56,7 @@ class PhoneTrustScreenTest extends TestCase
     public function test_uncaptured_calls_are_not_counted_as_untrusted(): void
     {
         [$t, $connection] = $this->connected();
-        $viewer = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $viewer = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->outbound($t, $connection, 'A', 'a1');
         $this->outbound($t, $connection, 'A', 'a2');
@@ -95,7 +95,7 @@ class PhoneTrustScreenTest extends TestCase
     public function test_a_screen_with_no_grades_reports_no_rate_rather_than_a_perfect_one(): void
     {
         [$t, $connection] = $this->connected();
-        $viewer = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $viewer = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->outbound($t, $connection, null, 'u1');
 
@@ -112,7 +112,7 @@ class PhoneTrustScreenTest extends TestCase
     public function test_an_observation_is_recorded_with_who_looked(): void
     {
         [$t, $connection] = $this->connected();
-        $editor = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $this->signedInAs($editor)->postJson('/api/v1/phone/trust/observations', [
             'connection_id' => $connection->id,
@@ -135,7 +135,7 @@ class PhoneTrustScreenTest extends TestCase
     public function test_recording_an_observation_needs_more_than_permission_to_look(): void
     {
         [$t, $connection] = $this->connected();
-        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view']);
+        $viewer = $this->userWithRole($t, 'Phone viewer', ['phone.view', 'phone.settings.view']);
 
         $this->signedInAs($viewer)->postJson('/api/v1/phone/trust/observations', [
             'connection_id' => $connection->id,

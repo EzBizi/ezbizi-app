@@ -64,7 +64,7 @@ class PhoneAddressAccessTest extends TestCase
         $t = $this->provisionTenant();
         $this->companyConnection($t);
 
-        $readOnly = $this->userWithRole($t, 'Tech', ['phone.view'], 'tech@t.test');
+        $readOnly = $this->userWithRole($t, 'Tech', ['phone.view', 'phone.settings.view'], 'tech@t.test');
 
         $this->signedInAs($readOnly)
             ->postJson('/api/v1/phone/addresses', $this->scope($t) + [
@@ -93,7 +93,7 @@ class PhoneAddressAccessTest extends TestCase
         $branch = $this->userWithRole(
             $t,
             'Branch phone',
-            ['phone.view', 'phone.edit'],
+            ['phone.view', 'phone.settings.view', 'phone.edit'],
             'branch@t.test',
             onlyAt: $t['franchise'],
         );
@@ -118,7 +118,7 @@ class PhoneAddressAccessTest extends TestCase
         $admin = $this->userWithRole(
             $t,
             'Phone admin',
-            ['phone.view', 'phone.edit'],
+            ['phone.view', 'phone.settings.view', 'phone.edit'],
             'admin@t.test',
         );
 

@@ -2982,6 +2982,9 @@ preview is built within the reader's reach); **3** would re-key that grant for n
 comes from a helper Automations owns, attached by each module to its own rows, with rule names and
 schedules only for `automations.view`, otherwise `sent_automatically`. The editor's bottom-sheet
 person picker became the search picker in `55b0ae42`.
+The helper is `App\Support\Automations\ReportSenders::for(type, ids)` (`f014e72f`): per report, the rules
+whose active version sends it, with `disabled_at` so a rule that switched itself off reads as off;
+Reports and Clock In each attach it to their own list.
 
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 

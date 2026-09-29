@@ -33,7 +33,7 @@ class PhonePortTest extends TestCase
     public function test_ports_can_be_listed_and_say_whether_they_are_settled(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Phone editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], fn () => PhoneConnection::factory()->create([
             'scope_type' => PhoneConnection::SCOPE_ORGANIZATION,
@@ -74,7 +74,7 @@ class PhonePortTest extends TestCase
     public function test_port_webhook_moves_the_row_to_in_progress(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Port editor', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Port editor', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], function () use ($t) {
             return PhoneConnection::factory()->create([
@@ -125,7 +125,7 @@ class PhonePortTest extends TestCase
     public function test_json_body_sha256_port_webhook_moves_the_row_to_in_progress(): void
     {
         $t = $this->provisionTenant();
-        $editor = $this->userWithRole($t, 'Port json', ['phone.view', 'phone.edit']);
+        $editor = $this->userWithRole($t, 'Port json', ['phone.view', 'phone.settings.view', 'phone.edit']);
 
         $connection = $this->inTenant($t['org'], function () use ($t) {
             return PhoneConnection::factory()->create([

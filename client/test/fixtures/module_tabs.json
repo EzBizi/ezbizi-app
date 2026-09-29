@@ -170,7 +170,13 @@
         "phone": {
             "label": "Communication",
             "parent": null,
-            "tabs": []
+            "tabs": [
+                "Phone",
+                "Users",
+                "Records",
+                "Reports",
+                "Settings"
+            ]
         },
         "profit_loss": {
             "label": "Profit & Loss",
@@ -378,6 +384,11 @@
         "organizations.edit",
         "organizations.view",
         "phone.edit",
+        "phone.phone.view",
+        "phone.records.view",
+        "phone.reports.view",
+        "phone.settings.view",
+        "phone.users.view",
         "phone.view",
         "profit_loss.view",
         "reports.build",

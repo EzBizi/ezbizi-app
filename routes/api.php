@@ -1757,7 +1757,8 @@ Route::prefix('v1')
         // Phone accounts already under EzBizi's platform Twilio, so connecting a
         // company adopts the one that exists instead of minting a second with
         // the same name. Filtered to names this tenant owns.
-        Route::get('phone/connections/subaccounts', [PhoneConnectionsController::class, 'subaccounts']);
+        Route::get('phone/connections/subaccounts', [PhoneConnectionsController::class, 'subaccounts'])
+            ->middleware('permission:phone.settings.view');
 
         Route::post('phone/connections', [PhoneConnectionsController::class, 'store']);
         Route::delete('phone/connections/{connection}', [PhoneConnectionsController::class, 'destroy']);
@@ -1784,50 +1785,69 @@ Route::prefix('v1')
         // person: every extension on the account and what it reaches, plus
         // creating and retiring one. `index`/`update` above stay the
         // people-shaped view the Users tab needs.
-        Route::get('phone/extensions/directory', [PhoneExtensionsController::class, 'directory']);
-        Route::post('phone/extensions/directory', [PhoneExtensionsController::class, 'store']);
-        Route::delete('phone/extensions/{extension}', [PhoneExtensionsController::class, 'destroy']);
+        Route::get('phone/extensions/directory', [PhoneExtensionsController::class, 'directory'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/extensions/directory', [PhoneExtensionsController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
+        Route::delete('phone/extensions/{extension}', [PhoneExtensionsController::class, 'destroy'])
+            ->middleware('permission:phone.settings.view');
 
-        Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation']);
-        Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations']);
-        Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation']);
-        Route::delete('phone/trust/observations/{observation}', [PhoneTrustController::class, 'destroyObservation']);
+        Route::get('phone/trust/attestation', [PhoneTrustController::class, 'attestation'])
+            ->middleware('permission:phone.settings.view');
+        Route::get('phone/trust/observations', [PhoneTrustController::class, 'observations'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/trust/observations', [PhoneTrustController::class, 'storeObservation'])
+            ->middleware('permission:phone.settings.view');
+        Route::delete('phone/trust/observations/{observation}', [PhoneTrustController::class, 'destroyObservation'])
+            ->middleware('permission:phone.settings.view');
 
-        Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow']);
-        Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore']);
+        Route::get('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustShow'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/connections/{connection}/trust', [PhoneConnectionsController::class, 'trustStore'])
+            ->middleware('permission:phone.settings.view');
 
         // Numbers hang on org / company / franchise. List is grant ∩ reach ∩
         // view-scope; buy/release need phone.edit and a resolved Twilio connection.
         // Literal paths before {number}, or "importable" is captured as an id.
-        Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable']);
-        Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import']);
+        Route::get('phone/numbers/importable', [PhoneNumbersController::class, 'importable'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/numbers/import', [PhoneNumbersController::class, 'import'])
+            ->middleware('permission:phone.settings.view');
 
         // Shopping for a new line: what Twilio has, and where it can sell.
         // Both are phone.edit — the only reason to look is to buy.
         // What actually happens when somebody rings each line, in the order
         // the renderer evaluates. phone.view: it is a read of our own rows.
-        Route::get('phone/call-flow', [PhoneNumbersController::class, 'callFlow']);
+        Route::get('phone/call-flow', [PhoneNumbersController::class, 'callFlow'])
+            ->middleware('permission:phone.settings.view');
 
         // What this company's phone service cost. phone.edit, because that is
         // the authority that spends the money in the first place.
-        Route::get('phone/usage', [PhoneNumbersController::class, 'usage']);
+        Route::get('phone/usage', [PhoneNumbersController::class, 'usage'])
+            ->middleware('permission:phone.settings.view');
 
         // What a number actually is — Twilio Lookup v2. phone.edit, because a
         // fresh lookup is billed; the cached answer is free.
-        Route::get('phone/lookup', [PhoneNumbersController::class, 'lookup']);
+        Route::get('phone/lookup', [PhoneNumbersController::class, 'lookup'])
+            ->middleware('permission:phone.settings.view');
 
-        Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available']);
-        Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries']);
+        Route::get('phone/numbers/available', [PhoneNumbersController::class, 'available'])
+            ->middleware('permission:phone.settings.view');
+        Route::get('phone/numbers/countries', [PhoneNumbersController::class, 'countries'])
+            ->middleware('permission:phone.settings.view');
 
         // What Twilio itself says about one line right now — capabilities and
         // above all whether 911 works. Read live; a stored copy goes stale
         // without anybody being told.
-        Route::get('phone/numbers/{number}/carrier', [PhoneNumbersController::class, 'carrier']);
+        Route::get('phone/numbers/{number}/carrier', [PhoneNumbersController::class, 'carrier'])
+            ->middleware('permission:phone.settings.view');
 
         // Emergency addresses (spec §6). Account-level on Twilio, because one
         // premises answers for every line in the building.
-        Route::get('phone/addresses', [PhoneAddressesController::class, 'index']);
-        Route::post('phone/addresses', [PhoneAddressesController::class, 'store']);
+        Route::get('phone/addresses', [PhoneAddressesController::class, 'index'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/addresses', [PhoneAddressesController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
         Route::get('phone/numbers', [PhoneNumbersController::class, 'index']);
         Route::post('phone/numbers', [PhoneNumbersController::class, 'store']);
 
@@ -1837,7 +1857,8 @@ Route::prefix('v1')
         // Hand a line to a different company. Organization view only — the
         // controller refuses elsewhere, because a company view cannot see the
         // company it would be moving to.
-        Route::post('phone/numbers/{number}/move', [PhoneNumbersController::class, 'move']);
+        Route::post('phone/numbers/{number}/move', [PhoneNumbersController::class, 'move'])
+            ->middleware('permission:phone.settings.view');
 
         Route::patch('phone/numbers/{number}', [PhoneNumbersController::class, 'update']);
         Route::delete('phone/numbers/{number}', [PhoneNumbersController::class, 'destroy']);
@@ -1851,7 +1872,8 @@ Route::prefix('v1')
 
         // Who can be put in a ring group. Literal path, and NOT under
         // ring-groups/ so it cannot be captured as {group}.
-        Route::get('phone/members', [PhoneRingGroupsController::class, 'members']);
+        Route::get('phone/members', [PhoneRingGroupsController::class, 'members'])
+            ->middleware('permission:phone.settings.view');
 
         // Ring groups: who a line rings, and where unanswered calls go.
         Route::get('phone/ring-groups', [PhoneRingGroupsController::class, 'index']);
@@ -1878,8 +1900,10 @@ Route::prefix('v1')
         Route::post('phone/blocked-numbers', [PhoneBlockedNumbersController::class, 'store']);
         Route::delete('phone/blocked-numbers/{blocked}', [PhoneBlockedNumbersController::class, 'destroy']);
 
-        Route::get('phone/ports', [PhonePortsController::class, 'index']);
-        Route::post('phone/ports', [PhonePortsController::class, 'store']);
+        Route::get('phone/ports', [PhonePortsController::class, 'index'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/ports', [PhonePortsController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
 
         // Named open-hours schedules on a connection. Create may take a number
         // so franchise lines default timezone from franchises.timezone.
@@ -1889,12 +1913,18 @@ Route::prefix('v1')
         // ON a call is not — the people who answer the phone are usually
         // view-plus-a-line-grant, and they are who does the tagging.
         // Reports. Literal paths before {report}, or "run" is captured as an id.
-        Route::get('phone/reports/run', [PhoneReportsController::class, 'run']);
-        Route::get('phone/reports', [PhoneReportsController::class, 'index']);
-        Route::post('phone/reports', [PhoneReportsController::class, 'store']);
-        Route::get('phone/reports/{report}/run', [PhoneReportsController::class, 'runSaved']);
-        Route::patch('phone/reports/{report}', [PhoneReportsController::class, 'update']);
-        Route::delete('phone/reports/{report}', [PhoneReportsController::class, 'destroy']);
+        Route::get('phone/reports/run', [PhoneReportsController::class, 'run'])
+            ->middleware('permission:phone.reports.view');
+        Route::get('phone/reports', [PhoneReportsController::class, 'index'])
+            ->middleware('permission:phone.reports.view');
+        Route::post('phone/reports', [PhoneReportsController::class, 'store'])
+            ->middleware('permission:phone.reports.view');
+        Route::get('phone/reports/{report}/run', [PhoneReportsController::class, 'runSaved'])
+            ->middleware('permission:phone.reports.view');
+        Route::patch('phone/reports/{report}', [PhoneReportsController::class, 'update'])
+            ->middleware('permission:phone.reports.view');
+        Route::delete('phone/reports/{report}', [PhoneReportsController::class, 'destroy'])
+            ->middleware('permission:phone.reports.view');
 
         Route::get('phone/tags', [PhoneCallTagsController::class, 'index']);
         Route::post('phone/tags', [PhoneCallTagsController::class, 'store']);
@@ -1902,16 +1932,25 @@ Route::prefix('v1')
         Route::delete('phone/tags/{tag}', [PhoneCallTagsController::class, 'destroy']);
         Route::patch('phone/calls/{call}/tag', [PhoneCallTagsController::class, 'tagCall']);
 
-        Route::get('phone/flows', [PhoneFlowsController::class, 'index']);
-        Route::post('phone/flows', [PhoneFlowsController::class, 'store']);
-        Route::patch('phone/flows/{flow}', [PhoneFlowsController::class, 'update']);
-        Route::delete('phone/flows/{flow}', [PhoneFlowsController::class, 'destroy']);
+        Route::get('phone/flows', [PhoneFlowsController::class, 'index'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/flows', [PhoneFlowsController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
+        Route::patch('phone/flows/{flow}', [PhoneFlowsController::class, 'update'])
+            ->middleware('permission:phone.settings.view');
+        Route::delete('phone/flows/{flow}', [PhoneFlowsController::class, 'destroy'])
+            ->middleware('permission:phone.settings.view');
 
-        Route::get('phone/hours', [PhoneHoursController::class, 'index']);
-        Route::post('phone/hours', [PhoneHoursController::class, 'store']);
-        Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show']);
-        Route::patch('phone/hours/{schedule}', [PhoneHoursController::class, 'update']);
-        Route::delete('phone/hours/{schedule}', [PhoneHoursController::class, 'destroy']);
+        Route::get('phone/hours', [PhoneHoursController::class, 'index'])
+            ->middleware('permission:phone.settings.view');
+        Route::post('phone/hours', [PhoneHoursController::class, 'store'])
+            ->middleware('permission:phone.settings.view');
+        Route::get('phone/hours/{schedule}', [PhoneHoursController::class, 'show'])
+            ->middleware('permission:phone.settings.view');
+        Route::patch('phone/hours/{schedule}', [PhoneHoursController::class, 'update'])
+            ->middleware('permission:phone.settings.view');
+        Route::delete('phone/hours/{schedule}', [PhoneHoursController::class, 'destroy'])
+            ->middleware('permission:phone.settings.view');
 
         // Voice SDK token + desk presence. phone.view and a granted number on
         // that connection; no grant → fixed 403 sentence.
@@ -1958,7 +1997,8 @@ Route::prefix('v1')
         // the app SHELL rather than by Communication, because the pop-up
         // appears on top of whatever module is open.
         Route::get('phone/caller', [PhoneCallsController::class, 'caller']);
-        Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live']);
+        Route::get('phone/call-flow/live', [PhoneCallsController::class, 'live'])
+            ->middleware('permission:phone.settings.view');
         Route::post('phone/calls/{call}/pickup', [PhoneCallsController::class, 'pickUp']);
 
         Route::get('phone/calls', [PhoneCallsController::class, 'index']);

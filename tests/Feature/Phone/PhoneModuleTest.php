@@ -24,7 +24,11 @@ class PhoneModuleTest extends TestCase
         $module = app(ModuleRegistry::class)->get('phone');
 
         $this->assertNull($module->automationExemptBecause);
-        $this->assertSame(['view', 'edit'], $module->actions);
+        // Plus one view per tab (Jose, 2026-09-29), in the tab bar's order.
+        $this->assertSame(
+            ['view', 'edit', 'phone.view', 'users.view', 'records.view', 'reports.view', 'settings.view'],
+            $module->actions,
+        );
         $this->assertSame(
             [
                 'phone.call.started',

@@ -162,7 +162,7 @@ class PhoneCallFlowLiveTest extends TestCase
     private function line(): array
     {
         $t = $this->provisionTenant();
-        $desk = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view']);
+        $desk = $this->userWithRole($t, 'Adeline Ruiz', ['phone.view', 'phone.settings.view']);
 
         [$connection, $number, $group] = $this->inTenant($t['org'], function () use ($t, $desk) {
             $connection = PhoneConnection::factory()->create([
