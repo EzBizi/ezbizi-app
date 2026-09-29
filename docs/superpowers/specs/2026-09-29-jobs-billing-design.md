@@ -114,7 +114,8 @@ No new screen or endpoint: `GET /jobs` gains the following, both needing
 - `meta.money_totals` on page 1: for each currency, `total`, `paid`, `due` and `overdue`
   over the filtered set, with the money filter left out, the same faceting as the status
   chips. Currencies are never added together.
-- Each row carries `money: {total, due, state, overdue}`.
+- Each row carries `money: {total, due, state, due_on}`. The client decides overdue by
+  comparing `due_on` with its own today, as the list's windows already do.
 
 JSON extraction over about 8.5k rows is fast enough today. If it stops being, the upgrade
 is a generated column plus an index, not a copy table.
