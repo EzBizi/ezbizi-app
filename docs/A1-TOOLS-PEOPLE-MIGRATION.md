@@ -64,7 +64,7 @@ per-person table into git.
 | Tools and equipment held | **new HR field** (per-person custody list) |
 | Clock-ins (`time_records`, 3,360, UTC) | `time_clock_shifts`, removing overlaps with shifts already in EzBizi (10 matched people clock in to both) |
 | Day statuses (`time_day_status`, almost all absent) | `time_clock_days.tag` |
-| Vehicle assignments (2) | Not migrated. Both are on Jose's A1-TEST vehicle (created 2026-07-27, deleted in A1, never imported into EzBizi); Fleet measured it and created nothing |
+| Vehicle assignments (2) | Not migrated. Both are on Jose's A1-TEST vehicle (created 2026-07-27, deleted in A1, never imported into EzBizi); Fleet measured it and created nothing. Jose, 2026-09-29: "no that's a test". Not migrated, by his word |
 | Workiz team links (61) | `workiz_team_members.user_id` |
 
 Not migrated, and they stay in the A1 backup:
@@ -427,3 +427,11 @@ inventory. No personal value is ever printed: people are named by their A1 accou
   - 0 failed jobs, and no notifications from the import.
 - **Welcome:** 64 sent (`hr:send-a1-welcome --send`). 64 unused links, valid until 2026-10-06.
 - **A1 clock-in:** Jose, asked when it should stop: "Now". The Dismantler retires it, runs phase 2 (worktime only), and the desk imports the hours.
+
+## Phase 2 and clean-up (deploy desk, 2026-09-29)
+
+- **Hours:** A1's clock-in retired at 16:01:13 UTC. The final worktime export held 2,666 records (29 open). Dump: `worktime-before-a1-hours-import-20260929T160218Z.sql.gz`.
+  - `worktime:import-a1-tools` imported 2,562 shifts (20 open, 2 closed at the cap). 93 overlapped EzBizi, 4 overlapped A1, 7 were unreadable. 497 days were tagged.
+  - 50 people, 2024-01-01 to today. A re-run is a no-op.
+- **Workiz team links:** Workiz's reviewed script ran after a dump (`workiz-team-before-a1-links-20260929T160820Z.sql.gz`). 20 were linked and 13 were already linked, so all 33 are done.
+- **Clean-up:** `/var/lib/a1-people-export` (with its decrypted PII) and the crosswalk file were deleted once everything was verified.
