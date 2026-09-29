@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0315',
+      date: '29 Sep 2026',
+      items: [
+        'Jobs, Estimates: a Title column after the number; an estimate opens under its title, with its number and customer beneath, and the title can be typed when creating or editing one. The list is dated, and ordered, by when each estimate was made.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0314',
       date: '29 Sep 2026',
       items: [
