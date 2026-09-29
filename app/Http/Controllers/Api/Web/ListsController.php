@@ -8,6 +8,7 @@ use App\Models\WebLocation;
 use App\Models\WebSite;
 use App\Models\WebTeamMember;
 use App\Support\Web\SiteLists;
+use App\Support\Web\SiteRefresh;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -61,6 +62,8 @@ class ListsController extends Controller
             }
         });
 
+        SiteRefresh::company($site);
+
         return $this->team($site);
     }
 
@@ -106,6 +109,8 @@ class ListsController extends Controller
                 ]);
             }
         });
+
+        SiteRefresh::company($site);
 
         return $this->items($site, $kind);
     }
@@ -165,6 +170,8 @@ class ListsController extends Controller
                 ]);
             }
         });
+
+        SiteRefresh::company($site);
 
         return $this->locations($site);
     }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Controller;
 use App\Models\WebSite;
 use App\Models\WebWidget;
 use App\Support\Branding\Branding;
+use App\Support\Web\SiteRefresh;
 use App\Support\Web\WidgetDefaults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -141,6 +142,9 @@ class WidgetsController extends Controller
             );
         }
 
+        // "Rebuild" means now: each site re-reads and drops its cached pages.
+        SiteRefresh::later(...$sites->all());
+
         return response()->json(['asked' => $sites->count()]);
     }
 
@@ -209,6 +213,9 @@ class WidgetsController extends Controller
             ['config' => $clean],
         );
 
+        // A primary's look is inherited, so its company's sites read it too.
+        SiteRefresh::company($site);
+
         return response()->json([
             ...WebWidget::forEditor($site),
             'defaults' => WidgetDefaults::all($this->brand($site)),
@@ -235,6 +242,7 @@ class WidgetsController extends Controller
         $this->authorize('update', $site);
 
         WebWidget::query()->where('site_id', $site->getKey())->delete();
+        SiteRefresh::later($site);
 
         return response()->json([
             ...WebWidget::forEditor($site),

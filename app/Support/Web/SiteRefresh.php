@@ -64,6 +64,12 @@ final class SiteRefresh
         });
     }
 
+    /** Every website of this site's company: lists and widget looks are shared by them. */
+    public static function company(WebSite $site): void
+    {
+        self::later(...WebSite::query()->where('company_id', $site->company_id)->get()->all());
+    }
+
     public function now(WebSite $site): bool
     {
         if (! $site->isServiceLinked() || $site->service_rest_url === null) {

@@ -211,6 +211,11 @@ function ezbizi_seo_site_save($request) {
 
     update_option('wpseo_titles', $titles);
 
+    // Every page's title may have changed.
+    if (function_exists('ezbizi_purge_page_cache')) {
+        ezbizi_purge_page_cache();
+    }
+
     return new WP_REST_Response(ezbizi_seo_site());
 }
 
@@ -233,6 +238,11 @@ function ezbizi_seo_rebuild($id) {
     // A cached copy of the page would keep showing the old title.
     if (class_exists('Cache_Enabler') && method_exists('Cache_Enabler', 'clear_page_cache_by_post')) {
         Cache_Enabler::clear_page_cache_by_post($id);
+    }
+
+    // And the host's own page cache in front of WordPress, which keeps pages for two hours.
+    if (function_exists('ezbizi_queue_nginx_purge')) {
+        ezbizi_queue_nginx_purge();
     }
 
     if (! function_exists('YoastSEO')) {
