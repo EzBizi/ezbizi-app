@@ -2985,6 +2985,11 @@ person picker became the search picker in `55b0ae42`.
 The helper is `App\Support\Automations\ReportSenders::for(type, ids)` (`f014e72f`): per report, the rules
 whose active version sends it, with `disabled_at` so a rule that switched itself off reads as off;
 Reports and Clock In each attach it to their own list.
+Served: Reports `50f58055`, Clock In `64593d3b` (`sent_by` for `automations.view`, else null; `[]` when
+no rule sends it). **Open before the build:** `sent_automatically` differs — Reports counts only a rule
+that is on and not auto-disabled; Clock In (`TimeClockReportsController.php:46`, `isset`) counts any
+rule with the step, off ones included, so one library would read the same state two ways. Reports'
+meaning is the one to keep ("will it go out"); not yet sent to Clock In — peer messaging paused.
 
 ### 32 · Jobs · estimates — **Jose: "as u recommend" — 1 and 4** — **BUILT** `0bf0313a`
 
