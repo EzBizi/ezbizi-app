@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Reports;
 
+use App\Models\Automation;
+use App\Models\AutomationVersion;
 use App\Models\Customer;
 use App\Models\Job;
 use App\Support\Reports\ReportMap;
@@ -313,6 +315,91 @@ class ReportsApiTest extends TestCase
 
         $this->assertContains('amount_minor', $columns($money));
         $this->assertContains('currency', $columns($money));
+    }
+
+    // ── which automations send a report (2026-09-30) ───────────────
+
+    /**
+     * THE LIBRARY SAYS WHICH RULES SEND EACH REPORT - to a reader who may see
+     * rules. An off rule is listed, and does not count as sending.
+     */
+    public function test_the_library_names_the_rules_that_send_a_report(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        [$sent, $off, $unsent] = $this->threeReports($tenant);
+
+        $reader = $this->userWithRole($tenant, 'Reader', [
+            'reports.view', 'reports.library.view', 'jobs.view', 'automations.view',
+        ]);
+
+        $rows = collect($this->signedInAs($reader)->getJson('/api/v1/reports')->assertOk()->json('data'))
+            ->keyBy('name');
+
+        $this->assertTrue($rows['Sent']['sent_automatically']);
+        $this->assertSame(['Sunday send'], array_column($rows['Sent']['sent_by'], 'name'));
+
+        // Listed so the row can say "off", but it sends nothing.
+        $this->assertFalse($rows['Off']['sent_automatically']);
+        $this->assertSame(['Paused send'], array_column($rows['Off']['sent_by'], 'name'));
+        $this->assertFalse($rows['Off']['sent_by'][0]['is_active']);
+
+        $this->assertFalse($rows['Unsent']['sent_automatically']);
+        $this->assertSame([], $rows['Unsent']['sent_by']);
+    }
+
+    /** Without automations.view: yes or no, never the rule's name or schedule. */
+    public function test_a_reader_without_automations_gets_only_yes_or_no(): void
+    {
+        $tenant = $this->provisionTenant('Alpha');
+        $this->threeReports($tenant);
+
+        $reader = $this->userWithRole($tenant, 'Reader', ['reports.view', 'reports.library.view', 'jobs.view']);
+
+        $response = $this->signedInAs($reader)->getJson('/api/v1/reports')->assertOk();
+        $rows = collect($response->json('data'))->keyBy('name');
+
+        $this->assertTrue($rows['Sent']['sent_automatically']);
+        $this->assertNull($rows['Sent']['sent_by']);
+        $this->assertFalse($rows['Unsent']['sent_automatically']);
+
+        // The rule names appear nowhere in the payload.
+        $this->assertStringNotContainsString('Sunday send', $response->getContent());
+    }
+
+    /** @return array{0: string, 1: string, 2: string} report ids */
+    private function threeReports(array $tenant): array
+    {
+        $ids = [];
+
+        foreach (['Sent', 'Off', 'Unsent'] as $name) {
+            $ids[] = $this->signedInAs($tenant['admin'])
+                ->postJson('/api/v1/reports', [
+                    'company_id' => $tenant['company']->id,
+                    'name' => $name,
+                    'definition' => $this->titlesDefinition(),
+                ])
+                ->assertCreated()
+                ->json('data.id');
+        }
+
+        $this->sendingRule($tenant, 'Sunday send', $ids[0], active: true);
+        $this->sendingRule($tenant, 'Paused send', $ids[1], active: false);
+
+        return $ids;
+    }
+
+    /** Shaped like Automations' own ReportSendersTest fixture. */
+    private function sendingRule(array $tenant, string $name, string $reportId, bool $active): void
+    {
+        $this->inTenant($tenant['org'], function () use ($tenant, $name, $reportId, $active) {
+            $org = $tenant['org']->id;
+            $rule = Automation::create(['organization_id' => $org, 'name' => $name,
+                'trigger_key' => 'automation.schedule_reached', 'is_active' => $active,
+                'schedule' => ['kind' => 'weekly', 'days' => ['sunday'], 'time' => '20:00', 'timezone' => 'America/New_York']]);
+            $version = AutomationVersion::create(['organization_id' => $org, 'automation_id' => $rule->id, 'version' => 1,
+                'conditions' => null, 'actions' => [['type' => 'report.send', 'report_id' => $reportId]], 'created_at' => now()]);
+            $rule->forceFill(['active_version_id' => $version->id])->save();
+        });
     }
 
     public function test_building_is_refused_without_the_build_permission(): void

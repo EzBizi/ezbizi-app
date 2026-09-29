@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Franchise;
 use App\Models\SavedReport;
 use App\Support\Audit\AuditLogger;
+use App\Support\Automations\ReportSenders;
 use App\Support\Reports\ReportMap;
 use App\Support\Reports\ReportRunner;
 use App\Support\Scoping\PlaceInView;
@@ -105,7 +106,25 @@ class ReportsController extends Controller
             ->orderBy('name')
             ->get();
 
-        return response()->json(['data' => $reports->map($this->present(...))->values()->all()]);
+        /*
+         * WHICH AUTOMATIONS SEND EACH REPORT (UI/UX + Automations, 2026-09-30),
+         * so the library can say "sent Sundays at 8pm" rather than nothing.
+         *
+         * The rules are Automations' data: names and schedules only to a
+         * reader holding automations.view, `sent_by: null` for everyone else
+         * so "not yours to see" never reads as "no rule". Everyone gets
+         * `sent_automatically`, which counts only a rule that would actually
+         * run - one switched off, or auto-disabled after five refusals, does
+         * not send, and a yes there would be a false promise.
+         */
+        $senders = ReportSenders::for(ReportSenders::REPORT_SAVED, $reports->pluck('id')->all());
+        $mayReadRules = $request->user()->hasPermission('automations.view');
+
+        return response()->json(['data' => $reports->map(fn (SavedReport $report) => $this->present($report) + [
+            'sent_automatically' => collect($senders[$report->id] ?? [])
+                ->contains(fn (array $rule) => $rule['is_active'] && $rule['disabled_at'] === null),
+            'sent_by' => $mayReadRules ? ($senders[$report->id] ?? []) : null,
+        ])->values()->all()]);
     }
 
     public function store(Request $request): JsonResponse
