@@ -146,6 +146,16 @@ void main() {
     expect(find.textContaining('C-1001 · Workiz #4512, #4600'), findsOneWidget);
   });
 
+  testWidgets('with no Workiz client loaded there is no Workiz column', (
+    tester,
+  ) async {
+    // Most organizations have no Workiz: a column of dashes would be dead weight.
+    await _pump(tester, customers: [_alice]);
+
+    expect(find.text('Alice Roofing'), findsOneWidget, reason: 'the control');
+    expect(find.text('Workiz'), findsNothing);
+  });
+
   testWidgets('delete is refused in a sentence when the role cannot', (
     tester,
   ) async {
