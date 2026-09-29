@@ -270,6 +270,7 @@ class _SeoTabState extends State<SeoTab> {
         api: widget.api,
         formats: widget.session.me!.display,
         startWith: bulkFrom,
+        companies: widget.session.me!.companies,
         onClose: () {
           setState(() => _bulkFrom = null);
           _load();

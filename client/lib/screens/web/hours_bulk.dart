@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/session.dart';
 import '../../core/theme.dart';
 import '../../core/timestamps.dart';
 import '../../widgets/error_note.dart';
@@ -31,6 +32,7 @@ class HoursBulkPane extends StatefulWidget {
     required this.formats,
     required this.onClose,
     this.startWith,
+    this.companies = const [],
   });
 
   final ApiClient api;
@@ -42,11 +44,24 @@ class HoursBulkPane extends StatefulWidget {
   /// The website the editor was opened from, ticked to begin with.
   final String? startWith;
 
+  /// The session's companies, so a sub company's websites are drawn after
+  /// its parent's rather than wherever its name sorts.
+  final List<CompanySummary> companies;
+
   @override
   State<HoursBulkPane> createState() => _HoursBulkPaneState();
 }
 
 enum _Act { keep, hours, closed }
+
+/// One heading's worth of websites in the picker.
+typedef _Group = ({
+  String company,
+  String title,
+  String? caption,
+  String key,
+  List<Map<String, dynamic>> sites,
+});
 
 /// One day of the request. A null edge keeps what the site has.
 class _Day {
@@ -454,6 +469,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
     ];
     final shownIds = {for (final site in shown) site['id'] as String};
     final allShown = shownIds.isNotEmpty && _picked.containsAll(shownIds);
+    final groups = _groups(shown);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -511,7 +527,7 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
         // Held in a box of its own that scrolls, so a hundred websites do not
         // push the week off the page.
         Container(
-          constraints: const BoxConstraints(maxHeight: 260),
+          constraints: const BoxConstraints(maxHeight: 360),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
             border: Border.all(color: theme.colorScheme.outlineVariant),
@@ -528,23 +544,143 @@ class _HoursBulkPaneState extends State<HoursBulkPane> {
               : Scrollbar(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(12),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (final site in shown)
-                          FilterChip(
-                            label: Text(site['host'] as String? ?? ''),
-                            selected: _picked.contains(site['id']),
-                            onSelected: (on) => setState(() {
-                              final id = site['id'] as String;
-                              on ? _picked.add(id) : _picked.remove(id);
-                            }),
+                        for (final (i, group) in groups.indexed) ...[
+                          // A rule between companies; a gap between a
+                          // company and its own subdomains.
+                          if (i > 0)
+                            groups[i - 1].company == group.company
+                                ? const SizedBox(height: 14)
+                                : const Divider(height: 29),
+                          // One company and no subdomains: the Select all
+                          // above already is this heading's.
+                          if (groups.length > 1) _groupHead(context, group),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final site in group.sites)
+                                FilterChip(
+                                  label: Text(site['host'] as String? ?? ''),
+                                  selected: _picked.contains(site['id']),
+                                  onSelected: (on) => setState(() {
+                                    final id = site['id'] as String;
+                                    on ? _picked.add(id) : _picked.remove(id);
+                                  }),
+                                ),
+                            ],
                           ),
+                        ],
                       ],
                     ),
                   ),
                 ),
+        ),
+      ],
+    );
+  }
+
+  /// The websites under the headings Jose drew (2026-09-29): "a1chimney,
+  /// subdomains, sub company, sub company subdomains". Each company's own
+  /// domains, then its subdomains, a parent before its sub companies.
+  List<_Group> _groups(List<Map<String, dynamic>> shown) {
+    String companyOf(Map site) => '${(site['company'] as Map?)?['id'] ?? ''}';
+    final names = {for (final c in widget.companies) c.id: c.name};
+
+    // Parents first, each followed by its sub companies, depth first; then
+    // a company whose parent this view does not hold; then any company the
+    // session does not list at all.
+    final order = <String>[];
+    void visit(String? parent) {
+      for (final c in widget.companies) {
+        if (c.parentCompanyId == parent && !order.contains(c.id)) {
+          order.add(c.id);
+          visit(c.id);
+        }
+      }
+    }
+
+    visit(null);
+    for (final c in widget.companies) {
+      if (!order.contains(c.id)) {
+        order.add(c.id);
+        visit(c.id);
+      }
+    }
+    for (final site in _sites) {
+      if (!order.contains(companyOf(site))) order.add(companyOf(site));
+    }
+
+    // A subdomain is a host under another registered one, so
+    // atl.a-1chimney.com sits under a-1chimney.com wherever it is listed.
+    final hosts = {for (final site in _sites) '${site['host'] ?? ''}'};
+    bool isSub(Map site) {
+      final host = '${site['host'] ?? ''}';
+      return hosts.any((other) => other != host && host.endsWith('.$other'));
+    }
+
+    final groups = <_Group>[];
+    for (final id in order) {
+      final mine = [
+        for (final site in shown)
+          if (companyOf(site) == id) site,
+      ];
+      if (mine.isEmpty) continue;
+
+      final name =
+          names[id] ??
+          '${(mine.first['company'] as Map?)?['name'] ?? 'Websites'}';
+      final parent =
+          names[widget.companies
+              .where((c) => c.id == id)
+              .firstOrNull
+              ?.parentCompanyId];
+
+      for (final sub in [false, true]) {
+        final sites = [
+          for (final site in mine)
+            if (isSub(site) == sub) site,
+        ];
+        if (sites.isEmpty) continue;
+
+        groups.add((
+          company: id,
+          title: sub ? '$name subdomains' : name,
+          caption: !sub && parent != null ? 'sub company of $parent' : null,
+          key: '$id-${sub ? 'sub' : 'own'}',
+          sites: sites,
+        ));
+      }
+    }
+
+    return groups;
+  }
+
+  /// A heading, how many of its websites are ticked, and its own Select all.
+  Widget _groupHead(BuildContext context, _Group group) {
+    final theme = Theme.of(context);
+    final ids = {for (final site in group.sites) site['id'] as String};
+    final all = _picked.containsAll(ids);
+
+    return Wrap(
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(group.title, style: theme.textTheme.titleSmall),
+        if (group.caption case final caption?)
+          Text(caption, style: theme.textTheme.bodySmall),
+        Text(
+          '${ids.where(_picked.contains).length} of ${ids.length}',
+          style: theme.textTheme.bodySmall,
+        ),
+        TextButton(
+          key: Key('hours-bulk-group-${group.key}'),
+          onPressed: () => setState(
+            () => all ? _picked.removeAll(ids) : _picked.addAll(ids),
+          ),
+          child: Text(all ? 'Clear' : 'Select all'),
         ),
       ],
     );
