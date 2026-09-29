@@ -97,6 +97,16 @@ void main() {
     expect(find.textContaining('J-1001 · Workiz #12345'), findsOneWidget);
   });
 
+  testWidgets('with no Workiz job loaded there is no Workiz column', (
+    tester,
+  ) async {
+    // Most organizations have no Workiz: a column of dashes would be dead weight.
+    await _pump(tester, jobs: [_crown]);
+
+    expect(find.text('Crown inspection'), findsOneWidget, reason: 'the control');
+    expect(find.text('Workiz'), findsNothing);
+  });
+
   testWidgets('a failed customer search is not an empty result', (tester) async {
     await _pump(tester);
 
