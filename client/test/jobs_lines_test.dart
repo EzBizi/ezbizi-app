@@ -501,7 +501,14 @@ http.Response _json(Object body, [int status = 200]) => http.Response(
   headers: const {'content-type': 'application/json'},
 );
 
-const _permissions = ['jobs.view', 'jobs.create', 'jobs.edit', 'jobs.delete'];
+// The lines are money, so the person working them holds Financials (Jose, 2026-09-29).
+const _permissions = [
+  'jobs.view',
+  'jobs.create',
+  'jobs.edit',
+  'jobs.delete',
+  'jobs.financials',
+];
 
 const _me = {
   'id': 'u-1',

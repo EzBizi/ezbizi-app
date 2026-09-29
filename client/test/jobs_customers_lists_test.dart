@@ -423,7 +423,14 @@ Future<void> _pumpJobs(
   await _pump(
     tester,
     size: size,
-    permissions: const ['jobs.view', 'jobs.create', 'jobs.edit', 'jobs.delete'],
+    // Sees money: the Amount column is part of what this layout test lines up.
+    permissions: const [
+      'jobs.view',
+      'jobs.create',
+      'jobs.edit',
+      'jobs.delete',
+      'jobs.financials',
+    ],
     handler: (request) {
       final path = request.url.path;
 

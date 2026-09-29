@@ -1006,7 +1006,12 @@ class ModuleServiceProvider extends ServiceProvider
                 // above. Jobs cannot be imported by anybody (ResourceMap says
                 // why) and can be exported by everybody who reaches the tab, so
                 // this is the only transfer grant this module has to offer.
-                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export'],
+                //
+                //   financials — see and change prices, and every amount on a
+                //                job (Jose, 2026-09-29: "a financials toggle").
+                //                Money never travels with edit, as in Fleet and
+                //                Inventory.
+                actions: [...ModuleDefinition::DEFAULT_ACTIONS, 'export', 'financials'],
                 subject: new AutomationSubject(Job::class, 'Job'),
                 triggers: [
                     new TriggerDefinition(

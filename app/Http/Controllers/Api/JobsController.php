@@ -53,10 +53,25 @@ class JobsController extends Controller
             ->where('organization_id', $this->tenant->idOrFail());
     }
 
+    /** Jose, 2026-09-29: money in Jobs is a financials toggle on the role. */
+    private const MONEY_HIDDEN = 'Money on jobs is hidden for your role.';
+
+    /**
+     * Whether this reader holds the Financials toggle. Asked once per request
+     * and passed down, never kept on the controller: a route keeps its
+     * controller instance across requests in tests.
+     */
+    private function seesMoney(Request $request): bool
+    {
+        return $request->user()->hasPermission('jobs.financials');
+    }
+
     /** GET /api/v1/jobs */
     public function index(Request $request): JsonResponse
     {
         $this->authorize('viewAny', Job::class);
+
+        $money = $this->seesMoney($request);
 
         $request->validate([
             'when'  => ['nullable', Rule::in(['upcoming', 'past', 'all'])],
@@ -239,17 +254,17 @@ class JobsController extends Controller
         $meta['day_counts'] = (object) $dayCounts;
 
         return response()->json([
-            'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j)),
+            'data' => collect($jobs->items())->map(fn (Job $j) => $this->present($j, money: $money)),
             'meta' => $meta,
         ]);
     }
 
     /** GET /api/v1/jobs/{job} */
-    public function show(Job $job): JsonResponse
+    public function show(Request $request, Job $job): JsonResponse
     {
         $this->authorize('view', $job);
 
-        return response()->json(['data' => $this->present($job, detailed: true)]);
+        return response()->json(['data' => $this->present($job, detailed: true, money: $this->seesMoney($request))]);
     }
 
     /**
@@ -262,6 +277,9 @@ class JobsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $input = $request->validate($this->rules());
+
+        $money = $this->seesMoney($request);
+        abort_if(! $money && array_key_exists('amount_minor', $input), Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
 
         $franchise = Franchise::findOrFail($input['franchise_id']);
         $customer  = Customer::findOrFail($input['customer_id']);
@@ -310,7 +328,7 @@ class JobsController extends Controller
         });
 
         return response()->json(
-            ['data' => $this->present($job->fresh(), detailed: true)],
+            ['data' => $this->present($job->fresh(), detailed: true, money: $money)],
             Response::HTTP_CREATED
         );
     }
@@ -321,6 +339,9 @@ class JobsController extends Controller
         $this->authorize('update', $job);
 
         $input = $request->validate($this->rules(forUpdate: true));
+
+        $money = $this->seesMoney($request);
+        abort_if(! $money && array_key_exists('amount_minor', $input), Response::HTTP_FORBIDDEN, self::MONEY_HIDDEN);
 
         // Validated when it CHANGES, not when it is merely present.
         //
@@ -427,7 +448,7 @@ class JobsController extends Controller
             }
         });
 
-        return response()->json(['data' => $this->present($job->fresh(), detailed: true)]);
+        return response()->json(['data' => $this->present($job->fresh(), detailed: true, money: $money)]);
     }
 
     /** DELETE /api/v1/jobs/{job} */
@@ -557,7 +578,7 @@ class JobsController extends Controller
         ];
     }
 
-    private function present(Job $job, bool $detailed = false): array
+    private function present(Job $job, bool $detailed = false, bool $money = false): array
     {
         // Only what the BASE payload reads. `lines` and `performedBy` are
         // detail-only and are loaded in that branch below: loading them here
@@ -590,11 +611,13 @@ class JobsController extends Controller
                 'owned_by_this_franchise' =>
                     $job->customer?->owning_franchise_id === $job->franchise_id,
             ],
-            'amount' => [
+            // Only with the Financials toggle: ABSENT without it, never null,
+            // so the client draws nothing rather than a zero.
+            ...($money ? ['amount' => [
                 'minor'    => $job->amount_minor,
                 'currency' => $job->currency,
                 'display'  => $job->amountForDisplay(),
-            ],
+            ]] : []),
             // In the base payload too, not just detailed — the list needs it
             // for its own column.
             'assigned_role' => $job->assignedRole
@@ -623,14 +646,15 @@ class JobsController extends Controller
             'allowed_service_areas' => ServiceArea::query()
                 ->where('franchise_id', $job->franchise_id)->orderBy('name')
                 ->get(['id', 'name'])->map(fn (ServiceArea $a) => ['id' => $a->id, 'name' => $a->name])->all(),
-            'lines' => $job->lines->map(fn (JobLine $line) => [
+            // The lines ARE the money breakdown: Financials only.
+            ...($money ? ['lines' => $job->lines->map(fn (JobLine $line) => [
                 'id'               => $line->id,
                 'service_id'       => $line->service_id,
                 'name'             => $line->name,
                 'unit_price_minor' => $line->unit_price_minor,
                 'qty'              => $line->qty,
                 'amount_minor'     => $line->amount_minor,
-            ])->all(),
+            ])->all()] : []),
             'performed_by' => $job->performedBy
                 ? ['id' => $job->performed_by_user_id, 'name' => $job->performedBy->name]
                 : null,
