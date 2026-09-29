@@ -15,6 +15,9 @@ use App\Models\WorkizJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -246,10 +249,19 @@ class ImportA1ToolsClientsTest extends TestCase
         $this->import()->assertSuccessful();
 
         $this->assertEqualsCanonicalizing(['Ann Lee', 'Bob Lee'], $this->customers()->pluck('name')->all());
-        $this->assertContains(['a1_id' => 1, 'status' => 'phone', 'customer_id' => $existing->id], $this->manifest());
 
-        // A phone match links nothing: auto-merging on phone is refused.
-        $this->assertSame([4513], $this->links()->pluck('client_id')->map(fn ($id) => (int) $id)->all());
+        // The same person, so their Workiz key is theirs: the backfill's old jobs
+        // for #4512 then attach to them instead of creating their twin.
+        $link = $this->links()->firstWhere('client_id', 4512);
+        $this->assertSame($existing->id, $link?->customer_id);
+        $this->assertContains(['a1_id' => 1, 'status' => 'phone', 'customer_id' => $existing->id, 'workiz_client_ids' => [$link->id]], $this->manifest());
+
+        // And the run's audit row lists the pair, so a wrong one can be found and undone.
+        $audit = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'customer.imported')->sole());
+        $this->assertEquals( // equals, not same: a JSON column hands keys back sorted
+            [['a1_id' => 1, 'customer_id' => $existing->id, 'keys' => [['franchise_id' => $this->ids['nj'], 'client_id' => 4512]]]],
+            $audit->metadata['phone_matches'],
+        );
     }
 
     public function test_rows_repeating_an_earlier_row_become_one_customer(): void
@@ -259,9 +271,11 @@ class ImportA1ToolsClientsTest extends TestCase
             $this->client(['a1_id' => 2, 'first_name' => 'Annie']),
             $this->client(['a1_id' => 3, 'workiz' => [], 'phone' => '203-555-0199', 'first_name' => 'Cy']),
             $this->client(['a1_id' => 4, 'workiz' => [], 'phone' => '(203) 555-0199', 'first_name' => 'Cy']),
+            // Cy again, under a Workiz number nobody claimed yet.
+            $this->client(['a1_id' => 5, 'workiz' => [['franchise' => 'CT', 'client_id' => 4600]], 'phone' => '203.555.0199', 'first_name' => 'Cy']),
         ]);
 
-        $this->import()->assertSuccessful()->expectsOutputToContain('2 repeat an earlier row');
+        $this->import()->assertSuccessful()->expectsOutputToContain('3 repeat an earlier row');
 
         $this->assertEqualsCanonicalizing(['Ann Lee', 'Cy Lee'], $this->customers()->pluck('name')->all());
 
@@ -269,6 +283,29 @@ class ImportA1ToolsClientsTest extends TestCase
         $this->assertSame('duplicate', $byA1[2]['status']);
         $this->assertSame($byA1[1]['customer_id'], $byA1[2]['customer_id']);
         $this->assertSame($byA1[3]['customer_id'], $byA1[4]['customer_id']);
+        $this->assertSame($byA1[3]['customer_id'], $byA1[5]['customer_id']);
+
+        // #4512 once, for Ann; #4600 to Cy, so its old jobs find him.
+        $this->assertSame($byA1[1]['customer_id'], $this->links()->firstWhere('client_id', 4512)->customer_id);
+        $this->assertSame($byA1[3]['customer_id'], $this->links()->firstWhere('client_id', 4600)?->customer_id);
+        $this->assertCount(2, $this->links());
+    }
+
+    public function test_a_shared_workiz_key_outranks_a_phone_match(): void
+    {
+        $this->existingCustomer(['name' => 'Bo Lee', 'phone' => '+12035550123']);
+
+        $this->bundle([
+            $this->client(['a1_id' => 1]),
+            // The same Workiz client as row 1, carrying another person's phone and name.
+            $this->client(['a1_id' => 2, 'first_name' => 'Bo', 'phone' => '203-555-0123']),
+        ]);
+
+        $this->import()->assertSuccessful();
+
+        $byA1 = collect($this->manifest())->keyBy('a1_id');
+        $this->assertSame('duplicate', $byA1[2]['status']);
+        $this->assertSame($byA1[1]['customer_id'], $byA1[2]['customer_id']);
     }
 
     public function test_placeholder_contacts_are_blanked_and_never_match(): void
@@ -345,11 +382,18 @@ class ImportA1ToolsClientsTest extends TestCase
 
     public function test_the_run_is_audited_once_and_raises_no_automation_event(): void
     {
+        Queue::fake();
+        Notification::fake();
+        Mail::fake();
+
         $this->bundle([$this->client(['a1_id' => 1]), $this->client(['a1_id' => 2, 'workiz' => [], 'first_name' => 'Bo'])]);
 
         $this->import()->assertSuccessful();
 
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->count()));
+        Queue::assertNothingPushed();
+        Notification::assertNothingSent();
+        Mail::assertNothingOutgoing();
 
         $audit = $this->inTenant($this->t['org'], fn () => AuditEvent::query()->where('action', 'customer.imported')->sole());
         $this->assertSame('a1tools', $audit->metadata['source']);

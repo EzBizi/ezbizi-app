@@ -3,15 +3,20 @@
 namespace Tests\Feature\Workiz;
 
 use App\Models\AutomationEvent;
+use App\Models\Customer;
 use App\Models\Franchise;
 use App\Models\Job;
 use App\Models\SocialConnection;
+use App\Models\WorkizClient;
 use App\Models\WorkizJob;
 use App\Support\Reports\Experimental\WorkizJobs;
 use App\Support\Social\SocialProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Sleep;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -104,7 +109,7 @@ class BackfillWorkizJobsTest extends TestCase
 
         $this->artisan('ezbizi:backfill-workiz', ['--since' => '2024-01-01'])
             ->assertSuccessful()
-            ->expectsOutputToContain('102 landed');
+            ->expectsOutputToContain('102 new');
 
         $this->assertSame(WorkizJobs::PAGE + 3, $this->mirrored());
         $this->assertSame($before, $this->inTenant($this->t['org'], fn () => WorkizJob::query()->where('remote_id', 'A1')->sole()->synced_at->toDateTimeString()));
@@ -154,8 +159,47 @@ class BackfillWorkizJobsTest extends TestCase
         $this->assertSame([0, 1, 2], $this->asked);
     }
 
+    public function test_a_dry_run_counts_per_branch_and_lands_nothing(): void
+    {
+        $this->pages = [0 => $this->jobs('A', WorkizJobs::PAGE), 1 => $this->jobs('B', 3)];
+
+        // A job the sync already mirrors, and a client the A1 import already made a customer.
+        $this->inTenant($this->t['org'], function () {
+            WorkizJob::land($this->connection, $this->pages[0][0]);
+            $customer = Customer::create([
+                'owning_franchise_id' => $this->t['franchise']->id, 'number' => 'C-1', 'name' => 'Pat Rivera', 'is_active' => true,
+            ]);
+            WorkizClient::create([
+                'franchise_id' => $this->t['franchise']->id, 'client_id' => 5002, 'customer_id' => $customer->id, 'synced_at' => now(),
+            ]);
+        });
+
+        // 102 jobs are new: A2 and B2 are client 5002's and attach to the customer;
+        // the rest belong to 99 distinct clients, 5001 and 5003 to 5100.
+        $this->artisan('ezbizi:backfill-workiz', ['--dry-run' => true])
+            ->assertSuccessful()
+            ->expectsOutputToContain('103 jobs read, 102 new: 2 attach to a customer, 99 new customers')
+            ->expectsOutputToContain('Dry run: nothing was written.');
+
+        $this->assertSame(1, $this->mirrored());
+
+        // Its progress is its own: the real run still starts from the first page.
+        $this->asked = [];
+        $this->artisan('ezbizi:backfill-workiz')->assertSuccessful();
+        $this->assertSame([0, 1], $this->asked);
+        $this->assertSame(WorkizJobs::PAGE + 3, $this->mirrored());
+    }
+
+    /**
+     * The desk's hard rule: tens of thousands of old jobs landing as Done must
+     * send nobody anything. Nothing emitted, queued, notified or mailed.
+     */
     public function test_old_done_jobs_it_lands_raise_no_automation_event(): void
     {
+        Queue::fake();
+        Notification::fake();
+        Mail::fake();
+
         $this->pages = [0 => $this->jobs('A', 2, [
             'Status' => 'Done',
             'JobDateTime' => '2024-05-01 10:00:00',
@@ -169,5 +213,8 @@ class BackfillWorkizJobsTest extends TestCase
         $this->assertCount(2, $jobs);
         $this->assertSame(['Done'], $jobs->pluck('status')->unique()->values()->all());
         $this->assertSame(0, $this->inTenant($this->t['org'], fn () => AutomationEvent::query()->count()));
+        Queue::assertNothingPushed();
+        Notification::assertNothingSent();
+        Mail::assertNothingOutgoing();
     }
 }
