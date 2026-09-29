@@ -87,8 +87,13 @@ class PasswordResets
     /**
      * @return array{token: string, expires_at: \Illuminate\Support\Carbon}
      */
-    public function issue(Model $subject, ?string $ip = null): array
+    public function issue(Model $subject, ?string $ip = null, ?int $minutes = null): array
     {
+        // Longer only for a link somebody did not ask for and will read later:
+        // the A1 Tools people import's "set your password" (2026-09-29). A
+        // reset somebody requested keeps the hour — they are waiting for it.
+        $minutes ??= self::LIFETIME_MINUTES;
+
         // Anything outstanding for this account stops working. Two live tokens
         // means an old email sitting in a mailbox is still a way in.
         DB::table('password_resets')
@@ -107,13 +112,13 @@ class PasswordResets
             // string, not a human-chosen password, so there is nothing to slow a
             // guesser down about — and a reset check should not cost 100ms.
             'token_hash'    => hash('sha256', $token),
-            'expires_at'    => now()->addMinutes(self::LIFETIME_MINUTES),
+            'expires_at'    => now()->addMinutes($minutes),
             'requested_ip'  => $ip,
             'created_at'    => now(),
             'updated_at'    => now(),
         ]);
 
-        return ['token' => $token, 'expires_at' => now()->addMinutes(self::LIFETIME_MINUTES)];
+        return ['token' => $token, 'expires_at' => now()->addMinutes($minutes)];
     }
 
     /**

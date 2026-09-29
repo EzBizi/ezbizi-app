@@ -17,10 +17,13 @@ use App\Models\OnboardingAnswer;
 use App\Models\PayRate;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\WelcomeSetPassword;
 use App\Support\Hr\A1ToolsPeopleImport;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsTenants;
 use Tests\TestCase;
@@ -449,6 +452,64 @@ class A1ToolsPeopleImportTest extends TestCase
         $this->assertSame(0, DB::table('attachments')->count());
         $this->assertSame([], Storage::disk(config('filesystems.default'))->allFiles(),
             'Files copied for a rolled-back person were left on disk.');
+    }
+
+    // ── the "set your password" email ─────────────────────────────
+
+    /**
+     * Nothing is sent without --send: Jose's condition is "when the import is
+     * verified", and the desk decides when that is.
+     */
+    public function test_the_welcome_sends_nothing_without_the_flag(): void
+    {
+        Notification::fake();
+
+        $this->bundle([$this->newPerson()], []);
+        $this->import();
+
+        $this->artisan('hr:send-a1-welcome', ['--organization' => $this->t['org']->name])
+            ->expectsOutputToContain('1 imported and active; 0 already sent one; 1 to send.')
+            ->expectsOutputToContain('Nothing was sent.')
+            ->assertSuccessful();
+
+        Notification::assertNothingSent();
+        $this->assertSame(0, DB::table('password_resets')->count());
+    }
+
+    /**
+     * Sent to the people the import CREATED, once, with a week to use it — and
+     * never to a matched person, who already has a password they use.
+     */
+    public function test_the_welcome_goes_to_new_people_once_and_not_to_matched_ones(): void
+    {
+        Notification::fake();
+
+        $matched = $this->userWithRole($this->t, 'Marketing', ['customers.view'], 'eli@example.com');
+
+        $this->bundle([
+            $this->newPerson(),
+            $this->newPerson(['email' => 'eli@example.com', 'a1_user_ids' => [40], 'a1_role' => 'dispatcher']),
+        ], []);
+        $this->import();
+
+        $this->artisan('hr:send-a1-welcome', ['--organization' => $this->t['org']->name, '--send' => true])
+            ->assertSuccessful();
+
+        Notification::assertSentOnDemandTimes(WelcomeSetPassword::class, 1);
+        Notification::assertSentOnDemand(WelcomeSetPassword::class,
+            fn ($n, $channels, $notifiable) => $notifiable->routes['mail'] === 'jon.ames@example.com');
+
+        $expires = Carbon::parse(DB::table('password_resets')->where('subject_id', $this->jon()->id)->value('expires_at'));
+        $this->assertTrue($expires->greaterThan(now()->addDays(6)), 'The link does not last the week.');
+        $this->assertSame(0, DB::table('password_resets')->where('subject_id', $matched->id)->count());
+
+        // A second --send mails nobody again, and leaves Jon's link alive.
+        $this->artisan('hr:send-a1-welcome', ['--organization' => $this->t['org']->name, '--send' => true])
+            ->expectsOutputToContain('1 already sent one; 0 to send.')
+            ->assertSuccessful();
+
+        Notification::assertSentOnDemandTimes(WelcomeSetPassword::class, 1);
+        $this->assertSame(1, DB::table('password_resets')->whereNull('used_at')->count());
     }
 
     /** A role with no mapping refuses a NEW person — never a guessed role. */
