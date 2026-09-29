@@ -8,6 +8,13 @@ class VersionHistory {
 
   static const List<VersionRelease> releases = [
     VersionRelease(
+      version: '0.0.0313',
+      date: '29 Sep 2026',
+      items: [
+        'Jobs: estimates are now records in EzBizi, numbered EST-. They need the new Estimates permissions in Settings, Roles, plus the Jobs Financials toggle. The screens to see them are being designed.',
+      ],
+    ),
+    VersionRelease(
       version: '0.0.0312',
       date: '29 Sep 2026',
       items: [
