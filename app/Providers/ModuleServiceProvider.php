@@ -1173,10 +1173,12 @@ class ModuleServiceProvider extends ServiceProvider
                 tabs: [
                     new TabDefinition('availability', 'Availability'),
                     new TabDefinition('schedule', 'Schedule'),
-                    new TabDefinition('settings', 'Settings'),
                     // Jose, 2026-09-29: "a new tab on scheduling that warns me
                     // about all the overbookings call it Overbooking".
                     new TabDefinition('overbooking', 'Overbooking'),
+                    // Last, as on the screen: the roles editor lists tabs in
+                    // this order.
+                    new TabDefinition('settings', 'Settings'),
                 ],
                 /*
                  * The first booking event (Jose, 2026-09-29: a warning email
